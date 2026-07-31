@@ -241,7 +241,15 @@ Rozhodnuto zadavatelem 2026-07-31. **Řada odpovědí návrh vylepšuje, nejen p
 
 Tím padá argument „museli bychom hlídat druhé heslo na serveru". Dešifrovací klíč může být offline. Pouhé potvrzení „uložil jsem si klíč" je slabá pojistka a nahrazuje se tímhle.
 
-**Blokující nález zadavatele, který je nutné vyřešit v kontraktu:** otisky v suppression listu mají platit navždy, ale kontrola počítá otisk jen pro omezený počet předchozích klíčů. **Po několika rotacích se nejstarší záznamy přestanou dát ověřit a smazaný člověk se vrátí prvním dalším importem.** Recovery bundle s celým keyringem řeší jen půlku (obnovu). Druhá půlka je za běhu: **kontrola musí projít všechna známá pokolení klíče, ne pevný počet**, nebo se musí změnit konstrukce suppression listu. Je to porušení GDPR, které se projeví tiše.
+**Blokující nález zadavatele, ROZHODNUTO:** otisky v suppression listu mají platit navždy, ale kontrola počítala otisk jen pro omezený počet předchozích klíčů. Po několika rotacích by se nejstarší záznamy přestaly dát ověřit a smazaný člověk by se vrátil prvním dalším importem. Nic by neselhalo a nic by se nezalogovalo.
+
+**Rozhodnutí: strop se ruší, kontrola prochází všechna známá pokolení klíče.**
+
+Ostatní cesty nejdou. Přepočítat staré otisky nelze, protože původní adresa je po výmazu pryč, což je celý smysl výmazu. Nerotovatelný klíč byl zamítnut dřív, protože klíč, který po incidentu nejde vyměnit, je trvalá zátěž.
+
+Cena je zanedbatelná: jedna operace otisku trvá řádově mikrosekundu, takže při deseti pokoleních a importu sto tisíc kontaktů je to zhruba sekunda navíc na celý import. Přirozeným stropem je počet rotací provedených za životnost instalace, tedy jednociferné číslo.
+
+**Dvě pravidla, která k tomu patří a musí zůstat tvrdá:** staré klíče nesmí jít nikdy vyhodit, a kontrola zdraví instalace to musí hlásit jako kritickou chybu, ne jako doporučení. Recovery bundle nese celý keyring, jinak by obnova ze zálohy rozbila totéž.
 
 **Registrace: tři režimy místo dvou.**
 
@@ -290,6 +298,25 @@ Tím padá argument „museli bychom hlídat druhé heslo na serveru". Dešifrov
 | Limit vlastních polí | **100 polí, z toho 8 indexovaných.** UI musí ukazovat využití limitu a vysvětlit, že indexace zrychluje segmenty, ale zvětšuje databázi a zpomaluje import. |
 | Presety čištění | Šest navržených **potvrzeno**. Presety smí počítat kandidáty, ale **nikdy nesmějí automaticky mazat.** Před akcí se vždy zobrazí počet, vzorek, možnost exportu a přesná podmínka. Výmaz potvrdí oprávněný uživatel. |
 | Kdo smí spustit hromadný výmaz | **Vlastník projektu** |
+
+**Opakované přihlášení přes formulář.** Rozhodnuto 2026-07-31 na základě otázky zadavatele. **Ve specifikaci to explicitně nebylo a je to místo, kde by to každý implementátor vyřešil jinak.**
+
+Modelový případ: člověk si před půl rokem stáhl e-book výměnou za adresu, zapomněl na to, vrátí se na web a vyplní formulář znovu.
+
+Rozděluje se to na dvě věci, které se snadno slijí do jedné:
+
+| Co | Kdy se to stane |
+|---|---|
+| **Doručení toho, co si vyžádal** (odkaz na e-book) | **Vždycky.** Vyplnil formulář, o něco požádal, dostane to. I popáté. Je to reakce na jeho konkrétní akci, ne marketing. |
+| **Potvrzovací a uvítací e-mail** | **Jen u skutečně nového nebo dříve odhlášeného kontaktu.** Kdo už je potvrzený, dostane jen ten e-book. |
+
+Poslat „potvrďte prosím své přihlášení" člověku, který přihlášený je, vypadá jako rozbitý nástroj a část lidí na to klikne s pocitem, že je někdo přihlásil bez jejich vědomí.
+
+**Odhlášený kontakt, který se přihlásí znovu**, projde celým potvrzením a tím se mu automaticky sundá blok. To už specifikace řeší: blok z odhlášení může sundat **jedině nové potvrzené přihlášení**, tedy uživatelův vlastní úkon. Nesundá ho admin ani import.
+
+**Bezpečnostní podmínka: formulář musí odpovědět stejně, ať kontakt existuje, nebo ne.** Vždy „Poslali jsme vám e-mail s odkazem." Kdyby u známé adresy napsal „už jste přihlášen", stal by se z formuláře **nástroj na zjišťování, kdo je v databázi**. Kdokoli by mohl zkoušet adresy a zjišťovat, jestli je ten člověk zákazníkem. U citlivého oboru je to reálný problém.
+
+Totéž platí pro adresu na suppression listu ze stížnosti nebo tvrdého odrazu: zobrazí se stejná hláška, e-mail se neodešle.
 
 ---
 
