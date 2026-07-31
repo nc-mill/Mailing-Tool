@@ -403,7 +403,18 @@ Dvě pravidla, která z toho plynou:
 1. Hlavičky vkládáme sami.
 2. **Funkci SES pro správu odběratelů nepoužíváme**, protože když je zapnutá, SES naše hlavičky přepíše.
 
-Potvrdí to jeden testovací mail na Gmail.
+**Z veřejných zdrojů se to potvrdit nedá**, AWS nikde nedokumentuje, které hlavičky podepisuje. Rozhodne jeden testovací mail, práce na pět minut:
+
+Poslat přes `SendEmail` s obsahem typu `Raw`, s Easy DKIM, **bez** funkce pro správu odběratelů, na vlastní schránku na Gmailu. Do hlaviček dát unikátní token, ať se pozná případné přepsání. Pak v Gmailu zobrazit originál a přečíst:
+
+1. **Jsou obě hlavičky pro odhlášení v seznamu podepsaných hlaviček?** Tohle je ta odpověď.
+2. Zůstal token beze změny?
+
+**Pozor na výklad:** jestli Gmail ukáže tlačítko „Odhlásit", nic nedokazuje, protože závisí i na reputaci a objemu odesílatele. Rozhoduje jen ten seznam podepsaných hlaviček.
+
+Když tam hlavičky nebudou, musí sender podepisovat sám. V tom případě podepsat jen minimální sadu a **nikdy `Message-ID`**, protože ho SES přepisuje a rozbil by tím náš podpis. Dva podpisy vedle sebe jsou v pořádku.
+
+Kdybychom někdy přešli na vlastní DKIM klíč, **test se musí zopakovat**, je to jiná cesta kódem.
 
 #### 6.2.2 Apple: pro MVP to zjednodušujeme
 
