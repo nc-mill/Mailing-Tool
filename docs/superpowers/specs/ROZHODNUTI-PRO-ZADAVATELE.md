@@ -228,6 +228,84 @@ Cena je o něco víc dotazů do databáze, při těchto objemech zanedbatelná.
 
 Rozhraní to má rozdělené na dvě samostatná tlačítka, aby si nikdo nespletl pauzu se zrušením. Mailchimp totéž nabízí až v Premium a jen nad 10 000 příjemců, Ecomail, Sendy ani Listmonk to nemají.
 
+### Odpovědi na otázky části 1 (platforma)
+
+Rozhodnuto zadavatelem 2026-07-31. **Řada odpovědí návrh vylepšuje, nejen potvrzuje.**
+
+**Zálohy: dva podporované režimy místo jednoho.**
+
+| Režim | Obsah |
+|---|---|
+| **Nešifrovaná záloha** | Bez klíčů. Dokumentace musí jasně říct, že **obsahuje kompletní osobní data**. |
+| **Šifrovaný recovery bundle** | Databáze, assety, aktuální `SECRET_KEY`, **všechny** `SECRET_KEY_PREVIOUS` a nutná konfigurace. Šifruje se veřejným recovery klíčem, soukromý klíč **není na serveru**. |
+
+Tím padá argument „museli bychom hlídat druhé heslo na serveru". Dešifrovací klíč může být offline. Pouhé potvrzení „uložil jsem si klíč" je slabá pojistka a nahrazuje se tímhle.
+
+**Blokující nález zadavatele, který je nutné vyřešit v kontraktu:** otisky v suppression listu mají platit navždy, ale kontrola počítá otisk jen pro omezený počet předchozích klíčů. **Po několika rotacích se nejstarší záznamy přestanou dát ověřit a smazaný člověk se vrátí prvním dalším importem.** Recovery bundle s celým keyringem řeší jen půlku (obnovu). Druhá půlka je za běhu: **kontrola musí projít všechna známá pokolení klíče, ne pevný počet**, nebo se musí změnit konstrukce suppression listu. Je to porušení GDPR, které se projeví tiše.
+
+**Registrace: tři režimy místo dvou.**
+
+- `closed` — po prvotním nastavení nelze vytvořit žádný další účet
+- `invite` — účty jen přes pozvánku, **doporučený výchozí stav**
+- `open` — veřejná registrace s ověřením e-mailu
+
+**Retence záznamu o činnosti: rozdělená podle citlivosti.**
+
+- **24 měsíců** pro významné auditní události: export kontaktů, změny rolí, API klíčů, nastavení rozesílání, odeslání kampaně, GDPR operace
+- **90 dní jako výchozí** pro plnou IP adresu, user-agent a přihlašovací události včetně neúspěšných pokusů. Provozovatel nastavitelně, doporučený rozsah 30 až 365 dní.
+
+**Ostatní:**
+
+| Otázka | Rozhodnutí |
+|---|---|
+| Editor smí odeslat kampaň | **Ano**, a **schvalování se přidá jako volitelná funkce projektu** |
+| Prohlížeč nesmí exportovat kontakty | **Ano, ponechat** |
+| Návrat na starší verzi jen ze zálohy | **Ano, takto** |
+| Slib „do pěti minut" | **Vynechat sliby úplně.** Neslibovat, že něco běží do pěti minut. |
+| Název produktu | **Mění se.** Nový název zatím není určený, rozhodnutí zůstává blokující. |
+
+---
+
+### Odpovědi na otázky části 2 (kontakty)
+
+**Vokativ a oslovení.** Při nízké jistotě **neutrální „Dobrý den"**. Jméno se skloňuje automaticky **jen tehdy, když je jazyk kontaktu `cs` nebo `sk` a pravidla nebo slovník dávají vysokou jistotu**. AI může být volitelný pomocník, který navrhne řešení do kontrolní fronty, ale **nesmí bez potvrzení rozhodnout, co skutečně odejde**. **Původ ani etnicitu podle jména neurčujeme.**
+
+**Strop ruční práce.** Proklikávání stovek skupin není přijatelné. Když nejisté případy překročí **100 skupin nebo 10 % importu**, systém nabídne jako **doporučenou** volbu „u nejistých kontaktů použít neutrální oslovení". Kontrolní fronta zůstane dostupná dobrovolně a nejčastější skupiny půjde opravit hromadně.
+
+**Odblokování tvrdých odrazů.** 30denní ochrana zůstává, ale absolutní zákaz hromadného odblokování je příliš přísný. **Owner nebo admin smí hromadně odblokovat tvrdé odrazy pro konkrétní doménu** po výrazném potvrzení, uvedení důvodu a zápisu do auditu. Nabídnout postupnou reaktivaci na malém vzorku. **Stížnosti na spam se hromadně odblokovat nesmějí nikdy.**
+
+**Potvrzení přihlášení: varianta s vyšší konverzí**, tedy jedno kliknutí.
+
+> **Podmínka, bez které to nedává smysl.** Dvě kliknutí nebyla kvůli opatrnosti, ale proto, že **firemní bezpečnostní skenery samy proklikávají odkazy v mailech**, stejně jako Apple předstírá otevření. Při prostém jednom kliknutí by skener potvrdil přihlášení za příjemce a double opt-in by ztratil důkazní hodnotu, což je jediné, kvůli čemu existuje.
+>
+> **Řešení: potvrzení se provede přes POST, ne přes GET.** Skenery dělají GET, prohlížeč po kliknutí na tlačítko udělá POST. Uživatel pořád klikne jednou, jen stránka odešle formulář za něj. Je to tentýž mechanismus, jaký už máme u odhlašování podle RFC 8058.
+
+**Ostatní:**
+
+| Otázka | Rozhodnutí |
+|---|---|
+| Výmaz podle GDPR | **Anonymizovat**, tvrdé smazání jen vlastníkovi |
+| Otisk smazané adresy | **Zachovat**, jako HMAC s klíčem. V zásadách ochrany údajů výslovně popsat jako suppression list sloužící výhradně k zabránění opětovnému kontaktování, s odkazem na oprávněný zájem. |
+| Antispam u formulářů | **Vlastní ochrana zapnutá ve výchozím stavu**: honeypot, časová past, rate limiting, double opt-in. Turnstile a hCaptcha vypnuté jako volitelná silnější ochrana s upozorněním na komunikaci se třetí stranou. |
+| Limit vlastních polí | **100 polí, z toho 8 indexovaných.** UI musí ukazovat využití limitu a vysvětlit, že indexace zrychluje segmenty, ale zvětšuje databázi a zpomaluje import. |
+| Presety čištění | Šest navržených **potvrzeno**. Presety smí počítat kandidáty, ale **nikdy nesmějí automaticky mazat.** Před akcí se vždy zobrazí počet, vzorek, možnost exportu a přesná podmínka. Výmaz potvrdí oprávněný uživatel. |
+| Kdo smí spustit hromadný výmaz | **Vlastník projektu** |
+
+---
+
+### Odpovědi na otázky části 3 (obsah a šablony)
+
+| Otázka | Rozhodnutí |
+|---|---|
+| AI nikdy nevyrábí vlastní HTML | **Ano, souhlas** |
+| Garantované poštovní klienty | Sedm navržených **plus Outlook for Mac a Samsung Mail**, tedy devět v první úrovni |
+| Bez vlastního AI klíče asistent nefunguje | **Přijatelné** |
+| Počet hotových šablon k vydání | **Jedna univerzální plus čtyři varianty**, rozšíříme později |
+| Respektovat robots.txt cizího webu | **Ano ve výchozím stavu**, na vlastní instalaci vypnutelné. Odůvodnění: pokud je to váš vlastní web, můžete si robots.txt upravit sami. |
+| Obrázek použitý v odeslané kampani nejde smazat | **Ano**, jen skrýt z knihovny |
+| Kolik verzí šablony pamatovat | **50 pojmenovaných** plus neomezená historie u verzí použitých v kampani |
+| Historie konverzace s AI v záloze | **Ano**, s mazáním po 90 dnech |
+
 ---
 
 ## 4. Co potřebuje právníka
