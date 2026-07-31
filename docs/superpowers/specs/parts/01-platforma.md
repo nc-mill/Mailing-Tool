@@ -114,7 +114,7 @@ Na všechny jde odpovědět bez znalosti kódu.
 5. **Registrace je ve výchozím stavu zavřená** a účty zakládá vlastník projektu pozvánkou. Souhlasíte, nebo má být nástroj po instalaci otevřený registracím?
 6. **Záznam o činnosti v projektu se drží dva roky.** Obsahuje IP adresy, takže je to osobní údaj. Je dva roky rozumné, nebo raději kratší?
 7. **Slib „do pěti minut" v marketingu.** Souhlasíte s formulací „do pěti minut běží" místo „do pěti minut máte hotovo", vzhledem k tomu, že doména a certifikát zaberou déle?
-8. **Název produktu.** Pracovně používám OpenEngage. Název je zapečený v identifikátorech klíčů, v adresách i v bezpečnostních podpisech, a jeho pozdější změna znamená přepis podepsaných formátů. Je potřeba ho rozhodnout dřív, než se začne psát kód. Kdy to půjde?
+8. ~~**Název produktu.**~~ **Rozhodnuto: Mlain Mailer.** Původní obava, že pozdější změna znamená přepis podepsaných formátů, je vyřešená jinak, než se čekalo: řetězce uvnitř podpisů a odvození klíčů už jméno produktu neobsahují (jsou ve tvaru `mailer/...`) a při dalším přejmenování se na ně nesahá. Podrobně v hlavní specifikaci 3.6.
 
 ---
 
@@ -719,7 +719,7 @@ Instalace bez jediného uživatele zobrazí průvodce na `/setup`. Endpoint `POS
 |---|---|
 | token | 32 náhodných bajtů z CSPRNG, base64url bez paddingu, 43 znaků |
 | uložení | `sessions.token_hash` = SHA-256 z ASCII reprezentace tokenu |
-| cookie | název `oe_session` |
+| cookie | název `ml_session` |
 | atributy | `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` když `APP_URL` začíná `https://` |
 | doména | atribut `Domain` se nenastavuje (host-only cookie) |
 | absolutní platnost | 30 dní (`SESSION_ABSOLUTE_TTL_DAYS`) |
@@ -870,12 +870,12 @@ Poslední řádek je záměrný. Kdyby neexistující členství vracelo 403, da
 **Formát (KONVENCE)**
 
 ```
-oe_<env>_<prefix>_<secret>
+ml_<env>_<prefix>_<secret>
 ```
 
 | Část | Obsah |
 |---|---|
-| `oe` | pevná značka produktu |
+| `mlain` | pevná značka produktu |
 | `env` | `live` (jediná hodnota v MVP 0; `test` rezervováno) |
 | `prefix` | 8 znaků, base32 malými písmeny (RFC 4648 abeceda `a-z2-7`, bez paddingu) z 5 náhodných bajtů |
 | `secret` | 43 znaků, base64url bez paddingu z 32 náhodných bajtů |
@@ -887,7 +887,7 @@ Testovací vektor:
 ```
 prefix (z bajtů a1b2c3d4e5)  = ugzmhvhf
 secret (z bajtů ff fe ... e0) = __79_Pv6-fj39vX08_Lx8O_u7ezr6uno5-bl5OPi4eA
-klíč                          = oe_live_ugzmhvhf___79_Pv6-fj39vX08_Lx8O_u7ezr6uno5-bl5OPi4eA
+klíč                          = ml_live_ugzmhvhf___79_Pv6-fj39vX08_Lx8O_u7ezr6uno5-bl5OPi4eA
 délka                         = 60 znaků
 sha256(secret jako ASCII)     = 7ac21015d6000ce73d6f61c420ff4d5f0f3cc816da25b10726b74e8961cd925c
 ```
@@ -895,14 +895,14 @@ sha256(secret jako ASCII)     = 7ac21015d6000ce73d6f61c420ff4d5f0f3cc816da25b107
 **Veřejný klíč pro web SDK**
 
 ```
-oe_pub_<16 znaků base32 z 10 náhodných bajtů>     například  oe_pub_aebagbafaydqqcik
+ml_pub_<16 znaků base32 z 10 náhodných bajtů>     například  ml_pub_aebagbafaydqqcik
 ```
 
 Veřejný klíč se ukládá **v otevřené podobě** (`secret_hash IS NULL`), protože je z definice veřejný, je v HTML stránky zákazníka a jeho jediná role je identifikovat workspace pro ingestion. Má pevně scope `['events:write']` a nic jiného mu nejde přidat (validace při vytvoření).
 
 **Ověření (časově konstantní)**
 
-1. Parsuj klíč regulárním výrazem `^oe_(live|test)_([a-z2-7]{8})_([A-Za-z0-9_-]{43})$`. Neshoda → `unauthenticated` (401), bez dotazu do databáze.
+1. Parsuj klíč regulárním výrazem `^ml_(live|test)_([a-z2-7]{8})_([A-Za-z0-9_-]{43})$`. Neshoda → `unauthenticated` (401), bez dotazu do databáze.
 2. `SELECT ... FROM api_keys WHERE prefix = $1` (unikátní index). Nenalezeno → provede se **dummy porovnání** proti konstantnímu hashi, aby doba odpovědi nezávisela na existenci klíče, pak `unauthenticated`.
 3. `crypto.timingSafeEqual(sha256(secret), row.secret_hash)`. `timingSafeEqual` vyhodí výjimku při rozdílné délce, proto se délka kontroluje předem regulárním výrazem.
 4. Kontroly: `revoked_at IS NULL`, `expires_at IS NULL OR expires_at > now()`, `workspaces.deleted_at IS NULL`.
@@ -910,7 +910,7 @@ Veřejný klíč se ukládá **v otevřené podobě** (`secret_hash IS NULL`), p
 
 **Proč SHA-256 a ne Argon2:** sekret má 256 bitů entropie z CSPRNG. Slovníkový ani hrubý útok na takový vstup nedává smysl ani s nekonečným výpočetním výkonem, takže pomalý hash by jen přidal desítky milisekund na každý API request. U hesel je to naopak, protože entropie je nízká.
 
-**Zobrazení sekretu:** jednou, hned po vytvoření, v odpovědi `POST /api/v1/api-keys`. Nikde jinde už nikdy. V seznamu se ukazuje `oe_live_ugzmhvhf_...`.
+**Zobrazení sekretu:** jednou, hned po vytvoření, v odpovědi `POST /api/v1/api-keys`. Nikde jinde už nikdy. V seznamu se ukazuje `ml_live_ugzmhvhf_...`.
 
 **Scopes**
 
@@ -958,21 +958,21 @@ export function createWorkspaceContext(input: AuthenticatedRequest): Promise<Wor
 
 **Vrstva 2: PostgreSQL RLS**
 
-- Migrace běží pod rolí `openengage_migrator`, která **vlastní** schéma.
-- Aplikace se připojuje pod rolí `openengage_app`, která schéma **nevlastní**, takže se na ni RLS vztahuje bez potřeby `FORCE ROW LEVEL SECURITY`.
-- Na začátku každé transakce repository vrstva provede `SELECT set_config('openengage.workspace_id', $1, true)` (`true` = `SET LOCAL`, platí do konce transakce). Bez transakce se dotaz nespustí; repository vrstva vždy otevírá transakci.
+- Migrace běží pod rolí `mlain_migrator`, která **vlastní** schéma.
+- Aplikace se připojuje pod rolí `mlain_app`, která schéma **nevlastní**, takže se na ni RLS vztahuje bez potřeby `FORCE ROW LEVEL SECURITY`.
+- Na začátku každé transakce repository vrstva provede `SELECT set_config('mlain.workspace_id', $1, true)` (`true` = `SET LOCAL`, platí do konce transakce). Bez transakce se dotaz nespustí; repository vrstva vždy otevírá transakci.
 - Politika na každé tabulce s `workspace_id`:
 
 ```sql
 ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY ws_isolation ON contacts
-  USING       (workspace_id = current_setting('openengage.workspace_id', true)::uuid)
-  WITH CHECK  (workspace_id = current_setting('openengage.workspace_id', true)::uuid);
+  USING       (workspace_id = current_setting('mlain.workspace_id', true)::uuid)
+  WITH CHECK  (workspace_id = current_setting('mlain.workspace_id', true)::uuid);
 ```
 
 - `current_setting(..., true)` vrací NULL, když proměnná není nastavená; porovnání s NULL je NULL, tedy nepravda, tedy **žádné řádky**. Zapomenuté nastavení kontextu tedy vede k prázdnému výsledku, ne k úniku.
 - Tabulky bez `workspace_id` (`users`, `sessions`, `system_settings`, `password_reset_tokens`, `pgboss.*`, `drizzle.__drizzle_migrations`) RLS nemají. Seznam je explicitní whitelist v `packages/db/src/rls.ts`.
-- Role `openengage_sender` je popsaná v 4.10.1.
+- Role `mlain_sender` je popsaná v 4.10.1.
 
 **Testy izolace (povinné, blokující v CI)**
 
@@ -1022,7 +1022,7 @@ Poslední test je ten důležitý: dokazuje, že RLS není jen deklarovaná, ale
 
 **Zápis:** synchronně ve stejné transakci jako auditovaná změna. Když se transakce rollbackne, audit záznam zmizí s ní, což je správně. Výjimka: `user.login_failed` se zapisuje mimo transakci, protože k žádné změně nedochází.
 
-**Čtení:** `GET /api/v1/audit-log` se scope `audit:read`, cursor stránkování, filtry `action`, `actor_id`, `target_id`, `from`, `to`. Nikdy nejde mazat ani editovat, tabulka má pro `openengage_app` odebrané `UPDATE` a `DELETE`.
+**Čtení:** `GET /api/v1/audit-log` se scope `audit:read`, cursor stránkování, filtry `action`, `actor_id`, `target_id`, `from`, `to`. Nikdy nejde mazat ani editovat, tabulka má pro `mlain_app` odebrané `UPDATE` a `DELETE`.
 
 ### 3.8 Odchozí webhooky (otázka 17)
 
@@ -1048,12 +1048,12 @@ Obsah `data` deklaruje ta část, které událost patří. Tato část vlastní 
 | Hlavička | Hodnota |
 |---|---|
 | `Content-Type` | `application/json; charset=utf-8` |
-| `User-Agent` | `OpenEngage-Webhooks/1.0` |
-| `OE-Event-Id` | UUID události, stabilní přes všechny pokusy |
-| `OE-Event-Type` | typ události |
-| `OE-Delivery-Id` | UUID doručení (jiné pro každý endpoint) |
-| `OE-Attempt` | číslo pokusu, od 1 |
-| `OE-Signature` | `t=<unix>,v1=<hex>` |
+| `User-Agent` | `MlainMailer-Webhooks/1.0` |
+| `ML-Event-Id` | UUID události, stabilní přes všechny pokusy |
+| `ML-Event-Type` | typ události |
+| `ML-Delivery-Id` | UUID doručení (jiné pro každý endpoint) |
+| `ML-Attempt` | číslo pokusu, od 1 |
+| `ML-Signature` | `t=<unix>,v1=<hex>` |
 
 **Podpis**
 
@@ -1070,12 +1070,12 @@ Testovací vektor (závazný pro test a pro dokumentaci pro integrátory):
 secret = whsec_AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK-2vcTL0tk
 t      = 1785000000
 body   = {"id":"0192f3a0-1c2d-7e50-9a1b-2c3d4e5f6071","type":"contact.created","occurred_at":"2026-08-01T12:40:00.000Z","workspace_id":"0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071","data":{"contact_id":"0192f3a0-1c2d-7e43-8d4e-5f60718293a4"}}
-OE-Signature: t=1785000000,v1=0fcffb78d4c57dc7112263cf00aaeadb56569562be16ced54e74d11eba996e2b
+ML-Signature: t=1785000000,v1=0fcffb78d4c57dc7112263cf00aaeadb56569562be16ced54e74d11eba996e2b
 ```
 
 Formát `t=...,v1=...` je zvolený proto, že jde přidat `v2=` vedle `v1=` a rotovat algoritmus bez rozbití příjemců, kteří umí jen v1.
 
-**Ochrana proti replay:** timestamp je součástí podepisovaných dat, takže ho útočník nemůže změnit. V dokumentaci pro integrátory je závazný pokyn odmítnout požadavek starší než **5 minut** a deduplikovat podle `OE-Event-Id`. Na naší straně nic víc udělat nejde, protože replay se odehrává u příjemce.
+**Ochrana proti replay:** timestamp je součástí podepisovaných dat, takže ho útočník nemůže změnit. V dokumentaci pro integrátory je závazný pokyn odmítnout požadavek starší než **5 minut** a deduplikovat podle `ML-Event-Id`. Na naší straně nic víc udělat nejde, protože replay se odehrává u příjemce.
 
 **Retry politika**
 
@@ -1158,7 +1158,7 @@ Blokovaná adresa u webhooku → `failed` s `error_code = 'blocked_target'`, bez
 **Idempotence a pořadí**
 
 - Doručení negarantuje pořadí. Payload nese `occurred_at`, příjemce si má řadit podle něj.
-- Doručení je **nejméně jednou**. Při restartu workeru uprostřed HTTP requestu neexistuje způsob, jak zjistit, jestli protistrana request přijala. Job se proto zopakuje a příjemce musí deduplikovat podle `OE-Event-Id`. Je to napsané v dokumentaci a v UI u vytváření endpointu.
+- Doručení je **nejméně jednou**. Při restartu workeru uprostřed HTTP requestu neexistuje způsob, jak zjistit, jestli protistrana request přijala. Job se proto zopakuje a příjemce musí deduplikovat podle `ML-Event-Id`. Je to napsané v dokumentaci a v UI u vytváření endpointu.
 - pg-boss job má `singletonKey = delivery_id`, takže dva workery neposílají totéž současně. **Pozor na to, co `singletonKey` negarantuje**, viz 9.1.
 - Fan-out je idempotentní přes `uq_webhook_deliveries__event_endpoint`. Protože je tabulka partitionovaná, index musí obsahovat i `created_at`, a fan-out proto musí použít **jednu hodnotu `created_at` pro všechna doručení jedné události** (obdoba invariantu I1 u `messages`) a `ON CONFLICT (event_id, endpoint_id, created_at) DO NOTHING` nad všemi třemi sloupci.
 
@@ -1235,22 +1235,28 @@ Systémové e-maily (pozvánka, reset hesla, ověření e-mailu, potvrzení doub
 ```
 SECRET_KEY  = base64url bez paddingu, dekóduje se na přesně 32 bajtů
 MASTER      = base64url_decode(SECRET_KEY)
-K_<purpose> = HKDF(SHA-256, ikm = MASTER, salt = ASCII "openengage/v1", info = <purpose>, L = 32)
+K_<purpose> = HKDF(SHA-256, ikm = MASTER, salt = ASCII "mailer/v1", info = <purpose>, L = 32)
 ```
 
 HKDF je Extract a Expand v jednom kroku, tedy `crypto.hkdfSync('sha256', MASTER, salt, info, 32)` v Node a `hkdf.Key(sha256.New, MASTER, salt, info, 32)` v Go (`crypto/hkdf` je ve standardní knihovně od Go 1.24).
 
 | purpose (ASCII, přesně) | Použití |
 |---|---|
-| `openengage/v1/tracking-token` | HMAC trackovacích tokenů (4.10.3) |
-| `openengage/v1/credential-encryption` | AES-GCM klíč pro credentials (4.10.4) |
-| `openengage/v1/secret-key-fingerprint` | otisk klíče v `system_settings` a v manifestu zálohy |
-| `openengage/v1/form-token` | podpis tokenů embedovaných formulářů (část 2) |
-| `openengage/v1/confirm-token` | podpis potvrzovacích odkazů double opt-in (část 2) |
-| `openengage/v1/asset-url` | podpis adres obrázků při `ASSET_REQUIRE_SIGNED_URL=true` (část 3), **bez expirace** |
-| `openengage/v1/suppression-fingerprint` | otisky adres v suppression listu (část 2), viz níže |
+| `mailer/v1/tracking-token` | HMAC trackovacích tokenů (4.10.3) |
+| `mailer/v1/credential-encryption` | AES-GCM klíč pro credentials (4.10.4) |
+| `mailer/v1/secret-key-fingerprint` | otisk klíče v `system_settings` a v manifestu zálohy |
+| `mailer/v1/form-token` | podpis tokenů embedovaných formulářů (část 2) |
+| `mailer/v1/confirm-token` | podpis potvrzovacích odkazů double opt-in (část 2) |
+| `mailer/v1/asset-url` | podpis adres obrázků při `ASSET_REQUIRE_SIGNED_URL=true` (část 3), **bez expirace** |
+| `mailer/v1/suppression-fingerprint` | otisky adres v suppression listu (část 2), viz níže |
 
-**`openengage/v1/asset-url` nemá expiraci schválně**, protože e-mail leží ve schránce roky a obrázek se musí zobrazit i za tři roky. Důsledek, který musí být napsaný v UI u přepínače: **podepsaná adresa assetu je trvale platný odkaz**, zneplatnitelný jen rotací `SECRET_KEY`, což zneplatní všechny naráz. Podpis chrání proti enumeraci, ne proti sdílení odkazu.
+> **Tyhle řetězce jsou zmrazené navždy a nejsou to jména produktu (KONTRAKT, ROZHODNUTO 2026-07-31).** Salt `mailer/v1` ani žádný z purposes se **při přejmenování produktu nemění**, a proto v nich jméno produktu záměrně není. Je to koš A podle hlavní specifikace 3.6.
+>
+> Důvod je konkrétní. `mailer/v1/suppression-fingerprint` je součástí receptu, kterým se počítá otisk smazané adresy. Otisky mají platit navždy a **nejdou přepočítat**, protože plaintext je po výmazu pryč. Kdyby někdo při přejmenování produktu poctivě aktualizoval i tenhle řetězec, každý otisk vzniklý před přejmenováním by se přestal shodovat: import by proběhl úspěšně, nic by se nezalogovalo, a smazaný člověk by dostal mail. Totéž v menším platí pro `mailer/token/v1`, jehož změna zneplatní každý pixel a proklik v už odeslaných kampaních.
+>
+> Kdo přejmenovává produkt, mění koš B a koš C. Do téhle tabulky nesahá a **testovací vektory se nepřepočítávají**.
+
+**`mailer/v1/asset-url` nemá expiraci schválně**, protože e-mail leží ve schránce roky a obrázek se musí zobrazit i za tři roky. Důsledek, který musí být napsaný v UI u přepínače: **podepsaná adresa assetu je trvale platný odkaz**, zneplatnitelný jen rotací `SECRET_KEY`, což zneplatní všechny naráz. Podpis chrání proti enumeraci, ne proti sdílení odkazu.
 
 **Otisky v suppression listu: rotovatelné, s `key_id` u záznamu**
 
@@ -1260,7 +1266,7 @@ Zvažovaná odpověď byla samostatný klíč, který se z návrhu nikdy nerotuj
 
 **Řešení používá mechanismus, který v kontraktu už je pro trackovací tokeny**, jen se rozšiřuje i sem.
 
-1. Purpose `openengage/v1/suppression-fingerprint`, odvozený běžně přes HKDF a **rotovatelný jako všechno ostatní**.
+1. Purpose `mailer/v1/suppression-fingerprint`, odvozený běžně přes HKDF a **rotovatelný jako všechno ostatní**.
 2. Otisk se ukládá spolu s `key_id`, stejně jako token a šifrová obálka: `suppressions.fingerprint bytea` plus `suppressions.fingerprint_key_id smallint`. Přesné DDL vlastní část 2.
 3. Kontrola, jestli je adresa na suppression listu, spočítá otisk **pro všechna známá pokolení klíče, bez horního omezení**, a hledá `WHERE fingerprint = ANY($1)`. Je to **jeden indexovaný dotaz s polem tolika hodnot, kolik je pokolení**, ne dotaz na pokolení.
 4. Nové záznamy se zapisují vždy s aktuálním `key_id`. Přepočítat staré nejde a nemusí, protože se ověřují svým pokolením.
@@ -1275,9 +1281,9 @@ Cena je jeden HMAC na pokolení a adresu. Při šesti pokoleních a importu pět
 
 **Záloha a keyring.** Bezpečnostní klíč v záloze schválně není, takže obnova stojí na tom, co si provozovatel uložil zvlášť. Ten **recovery bundle musí nést celý keyring**, tedy aktuální `SECRET_KEY` **i všechna předchozí pokolení** ze `SECRET_KEY_PREVIOUS`. Kdyby nesl jen aktuální klíč, obnova ze zálohy by rozbila přesně totéž co strop na pokolení: suppression list by zůstal, ale nejstarší otisky by se přestaly dát ověřit a smazaní lidé by se vrátili. Dokumentace k záloze to musí říkat stejně hlasitě jako to, že klíč v záloze není.
 
-**Kontrola zdraví instalace.** `oe doctor` porovná pokolení použitá v datech (`SELECT DISTINCT fingerprint_key_id FROM suppressions`, totéž pro trackovací tokeny) se seznamem klíčů, které instalace zná. Každé chybějící pokolení hlásí jako **kritickou chybu**, ne jako doporučení. Chybějící starý klíč není kosmetický nedostatek, je to už nastalá tichá ztráta ochrany.
+**Kontrola zdraví instalace.** `mlain doctor` porovná pokolení použitá v datech (`SELECT DISTINCT fingerprint_key_id FROM suppressions`, totéž pro trackovací tokeny) se seznamem klíčů, které instalace zná. Každé chybějící pokolení hlásí jako **kritickou chybu**, ne jako doporučení. Chybějící starý klíč není kosmetický nedostatek, je to už nastalá tichá ztráta ochrany.
 
-> **Tvrdé pravidlo, které kontroluje `oe doctor`: `SECRET_KEY_PREVIOUS` se nikdy nevyprazdňuje.** Ani po `oe rotate-credentials`. Credentials jsou jediné, co se dá přešifrovat; trackovací tokeny ve starých e-mailech a suppression otisky po výmazu se přešifrovat nedají nikdy. `oe rotate-credentials` proto po doběhnutí **nesmí** hlásit, že staré klíče jdou odebrat, a `oe doctor` hlásí prázdné `SECRET_KEY_PREVIOUS` při neprázdném suppression listu jako kritický nález.
+> **Tvrdé pravidlo, které kontroluje `mlain doctor`: `SECRET_KEY_PREVIOUS` se nikdy nevyprazdňuje.** Ani po `oe rotate-credentials`. Credentials jsou jediné, co se dá přešifrovat; trackovací tokeny ve starých e-mailech a suppression otisky po výmazu se přešifrovat nedají nikdy. `oe rotate-credentials` proto po doběhnutí **nesmí** hlásit, že staré klíče jdou odebrat, a `mlain doctor` hlásí prázdné `SECRET_KEY_PREVIOUS` při neprázdném suppression listu jako kritický nález.
 
 **Co tím není vyřešené, a je poctivé to říct:** e-mailové adresy jsou vyčíslitelná množina. Kdo získá databázi **i** klíč, prolomí otisky hrubou silou bez ohledu na zvolené schéma. Otisk chrání proti úniku samotné databáze, ne proti úniku obojího. Patří to do dokumentace ke GDPR, ne do volby klíče.
 
@@ -1287,12 +1293,12 @@ Testovací vektory (závazné, ověřeno spuštěním):
 SECRET_KEY = AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8
 MASTER hex = 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
 
-K_tracking-token       = 4a60b23f5ad33af512e8a70f9f09b43a37ef1909894df07295067f24d05bf6ca
-K_credential-encryption= 99d7e191906061a6b21d63fb792449c93ca147dc7324862c2963b0b6c70bdc6f
-K_secret-key-fingerprint= 2ca5cdfbdd8380aa5d9f621d6aec612d6e24035ba100a07ead8c776289532481
+K_tracking-token       = b9d815e1212e663c64cce1209229e7cf6af10197254677b7eabb575ea2ac3124
+K_credential-encryption= 83cdc2ac660d3400913cf6c99a981a465f20f0e56610dd413fa7667e30fb8040
+K_secret-key-fingerprint= 58c150fe5d466b4fa3e4d69d855c79763d1f0ccf0875c05594ff93cf8d6aead2
 ```
 
-**Otisk klíče:** `base64url(HMAC-SHA256(K_secret-key-fingerprint, "fingerprint")[0..8])`. Pro klíč výše je to `4FoOTudf7gk`. Ukládá se do `system_settings.secret_key_fingerprint` a do manifestu zálohy. Při startu se porovná; neshoda znamená, že někdo změnil `SECRET_KEY` bez rotace, a aplikace **nastartuje s varováním**, ne s pádem, protože pád by uživateli znemožnil situaci vůbec opravit. V UI se zobrazí červený banner s návodem.
+**Otisk klíče:** `base64url(HMAC-SHA256(K_secret-key-fingerprint, "fingerprint")[0..8])`. Pro klíč výše je to `VXGoNjoPSBY`. Ukládá se do `system_settings.secret_key_fingerprint` a do manifestu zálohy. Při startu se porovná; neshoda znamená, že někdo změnil `SECRET_KEY` bez rotace, a aplikace **nastartuje s varováním**, ne s pádem, protože pád by uživateli znemožnil situaci vůbec opravit. V UI se zobrazí červený banner s návodem.
 
 **Verzování klíčů**
 
@@ -1330,7 +1336,7 @@ Proto je navíc normativní tohle:
 |---|---|
 | Zašifrované credentials providerů, AI klíče, tajemství webhooků | Dešifrují se starým klíčem podle `key_id` v obálce. `oe rotate-credentials` je projde a přešifruje novým. Do té doby fungují dál. |
 | Trackovací tokeny v už odeslaných e-mailech | Ověřují se starým klíčem podle `key_id` v tokenu. **Nikdy nevyprší**, protože e-mail v cizí schránce leží roky. Proto se `SECRET_KEY_PREVIOUS` u trackovacích klíčů nesmí odebrat nikdy, dokud nám záleží na starých kampaních. Doporučení v dokumentaci: staré klíče v `SECRET_KEY_PREVIOUS` nechat trvale. |
-| Identifikační token z kliku (`oe_token`) | Platnost 15 minut, po rotaci stačí počkat 15 minut. |
+| Identifikační token z kliku (`ml_token`) | Platnost 15 minut, po rotaci stačí počkat 15 minut. |
 | Potvrzovací odkazy double opt-in | Platnost 14 dní, viz část 2. |
 | **Otisky v suppression listu** | Ověřují se pokolením podle `key_id` u záznamu. **Přepočítat je nejde nikdy**, protože plaintext byl smazán výmazem podle GDPR. `SECRET_KEY_PREVIOUS` se proto nesmí vyprázdnit, dokud existuje jediný záznam. |
 | Session cookies | Nedotčeno, session token je náhodný a v databázi, ne odvozený ze `SECRET_KEY`. |
@@ -1338,7 +1344,7 @@ Proto je navíc normativní tohle:
 | API klíče | Nedotčeno, hash je SHA-256 bez klíče. |
 | Podpisy odchozích webhooků | Nedotčeno, tajemství je per endpoint a je uložené zašifrovaně; přešifruje ho `oe rotate-credentials`. |
 
-**Ztráta `SECRET_KEY`** je nevratná pro zašifrované credentials. `oe doctor` to detekuje (otisk nesedí, dešifrování selže) a nabídne jedinou možnou opravu: znovu zadat přístupy k providerům a AI klíče. Trackovací tokeny ze starých kampaní přestanou platit a klik z takového e-mailu skončí na `/t/expired` s neutrální stránkou a přesměrováním na domovskou stránku workspace.
+**Ztráta `SECRET_KEY`** je nevratná pro zašifrované credentials. `mlain doctor` to detekuje (otisk nesedí, dešifrování selže) a nabídne jedinou možnou opravu: znovu zadat přístupy k providerům a AI klíče. Trackovací tokeny ze starých kampaní přestanou platit a klik z takového e-mailu skončí na `/t/expired` s neutrální stránkou a přesměrováním na domovskou stránku workspace.
 ### 3.11 Monorepo a build
 
 **Nástroje**
@@ -1388,7 +1394,7 @@ Proto je navíc normativní tohle:
 | Typ, interface | `PascalCase` | `WorkspaceContext` |
 | Funkce, proměnná | `camelCase` | `createApiKey` |
 | Konstanta modulu | `SCREAMING_SNAKE_CASE` | `SESSION_COOKIE_NAME` |
-| Balíček | `@openengage/<jméno>` | `@openengage/db` |
+| Balíček | `@mlain/<jméno>` | `@mlain/db` |
 | pg-boss fronta | `<domena>.<akce>` | `contacts.import` |
 | Chybový kód API | `snake_case` | `insufficient_scope` |
 | Oprávnění a scope | `resource:action` | `campaigns:send` |
@@ -1440,7 +1446,7 @@ COPY packages/contracts/fixtures/ /src/testdata/fixtures/
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build -trimpath \
       -ldflags="-s -w -X main.version=${APP_VERSION}" \
-      -o /out/oe-sender ./cmd/sender
+      -o /out/ml-sender ./cmd/sender
 
 # --- 2) Node deps: jen instalace, sdílená vrstva ------------------------------
 FROM node:24.18.1-alpine AS node-deps
@@ -1457,7 +1463,7 @@ RUN --mount=type=cache,target=/pnpm-store \
 FROM node-deps AS node-builder
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm turbo run build --filter=@openengage/web --filter=@openengage/worker
+RUN pnpm turbo run build --filter=@mlain/web --filter=@mlain/worker
 # Next standalone vyrobí .next/standalone se zabaleným node_modules podmnožinou.
 
 # --- 4) Runtime --------------------------------------------------------------
@@ -1465,8 +1471,8 @@ FROM node:24.18.1-alpine AS runtime
 # tini se stará o reaping zombie procesů a o předání signálů, když MODE=all
 # spouští tři potomky. Bez něj SIGTERM nedojde k dětem a shutdown není graceful.
 RUN apk add --no-cache tini postgresql18-client ca-certificates tzdata \
- && addgroup -g 10001 -S openengage \
- && adduser  -u 10001 -S openengage -G openengage
+ && addgroup -g 10001 -S mlain \
+ && adduser  -u 10001 -S mlain -G mlain
 WORKDIR /app
 
 COPY --from=node-builder --chown=root:root /app/apps/web/.next/standalone ./
@@ -1474,9 +1480,9 @@ COPY --from=node-builder --chown=root:root /app/apps/web/.next/static ./apps/web
 COPY --from=node-builder --chown=root:root /app/apps/web/public ./apps/web/public
 COPY --from=node-builder --chown=root:root /app/apps/worker/dist ./apps/worker/dist
 COPY --from=node-builder --chown=root:root /app/packages/db/migrations ./packages/db/migrations
-COPY --from=sender-builder --chown=root:root /out/oe-sender /usr/local/bin/oe-sender
+COPY --from=sender-builder --chown=root:root /out/ml-sender /usr/local/bin/ml-sender
 COPY --chown=root:root docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY --chown=root:root docker/oe /usr/local/bin/oe
+COPY --chown=root:root docker/oe /usr/local/bin/mlain
 
 # Data se zapisují jen do /data, aplikační soubory jsou pro běžícího uživatele
 # jen ke čtení. Kontejner tedy jde spustit s read-only rootfs.
@@ -1493,7 +1499,7 @@ USER 10001:10001
 
 # Readiness, ne liveness: kontroluje i dostupnost databáze a shodu schématu.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=3 \
-  CMD ["/usr/local/bin/oe", "healthcheck"]
+  CMD ["/usr/local/bin/mlain", "healthcheck"]
 
 ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/entrypoint.sh"]
 ```
@@ -1506,7 +1512,7 @@ ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/entrypoint.sh"]
 | tini, ca-certificates, tzdata, postgresql18-client | 22 MB |
 | Next.js standalone + static + public | 95 MB |
 | worker dist + node_modules podmnožina | 25 MB |
-| `oe-sender` (Go, staticky, `-s -w`) | 18 MB |
+| `ml-sender` (Go, staticky, `-s -w`) | 18 MB |
 | **celkem, nekomprimovaně** | **~220 MB** |
 
 Cíl: pod 250 MB. Když se překročí, CI job `image-size` spadne. Bez `postgresql18-client` (potřebného pro `pg_dump` a `pg_restore`) by to bylo o 22 MB méně, ale zálohování ze samotné image je slib z kapitoly 9 hlavní specifikace a stojí za to.
@@ -1518,11 +1524,11 @@ Cíl: pod 250 MB. Když se překročí, CI job `image-size` spadne. Bez `postgre
 set -eu
 # 1) validace konfigurace (zod), při chybě exit 78 a výpis všech problémů naráz
 # 2) vymazání klíčů AI providerů z prostředí, viz "Klíče AI providerů" níž
-# 3) MIGRATE_ON_START=true a MODE in (web,all)  ->  oe migrate  (advisory lock, 3.13)
+# 3) MIGRATE_ON_START=true a MODE in (web,all)  ->  mlain migrate  (advisory lock, 3.13)
 # 4) podle MODE spustit:
 #    web    -> node apps/web/server.js
 #    worker -> node apps/worker/dist/main.js
-#    sender -> /usr/local/bin/oe-sender
+#    sender -> /usr/local/bin/ml-sender
 #    all    -> všechny tři jako potomky, sdílené PID 1 přes tini,
 #              pád kteréhokoliv potomka ukončí celý kontejner (exit code potomka)
 ```
@@ -1538,7 +1544,7 @@ Entrypoint proto před spuštěním web a worker procesu odstraní z prostředí
 | **Vzor** | každá proměnná, jejíž název končí na `_API_KEY` |
 | Výčet pro ty, které vzoru neodpovídají | `AWS_BEARER_TOKEN_BEDROCK`, `GOOGLE_APPLICATION_CREDENTIALS`, `GOOGLE_GENAI_USE_VERTEXAI`, `AZURE_OPENAI_ENDPOINT`, `OLLAMA_HOST`, `HF_TOKEN` |
 
-**Vzor, ne výčet**, protože výčet zastará při každém novém provideru a selže tiše. Vzor `*_API_KEY` je bezpečný, protože **žádná konfigurační proměnná OpenEngage na `_API_KEY` nekončí** (ověřeno proti tabulce 4.9: používáme `SECRET_KEY`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `METRICS_TOKEN`). Hlídá to test, který projde zod schéma konfigurace a spadne, kdyby někdo takovou proměnnou zavedl.
+**Vzor, ne výčet**, protože výčet zastará při každém novém provideru a selže tiše. Vzor `*_API_KEY` je bezpečný, protože **žádná konfigurační proměnná Mlain Mailer na `_API_KEY` nekončí** (ověřeno proti tabulce 4.9: používáme `SECRET_KEY`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `METRICS_TOKEN`). Hlídá to test, který projde zod schéma konfigurace a spadne, kdyby někdo takovou proměnnou zavedl.
 
 Mazání se **neaplikuje na sender**, ten s AI nepřichází do styku.
 
@@ -1562,7 +1568,7 @@ Akceptační kritérium: kontejner spuštěný s `ANTHROPIC_API_KEY=sk-test` v p
 | `GET :HEALTH_PORT/healthz` | worker | proces žije | 200 `ok` |
 | `GET :HEALTH_PORT/readyz` | worker | pg-boss `started`, poslední tik maintenance mladší než 5 min | 200 nebo 503 |
 
-Příkaz `oe healthcheck` v HEALTHCHECK direktivě zavolá readiness endpoint podle `MODE` (u `all` všechny tři a spadne, když spadne kterýkoliv).
+Příkaz `mlain healthcheck` v HEALTHCHECK direktivě zavolá readiness endpoint podle `MODE` (u `all` všechny tři a spadne, když spadne kterýkoliv).
 
 **Graceful shutdown**
 
@@ -1579,11 +1585,11 @@ Na SIGINT reagují procesy stejně jako na SIGTERM. Druhý signál během shutdo
 **docker-compose.yml** (povinný artefakt)
 
 ```yaml
-name: openengage
+name: mlain
 
 services:
   app:
-    image: ghcr.io/nc-mill/openengage:1.0.0     # nikdy :latest v produkci
+    image: ghcr.io/nc-mill/mlain:1.0.0     # nikdy :latest v produkci
     restart: unless-stopped
     depends_on:
       postgres:
@@ -1592,8 +1598,8 @@ services:
     environment:
       MODE: all
       APP_URL: ${APP_URL:?APP_URL je povinná}
-      DATABASE_URL: ${DATABASE_URL:-postgres://openengage_app:openengage@postgres:5432/openengage}
-      DATABASE_URL_SENDER: ${DATABASE_URL_SENDER:-postgres://openengage_sender:openengage@postgres:5432/openengage}
+      DATABASE_URL: ${DATABASE_URL:-postgres://mlain_app:mlain@postgres:5432/mlain}
+      DATABASE_URL_SENDER: ${DATABASE_URL_SENDER:-postgres://mlain_sender:mlain@postgres:5432/mlain}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY je povinná, vygenerujte ji příkazem oe genkey}
       DEFAULT_LOCALE: ${DEFAULT_LOCALE:-cs}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -1608,7 +1614,7 @@ services:
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD", "/usr/local/bin/oe", "healthcheck"]
+      test: ["CMD", "/usr/local/bin/mlain", "healthcheck"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -1623,15 +1629,15 @@ services:
     profiles: ["bundled"]          # docker compose --profile bundled up -d
     restart: unless-stopped
     environment:
-      POSTGRES_DB: openengage
-      POSTGRES_USER: openengage_migrator
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openengage}
+      POSTGRES_DB: mlain
+      POSTGRES_USER: mlain_migrator
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlain}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=icu --icu-locale=cs-CZ"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
       - ./docker/initdb:/docker-entrypoint-initdb.d:ro   # zakládá role app a sender
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U openengage_migrator -d openengage"]
+      test: ["CMD-SHELL", "pg_isready -U mlain_migrator -d mlain"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -1644,14 +1650,14 @@ Rozdělení na `MODE=web`, `MODE=worker` a `MODE=sender` je v `compose.scale.yml
 
 | Role | Práva | Proč |
 |---|---|---|
-| `openengage_migrator` | vlastník schématu `public`, plná práva | pouští migrace, jinak nikde nepoužitá |
-| `openengage_app` | `SELECT, INSERT, UPDATE, DELETE` na aplikačních tabulkách, `USAGE` na schématu, žádné vlastnictví | běžný provoz; nevlastní tabulky, takže na ni platí RLS |
-| `openengage_sender` | přesně podle 4.10.1 | oddělený, aby chyba v senderu nemohla sáhnout na kontakty |
-| `openengage_backup` | `pg_read_all_data` | jen pro `pg_dump`, nikdy nezapisuje |
+| `mlain_migrator` | vlastník schématu `public`, plná práva | pouští migrace, jinak nikde nepoužitá |
+| `mlain_app` | `SELECT, INSERT, UPDATE, DELETE` na aplikačních tabulkách, `USAGE` na schématu, žádné vlastnictví | běžný provoz; nevlastní tabulky, takže na ni platí RLS |
+| `mlain_sender` | přesně podle 4.10.1 | oddělený, aby chyba v senderu nemohla sáhnout na kontakty |
+| `mlain_backup` | `pg_read_all_data` | jen pro `pg_dump`, nikdy nezapisuje |
 
 ### 3.13 Migrace (otázky 11 a 14)
 
-**Nástroj:** `drizzle-kit` 0.31.10 generuje SQL soubory, aplikuje je **vlastní runner** `oe migrate`. Vlastní runner je nutný ze dvou důvodů: potřebujeme advisory lock kolem celého běhu a potřebujeme umět migrace, které nesmí běžet v transakci.
+**Nástroj:** `drizzle-kit` 0.31.10 generuje SQL soubory, aplikuje je **vlastní runner** `mlain migrate`. Vlastní runner je nutný ze dvou důvodů: potřebujeme advisory lock kolem celého běhu a potřebujeme umět migrace, které nesmí běžet v transakci.
 
 **Formát migrace**
 
@@ -1674,7 +1680,7 @@ První řádek souboru smí nést direktivy runneru:
 **Běh při startu s víc replikami (otázka 11)**
 
 ```
-1. Připoj se jako openengage_migrator.
+1. Připoj se jako mlain_migrator.
 2. SELECT pg_try_advisory_lock(7264150401) v cyklu s odstupem 1 s,
    nejvýš MIGRATE_LOCK_TIMEOUT_SECONDS (výchozí 300).
    - Konstanta 7264150401 je pevná, zapsaná v packages/db/src/migrate.ts.
@@ -1738,7 +1744,7 @@ Down migrace **nepíšeme**. Důvod je praktický: down migrace se nikdy netestu
 |---|---|
 | Chybná migrace zjištěná před vydáním | oprava souboru, protože ještě nikde neběžela |
 | Chybná migrace zjištěná po vydání | nová dopředná migrace, která stav opraví |
-| Potřeba vrátit se na starší verzi aplikace | obnova ze zálohy pořízené `oe backup` před upgradem |
+| Potřeba vrátit se na starší verzi aplikace | obnova ze zálohy pořízené `mlain backup` před upgradem |
 
 **Breaking změny: expand a contract přes tři vydání**
 
@@ -1748,7 +1754,7 @@ Down migrace **nepíšeme**. Důvod je praktický: down migrace se nikdy netestu
 | N+1 | migrate | backfill `honorific` z `title`, číst z nového, zapisovat do obou |
 | N+2 | contract | přestat zapisovat do `title`, migrace ho zahodí |
 
-Uživatel, který přeskočí verzi (z N rovnou na N+2), je na tom stejně, protože se aplikují všechny migrace v pořadí. Zakázané je jen přeskočit **major** verzi; kontroluje to `oe migrate` porovnáním `system_settings.schema_version` s minimální podporovanou verzí zabudovanou v image. Při porušení: exit 4 a hláška "nejdřív aktualizujte na verzi X".
+Uživatel, který přeskočí verzi (z N rovnou na N+2), je na tom stejně, protože se aplikují všechny migrace v pořadí. Zakázané je jen přeskočit **major** verzi; kontroluje to `mlain migrate` porovnáním `system_settings.schema_version` s minimální podporovanou verzí zabudovanou v image. Při porušení: exit 4 a hláška "nejdřív aktualizujte na verzi X".
 
 **Downgrade guard:** když je `system_settings.schema_version` **vyšší** než maximum známé této image, aplikace nenastartuje (exit 5, kód `schema_version_ahead`). Bez toho by starší aplikace zapisovala do novějšího schématu a tiše ho poškodila.
 
@@ -1772,7 +1778,7 @@ Uživatel, který přeskočí verzi (z N rovnou na N+2), je na tom stejně, prot
 **Formát**
 
 ```
-/data/backups/openengage-2026-07-31T030000Z/
+/data/backups/mlain-2026-07-31T030000Z/
 ├── database.dump          pg_dump -Fc, komprimovaný
 ├── uploads.tar.gz
 └── manifest.json
@@ -1785,7 +1791,7 @@ Uživatel, který přeskočí verzi (z N rovnou na N+2), je na tom stejně, prot
   "app_version": "1.0.0",
   "schema_version": 42,
   "installation_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
-  "secret_key_fingerprint": "4FoOTudf7gk",
+  "secret_key_fingerprint": "VXGoNjoPSBY",
   "postgres_version": "18.4",
   "database": { "bytes": 184320000, "sha256": "..." },
   "uploads":  { "bytes": 42000000,  "sha256": "...", "files": 1284 },
@@ -1799,7 +1805,7 @@ Uživatel, který přeskočí verzi (z N rovnou na N+2), je na tom stejně, prot
 
 | Způsob | Příkaz |
 |---|---|
-| Ručně | `docker compose exec app oe backup` |
+| Ručně | `docker compose exec app mlain backup` |
 | Plánovaně | pg-boss `schedule('platform.backup', BACKUP_SCHEDULE_CRON)`, výchozí `0 3 * * *` v `workspaces`-nezávislé, instalační rovině |
 | Před upgradem | `oe upgrade` udělá zálohu automaticky, než pustí migrace |
 
@@ -1807,12 +1813,12 @@ Zálohu pouští jen `MODE=worker` nebo `MODE=all`, aby při víc replikách neb
 
 **Retence:** `BACKUP_RETENTION_DAYS` (výchozí 14). Úklid maže celé adresáře starší než limit, ale **vždy nechá alespoň 3 poslední**, i kdyby byly starší. Bez toho instalace, která byla měsíc vypnutá, přijde po prvním startu o všechny zálohy.
 
-**Externí cíle (S3, Dropbox)** nejsou v MVP 0. Rozhraní je připravené: `BACKUP_TARGET=local` je jediná hodnota, kterou 1.0 zná, a `oe backup` po dokončení volá volitelný hook `/data/hooks/post-backup.sh` s cestou k adresáři. Kdo chce, nahraje si zálohu vlastním skriptem hned teď.
+**Externí cíle (S3, Dropbox)** nejsou v MVP 0. Rozhraní je připravené: `BACKUP_TARGET=local` je jediná hodnota, kterou 1.0 zná, a `mlain backup` po dokončení volá volitelný hook `/data/hooks/post-backup.sh` s cestou k adresáři. Kdo chce, nahraje si zálohu vlastním skriptem hned teď.
 
 **Obnova**
 
 ```
-oe restore /data/backups/openengage-2026-07-31T030000Z [--force] [--skip-uploads]
+mlain restore /data/backups/mlain-2026-07-31T030000Z [--force] [--skip-uploads]
 ```
 
 1. Ověří `manifest.json`, kontrolní součty a `format_version`.
@@ -1820,17 +1826,17 @@ oe restore /data/backups/openengage-2026-07-31T030000Z [--force] [--skip-uploads
 3. Zkontroluje, že cílová databáze je prázdná. Když není, odmítne, dokud nepřijde `--force`. S `--force` se použije `pg_restore --clean --if-exists`.
 4. Porovná `secret_key_fingerprint` s aktuálním `SECRET_KEY`. Neshoda: hlasité varování a vyžádané potvrzení `--i-know-the-key-differs`, protože všechny credentials providerů bude nutné zadat znovu.
 5. Obnoví databázi, pak uploads.
-6. Spustí `oe migrate`.
+6. Spustí `mlain migrate`.
 7. Vypíše porovnání `row_counts` z manifestu se skutečností a případné rozdíly označí.
 8. Zapíše `backup.restored` do auditu.
 
 **Ověření zálohy, aniž se něco rozbije**
 
 ```
-oe backup verify /data/backups/<adresář>
+mlain backup verify /data/backups/<adresář>
 ```
 
-Vytvoří dočasnou databázi `oe_verify_<timestamp>`, obnoví do ní dump, spustí migrace, porovná `row_counts` a několik integritních dotazů (existuje `system_settings`, každý workspace má ownera, žádný osiřelý `membership`), pak databázi zahodí. Vrací nenulový exit code při jakékoliv neshodě, takže se dá zapojit do monitoringu.
+Vytvoří dočasnou databázi `ml_verify_<timestamp>`, obnoví do ní dump, spustí migrace, porovná `row_counts` a několik integritních dotazů (existuje `system_settings`, každý workspace má ownera, žádný osiřelý `membership`), pak databázi zahodí. Vrací nenulový exit code při jakékoliv neshodě, takže se dá zapojit do monitoringu.
 
 Job `platform.backup_verify` pouští `verify` na poslední záloze jednou týdně a při selhání pošle e-mail ownerům. Bez toho by se na nefunkční zálohu přišlo až v okamžiku, kdy je pozdě.
 
@@ -1907,7 +1913,7 @@ Brána se zavádí **v hodině 0 až 2**, ne později. Vyhodit zabudovanou závi
 
 | Povrch | Cesta | Autentizace | Definováno | CSRF | Rate limit podle 4.5 |
 |---|---|---|---|---|---|
-| Veřejné REST API | `/api/v1/**` | API klíč (`Authorization: Bearer oe_live_...`) nebo session | Hono + `@hono/zod-openapi` | ne | ano |
+| Veřejné REST API | `/api/v1/**` | API klíč (`Authorization: Bearer ml_live_...`) nebo session | Hono + `@hono/zod-openapi` | ne | ano |
 | Interní API pro UI | Server Actions a `/api/internal/**` | jen session | Next.js, zod validace | **ano** | ano |
 | Trackovací a veřejné endpointy | `/t/**`, `/e/**`, `/u/**`, `/f/**`, `/s/c/**`, `/p/**`, `/r/**` | podepsaný token nebo veřejný klíč | Hono | ne | ano |
 | **Příchozí webhooky od providerů** | `/api/webhooks/**` | **podpis providera**, viz níže | Hono, syrové tělo | ne | **ne** |
@@ -1984,7 +1990,7 @@ Každý request dostane `request_id`. Hodnota z hlavičky `X-Request-Id`, pokud 
 
 ```json
 {
-  "type": "https://docs.openengage.dev/errors/validation_failed",
+  "type": "https://docs.mlain.dev/errors/validation_failed",
   "title": "Validation failed",
   "status": 422,
   "detail": "Pole 'email' není platná e-mailová adresa.",
@@ -2016,7 +2022,7 @@ Každý request dostane `request_id`. Hodnota z hlavičky `X-Request-Id`, pokud 
 
 ```json
 {
-  "type": "https://docs.openengage.dev/errors/campaign_not_sendable",
+  "type": "https://docs.mlain.dev/errors/campaign_not_sendable",
   "title": "Campaign is not sendable",
   "status": 422,
   "detail": "Kampaň nelze odeslat, našli jsme 2 problémy.",
@@ -2127,7 +2133,7 @@ Rozšiřující názvy začínají písmenem, obsahují alfanumerické znaky a p
 | `domain_dmarc_missing` | 422 | Domain DMARC record is missing | ano |
 | `test_recipient_suppressed` | 422 | Test recipient is suppressed | ne |
 
-`type` URI se dogeneruje podle vzorce `https://docs.openengage.dev/errors/{code}`, nevyplňuje se ručně.
+`type` URI se dogeneruje podle vzorce `https://docs.mlain.dev/errors/{code}`, nevyplňuje se ručně.
 
 Tři poznámky k téhle skupině:
 
@@ -2275,7 +2281,7 @@ Redis se v MVP 0 nezavádí, jak určuje hlavní specifikace. `postgres` backend
 | API klíč | zápisové `/api/v1/**` | 300 | 1 min |
 | API klíč | `POST /api/v1/contacts/import` | 10 | 60 min |
 | API klíč | `POST /api/v1/campaigns/{id}/send` | 30 | 60 min |
-| veřejný klíč (`oe_pub_`) | `POST /e/track` | 6000 | 1 min |
+| veřejný klíč (`ml_pub_`) | `POST /e/track` | 6000 | 1 min |
 | veřejný klíč + IP | `POST /e/track` | 120 | 1 min |
 | IP | `/t/o/**`, `/t/c/**` | 600 | 1 min |
 | IP | veřejné formuláře `/f/**` | 20 | 10 min |
@@ -2488,8 +2494,8 @@ Legenda sloupce "Kdo": W = web, K = worker, S = sender.
 | `APP_URL` | URL | **ano** | | W K | absolutní URL s `http` nebo `https`, bez koncového lomítka. Používá se v odkazech v e-mailech a pro `Origin` kontrolu. Chybí = start selže. |
 | `SECRET_KEY` | string | **ano** | | W K S | `[<key_id>:]<base64url>`, po dekódování přesně 32 B. Odmítne se známý ukázkový klíč z dokumentace. |
 | `SECRET_KEY_PREVIOUS` | string | ne | prázdné | W K S | čárkou oddělený seznam `<key_id>:<base64url>`, **bez horního počtu položek** (strop by znemožnil ověřit nejstarší otisky, viz 3.10) |
-| `DATABASE_URL` | URL | **ano** | | W K | `postgres://`, role `openengage_app` |
-| `DATABASE_URL_SENDER` | URL | ne | odvozeno z `DATABASE_URL` s uživatelem `openengage_sender` | S | při `MODE=all` se dopočítá, jinak povinná |
+| `DATABASE_URL` | URL | **ano** | | W K | `postgres://`, role `mlain_app` |
+| `DATABASE_URL_SENDER` | URL | ne | odvozeno z `DATABASE_URL` s uživatelem `mlain_sender` | S | při `MODE=all` se dopočítá, jinak povinná |
 | `DATABASE_POOL_MAX` | int | ne | 10 | W K | 1 až 100 |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | int | ne | 30000 | W K | 1000 až 600000 |
 | `MODE` | enum | ne | `all` | W K S | `web`, `worker`, `sender`, `all` |
@@ -3031,35 +3037,35 @@ Migrace s granty je napsaná tak, aby prošla i tehdy, když role ještě neexis
 
 ```sql
 -- Krok 1: initdb skript nebo ruční příkaz správce, NE migrace.
-CREATE ROLE openengage_sender LOGIN PASSWORD :'sender_password';
+CREATE ROLE mlain_sender LOGIN PASSWORD :'sender_password';
 
 -- Krok 2: migrace v packages/db.
-GRANT USAGE ON SCHEMA public TO openengage_sender;
+GRANT USAGE ON SCHEMA public TO mlain_sender;
 
 -- Sloupcové granty na messages: sender smí měnit jen to, co je jeho.
 -- Bez nich by chyba v senderu mohla přepsat render_data nebo email.
-GRANT SELECT ON messages TO openengage_sender;
+GRANT SELECT ON messages TO mlain_sender;
 GRANT UPDATE (status, claimed_by, claimed_at, claim_expires_at,
               dispatch_started_at, attempts, next_attempt_at,
               provider_message_id, sent_at, error_code, error_detail, updated_at)
-  ON messages TO openengage_sender;
+  ON messages TO mlain_sender;
 -- created_at ve výčtu SCHVÁLNĚ NENÍ, viz invariant I1.
 
-GRANT SELECT ON campaigns TO openengage_sender;
+GRANT SELECT ON campaigns TO mlain_sender;
 -- Sloupcový GRANT UPDATE na campaigns: sender smí kampaň POUZE pozastavit.
 -- Bez toho je pravidlo o automatické pauze při 5 % selhání renderu (4.10.2)
 -- a pravidlo o SENDER_CREDENTIALS_MAX_RETRIES (3.10) neproveditelné.
-GRANT UPDATE (status, pause_reason) ON campaigns TO openengage_sender;
-GRANT SELECT ON sending_providers TO openengage_sender;
-GRANT SELECT ON campaign_links    TO openengage_sender;
-GRANT SELECT ON workspaces        TO openengage_sender;
-GRANT SELECT ON suppressions      TO openengage_sender;
-GRANT INSERT ON message_events    TO openengage_sender;
+GRANT UPDATE (status, pause_reason) ON campaigns TO mlain_sender;
+GRANT SELECT ON sending_providers TO mlain_sender;
+GRANT SELECT ON campaign_links    TO mlain_sender;
+GRANT SELECT ON workspaces        TO mlain_sender;
+GRANT SELECT ON suppressions      TO mlain_sender;
+GRANT INSERT ON message_events    TO mlain_sender;
 -- Žádná práva na contacts, web_events, users, sessions, api_keys, audit_log.
 -- Sender kontakty nečte, data má v render_data.
 
-ALTER DEFAULT PRIVILEGES FOR ROLE openengage_migrator IN SCHEMA public
-  REVOKE ALL ON TABLES FROM openengage_sender;
+ALTER DEFAULT PRIVILEGES FOR ROLE mlain_migrator IN SCHEMA public
+  REVOKE ALL ON TABLES FROM mlain_sender;
 ```
 
 `SELECT ON suppressions` je nutný, jinak je přechod `claimed → skipped` (kontrola suppression těsně před odesláním), který kontrakt sám povoluje, fyzicky neproveditelný.
@@ -3091,23 +3097,23 @@ Asymetrie „sender smí zastavit, ale ne rozjet" je záměrná. Zastavení je b
 
 Sender **nemá** `DELETE` nikde a nemá `INSERT` do `messages`. Nová partition je pro něj neviditelná, dokud ji migrátor nezaloží a nepřidělí granty; to dělá `createMonthlyPartitions` automaticky.
 
-**Sender a RLS (KONTRAKT).** Tvrzení „sender nepodléhá RLS" bez mechanismu je nefunkční: role `openengage_sender` nemá `BYPASSRLS` a nikdy nevolá `set_config('openengage.workspace_id')`, protože pracuje napříč projekty. `current_setting(..., true)` proto vrátí NULL, politika `ws_isolation` nepustí nic a claim dotaz by vracel **nula řádků vždy**.
+**Sender a RLS (KONTRAKT).** Tvrzení „sender nepodléhá RLS" bez mechanismu je nefunkční: role `mlain_sender` nemá `BYPASSRLS` a nikdy nevolá `set_config('mlain.workspace_id')`, protože pracuje napříč projekty. `current_setting(..., true)` proto vrátí NULL, politika `ws_isolation` nepustí nic a claim dotaz by vracel **nula řádků vždy**.
 
-Řešení je permisivní politika vedle `ws_isolation` na **každé** tabulce, kterou sender čte nebo do níž zapisuje. Politiky se v PostgreSQL OR-ují, takže `ws_isolation` zůstává pro `openengage_app` nedotčená:
+Řešení je permisivní politika vedle `ws_isolation` na **každé** tabulce, kterou sender čte nebo do níž zapisuje. Politiky se v PostgreSQL OR-ují, takže `ws_isolation` zůstává pro `mlain_app` nedotčená:
 
 ```sql
-CREATE POLICY sender_bypass ON messages          TO openengage_sender USING (true) WITH CHECK (true);
-CREATE POLICY sender_bypass ON campaigns         TO openengage_sender USING (true);
-CREATE POLICY sender_bypass ON sending_providers TO openengage_sender USING (true);
-CREATE POLICY sender_bypass ON campaign_links    TO openengage_sender USING (true);
-CREATE POLICY sender_bypass ON workspaces        TO openengage_sender USING (true);
-CREATE POLICY sender_bypass ON suppressions      TO openengage_sender USING (true);
-CREATE POLICY sender_bypass ON message_events    TO openengage_sender WITH CHECK (true);
+CREATE POLICY sender_bypass ON messages          TO mlain_sender USING (true) WITH CHECK (true);
+CREATE POLICY sender_bypass ON campaigns         TO mlain_sender USING (true);
+CREATE POLICY sender_bypass ON sending_providers TO mlain_sender USING (true);
+CREATE POLICY sender_bypass ON campaign_links    TO mlain_sender USING (true);
+CREATE POLICY sender_bypass ON workspaces        TO mlain_sender USING (true);
+CREATE POLICY sender_bypass ON suppressions      TO mlain_sender USING (true);
+CREATE POLICY sender_bypass ON message_events    TO mlain_sender WITH CHECK (true);
 ```
 
-Varianta `ALTER ROLE openengage_sender BYPASSRLS` je hrubší (platí na všechno včetně tabulek, na které sender nemá mít přístup) a vyžaduje superuživatele, takže patří do `docker/initdb`, ne do migrace. Nepoužíváme ji.
+Varianta `ALTER ROLE mlain_sender BYPASSRLS` je hrubší (platí na všechno včetně tabulek, na které sender nemá mít přístup) a vyžaduje superuživatele, takže patří do `docker/initdb`, ne do migrace. Nepoužíváme ji.
 
-**Testy z tabulky scénářů musí běžet pod rolí `openengage_sender`, ne pod migrátorem.** Tohle je na celém nálezu to nejcennější: kdyby scénáře `OB-01` až `OB-13` běžely pod migrátorem, prošly by a chybu by zamaskovaly. Chyba nebyla jen v návrhu, ale i v testu, který ji měl odhalit. Test harness proto otevírá spojení pod `DATABASE_URL_SENDER` a v CI se ověřuje, že se pod migrátorem nespouští.
+**Testy z tabulky scénářů musí běžet pod rolí `mlain_sender`, ne pod migrátorem.** Tohle je na celém nálezu to nejcennější: kdyby scénáře `OB-01` až `OB-13` běžely pod migrátorem, prošly by a chybu by zamaskovaly. Chyba nebyla jen v návrhu, ale i v testu, který ji měl odhalit. Test harness proto otevírá spojení pod `DATABASE_URL_SENDER` a v CI se ověřuje, že se pod migrátorem nespouští.
 
 **Kontraktní podmnožiny cizích tabulek.** Pravidlo: **co má sender v grantu, to musí být v kontraktu.** Jinak má sender povinnost číst nebo zapisovat tabulku, jejíž sloupce se můžou změnit bez porušení kontraktu.
 
@@ -3150,7 +3156,7 @@ Vlastník smí tabulku rozšiřovat, nesmí měnit název, typ ani sémantiku vy
 | `OB-21` | Zpráva ve stavu `failed` s `error_code = 'ambiguous_dispatch'`, aplikace zpracuje událost od providera a přepne ji na `sent` | přechod **uspěje**, doplní se `provider_message_id` a `sent_at` |
 | `OB-22` | Tentýž přechod `failed → sent` u zprávy s jiným `error_code` (například `render_failure`, `provider_rejected`) i s `error_code IS NULL` | přechod **musí selhat** ve všech případech. Test běží pro každou hodnotu zvlášť, aby neprošel omylem na prázdné množině |
 
-**Všechny scénáře běží pod rolí `openengage_sender`.** Spuštění pod migrátorem je v CI chyba, protože zamaskuje chybějící politiku `sender_bypass`.
+**Všechny scénáře běží pod rolí `mlain_sender`.** Spuštění pod migrátorem je v CI chyba, protože zamaskuje chybějící politiku `sender_bypass`.
 
 #### `OB-00` a proč je z celého seznamu nejdůležitější
 
@@ -3496,8 +3502,8 @@ type         = 1 bajt, ASCII znak
 key_id       = 1 bajt, unsigned, 1 až 255
 payload      = binární, velký endián, pevná délka podle typu
 mac          = prvních 16 bajtů z HMAC-SHA256
-mac_input    = "openengage/token/v1" || type || key_id || payload
-mac_key      = HKDF(SHA-256, MASTER, "openengage/v1", "openengage/v1/tracking-token", 32)
+mac_input    = "mailer/token/v1" || type || key_id || payload
+mac_key      = HKDF(SHA-256, MASTER, "mailer/v1", "mailer/v1/tracking-token", 32)
 ```
 
 `"t1"` je čitelný prefix pro rozpoznání a pro budoucí `t2`. Base64url je RFC 4648 §5 **bez paddingu**, s abecedou `A-Za-z0-9-_`.
@@ -3568,24 +3574,24 @@ nonce        = 0011223344556677
 
 | Typ | Token |
 |---|---|
-| open | `t1bwEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkGLLD1OX2Bxgmpk3YCVNgR__t5nFa1z5_Wn6r8V` |
-| click | `t1YwEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkGLLD1OX2BxggGS86AcLX5CnD1OX2BxgpNqZN2AdHpw8pB-jc8TeaF-MsQGQA` |
-| identity | `t1aQEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkONTl9gcYKTpAGS86AcLX5Enl9gcYKTpLUAESIzRFVmd2pk8piofVi4fkHZTjcDdmtUI_Pt` |
-| unsubscribe | `t1dQEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkGLLD1OX2BxggGS86AcLX5DjU5fYHGCk6QBkvOgHC1-RY9gcYKTpLXGamTdgHKvx5wpOM1WbVJMo8EGV48` |
-| unsubscribe (globální, `list_id` = samé nuly) | `t1dQEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkGLLD1OX2BxggGS86AcLX5DjU5fYHGCk6QAAAAAAAAAAAAAAAAAAAAAamTdgCYnjHQicEmTYRaa1jo79Zg` |
+| open | `t1bwEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkGLLD1OX2Bxgmpk3YDUjmcTwPYu1Q9cpqmSPs4g` |
+| click | `t1YwEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkGLLD1OX2BxggGS86AcLX5CnD1OX2BxgpNqZN2Aa8TprBxqhsgbR6l5AMMNpw` |
+| identity | `t1aQEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkONTl9gcYKTpAGS86AcLX5Enl9gcYKTpLUAESIzRFVmd2pk8pg7wFifQiBnNoxotJQLmO2S` |
+| unsubscribe | `t1dQEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkGLLD1OX2BxggGS86AcLX5DjU5fYHGCk6QBkvOgHC1-RY9gcYKTpLXGamTdgE4PEWHmqWZZuZDCD6L2SMw` |
+| unsubscribe (globální, `list_id` = samé nuly) | `t1dQEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkGLLD1OX2BxggGS86AcLX5DjU5fYHGCk6QAAAAAAAAAAAAAAAAAAAAAamTdgLfjJDF8FrY9mr1K2TawYXw` |
 
 Plné HMAC-SHA256 před zkrácením (pro ladění implementace):
 
 ```
-open   9536047ffede6715ad73e7f5a7eabf158c6480b2aab5ba1260645b79d1a33a75
-click  747a70f2907e8dcf1379a17e32c406409aafe9290c963fc2a025bc1bfa707bd1
-ident  a87d58b87e41d94e3703766b5423f3ed1b49795d2ac33868e06a8ce39b58cac2
-unsub  72afc79c2938cd566d524ca3c106578f3c34b935be1023b5e47c8d15c461e540
+open   d48e6713c0f62ed50f5ca6a9923ece20c1aa4f25d47e9ab6938c8d86d6eac5b5
+click  6bc4e9ac1c6a86c81b47a97900c30da707294b163b6b84cdb238b9f88551ea2f
+ident  3bc0589f422067368c68b4940b98ed927cd9e33ec10058360f4af12a5d8d02f2
+unsub  4e0f1161e6a96659b990c20fa2f648cc75bc9dd3bfaefc4f1a0ab35031e5dc9a
 ```
 
 Identity token se oproti předchozí verzi kontraktu **nezměnil**, protože `message_created_at` nenese. Ostatní tři ano. Kdo implementoval proti staré verzi, pozná to na prvním vektoru.
 
-Odvozený klíč pro kontrolu: `K_tracking-token = 4a60b23f5ad33af512e8a70f9f09b43a37ef1909894df07295067f24d05bf6ca`.
+Odvozený klíč pro kontrolu: `K_tracking-token = b9d815e1212e663c64cce1209229e7cf6af10197254677b7eabb575ea2ac3124`.
 
 **Negativní vektory (musí být odmítnuté oběma stranami)**
 
@@ -3617,8 +3623,8 @@ Odvozený klíč pro kontrolu: `K_tracking-token = 4a60b23f5ad33af512e8a70f9f09b
 header     = version(1) || key_id(1) || context_len(1) || context(context_len)
 envelope   = header || nonce(12) || ciphertext(N) || tag(16)
 stored     = "enc:v1:" || base64_standard_with_padding(envelope)
-aad        = "openengage/cred/v1" || header || workspace_id(16)
-key        = HKDF(SHA-256, MASTER, "openengage/v1", "openengage/v1/credential-encryption", 32)
+aad        = "mailer/cred/v1" || header || workspace_id(16)
+key        = HKDF(SHA-256, MASTER, "mailer/v1", "mailer/v1/credential-encryption", 32)
 ```
 
 | Pole | Hodnota |
@@ -3678,17 +3684,17 @@ workspace_id = 0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071
 nonce        = 000102030405060708090a0b        (v testu pevný, v provozu náhodný)
 plaintext    = {"access_key_id":"AKIAEXAMPLE","secret_access_key":"s3cr3t","region":"eu-central-1"}
 
-K_credential-encryption = 99d7e191906061a6b21d63fb792449c93ca147dc7324862c2963b0b6c70bdc6f
+K_credential-encryption = 83cdc2ac660d3400913cf6c99a981a465f20f0e56610dd413fa7667e30fb8040
 header hex     = 01011073656e64696e675f70726f7669646572
-aad hex        = 6f70656e656e676167652f637265642f763101011073656e64696e675f70726f76696465
-                 720192f3a01c2d7e409a1b2c3d4e5f6071
-ciphertext hex = 879c4c4575b21dda4910c03c9f37f6f284d7c292f784f59df8f90db8836d0ae36b6569525b5a
-                 46e701e195207bbfa8f282ede23d1d7a5f4bff4400d3532f2f70d43a553e19d2858e95d979e
-                 abdba2eb53bd8d607
-tag hex        = 581ff0497f7a0ff5899762e3cb5a0144
+aad hex        = 6d61696c65722f637265642f763101011073656e64696e675f70726f7669646572
+                 0192f3a01c2d7e409a1b2c3d4e5f6071
+ciphertext hex = fae5c57114c84c4ec01591b018af427e916c8c3c557225764cf65a3051382d812
+                 8c6de1ac3e38c79c5e2d42b5dc41388e567310ccf2aefcb6251a2dfe3f944983
+                 da3c3481b0bfd18beb9a930aa089a1231c84ed1
+tag hex        = 1ef74b99f8ae68049656d9240d8b8807
 envelope bajtů = 131
 
-stored = enc:v1:AQEQc2VuZGluZ19wcm92aWRlcgABAgMEBQYHCAkKC4ecTEV1sh3aSRDAPJ839vKE18KS94T1nfj5DbiDbQrja2VpUltaRucB4ZUge7+o8oLt4j0del9L/0QA01MvL3DUOlU+GdKFjpXZeeq9ui61O9jWB1gf8El/eg/1iZdi48taAUQ=
+stored = enc:v1:AQEQc2VuZGluZ19wcm92aWRlcgABAgMEBQYHCAkKC/rlxXEUyExOwBWRsBivQn6RbIw8VXIldkz2WjBROC2BKMbeGsPjjHnF4tQrXcQTiOVnMQzPKu/LYlGi3+P5RJg9o8NIGwv9GL65qTCqCJoSMchO0R73S5n4rmgEllbZJA2LiAc=
 ```
 
 Pozor při implementaci: **AAD neovlivňuje ciphertext, jen tag.** Kdo si vektor přepočítá bez `workspace_id` v AAD, dostane shodný ciphertext a jiný tag. Když tedy sedí ciphertext a nesedí tag, chyba je v AAD, ne v klíči ani v nonce.
@@ -3728,9 +3734,9 @@ contracts-golden:
     - uses: pnpm/action-setup@v4      # pnpm 11.18.0
     - uses: actions/setup-go@v5       # Go 1.26
     - run: pnpm install --frozen-lockfile
-    - run: pnpm --filter @openengage/contracts test:golden      # TypeScript strana
+    - run: pnpm --filter @mlain/contracts test:golden      # TypeScript strana
     - run: cd apps/sender && go test ./internal/contracts/... -run 'TestGolden'
-    - run: pnpm --filter @openengage/contracts test:parity      # počty a pokrytí
+    - run: pnpm --filter @mlain/contracts test:parity      # počty a pokrytí
 ```
 
 `test:parity` kontroluje čtyři věci:
@@ -3851,11 +3857,11 @@ Infrastrukturu pro živé aktualizace (SSE) vlastní část 5. Tato část dodá
 | Enumerace workspace ID | 404 místo 403 pro nečlena | 3.4 |
 | Časovací útok na API klíč | `timingSafeEqual`, dummy porovnání při neexistenci | 3.5 |
 | SSRF přes odchozí webhook | blocklist rozsahů, kontrola při každém doručení, žádná přesměrování | 3.8 |
-| Replay podepsaného webhooku u příjemce | timestamp v podpisu, `OE-Event-Id`, dokumentovaný postup | 3.8 |
+| Replay podepsaného webhooku u příjemce | timestamp v podpisu, `ML-Event-Id`, dokumentovaný postup | 3.8 |
 | Záměna typu trackovacího tokenu | typ v MAC vstupu, kontrola proti endpointu | 4.10.3 |
 | Přesun zašifrované hodnoty mezi sloupci | kontext v AAD | 4.10.4 |
 | Chyba v senderu sáhne na kontakty | oddělená DB role bez práv na `contacts` | 4.10.1 |
-| Ztráta nebo únik `SECRET_KEY` | otisk v `system_settings`, `oe doctor`, dokumentovaná rotace | 3.10 |
+| Ztráta nebo únik `SECRET_KEY` | otisk v `system_settings`, `mlain doctor`, dokumentovaná rotace | 3.10 |
 | Škodlivý obsah v šabloně | automatické escapování v HTML kontextu | 4.10.2 |
 
 **Hlavičky odpovědí** (nastavuje `proxy.ts`, tedy Next.js 16 náhrada middleware):
@@ -3914,7 +3920,7 @@ X-Frame-Options: DENY
 
 1. **`sessions` a zápis `last_used_at`.** Při 100 requestech za sekundu by to bylo 100 zápisů za sekundu do malé tabulky s indexy. Proto se zapisuje nejvýš jednou za 5 minut na session. Bez toho by `sessions` generovala nejvíc WAL v celém systému.
 2. **`api_keys.last_used_at`** ze stejného důvodu nejvýš jednou za 60 sekund a mimo hlavní transakci.
-3. **Pool spojení.** `MODE=all` znamená tři procesy proti jedné databázi. Součet `DATABASE_POOL_MAX` (web) plus pg-boss `max` (worker) plus pool senderu musí zůstat pod `max_connections` Postgresu (výchozí 100). Výchozí hodnoty: web 10, worker 10, sender 8, celkem 28. Dokumentace to uvádí u návodu na škálování a `oe doctor` to kontroluje.
+3. **Pool spojení.** `MODE=all` znamená tři procesy proti jedné databázi. Součet `DATABASE_POOL_MAX` (web) plus pg-boss `max` (worker) plus pool senderu musí zůstat pod `max_connections` Postgresu (výchozí 100). Výchozí hodnoty: web 10, worker 10, sender 8, celkem 28. Dokumentace to uvádí u návodu na škálování a `mlain doctor` to kontroluje.
 4. **`audit_log` bez partition** by po roce provozu měl desítky milionů řádků a dotaz s `ORDER BY created_at DESC` by byl pomalý. Partitioning to řeší tím, že se čte jen poslední partition.
 5. **RLS režie.** Politika s `current_setting(...)::uuid` se vyhodnocuje na řádek. U seznamů s indexem je to zanedbatelné, u sekvenčního scanu ne. Proto je repository vrstva primární obranou a RLS druhou: dotazy se píší tak, aby vždy měly index na `workspace_id`, a RLS pak jen potvrzuje to, co už `WHERE` splnil. Měření: rozdíl mezi zapnutou a vypnutou RLS na dotazech z tabulky výše musí zůstat pod 10 %, měří to benchmark v `test-db`.
 6. **Idempotency klíče.** Tabulka roste s počtem zápisových requestů. 24hodinová retence a úklidový job drží velikost v desítkách tisíc řádků.
@@ -3939,27 +3945,27 @@ Testovatelné věty. Z každé jde napsat test bez doptávání.
 7b. Kontejner spuštěný s `ANTHROPIC_API_KEY=sk-test` v prostředí a s projektem bez nakonfigurovaného AI klíče neodešle jediný požadavek na `api.anthropic.com`; proměnná není v prostředí web ani worker procesu.
 7c. Žádná proměnná v zod schématu konfigurace nekončí na `_API_KEY`, jinak by ji entrypoint vymazal.
 8. Kontejner spuštěný s `read_only: true` funguje; zapisuje jen do `/data` a `/tmp`.
-9. `oe backup` vytvoří adresář s `database.dump`, `uploads.tar.gz` a `manifest.json`, jehož `row_counts.contacts` odpovídá skutečnosti.
-10. `oe backup verify` na právě vytvořené záloze skončí s exit code 0 a nezanechá databázi `oe_verify_*`.
-11. `oe restore` do neprázdné databáze bez `--force` skončí nenulovým kódem a nic nezmění.
-12. `oe restore` zálohy z novější `app_version` je odmítnutý s hláškou obsahující `backup_from_newer_version`.
+9. `mlain backup` vytvoří adresář s `database.dump`, `uploads.tar.gz` a `manifest.json`, jehož `row_counts.contacts` odpovídá skutečnosti.
+10. `mlain backup verify` na právě vytvořené záloze skončí s exit code 0 a nezanechá databázi `ml_verify_*`.
+11. `mlain restore` do neprázdné databáze bez `--force` skončí nenulovým kódem a nic nezmění.
+12. `mlain restore` zálohy z novější `app_version` je odmítnutý s hláškou obsahující `backup_from_newer_version`.
 13. Start image se `schema_version` v databázi vyšší, než image zná, skončí exit code 5 a hláškou `schema_version_ahead`.
 
 **Identita a přístup**
 
-14. Přihlášení se správnými údaji nastaví cookie `oe_session` s atributy `HttpOnly`, `SameSite=Lax` a (nad https) `Secure`.
+14. Přihlášení se správnými údaji nastaví cookie `ml_session` s atributy `HttpOnly`, `SameSite=Lax` a (nad https) `Secure`.
 15. Deset neúspěšných přihlášení na jeden účet vede k `423 account_locked` a jedenáctý pokus se správným heslem také selže, dokud neuplyne 15 minut.
 16. Doba odpovědi na přihlášení k neexistujícímu účtu se neliší od odpovědi k existujícímu o víc než 20 % (měřeno mediánem ze 100 pokusů).
 17. Změna hesla revokuje všechny ostatní relace uživatele; request se starou cookie z jiné relace vrátí 401 `session_expired`.
 18. `POST /api/v1/auth/logout-all` způsobí, že i aktuální cookie přestane platit.
 19. API klíč workspace B na `GET /api/v1/contacts/{id_z_A}` vrátí 404 s `Content-Type: application/problem+json` a `code: "not_found"`.
-20. Přímý SQL `SELECT * FROM contacts` pod rolí `openengage_app` bez `set_config('openengage.workspace_id', ...)` vrátí 0 řádků.
+20. Přímý SQL `SELECT * FROM contacts` pod rolí `mlain_app` bez `set_config('mlain.workspace_id', ...)` vrátí 0 řádků.
 21. Pokus vložit řádek s cizím `workspace_id` pod nastaveným kontextem selže na `WITH CHECK`.
 22. Odebrání posledního ownera vrátí 409 `last_owner_cannot_be_removed` a členství zůstane beze změny.
 23. Uživatel s rolí `viewer` dostane na `POST /api/v1/campaigns` odpověď 403 `forbidden`.
 24. API klíč bez scope `contacts:write` dostane na `POST /api/v1/contacts` odpověď 403 `insufficient_scope`.
 25. Sekret API klíče je v odpovědi právě jednou, při vytvoření; `GET /api/v1/api-keys` ho neobsahuje v žádném poli.
-26. Veřejný klíč `oe_pub_*` na `POST /api/v1/contacts` vrátí 403; na `POST /e/track` projde.
+26. Veřejný klíč `ml_pub_*` na `POST /api/v1/contacts` vrátí 403; na `POST /e/track` projde.
 
 **API framework**
 
@@ -3977,7 +3983,7 @@ Testovatelné věty. Z každé jde napsat test bez doptávání.
 
 36. Endpoint vracející 500 dostane přesně 8 pokusů rozložených podle tabulky z 3.8 (tolerance jitteru ±20 %), pak je doručení `abandoned`.
 37. Endpoint vracející 410 je po prvním pokusu `disabled` s důvodem `endpoint_gone`.
-38. Podpis `OE-Signature` spočítaný z testovacího vektoru v 3.8 odpovídá bajt na bajt.
+38. Podpis `ML-Signature` spočítaný z testovacího vektoru v 3.8 odpovídá bajt na bajt.
 39. Webhook na `http://169.254.169.254/` se neuloží; při změně DNS na privátní adresu po uložení skončí doručení s `blocked_target` a bez pokusu o spojení.
 40. Dvacet neúspěchů po sobě deaktivuje endpoint a odešle e-mail ownerům.
 
@@ -3991,7 +3997,7 @@ Testovatelné věty. Z každé jde napsat test bez doptávání.
 46. Obálka s kontextem `sending_provider` dešifrovaná s očekáváním `webhook_secret` selže.
 47. Dva sendery claimující z outboxu s 1 000 zprávami zpracují každou právě jednou.
 48. Sender zabitý uprostřed dávky nezpůsobí ztrátu zprávy: po uplynutí TTL claimu je součet `sent + failed + skipped + pending` roven 1 000 a žádná zpráva nemá `attempts > 1` bez zápisu `ambiguous_dispatch`.
-49. Sender s rolí `openengage_sender` dostane chybu oprávnění na `SELECT * FROM contacts` i na `DELETE FROM messages`.
+49. Sender s rolí `mlain_sender` dostane chybu oprávnění na `SELECT * FROM contacts` i na `DELETE FROM messages`.
 50. `Message-ID` vygenerovaný pro tutéž `messages.id` je při dvou pokusech identický.
 
 **i18n a rotace klíčů**
@@ -4031,7 +4037,7 @@ Jak se idempotence dosahuje, podle typu jobu:
 |---|---|
 | Zápis řádků (materializace, fan-out) | `ON CONFLICT DO NOTHING` nad unikátním indexem, včetně partition key |
 | Změna stavu | podmíněný `UPDATE ... WHERE status = <očekávaný>` a kontrola počtu ovlivněných řádků |
-| Volání ven (webhook, provider) | ochrana na straně příjemce (`OE-Event-Id`), nebo deterministický identifikátor (`Message-ID`) |
+| Volání ven (webhook, provider) | ochrana na straně příjemce (`ML-Event-Id`), nebo deterministický identifikátor (`Message-ID`) |
 | Výpočet a přepočet | z definice idempotentní, stačí přepsat výsledek |
 
 **Konvence jobů**
@@ -4171,7 +4177,7 @@ Next.js 16 přejmenoval `middleware.ts` na `proxy.ts` a exportovanou funkci na `
 
 | ID | Otázka | Kdo rozhoduje | Doporučení |
 |---|---|---|---|
-| O1 | **Název produktu.** Ovlivňuje jmenný prostor balíčků (`@openengage/*`), název Docker image, prefix API klíčů (`oe_live_`), prefix tokenů (`t1`), název globálního objektu SDK a všechny domain separator řetězce v kryptografii (`openengage/v1/...`). Změna po hodině 0 znamená přepis kontraktů a všech testovacích vektorů. | člověk, před hodinou 0 | Pokud padne rozhodnutí do dvou hodin, cena je nulová. Potom rychle roste. Doporučuji rozhodnout jako úplně první bod hackathonu. |
+| ~~O1~~ | ~~**Název produktu.**~~ Ovlivňoval jmenný prostor balíčků, název Docker image, prefix API klíčů, název globálního objektu SDK a domain separator řetězce v kryptografii. | **uzavřeno** | **Mlain Mailer.** Rozhodl zadavatel 2026-07-31. Domain separator řetězce byly **vyňaty z dosahu jména** a přepsány na `mailer/...` (koš A, hlavní specifikace 3.6), takže další přejmenování už kontrakty ani testovací vektory nezasáhne. Zbytek je koš B (zmrazí se prvním vydáním) a koš C (volné). |
 | ~~O2~~ | ~~**Go, nebo Rust pro sender.**~~ Všechny čtyři kontrakty jsou napsané jazykově neutrálně (binární formáty, HKDF, AES-GCM, SQL), takže rozhodnutí neblokovalo mě, ale blokovalo track B2. | **uzavřeno** | **Go.** Rozhodl zadavatel. Důvody: kompilace v jednotkách sekund místo minut, výrazně větší základna přispěvatelů pro open-source projekt, a výkonová výhoda Rustu se nemá o co opřít, protože strop určuje kvóta Amazonu, ne jazyk. Track B2 je odblokovaný. Odůvodnění v kapitole 3.3 hlavní specifikace. |
 | O3 | **Ukládání assetů v self-hosted nasazení.** Adresář `/data/uploads` znamená, že škálování na víc replik `MODE=web` vyžaduje sdílený svazek. Alternativa je ukládat obrázky do Postgresu jako `bytea` (jednoduchá záloha, horší výkon) nebo volitelné S3. | člověk, ovlivňuje část 3 | `/data/uploads` pro MVP 0, protože jedna replika stačí. Rozhodnutí zapsat do dokumentace, aby nikdo nečekal, že tři repliky budou fungovat bez sdíleného svazku. |
 | O4 | **TypeScript 7 versus 5.9.** TypeScript 7.0.2 (nativní kompilátor) je od 2026-07-31 pod tagem `latest`. Je rychlejší, ale ekosystém pluginů a typových nástrojů (`tsd`, ESLint typed rules, Drizzle generika) na něj nemusí být připravený. | tým, v hodině 0 | Zkusit 7.0.2 v prvních třiceti minutách. Když cokoliv z `drizzle-kit`, `@hono/zod-openapi` nebo `vitest` selže, přepnout na 5.9.3 bez diskuse. Hackathon není místo na ladění kompilátoru. |

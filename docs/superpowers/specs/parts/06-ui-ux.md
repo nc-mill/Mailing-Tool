@@ -381,7 +381,7 @@ Nastavení
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│ ⬤ OpenEngage  │ Projekt: E-shop Kolo ▾ │  🔍 Hledat…  │ ⚙ 3 ▾ │ JN ▾│
+│ ⬤ Mlain Mailer  │ Projekt: E-shop Kolo ▾ │  🔍 Hledat…  │ ⚙ 3 ▾ │ JN ▾│
 ├──────────────┬─────────────────────────────────────────────────────┤
 │              │  Kontakty                          [Import] [Nový]  │
 │  Přehled     │  ┌───────────────────────────────────────────────┐  │
@@ -1150,7 +1150,7 @@ První rozhraní produktu není webová stránka, ale výpis kontejneru. Nemůž
 
 ```
   ╭──────────────────────────────────────────────╮
-  │  OpenEngage je připravený                    │
+  │  Mlain Mailer je připravený                    │
   │                                              │
   │  Otevřete v prohlížeči:                      │
   │    http://localhost:3000                     │
@@ -1252,7 +1252,7 @@ Jedno tlačítko, které do projektu nahraje: 200 kontaktů, 3 seznamy, 4 štít
 | Uživatel přeskočí nastavení odesílání | Funguje všechno kromě odeslání. Kampaň se dá napsat, uložit i naplánovat, jen se neodešle a kontrolní seznam říká proč. |
 | Uživatel vytvoří kampaň dřív než kontakty | Publikum je prázdné, kontrolní seznam blokuje a nabízí "Naimportovat kontakty". |
 | Chyba při vytváření projektu | Inline u formuláře, data zůstanou vyplněná. |
-| Zapomenuté heslo při první instalaci | Obnova hesla vyžaduje odesílání, které ještě není nastavené. Řešení: příkaz v kontejneru `openengage reset-password jana@firma.cz` a na přihlašovací stránce odkaz "Odesílání ještě není nastavené? Jak obnovit heslo z příkazové řádky". **Toto je požadavek na část 1.** |
+| Zapomenuté heslo při první instalaci | Obnova hesla vyžaduje odesílání, které ještě není nastavené. Řešení: příkaz v kontejneru `mlain reset-password jana@firma.cz` a na přihlašovací stránce odkaz "Odesílání ještě není nastavené? Jak obnovit heslo z příkazové řádky". **Toto je požadavek na část 1.** |
 
 ---
 
@@ -3230,7 +3230,7 @@ Obrazovka s kódem k vložení je jediná, kde netechnický uživatel narazí na
 │  Nejjednodušší varianta:                                       │
 │  ┌──────────────────────────────────────────────────────┐    │
 │  │ <script async src="https://…/f/newsletter.js"></script>│   │
-│  │ <div data-oe-form="newsletter"></div>                 │    │
+│  │ <div data-ml-form="newsletter"></div>                 │    │
 │  └──────────────────────────────────  [ Zkopírovat ]────┘    │
 │                                                                │
 │  ▸ Nejde vložit skript? Máme i variantu s rámečkem a čistě    │
@@ -3943,12 +3943,12 @@ Pětadvacet hlášek pro reálné situace.
 **25. `webhook_endpoint_disabled`** (Nastavení, webhooky)
 
 > **cs** Webhook jsme vypnuli, protože 20krát po sobě selhal
-> Adresa `https://eshop.cz/hooks/openengage` od 29. 7. odpovídá chybou 500. Po dvaceti neúspěšných pokusech jsme posílání zastavili, aby se fronta nezaplnila.
+> Adresa `https://eshop.cz/hooks/mlain` od 29. 7. odpovídá chybou 500. Po dvaceti neúspěšných pokusech jsme posílání zastavili, aby se fronta nezaplnila.
 > Až problém na vaší straně vyřešíte, webhook znovu zapněte. Události z doby výpadku se neposílají zpětně.
 > [ Zobrazit poslední chyby ] [ Zapnout znovu ]
 
 > **en** We disabled this webhook after 20 consecutive failures
-> The endpoint `https://eshop.cz/hooks/openengage` has been returning HTTP 500 since July 29. After twenty failed attempts we stopped delivering to avoid filling the queue.
+> The endpoint `https://eshop.cz/hooks/mlain` has been returning HTTP 500 since July 29. After twenty failed attempts we stopped delivering to avoid filling the queue.
 > Once you've fixed the problem on your side, re-enable it. Events from the outage period are not replayed.
 > [ Show recent errors ] [ Re-enable ]
 

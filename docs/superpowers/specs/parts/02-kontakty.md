@@ -148,7 +148,7 @@ Tahle část produktu je všechno, co se musí stát mezi tím excelem a okamži
 | Partitioning | Vždy `PARTITION BY RANGE (created_at)`, měsíčně, bez `DEFAULT` partition, zakládání jobem `platform.maintain_partitions` (2.1) | `inbound_deliveries` přejmenovalo `received_at` na `created_at` a přidává se do seznamu partitionovaných tabulek |
 | Enumy | `text` + `CHECK`, nikdy nativní typ (2.1) | Shodné, beze změny |
 | Časy | `timestamptz`, DB v UTC, `updated_at` udržuje aplikace (2.1) | Shodné |
-| RLS | Každá tabulka s `workspace_id` má `ENABLE ROW LEVEL SECURITY` a politiku `ws_isolation`; kontext se nastavuje `set_config('openengage.workspace_id', ...)` na začátku transakce (3.6) | Přijato. Má to přímý dopad na kompilátor segmentů, viz 4.11.3 a 7.1 |
+| RLS | Každá tabulka s `workspace_id` má `ENABLE ROW LEVEL SECURITY` a politiku `ws_isolation`; kontext se nastavuje `set_config('mlain.workspace_id', ...)` na začátku transakce (3.6) | Přijato. Má to přímý dopad na kompilátor segmentů, viz 4.11.3 a 7.1 |
 | Repository vrstva | Přímý import `db` mimo `packages/db` zakazuje ESLint; každá funkce bere branded `WorkspaceContext` (3.6) | Přijato. Kompilátor segmentů proto **žije uvnitř `packages/db/src/repo/segments.ts`**, ne v `packages/core`, viz 4.11.3 |
 | Nastavení projektu | Doménová nastavení do `workspaces.settings.contacts`, tvar validuje zod z `packages/core/contacts` (2.4) | Shodné s 3.12. Vykání a tykání se **nečte** z našeho nastavení, ale ze sloupce `workspaces.address_form` |
 | Chyby | RFC 9457 Problem Details, `application/problem+json`, strojový identifikátor je `code` v `lower_snake_case`, detaily v `errors[]` (4.2) | Přijato. Mapování doménových kódů na katalog části 1 je v 2.3 |
@@ -252,7 +252,7 @@ Sloupec: `contacts.locale text NOT NULL DEFAULT 'cs'`.
 |---|---|---|
 | A | Rozšíření **`pg_trgm`** a **`btree_gin`**. Část 1 v 2.1 povoluje jen `citext`. Bez nich není fulltextové hledání kontaktu. Náhradní řešení a dopad jsou v požadavku 1.1 až 1.3 v sekci 11 | část 1 |
 | B | Proměnná **`SUPPRESSION_HASH_KEY`** jako **nerotovatelná**. Konvence části 1 odvozuje všechny klíče ze `SECRET_KEY` přes HKDF, což u otisků vymazaných adres nefunguje, protože rotace by je zneplatnila. Požadavek 1.4 | část 1 |
-| C | Role **`openengage_gdpr`** s právem `DELETE ON consents`. Část 1 v 2.1 odebírá aplikační roli `UPDATE` a `DELETE` na `consents`, což je správně, ale výmaz podle čl. 17 je pak neproveditelný. Požadavek 1.8 | část 1 |
+| C | Role **`mlain_gdpr`** s právem `DELETE ON consents`. Část 1 v 2.1 odebírá aplikační roli `UPDATE` a `DELETE` na `consents`, což je správně, ale výmaz podle čl. 17 je pak neproveditelný. Požadavek 1.8 | část 1 |
 | D | **Read-only pool** s možností nastavit `statement_timeout` per dotaz, pro náhled segmentu. Požadavky 1.6 a 1.7 | část 1 |
 | E | Veřejné cesty **`/s/c/**`, `/p/**`, `/r/**`**. Část 1 v 4.1 vyjmenovává jen `/t/**`, `/e/**`, `/u/**`, `/f/**`. Požadavek 1.13 | část 1 |
 | F | Zařazení **`inbound_deliveries`** mezi partitionované tabulky obsluhované jobem `platform.maintain_partitions`. Požadavek 1.14 | část 1 |
@@ -333,8 +333,8 @@ CREATE TABLE contacts (
 
 ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY ws_isolation ON contacts
-  USING      (workspace_id = current_setting('openengage.workspace_id', true)::uuid)
-  WITH CHECK (workspace_id = current_setting('openengage.workspace_id', true)::uuid);
+  USING      (workspace_id = current_setting('mlain.workspace_id', true)::uuid)
+  WITH CHECK (workspace_id = current_setting('mlain.workspace_id', true)::uuid);
 ```
 
 Inline `CHECK` u `status`, `gender` a `gender_source` v těle sloupce je v ukázce ponechaný kvůli čitelnosti; v migraci se zapisují jako pojmenovaná omezení `ck_contacts__<popis>` podle konvence 2.1 části 1. Politiku `ws_isolation` má **každá** tabulka této části se sloupcem `workspace_id`; u dalších tabulek se už neopakuje.
@@ -588,7 +588,7 @@ CREATE RULE consents_no_update AS ON UPDATE TO consents DO INSTEAD NOTHING;
 CREATE RULE consents_no_delete AS ON DELETE TO consents DO INSTEAD NOTHING;
 ```
 
-To ale zablokuje i `ON DELETE CASCADE` z kontaktu. Řešení: pravidla se aplikují na běžnou aplikační roli, zatímco výmaz podle GDPR běží pod rolí `openengage_gdpr`, pro kterou se pravidla obejdou přes `ALTER TABLE consents DISABLE RULE` v jedné transakci. Alternativa, kterou navrhuju jako výchozí, protože je jednodušší a auditovatelná: **pravidla nezavádět a append-only vynutit v repository vrstvě a testem**, který se pokusí o `UPDATE` a musí selhat na chybějícím oprávnění (`REVOKE UPDATE, DELETE ON consents FROM openengage_app`).
+To ale zablokuje i `ON DELETE CASCADE` z kontaktu. Řešení: pravidla se aplikují na běžnou aplikační roli, zatímco výmaz podle GDPR běží pod rolí `mlain_gdpr`, pro kterou se pravidla obejdou přes `ALTER TABLE consents DISABLE RULE` v jedné transakci. Alternativa, kterou navrhuju jako výchozí, protože je jednodušší a auditovatelná: **pravidla nezavádět a append-only vynutit v repository vrstvě a testem**, který se pokusí o `UPDATE` a musí selhat na chybějícím oprávnění (`REVOKE UPDATE, DELETE ON consents FROM mlain_app`).
 
 Rychlý pohled na aktuální stav souhlasu (segmentace nesmí procházet append-only log):
 
@@ -2568,7 +2568,7 @@ SELECT c.id
 
 `processing_restricted = false` je tam kvůli čl. 18 GDPR: kontakt s omezeným zpracováním nesmí spadnout do žádného segmentu, aniž by ho musel autor segmentu vylučovat ručně.
 
-**Vrstva 4: row-level security.** Podle 3.6 části 1 má `contacts` zapnuté RLS s politikou `ws_isolation` a repository vrstva na začátku transakce volá `set_config('openengage.workspace_id', ...)`. Pro kompilátor segmentů je to nejcennější pojistka v celém dokumentu: i kdyby v něm byla chyba, která `workspace_id = $1` z obálky vynechá, RLS vrátí **nula řádků**, ne cizí data. Proto se dynamické SQL nikdy nespouští mimo transakci s nastaveným kontextem, a je na to samostatný test „surové SQL bez `set_config` vrátí 0 řádků" (převzatý ze sady části 1).
+**Vrstva 4: row-level security.** Podle 3.6 části 1 má `contacts` zapnuté RLS s politikou `ws_isolation` a repository vrstva na začátku transakce volá `set_config('mlain.workspace_id', ...)`. Pro kompilátor segmentů je to nejcennější pojistka v celém dokumentu: i kdyby v něm byla chyba, která `workspace_id = $1` z obálky vynechá, RLS vrátí **nula řádků**, ne cizí data. Proto se dynamické SQL nikdy nespouští mimo transakci s nastaveným kontextem, a je na to samostatný test „surové SQL bez `set_config` vrátí 0 řádků" (převzatý ze sady části 1).
 
 Ukázky kompilace jednotlivých uzlů:
 
@@ -2638,8 +2638,8 @@ Detekce cyklu: před uložením se sestaví graf odkazů `segment → segment` a
 
 Postup:
 
-1. Připojení z **read-only poolu** (`default_transaction_read_only = on`), takže chyba v kompilátoru nemůže nic zapsat. Pool se otevírá pod stejnou rolí `openengage_app`, takže se na něj RLS vztahuje beze změny.
-2. V transakci: `SELECT set_config('openengage.workspace_id', $1, true)`, pak `SET LOCAL statement_timeout = 3000` (`SEGMENT_PREVIEW_TIMEOUT_MS`) a `SET LOCAL work_mem = '32MB'`. Pořadí je závazné, bez nastaveného kontextu vrátí RLS prázdný výsledek a náhled by tiše ukázal nulu.
+1. Připojení z **read-only poolu** (`default_transaction_read_only = on`), takže chyba v kompilátoru nemůže nic zapsat. Pool se otevírá pod stejnou rolí `mlain_app`, takže se na něj RLS vztahuje beze změny.
+2. V transakci: `SELECT set_config('mlain.workspace_id', $1, true)`, pak `SET LOCAL statement_timeout = 3000` (`SEGMENT_PREVIEW_TIMEOUT_MS`) a `SET LOCAL work_mem = '32MB'`. Pořadí je závazné, bez nastaveného kontextu vrátí RLS prázdný výsledek a náhled by tiše ukázal nulu.
 3. `SELECT count(*) FROM contacts c WHERE ...`.
 4. Když dotaz doběhne, odpověď je `{ count, exact: true, duration_ms, warnings }`.
 5. Když skončí `57014 query_canceled`, spustí se `EXPLAIN (FORMAT JSON) SELECT 1 FROM contacts c WHERE ...` s timeoutem 500 ms a z plánu se přečte `Plan Rows`. Odpověď je `{ count: <odhad>, exact: false, warnings: ['segment_count_estimated'] }`. UI zobrazí „přibližně 12 000" a tlačítko „spočítat přesně", které zařadí job `segments.recount`.
@@ -2709,7 +2709,7 @@ Krok 6 existuje proto, že hromadné odhlášení je nevratná operace nad daty,
 
 | Varianta | Kód | Kdy |
 |---|---|---|
-| Skript | `<script async src="https://APP_URL/f/{slug}.js"></script><div data-oe-form="{slug}"></div>` | výchozí, nejlepší vzhled |
+| Skript | `<script async src="https://APP_URL/f/{slug}.js"></script><div data-ml-form="{slug}"></div>` | výchozí, nejlepší vzhled |
 | iframe | `<iframe src="https://APP_URL/f/{slug}" width="100%" height="320" style="border:0"></iframe>` | pro CMS, kde nejde vložit skript |
 | Čisté HTML | `<form action="https://APP_URL/f/{slug}/submit" method="post">...</form>` | plná kontrola nad vzhledem, funguje bez JavaScriptu |
 
@@ -3387,7 +3387,7 @@ Platí dvouvrstvý model z 3.6 části 1: repository vrstva s branded `Workspace
 
 Repository moduly této části registrované do `isolation.matrix.test.ts` části 1: `contacts`, `lists`, `segments`, `suppressions`, `consents`, `imports`, `forms`, `inbound`. Generický test cizího kontextu je tím pokrytý a tato část nepíše vlastní izolační testy, jen ty tři níže, které generický test nepokrývá:
 
-1. **Kompilátor segmentů.** `workspace_id = $1` přidává kompilátor, ne volající, a RLS to jistí potřetí. Testy: pokus zkompilovat AST s `list_id` z cizího projektu musí skončit `segment_reference_not_found` (ne prázdným výsledkem), a spuštění zkompilovaného SQL bez `set_config('openengage.workspace_id')` musí vrátit nula řádků.
+1. **Kompilátor segmentů.** `workspace_id = $1` přidává kompilátor, ne volající, a RLS to jistí potřetí. Testy: pokus zkompilovat AST s `list_id` z cizího projektu musí skončit `segment_reference_not_found` (ne prázdným výsledkem), a spuštění zkompilovaného SQL bez `set_config('mlain.workspace_id')` musí vrátit nula řádků.
 2. **Veřejné endpointy s tokenem.** `/s/c/`, `/u/`, `/p/`, `/r/` nemají session, projekt se bere výhradně z ověřeného tokenu. Test: token vydaný pro projekt A nesmí zasáhnout data projektu B.
 3. **Veřejné endpointy se slugem.** `/f/{slug}` a `/api/v1/inbound/{slug}` hledají podle globálně unikátního slugu. Projekt se odvodí z nalezeného záznamu, nikdy z parametru požadavku.
 
@@ -3543,7 +3543,7 @@ Co propustnost snižuje, v pořadí podle dopadu: počet indexovaných vlastníc
 ### 9.3 Segmenty
 
 25. AST s operátorem, který k typu pole nepatří, skončí `422 validation_failed` s `segment_operator_not_allowed` a nikdy nedojde ke spuštění SQL.
-26. AST odkazující na `list_id` z cizího projektu skončí `404 not_found` s `segment_reference_not_found`, ne prázdným výsledkem. Zkompilované SQL spuštěné bez `set_config('openengage.workspace_id')` vrátí nula řádků.
+26. AST odkazující na `list_id` z cizího projektu skončí `404 not_found` s `segment_reference_not_found`, ne prázdným výsledkem. Zkompilované SQL spuštěné bez `set_config('mlain.workspace_id')` vrátí nula řádků.
 27. Hodnota `'; DROP TABLE contacts; --` v poli `value` neovlivní strukturu dotazu. Test kontroluje, že vygenerovaný SQL text obsahuje `$n` a neobsahuje uživatelský řetězec.
 28. Klíč vlastního pole se ve vygenerovaném SQL objeví jako parametr, nikdy jako literál.
 29. Zkompilovaný dotaz vždy obsahuje `workspace_id = $1`, `deleted_at IS NULL` a `processing_restricted = false`, i když je AST prázdný.
@@ -3671,7 +3671,7 @@ Všechny ověřené 2026-07-31 příkazy `npm view <balíček> license version t
 | 1.5 | Potvrzení, že `SECRET_KEY_PREVIOUS` se u odhlašovacích tokenů **nikdy neodebírá** | Odhlašovací odkaz nesmí přestat fungovat. Nefunkční odkaz je porušení čl. 7 odst. 3 GDPR a přímá cesta ke stížnosti na spam | doplnit do tabulky dopadů rotace v 3.10 části 1 řádek pro odhlašovací tokeny, se stejným pravidlem jako u trackovacích |
 | 1.6 | **Read-only connection pool** (`default_transaction_read_only = on`) | Náhled segmentu spouští dynamicky sestavené SQL. Chyba v kompilátoru nesmí mít možnost zapsat | pojmenovaný pool, například `dbReadOnly` |
 | 1.7 | Možnost nastavit **`statement_timeout` per dotaz** | Náhled segmentu má tvrdý strop 3 s a spoléhá na `57014 query_canceled` | `SET LOCAL statement_timeout` uvnitř transakce |
-| 1.8 | Role s právem obejít append-only na `consents` | Výmaz podle čl. 17 musí souhlasy smazat, běžná aplikační role na to nemá právo | `openengage_gdpr` s `DELETE ON consents`, používaná jen jobem `gdpr.erase` |
+| 1.8 | Role s právem obejít append-only na `consents` | Výmaz podle čl. 17 musí souhlasy smazat, běžná aplikační role na to nemá právo | `mlain_gdpr` s `DELETE ON consents`, používaná jen jobem `gdpr.erase` |
 | 1.9 | Odchozí webhookové události z 4.14.7 v katalogu událostí | | seznam v 4.14.7 |
 | 1.10 | Role a oprávnění: **vlastník** pro hromadné mazání kontaktů, nastavení retence a režim `purge`; **admin** pro odebrání tvrdého odrazu ze suppression listu | Nevratné operace nad daty, která uživatel roky sbíral | doplnit do matice oprávnění |
 | 1.11 | SSE kanál pro průběh dlouhých jobů | Průběh importu a hromadných operací | `GET /api/v1/.../events` |
@@ -3727,7 +3727,7 @@ Všechny ověřené 2026-07-31 příkazy `npm view <balíček> license version t
 | 5.5 | Při výmazu podle čl. 17: `web_events.contact_id = NULL`, smazání `identities` a `contact_engagement` pro daný kontakt | |
 | 5.6 | Index `web_events (workspace_id, contact_id)` na každé partition | aby 5.5 a export dat subjektu byly proveditelné |
 | 5.7 | Data pro `message_events.csv` a `web_events.ndjson` v GDPR exportu | seznam sloupců k dohodě |
-| 5.8 | Web SDK **nesmí** startovat bez souhlasu; stav souhlasu čte z `contact_consent_state`, respektive z hodnoty předané v `OpenEngage.consent()` | pravidlo z kapitoly 6.7 hlavní specifikace |
+| 5.8 | Web SDK **nesmí** startovat bez souhlasu; stav souhlasu čte z `contact_consent_state`, respektive z hodnoty předané v `Mlain.consent()` | pravidlo z kapitoly 6.7 hlavní specifikace |
 
 Navrhovaný tvar `contact_engagement` (vlastní část 5, uvedeno jako podklad):
 
@@ -3809,7 +3809,7 @@ Alternativa bez rozšíření: `email LIKE 'nov%'` nad btree indexem `(workspace
 
 **C3. `REVOKE UPDATE, DELETE ON consents` bez protistrany pro GDPR.** Konvence 2.1 části 1 správně dělá `consents` append-only tím, že aplikační roli odebere `UPDATE` a `DELETE`. Výmaz podle čl. 17 ale musí souhlasy smazat, jinak po „smazaném" člověku zůstane jeho e-mail v `consents.evidence`. Část 1 tuhle protistranu nedefinuje.
 
-Navrhuju roli `openengage_gdpr` s `DELETE ON consents` a ničím navíc, používanou výhradně jobem `gdpr.erase`, s povinným záznamem v `audit_log`. Alternativa (nechat souhlasy a smazat z nich jen osobní údaje) je horší, protože souhlas bez identifikace subjektu není důkaz o ničem.
+Navrhuju roli `mlain_gdpr` s `DELETE ON consents` a ničím navíc, používanou výhradně jobem `gdpr.erase`, s povinným záznamem v `audit_log`. Alternativa (nechat souhlasy a smazat z nich jen osobní údaje) je horší, protože souhlas bez identifikace subjektu není důkaz o ničem.
 
 ---
 

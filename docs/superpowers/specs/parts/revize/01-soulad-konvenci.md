@@ -26,7 +26,7 @@ Tenhle dokument míchá tři zdroje s různou spolehlivostí. Rozlišuju je schv
 
 **Dobrá zpráva, kterou je potřeba říct první:** licenční brána drží. Napříč všemi šesti dokumenty není jediná propuštěná copyleft závislost. `czech-inflection` (LGPL 2.1), `jschardet` (LGPL 2.1+) i `pa11y` (LGPL 3.0-only) jsou všude správně označené jako zakázané a `axe-core` (MPL-2.0) je správně jen vývojová závislost. Autoři si to ohlídali sami, brána nemusela zasahovat.
 
-Čisté je i pět dalších věcí, u kterých jsem čekal problémy: žádný nativní `CREATE TYPE ... AS ENUM`, žádný Redis ani Valkey v MVP 0, žádné offsetové stránkování, žádný prefix `OE_` u proměnných prostředí a žádná část nedefinuje tabulku, kterou vlastní část 1.
+Čisté je i pět dalších věcí, u kterých jsem čekal problémy: žádný nativní `CREATE TYPE ... AS ENUM`, žádný Redis ani Valkey v MVP 0, žádné offsetové stránkování, žádný prefix `ML_` u proměnných prostředí a žádná část nedefinuje tabulku, kterou vlastní část 1.
 
 **Špatná zpráva:** kategorie B je větší, než jsem čekal, a **většina nálezů v ní jsou chyby v mé části, ne v cizích.** Dvanáct bodů, z toho pět takových, které bych označil jako díru, ne jako preferenci. Tři z nich našly jiné části, dva orchestrátor, jeden jsem našel sám při ověřování cizího nálezu. Je to očekávaný výsledek toho, že část 1 psala kontrakty jako první a bez zpětné vazby od konzumentů.
 
@@ -109,9 +109,9 @@ Kontrakt už tenhle problém jednou vyřešil, a to u trackovacích tokenů. Sek
 Konkrétně:
 
 1. Otisk se ukládá **spolu s `key_id`**, stejně jako token a šifrová obálka: `suppressions.fingerprint bytea` plus `suppressions.fingerprint_key_id smallint`.
-2. Nový purpose `openengage/v1/suppression-fingerprint`, odvozený běžně přes HKDF. **Rotovatelný jako všechno ostatní.**
+2. Nový purpose `mailer/v1/suppression-fingerprint`, odvozený běžně přes HKDF. **Rotovatelný jako všechno ostatní.**
 3. Při kontrole, jestli je adresa na suppression listu, se spočítá otisk **pro každé známé pokolení klíče** a hledá se `WHERE fingerprint = ANY($1)`. Pokolení je nejvýš šest (aktuální plus limit pěti v `SECRET_KEY_PREVIOUS`), takže jde o jeden indexovaný dotaz s polem šesti hodnot, ne o šest dotazů.
-4. Do `oe doctor` a do dokumentace k rotaci přibude tvrdé pravidlo: **`SECRET_KEY_PREVIOUS` se nesmí vyprázdnit, dokud existuje jediný suppression záznam nebo dokud nám záleží na trackovacích odkazech ze starých kampaní.** `oe rotate-credentials` proto **nesmí** hlásit „hotovo, staré klíče můžete odebrat", protože credentials jsou jediné, co se dá přešifrovat.
+4. Do `mlain doctor` a do dokumentace k rotaci přibude tvrdé pravidlo: **`SECRET_KEY_PREVIOUS` se nesmí vyprázdnit, dokud existuje jediný suppression záznam nebo dokud nám záleží na trackovacích odkazech ze starých kampaní.** `oe rotate-credentials` proto **nesmí** hlásit „hotovo, staré klíče můžete odebrat", protože credentials jsou jediné, co se dá přešifrovat.
 
 **Cena.** Šest HMAC výpočtů na adresu při importu. Při importu pěti milionů kontaktů je to třicet milionů HMAC, tedy jednotky desítek sekund jednovláknově a v dávkovaném importu se to ztratí v šumu. Proti tomu stojí zachovaná schopnost rotovat klíč po bezpečnostním incidentu. Ten obchod je jednoznačný.
 
@@ -207,7 +207,7 @@ Návrh: doplnit `workspace.sender_address` (text, může být víceřádkový) d
 
 ---
 
-### B8. Chybí purpose `openengage/v1/asset-url` **[PŘÍMO, část 3]**
+### B8. Chybí purpose `mailer/v1/asset-url` **[PŘÍMO, část 3]**
 
 **Stanovisko: souhlasím, předkládám ke schválení, ale s povinnou poznámkou do dokumentace.**
 
@@ -362,7 +362,7 @@ Historická tabulka předpokladů (P5.3, P5.5 kolem ř. 1892) tečkový tvar a z
 | A-5-3 **[SKEN, ověřeno]** | ř. 1240 | „Algoritmus token bucket z části 1" | Konvence 4.5 je **posuvné okno s pevnými sloty**, ne token bucket. Autor to na ř. 211 správně uvádí jako převzaté, ale na ř. 1240 zůstal starý text. Rozpor uvnitř jednoho dokumentu | DROBNÉ |
 | A-5-4 **[SKEN, ověřeno]** | ř. 555, `proxy_ranges` | `id bigserial PRIMARY KEY` | Stejný případ jako A-2-1. **Stanovisko: výjimku uznat.** Je to interní cache stažených IP rozsahů, ID neopouští systém | DROBNÉ |
 
-Vyřešeno mezitím: formát tokenu v živém textu, HKDF salt a `info` string, katalog chyb přepsaný na RFC 9457, `crypto/hkdf` ze stdlib. Ověřený testovací vektor `K_tracking-token = 4a60b23f...5bf6ca` v jejich dokumentu **souhlasí s mým**.
+Vyřešeno mezitím: formát tokenu v živém textu, HKDF salt a `info` string, katalog chyb přepsaný na RFC 9457, `crypto/hkdf` ze stdlib. Ověřený testovací vektor `K_tracking-token` v jejich dokumentu **souhlasí s mým**. (Poznámka z 2026-07-31: po přejmenování produktu se domain separator řetězce přesunuly na `mailer/...` a všechny vektory se přepočítaly, aktuální hodnota je `b9d815e1...ac3124`.)
 
 ### 3.6 Část 6 (UI a UX)
 
@@ -383,7 +383,7 @@ Uvádím, aby bylo dohledatelné, proč zmizely, a aby je nikdo neobjevil znovu.
 | Vlastní názvy `SENDER_CLAIM_TIMEOUT` a spol. | 4b | **Vyřešeno.** Používá `SENDER_CLAIM_TTL_SECONDS` a nově navrhuje `SENDER_DISPATCH_TIMEOUT_SECONDS` (int, výchozí 10, meze 1 až 300) s invariantem `SENDER_CLAIM_TTL_SECONDS > 4 × SENDER_DISPATCH_TIMEOUT_SECONDS`. **Přebírám do 4.9**, je to dobře navržené |
 | Obálka chyb `{ "error": { ... } }` | 5 | **Vyřešeno**, katalog chyb přepsaný na RFC 9457 |
 | `golang.org/x/crypto/hkdf` | 5 | **Vyřešeno** |
-| HKDF `salt = "openengage.tracking.v1"` s epochou v `info` | 5 | **Vyřešeno**, přepsáno na kontraktní tvar |
+| HKDF `salt = "mailer.tracking.v1"` s epochou v `info` | 5 | **Vyřešeno**, přepsáno na kontraktní tvar |
 | Vlastní layout tokenu `t1.<payload>.<tag>` s MAC nad ASCII | 5 | **Vyřešeno v živém textu**, zbyly dvě ukázky a jedno akceptační kritérium, viz A-5-1 a A-5-2 |
 
 ---
@@ -407,7 +407,7 @@ Uvádím, aby bylo dohledatelné, proč zmizely, a aby je nikdo neobjevil znovu.
 |---|---|---|---|
 | D1 | **Sdílená utilita na SSRF blocklist.** Dnes ji implicitně mají dvě části, každá po svém | část 1 | Viz B11. Blocklist rozsahů je infrastruktura, ne doména |
 | D2 | **Ochrana partition s rozpracovanou kampaní před retenčním jobem.** Vyplývá z B6, dnes to nehlídá nikdo | část 1 (job) ve spolupráci se 4a (definice „rozpracované") | Retenční job je moje infrastruktura, ale „kampaň není v koncovém stavu" umí vyhodnotit jen část 4a |
-| D3 | **Pravidlo, že `SECRET_KEY_PREVIOUS` se nesmí nikdy vyprázdnit.** Dnes to je jen v prozaickém doporučení u trackovacích tokenů | část 1 | Viz B3. Musí to být tvrdé pravidlo v `oe doctor`, jinak si to někdo při rotaci vyloží jako úklid |
+| D3 | **Pravidlo, že `SECRET_KEY_PREVIOUS` se nesmí nikdy vyprázdnit.** Dnes to je jen v prozaickém doporučení u trackovacích tokenů | část 1 | Viz B3. Musí to být tvrdé pravidlo v `mlain doctor`, jinak si to někdo při rotaci vyloží jako úklid |
 | D4 | **Definice, co je zdroj pravdy pro doručení versus pro předání provideru.** Dnes to nikde není napsané a první report to udělá špatně | část 1 (kontrakt), konzumuje část 5 | Viz B2 |
 | D5 | **Parametrizace `createMonthlyPartitions` na jiný sloupec než `created_at`.** Helper to dnes neumí, přitom `sns_events` legitimně partitionuje podle `received_at` | část 1 | Vyplynulo z B12 |
 
@@ -422,7 +422,7 @@ Uvádím schválně, aby orchestrátor nemusel tyhle věci ověřovat znovu.
 | Nativní `CREATE TYPE ... AS ENUM` | žádný výskyt |
 | Redis nebo Valkey v MVP 0 | žádný. Všechny čtyři zmínky jsou explicitní odmítnutí |
 | Offsetové stránkování (`per_page`, `?page=`, `total_count` v seznamu) | žádné. Výskyty `total_count` v části 4a jsou materializované čítače na kampani, ne stránkování |
-| Prefix `OE_` u proměnných prostředí | žádný. Nálezy v grepu jsou HTML marker `<!--OE_OPEN_PIXEL-->` |
+| Prefix `ML_` u proměnných prostředí | žádný. Nálezy v grepu jsou HTML marker `<!--ML_OPEN_PIXEL-->` |
 | Copyleft závislosti | žádná propuštěná. `czech-inflection` (LGPL 2.1), `jschardet` (LGPL 2.1+), `pa11y` (LGPL 3.0-only) i TinyMCE a CKEditor jsou všude označené jako zakázané, `axe-core` (MPL-2.0) správně jen jako vývojová závislost |
 | Definice tabulek vlastněných částí 1 v cizích částech | žádná |
 

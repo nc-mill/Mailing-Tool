@@ -246,7 +246,7 @@ Dešifrovaný obsah `config_encrypted` má tvar dohodnutý s částí 4a. Celá 
 // kind = "ses"
 { "kind": "ses", "region": "eu-central-1",
   "access_key_id": "AKIA...", "secret_access_key": "...",
-  "configuration_set_name": "openengage-ws-7f3a",   // povinné, viz 3.9.3
+  "configuration_set_name": "mlain-ws-7f3a",   // povinné, viz 3.9.3
   "sns_topic_arn": "arn:aws:sns:...",               // sender nepoužívá
   "max_send_rate": 50,                              // jen fallback, viz 3.11.1
   "max_24h_send": 50000 }                           // sender nepoužívá
@@ -304,7 +304,7 @@ Zápis do `campaigns` vyžaduje `UPDATE`, které kontraktní role **nemá** (má
 
 ```sql
 -- docker/initdb/10-roles.sql, NE migrace
-CREATE ROLE openengage_sender LOGIN PASSWORD :'sender_password';
+CREATE ROLE mlain_sender LOGIN PASSWORD :'sender_password';
 ```
 
 **Přidělení práv je v migraci** v `packages/db`, protože se týká tabulek, které migrátor vlastní, a protože se tím práva verzují společně se schématem. Nová tabulka tak nemůže zůstat s nesprávně nastavenými právy. Migrace je obalená tak, aby prošla i v testovacím prostředí, kde role neexistuje:
@@ -313,21 +313,21 @@ CREATE ROLE openengage_sender LOGIN PASSWORD :'sender_password';
 -- migrace v packages/db
 DO $$
 BEGIN
-  GRANT USAGE ON SCHEMA public TO openengage_sender;
+  GRANT USAGE ON SCHEMA public TO mlain_sender;
 
-  GRANT SELECT, UPDATE ON messages          TO openengage_sender;
-GRANT SELECT           ON campaigns         TO openengage_sender;
-GRANT SELECT           ON sending_providers TO openengage_sender;
-GRANT SELECT           ON campaign_links    TO openengage_sender;
-GRANT SELECT           ON workspaces        TO openengage_sender;
-  GRANT INSERT           ON message_events    TO openengage_sender;
+  GRANT SELECT, UPDATE ON messages          TO mlain_sender;
+GRANT SELECT           ON campaigns         TO mlain_sender;
+GRANT SELECT           ON sending_providers TO mlain_sender;
+GRANT SELECT           ON campaign_links    TO mlain_sender;
+GRANT SELECT           ON workspaces        TO mlain_sender;
+  GRANT INSERT           ON message_events    TO mlain_sender;
   -- Žádná práva na contacts, web_events, users, sessions, api_keys, audit_log.
 
-  ALTER DEFAULT PRIVILEGES FOR ROLE openengage_migrator IN SCHEMA public
-    REVOKE ALL ON TABLES FROM openengage_sender;
+  ALTER DEFAULT PRIVILEGES FOR ROLE mlain_migrator IN SCHEMA public
+    REVOKE ALL ON TABLES FROM mlain_sender;
 EXCEPTION
   WHEN undefined_object THEN
-    RAISE NOTICE 'role openengage_sender neexistuje, granty se přeskakují';
+    RAISE NOTICE 'role mlain_sender neexistuje, granty se přeskakují';
 END $$;
 ```
 
@@ -349,18 +349,18 @@ Oproti mému konceptu jsou tady tři tabulky navíc, každá má důvod:
 GRANT UPDATE (status, claimed_by, claimed_at, claim_expires_at, dispatch_started_at,
               attempts, next_attempt_at, provider_message_id, sent_at,
               error_code, error_detail, ambiguous_count, updated_at)
-  ON messages TO openengage_sender;
+  ON messages TO mlain_sender;
 ```
 
-**RLS: bez permisivní politiky sender nevidí ani jeden řádek.** Role `openengage_sender` nemá `BYPASSRLS` a nikdy nenastavuje kontext workspace, protože pracuje napříč projekty. Na tabulce s row level security by jí tedy každý `SELECT` vrátil **nula řádků**, claim dotaz by trvale vracel prázdnou dávku a nikdy by se neodeslalo nic. Chybu by přitom nic nenahlásilo: prázdná dávka je legitimní stav (3.2).
+**RLS: bez permisivní politiky sender nevidí ani jeden řádek.** Role `mlain_sender` nemá `BYPASSRLS` a nikdy nenastavuje kontext workspace, protože pracuje napříč projekty. Na tabulce s row level security by jí tedy každý `SELECT` vrátil **nula řádků**, claim dotaz by trvale vracel prázdnou dávku a nikdy by se neodeslalo nic. Chybu by přitom nic nenahlásilo: prázdná dávka je legitimní stav (3.2).
 
 Řeší se permisivní politikou `sender_bypass` na **každé** tabulce, na kterou má sender grant, tedy `messages`, `campaigns`, `sending_providers`, `campaign_links`, `workspaces`, `suppressions` a `message_events`. Nález přišel od části 4a a vlastní ho část 1.
 
-Důsledek pro testy, který je stejně důležitý jako oprava sama: **testovací scénáře `OB-01` až `OB-11` musí běžet pod rolí `openengage_sender`.** Kdyby běžely pod migrátorem nebo aplikační rolí, tuhle chybu by dokonale zamaskovaly, protože obě role RLS obcházejí. Promítl jsem to do akceptačních kritérií AK-20.5.
+Důsledek pro testy, který je stejně důležitý jako oprava sama: **testovací scénáře `OB-01` až `OB-11` musí běžet pod rolí `mlain_sender`.** Kdyby běžely pod migrátorem nebo aplikační rolí, tuhle chybu by dokonale zamaskovaly, protože obě role RLS obcházejí. Promítl jsem to do akceptačních kritérií AK-20.5.
 
 **Partitioning a práva.** Kontrakt uvádí, že nová partition je pro sender neviditelná, dokud jí migrátor nepřidělí granty, a že to `createMonthlyPartitions` dělá automaticky. Je to akceptační kritérium AK-20.2, protože na tom stojí celý bezpečnostní model a je to přesně ta věc, která se pokazí až v pátém měsíci provozu.
 
-**Režim `MODE=all`.** Podle konfigurační tabulky 4.9 se `DATABASE_URL_SENDER` při `MODE=all` dopočítá z `DATABASE_URL` záměnou uživatele za `openengage_sender`. Role tedy musí existovat i v nejmenším nasazení. Když se připojení pod ní nepovede, sender **nenastartuje** a vypíše, že role chybí a jak ji založit. Tiché spadnutí zpět na aplikační roli by bezpečnostní hranici zrušilo, aniž by si toho kdokoliv všiml.
+**Režim `MODE=all`.** Podle konfigurační tabulky 4.9 se `DATABASE_URL_SENDER` při `MODE=all` dopočítá z `DATABASE_URL` záměnou uživatele za `mlain_sender`. Role tedy musí existovat i v nejmenším nasazení. Když se připojení pod ní nepovede, sender **nenastartuje** a vypíše, že role chybí a jak ji založit. Tiché spadnutí zpět na aplikační roli by bezpečnostní hranici zrušilo, aniž by si toho kdokoliv všiml.
 
 ## 3. Doménová logika
 
@@ -757,11 +757,11 @@ Proto musí idempotence vzniknout u nás v databázi, ne u providera. To je pře
 
 **Tohle není doporučení, je to součást řešení.** Bez něj by výchozí politika `fail` u SES znamenala, že se po každém tvrdém pádu nedoručí až `SENDER_CONCURRENCY` zpráv, přestože většina z nich ve skutečnosti odešla.
 
-Ke každé odeslané zprávě přikládáme message tag `oe_msg` s hodnotou `messages.id` (3.9.3). **SES ho vrací v každé události, i když `Message-ID` přepsal.** Právě v tom je jeho hodnota: přežije to, co původní problém způsobilo.
+Ke každé odeslané zprávě přikládáme message tag `ml_msg` s hodnotou `messages.id` (3.9.3). **SES ho vrací v každé události, i když `Message-ID` přepsal.** Právě v tom je jeho hodnota: přežije to, co původní problém způsobilo.
 
 Pravidlo, které implementuje 4a:
 
-> Když dorazí událost `Send`, `Delivery`, `Bounce`, `Complaint` nebo `Reject` s tagem `oe_msg` ukazujícím na zprávu ve stavu `failed` s `error_code = 'ambiguous_dispatch'`, aplikace ji převede na `sent`, doplní `provider_message_id` z události a nastaví `sent_at` na čas z události.
+> Když dorazí událost `Send`, `Delivery`, `Bounce`, `Complaint` nebo `Reject` s tagem `ml_msg` ukazujícím na zprávu ve stavu `failed` s `error_code = 'ambiguous_dispatch'`, aplikace ji převede na `sent`, doplní `provider_message_id` z události a nastaví `sent_at` na čas z události.
 
 Tři omezení, která z toho dělají bezpečnou operaci:
 
@@ -803,11 +803,11 @@ Kontrakt 4.10.1 uvádí `sent` jako koncový stav a přechod `failed → sent` v
 
 | Z | Do | Kdo | Podmínka |
 |---|---|---|---|
-| `failed` | `sent` | **aplikace** | výhradně při `error_code = 'ambiguous_dispatch'`, výhradně na základě události providera nesoucí message tag `oe_msg`, a výhradně do 72 hodin od `updated_at` |
+| `failed` | `sent` | **aplikace** | výhradně při `error_code = 'ambiguous_dispatch'`, výhradně na základě události providera nesoucí message tag `ml_msg`, a výhradně do 72 hodin od `updated_at` |
 
 Formulace omezení, tak jak by měla stát v kontraktu:
 
-> Přechod `failed → sent` je povolený jako **jediná výjimka** z pravidla o koncových stavech. Smí ho provést pouze aplikace, pouze u zpráv s `error_code = 'ambiguous_dispatch'`, pouze na základě přijaté události providera, která nese message tag `oe_msg` odpovídající `messages.id`, a pouze v okně 72 hodin od `updated_at`. Sender tenhle přechod neprovádí nikdy a nemá na něj práva. Opačný směr, tedy `sent` na jakýkoliv jiný stav, zůstává zakázaný bez výjimky, včetně pozdního bounce; ten se zaznamenává výhradně do `message_events`.
+> Přechod `failed → sent` je povolený jako **jediná výjimka** z pravidla o koncových stavech. Smí ho provést pouze aplikace, pouze u zpráv s `error_code = 'ambiguous_dispatch'`, pouze na základě přijaté události providera, která nese message tag `ml_msg` odpovídající `messages.id`, a pouze v okně 72 hodin od `updated_at`. Sender tenhle přechod neprovádí nikdy a nemá na něj práva. Opačný směr, tedy `sent` na jakýkoliv jiný stav, zůstává zakázaný bez výjimky, včetně pozdního bounce; ten se zaznamenává výhradně do `message_events`.
 
 Zdůvodnění pro kontrakt: bez téhle výjimky nemá výchozí politika `fail` u SES protiváhu a po každém tvrdém pádu by se natrvalo nedoručilo až `SENDER_CONCURRENCY` zpráv, přestože většina z nich odešla. S ní se většina nejistot rozpustí sama a bez rizika duplikátu.
 
@@ -853,7 +853,7 @@ Tabulka přechodů. Sloupec "Kdo" říká, která komponenta přechod smí prov�
 | `claimed` | `skipped` | sender | dávková kontrola suppression po claimu, před krokem D0 (K5) |
 | `claimed` | `pending` s `ambiguous_dispatch` | sender | reaper B, politika `retry`, první výskyt |
 | `claimed` | `failed` s `ambiguous_dispatch` | sender | reaper B, politika `fail` nebo druhý výskyt |
-| `failed` | `sent` | **4a, nikdy sender** | jediná výjimka z pravidla o koncových stavech. Jen při `error_code = 'ambiguous_dispatch'`, jen na základě události s message tagem `oe_msg`, jen do 72 h od `updated_at`. Návrh na doplnění kontraktu v 3.4.5. |
+| `failed` | `sent` | **4a, nikdy sender** | jediná výjimka z pravidla o koncových stavech. Jen při `error_code = 'ambiguous_dispatch'`, jen na základě události s message tagem `ml_msg`, jen do 72 h od `updated_at`. Návrh na doplnění kontraktu v 3.4.5. |
 | `failed` | `pending` | 4a | uživatel klikl na "Odeslat znovu" |
 
 **Zakázané přechody a proč:**
@@ -1059,12 +1059,12 @@ Potvrzené shody, které stojí za zaznamenání, protože se na ně kontrakt sp
 
 | Značka | Přesný tvar | Kde | Čím ji sender nahradí |
 |---|---|---|---|
-| Odkaz | `https://track.openengage.invalid/c/<link_id>` | celá hodnota `href` v HTML, samostatný nezalomený řádek v prostém textu | `<TRACKING_DOMAIN>/t/c/<click token typu c>` |
-| Open pixel | `<!--OE_OPEN_PIXEL-->` | těsně před `</body>`, jen v HTML | `<img src="<TRACKING_DOMAIN>/t/o/<open token typu o>" width="1" height="1" alt="" style="display:none;max-height:0;overflow:hidden" />` |
+| Odkaz | `https://track.mlain.invalid/c/<link_id>` | celá hodnota `href` v HTML, samostatný nezalomený řádek v prostém textu | `<TRACKING_DOMAIN>/t/c/<click token typu c>` |
+| Open pixel | `<!--ML_OPEN_PIXEL-->` | těsně před `</body>`, jen v HTML | `<img src="<TRACKING_DOMAIN>/t/o/<open token typu o>" width="1" height="1" alt="" style="display:none;max-height:0;overflow:hidden" />` |
 
 `<link_id>` je UUID s pomlčkami, 36 znaků, tedy přesně to, co kontrakt 3 vyžaduje v payloadu click tokenu jako 16 bajtů. **Tím padá můj dřívější požadavek P5.8:** sender nemusí překládat pozici na UUID a nemusí tedy vůbec číst `campaign_links`. Je to lepší, než jsem žádal.
 
-**Značka odkazu jako absolutní URL: přijímám a je to lepší než můj token.** Argument, který rozhodl, není čitelnost ani platnost URL, ale **chování při selhání**: doména `.invalid` je rezervovaná RFC 2606 a nikdy se nerozpustí, takže neproběhlá záměna dá inertní odkaz, ne funkční odkaz na cizí server. Můj `__OE_CLICK_3__` by se v prohlížeči choval jako relativní cesta na naši vlastní doménu.
+**Značka odkazu jako absolutní URL: přijímám a je to lepší než můj token.** Argument, který rozhodl, není čitelnost ani platnost URL, ale **chování při selhání**: doména `.invalid` je rezervovaná RFC 2606 a nikdy se nerozpustí, takže neproběhlá záměna dá inertní odkaz, ne funkční odkaz na cizí server. Můj `__ML_CLICK_3__` by se v prohlížeči choval jako relativní cesta na naši vlastní doménu.
 
 **Pixel jako HTML komentář: přijímám a nemám proti tomu v Go žádnou výhradu.** Je to pořád jedna záměna pevného řetězce. Kritérium je opět selhání: neproběhlá záměna komentáře je neviditelná, neproběhlá záměna tokenu vytiskne příjemci do těla podtržítkový nesmysl. Jediná drobnost, kterou je dobré mít zapsanou: komentář **nesmí ležet uvnitř podmíněného komentáře pro Outlook**, protože vnořené HTML komentáře nejsou platné. Pozice těsně před `</body>` to splňuje.
 
@@ -1075,7 +1075,7 @@ Naivní implementace je `strings.ReplaceAll` jednou na každý odkaz z `CompileM
 **Správná implementace je jeden průchod přes pevný prefix:**
 
 ```
-1. hledej strings.Index(src[i:], "https://track.openengage.invalid/c/")
+1. hledej strings.Index(src[i:], "https://track.mlain.invalid/c/")
 2. přečti následujících 36 znaků jako UUID, uuid.Parse
 3. zapiš do strings.Builder úsek před značkou a za ni trackovací odkaz
 4. počítej náhrady
@@ -1095,7 +1095,7 @@ Pixel se nahrazuje `strings.Replace` s počtem **1**, ne `ReplaceAll`. Kontrakt 
 
 **Přijímám změnu a moje původní zdůvodnění bylo chybné.** Tvrdil jsem, že při tomhle pořadí "by mohla interpolovaná data rozbít token uvnitř URL". To neplatí: značka je celá hodnota `href`, je to statický řetězec ve zkompilované šabloně a nahrazuje se za URL, která žádný Liquid neobsahuje. Není co rozbít.
 
-Argument části 3 naopak platí. Při mém pořadí by kontakt, jehož vlastní pole obsahuje řetězec `https://track.openengage.invalid/c/<link_id>`, dostal po interpolaci do těla funkční trackovací odkaz. Validátor části 3 to zavřít nemůže, protože na data kontaktu nevidí, a import CSV od zákazníka je přesně to místo, odkud takový řetězec přijde. Obrácené pořadí tu díru zavírá z definice, protože v okamžiku interpolace už žádné značky neexistují.
+Argument části 3 naopak platí. Při mém pořadí by kontakt, jehož vlastní pole obsahuje řetězec `https://track.mlain.invalid/c/<link_id>`, dostal po interpolaci do těla funkční trackovací odkaz. Validátor části 3 to zavřít nemůže, protože na data kontaktu nevidí, a import CSV od zákazníka je přesně to místo, odkud takový řetězec přijde. Obrácené pořadí tu díru zavírá z definice, protože v okamžiku interpolace už žádné značky neexistují.
 
 Trackovací token je base64url, tedy `A-Za-z0-9-_`, takže do šablony nevnáší `{{`, `{%` ani jiný Liquid metaznak. Náhrada tedy nemůže vyrobit konstrukci, kterou by následné parsování vyhodnotilo.
 
@@ -1121,7 +1121,7 @@ Je to zanedbatelné, ale je to **odhad, ne měření**. Zapsal jsem to jako otev
 
 **Cesta A (navrhla část 3, má přednost).** Pořadí zpět na `interpolace → náhrada`, ale po interpolaci se spočítají výskyty značky a porovnají s `clickMarkerCount`. Vrací parsování jednou na kampaň za cenu jednoho lineárního průchodu na zprávu a **inertní selhání zůstává**. Bezpečnost se z toho mění ze strukturální záruky na běhovou kontrolu, což je slabší, ale díra zůstává zavřená.
 
-**Cesta B (moje, druhá v pořadí).** Kompilace by místo statické URL emitovala Liquid proměnnou (`href="{{ oe_link_<link_id> }}"`) a sender by ji dosazoval přes bindings. Také vrací parsování jednou na kampaň a injekce z dat kontaktu je stejně nemožná, protože kořenové proměnné vlastníme my a data kontaktu žijí pod `contact.*`. **Cena je ztráta inertního selhání**: chybějící proměnná se vyrenderuje jako prázdný řetězec, tedy `href=""`. Proto je druhá.
+**Cesta B (moje, druhá v pořadí).** Kompilace by místo statické URL emitovala Liquid proměnnou (`href="{{ ml_link_<link_id> }}"`) a sender by ji dosazoval přes bindings. Také vrací parsování jednou na kampaň a injekce z dat kontaktu je stejně nemožná, protože kořenové proměnné vlastníme my a data kontaktu žijí pod `contact.*`. **Cena je ztráta inertního selhání**: chybějící proměnná se vyrenderuje jako prázdný řetězec, tedy `href=""`. Proto je druhá.
 
 **Detail cesty A, který musí být přesný, jinak nefunguje.** Porovnání je `>`, ne `!=`.
 
@@ -1141,7 +1141,7 @@ Kdyby se to napsalo jako `!=`, kampaň s podmíněným odkazem by selhávala u k
 
 ##### Fixtures, které ověřuje Go strana
 
-Kontrakt má 16 fixtur `CT-001` až `CT-016`. Go strana z nich ověřuje druhou půlku: že po náhradě nezbude `openengage.invalid`, že počet náhrad sedí, a **že náhrada nezměnila nic jiného**, tedy bajtový diff mimo nahrazené úseky.
+Kontrakt má 16 fixtur `CT-001` až `CT-016`. Go strana z nich ověřuje druhou půlku: že po náhradě nezbude `mlain.invalid`, že počet náhrad sedí, a **že náhrada nezměnila nic jiného**, tedy bajtový diff mimo nahrazené úseky.
 
 Ten poslední test považuji za nejcennější v celé sadě, protože je to jediná strojová záruka, že sender nesáhne na markup laděný pro Outlook. Ověřuje ho `CT-014`, bajtový snapshot dokumentu se všemi typy bloků.
 
@@ -1159,7 +1159,7 @@ Dvě fixtury přibyly na základě mých připomínek:
 | Kontrola | Kdy | Při neúspěchu |
 |---|---|---|
 | **Počet náhrad odpovídá `clickMarkerCount`** | **jednou při načtení kampaně do cache**, ne per zpráva | celá kampaň na `paused`, důvod `contract_mismatch` |
-| Ve výstupu nezbyl řetězec `openengage.invalid` | per zpráva, `strings.Contains` nad `html` i `text` | zpráva na `failed`, kód `marker_not_replaced`, bez opakování |
+| Ve výstupu nezbyl řetězec `mlain.invalid` | per zpráva, `strings.Contains` nad `html` i `text` | zpráva na `failed`, kód `marker_not_replaced`, bez opakování |
 
 **Počet značek je vlastnost zkompilované šablony, ne jednotlivé zprávy**, takže se kontroluje jednou při načtení kampaně, ne padesát tisíckrát. Je to zároveň lepší chování, než navrhuje kontrakt: kampaň se zastaví **dřív, než odejde první zpráva**, místo aby se zastavila až po ní. Souhlasím s částí 3, že neshoda počtu značek znamená nekompatibilní verze kompilace a senderu, a že to nemá řešit retry, ale člověk.
 
@@ -1220,7 +1220,7 @@ Subject: =?utf-8?B?TGV0bsOtIHbDvXByb2RlaiB6YcSNw610w6E=?=
 MIME-Version: 1.0
 List-Unsubscribe: <https://app.example.com/u/t1.AbCdEf...>
 List-Unsubscribe-Post: List-Unsubscribe=One-Click
-Feedback-ID: 7f3a2b10:9c1d4e55:campaign:openengage
+Feedback-ID: 7f3a2b10:9c1d4e55:campaign:mlain
 Precedence: bulk
 Content-Type: multipart/alternative; boundary="----=_OE_9f2c8a41d05b7e63a1c4"
 
@@ -1262,9 +1262,9 @@ Content-Transfer-Encoding: quoted-printable
 | `Reply-To` | podmíněně | `<{campaigns.reply_to}>` | Jen když je `reply_to` neprázdné a liší se od `from_email`. |
 | `List-Unsubscribe` | ano | `<{unsubscribe_url sestavený senderem}>` | Když je nakonfigurovaná i mailto adresa: `<https://...>, <mailto:...>`. HTTPS URI musí být **první**. |
 | `List-Unsubscribe-Post` | podmíněně | `List-Unsubscribe=One-Click` | Přidává se **jen** když `List-Unsubscribe` obsahuje HTTPS URI. Jediná povolená hodnota podle RFC 8058. |
-| `Feedback-ID` | podmíněně | `{campaign_id_short}:{workspace_id_short}:campaign:openengage` | Jen u SMTP a jen když `SENDER_FEEDBACK_ID=true`. U SES ji nastavuje Configuration Set přes message tagy, viz 3.9.3. Formát podle Google Postmaster Tools: nejvýše 4 pole oddělená `:`, poslední pole je identifikátor odesílatele. |
+| `Feedback-ID` | podmíněně | `{campaign_id_short}:{workspace_id_short}:campaign:mlain` | Jen u SMTP a jen když `SENDER_FEEDBACK_ID=true`. U SES ji nastavuje Configuration Set přes message tagy, viz 3.9.3. Formát podle Google Postmaster Tools: nejvýše 4 pole oddělená `:`, poslední pole je identifikátor odesílatele. |
 | `Precedence` | podmíněně | `bulk` | Ovládá `SENDER_PRECEDENCE_BULK`, výchozí `true`. Potlačuje automatické odpovědi typu "jsem na dovolené". Není to standardizovaná hlavička, ale u hromadné pošty je to dlouholetá praxe. |
-| `X-OpenEngage-Test` | jen test | `1` | Umožňuje uživateli poznat testovací zprávu v inboxu. |
+| `X-Mlain-Test` | jen test | `1` | Umožňuje uživateli poznat testovací zprávu v inboxu. |
 
 **Hlavičky, které sender vědomě nenastavuje:**
 
@@ -1371,9 +1371,9 @@ out, err := client.SendEmail(ctx, input)
 
 ```go
 EmailTags: []types.MessageTag{
-    {Name: aws.String("oe_msg"),  Value: aws.String(msg.MessageID.String())},
-    {Name: aws.String("oe_camp"), Value: aws.String(msg.CampaignID.String())},
-    {Name: aws.String("oe_ws"),   Value: aws.String(msg.WorkspaceID.String())},
+    {Name: aws.String("ml_msg"),  Value: aws.String(msg.MessageID.String())},
+    {Name: aws.String("ml_camp"), Value: aws.String(msg.CampaignID.String())},
+    {Name: aws.String("ml_ws"),   Value: aws.String(msg.WorkspaceID.String())},
 }
 ```
 
@@ -1385,8 +1385,8 @@ Tuhle hodnotu drží Go struktura `MessageKey` (3.1) jako druhou složku identit
 
 K čemu tagy slouží:
 
-1. **`oe_msg` je záchranná síť pro nejisté zprávy** (3.4.5). Bez něj by po pádu senderu nešlo spárovat událost se zprávou, u které se `provider_message_id` nikdy nezapsalo. Tohle je jeho hlavní důvod existence.
-2. `oe_camp` a `oe_ws` umožňují 4a spárovat i událost, jejíž `oe_msg` už neexistuje, a dávají zdarma dimenze v CloudWatch metrikách SES.
+1. **`ml_msg` je záchranná síť pro nejisté zprávy** (3.4.5). Bez něj by po pádu senderu nešlo spárovat událost se zprávou, u které se `provider_message_id` nikdy nezapsalo. Tohle je jeho hlavní důvod existence.
+2. `ml_camp` a `ml_ws` umožňují 4a spárovat i událost, jejíž `ml_msg` už neexistuje, a dávají zdarma dimenze v CloudWatch metrikách SES.
 
 **Configuration Set** se předává jako `ConfigurationSetName` a jeho jméno je součástí dešifrované konfigurace provideru. Configuration Set určuje, které události (`Send`, `Delivery`, `Bounce`, `Complaint`, `Reject`, `Open`, `Click`, `DeliveryDelay`) SES publikuje do SNS. Jeho založení a nastavení event destination vlastní 4a.
 
@@ -1722,7 +1722,7 @@ Dešifrovaná konfigurace se drží v paměti, nikdy se nezapisuje na disk ani d
 
 | Proměnná | Typ | Povinná | Výchozí | Poznámka pro sender |
 |---|---|---|---|---|
-| `DATABASE_URL_SENDER` | URL | ne | odvozeno z `DATABASE_URL` s uživatelem `openengage_sender` | při `MODE=sender` povinná |
+| `DATABASE_URL_SENDER` | URL | ne | odvozeno z `DATABASE_URL` s uživatelem `mlain_sender` | při `MODE=sender` povinná |
 | `SECRET_KEY` | string | **ano** | | čistý `<base64url>` bez paddingu, po dekódování přesně 32 B. Bez prefixu, viz poznámka pod tabulkou. |
 | `SECRET_KEY_PREVIOUS` | string | ne | prázdné | až 5 položek, jen pro dešifrování |
 | `MODE` | enum | ne | `all` | sender běží při `sender` a `all` |
@@ -1888,7 +1888,7 @@ Prázdný stav, načítání a chyba u těchto prvků vlastní 4a, protože jsou
 
 **Oddělení práv.** Kapitola 2.4. Sender nemá do `contacts` přístup na úrovni databáze, ne jen na úrovni kódu. Je to jediná komponenta systému s vlastní databázovou rolí a je to tak schválně.
 
-**Dešifrování credentials.** Sender dešifruje `sending_providers.config_encrypted` podle kontraktu 4.10.4 části 1: obálka `enc:v1:`, AES-256-GCM, kontext `sending_provider`, `workspace_id` v AAD, klíč `HKDF(SHA-256, MASTER, "openengage/v1", "openengage/v1/credential-encryption", 32)`. Vektory jsem reprodukoval, viz 13.1.
+**Dešifrování credentials.** Sender dešifruje `sending_providers.config_encrypted` podle kontraktu 4.10.4 části 1: obálka `enc:v1:`, AES-256-GCM, kontext `sending_provider`, `workspace_id` v AAD, klíč `HKDF(SHA-256, MASTER, "mailer/v1", "mailer/v1/credential-encryption", 32)`. Vektory jsem reprodukoval, viz 13.1.
 
 Podle `key_id` v obálce se vybere `SECRET_KEY` nebo některý ze `SECRET_KEY_PREVIOUS`. Když `key_id` není znám, je to `crypto_unknown_key`; když neprojde tag, je to `crypto_auth_failed`. **Sender nikdy nezkouší klíče postupně** a chybu ven nikdy nerozlišuje podle příčiny, jak kontrakt požaduje. Selhání je fatální a kampaň se pozastaví.
 
@@ -1970,10 +1970,10 @@ Každá věta musí jít převést na test.
 - **AK-5.5** Když se řádek mezi claimem a markerem (D1) změní na `pending` cizím zásahem, marker vrátí 0 řádků a mock provider **není zavolán vůbec**.
 - **AK-5.6** Zpráva, která podruhé projde nejednoznačným stavem, skončí na `failed` **bez ohledu na politiku**. Ověřuje `ambiguous_count`, tedy opravu K8.
 - **AK-5.7** Mezi dvěma nejednoznačnými průchody proběhne běžný opakovatelný neúspěch, který přepíše `error_code`. Zpráva přesto při druhém nejednoznačném průchodu skončí na `failed`. Bez `ambiguous_count` tenhle test spadne.
-- **AK-5.8** Když aplikace zpracuje událost s tagem `oe_msg` ukazujícím na zprávu ve stavu `failed` s `error_code = 'ambiguous_dispatch'`, řádek přejde na `sent`. Naopak událost ukazující na `sent` řádek jeho stav **nikdy nemění**. (Test patří 4a, uvádím ho, protože ověřuje náš mechanismus.)
-- **AK-5.9** Událost s tagem `oe_msg` ukazujícím na řádek ve stavu `claimed` jeho stav **nemění**, aby nevznikl závod s živým senderem.
+- **AK-5.8** Když aplikace zpracuje událost s tagem `ml_msg` ukazujícím na zprávu ve stavu `failed` s `error_code = 'ambiguous_dispatch'`, řádek přejde na `sent`. Naopak událost ukazující na `sent` řádek jeho stav **nikdy nemění**. (Test patří 4a, uvádím ho, protože ověřuje náš mechanismus.)
+- **AK-5.9** Událost s tagem `ml_msg` ukazujícím na řádek ve stavu `claimed` jeho stav **nemění**, aby nevznikl závod s živým senderem.
 - **AK-5.10** Událost, která dorazí později než 72 hodin od `updated_at`, řádek `failed` s `ambiguous_dispatch` už neopraví.
-- **AK-5.11** Zpráva, která selhala z jiného důvodu než `ambiguous_dispatch`, se událostí s tagem `oe_msg` **neopraví nikdy**.
+- **AK-5.11** Zpráva, která selhala z jiného důvodu než `ambiguous_dispatch`, se událostí s tagem `ml_msg` **neopraví nikdy**.
 
 ### Render a MIME
 
@@ -1985,9 +1985,9 @@ Každá věta musí jít převést na test.
 - **AK-6.6** Zpráva obsahuje `List-Unsubscribe` s HTTPS URI na první pozici a `List-Unsubscribe-Post: List-Unsubscribe=One-Click`. Když HTTPS URI chybí, `List-Unsubscribe-Post` ve zprávě není.
 - **AK-6.7** HTML obsahující `<!--[if mso]><table>...<![endif]-->` projde senderem **bajtově beze změny** kromě nahrazených značek. Ověřuje se bajtovým diffem mimo nahrazené úseky nad fixturou `CT-014`.
 - **AK-6.19** Tlačítko s VML dvojčetem (fixtura `CT-007`) má po náhradě **týž trackovací odkaz** v `<v:roundrect href>` i v `<a href>`.
-- **AK-6.20** Po náhradě neobsahuje ani `html`, ani `text` řetězec `openengage.invalid`. Když ano, zpráva skončí jako `failed` s kódem `marker_not_replaced` a **neodešle se**.
+- **AK-6.20** Po náhradě neobsahuje ani `html`, ani `text` řetězec `mlain.invalid`. Když ano, zpráva skončí jako `failed` s kódem `marker_not_replaced` a **neodešle se**.
 - **AK-6.21** Kampaň, jejíž počet nalezených značek neodpovídá `clickMarkerCount`, se pozastaví s důvodem `contract_mismatch` **dřív, než odejde první zpráva**.
-- **AK-6.22** Kontakt, jehož vlastní pole obsahuje řetězec `https://track.openengage.invalid/c/<platné UUID>`, dostane ten řetězec v těle **doslova**, nikoli jako funkční trackovací odkaz. Ověřuje pořadí operací z kontraktu 5.
+- **AK-6.22** Kontakt, jehož vlastní pole obsahuje řetězec `https://track.mlain.invalid/c/<platné UUID>`, dostane ten řetězec v těle **doslova**, nikoli jako funkční trackovací odkaz. Ověřuje pořadí operací z kontraktu 5.
 - **AK-6.23** Řádek prostého textu se značkou odkazu není po náhradě zalomený, i když výsledná URL přesáhne 78 znaků.
 - **AK-6.8** Zpráva s `contact_id IS NULL` a `is_test=false` skončí jako `failed` s kódem `unsubscribe_url_missing` a **neodešle se**, protože bez `contact_id` nejde sestavit odhlašovací token.
 - **AK-6.18** Odkaz v hlavičce `List-Unsubscribe` a odkaz dosazený za `{{ unsubscribe_url }}` v těle jsou **identický řetězec**.
@@ -2000,7 +2000,7 @@ Každá věta musí jít převést na test.
 
 ### Dispatch
 
-- **AK-9.1** Volání SES obsahuje `ConfigurationSetName` a tři message tagy `oe_msg`, `oe_camp`, `oe_ws`, jejichž hodnoty jsou kanonické UUID.
+- **AK-9.1** Volání SES obsahuje `ConfigurationSetName` a tři message tagy `ml_msg`, `ml_camp`, `ml_ws`, jejichž hodnoty jsou kanonické UUID.
 - **AK-9.2** `out.MessageId` z odpovědi SES se zapíše do `messages.provider_message_id`.
 - **AK-9.3** Sender s prázdným `configuration_set_name` kampaň neodešle a pozastaví ji s kódem `ses_configuration_set_missing`.
 - **AK-9.4** SMTP server, který na `EHLO` neinzeruje `STARTTLS` a konfigurace má `encryption: starttls`, vede na fatální chybu a **žádné heslo se po drátě neposílá**.
@@ -2023,12 +2023,12 @@ Každá věta musí jít převést na test.
 - **AK-6.13** Po `SIGTERM` se neclaimne žádná nová zpráva.
 - **AK-6.14** Restart senderu s nezměněným `SENDER_ID` uvolní vlastní zaseknuté řádky bez markeru **okamžitě**, bez čekání na `SENDER_CLAIM_TTL_SECONDS`. Při výchozím `SENDER_ID` (hostname a PID) tenhle test neprojde, což je doklad k rozporu K14.
 - **AK-19.1** Testovací odeslání se odešle i u kampaně ve stavu `draft`, do 2 sekund, a projde stejnou cestou renderu a MIME jako ostrá zpráva.
-- **AK-19.2** Testovací zpráva při `SENDER_TEST_TRACKING=false` neobsahuje open pixel ani přepsané odkazy a nese hlavičku `X-OpenEngage-Test: 1`.
-- **AK-20.1** Připojení rolí `openengage_sender` a pokus o `SELECT * FROM contacts` skončí chybou `permission denied for table contacts`.
+- **AK-19.2** Testovací zpráva při `SENDER_TEST_TRACKING=false` neobsahuje open pixel ani přepsané odkazy a nese hlavičku `X-Mlain-Test: 1`.
+- **AK-20.1** Připojení rolí `mlain_sender` a pokus o `SELECT * FROM contacts` skončí chybou `permission denied for table contacts`.
 - **AK-20.2** Táž role provede claim dotaz nad partitionovanou tabulkou `messages` úspěšně, bez explicitních grantů na jednotlivé partition.
 - **AK-20.3** Táž role nemůže provést `UPDATE messages SET email = ...` ani `DELETE FROM messages`.
-- **AK-20.5 (regrese na RLS)** **Všechny testovací scénáře `OB-01` až `OB-11` běží pod rolí `openengage_sender`**, ne pod migrátorem ani aplikační rolí. Test, který se připojí jinou rolí, je považovaný za neplatný. Bez tohohle pravidla by se chybějící politika `sender_bypass` v testech nikdy neprojevila, protože obě ostatní role RLS obcházejí.
-- **AK-20.6** Claim dotaz pod rolí `openengage_sender` nad tabulkou s RLS vrátí neprázdnou dávku. Test musí selhat, když se politika `sender_bypass` odebere.
+- **AK-20.5 (regrese na RLS)** **Všechny testovací scénáře `OB-01` až `OB-11` běží pod rolí `mlain_sender`**, ne pod migrátorem ani aplikační rolí. Test, který se připojí jinou rolí, je považovaný za neplatný. Bez tohohle pravidla by se chybějící politika `sender_bypass` v testech nikdy neprojevila, protože obě ostatní role RLS obcházejí.
+- **AK-20.6** Claim dotaz pod rolí `mlain_sender` nad tabulkou s RLS vrátí neprázdnou dávku. Test musí selhat, když se politika `sender_bypass` odebere.
 - **AK-20.7** Sender smí provést `UPDATE campaigns SET status='paused', pause_reason=...` jen ze stavu `sending`. Pokus o jakýkoliv jiný cílový stav nebo o zápis do jiného sloupce skončí chybou oprávnění.
 - **AK-20.4** Sender s neplatným `SECRET_KEY` nenastartuje a v logu je uvedeno, která proměnná je špatně.
 
@@ -2094,7 +2094,7 @@ Alternativy pro případ, že by projekt usnul, jsou v otevřené otázce O13.
 | P1.2 | Chování při rotaci `SECRET_KEY` | Buď dvojice starý a nový klíč po přechodnou dobu, nebo re-encrypt při startu aplikace. | Sender musí vědět, jestli má při selhání dešifrování zkusit druhý klíč, nebo hlásit `credentials_undecryptable`. |
 | P1.3 | **Kontrakt 1, konvence schématu** | Potvrzení, že `messages` je `PARTITION BY RANGE (created_at)` po měsících, kdo zakládá partition a jaká je retence. | Claim dotaz a fillfactor se nastavují na partition, ne na rodiče. |
 | P1.4 | Řešení vyhledání zprávy podle samotného `id` | Buď `id` jako UUIDv7 s odvoditelnou partition, nebo doporučení, že aplikace při párování událostí přidá do `WHERE` i rozsah `created_at`. | S PK `(created_at, id)` prochází vyhledání podle `id` všechny partition. Týká se to hlavně 4a, ale konvence je tvoje. |
-| P1.5 | Založení role `openengage_sender` | Kde přesně: entrypoint image, samostatný skript, nebo migrace. Migrace nemá právo na `CREATE ROLE` a heslo do ní nepatří. | Bez odpovědi je nasazení senderu s omezenými právy nedokumentované. |
+| P1.5 | Založení role `mlain_sender` | Kde přesně: entrypoint image, samostatný skript, nebo migrace. Migrace nemá právo na `CREATE ROLE` a heslo do ní nepatří. | Bez odpovědi je nasazení senderu s omezenými právy nedokumentované. |
 | P1.6 | **Vyřešit K7:** sender staví trackovací odkazy z `TRACKING_DOMAIN`, jejíž výchozí hodnota se odvozuje z `APP_URL`, kterou ale podle 4.9 nedostává | Buď `APP_URL` přidat senderu, nebo udělat `TRACKING_DOMAIN` povinnou pro `MODE=sender`. Plus určit, jestli hodnota obsahuje schéma a koncové lomítko. |
 | P1.7 | **Kontrakt 2, Liquid subset: zákaz nebo uzavření filtru `date`** | Buď filtr `date` ze subsetu vyřadit, nebo povolit jen uzavřený výčet formátovacích řetězců, které jsou v obou implementacích ověřeně shodné. | Viz kapitola 3.6.1 a 12. Je to nejpravděpodobnější místo rozchodu dialektů. |
 | P1.8 | Golden fixtures pro Liquid v `packages/contracts` | Adresář s trojicemi `template.liquid`, `data.json`, `expected.txt`. CI je pouští v Go i v Node a porovnává bajt po bajtu. | Bez toho je záruka z hlavní specifikace 4.5 jen slib. |
@@ -2142,8 +2142,8 @@ Poslední řádek je ten, který ti rozbije prahy. Tvůj práh 5 minut by v sand
 Sender se v tom případě nezasekává, dávku normálně dojede a heartbeat mu ji drží. Kdyby ti to vadilo, druhá cesta je zmenšit `SENDER_BATCH_SIZE` při nízké kvótě, ale hlásit to jako anomálii je levnější.
 | P4a.5 | Garance, že po přechodu kampaně do `sending` se `compiled_*`, `subject`, `preheader`, `from_*`, `reply_to` a `provider_id` **nemění** jinak než přes `revision` | Jinak by různí příjemci dostali různé verze a nešlo by to dohledat. |
 | P4a.6 | Potvrzení, že `subject` a `preheader` jsou také Liquid šablony | Sender je interpoluje. Hlavní specifikace to neříká. |
-| P4a.7 | **Zpětné smíření podle message tagu `oe_msg`** přesně podle 3.4.5: událost opraví `failed` s `ambiguous_dispatch` na `sent`, jen u tohoto kódu, jen do 72 hodin, nikdy u řádku ve stavu `claimed`. Plus dvojí text v reportu podle toho, jestli okno ještě běží. | **Není to volitelné.** Bez toho nemá výchozí politika `fail` u SES protiváhu a po každém tvrdém pádu se natrvalo nedoručí až `SENDER_CONCURRENCY` zpráv, přestože většina odešla. Výchozí politika je rozhodnutá: `fail` u SES, `retry` u SMTP. |
-| P4a.8 | Párování událostí přes message tag `oe_msg`, nejen přes `provider_message_id` | `provider_message_id` u nejistých zpráv chybí. Tag je jediná cesta, jak je vyřešit. |
+| P4a.7 | **Zpětné smíření podle message tagu `ml_msg`** přesně podle 3.4.5: událost opraví `failed` s `ambiguous_dispatch` na `sent`, jen u tohoto kódu, jen do 72 hodin, nikdy u řádku ve stavu `claimed`. Plus dvojí text v reportu podle toho, jestli okno ještě běží. | **Není to volitelné.** Bez toho nemá výchozí politika `fail` u SES protiváhu a po každém tvrdém pádu se natrvalo nedoručí až `SENDER_CONCURRENCY` zpráv, přestože většina odešla. Výchozí politika je rozhodnutá: `fail` u SES, `retry` u SMTP. |
+| P4a.8 | Párování událostí přes message tag `ml_msg`, nejen přes `provider_message_id` | `provider_message_id` u nejistých zpráv chybí. Tag je jediná cesta, jak je vyřešit. |
 | P4a.9 | Uzavření kampaně (`sending → sent`) periodickým jobem, který kontroluje, že nezbyl žádný řádek ve stavu `pending` ani `claimed` | Sender vidí jednotlivé zprávy, ne kampaň jako celek. Neúplná dávka ze `SKIP LOCKED` není známkou konce (3.2). |
 | P4a.10 | Re-check suppression a odhlášení průběžným jobem, který překlápí `pending → skipped` | Sender nemá práva na `suppressions` ani `contacts`, takže tuhle kontrolu při odeslání **dělat nemůže**. Je to odpověď na otázku 3 ze zadání a musí být v tvojí části, jinak tam vznikne mezera. |
 | P4a.11 | Materializace nastaví všem řádkům jedné kampaně **stejné `created_at`** z `campaigns.materialized_at` a doplní `UNIQUE (created_at, campaign_id, contact_id)` | Jinak `UNIQUE` neplatí přes hranici měsíce a dvojitá materializace projde. |
@@ -2463,7 +2463,7 @@ Kontrakt 4.10.1, tabulka přechodů:
 |---|---|---|---|
 | `claimed` | `skipped` | **sender** | kontrola suppression těsně před odesláním selhala |
 
-Tatáž sekce ale definuje roli `openengage_sender` bez jakéhokoliv práva na `suppressions`, `contacts` a `list_subscriptions`, s komentářem "Žádná práva na contacts... Sender kontakty nečte, data má v render_data."
+Tatáž sekce ale definuje roli `mlain_sender` bez jakéhokoliv práva na `suppressions`, `contacts` a `list_subscriptions`, s komentářem "Žádná práva na contacts... Sender kontakty nečte, data má v render_data."
 
 Sender tedy **nemá jak tu kontrolu provést**. Je to rozpor uvnitř jednoho kontraktu.
 
@@ -2697,7 +2697,7 @@ Zároveň upozorňuji na objem: pravidlo "chybějící hodnota v `render_data` �
 
 #### K22. BLOKUJÍCÍ, JIŽ SE ŘEŠÍ: předání zkompilované šablony nebylo kontraktem
 
-Sender očekával značky `__OE_CLICK_<n>__` a `__OE_OPEN_PIXEL__`, které jsem si navrhl sám. Část 3 vyráběla `<!--OE_OPEN_PIXEL-->`, atribut `data-oe-link="<id>"` a v textu `[[oe:link:<id>]]`. Nikdy bychom se nepotkali: v odeslaných mailech by zůstaly viset značky, nefungovalo by sledování otevření ani kliknutí.
+Sender očekával značky `__ML_CLICK_<n>__` a `__ML_OPEN_PIXEL__`, které jsem si navrhl sám. Část 3 vyráběla `<!--ML_OPEN_PIXEL-->`, atribut `data-ml-link="<id>"` a v textu `[[ml:link:<id>]]`. Nikdy bychom se nepotkali: v odeslaných mailech by zůstaly viset značky, nefungovalo by sledování otevření ani kliknutí.
 
 **Příčina je systémová.** Předání zkompilované šablony je rozhraní mezi TypeScriptem a Go přesně jako čtyři číslované kontrakty, ale mezi ně zařazené nebylo. Nekontrolovalo se, protože nebylo v seznamu. Můj vlastní výrok "kontrakty 3 a 4 jsou bez nálezu" byl pravdivý a přesto zavádějící, protože jsem prověřoval jen to, co bylo za kontrakt označené.
 
@@ -2709,7 +2709,7 @@ Sender očekával značky `__OE_CLICK_<n>__` a `__OE_OPEN_PIXEL__`, které jsem 
 
 #### K21. VÁŽNÝ, ROZHODUJE SE ZVLÁŠŤ: sender nemá právo pozastavit kampaň
 
-**Stav: ROZHODNUTO, schváleno se sloupcovým grantem.** Kontrakt 4.10.1 v části 1 dostává `GRANT UPDATE (status, pause_reason) ON campaigns TO openengage_sender` a `campaigns` nový sloupec `pause_reason jsonb`. Platí tři omezení zapsaná v kontraktu: grant je sloupcový, sender smí provést jediný přechod `sending → paused` se současným zápisem `pause_reason` (odpauzování je výhradně akce uživatele nebo aplikace), a každé automatické pozastavení jde do auditu, přičemž do `audit_log` zapisuje aplikace, ne sender. Prozatímní postup v 3.13 tím přestává platit.
+**Stav: ROZHODNUTO, schváleno se sloupcovým grantem.** Kontrakt 4.10.1 v části 1 dostává `GRANT UPDATE (status, pause_reason) ON campaigns TO mlain_sender` a `campaigns` nový sloupec `pause_reason jsonb`. Platí tři omezení zapsaná v kontraktu: grant je sloupcový, sender smí provést jediný přechod `sending → paused` se současným zápisem `pause_reason` (odpauzování je výhradně akce uživatele nebo aplikace), a každé automatické pozastavení jde do auditu, přičemž do `audit_log` zapisuje aplikace, ne sender. Prozatímní postup v 3.13 tím přestává platit.
 
 Původní text nálezu zůstává níž jako zdůvodnění.
 
@@ -2725,7 +2725,7 @@ Chybí zároveň sloupec, kam zapsat důvod. `campaigns.pause_reason` v části 
 **Návrh opravy:** doplnit do kontraktní role sloupcový grant a do `campaigns` jeden sloupec.
 
 ```sql
-GRANT UPDATE (status, pause_reason) ON campaigns TO openengage_sender;
+GRANT UPDATE (status, pause_reason) ON campaigns TO mlain_sender;
 ALTER TABLE campaigns ADD COLUMN pause_reason jsonb;
 ```
 
@@ -2742,11 +2742,11 @@ Kontrakt dává `GRANT SELECT, UPDATE ON messages`. Sender ve skutečnosti potř
 PostgreSQL sloupcové granty umí. Není to rozpor, je to zpřísnění zdarma, které dává smysl u role, jejímž jediným smyslem je být bezpečnostní hranicí.
 
 ```sql
-GRANT SELECT ON messages TO openengage_sender;
+GRANT SELECT ON messages TO mlain_sender;
 GRANT UPDATE (status, claimed_by, claimed_at, claim_expires_at, dispatch_started_at,
               attempts, next_attempt_at, provider_message_id, sent_at,
               error_code, error_detail, ambiguous_count, updated_at)
-  ON messages TO openengage_sender;
+  ON messages TO mlain_sender;
 ```
 
 ---
@@ -2780,7 +2780,7 @@ Orchestrátor předal části 1 patnáct změn. Následující se týkají sende
 | Změna | Kde je u mě zapracovaná | Dopad |
 |---|---|---|
 | **Permisivní politika `sender_bypass` na každé tabulce s grantem.** Role nemá `BYPASSRLS` a nikdy nenastaví kontext workspace, takže by pod RLS viděla **nula řádků**. Claim by trvale vracel prázdnou dávku a nikdy by se neodeslalo nic. | 2.4, AK-20.5 a AK-20.6 | **Nejzávažnější položka.** Chyba by se navíc neprojevila jako chyba: prázdná dávka je legitimní stav, takže by kampaň jen tiše stála. |
-| Scénáře `OB-01` až `OB-11` musí běžet **pod rolí `openengage_sender`** | AK-20.5 | Pod migrátorem nebo aplikační rolí by předchozí chybu dokonale zamaskovaly, protože obě RLS obcházejí. |
+| Scénáře `OB-01` až `OB-11` musí běžet **pod rolí `mlain_sender`** | AK-20.5 | Pod migrátorem nebo aplikační rolí by předchozí chybu dokonale zamaskovaly, protože obě RLS obcházejí. |
 | Dvoukrokový claim, aby pozastavená kampaň nezastavila ostatní | 3.2 | Tenhle tvar jsem měl od začátku jako doplněk (`campaign_id = $4`), změna z něj dělá normu. |
 | `GRANT SELECT ON suppressions` | K5, 3.5 | **Měním stanovisko:** s grantem přechod `claimed → skipped` implementovat budu, dávkově jedním dotazem na dávku. |
 | Odesílat jde už ve stavu `queueing` | 3.2 | Nemá smysl čekat, až doběhne materializace milionového publika. |
@@ -2839,9 +2839,9 @@ Kontrakty 3 a 4 jsem **přepočítal nezávislou implementací** a porovnal s uv
 | Co | Výsledek |
 |---|---|
 | `MASTER` z `SECRET_KEY = AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8` | 32 B, `000102...1e1f`, sedí |
-| `K_tracking-token` | `4a60b23f5ad33af512e8a70f9f09b43a37ef1909894df07295067f24d05bf6ca`, **sedí** |
-| `K_credential-encryption` | `99d7e191906061a6b21d63fb792449c93ca147dc7324862c2963b0b6c70bdc6f`, **sedí** |
-| `K_secret-key-fingerprint` | `2ca5cdfbdd8380aa5d9f621d6aec612d6e24035ba100a07ead8c776289532481`, **sedí** |
+| `K_tracking-token` | `b9d815e1212e663c64cce1209229e7cf6af10197254677b7eabb575ea2ac3124`, **sedí** |
+| `K_credential-encryption` | `83cdc2ac660d3400913cf6c99a981a465f20f0e56610dd413fa7667e30fb8040`, **sedí** |
+| `K_secret-key-fingerprint` | `58c150fe5d466b4fa3e4d69d855c79763d1f0ccf0875c05594ff93cf8d6aead2`, **sedí** |
 | open token, plné HMAC | `cc1d94f6...cc2eb0c`, **sedí** |
 | open token, celý řetězec | `t1bwEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkGLLD1OX2Bxgmpk8EDMHZT2j0CerDYAWCif7x3s`, **sedí bajt na bajt** |
 | délky tokenů všech čtyř typů | 74, 96, 106, 117 znaků, **sedí**; všechny se dekódují, první bajt je `o`/`c`/`i`/`u`, druhý `0x01` |
@@ -2871,13 +2871,13 @@ Poznámky k Go implementaci, které nejsou překážkou, jen je dobré je vědě
 | Kontraktní sloupce `messages` včetně `claim_expires_at`, `error_code`, `error_detail` | 4.10.1 |
 | Stavy `pending`, `claimed`, `sent`, `failed`, `skipped` a jejich přechody | 4.10.1 |
 | Mechanismus nejednoznačného odeslání pod názvem `ambiguous_dispatch` | 4.10.1 |
-| Databázová role `openengage_sender` a její granty | 4.10.1, 3.12 |
+| Databázová role `mlain_sender` a její granty | 4.10.1, 3.12 |
 | Vlastní filtry na obou stranách místo vestavěných | 4.10.2 |
 | Automatické escapování v HTML kontextu, `escape` jako no-op | 4.10.2 |
 | Whitelist pěti formátů filtru `date` | 4.10.2 |
 | Binární formát tokenů, typy `o`, `c`, `i`, `u`, `key_id`, zkrácení MAC na 16 B | 4.10.3 |
 | Obálka `enc:v1:` s kontextem a `workspace_id` v AAD | 4.10.4 |
-| Odvození klíčů `HKDF(SHA-256, MASTER, "openengage/v1", <purpose>, 32)` | 3.10 |
+| Odvození klíčů `HKDF(SHA-256, MASTER, "mailer/v1", <purpose>, 32)` | 3.10 |
 | Konfigurační proměnné a jejich názvy | 4.9 |
 | `SHUTDOWN_GRACE_SECONDS` 25 s, `stop_grace_period: 40s` | 3.12 |
 | Health endpointy na `HEALTH_PORT`, `/healthz` a `/readyz` | 3.12 |

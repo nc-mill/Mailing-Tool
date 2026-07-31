@@ -34,20 +34,20 @@ Tohle je nejdůležitější šev v projektu. Část 3 dělá fázi 1 (blokový 
 
 Sender doslova očekává:
 
-> | `__OE_CLICK_<n>__` | místo hodnoty `href` u každého odkazu; `<n>` je `campaign_links.position` |
-> | `__OE_OPEN_PIXEL__` | těsně před `</body>` |
+> | `__ML_CLICK_<n>__` | místo hodnoty `href` u každého odkazu; `<n>` je `campaign_links.position` |
+> | `__ML_OPEN_PIXEL__` | těsně před `</body>` |
 
 Část 3 (`03-obsah.md`, sekce 4.1, body 3, 4 a 6) slibuje něco jiného:
 
-- open pixel jako **komentář** `<!--OE_OPEN_PIXEL-->`,
-- trackovatelné odkazy označené **atributem** `data-oe-link="<id>"` s ponechanou původní URL v `href`,
-- odkazy v prostém textu jako `[[oe:link:<id>]]`.
+- open pixel jako **komentář** `<!--ML_OPEN_PIXEL-->`,
+- trackovatelné odkazy označené **atributem** `data-ml-link="<id>"` s ponechanou původní URL v `href`,
+- odkazy v prostém textu jako `[[ml:link:<id>]]`.
 
 Tři různé tvary pro tři různá místa. Kdyby se to nesladilo, sender by v `compiled_html` nenašel ani jednu značku, poslal by e-maily **bez trackovacího pixelu a bez přepsaných odkazů**, a nikde by to nespadlo. Report kampaně by ukazoval nulová otevření a nulové prokliky a hledalo by se to dlouho.
 
 **Kdo se hýbe: část 3.** Návrh senderu je věcně lepší a přijímám ho beze zbytku:
 
-1. Sender **neparsuje HTML**, což je správně. Kdyby ho parsoval a znovu serializoval, poškodil by podmíněné komentáře `<!--[if mso]>`, na kterých stojí zobrazení v Outlooku. Můj `data-oe-link` by parsování vyžadoval.
+1. Sender **neparsuje HTML**, což je správně. Kdyby ho parsoval a znovu serializoval, poškodil by podmíněné komentáře `<!--[if mso]>`, na kterých stojí zobrazení v Outlooku. Můj `data-ml-link` by parsování vyžadoval.
 2. Značka na místě `href` řeší problém, kterého jsem se bál: **tlačítko má odkaz dvakrát**, jednou ve VML variantě uvnitř `<!--[if mso]><v:roundrect href="…">` a jednou v tabulkové variantě mimo podmíněný komentář. Prostá záměna řetězce nahradí obě stejnou hodnotou, takže tlačítko povede v Outlooku i jinde na totéž. S atributovým přístupem by sender musel rozumět VML, což je nesmysl.
 3. `TRACKING_DOMAIN` nezůstává ve zkompilované kampani, takže změna adresy instalace nezneplatní zkompilované kampaně.
 
@@ -55,11 +55,11 @@ Tři různé tvary pro tři různá místa. Kdyby se to nesladilo, sender by v `
 
 | Bylo v 03-obsah.md | Bude |
 |---|---|
-| `<!--OE_OPEN_PIXEL-->` | `__OE_OPEN_PIXEL__` |
-| `data-oe-link="<id>"` plus původní URL v `href` | `href="__OE_CLICK_<n>__"` |
-| `[[oe:link:<id>]]` v prostém textu | `__OE_CLICK_<n>__` v prostém textu |
-| invariant I2 hlídá jeden výskyt `<!--OE_OPEN_PIXEL-->` | hlídá jeden výskyt `__OE_OPEN_PIXEL__` |
-| invariant I3 počítá `data-oe-link` | počítá `__OE_CLICK_` |
+| `<!--ML_OPEN_PIXEL-->` | `__ML_OPEN_PIXEL__` |
+| `data-ml-link="<id>"` plus původní URL v `href` | `href="__ML_CLICK_<n>__"` |
+| `[[ml:link:<id>]]` v prostém textu | `__ML_CLICK_<n>__` v prostém textu |
+| invariant I2 hlídá jeden výskyt `<!--ML_OPEN_PIXEL-->` | hlídá jeden výskyt `__ML_OPEN_PIXEL__` |
+| invariant I3 počítá `data-ml-link` | počítá `__ML_CLICK_` |
 
 Přijímám i **P3.2** (při `track_clicks = false` značky negenerovat a nechat původní URL). Je to lepší než varianta, kde sender čte `campaign_links`, a ušetří mu to jednu závislost.
 
@@ -117,7 +117,7 @@ Obojí nemůže platit. Kdybych P3.4 implementoval doslova, **odmítnu odhlašov
 
 | Tvar `href` | Chování fáze 1 | Trackuje se? |
 |---|---|---|
-| Statická URL (`https://shop.cz/akce`) | nahradí se značkou `__OE_CLICK_<n>__`, URL jde do `campaign_links` | ano |
+| Statická URL (`https://shop.cz/akce`) | nahradí se značkou `__ML_CLICK_<n>__`, URL jde do `campaign_links` | ano |
 | Celý `href` je jeden systémový merge tag (`{{ unsubscribe_url }}`, `{{ preferences_url }}`, `{{ webview_url }}`) | ponechá se jako Liquid výraz, značka se negeneruje | ne, a je to správně |
 | Statická URL s Liquidem uvnitř (`https://shop.cz/?utm={{ campaign.name }}`) | **validátor odmítne**, kód `liquid_in_trackable_href` | neaplikovatelné |
 | Liquid v `href` u kontaktního pole (`{{ contact.attr.moje_url }}`) | **validátor odmítne** | neaplikovatelné |
@@ -134,16 +134,16 @@ Třetí řádek tabulky (statická URL s Liquidem uvnitř) je vědomé omezení 
 
 > ```
 > 1. Liquid interpolace (3.6)
-> 2. náhrada značek __OE_CLICK_n__ a __OE_OPEN_PIXEL__
+> 2. náhrada značek __ML_CLICK_n__ a __ML_OPEN_PIXEL__
 > 3. sestavení MIME (3.8)
 > ```
-> Náhrada značek běží **po** interpolaci. Kdyby běžela před ní, mohla by interpolovaná data rozbít token uvnitř URL. Zároveň to znamená, že když si uživatel do textu napíše doslova `__OE_CLICK_3__`, nahradí se mu to. Validátor v části 3 má tenhle literál v uživatelském textu odmítnout.
+> Náhrada značek běží **po** interpolaci. Kdyby běžela před ní, mohla by interpolovaná data rozbít token uvnitř URL. Zároveň to znamená, že když si uživatel do textu napíše doslova `__ML_CLICK_3__`, nahradí se mu to. Validátor v části 3 má tenhle literál v uživatelském textu odmítnout.
 
 Dva problémy.
 
 **a) Zdůvodnění nesedí.** Značka je celá hodnota `href`, tedy statický řetězec ve zkompilované šabloně. Nahradí se plnou trackovací URL, která žádný Liquid neobsahuje. Následná interpolace tedy nemá co rozbít. Obrácené pořadí (náhrada, pak interpolace) je bezpečné.
 
-**b) Validátor části 3 tu díru zavřít nemůže.** P3.3 chce, abych literál `__OE_CLICK_` odmítl v uživatelském textu. To umím a udělám. Jenže riziko není v textu šablony, ale v **datech kontaktu**, na která validátor nevidí. Kontakt, jehož vlastní pole `poznamka` obsahuje řetězec `__OE_CLICK_3__`, dostane po interpolaci do textu funkční trackovací odkaz na cizí cíl. Import CSV od zákazníka je přesně to místo, odkud se takový řetězec vezme.
+**b) Validátor části 3 tu díru zavřít nemůže.** P3.3 chce, abych literál `__ML_CLICK_` odmítl v uživatelském textu. To umím a udělám. Jenže riziko není v textu šablony, ale v **datech kontaktu**, na která validátor nevidí. Kontakt, jehož vlastní pole `poznamka` obsahuje řetězec `__ML_CLICK_3__`, dostane po interpolaci do textu funkční trackovací odkaz na cizí cíl. Import CSV od zákazníka je přesně to místo, odkud se takový řetězec vezme.
 
 Není to zneužitelné ve velkém (útočník by musel umět zapsat hodnotu do kontaktu a znát čísla odkazů), ale je to tichá manipulace se statistikou kampaně a nulová cena za opravu.
 
@@ -157,7 +157,7 @@ Jediné, co je při obráceném pořadí potřeba ohlídat: náhrada nesmí prob
 
 **Kde:** `04b-sender.md`, ř. 834 (`<n>` je `campaign_links.position`) a P5.8 (ř. 1747).
 
-Značka `__OE_CLICK_<n>__` váže dohromady tři části:
+Značka `__ML_CLICK_<n>__` váže dohromady tři části:
 
 - **část 3** čísluje odkazy při kompilaci a vloží značku do HTML,
 - **část 4a** zapisuje řádky do `campaign_links` s `position`,
@@ -175,11 +175,11 @@ Kdyby si číslování určila část 4a nezávisle (například pořadím `INSE
 
 **Kde:** `04b-sender.md` ř. 830 (značky jsou i v `compiled_text`) proti `03-obsah.md`, sekce 3.5 (prostý text se zalamuje na 78 znaků).
 
-Část 3 zalamuje prostý text na 78 znaků **při kompilaci**. Sender pak nahradí `__OE_CLICK_3__` (14 znaků) trackovací URL, která má reálně 80 až 120 znaků. Značka umístěná uprostřed odstavce vyrobí po náhradě řádek dlouhý přes 150 znaků, a hlavně: pokud jsem při zalamování rozdělil řádek **těsně za značkou**, výsledná URL bude končit na konci řádku a mnoho poštovních klientů ji uřízne nebo z ní udělá nefunkční odkaz.
+Část 3 zalamuje prostý text na 78 znaků **při kompilaci**. Sender pak nahradí `__ML_CLICK_3__` (14 znaků) trackovací URL, která má reálně 80 až 120 znaků. Značka umístěná uprostřed odstavce vyrobí po náhradě řádek dlouhý přes 150 znaků, a hlavně: pokud jsem při zalamování rozdělil řádek **těsně za značkou**, výsledná URL bude končit na konci řádku a mnoho poštovních klientů ji uřízne nebo z ní udělá nefunkční odkaz.
 
 **Kdo se hýbe: část 3.** Doplním do pravidel generování prostého textu (3.5):
 
-- řádek obsahující `__OE_CLICK_<n>__` se **nezalamuje**,
+- řádek obsahující `__ML_CLICK_<n>__` se **nezalamuje**,
 - značka stojí vždy **na samostatném řádku**, obklopená prázdnými řádky, ne uprostřed věty,
 - odkaz v prostém textu má tedy vždy tvar `Zjistit více:` na jednom řádku a značka na dalším.
 
@@ -475,7 +475,7 @@ Aby bylo jasné, kdo co opravuje. Všechno níž mění `03-obsah.md`, ne recenz
 
 | Nález | Co změním |
 |---|---|
-| S1 | Značky na `__OE_CLICK_<n>__` a `__OE_OPEN_PIXEL__`, včetně invariantů I2 a I3 a kontraktu v 4.1 |
+| S1 | Značky na `__ML_CLICK_<n>__` a `__ML_OPEN_PIXEL__`, včetně invariantů I2 a I3 a kontraktu v 4.1 |
 | S2 | Validátor dočasně odmítne `blank` a `empty`, dokud se nerozhodne o kontraktu |
 | S3 | Pravidlo o Liquidu v `href`: povolený jen uzavřený seznam tří systémových URL tagů |
 | S5 | Zruším `links[].id`, nechám jen `position`, a určím pravidlo jeho přidělování |

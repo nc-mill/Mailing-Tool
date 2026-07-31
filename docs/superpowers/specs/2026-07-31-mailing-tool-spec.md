@@ -1,6 +1,6 @@
 # Specifikace: open-source e-mailingový a customer engagement nástroj
 
-Pracovní název: **OpenEngage** (převzato z referenční konverzace, k potvrzení)
+Název produktu: **Mlain Mailer** (ROZHODNUTO zadavatelem 2026-07-31)
 Repozitář: https://github.com/nc-mill/Mailing-Tool
 Datum: 2026-07-31
 Zdroje: `docs/Reference-konverzace.txt`, `docs/transcribe.txt`
@@ -170,6 +170,22 @@ Aplikace tedy nezařazuje jednotlivé zprávy do fronty. Materializuje publikum 
 
 Redis nebo Valkey přidáme, až to bude potřeba: rate limiting ingestion, deduplikace eventů, cache segmentů. Do té doby je to zbytečná zátěž pro self-hoster.
 
+### 3.6 Jméno produktu a tři koše. ROZHODNUTO
+
+Produkt se jmenuje **Mlain Mailer**. Rozhodl zadavatel 2026-07-31.
+
+Jméno se objevuje na místech, která vypadají stejně, ale chovají se při přejmenování úplně jinak. Kdyby se ze všech udělala jedna konstanta, jak zněl původní návrh, přejmenování by tiše rozbilo věci, které rozbít nejde. Proto se výskyty dělí do tří košů a **pravidlo je závazné pro všechny části**.
+
+| Koš | Co tam patří | Dnešní tvar | Co se stane při přejmenování |
+|---|---|---|---|
+| **A. Zmrazeno navždy** | Domain separator řetězce: HKDF `salt` a `info`, purposes odvození klíčů, prefix vstupu do MAC | `mailer/v1`, `mailer/v1/tracking-token`, `mailer/v1/suppression-fingerprint`, `mailer/v1/credential-encryption`, `mailer/token/v1`, `mailer/cred/v1` | **Nic. Nesahá se na ně.** Neobsahují jméno produktu právě proto, aby k tomu nikdo neměl důvod |
+| **B. Zmrazí se prvním vydáním** | Předpony API klíčů, parametr identity tokenu, názvy DB rolí, GUC namespace, message tagy pro providera, značky kontraktu 5, hlavičky webhooků, cookie, CSS prefix, jméno CLI, trackovací doména, jmenný prostor balíčků | `ml_live_`, `ml_pub_`, `ml_token`, `mlain_app`, `mlain.workspace_id`, `ml_msg`, `ML_OPEN_PIXEL`, `ML-Signature`, `ml_session`, `ml-`, `mlain`, `track.mlain.invalid`, `@mlain/*` | Volně se mění **do prvního veřejného vydání**, potom už nikdy. Změna po vydání zneplatní vydané API klíče, rozbije odkazy v už odeslaných kampaních a initdb u běžících instalací |
+| **C. Volné** | Texty v rozhraní, dokumentace, název Docker image, marketing | Mlain Mailer | Jedna konstanta, mění se kdykoliv |
+
+**Proč koš A nesmí nést jméno produktu.** Řetězec `mailer/v1/suppression-fingerprint` je součástí receptu, kterým se počítá otisk smazané adresy. Otisky mají podle rozhodnutí zadavatele platit navždy a **nejdou přepočítat**, protože původní adresa je po výmazu pryč. Kdyby někdo při přejmenování produktu poctivě aktualizoval i tenhle řetězec, otisky spočítané před přejmenováním by se přestaly shodovat. Nic by neselhalo, nic by se nezalogovalo, jen by se smazaní lidé vrátili prvním dalším importem. Stejná logika platí pro `mailer/token/v1`: jeho změna rozbije každý pixel a proklik v už odeslaných kampaních.
+
+**Praktický důsledek.** Přejmenování produktu je díky tomuhle rozdělení opravdu levné a hlavně **bezpečné i pro toho, kdo o téhle pasti neví**. Testovací vektory kryptografie se při přejmenování nepřepočítávají vůbec, protože v nich žádné jméno není.
+
 ---
 
 ## 4. Architektura
@@ -264,7 +280,7 @@ Ingestion endpoint musí odpovědět do desítek milisekund. Všechno ostatní j
 Toto je jádro diferenciátoru a stojí za to ho udělat správně hned:
 
 1. Odkaz v mailu vede na `/t/c/<signed-token>`. Token je HMAC podepsaný, obsahuje message_id a link_id, neobsahuje e-mail.
-2. Endpoint zaznamená klik, vygeneruje krátkodobý identifikační token a přesměruje na cíl s parametrem `?oe_token=...`.
+2. Endpoint zaznamená klik, vygeneruje krátkodobý identifikační token a přesměruje na cíl s parametrem `?ml_token=...`.
 3. Web SDK na cílovém webu token převezme, ověří proti ingestion API, spojí `anonymous_id` s `contact_id` a odstraní parametr z URL přes `history.replaceState()`.
 4. Celá předchozí anonymní historie se přiřadí ke kontaktu.
 
@@ -373,7 +389,7 @@ Zásady:
 
 Přímá reakce na problém popsaný v přepisu ("u Sendy je jeden API klíč do všech projektů"):
 
-- API klíč patří **vždy právě jednomu projektu**. Formát `oe_live_<prefix>_<secret>`, v DB jen SHA-256 hash, tajemství se zobrazí jednou.
+- API klíč patří **vždy právě jednomu projektu**. Formát `ml_live_<prefix>_<secret>`, v DB jen SHA-256 hash, tajemství se zobrazí jednou.
 - Klíč má scopes (`contacts:read`, `contacts:write`, `campaigns:send`, `events:write`, ...).
 - Veřejný klíč pro web SDK je oddělený, jen `events:write`, bezpečný pro vložení do stránky.
 - Serverová identifikace kontaktu podepsaným tokenem. Web SDK **nesmí** podvrhnout cizí e-mail.
@@ -538,9 +554,9 @@ Rozdělení odpovědnosti: **sender (Go)** odesílá, **aplikace (TypeScript)** 
 - **Kliknutí**: přepis odkazů na `/t/c/<token>`, 302 na cíl.
 - **Web SDK**: automaticky `page_view`, `session_started`. Ručně přes API:
   ```js
-  OpenEngage.track("product_viewed", { product_id: "SKU-123", price: 2490, currency: "CZK" });
-  OpenEngage.identify("customer_8472", { email: "...", first_name: "Jan" });
-  OpenEngage.consent({ analytics: true, personalization: true, emailMarketing: true });
+  Mlain.track("product_viewed", { product_id: "SKU-123", price: 2490, currency: "CZK" });
+  Mlain.identify("customer_8472", { email: "...", first_name: "Jan" });
+  Mlain.consent({ analytics: true, personalization: true, emailMarketing: true });
   ```
 - **SDK se nespustí bez souhlasu.** Souhlas je vstupní podmínka, ne dodatečný filtr.
 - SDK i ingestion musí být provozovatelné na subdoméně zákazníka (`https://events.shop.cz`), kvůli adblockerům a kvůli tomu, že jde o self-hosted produkt.
@@ -659,7 +675,7 @@ Hotovo, když: postavím šablonu myší, vložím oslovení a testovací mail d
 
 - Open pixel, click redirect, podepsané tokeny
 - Web SDK v základní verzi (page_view, identify, consent)
-- Napojení kliku v mailu na profil (`oe_token`)
+- Napojení kliku v mailu na profil (`ml_token`)
 - Report kampaně, dashboard, SSE pro živý průběh odesílání
 
 Hotovo, když: v reportu vidím doručeno / otevřeno / prokliknuto a v timeline kontaktu je návštěva webu po kliknutí v mailu.
@@ -702,7 +718,7 @@ Automatizace, A/B testy, formuláře, transakční maily, role a oprávnění, e
 ```yaml
 services:
   app:
-    image: ghcr.io/nc-mill/openengage:latest
+    image: ghcr.io/nc-mill/mlain:latest
     environment:
       DATABASE_URL: postgres://...
       APP_URL: https://marketing.example.com
@@ -816,7 +832,7 @@ Všechno permisivní, žádný konflikt. Apache-2.0 je s MIT distribucí slučit
 ### Zbývá rozhodnout
 
 1. ~~**Go, nebo Rust pro sender.**~~ **ROZHODNUTO: Go.** Rozhodl zadavatel. Důvody: kompilace v jednotkách sekund místo minut, výrazně větší základna přispěvatelů pro open-source projekt, a výkonová výhoda Rustu se nemá o co opřít, protože strop určuje kvóta Amazonu, ne jazyk. Odůvodnění v 3.3. Track B2 tím není blokovaný.
-2. **Název produktu.** V dokumentu používám pracovní OpenEngage z referenční konverzace. Repozitář se jmenuje Mailing-Tool. Ovlivňuje jmenný prostor balíčků, název Docker image a globální objekt web SDK, takže je lepší to vědět předem než pak přejmenovávat.
+2. ~~**Název produktu.**~~ **ROZHODNUTO: Mlain Mailer.** Rozhodl zadavatel 2026-07-31. Výskyty jsou rozdělené do tří košů podle toho, co se s nimi při případném dalším přejmenování stane, viz 3.6. Repozitář zůstává Mailing-Tool.
 3. **Délka hackathonu a velikost týmu.** Plán v kapitole 8 počítá s 2 až 3 dny a šesti paralelními tracky. Při menším týmu se řeže rozsah, nikdy ne demo skript.
 
 ### K ověření před hackathonem, ne rozhodnutí

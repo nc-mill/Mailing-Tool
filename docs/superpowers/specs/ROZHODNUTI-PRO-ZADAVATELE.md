@@ -42,13 +42,25 @@ Cena je **změřených zhruba 3 000 řádků** vlastního rozhraní, z toho polo
 
 Zamítnuté alternativy i s důvodem: **Maily** kvůli licenci (autor ji v roce 2025 vědomě změnil pryč od MIT, protože mu produkt přeprodávali, pak napsal, že je to „stoprocentně MIT", ale za patnáct měsíců to do balíčku nedoplnil). **GrapesJS** zůstává jako dokumentovaná náhradní cesta, zamítnut kvůli 400 kB v prohlížeči a nutnosti zamykat obecný stavitel webu.
 
-### 1.4 Název produktu: **není blokátor**
+### 1.4 Název produktu: **Mlain Mailer**
 
-Pracovní název byl OpenEngage a mění se. Nový zatím není určený.
+**Rozhodnuto zadavatelem 2026-07-31.** Repozitář zůstává Mailing-Tool.
 
-**Neblokuje start vývoje, pokud se od prvního commitu píše jako jedna konstanta.** Cena změny je vysoká jen tehdy, když se jméno rozteče do desítek míst jako doslovný text. Když bude na jednom místě, přejmenování znamená změnit konstantu a přepočítat testovací vektory skriptem, což je práce na půl hodiny. Část 1 ty vektory přepočítala dvakrát za jeden den, takže víme, že to jde.
+**Původní doporučení „všude jedna konstanta" se ukázalo jako nebezpečné a bylo nahrazeno.** Zní rozumně a pro většinu výskytů platí, ale u jedné skupiny by způsobilo tichou škodu.
 
-**Zapsat do implementačního plánu jako pravidlo.** Jméno se objevuje v odvození šifrovacích klíčů, v předponě API klíčů, v rezervované doméně pro trackovací odkazy, ve značce pro pixel, v prefixu CSS tříd a v názvu balíčků. Všude jako konstanta, nikde doslovně.
+Jméno bylo doslova uvnitř řetězců, které se používají jako přísada do výpočtu otisků. Otisky smazaných adres mají platit navždy a **nejdou přepočítat**, protože původní adresa je po výmazu pryč, což je celý smysl výmazu. Kdyby někdo při dalším přejmenování poctivě aktualizoval konstantu všude, jak mu původní doporučení ukládalo, každý otisk vzniklý před přejmenováním by se přestal shodovat. Import by proběhl úspěšně, nic by se nezalogovalo, a smazaní lidé by dostali mail.
+
+**Řešení: tři koše místo jedné konstanty.**
+
+| Koš | Co tam patří | Při přejmenování |
+|---|---|---|
+| **A** | Řetězce uvnitř výpočtu klíčů a podpisů | **Nesahá se na ně nikdy.** Byly přepsané na `mailer/...`, tedy tvar, který jméno produktu neobsahuje, aby k tomu nikdo neměl důvod |
+| **B** | Předpona API klíčů, parametr v odkazech, názvy databázových rolí, značky pro providera, hlavičky webhooků | Volně **do prvního vydání**, potom už nikdy. Změna později zneplatní vydané klíče a rozbije odkazy v odeslaných mailech |
+| **C** | Texty v rozhraní, dokumentace, název image, balíčky | Jedna konstanta, kdykoliv |
+
+Podrobně v hlavní specifikaci, kapitola 3.6.
+
+**Co tím získáváte.** Další přejmenování je opravdu ta půlhodina, o které mluvilo původní doporučení, a hlavně je bezpečné i pro toho, kdo o téhle pasti neví. Testovací vektory kryptografie se při něm nepřepočítávají vůbec.
 
 ---
 
@@ -282,7 +294,7 @@ Cena je zanedbatelná: jedna operace otisku trvá řádově mikrosekundu, takže
 | Prohlížeč nesmí exportovat kontakty | **Ano, ponechat** |
 | Návrat na starší verzi jen ze zálohy | **Ano, takto** |
 | Slib „do pěti minut" | **Vynechat sliby úplně.** Neslibovat, že něco běží do pěti minut. |
-| Název produktu | **Mění se.** Nový název zatím není určený, rozhodnutí zůstává blokující. |
+| Název produktu | **Mlain Mailer.** Rozhodnuto, zaneseno, blokující bod padl. Výskyty rozdělené do tří košů, viz 1.4. |
 
 ---
 

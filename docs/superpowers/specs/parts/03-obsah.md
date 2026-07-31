@@ -93,7 +93,7 @@ Marketér, který vyrobí 20 kampaní měsíčně, se dostane pod 200 Kč měsí
 
 | Oblast | Konkrétně |
 |---|---|
-| Blokový model | JSON dokument `OpenEngage Document v1`, jeho schéma, validace, migrace mezi verzemi schématu |
+| Blokový model | JSON dokument `Mlain Mailer Document v1`, jeho schéma, validace, migrace mezi verzemi schématu |
 | Editor | Volba editoru, adaptér mezi naším dokumentem a editorem, rozšiřování o vlastní bloky |
 | Renderer fáze 1 | `Document → { html, text, meta }`, běží v aplikaci jednou na kampaň |
 | Základní šablony | Univerzální šablona plus čtyři odvozené varianty, jejich parametrizace |
@@ -127,7 +127,7 @@ Marketér, který vyrobí 20 kampaní měsíčně, se dostane pod 200 Kč měsí
 | P2 | Chyby `{ error: { type, code, ... } }` | **RFC 9457 Problem Details**, kódy `<doména>_<problém>` bez teček | Přejmenováno 110 kódů, kapitola 4 přepsaná |
 | P3 | `uuidv7()`, `archived_at` pro měkké mazání | **PostgreSQL 18**, `uuidv7()` sedí. Měkké mazání je `deleted_at` a `templates` jsou v seznamu tabulek, které ho mají. Indexy `idx_`/`uq_`/`ck_`, booleany bez `is_`, žádné triggery. | DDL v kapitole 2 přepsané |
 | P4 | Konfigurace bez prefixu, `SCREAMING_SNAKE` | Sedí, navíc každá proměnná přijímá variantu `_FILE` | Doplněno do 4.7 |
-| P5 | HKDF `openengage:v1:<purpose>` | **Jinak.** Salt je `"openengage/v1"`, `info` je celá cesta s lomítky. **AI klíče nemají vlastní purpose**, používají `openengage/v1/credential-encryption` s `context = "ai_provider"` v AAD. | 3.12.2 opraveno, R11 zúžen na jediný chybějící purpose |
+| P5 | HKDF `mailer:v1:<purpose>` | **Jinak.** Salt je `"mailer/v1"`, `info` je celá cesta s lomítky. **AI klíče nemají vlastní purpose**, používají `mailer/v1/credential-encryption` s `context = "ai_provider"` v AAD. | 3.12.2 opraveno, R11 zúžen na jediný chybějící purpose |
 | P6 | Existuje `BlobStore` | Část 1 ji nedeklaruje | Zůstává požadavek R14 |
 | P7 | `/api/v1/` a `/api/internal/` | Sedí, plus `/t/**`, `/e/**`, `/u/**`, `/f/**` | Beze změny |
 | P8 | CI job pro fixtures | Jmenuje se **`contracts-golden`**, fixtury `LQ-*` v `packages/contracts/fixtures/liquid/` | Přejmenováno, 3.7.6 zúženo na doplňky |
@@ -154,7 +154,7 @@ CREATE TABLE templates (
   kind                text NOT NULL DEFAULT 'campaign'
                         CHECK (kind IN ('campaign','transactional','system','snippet')),
   schema_version      int  NOT NULL DEFAULT 1,
-  design              jsonb NOT NULL,            -- pracovní verze, OpenEngage Document
+  design              jsonb NOT NULL,            -- pracovní verze, Mlain Mailer Document
   design_hash         bytea NOT NULL,            -- sha256 kanonického JSON, detekce "nic se nezměnilo"
   current_version_id  uuid REFERENCES template_versions(id) ON DELETE SET NULL,
   thumbnail_asset_id  uuid REFERENCES assets(id) ON DELETE SET NULL,
@@ -428,7 +428,7 @@ V MVP 0 se tabulka založí, ale UI ji nepoužívá. Je tu proto, aby se pak nem
 
 ## 3. Doménová logika
 
-### 3.1 Blokový model: OpenEngage Document v1
+### 3.1 Blokový model: Mlain Mailer Document v1
 
 #### 3.1.1 Proč vlastní formát
 
@@ -477,7 +477,7 @@ Celkový limit: **300 bloků na dokument** a **512 kB serializovaného JSON**. P
 id := "b_" [0-9a-z]{12}
 ```
 
-Generuje se náhodně (72 bitů), je jednoznačné **v rámci dokumentu**, ne globálně. Používá se ke třem věcem: kotva pro editor, stabilní klíč pro komentáře a AI patche, a `data-oe-block` atribut ve vygenerovaném HTML pro náhled (v odesílaném HTML se odstraňuje, viz 3.4.6).
+Generuje se náhodně (72 bitů), je jednoznačné **v rámci dokumentu**, ne globálně. Používá se ke třem věcem: kotva pro editor, stabilní klíč pro komentáře a AI patche, a `data-ml-block` atribut ve vygenerovaném HTML pro náhled (v odesílaném HTML se odstraňuje, viz 3.4.6).
 
 #### 3.1.4 Theme
 
@@ -572,7 +572,7 @@ Meze: `s.v` nejvýše 5 000 znaků, hloubka `a` nesmí obsahovat další `a`, `v
 
 | Tvar `href` | Chování kompilace | Trackuje se? |
 |---|---|---|
-| Statická URL (`https://shop.cz/akce`) | nahradí se značkou `https://track.openengage.invalid/c/<link_id>`, URL jde do `CompileMeta.links` | ano |
+| Statická URL (`https://shop.cz/akce`) | nahradí se značkou `https://track.mlain.invalid/c/<link_id>`, URL jde do `CompileMeta.links` | ano |
 | Celý `href` je **jeden systémový URL tag**: `{{ unsubscribe_url }}`, `{{ preferences_url }}`, `{{ webview_url }}` | ponechá se jako Liquid výraz, značka se negeneruje | ne, a je to správně |
 | Statická URL s Liquidem uvnitř (`https://shop.cz/?utm={{ campaign.name }}`) | **chyba `liquid_in_trackable_href`** | neaplikovatelné |
 | Kontaktní pole jako celý `href` (`{{ contact.attr.moje_url }}`) | **chyba `liquid_in_trackable_href`** | neaplikovatelné |
@@ -586,8 +586,8 @@ Strojově čitelné schéma je zdrojem pravdy pro tři konzumenty: validace na A
 ```jsonc
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openengage.dev/schema/document/v1.json",
-  "title": "OpenEngage Document v1",
+  "$id": "https://mlain.dev/schema/document/v1.json",
+  "title": "Mlain Mailer Document v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "meta", "theme", "blocks"],
@@ -1111,15 +1111,15 @@ Strategie: **fluidní tabulka plus media query**, ne "mobile first".
 
 ```css
 @media only screen and (max-width: 600px) {
-  .oe-col   { display: block !important; width: 100% !important; max-width: 100% !important; }
-  .oe-hide-m{ display: none !important; }
-  .oe-pad   { padding-left: 16px !important; padding-right: 16px !important; }
-  .oe-h1    { font-size: 26px !important; line-height: 1.2 !important; }
-  .oe-btn   { width: 100% !important; }
+  .ml-col   { display: block !important; width: 100% !important; max-width: 100% !important; }
+  .ml-hide-m{ display: none !important; }
+  .ml-pad   { padding-left: 16px !important; padding-right: 16px !important; }
+  .ml-h1    { font-size: 26px !important; line-height: 1.2 !important; }
+  .ml-btn   { width: 100% !important; }
 }
 ```
 
-4. **Sloupce se pro mobilní skládání renderují jako `<td>` s `class="oe-col"` uvnitř tabulky, u které je v podmíněném komentáři pro Outlook zachovaná tabulková struktura.** Konkrétně vzor "ghost tables": mimo Outlook je jedna tabulka se dvěma `<td class="oe-col">`, uvnitř `<!--[if mso]>` je tabulka s pevnými šířkami. Outlook media query ignoruje, ale ghost table mu dá správné šířky bez ohledu na to.
+4. **Sloupce se pro mobilní skládání renderují jako `<td>` s `class="ml-col"` uvnitř tabulky, u které je v podmíněném komentáři pro Outlook zachovaná tabulková struktura.** Konkrétně vzor "ghost tables": mimo Outlook je jedna tabulka se dvěma `<td class="ml-col">`, uvnitř `<!--[if mso]>` je tabulka s pevnými šířkami. Outlook media query ignoruje, ale ghost table mu dá správné šířky bez ohledu na to.
 5. `hideOnMobile` v Outlooku nefunguje a UI to říká. V Gmailu na Androidu funguje, v Gmailu na webu také.
 
 Media query nepodporuje Gmail na webu u tříd, které nejsou v `<style>` v `<head>`. Proto jsou **všechny třídy v `<head>`**, nikdy v `<body>`.
@@ -1142,26 +1142,26 @@ Emitované značky:
 <style>
   :root { color-scheme: light dark; supported-color-schemes: light dark; }
   @media (prefers-color-scheme: dark) {
-    .oe-canvas  { background-color: #0b0f19 !important; }
-    .oe-content { background-color: #111827 !important; }
-    .oe-text    { color: #e5e7eb !important; }
-    .oe-muted   { color: #9ca3af !important; }
-    .oe-link    { color: #93c5fd !important; }
-    .oe-logo-light { display: none !important; }
-    .oe-logo-dark  { display: block !important; max-height: none !important; overflow: visible !important; }
+    .ml-canvas  { background-color: #0b0f19 !important; }
+    .ml-content { background-color: #111827 !important; }
+    .ml-text    { color: #e5e7eb !important; }
+    .ml-muted   { color: #9ca3af !important; }
+    .ml-link    { color: #93c5fd !important; }
+    .ml-logo-light { display: none !important; }
+    .ml-logo-dark  { display: block !important; max-height: none !important; overflow: visible !important; }
   }
   /* Outlook.com injektuje data-ogsc (Outlook Group Style Color)
      a data-ogsb (Background) při renderu v tmavém režimu. */
-  [data-ogsc] .oe-text    { color: #e5e7eb !important; }
-  [data-ogsb] .oe-content { background-color: #111827 !important; }
+  [data-ogsc] .ml-text    { color: #e5e7eb !important; }
+  [data-ogsb] .ml-content { background-color: #111827 !important; }
 </style>
 ```
 
 Přepínání variant loga (skupina A) se dělá vzorem "skrytý blok s nulovou výškou":
 
 ```html
-<div class="oe-logo-dark" style="display:none;max-height:0;overflow:hidden;mso-hide:all">…tmavá varianta…</div>
-<div class="oe-logo-light">…světlá varianta…</div>
+<div class="ml-logo-dark" style="display:none;max-height:0;overflow:hidden;mso-hide:all">…tmavá varianta…</div>
+<div class="ml-logo-light">…světlá varianta…</div>
 ```
 
 U Outlook.com (skupina B) varianty přepnout jde přes `[data-ogsc]`. U Gmailu ne, protože ten neuplatní ani media query, ani atributové selektory; tam funguje pravidlo z 3.14.6, tedy světlá podložka pod logem.
@@ -1188,7 +1188,7 @@ body{margin:0;padding:0;width:100%!important;-webkit-text-size-adjust:100%;-ms-t
 table{border-collapse:collapse;mso-table-lspace:0;mso-table-rspace:0}
 img{border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic}
 a{text-decoration:underline}
-.oe-body a{color:inherit}          /* Apple Mail sám obarvuje odkazy */
+.ml-body a{color:inherit}          /* Apple Mail sám obarvuje odkazy */
 u+#body a{color:inherit;text-decoration:none}  /* Gmail Android obarvuje adresy a telefony */
 ```
 
@@ -1199,9 +1199,9 @@ Renderer si po vygenerování HTML sám zkontroluje pravidla a při porušení *
 | # | Invariant | Kód |
 |---|---|---|
 | I1 | Každý výskyt `{{ ... }}` a `{% ... %}` ve výstupu se znovu naparsuje validátorem subsetu (3.7). | `render_liquid_corrupted` |
-| I2 | Výstup obsahuje přesně jeden `<!--OE_OPEN_PIXEL-->` při `trackOpens = true` a žádný při `false`. | `render_pixel_slot_invalid` |
-| I3 | Počet výskytů `track.openengage.invalid/c/` v `html` plus `text` se rovná `clickMarkerCount`, každé nalezené UUID je v `CompileMeta.links` a `position` tvoří souvislou řadu od 1. | `render_link_map_mismatch` |
-| I4 | Výstup neobsahuje `data-oe-block` ani `data-oe-link` (atributy pro editor se v režimu `purpose: "send"` odstraňují). | `render_editor_attrs_leaked` |
+| I2 | Výstup obsahuje přesně jeden `<!--ML_OPEN_PIXEL-->` při `trackOpens = true` a žádný při `false`. | `render_pixel_slot_invalid` |
+| I3 | Počet výskytů `track.mlain.invalid/c/` v `html` plus `text` se rovná `clickMarkerCount`, každé nalezené UUID je v `CompileMeta.links` a `position` tvoří souvislou řadu od 1. | `render_link_map_mismatch` |
+| I4 | Výstup neobsahuje `data-ml-block` ani `data-ml-link` (atributy pro editor se v režimu `purpose: "send"` odstraňují). | `render_editor_attrs_leaked` |
 | I5 | Výstup je platné HTML podle rychlého parseru (`linkedom`) a struktura tabulek je vyvážená. | `render_invalid_html` |
 | I6 | Výstup neobsahuje `<script`, `javascript:`, `onerror=`, `onload=`. | `render_forbidden_content` |
 | I7 | Každý `<img>` má `src`, `width`, `height` a `alt` (i prázdný). | `render_image_incomplete` |
@@ -1234,7 +1234,7 @@ Pravidla, blok po bloku:
 | `text`, `ul` | Každá položka `- ` plus text, odsazení pokračovacích řádků o 2 mezery |
 | `text`, `ol` | Každá položka `N. ` plus text, odsazení o 3 mezery |
 | Inline tučné a kurzíva | Značky se **zahazují**. `*text*` vypadá v prostém textu jako chyba. |
-| Inline odkaz | `text` na jednom řádku, značka `https://track.openengage.invalid/c/<link_id>` na dalším. Značka nikdy nestojí uprostřed věty. |
+| Inline odkaz | `text` na jednom řádku, značka `https://track.mlain.invalid/c/<link_id>` na dalším. Značka nikdy nestojí uprostřed věty. |
 | `button` | Prázdný řádek, `>> <popisek>:`, nový řádek se značkou, prázdný řádek |
 | `image` s `alt` | `[<alt>]` na vlastním řádku |
 | `image` s `decorative: true` | Nic |
@@ -1252,7 +1252,7 @@ Další pravidla:
 - Nikdy nejsou tři a více prázdných řádků za sebou.
 - Text končí jedním `\n`.
 - Kódování UTF-8, konce řádků `\r\n` (RFC 5322 pro `text/plain` část).
-- Značku `https://track.openengage.invalid/c/<link_id>` nahradí sender trackovací URL. Při `trackClicks = false` ji kompilace negeneruje a rovnou vypíše cílovou URL. V náhledu se nahrazuje skutečnou cílovou URL, aby uživatel viděl, co dostane.
+- Značku `https://track.mlain.invalid/c/<link_id>` nahradí sender trackovací URL. Při `trackClicks = false` ji kompilace negeneruje a rovnou vypíše cílovou URL. V náhledu se nahrazuje skutečnou cílovou URL, aby uživatel viděl, co dostane.
 - **Prostý text musí obsahovat odkaz na odhlášení**, i když ho HTML má jen v patičce. Kontroluje to invariant a předodesílací kontrola.
 
 ### 3.6 Matice poštovních klientů a jak se testuje bez placených služeb
@@ -1295,7 +1295,7 @@ Samsung Mail, ProtonMail, Fastmail, AOL, korporátní klienti (Lotus Notes, Grou
 | Gmail, Android | Obarvuje adresy, telefonní čísla a data na modro | `u+#body a { color: inherit; text-decoration: none }` |
 | Gmail, aplikace | Ve tmavém režimu invertuje barvy sama, media query neuplatní | Skupina B v 3.4.4 |
 | Outlook.com | Přepisuje selektory v `<style>` a přidává vlastní pravidla | Vše podstatné inline |
-| Apple Mail | Sám obarvuje odkazy, ve tmavém režimu uplatní `prefers-color-scheme` | `.oe-body a { color: inherit }` a media query |
+| Apple Mail | Sám obarvuje odkazy, ve tmavém režimu uplatní `prefers-color-scheme` | `.ml-body a { color: inherit }` a media query |
 | Apple Mail | Mail Privacy Protection přednačítá obrázky | Netýká se rendereru, řeší část 5 |
 | Seznam Email | **Dokumentace existuje** (`o-seznam.cz/napoveda`, Podporované formátování zpráv). `<style>` v `<head>` je plně podporovaný, server styly přepisuje a scopuje. Povolené: `head, body, div, p, h1-h6, table, tr, td, img, a, span`. Zahazuje: `iframe, embed, object, video, audio, svg, script`, `form` přepisuje na `div`. Zakázané CSS: vendor prefixy, `cursor`, `position`, a **`url()`**, u kterého se zahodí celé pravidlo. | `url()` je pro nás zásadní: `background-image` v CSS na Seznamu **nefunguje vůbec**, ani mimo Outlook. Pozadí sekce obrázkem proto renderer emituje výhradně přes atribut `background` na `<td>` plus VML pro Outlook, nikdy jen přes CSS. Media query, `float`, `max-width` a chování v tmavém režimu dokumentace neuvádí, ty ověřujeme ručně. |
 | Centrum.cz, Volny.cz | Autoritativní zdroj se nepodařilo najít | Úroveň 2, kontrola podle možností |
@@ -1582,7 +1582,7 @@ Kořeny, které smí šablona použít, **vlastní kontrakt v části 1, 4.10.2*
 | `workspace.sender_address` | Generátor základní šablony vloží adresu jako **konstantní text při kompilaci** | Doplnit do kontraktu, viz rozpor 11.4 |
 | `campaign.preheader` | Vyhodnotí se **při kompilaci** z pole kampaně | Nic, kompilace běží jednou na kampaň a hodnotu zná |
 | `current_year` | Vyhodnotí se **při kompilaci** | Nic |
-| Trackovací pixel | Není merge tag. Renderer emituje komentář `<!--OE_OPEN_PIXEL-->`, sender ho nahradí (4.1) | Nic |
+| Trackovací pixel | Není merge tag. Renderer emituje komentář `<!--ML_OPEN_PIXEL-->`, sender ho nahradí (4.1) | Nic |
 
 Vyhodnocení při kompilaci znamená, že tyhle hodnoty v `compiled_html` nejsou jako `{{ ... }}`, ale už jako text. Sender o nich neví a kontrakt se kvůli nim nemusí rozšiřovat. Jediná cena je u `current_year`: kampaň naplánovaná na 1. ledna a zkompilovaná 31. prosince by měla loňský rok. Protože ale kompilace běží až v okamžiku spuštění odeslání (část 4), je to nanejvýš pár minut nepřesnosti.
 
@@ -1857,7 +1857,7 @@ Důsledky, které je potřeba znát:
 
 #### 3.10.4 Import a export šablony
 
-Export: JSON soubor `{ "format": "openengage-template", "version": 1, "document": Document, "assets": [...] }`, kde `assets` obsahuje metadata a **base64 obsah** obrázků do celkových 20 MB (nad to se exportují jen URL a import je označí jako chybějící).
+Export: JSON soubor `{ "format": "mlain-template", "version": 1, "document": Document, "assets": [...] }`, kde `assets` obsahuje metadata a **base64 obsah** obrázků do celkových 20 MB (nad to se exportují jen URL a import je označí jako chybějící).
 
 Import: validace schématu, migrace na aktuální `schemaVersion`, nahrání assetů do cílového projektu (deduplikace přes SHA-256), přemapování `assetId`. Chybějící asset se nahradí zástupným obrázkem a import skončí jako `completed_with_warnings`.
 
@@ -1942,7 +1942,7 @@ Platí pravidlo části 1: **odpověď je 4xx jen tehdy, když je mezi nálezy a
 
 ```json
 {
-  "type": "https://docs.openengage.dev/errors/precheck_failed",
+  "type": "https://docs.mlain.dev/errors/precheck_failed",
   "title": "Pre-send check failed",
   "status": 409,
   "detail": "Kampaň nelze odeslat, dokud nejsou opravené 2 blokující nálezy.",
@@ -2005,7 +2005,7 @@ Odpovědi na kontrolní otázky 10, 11 a 12.
 
 Klíč se zadá v nastavení projektu a zašifruje se **stejnou obálkou jako ostatní credentials** (část 1, 4.10.4). Volá se `packages/contracts/src/crypto.ts`, vlastní šifrování nepíšeme.
 
-Konkrétně, ať se to neplete: **AI klíče nemají vlastní odvozený klíč.** Používá se `K = HKDF(SHA-256, ikm = MASTER, salt = "openengage/v1", info = "openengage/v1/credential-encryption", L = 32)`, tedy tentýž klíč jako u SES a SMTP přístupů. Odlišuje je až **kontext v AAD**: `context = "ai_provider"` plus `workspace_id`. Důsledek je přesně ten, o který jde: zašifrovaný AI klíč nejde přesunout do sloupce s SES přístupy ani do jiného projektu, protože dešifrování s jiným AAD selže.
+Konkrétně, ať se to neplete: **AI klíče nemají vlastní odvozený klíč.** Používá se `K = HKDF(SHA-256, ikm = MASTER, salt = "mailer/v1", info = "mailer/v1/credential-encryption", L = 32)`, tedy tentýž klíč jako u SES a SMTP přístupů. Odlišuje je až **kontext v AAD**: `context = "ai_provider"` plus `workspace_id`. Důsledek je přesně ten, o který jde: zašifrovaný AI klíč nejde přesunout do sloupce s SES přístupy ani do jiného projektu, protože dešifrování s jiným AAD selže.
 
 - Klíč se **nikdy nevrací** přes API. `GET` vrací `key_hint` (poslední 4 znaky) a `provider`.
 - `key_fingerprint` je `sha256(apiKey)` zkrácený na 16 hex znaků. Slouží jen k tomu, aby UI poznalo "tenhle klíč už tu máte pod jiným jménem".
@@ -2253,7 +2253,7 @@ Uživatel zadá adresu svého webu, nástroj z něj vytáhne logo, barvy, písmo
 
 #### 3.13.2 Model hrozby
 
-Funkce znamená: **server, na kterém běží OpenEngage, provede HTTP požadavek na adresu, kterou zadá uživatel, a výsledek uživateli částečně ukáže.** To je učebnicový SSRF (Server-Side Request Forgery) a je potřeba s ním tak zacházet, i když je funkce dostupná jen přihlášenému členovi projektu.
+Funkce znamená: **server, na kterém běží Mlain Mailer, provede HTTP požadavek na adresu, kterou zadá uživatel, a výsledek uživateli částečně ukáže.** To je učebnicový SSRF (Server-Side Request Forgery) a je potřeba s ním tak zacházet, i když je funkce dostupná jen přihlášenému členovi projektu.
 
 | Útočník | Co chce | Proč to jde |
 |---|---|---|
@@ -2421,7 +2421,7 @@ Respektujeme ho ve výchozím stavu. Postup:
 
 1. Před stažením stránky se stáhne `<scheme>://<host>[:port]/robots.txt` stejným `safeFetch` (limit 100 KiB, timeout 3 s).
 2. Parsuje se knihovnou `robots-parser` (3.0.1, MIT, 4 miliony stažení týdně, poslední aktualizace únor 2023).
-3. User-agent je `OpenEngageBrandBot/1.0 (+<APP_URL>/about/bot)`. Kontroluje se pravidlo pro tento agent a pak pro `*`.
+3. User-agent je `MlainMailerBrandBot/1.0 (+<APP_URL>/about/bot)`. Kontroluje se pravidlo pro tento agent a pak pro `*`.
 4. Když je cílová cesta zakázaná, extrakce skončí jako `blocked` s kódem `brand_robots_disallowed` a uživatel dostane hlášku, která nabízí ruční zadání barev.
 5. Když `robots.txt` vrátí 4xx, neexistuje nebo se nepodaří stáhnout, považuje se za povolující. To je standardní chování.
 6. Když vrátí 5xx, extrakce se **odmítne** (`brand_robots_unavailable`), protože 5xx u robots.txt znamená "nevím" a slušný crawler v takové situati nepokračuje.
@@ -2719,7 +2719,7 @@ Cross-Origin-Resource-Policy: cross-origin
 
 **Hotlinking se vědomě neřeší.** V e-mailu je hotlinking jediný možný způsob doručení obrázku, takže kontrola `Referer` by rozbila produkt. Zneužití instalace jako cizí obrázkové CDN se brání kvótou na projekt (`ASSET_QUOTA_MB`) a volitelným rate limitem na IP (`ASSET_RATE_LIMIT_PER_IP`, výchozí vypnuto, protože Gmail proxy chodí z omezené sady adres a limit by ji zasáhl).
 
-Pro citlivá nasazení existuje `ASSET_REQUIRE_SIGNED_URL = true`, které přidá HMAC podpis bez expirace (klíč z purpose `openengage/v1/asset-url`, který si od části 1 vyžaduju v R11, a který zatím čeká na odsouhlasení orchestrátorem). Chrání proti enumeraci, ne proti sdílení odkazu.
+Pro citlivá nasazení existuje `ASSET_REQUIRE_SIGNED_URL = true`, které přidá HMAC podpis bez expirace (klíč z purpose `mailer/v1/asset-url`, který si od části 1 vyžaduju v R11, a který zatím čeká na odsouhlasení orchestrátorem). Chrání proti enumeraci, ne proti sdílení odkazu.
 
 **Co musí být v UI u toho přepínače napsané:** podepsaná adresa je **trvale platný odkaz na soubor**. Kdo ji jednou dostane, má ji navždy, protože ji nejde zneplatnit jinak než rotací `SECRET_KEY`, což zneplatní všechny naráz. Pro obrázky v newsletteru je to v pořádku a je to záměr, protože e-mail leží ve schránce roky. Pro cokoliv citlivého to v pořádku není a obrázková knihovna e-mailingu není místo pro citlivé soubory.
 
@@ -2775,7 +2775,7 @@ Chybová odpověď části 3 tedy vypadá takto:
 
 ```json
 {
-  "type": "https://docs.openengage.dev/errors/template_document_invalid",
+  "type": "https://docs.mlain.dev/errors/template_document_invalid",
   "title": "Template document invalid",
   "status": 422,
   "detail": "Blok b_7f3a9c2e1d04 má dva sloupce vnořené do sloupce.",
@@ -2844,8 +2844,8 @@ Dvě značky, obě nahrazované **prostou záměnou řetězce**. Sender nikdy ne
 
 | Značka | Přesný tvar | Kde | Čím ji sender nahradí |
 |---|---|---|---|
-| Odkaz | `https://track.openengage.invalid/c/<link_id>` | celá hodnota `href` v HTML, samostatný řádek v prostém textu | `<TRACKING_DOMAIN>/t/c/<click token>` |
-| Open pixel | `<!--OE_OPEN_PIXEL-->` | těsně před `</body>`, jen v HTML, **nikdy uvnitř podmíněného komentáře pro Outlook** | `<img src="<TRACKING_DOMAIN>/t/o/<open token>" width="1" height="1" alt="" style="display:none;max-height:0;overflow:hidden" />`, nebo prázdný řetězec |
+| Odkaz | `https://track.mlain.invalid/c/<link_id>` | celá hodnota `href` v HTML, samostatný řádek v prostém textu | `<TRACKING_DOMAIN>/t/c/<click token>` |
+| Open pixel | `<!--ML_OPEN_PIXEL-->` | těsně před `</body>`, jen v HTML, **nikdy uvnitř podmíněného komentáře pro Outlook** | `<img src="<TRACKING_DOMAIN>/t/o/<open token>" width="1" height="1" alt="" style="display:none;max-height:0;overflow:hidden" />`, nebo prázdný řetězec |
 
 `<link_id>` je UUID ve standardním tvaru s pomlčkami (36 znaků), tedy přesně to, co kontrakt 3 (část 1, 4.10.3) vyžaduje v payloadu click tokenu jako `link_id`(16 bajtů).
 
@@ -2866,14 +2866,14 @@ Odvození je **deterministické**: stejná kampaň a stejné pořadí odkazu daj
 
 **Odchylka od konvence, kterou musí odsouhlasit část 1:** `campaign_links.id` tím není UUIDv7, ale UUIDv5. Konvence v 2.1 části 1 předepisuje v7 kvůli fragmentaci B-tree při zápisu. U `campaign_links` je to bez dopadu, protože tabulka má nejvýš 999 řádků na kampaň a zapisuje se jednorázově. Kdyby část 1 na v7 trvala, náhradní řešení je minting UUIDv7 při kompilaci s **vstřikovaným generátorem** v testovacím prostředí, aby fixtures zůstaly deterministické; ztratí se tím stabilita `link_id` mezi rekompilacemi, což je horší, ale ne blokující.
 
-**Proč je značka odkazu absolutní URL a ne holý token.** Splňuje to naráz čtyři věci, které holý `__OE_CLICK_3__` nesplní:
+**Proč je značka odkazu absolutní URL a ne holý token.** Splňuje to naráz čtyři věci, které holý `__ML_CLICK_3__` nesplní:
 
 1. **Je to strukturálně platná absolutní URL.** HTML validátor, náhled v editoru i invariant I5 ji přijmou. Holý token je sice platná relativní reference podle RFC 3986, ale bez base URL nedává smysl a některé sanitizéry ho zahodí.
 2. **Doména `.invalid` je rezervovaná RFC 2606 a nikdy se nerozpustí.** Kdyby záměna z jakéhokoliv důvodu neproběhla, odkaz je **inertní**, ne funkční odkaz na cizí server. To je zásadní bezpečnostní vlastnost: selhání nesmí poslat provoz nikam, kam nemá.
-3. **Je čitelná pro člověka.** Když se objeví v logu nebo v testovacím mailu, je z ní na první pohled jasné, co to je a čí to je. `__OE_CLICK_3__` v prostém textu vypadá jako poškozený text.
+3. **Je čitelná pro člověka.** Když se objeví v logu nebo v testovacím mailu, je z ní na první pohled jasné, co to je a čí to je. `__ML_CLICK_3__` v prostém textu vypadá jako poškozený text.
 4. **Řeší VML tlačítko.** Blok `button` emituje stejnou URL dvakrát, jednou v `<v:roundrect href="…">` uvnitř `<!--[if mso]>` a jednou v tabulkové variantě mimo něj. Jedna záměna nahradí obě shodně, protože je to týž řetězec.
 
-**Proč je pixel naopak HTML komentář a ne token.** Pixel nemá VML dvojče a nemá protějšek v prostém textu, takže jediné kritérium je **chování při selhání záměny**. Neproběhlá záměna komentáře je v e-mailu neviditelná. Neproběhlá záměna tokenu `__OE_OPEN_PIXEL__` vytiskne příjemci do těla zprávy podtržítkový nesmysl. Volím tedy tvar, jehož selhání je tiché, protože u pixelu na jeho přítomnosti nezáleží tolik jako na tom, aby zpráva vypadala dobře.
+**Proč je pixel naopak HTML komentář a ne token.** Pixel nemá VML dvojče a nemá protějšek v prostém textu, takže jediné kritérium je **chování při selhání záměny**. Neproběhlá záměna komentáře je v e-mailu neviditelná. Neproběhlá záměna tokenu `__ML_OPEN_PIXEL__` vytiskne příjemci do těla zprávy podtržítkový nesmysl. Volím tedy tvar, jehož selhání je tiché, protože u pixelu na jeho přítomnosti nezáleží tolik jako na tom, aby zpráva vypadala dobře.
 
 #### 4.1.3 Pořadí operací u senderu
 
@@ -2885,7 +2885,7 @@ Odvození je **deterministické**: stejná kampaň a stejné pořadí odkazu daj
 
 **Náhrada běží před interpolací, ne po ní.** Je to změna oproti původnímu návrhu v `04b-sender.md`, sekci 3.7.1, potvrzená jeho autorem. Důvod:
 
-Kdyby náhrada běžela po interpolaci, **hodnota z dat kontaktu by mohla značku vyrobit**. Kontakt, jehož vlastní pole obsahuje řetězec `https://track.openengage.invalid/c/<uuid>`, by dostal do textu funkční trackovací odkaz. Validátor části 3 to zavřít nemůže, protože na data kontaktu nevidí, a import CSV od zákazníka je přesně to místo, odkud takový řetězec přijde. Obrácené pořadí tu díru zavírá z definice: v okamžiku interpolace už žádné značky neexistují.
+Kdyby náhrada běžela po interpolaci, **hodnota z dat kontaktu by mohla značku vyrobit**. Kontakt, jehož vlastní pole obsahuje řetězec `https://track.mlain.invalid/c/<uuid>`, by dostal do textu funkční trackovací odkaz. Validátor části 3 to zavřít nemůže, protože na data kontaktu nevidí, a import CSV od zákazníka je přesně to místo, odkud takový řetězec přijde. Obrácené pořadí tu díru zavírá z definice: v okamžiku interpolace už žádné značky neexistují.
 
 **Co to stojí, a je to potřeba říct nahlas.** Původně jsem tvrdil, že náhrada i interpolace běží obojí per zprávu, takže je pořadí mezi nimi zadarmo. **To byl omyl** a autor části 4b ho našel: interpolace opravdu běží per zprávu, ale **parsování šablony ne**. Sender parsuje šablonu jednou na kampaň a per příjemce jen vykonává, protože parsování je řádově dražší. Když se značky nahrazují ve zdrojovém řetězci před parsováním, liší se zdroj u každého příjemce a z jednoho parsování na kampaň se stává jedno parsování na zprávu.
 
@@ -2896,7 +2896,7 @@ Odhad autora části 4b: parsování stokilobajtové šablony 0,2 až 1 ms, při
 | # | Cesta | Vrací parsování jednou na kampaň? | Cena |
 |---|---|---|---|
 | A (preferovaná) | Pořadí zpět na `interpolace → náhrada`, ale sender po interpolaci **spočítá výskyty značky a porovná je s `clickMarkerCount`**. Interpolace značky jen přidává, nikdy neubírá, takže **vyšší** počet znamená injektáž. Při `count > clickMarkerCount` zpráva na `failed` s `marker_injection_detected`. | ano | Jeden průchod navíc na zprávu, O(n). Bezpečnost zůstává, jen se z ní stává běhová kontrola místo strukturální záruky. |
-| B | Kompilace emituje místo statické značky Liquid proměnnou `href="{{ oe_link_<link_id> }}"` a sender ji dosazuje přes bindings. Injekce z dat kontaktu je nemožná, protože kořenové proměnné vlastníme my a data kontaktu žijí pod `contact.*`. | ano | **Ztrácí se inertní selhání.** Chybějící proměnná dá podle kontraktu 4.10.2 prázdný řetězec, tedy `href=""`, ne inertní odkaz. Proto je to druhá volba, ne první. |
+| B | Kompilace emituje místo statické značky Liquid proměnnou `href="{{ ml_link_<link_id> }}"` a sender ji dosazuje přes bindings. Injekce z dat kontaktu je nemožná, protože kořenové proměnné vlastníme my a data kontaktu žijí pod `contact.*`. | ano | **Ztrácí se inertní selhání.** Chybějící proměnná dá podle kontraktu 4.10.2 prázdný řetězec, tedy `href=""`, ne inertní odkaz. Proto je to druhá volba, ne první. |
 
 Cesta A je lepší než B právě proto, že zachovává vlastnost, kvůli které je značka absolutní URL na rezervované doméně: **selhání nesmí poslat provoz nikam, kam nemá.**
 
@@ -2915,7 +2915,7 @@ S `!=` by kampaň s podmíněným odkazem, například blokem jen pro VIP kontak
 | # | Nad čím počítá | Jak často | Porovnání |
 |---|---|---|---|
 | 1 | **Zdroj šablony** (`compiled_html` a `compiled_text`), pro celou kampaň statický | jednou při načtení kampaně do cache | `==`, jinak `contract_mismatch` a pauza kampaně (4.1.8) |
-| 2 | **Výstup po náhradě**, hledá zbylý `openengage.invalid` | per zpráva | přítomnost, jinak `marker_not_replaced` |
+| 2 | **Výstup po náhradě**, hledá zbylý `mlain.invalid` | per zpráva | přítomnost, jinak `marker_not_replaced` |
 | 3 | **Vyrenderovaný výstup**, jen u cesty A | per zpráva | `>`, jinak `marker_injection_detected` |
 
 Kontrola 1 a 3 vypadají podobně a nejsou to totéž. Kdyby se slily, dopadne to špatně v obou směrech: buď se kampaň s podmíněným odkazem zastaví hned na startu, nebo injektáž projde.
@@ -2951,16 +2951,16 @@ Editor to říká přímo u bloku: **"Odkazy v tomto bloku se nesledují."** Kdo
 
 Tři vrstvy, protože jedna nestačí.
 
-1. **Validátor** odmítne v jakémkoliv uživatelském textu, v `href` i uvnitř bloku `html` výskyt řetězců `openengage.invalid` a `OE_OPEN_PIXEL`, bez ohledu na velikost písmen. Kód `content_reserved_marker`, hláška cs: "Tento text je vyhrazený pro vnitřní použití a nejde vložit do šablony." / en: "This text is reserved for internal use and cannot be inserted into a template."
+1. **Validátor** odmítne v jakémkoliv uživatelském textu, v `href` i uvnitř bloku `html` výskyt řetězců `mlain.invalid` a `ML_OPEN_PIXEL`, bez ohledu na velikost písmen. Kód `content_reserved_marker`, hláška cs: "Tento text je vyhrazený pro vnitřní použití a nejde vložit do šablony." / en: "This text is reserved for internal use and cannot be inserted into a template."
 2. **Pořadí operací** (4.1.3) znemožňuje vyrobit značku z dat kontaktu.
-3. **Invariant I3** po renderu ověří, že počet výskytů `track.openengage.invalid/c/` v `html` plus `text` se rovná `clickMarkerCount` a že každé nalezené UUID je v `CompileMeta.links`. Nesouhlas je chyba kompilace, ne varování.
+3. **Invariant I3** po renderu ověří, že počet výskytů `track.mlain.invalid/c/` v `html` plus `text` se rovná `clickMarkerCount` a že každé nalezené UUID je v `CompileMeta.links`. Nesouhlas je chyba kompilace, ne varování.
 
 Na straně senderu jsou k tomu dvě kontroly, obě potvrzené autorem části 4b:
 
-- **Per zpráva:** po náhradě ověřit, že ve výstupu nezůstal řetězec `openengage.invalid`. Když zůstal, zpráva na `failed` s kódem `marker_not_replaced`, bez opakování. Jeden `strings.Contains`.
+- **Per zpráva:** po náhradě ověřit, že ve výstupu nezůstal řetězec `mlain.invalid`. Když zůstal, zpráva na `failed` s kódem `marker_not_replaced`, bez opakování. Jeden `strings.Contains`.
 - **Per kampaň, při načtení do cache:** počet značek proti `clickMarkerCount` (viz 4.1.8).
 
-Implementační poznámka, aby to někdo nenapsal naivně: náhrada **není** `strings.ReplaceAll` v cyklu přes odkazy, to by při dvaceti odkazech znamenalo dvacet průchodů stokilobajtovým dokumentem. Správně je jeden průchod přes pevný prefix `https://track.openengage.invalid/c/`, přečtení následujících 36 znaků jako UUID a skládání do bufferu. Lineární, a počet náhrad z toho padá jako vedlejší produkt.
+Implementační poznámka, aby to někdo nenapsal naivně: náhrada **není** `strings.ReplaceAll` v cyklu přes odkazy, to by při dvaceti odkazech znamenalo dvacet průchodů stokilobajtovým dokumentem. Správně je jeden průchod přes pevný prefix `https://track.mlain.invalid/c/`, přečtení následujících 36 znaků jako UUID a skládání do bufferu. Lineární, a počet náhrad z toho padá jako vedlejší produkt.
 
 #### 4.1.6 Vlastnosti, na které se sender může spolehnout
 
@@ -2979,13 +2979,13 @@ Umístění `packages/contracts/fixtures/compiled/`, formát:
 {
   "id": "CT-007",
   "description": "tlačítko s VML dvojčetem má stejné číslo na obou místech",
-  "document": { /* OpenEngage Document */ },
+  "document": { /* Mlain Mailer Document */ },
   "context": { "campaignId": "0192f3a0-1c2d-7e60-8a1b-2c3d4e5f6071",
                "trackOpens": true, "trackClicks": true, "language": "cs" },
   "expect": {
     "htmlContains": [
-      "<v:roundrect href=\"https://track.openengage.invalid/c/2f1a9c40-...\"",
-      "<a href=\"https://track.openengage.invalid/c/2f1a9c40-...\""
+      "<v:roundrect href=\"https://track.mlain.invalid/c/2f1a9c40-...\"",
+      "<a href=\"https://track.mlain.invalid/c/2f1a9c40-...\""
     ],
     "clickMarkerCount": 2,
     "links": [{ "id": "2f1a9c40-...", "position": 1, "url": "https://shop.cz/akce", "trackable": true }],
@@ -3008,14 +3008,14 @@ Minimální sada, 16 fixtur:
 | CT-008 | Odkaz uvnitř bloku `html`, žádná značka, `campaign_links` bez řádku |
 | CT-009 | `{{ unsubscribe_url }}` jako celý `href`, žádná značka |
 | CT-010 | Prostý text: značka na samostatném nezalomeném řádku |
-| CT-011 | Uživatelský text obsahující `openengage.invalid`, chyba `content_reserved_marker` |
+| CT-011 | Uživatelský text obsahující `mlain.invalid`, chyba `content_reserved_marker` |
 | CT-012 | `href` se statickou URL a Liquidem uvnitř, chyba `liquid_in_trackable_href` |
 | CT-013 | 999 odkazů, souvislá řada `position`, a 1000. je chyba `content_too_many_links` |
 | CT-014 | Dokument se všemi typy bloků, bajtový snapshot `html` i `text` |
 | CT-015 | `trackClicks = false` a cílová URL s `?a=1&b=2`: v `html` je `&amp;`, v `text` je `&` |
 | CT-016 | Kontakt, jehož pole obsahuje řetězec značky: po náhradě a interpolaci **nevznikne** trackovací odkaz navíc |
 
-Go strana čte tytéž soubory a ověřuje **druhou půlku kontraktu**: že na `expect.htmlContains` po náhradě nezbude žádný `openengage.invalid`, že počet náhrad odpovídá `clickMarkerCount` a že náhrada nezměnila nic jiného (bajtový diff mimo nahrazené úseky).
+Go strana čte tytéž soubory a ověřuje **druhou půlku kontraktu**: že na `expect.htmlContains` po náhradě nezbude žádný `mlain.invalid`, že počet náhrad odpovídá `clickMarkerCount` a že náhrada nezměnila nic jiného (bajtový diff mimo nahrazené úseky).
 
 #### 4.1.8 Chybové stavy
 
@@ -3025,7 +3025,7 @@ Go strana čte tytéž soubory a ověřuje **druhou půlku kontraktu**: že na `
 | Kompilace | Liquid uvnitř trackovatelného `href` | `422`, `liquid_in_trackable_href` |
 | Kompilace | Přes 999 odkazů | `422`, `content_too_many_links` |
 | Kompilace | Invariant I3 neplatí | Kompilace **selže**, `render_link_map_mismatch`. Interní chyba, do UI jde `internal_error`. |
-| Sender | Po náhradě zbyl `openengage.invalid` | Zpráva na `failed`, `marker_not_replaced`, neopakuje se |
+| Sender | Po náhradě zbyl `mlain.invalid` | Zpráva na `failed`, `marker_not_replaced`, neopakuje se |
 | Sender | Počet značek v `compiled_html` a `compiled_text` neodpovídá `clickMarkerCount` | **Celá kampaň** na `paused` s důvodem `contract_mismatch`, a to **při načtení kampaně do cache, dřív než odejde první zpráva**. Počet značek je vlastnost zkompilované šablony, ne jednotlivé zprávy, takže kontrola nepatří do horké cesty. Neshoda znamená nekompatibilní verze kompilace a senderu a nemá to řešit retry, ale člověk. |
 
 Poslední řádek je jediné místo v tomhle kontraktu, kde se zastavuje celá kampaň. Je to schválně: neshoda počtu značek znamená, že proti sobě běží nekompatibilní verze kompilace a senderu, a to je situace, kterou nemá řešit retry, ale člověk.
@@ -3400,8 +3400,8 @@ Každá věta je napsaná tak, aby z ní šel napsat test bez doptávání.
 ### 8.2 Renderer
 
 9. Kompilace stejného dokumentu dvakrát za sebou dá bajtově shodné `html` i `text`.
-10. Vygenerované `html` obsahuje při `trackOpens = true` přesně jeden výskyt `<!--OE_OPEN_PIXEL-->` bezprostředně před `</body>` a při `false` žádný.
-11. Každý trackovatelný odkaz má ve vygenerovaném HTML `href="https://track.openengage.invalid/c/<link_id>"`. Netrackovatelný má původní URL. Tlačítko se svou VML variantou v podmíněném komentáři má **stejné** UUID na obou místech a jedna záměna řetězce opraví obojí.
+10. Vygenerované `html` obsahuje při `trackOpens = true` přesně jeden výskyt `<!--ML_OPEN_PIXEL-->` bezprostředně před `</body>` a při `false` žádný.
+11. Každý trackovatelný odkaz má ve vygenerovaném HTML `href="https://track.mlain.invalid/c/<link_id>"`. Netrackovatelný má původní URL. Tlačítko se svou VML variantou v podmíněném komentáři má **stejné** UUID na obou místech a jedna záměna řetězce opraví obojí.
 12. Liquid výrazy ve vygenerovaném HTML jsou znak po znaku shodné se zdrojem z dokumentu a projdou validátorem subsetu. Renderer do nich nedoplňuje ani neubírá nic. Jedinou povolenou výjimkou je argument filtrů `default` a `date`, který doplňuje kompilace z atributu bloku **až po renderu Reactem** (3.3.5), a i ten musí být ve výstupu bez jediné HTML entity.
 12b. Dokument obsahující merge tagy projde rendererem tak, že ve výstupu není žádná HTML entita uvnitř `{{ }}` ani `{% %}`. Test se pouští proti skutečnému výstupu `@react-email/render`, ne proti ručně sestavenému řetězci.
 13. Vygenerované HTML projde HTML validátorem bez chyb kategorie "error".
@@ -3585,10 +3585,10 @@ Vše ověřeno **2026-07-31** přes `npm view <balíček> license version time.m
 | R5 | část 4 | Materializace naplní `render_data._context.timezone` z nastavení projektu, náhled v části 3 udělá totéž | IANA identifikátor podle kontraktu části 1, 4.10.2 | Jinak `date` v náhledu a v odeslaném mailu ukáže jiný čas |
 | R6 | část 4 | Automatická pauza kampaně podle prahu z části 1 (nad 5 % `failed` z důvodu renderu z prvních 1 000 zpráv) plus vysvětlující obrazovka s příkladem chyby a odkazem na šablonu | Přechod do `paused`, důvod `render_error_threshold` | 3.7.7 |
 | R7 | část 4 | Testovací odeslání podle sémantiky v 3.11.5 | Obchází suppression, mimo statistiky, bez trackingu, bez řádku v outboxu kampaně | Jinak si uživatel nemůže poslat test |
-| R8 | část 4b | Implementovat kontrakt 5 (4.1) beze zbytku: prostá záměna řetězců, žádné parsování HTML, **náhrada před Liquid interpolací**, kontrola zbylého `openengage.invalid` po náhradě | Kontrakt 4.1 včetně fixtur `CT-*` | Bez toho tracking nefunguje nebo jde manipulovat statistikou kampaně |
+| R8 | část 4b | Implementovat kontrakt 5 (4.1) beze zbytku: prostá záměna řetězců, žádné parsování HTML, **náhrada před Liquid interpolací**, kontrola zbylého `mlain.invalid` po náhradě | Kontrakt 4.1 včetně fixtur `CT-*` | Bez toho tracking nefunguje nebo jde manipulovat statistikou kampaně |
 | R9 | část 1 | **Vyřízeno**, část 1 to zapracovává do entrypointu a rozšířila seznam o `GOOGLE_API_KEY`, `AZURE_OPENAI_API_KEY` a `AWS_BEARER_TOKEN_BEDROCK`, plus mazání podle vzoru místo výčtu | Žádná další akce | Část 3 se na to **nespoléhá** a kontroluje prázdný klíč i sama v `buildModel` (3.12.3). Dvě vrstvy jsou tady na místě, protože cena selhání je cizí faktura. |
 | R10 | část 4a | `campaign_links` plnit **z `CompileMeta.links`**, ne vlastním průchodem dokumentem, a převzít `position` beze změny | Pole `position`, `url`, `label` | Vlastní číslování by započítalo kliknutí špatnému odkazu a nikde by to nespadlo. Viz nález S5 revize. |
-| R11 | část 1 | Doplnit do tabulky purposes jediný chybějící: **`openengage/v1/asset-url`** pro volitelné podepisování adres obrázků. AI klíče purpose nepotřebují, ty jedou přes `credential-encryption` s `context = "ai_provider"`. | Řádek v tabulce purposes v 3.10, seznam je kontrakt a neberu si ho sám | 3.14.4 |
+| R11 | část 1 | Doplnit do tabulky purposes jediný chybějící: **`mailer/v1/asset-url`** pro volitelné podepisování adres obrázků. AI klíče purpose nepotřebují, ty jedou přes `credential-encryption` s `context = "ai_provider"`. | Řádek v tabulce purposes v 3.10, seznam je kontrakt a neberu si ho sám | 3.14.4 |
 | R12 | část 1 | Oprávnění `templates:read`, `templates:write`, `templates:write_html`, `assets:read`, `assets:write` v matici rolí | `write_html` jen pro owner a admin | Blok `html` je únikový poklop, editor by k němu neměl mít přístup automaticky |
 | R13 | část 1 | Do job `contracts-golden` doplnit fixtury na hlášky validátoru, české `upcase`, `contact.greeting` a patičku (3.7.6) | Stejný formát `LQ-*` jako zbytek | Bez nich se pokrytí týká jen kontraktu, ne validátoru |
 | R14 | část 1 | **Vyřízeno:** úložiště je moje území. Používám `UPLOADS_DIR` (výchozí `${DATA_DIR}/uploads`), tedy adresář, který část 1 balí do zálohy jako `uploads.tar.gz`. | Žádná akce, jen potvrzení | 3.14.3 |
@@ -3700,7 +3700,7 @@ Totéž se **netýká** `campaign.preheader` a `current_year`, které jsem měl 
 | O8 | Kdo udržuje `packages/core/ai/models.json` a `pricing.json`? | Tým | Součást vydání, kontrola jednou za vydání. Zastaralý ceník je horší než žádný, proto se v UI zobrazuje datum. |
 | O9 | Podepisovat URL assetů ve výchozím stavu? | Vlastník produktu | Ne. 130 bitů entropie stačí a podepisování komplikuje CDN. Přepínač existuje. |
 | O10 | Jaká je horní hranice velikosti dokumentu, kterou má editor v prohlížeči zvládnout plynule? | Ověřením při implementaci | Změřit na 300 blocích, což je náš tvrdý limit |
-| O11 | Přesný název produktu (ovlivňuje `openengage/v1` v HKDF, prefix `oe-` v CSS třídách, doménu `track.openengage.invalid` a komentář `OE_OPEN_PIXEL` v kontraktu 5) | Vlastník produktu, už je otevřená v hlavní specifikaci 11 | Rozhodnout před hodinou nula, přejmenování později se dotkne kontraktů |
+| ~~O11~~ | ~~Přesný název produktu~~ | **uzavřeno** | **Mlain Mailer**, rozhodl zadavatel 2026-07-31. Dopad na tuhle část: CSS prefix je `ml-`, doména `track.mlain.invalid`, značka `ML_OPEN_PIXEL` (vše koš B, zmrazí se prvním vydáním). HKDF se přejmenování **netýká**, purposes jsou ve tvaru `mailer/...` bez jména produktu, viz hlavní specifikace 3.6. |
 
 ---
 

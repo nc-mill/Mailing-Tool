@@ -207,7 +207,7 @@ Tuhle část jsem psal proti dvanácti vlastním předpokladům, protože `parts
 | P4 | `workspace_id` všude | **Potvrzeno.** |
 | P5 | Vlastní tvar chybové odpovědi | **Neplatí.** Část 1 používá **RFC 9457 Problem Details**, rozhodovací pole je `code`, korelační `request_id`. Navíc jsem po revizi **zrušil pět vlastních kódů** (`campaign_not_found`, `campaign_invalid_transition`, `domain_check_rate_limited`, `test_rate_limited`, vlastní `quota_exceeded`) ve prospěch obecných z katalogu části 1. Zbylé vlastní kódy mají v 4.1.2 sloupec „proč nestačí obecný", protože kód, podle kterého UI nedělá nic jiného, být nemá. |
 | P6 | Prefix `` u konfiguračních proměnných | **Neplatí.** Část 1 používá proměnné **bez prefixu** (`APP_URL`, `MODE`, `SENDER_BATCH_SIZE`, `DATABASE_POOL_MAX`). Tabulku v 4.6 jsem přepsal bez prefixu. |
-| P7 | AES-256-GCM s HKDF | **Potvrzeno v principu, upřesněno v detailu.** Část 1: `K_<purpose> = HKDF(SHA-256, ikm = MASTER, salt = ASCII "openengage/v1", info = <purpose>, L = 32)`, pro credentials `info = "openengage/v1/credential-encryption"`. Podporuje se rotace přes `SECRET_KEY_PREVIOUS` s `key_id`. |
+| P7 | AES-256-GCM s HKDF | **Potvrzeno v principu, upřesněno v detailu.** Část 1: `K_<purpose> = HKDF(SHA-256, ikm = MASTER, salt = ASCII "mailer/v1", info = <purpose>, L = 32)`, pro credentials `info = "mailer/v1/credential-encryption"`. Podporuje se rotace přes `SECRET_KEY_PREVIOUS` s `key_id`. |
 | P8 | Webhooková infrastruktura patří části 1 | **Potvrzeno.** |
 | P9 | pg-boss se `singletonKey` | **Potvrzeno.** |
 | P10 | Audit log jako služba | **Potvrzeno.** |
@@ -296,7 +296,7 @@ type SesConfig = {
   region: string;                    // 'eu-central-1'
   access_key_id: string;
   secret_access_key: string;
-  configuration_set_name: string;    // 'openengage-<workspace_slug>'
+  configuration_set_name: string;    // 'mlain-<workspace_slug>'
   sns_topic_arn: string | null;
   max_send_rate: number;             // zrcadlo kvóty, viz níže
   max_24h_send: number | null;
@@ -1422,15 +1422,15 @@ Průvodce má čtyři kroky a každý je samostatně opakovatelný.
 | `AccessDeniedException` | `unverified` | „Klíč nemá oprávnění. Potřebujeme tyhle akce: …" plus seznam z 6.2 |
 | síťová chyba, timeout 10 s | `unverified` | „Nepodařilo se spojit s Amazonem. Zkusit znovu." |
 
-**Krok 2: Configuration Set.** Nástroj vytvoří (nebo najde) Configuration Set jménem `openengage-<workspace_slug>`:
+**Krok 2: Configuration Set.** Nástroj vytvoří (nebo najde) Configuration Set jménem `mlain-<workspace_slug>`:
 
-1. `GetConfigurationSet` na jméno. Když existuje a je náš (má tag `openengage:workspace = <id>`), použije se.
+1. `GetConfigurationSet` na jméno. Když existuje a je náš (má tag `mlain:workspace = <id>`), použije se.
 2. Jinak `CreateConfigurationSet` s `ReputationOptions.ReputationMetricsEnabled = true` a `TrackingOptions` **nenastaveným**, protože open a click tracking řešíme vlastními tokeny, ne SESem. Dvojí tracking by přepisoval odkazy dvakrát.
 3. `PutConfigurationSetSuppressionOptions` se `SuppressedReasons = ['BOUNCE','COMPLAINT']`. Účtová suppression u Amazonu je druhá pojistka vedle naší vlastní.
 
 **Krok 3: SNS topic a odběr.** Nástroj:
 
-1. `CreateTopic` jménem `openengage-<workspace_slug>-events` (idempotentní, vrátí existující ARN).
+1. `CreateTopic` jménem `mlain-<workspace_slug>-events` (idempotentní, vrátí existující ARN).
 2. `CreateConfigurationSetEventDestination` s `SnsDestination.TopicArn` a `MatchingEventTypes`:
    `SEND, REJECT, BOUNCE, COMPLAINT, DELIVERY, DELIVERY_DELAY, RENDERING_FAILURE`.
    **`OPEN` ani `CLICK` nezapínáme**, ty vlastní část 5 přes vlastní tokeny.
@@ -1629,14 +1629,14 @@ Když vrátí 0 řádků → `unmatched`. Když vrátí 2 a víc → `invalid` s
 
 U událostí, které nesou seznam příjemců (`bouncedRecipients`, `complainedRecipients`, `delayedRecipients`), se pro každou adresu ověří, že odpovídá `messages.email`. U vícepříjemcových zpráv to není relevantní, protože každou zprávu posíláme právě jednomu příjemci. Tohle je požadavek na část 4b (R4b.4).
 
-#### 3.9.5 Párování přes značku `oe_msg` a rozřešení nejednoznačného odeslání
+#### 3.9.5 Párování přes značku `ml_msg` a rozřešení nejednoznačného odeslání
 
-Část 4b přikládá ke každé zprávě message tag **`oe_msg`** s identifikátorem zprávy a SES ho vrací **v každé události** v poli `mail.tags`. Je to lepší párovací cesta než `provider_message_id` a mění mi dvě věci k lepšímu.
+Část 4b přikládá ke každé zprávě message tag **`ml_msg`** s identifikátorem zprávy a SES ho vrací **v každé události** v poli `mail.tags`. Je to lepší párovací cesta než `provider_message_id` a mění mi dvě věci k lepšímu.
 
 **1. Párování je spolehlivější.** Dosud jsem pároval přes `provider_message_id`, který zapisuje sender až po odpovědi od SES. Když událost dorazila dřív, skončila jako `unmatched` a čekala na `provider_event.rematch`. Se značkou mám identifikátor rovnou z těla události, takže **kategorie `unmatched` z drtivé většiny zmizí**. Pořadí párování je tedy:
 
 ```
-1. mail.tags.oe_msg  → přímý lookup podle messages.id      (preferované)
+1. mail.tags.ml_msg  → přímý lookup podle messages.id      (preferované)
 2. provider_message_id → lookup podle indexu               (fallback, starší zprávy)
 3. ani jedno         → unmatched, retry 24 h
 ```
@@ -1660,16 +1660,16 @@ UPDATE messages
 
 **Pozor, výjimka je v rozporu s kontraktem**, který přechod `failed → sent` zakazuje. Podrobně v 11.13, čeká na rozhodnutí.
 
-**Co potřebuju od části 4b navíc: druhou značku pro partition.** Samotné `oe_msg` mi dá jen `messages.id`, ale primární klíč je dvousložkový, takže lookup podle samotného ID projde všechny partition. Prosím tedy o `oe_mday` s hodnotou `created_at` ve tvaru `YYYYMMDD`:
+**Co potřebuju od části 4b navíc: druhou značku pro partition.** Samotné `ml_msg` mi dá jen `messages.id`, ale primární klíč je dvousložkový, takže lookup podle samotného ID projde všechny partition. Prosím tedy o `ml_mday` s hodnotou `created_at` ve tvaru `YYYYMMDD`:
 
 | Značka | Hodnota | K čemu |
 |---|---|---|
-| `oe_msg` | `messages.id` (UUID s pomlčkami) | přímé párování |
-| `oe_mday` | `to_char(messages.created_at, 'YYYYMMDD')` | určení partition |
-| `oe_campaign` | `campaign_id` | dohledání v CloudWatch |
-| `oe_workspace` | `workspace_id` | totéž |
+| `ml_msg` | `messages.id` (UUID s pomlčkami) | přímé párování |
+| `ml_mday` | `to_char(messages.created_at, 'YYYYMMDD')` | určení partition |
+| `ml_campaign` | `campaign_id` | dohledání v CloudWatch |
+| `ml_workspace` | `workspace_id` | totéž |
 
-Omezení SES na hodnoty značek (jen `A-Za-z0-9_-`, max 256 znaků) splňuje UUID s pomlčkami i osmimístné datum. Bez `oe_mday` bych musel partition odhadovat z časové složky UUIDv7, což je křehké: `messages.id` se generuje při materializaci, ale `created_at` je `audience_built_at`, a ty se u dlouhé materializace liší.
+Omezení SES na hodnoty značek (jen `A-Za-z0-9_-`, max 256 znaků) splňuje UUID s pomlčkami i osmimístné datum. Bez `ml_mday` bych musel partition odhadovat z časové složky UUIDv7, což je křehké: `messages.id` se generuje při materializaci, ale `created_at` je `audience_built_at`, a ty se u dlouhé materializace liší.
 
 ### 3.10 Klasifikace bounců a plnění suppression listu (kontrolní otázka 14)
 
@@ -1777,8 +1777,8 @@ Přechody `ready ↔ degraded ↔ blocked` provádí job `provider.refresh_quota
    ```
    EmailIdentity: "example.cz"
    DkimSigningAttributes: { NextSigningKeyLength: "RSA_2048_BIT" }
-   ConfigurationSetName: "openengage-<workspace_slug>"
-   Tags: [{ Key: "openengage:workspace", Value: <workspace_id> }]
+   ConfigurationSetName: "mlain-<workspace_slug>"
+   Tags: [{ Key: "mlain:workspace", Value: <workspace_id> }]
    ```
    Když identita existuje, SES vrátí `AlreadyExistsException`. To není chyba, pokračuje se rovnou na `GetEmailIdentity`.
 3. `GetEmailIdentity` vrátí `DkimAttributes` s poli `Tokens` (tři tokeny), `SigningHostedZone`, `Status` a `SigningAttributesOrigin`. Uloží se do `sender_domains`.
@@ -2768,12 +2768,12 @@ Při výmazu kontaktu (GDPR) se v `messages` a `message_events` **anonymizuje ad
 83. `deliverability.rollup` bere `sent` z `messages` podle `sent_at` a ostatní sloupce z `message_events` podle `received_at`.
 84. Dvě události `bounced_soft` pro tutéž zprávu zvýší `bounce_count` o jedna, ne o dvě (počítá se `count(DISTINCT message_id)`).
 
-### 8.14 Značka `oe_msg` a nejednoznačné odeslání
+### 8.14 Značka `ml_msg` a nejednoznačné odeslání
 
-85. Událost nesoucí `mail.tags.oe_msg` se spáruje na zprávu i tehdy, když `provider_message_id` ještě není zapsaný, a **nevznikne** řádek se stavem `unmatched`.
+85. Událost nesoucí `mail.tags.ml_msg` se spáruje na zprávu i tehdy, když `provider_message_id` ještě není zapsaný, a **nevznikne** řádek se stavem `unmatched`.
 86. Zpráva s `error_code = 'ambiguous_dispatch'`, pro kterou dorazí jakákoliv událost od providera, se opraví na `status = 'sent'` s doplněným `provider_message_id`, a `error_code` se vyprázdní.
 87. Zpráva se `status = 'failed'` a jiným `error_code` než `ambiguous_dispatch` se příchodem události **neopraví** a zůstane `failed`.
-88. Lookup podle `oe_msg` a `oe_mday` sáhne do jediné partition, ověřeno přes `EXPLAIN`.
+88. Lookup podle `ml_msg` a `ml_mday` sáhne do jediné partition, ověřeno přes `EXPLAIN`.
 
 ### 8.15 Retence
 
@@ -2843,7 +2843,7 @@ Všechny licence jsou v povolené sadě (MIT, Apache-2.0, BSD, ISC). Žádná GP
 | R1.5 | Mechanismus zakládání partition pro `messages`, `message_events` a `provider_event_receipts` včetně zakládání indexů uvedených v kapitole 2. |
 | R1.6 | Vyjmout `/api/webhooks/ses/*` z globálního rate limitingu a z CSRF ochrany. |
 | R1.7 | Vyjmout `/u/*` (odhlašovací endpoint) z CSRF ochrany a povolit na něm `POST` bez session, jinak nebude fungovat one-click odhlášení podle RFC 8058. |
-| R1.8 | **Opraveno podle skutečného stavu části 1.** Granty pro `openengage_sender` jsou `SELECT, UPDATE` na `messages`, `SELECT` na `campaigns`, `sending_providers`, `campaign_links`, `workspaces` a **`INSERT` na `message_events`**. Poslední jmenované jsem měl v dokumentu popřené a bylo to špatně. Otevřená otázka z toho plynoucí je v nálezu A3 revize: pokud sender do `message_events` skutečně zapisuje, musí vyplnit i `message_created_at`, `recipient` a `rank`, které jsou `NOT NULL`. Moje preference je, aby nezapisoval a událost `sent` vytvářela aplikace ze SES eventu `Send`. |
+| R1.8 | **Opraveno podle skutečného stavu části 1.** Granty pro `mlain_sender` jsou `SELECT, UPDATE` na `messages`, `SELECT` na `campaigns`, `sending_providers`, `campaign_links`, `workspaces` a **`INSERT` na `message_events`**. Poslední jmenované jsem měl v dokumentu popřené a bylo to špatně. Otevřená otázka z toho plynoucí je v nálezu A3 revize: pokud sender do `message_events` skutečně zapisuje, musí vyplnit i `message_created_at`, `recipient` a `rank`, které jsou `NOT NULL`. Moje preference je, aby nezapisoval a událost `sent` vytvářela aplikace ze SES eventu `Send`. |
 | R1.9 | Infrastruktura odchozích webhooků, do které deklaruju události z 4.4. |
 | R1.10 | Katalog chybových kódů, do kterého přidávám kódy z 4.1.2 jako hodnoty pole `code` v RFC 9457 odpovědi. Potřebuju k nim doplnit `type` URI a anglické `title`. |
 | R1.11 | **Doplnit do kontraktu 1 invariant:** všechny řádky jedné kampaně mají identickou hodnotu `created_at` rovnou `campaigns.audience_built_at`, a sender ji nikdy nepřepisuje. Bez toho index `uq_messages__campaign_contact (campaign_id, contact_id, created_at)` duplicity nezachytí, protože dvě materializace v různých okamžicích vytvoří dva různé klíče. Zdůvodnění je v 2.4. |
@@ -2899,7 +2899,7 @@ Tohle je nejdůležitější blok, protože jsme dvě poloviny jednoho toku.
 | R4b.7 | **Vyřízeno kontraktem.** Claim dotaz v části 1 už podmínku `c.status = 'sending'` obsahuje, takže pauza funguje bez komunikace se mnou. Zbývá jediná otevřená věc, kterou řeším s částí 1 jako R1.15: dotaz filtruje `w.deleted_at IS NULL` u workspace, ale měkce smazanou kampaň nefiltruje. |
 | R4b.8 | Sender vkládá hlavičky podle politiky v 3.16. Hodnoty `List-Unsubscribe` staví z trackovacího tokenu (kontrakt 3, vlastní část 5) a z `mail_from_domain`, který mu předám v `campaigns` nebo `sending_providers`. Potvrďte, odkud je chcete číst. |
 | R4b.9 | Sender posílá přes SES **`SendEmail` s `Content.Raw`**, ne `Content.Simple`. Zdůvodnění: potřebujeme plnou kontrolu nad hlavičkami `List-Unsubscribe`, `List-Unsubscribe-Post`, `Precedence` a `Message-ID`, a `Simple` je v tomhle omezené. `ConfigurationSetName` bere z `config_public.configurationSetName`. |
-| R4b.10 | Sender přidává `EmailTags` s klíči `oe_msg` (hodnota `messages.id`), **`oe_mday`** (hodnota `to_char(created_at,'YYYYMMDD')`, viz 3.9.5), `oe_campaign` a `oe_workspace`. Bez `oe_mday` mi samotné `oe_msg` nestačí, protože primární klíč zprávy je dvousložkový a lookup podle samotného ID projde všechny partition. Používám je pro dohledání v CloudWatch a pro fine-grained feedback. Pozor na omezení SES: název i hodnota jen ASCII písmena, číslice, podtržítko a pomlčka, max 256 znaků. UUID s pomlčkami projde. |
+| R4b.10 | Sender přidává `EmailTags` s klíči `ml_msg` (hodnota `messages.id`), **`ml_mday`** (hodnota `to_char(created_at,'YYYYMMDD')`, viz 3.9.5), `ml_campaign` a `ml_workspace`. Bez `ml_mday` mi samotné `ml_msg` nestačí, protože primární klíč zprávy je dvousložkový a lookup podle samotného ID projde všechny partition. Používám je pro dohledání v CloudWatch a pro fine-grained feedback. Pozor na omezení SES: název i hodnota jen ASCII písmena, číslice, podtržítko a pomlčka, max 256 znaků. UUID s pomlčkami projde. |
 | R4b.11 | Graceful shutdown: rozpracovanou dávku buď dokončit, nebo vrátit `claimed → pending` s `claimed_by = NULL`. Nikdy ji nenechat viset, protože pak se čeká 120 s na reaper. |
 | R4b.12 | Vaše rozhodnutí k otázce 5 zadání (jak se zaručí, že se zpráva neodešle dvakrát při pádu mezi odesláním a zápisem stavu) potřebuju znát, protože podle něj napíšu text u čísla nejasně odeslaných zpráv v dashboardu (3.7.4). Můj názor: nulová duplicita není dosažitelná bez idempotency klíče na straně SES, který SES nemá. Realistický cíl je „nejvýš jednou za normálního provozu, nejvýš dvakrát při pádu", a to se má napsat do dokumentace. |
 | R4b.13 | K přechodu `claimed → skipped`, který vám kontrakt povoluje: **pokud ho implementujete**, zmenší to okno z 3.4.3 z desítek sekund na jednotky a uvítám to. Podmínky: sender potřebuje `SELECT` na `suppressions`, což mu granty v části 1 zatím nedávají (hlásím to jako nález A2 revize), kontrola musí být dávková (`WHERE lower(email) = ANY($1)`), ne dotaz na zprávu, a musí respektovat `removed_at IS NULL`. Kdyby to bylo drahé nebo kdyby granty nedostal, funguje to i bez toho, jen s větším oknem. Není to blokující požadavek. |
@@ -3032,7 +3032,7 @@ Zapsáno jako požadavek R2.13.
 
 **Kde:** kontrakt 4.10.1, ř. 2761: „Zakázané přechody, které musí odmítnout aplikační kód a musí mít test: `sent → pending`, `sent → claimed`, **`sent → failed`**, `failed → sent`, `skipped → cokoliv`, `pending → sent` (bez claimu)."
 
-**Problém:** Schválený mechanismus se značkou `oe_msg` (3.9.5) stojí na tom, že aplikace opraví nejednoznačnou zprávu na `sent`, jakmile pro ni dorazí událost. U SES je politika `fail`, takže taková zpráva má stav **`failed`**. Oprava je tedy přechod `failed → sent`, který kontrakt výslovně zakazuje a vyžaduje na něj test.
+**Problém:** Schválený mechanismus se značkou `ml_msg` (3.9.5) stojí na tom, že aplikace opraví nejednoznačnou zprávu na `sent`, jakmile pro ni dorazí událost. U SES je politika `fail`, takže taková zpráva má stav **`failed`**. Oprava je tedy přechod `failed → sent`, který kontrakt výslovně zakazuje a vyžaduje na něj test.
 
 Mechanismus je přitom dobrý a chci ho: bez něj zůstane každá nejednoznačná zpráva navždy jako selhání, přestože máme přímý důkaz od providera, že odešla. Uživatel by ji viděl v kategorii „nejisté odeslání" a mohl by ji doposlat, čímž by vznikl přesně ten duplikát, kterému se politikou `fail` vyhýbáme.
 

@@ -162,7 +162,7 @@ Tyhle otázky jdou zodpovědět bez znalosti kódu a potřebuju na ně odpověď
 - Web SDK (`sdk-web`): veřejné API, velikost, dávkování, souhlas, session
 - Ingestion API pro události z prohlížeče i ze serveru
 - Identity resolution: vazba `anonymous_id` na `contact_id`, slučování a jeho vracení
-- Předání identity z kliku v mailu na web (`oe_token`)
+- Předání identity z kliku v mailu na web (`ml_token`)
 - Datový model událostí, partitioning, retence
 - Customer timeline: dotazy, stránkování, výkon
 - Reporty kampaní, katalog metrik, agregace, dashboard
@@ -194,8 +194,8 @@ Tato část byla původně psaná proti předpokladům, protože `parts/01-platf
 | Původní předpoklad | Skutečnost v části 1 | Dopad na tuto část |
 |---|---|---|
 | `SECRET_KEY` se používá jako UTF-8 bajty řetězce | 3.10: `SECRET_KEY` je base64url bez paddingu, dekóduje se na přesně 32 B, `MASTER = base64url_decode(SECRET_KEY)` | **Formát tokenů kompletně přepsán**, viz 3.1 |
-| HKDF `salt = "openengage.tracking.v1"`, `info` s epochou | 3.10: `salt = "openengage/v1"`, `info = "openengage/v1/tracking-token"`, bez epochy | Přepsáno, klíč se nevěže na `key_id` |
-| Vlastní tvar tokenu `t1.<payload>.<tag>`, MAC nad ASCII | 4.10.3: `"t1" || base64url(type ‖ key_id ‖ payload ‖ mac)`, MAC nad binárním vstupem s prefixem `"openengage/token/v1"` | Přepsáno |
+| HKDF `salt = "mailer.tracking.v1"`, `info` s epochou | 3.10: `salt = "mailer/v1"`, `info = "mailer/v1/tracking-token"`, bez epochy | Přepsáno, klíč se nevěže na `key_id` |
+| Vlastní tvar tokenu `t1.<payload>.<tag>`, MAC nad ASCII | 4.10.3: `"t1" || base64url(type ‖ key_id ‖ payload ‖ mac)`, MAC nad binárním vstupem s prefixem `"mailer/token/v1"` | Přepsáno |
 | `kind` jako `uint8` 1/2/3, generace klíče jako `key_epoch` 0 až 255 | 4.10.3: `type` jako ASCII znak `o`/`c`/`i`/`u`, `key_id` 1 až 255 | Přepsáno |
 | `link_id` je `uint32` odpovídající `campaign_links.position` | 4.10.3: `link_id` je UUID (16 B), tedy `campaign_links.id` | Přepsáno, viz 3.4.1. Je to lepší, redirect nepotřebuje `campaign_id` |
 | Token nese `campaign_id`, aby redirect nemusel do databáze | 4.10.3: open a click token nesou `workspace_id` a `message_id`, click navíc `link_id` | Horká cesta přepsána, viz 3.4.4 a 3.2.3 |
@@ -211,7 +211,7 @@ Tato část byla původně psaná proti předpokladům, protože `parts/01-platf
 | Rate limiting token bucket, vlastní čísla | 4.5: posuvné okno s pevnými sloty, `rate-limiter-flexible`, konkrétní limity | Převzato, viz 3.7.4 a výhrada v 13.10 |
 | PostgreSQL 17 | 2.1: poslední produkční verze PostgreSQL, dnes 18 (rozhodnutí zadavatele, závazné je pravidlo, ne číslo) | Uzavřeno. Bez dopadu na tuto část, jen využívám `uuidv7()` v DDL |
 
-**Co z části 1 přebírám beze změny a nekopíruju sem:** formát a ověřování API klíčů (3.5), veřejný klíč `oe_pub_` (3.5), izolaci workspace a RLS (3.6), stránkování kurzorem (4.3), idempotenci zápisů (4.4), i18n katalogy (3.9), bezpečnostní hlavičky a CSP (6), audit log (3.7), infrastrukturu odchozích webhooků (3.8).
+**Co z části 1 přebírám beze změny a nekopíruju sem:** formát a ověřování API klíčů (3.5), veřejný klíč `ml_pub_` (3.5), izolaci workspace a RLS (3.6), stránkování kurzorem (4.3), idempotenci zápisů (4.4), i18n katalogy (3.9), bezpečnostní hlavičky a CSP (6), audit log (3.7), infrastrukturu odchozích webhooků (3.8).
 
 ---
 
@@ -226,8 +226,8 @@ Tato část byla původně psaná proti předpokladům, protože `parts/01-platf
 | `identities` | část 5 | ne | aktuální vazba anonymního ID na kontakt |
 | `identity_bindings` | část 5 | ne | historie vazeb, append only |
 | `identity_merges` | část 5 | ne | záznam o slučování historie, umožňuje vrácení |
-| `identity_token_uses` | část 5 | ne | jednorázovost `oe_token` |
-| `tracking_domains` | část 5 | ne | povolené domény pro SDK a pro `oe_token` |
+| `identity_token_uses` | část 5 | ne | jednorázovost `ml_token` |
+| `tracking_domains` | část 5 | ne | povolené domény pro SDK a pro `ml_token` |
 | `message_engagement` | část 5 | RANGE (`created_at`), měsíčně | jeden řádek na zprávu, derivovaný stav |
 | `contact_engagement` | část 5 | ne | jeden řádek na kontakt, rollup pro segmentaci a presety čištění |
 | `campaign_stats` | část 5 | ne | předpočítané souhrny kampaně |
@@ -374,9 +374,9 @@ Druhý řádek je jediné, co prořezává partition. Bez něj se prohledají v�
 **Granty: `web_events` nemůže být čistě append-only.** Konvence 2.1 části 1 řadí `web_events` mezi append-only tabulky s `REVOKE UPDATE, DELETE` pro aplikační roli. To by znemožnilo doplnění identity (3.8.4), GDPR anonymizaci (3.15.3) i vrácení sloučení (3.8.5). Řešením je **sloupcový grant**, který zachová záměr konvence (obsah události je neměnný) a povolí jen atribuční sloupce:
 
 ```sql
-REVOKE UPDATE, DELETE ON web_events FROM openengage_app;
-GRANT  UPDATE (contact_id, identity_merge_id, erased_at) ON web_events TO openengage_app;
-GRANT  DELETE ON web_events TO openengage_maintenance;   -- jen retenční job (odpojení partition)
+REVOKE UPDATE, DELETE ON web_events FROM mlain_app;
+GRANT  UPDATE (contact_id, identity_merge_id, erased_at) ON web_events TO mlain_app;
+GRANT  DELETE ON web_events TO mlain_maintenance;   -- jen retenční job (odpojení partition)
 ```
 
 Sloupcové granty jsou v PostgreSQL standardní a pokus o `UPDATE` jiného sloupce skončí chybou oprávnění, tedy hlasitě a v testu. Viz požadavek 12.5.1 a rozpor 13.7.
@@ -404,7 +404,7 @@ type EventContext = {
   os?: string;              // hrubě: 'ios' | 'android' | 'macos' | 'windows' | 'linux' | 'other'
   browser?: string;         // hrubě: 'chrome' | 'safari' | 'firefox' | 'edge' | 'other'
   country?: string;         // ISO 3166-1 alpha-2, jen když je zapnutá geolokace
-  sdk?: { name: 'oe-web'; version: string };
+  sdk?: { name: 'ml-web'; version: string };
   campaign?: { source?: string; medium?: string; campaign?: string; content?: string; term?: string };
   clock_skew_ms?: number;   // zjištěný posun hodin klienta, viz 3.7.2
 };
@@ -502,7 +502,7 @@ CREATE INDEX idx_identity_token_uses__expiry ON identity_token_uses (expires_at)
 ### 2.5 `tracking_domains`
 
 ```sql
--- Domény, na kterých smí běžet SDK a na které se smí přidat oe_token.
+-- Domény, na kterých smí běžet SDK a na které se smí přidat ml_token.
 -- Bez zápisu v této tabulce SDK odmítne startovat a redirect token nepřidá.
 CREATE TABLE tracking_domains (
   id           uuid        PRIMARY KEY,
@@ -739,9 +739,9 @@ Jen tolik, aby se dal číst zbytek dokumentu. Normativní znění je v části 
 
 ```
 token     = "t1" || base64url_nopad( type(1) || key_id(1) || payload || mac(16) )
-mac       = HMAC-SHA256( K_tracking, "openengage/token/v1" || type || key_id || payload )[0..16]
-K_tracking= HKDF(SHA-256, ikm = base64url_decode(SECRET_KEY), salt = "openengage/v1",
-                 info = "openengage/v1/tracking-token", L = 32)
+mac       = HMAC-SHA256( K_tracking, "mailer/token/v1" || type || key_id || payload )[0..16]
+K_tracking= HKDF(SHA-256, ikm = base64url_decode(SECRET_KEY), salt = "mailer/v1",
+                 info = "mailer/v1/tracking-token", L = 32)
 ```
 
 | Typ | Znak | Payload | Délka tokenu | Vyrábí | Ověřuje |
@@ -805,7 +805,7 @@ Krok 3 znamená, že se událost neztratí, jen se nezapočítá do reportu kamp
 
 #### 3.1.3 Kontrola vektorů z části 1 (výsledek)
 
-Vektory ze **zmrazené** verze kontraktu (4.10.3, s polem `message_created_at`) jsem přepočítal nezávislou implementací: ruční HKDF podle RFC 5869 a HMAC v Pythonu, žádný kód části 1 ani sdílená knihovna. Postup: `MASTER = base64url_decode("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8")`, odvození `K_tracking`, sestavení payloadu, HMAC nad `"openengage/token/v1" ‖ type ‖ key_id ‖ payload`, zkrácení na 16 bajtů, base64url bez paddingu celého `type ‖ key_id ‖ payload ‖ mac`.
+Vektory ze **zmrazené** verze kontraktu (4.10.3, s polem `message_created_at`) jsem přepočítal nezávislou implementací: ruční HKDF podle RFC 5869 a HMAC v Pythonu, žádný kód části 1 ani sdílená knihovna. Postup: `MASTER = base64url_decode("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8")`, odvození `K_tracking`, sestavení payloadu, HMAC nad `"mailer/token/v1" ‖ type ‖ key_id ‖ payload`, zkrácení na 16 bajtů, base64url bez paddingu celého `type ‖ key_id ‖ payload ‖ mac`.
 
 | Kontrola | Výsledek |
 |---|---|
@@ -904,7 +904,7 @@ GET  {TRACKING_DOMAIN}/t/o/{token}      open pixel
 GET  {TRACKING_DOMAIN}/t/c/{token}      click redirect
 GET  {TRACKING_DOMAIN}/t/expired        informační stránka pro neplatné tokeny
 POST {TRACKING_DOMAIN}/e/track          ingestion událostí
-POST {TRACKING_DOMAIN}/e/identify       konzumace oe_token
+POST {TRACKING_DOMAIN}/e/identify       konzumace ml_token
 GET  {TRACKING_DOMAIN}/e/oe.js          web SDK
 ```
 
@@ -919,7 +919,7 @@ Cesty jsou bez verze v segmentu. Verzi nese samotný token (`t1`) a u ingestion 
 Sender vloží těsně před `</body>` (a když `</body>` chybí, na konec HTML těla):
 
 ```html
-<img src="https://events.example.cz/t/o/t1bwEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkGLLD1OX2Bxgmpk3YCVNgR__t5nFa1z5_Wn6r8V" width="1" height="1" border="0"
+<img src="https://events.example.cz/t/o/t1bwEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkGLLD1OX2Bxgmpk3YDUjmcTwPYu1Q9cpqmSPs4g" width="1" height="1" border="0"
      alt="" style="display:block;width:1px;height:1px;border:0;outline:none;text-decoration:none">
 ```
 
@@ -1092,7 +1092,7 @@ Konkrétně:
 1. Token obsahuje jen identifikátory (`workspace_id`, `message_id`, `link_id`). Neobsahuje URL ani její část.
 2. Cíl se čte z `campaign_links` podle primárního klíče `id = link_id`. Když řádek neexistuje, jde se na chybovou cestu. Navíc se ověří, že `campaign_links.workspace_id` (nebo workspace jeho kampaně) souhlasí s `workspace_id` z tokenu; neshoda znamená pokus o záměnu a jde na chybovou cestu.
 3. Adresa v `campaign_links.url` byla při kompilaci validována: musí být absolutní, schéma `http` nebo `https`, host musí být platné doménové jméno nebo veřejná IP, maximální délka 2048 znaků. Adresy se schématem `javascript:`, `data:`, `vbscript:`, `file:` a s hostem v privátních rozsazích jsou odmítnuty už v editoru.
-4. **Query parametry z příchozího požadavku se do cíle nepřenášejí.** Cíl se skládá výhradně z uložené adresy plus případného `oe_token`.
+4. **Query parametry z příchozího požadavku se do cíle nepřenášejí.** Cíl se skládá výhradně z uložené adresy plus případného `ml_token`.
 5. Do cílové adresy se nikdy nevkládá nic, co přišlo od klienta.
 
 Chování při chybě:
@@ -1136,11 +1136,11 @@ Souběžné požadavky na tutéž kampaň čekají na jedno naplnění (single f
 
 | Případ | p50 | p99 | Čím je zaručeno |
 |---|---|---|---|
-| Klik na cizí doménu (bez `oe_token`) | ≤ 3 ms | ≤ 30 ms | Žádný dotaz do DB, žádný zápis v horké cestě |
+| Klik na cizí doménu (bez `ml_token`) | ≤ 3 ms | ≤ 30 ms | Žádný dotaz do DB, žádný zápis v horké cestě |
 | Klik na vlastní doménu, `message_id` v cache | ≤ 4 ms | ≤ 35 ms | Cache zásah |
 | Klik na vlastní doménu, cache miss | ≤ 8 ms | ≤ 60 ms | Jedno hledání podle PK ve dvou partition |
 | Nejhorší přijatelná hodnota | | 200 ms | Nad ní se zaloguje varování a metrika `tracking_redirect_duration_seconds` |
-| Tvrdý strop na dohledání kontaktu | | 30 ms | Po překročení se `oe_token` nepřidá a přesměruje se bez něj |
+| Tvrdý strop na dohledání kontaktu | | 30 ms | Po překročení se `ml_token` nepřidá a přesměruje se bez něj |
 
 Zápis kliku jde do bufferu v paměti a odpověď se odesílá okamžitě. Buffer se vyprazdňuje každých 250 ms nebo po 500 událostech, podle toho, co nastane dřív. Při `SIGTERM` se buffer vyprázdní před ukončením (součást graceful shutdown, timeout 5 s).
 
@@ -1160,7 +1160,7 @@ Zápis kliku jde do bufferu v paměti a odpověď se odesílá okamžitě. Buffe
       a workspace má web tracking zapnutý
       a host odpovídá tracking_domains (přesná shoda nebo subdoména při include_subdomains):
         oe = mintIdentityToken(workspace_id, contact_id, campaign_id, ttl=15 min)
-        target = appendQueryParam(link.url, 'oe_token', oe)
+        target = appendQueryParam(link.url, 'ml_token', oe)
 8. 302 Location: target
 ```
 
@@ -1171,11 +1171,11 @@ Krok 6 a 7 jsou to, co brání úniku identity na cizí web. Když odkaz vede na
 - Čte se dotazem s časovým oknem z UUIDv7 podle 3.1.7, tedy nejvýš dvě partition a hledání podle primárního klíče.
 - Čte se **jen tehdy**, když jsou splněné obě podmínky kroku 7, tedy jen u kliků na vlastní doménu zákazníka. U odkazů ven (sociální sítě, partnerské weby) se nečte nic.
 - Výsledek se cachuje na 15 minut pod klíčem `message_id`, protože tentýž člověk obvykle klikne v jednom mailu vícekrát.
-- Když čtení selže nebo trvá přes 30 ms, `oe_token` se **nepřidá** a přesměrování proběhne bez něj. Ztratí se propojení identity u jednoho kliku, což je nesrovnatelně menší škoda než pomalé přesměrování.
+- Když čtení selže nebo trvá přes 30 ms, `ml_token` se **nepřidá** a přesměrování proběhne bez něj. Ztratí se propojení identity u jednoho kliku, což je nesrovnatelně menší škoda než pomalé přesměrování.
 
 Dopad na latenci je v 3.4.5. Kdyby identity token nesl `message_id` místo `contact_id` (návrh v 13.8), tohle čtení by odpadlo úplně.
 
-`appendQueryParam` respektuje existující query i fragment: `https://x.cz/a?b=1#c` se změní na `https://x.cz/a?b=1&oe_token=...#c`. Fragment zůstává na konci. Když už parametr `oe_token` v adrese je (nemělo by nastat), přepíše se.
+`appendQueryParam` respektuje existující query i fragment: `https://x.cz/a?b=1#c` se změní na `https://x.cz/a?b=1&ml_token=...#c`. Fragment zůstává na konci. Když už parametr `ml_token` v adrese je (nemělo by nastat), přepíše se.
 
 ### 3.5 Klasifikace kliknutí
 
@@ -1204,7 +1204,7 @@ Pravidlo 6 se vyhodnocuje také v asynchronním zpracování, v rámci jedné d�
 
 Klasifikace `scanner`, `bot` a `prefetch` **se ukládá** (na rozdíl od `bot` u otevření), protože se z ní počítá diagnostická dlaždice „odfiltrované strojové prokliky". Do metrik prokliku se nepočítají.
 
-Důsledek pro identity resolution: `oe_token` se přidává jen u `click_class = 'human'`, ale klasifikace v horké cestě má k dispozici jen pravidla 1 až 4 a 7. Pravidla 5 a 6 se dopočítají později. To znamená, že skener může dostat `oe_token`. Není to problém: token je vázaný na cílový host, platí 15 minut, je jednorázový a skener ho nespotřebuje, protože nespouští JavaScript. Kdyby ho spotřeboval, vznikla by vazba anonymního ID skeneru na kontakt, což je neškodné a projeví se to jen jako jedna zbytečná anonymní identita.
+Důsledek pro identity resolution: `ml_token` se přidává jen u `click_class = 'human'`, ale klasifikace v horké cestě má k dispozici jen pravidla 1 až 4 a 7. Pravidla 5 a 6 se dopočítají později. To znamená, že skener může dostat `ml_token`. Není to problém: token je vázaný na cílový host, platí 15 minut, je jednorázový a skener ho nespotřebuje, protože nespouští JavaScript. Kdyby ho spotřeboval, vznikla by vazba anonymního ID skeneru na kontakt, což je neškodné a projeví se to jen jako jedna zbytečná anonymní identita.
 
 ### 3.6 Web SDK (`packages/sdk-web`)
 
@@ -1224,15 +1224,15 @@ Důsledek pro identity resolution: `oe_token` se přidává jen u `click_class =
 
 ```html
 <script>
-  window.OpenEngage = window.OpenEngage || function(){ (OpenEngage.q = OpenEngage.q || []).push(arguments) };
-  OpenEngage('init', { key: 'oe_pub_aebagbafaydqqcik', host: 'https://events.shop.cz' });
+  window.Mlain Mailer = window.Mlain Mailer || function(){ (Mlain.q = Mlain.q || []).push(arguments) };
+  Mlain Mailer('init', { key: 'ml_pub_aebagbafaydqqcik', host: 'https://events.shop.cz' });
 </script>
 <script async src="https://events.shop.cz/e/oe.js"></script>
 ```
 
-Fronta `OpenEngage.q` umožňuje volat API dřív, než se skript načte. Po načtení se fronta přehraje.
+Fronta `Mlain.q` umožňuje volat API dřív, než se skript načte. Po načtení se fronta přehraje.
 
-Alternativně npm balíček `@openengage/sdk-web` se stejným veřejným API pro projekty s vlastním bundlerem.
+Alternativně npm balíček `@mlain/sdk-web` se stejným veřejným API pro projekty s vlastním bundlerem.
 
 #### 3.6.3 Veřejné API
 
@@ -1243,9 +1243,9 @@ type ConsentState = {
   emailMarketing?: boolean;   // SDK jen předává dál, sám ho nepoužívá
 };
 
-interface OpenEngageSDK {
+interface MlainSDK {
   init(options: {
-    key: string;                 // veřejný klíč, tvar oe_pub_<16 znaků base32> podle 3.5 části 1
+    key: string;                 // veřejný klíč, tvar ml_pub_<16 znaků base32> podle 3.5 části 1
     host: string;                // TRACKING_DOMAIN
     autoPageView?: boolean;      // výchozí true
     consent?: ConsentState;      // když se předá, nečeká se na consent()
@@ -1279,7 +1279,7 @@ Chování jednotlivých metod:
 
 **`init`** nesmí nic uložit do prohlížeče, dokud není souhlas. Když `consent` v options chybí, SDK se přepne do stavu `waiting_consent`: události volané přes `track` a `page` se drží v paměti (maximálně 20, pak se nejstarší zahazují), nic se neodesílá a neexistuje ani `anonymous_id`.
 
-**`consent`** je jediný přepínač. Při `analytics: true` se vytvoří nebo načte `anonymous_id`, přehraje se paměťová fronta a spustí se odesílání. Při `analytics: false` (nebo odvolání) se okamžitě zastaví odesílání, vyprázdní se fronty, smaže se cookie `oe_aid`, položky v `localStorage` a `sessionStorage`. Volání `consent({analytics:false})` je idempotentní.
+**`consent`** je jediný přepínač. Při `analytics: true` se vytvoří nebo načte `anonymous_id`, přehraje se paměťová fronta a spustí se odesílání. Při `analytics: false` (nebo odvolání) se okamžitě zastaví odesílání, vyprázdní se fronty, smaže se cookie `ml_aid`, položky v `localStorage` a `sessionStorage`. Volání `consent({analytics:false})` je idempotentní.
 
 **`track`** validuje jméno proti `^[a-z][a-z0-9_]{0,63}$`. Neplatné jméno se zahodí a zaloguje se do konzole jen v `debug` režimu. Nikdy nevyhodí výjimku do stránky zákazníka. Vlastnosti se ořežou podle limitů v 3.7.3.
 
@@ -1304,11 +1304,11 @@ Bez podpisu server odmítne payload s e-mailem chybou `tracking_identify_unsigne
 
 | Klíč | Kde | Platnost | Obsah |
 |---|---|---|---|
-| `oe_aid` | cookie, `SameSite=Lax; Secure; Path=/` | 400 dní (`Max-Age=34560000`) | UUIDv4 |
-| `oe_aid` | `localStorage` | bez expirace | totéž, záloha |
-| `oe_sid` | `sessionStorage` | do zavření karty | UUIDv4 session |
-| `oe_last` | `localStorage` | 30 dní | timestamp poslední události, řídí timeout session |
-| `oe_q` | `localStorage` | 7 dní | neodeslané události, viz 3.6.6 |
+| `ml_aid` | cookie, `SameSite=Lax; Secure; Path=/` | 400 dní (`Max-Age=34560000`) | UUIDv4 |
+| `ml_aid` | `localStorage` | bez expirace | totéž, záloha |
+| `ml_sid` | `sessionStorage` | do zavření karty | UUIDv4 session |
+| `ml_last` | `localStorage` | 30 dní | timestamp poslední události, řídí timeout session |
+| `ml_q` | `localStorage` | 7 dní | neodeslané události, viz 3.6.6 |
 
 Cookie se nastavuje JavaScriptem (`document.cookie`), protože ingestion běží na jiném hostu než web zákazníka. Safari ITP takové cookie zkracuje na 7 dní. **Proto je `localStorage` primární zdroj a cookie jen doplněk.** Při načtení: přečte se cookie, když chybí, přečte se `localStorage`, když chybí obojí, vygeneruje se nové ID. Vždy se pak zapíšou obě místa.
 
@@ -1323,7 +1323,7 @@ Zápisový argument tu neplatí: `anonymous_id` je v `identities` součástí sl
 #### 3.6.5 Session
 
 - Session končí po **30 minutách nečinnosti** (konfigurovatelné 1 až 1440 minut) nebo po **24 hodinách** od začátku, podle toho, co nastane dřív.
-- Nečinnost se měří od poslední odeslané události, uložené v `oe_last`.
+- Nečinnost se měří od poslední odeslané události, uložené v `ml_last`.
 - Při začátku nové session se odešle událost `session_started` s vlastnostmi `{ referrer, entry_path, utm_* }`.
 - Událost `session_ended` se neposílá. Konec session se dopočítá při čtení jako poslední událost session. Důvod: spolehlivé odeslání při zavření karty neexistuje, viz 3.6.6.
 - Session ID se nezachovává mezi kartami. Dvě otevřené karty téhož webu jsou dvě session. To je vědomé zjednodušení, sjednocení přes `BroadcastChannel` by stálo místo v rozpočtu velikosti.
@@ -1350,11 +1350,11 @@ Nutná ochrana: protože `text/plain` obchází preflight, není endpoint chrán
 Když odeslání selže:
 
 1. `sendBeacon` vrátí `false` (fronta prohlížeče je plná) nebo `fetch` skončí chybou. Události se vrátí do fronty.
-2. Fronta se uloží do `localStorage` pod `oe_q`, maximálně 100 událostí, 256 kB, 7 dní.
+2. Fronta se uloží do `localStorage` pod `ml_q`, maximálně 100 událostí, 256 kB, 7 dní.
 3. Opakuje se s exponenciálním backoffem 1 s, 2 s, 4 s, 8 s, 16 s, 30 s (strop), maximálně 8 pokusů na dávku.
 4. Odpověď `4xx` kromě `408` a `429` znamená trvalou chybu, dávka se zahodí a vyvolá se `error` handler.
 5. Odpověď `429` respektuje `Retry-After`.
-6. Při načtení stránky se `oe_q` přehraje jako první, ale jen události mladší než 7 dní. Starší se zahodí.
+6. Při načtení stránky se `ml_q` přehraje jako první, ale jen události mladší než 7 dní. Starší se zahodí.
 
 Když je SDK zablokované (blokátor přepíše `navigator.sendBeacon` nebo zablokuje síť), vyvolá se událost `blocked`. Zákazník na ni může navázat serverové měření. Nesnažíme se blokátor obejít.
 
@@ -1378,7 +1378,7 @@ Cesta je z konvence 4.1 a 6 části 1, která `/e/track` jmenovitě uvádí jako
 ```ts
 type IngestBatch = {
   v: 1;                     // verze payloadu, viz 3.1.8
-  key: string;              // oe_pub_<16 znaků base32>, viz 3.5 části 1
+  key: string;              // ml_pub_<16 znaků base32>, viz 3.5 části 1
   sent_at: string;          // ISO 8601 UTC s Z, čas klienta, slouží ke korekci hodin
   anonymous_id?: string;    // UUID, povinné pro source 'web'
   events: IngestEvent[];    // 1 až 50
@@ -1397,7 +1397,7 @@ type IngestEvent = {
 
 Pole se jmenuje `occurred_at`, ne `ts` ani `created_at`: `created_at` je až serverem přepočítaná hodnota, která jde do sloupce, a rozlišení obojího je nutné, protože 3.7.2 mezi nimi počítá korekci hodin.
 
-Serverová varianta `POST /api/v1/events` má stejný tvar událostí, ale místo `key` v těle používá privátní API klíč v hlavičce `Authorization: Bearer oe_live_...` a smí navíc uvést `contact_id` nebo `email` přímo na události. Ta varianta patří do veřejného API a řídí se konvencemi části 1 včetně formátu chyb a idempotence podle 4.4.
+Serverová varianta `POST /api/v1/events` má stejný tvar událostí, ale místo `key` v těle používá privátní API klíč v hlavičce `Authorization: Bearer ml_live_...` a smí navíc uvést `contact_id` nebo `email` přímo na události. Ta varianta patří do veřejného API a řídí se konvencemi části 1 včetně formátu chyb a idempotence podle 4.4.
 
 #### 3.7.2 Korekce času
 
@@ -1436,11 +1436,11 @@ Před uložením se z `page.url`, `page.referrer` a `page.search`:
 
 1. Odstraní se `username:password@` z URL.
 2. Odstraní se fragment (`#...`).
-3. Odstraní se parametry, jejichž jméno (case-insensitive) je v seznamu: `token`, `access_token`, `refresh_token`, `id_token`, `password`, `passwd`, `pwd`, `secret`, `api_key`, `apikey`, `key`, `signature`, `sig`, `auth`, `session`, `sessionid`, `otp`, `code`, `email`, `e-mail`, `phone`, `tel`, `ssn`, `rc`, `oe_token`. Seznam je konfigurovatelný přes `TRACKING_STRIP_QUERY_PARAMS` a jde jen rozšiřovat, ne zkracovat pod výchozí sadu.
+3. Odstraní se parametry, jejichž jméno (case-insensitive) je v seznamu: `token`, `access_token`, `refresh_token`, `id_token`, `password`, `passwd`, `pwd`, `secret`, `api_key`, `apikey`, `key`, `signature`, `sig`, `auth`, `session`, `sessionid`, `otp`, `code`, `email`, `e-mail`, `phone`, `tel`, `ssn`, `rc`, `ml_token`. Seznam je konfigurovatelný přes `TRACKING_STRIP_QUERY_PARAMS` a jde jen rozšiřovat, ne zkracovat pod výchozí sadu.
 4. Když cesta odpovídá vzorům `/(reset|obnova)-?hesla`, `/login`, `/prihlaseni`, `/verify`, `/overeni`, zahodí se celý query řetězec.
 5. Parametry `utm_*`, `gclid`, `fbclid` se **zachovávají** a navíc se rozparsují do `context.campaign`.
 
-Odstranění `oe_token` v bodě 3 je důležité: SDK ho sice z adresy maže přes `history.replaceState`, ale první `page_view` může proběhnout dřív.
+Odstranění `ml_token` v bodě 3 je důležité: SDK ho sice z adresy maže přes `history.replaceState`, ale první `page_view` může proběhnout dřív.
 
 #### 3.7.4 Rate limiting
 
@@ -1448,7 +1448,7 @@ Odstranění `oe_token` v bodě 3 je důležité: SDK ho sice z adresy maže př
 
 | Klíč | Endpoint | Limit | Okno |
 |---|---|---|---|
-| veřejný klíč (`oe_pub_`) | `POST /e/track` | 6 000 | 1 min |
+| veřejný klíč (`ml_pub_`) | `POST /e/track` | 6 000 | 1 min |
 | veřejný klíč + IP | `POST /e/track` | 120 | 1 min |
 | IP | `/t/o/**`, `/t/c/**` | 600 | 1 min |
 
@@ -1534,7 +1534,7 @@ Tohle je nejchoulostivější algoritmus v celé části. Chyba v něm znamená,
 
 | Zdroj | `source` | Důvěryhodnost | Smí sloučit historii |
 |---|---|---|---|
-| Klik v e-mailu přes `oe_token` | `email_click` | vysoká | ano |
+| Klik v e-mailu přes `ml_token` | `email_click` | vysoká | ano |
 | Serverové API s privátním klíčem | `server_api` | vysoká | ano |
 | `identify` s podpisem | `sdk_identify` | vysoká | ano |
 | `identify` bez podpisu, jen `external_id` | `sdk_identify` | střední | ano, když `external_id` odpovídá právě jednomu kontaktu |
@@ -1816,7 +1816,7 @@ běží každý den ve 04:15 UTC, po retenci
 
 **Nepřesnost, kterou to znamená a která musí být v UI vidět:** okna jsou aktuální k poslednímu nočnímu běhu, ne k této vteřině. Preset „neaktivní 90+ dní" tedy může obsahovat kontakt, který se ozval dnes ráno. Absolutní hodnoty (`last_open_at`, `consecutive_no_open`, `*_total`) jsou naopak vždy aktuální, protože se udržují přírůstkově. Presety proto stavím **primárně na absolutních hodnotách** a okna používám jen tam, kde jinak nejde (například „otevřel aspoň 3 z posledních 30 dní"). Požadavek 12.4.6.
 
-**Rekonstrukce po havárii.** Když se `contact_engagement` rozejde s realitou (chyba v jobu, obnovená záloha), je zdrojem pravdy `message_engagement` a `message_events`. Existuje příkaz `oe rebuild-engagement --workspace <id>`, který tabulku přepočítá od nuly po dávkách. Při 5 milionech kontaktů běží řádově desítky minut a nezastavuje provoz, protože píše jen do `contact_engagement`.
+**Rekonstrukce po havárii.** Když se `contact_engagement` rozejde s realitou (chyba v jobu, obnovená záloha), je zdrojem pravdy `message_engagement` a `message_events`. Existuje příkaz `mlain rebuild-engagement --workspace <id>`, který tabulku přepočítá od nuly po dávkách. Při 5 milionech kontaktů běží řádově desítky minut a nezastavuje provoz, protože píše jen do `contact_engagement`.
 
 #### 3.9.5 Průběh odesílání se čte z `messages`, ne z událostí
 
@@ -1878,11 +1878,11 @@ ALTER TABLE campaign_stats
                 -> dohledá contact_id (3.4.6 krok 7)
                 -> vyrobí token type='i' (workspace_id, contact_id, campaign_id,
                                           nonce z CSPRNG, expires_at = now + 15 min)
-4. Aplikace     302 -> https://shop.cz/vyprodej?oe_token=t1aQEB...
+4. Aplikace     302 -> https://shop.cz/vyprodej?ml_token=t1aQEB...
 5. Prohlížeč    načte stránku, načte SDK
 6. SDK          souhlas analytics i personalization udělený? ne -> token se zahodí, konec
-7. SDK          přečte oe_token z location.search
-8. SDK          history.replaceState s adresou bez oe_token   (HNED, před odesláním)
+7. SDK          přečte ml_token z location.search
+8. SDK          history.replaceState s adresou bez ml_token   (HNED, před odesláním)
 9. SDK          POST /e/identify { key, anonymous_id, token }
 10. Aplikace    ověří token type='i' včetně expires_at
 11. Aplikace    Origin hlavička odpovídá některé tracking_domains daného workspace?
@@ -2303,7 +2303,7 @@ Export **neobsahuje** interní identifikátory zpráv ani tokeny.
 | `campaigns.track_opens = false` | Pixel se nevloží, token typu 1 nevznikne | Místo čísel otevření text „Měření otevření bylo pro tuto kampaň vypnuté" |
 | `campaigns.track_clicks = false` | Odkazy se nepřepíšou, token typu 2 nevznikne, `campaign_links` se plní jen kvůli náhledu | Místo čísel prokliku text „Měření prokliků bylo vypnuté". Statistika odkazů se nezobrazí vůbec |
 | Obojí vypnuté | Zpráva se odešle beze změn v HTML | Report ukazuje jen doručení, odmítnutí, stížnosti a odhlášení |
-| Workspace nemá `tracking_domains` | SDK se nespustí, `oe_token` se nepřidává | Timeline obsahuje jen e-mailové položky |
+| Workspace nemá `tracking_domains` | SDK se nespustí, `ml_token` se nepřidává | Timeline obsahuje jen e-mailové položky |
 | Souhlas `analytics` odvolaný | Žádné webové události | Timeline má mezeru, u kontaktu je poznámka „od 14. 5. 2026 nesouhlasí se sledováním" |
 | **Testovací odeslání na volně zadanou adresu** | Pixel se nevloží, odkazy se nepřepíšou, token nevznikne | Nic. Test se nikde neobjeví a do statistik se nezapočítá |
 | **Testovací odeslání „jako konkrétní kontakt"** | Nic, měří se normálně | Objeví se v timeline toho kontaktu a v reportu kampaně |
@@ -2334,7 +2334,7 @@ Segmenty založené na engagementu (část 2) musí umět rozlišit totéž. Kam
 | `GET` | `/e/oe.js` | Web SDK | `200 application/javascript` |
 | `OPTIONS` | `/e/*` | CORS preflight | `204` |
 | `POST` | `/e/track` | Příjem událostí | `202` |
-| `POST` | `/e/identify` | Konzumace `oe_token` | `202` |
+| `POST` | `/e/identify` | Konzumace `ml_token` | `202` |
 
 `HEAD` na `/t/c/` se chová jako `GET`, ale klasifikuje se jako `scanner` a přesměrování se vrátí bez těla.
 
@@ -2575,7 +2575,7 @@ Obsahuje:
 
 1. **Domény pro měření.** Tabulka, přidání, přepínač „včetně subdomén", stav ověření. Prázdný stav vysvětluje, že bez domény se nic neměří.
 2. **Kód pro vložení.** Připravený `<script>` s tlačítkem Kopírovat, plus varianta pro Google Tag Manager a odkaz na npm balíček.
-3. **Souhlasy.** Vysvětlení, že skript čeká na `OpenEngage('consent', ...)`, a příklad napojení na běžné cookie lišty.
+3. **Souhlasy.** Vysvětlení, že skript čeká na `Mlain Mailer('consent', ...)`, a příklad napojení na běžné cookie lišty.
 4. **Diagnostika.** Počet událostí za posledních 24 hodin, čas poslední události, počet odmítnutých a proč. Když je nula, zobrazí se checklist „Skript není vidět, zkontrolujte: doména, souhlas, blokátor".
 5. **Soukromí.** Přepínač ukládání země z IP (výchozí vypnuto), seznam parametrů odstraňovaných z URL, retence.
 
@@ -2634,16 +2634,16 @@ Dotaz „aktivní kontakty na webu" je jediný dashboardový dotaz, který sahá
 | Open redirect na naší doméně | Phishing pod cizí značkou, poškození reputace domény | Cíl výhradně z `campaign_links` podle `link_id`, nikdy ze vstupu (3.4.3) |
 | Podvržení otevření nebo kliku | Zkreslené reporty | HMAC podpis tokenu, bez klíče nejde token vyrobit |
 | Odečtení e-mailu z odkazu v mailu | Únik osobního údaje při přeposlání | Token neobsahuje e-mail ani `contact_id` |
-| Únik identity na cizí web | Cizí web zjistí, kdo je jeho návštěvník | `oe_token` jen na registrované domény, vázaný na host, jednorázový, 15 minut |
+| Únik identity na cizí web | Cizí web zjistí, kdo je jeho návštěvník | `ml_token` jen na registrované domény, vázaný na host, jednorázový, 15 minut |
 | Odečtení tokenu z `Referer` | Cizí web získá platný token | `Referrer-Policy: no-referrer` na redirectu |
-| Token zůstane v adresním řádku a v analytice | Únik do cizích systémů | `history.replaceState` hned po přečtení, plus `oe_token` v seznamu odstraňovaných parametrů |
+| Token zůstane v adresním řádku a v analytice | Únik do cizích systémů | `history.replaceState` hned po přečtení, plus `ml_token` v seznamu odstraňovaných parametrů |
 | Zaplavení ingestion falešnými událostmi | Nafouknutá databáze | Rate limity, kontrola `Origin`, limity velikosti |
 | Podvržení e-mailu z prohlížeče | Únos cizího kontaktu | `identify` s e-mailem vyžaduje serverový podpis |
 | Přečtení cizích dat přes veřejný klíč | Únik | Ingestion nikdy nevrací data, jen počty |
 | Timing útok na porovnání podpisu | Uhádnutí tagu | Porovnání v konstantním čase |
 | Únik mezi projekty | Kritický | `workspace_id` v každém dotazu, vynuceno repository vrstvou |
 | Zneužití `/t/o/` k mapování, kdo existuje | Menší | Odpověď je vždy stejná bez ohledu na platnost |
-| Skener spotřebuje `oe_token` | Zbytečná anonymní identita | Neškodné, nespouští JavaScript |
+| Skener spotřebuje `ml_token` | Zbytečná anonymní identita | Neškodné, nespouští JavaScript |
 
 ### 6.2 Co se nikdy nesmí zalogovat
 
@@ -2843,7 +2843,7 @@ Testovatelné věty. Z každé jde napsat test, aniž se člověk ptá.
 
 Vektory vlastní část 1 (`fixtures/token/vectors.json`), tato část je jen konzumuje. Kritéria se týkají chování, které vlastním já.
 
-1. Implementace v TypeScriptu i v Go vyrobí pro vstupy z vektoru „open" v části 1 přesně řetězec `t1bwEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkGLLD1OX2Bxgmpk3YCVNgR__t5nFa1z5_Wn6r8V`.
+1. Implementace v TypeScriptu i v Go vyrobí pro vstupy z vektoru „open" v části 1 přesně řetězec `t1bwEBkvOgHC1-QJobLD1OX2BxAZLzoBwtfkGLLD1OX2Bxgmpk3YDUjmcTwPYu1Q9cpqmSPs4g`.
 2. Ověřovací funkce v aplikaci projde všech pět pozitivních a všech devět negativních vektorů z části 1 se shodnými kódy.
 3. **Token typu `o` poslaný na `/t/c/` skončí kódem `token_type_mismatch` a přesměrováním na `/t/expired`. Token typu `u` poslaný na `/t/o/` také.** Bez této kontroly by šlo zobrazením obrázku odhlásit příjemce z odběru.
 4. Token typu open má vždy 74 znaků, click 96, identity 106, unsubscribe 117.
@@ -2872,19 +2872,19 @@ Vektory vlastní část 1 (`fixtures/token/vectors.json`), tato část je jen ko
 21. Token s `link_id`, který neexistuje, vede na `/t/expired`. Token s `link_id` patřícím jinému workspace, než je v tokenu, také.
 22. `Location` nikdy neobsahuje žádnou hodnotu z query stringu příchozího požadavku.
 23. Odpověď obsahuje `Referrer-Policy: no-referrer`.
-24. Cíl `https://x.cz/a?b=1#c` se s tokenem změní na `https://x.cz/a?b=1&oe_token=...#c`.
-25. Cíl na doméně, která není v `tracking_domains`, dostane `Location` bez `oe_token` a redirect přitom vůbec nesáhne na `messages`.
+24. Cíl `https://x.cz/a?b=1#c` se s tokenem změní na `https://x.cz/a?b=1&ml_token=...#c`.
+25. Cíl na doméně, která není v `tracking_domains`, dostane `Location` bez `ml_token` a redirect přitom vůbec nesáhne na `messages`.
 26. Klik do 5 sekund od `messages.sent_at` se klasifikuje jako `scanner` a nezvýší `clicks_unique_human`.
 27. Pět kliků z jedné IP na tři různé odkazy téže zprávy do 60 sekund se klasifikuje jako `scanner`.
 28. Při 2 000 požadavcích za sekundu po dvě minuty na odkaz mimo `tracking_domains` je p99 serverového času pod 30 ms.
-29. Když dohledání kontaktu pro `oe_token` trvá přes 30 ms, přesměrování proběhne bez `oe_token` a v limitu.
+29. Když dohledání kontaktu pro `ml_token` trvá přes 30 ms, přesměrování proběhne bez `ml_token` a v limitu.
 
 ### 10.4 Web SDK a ingestion
 
 30. Sestavený `oe.js` má gzip velikost pod 5 120 B, jinak CI padá.
 31. Bez volání `consent` SDK nezapíše do `document.cookie`, `localStorage` ani `sessionStorage` nic a neodešle žádný požadavek.
 32. Po `consent({analytics:true})` se odešle `session_started` a `page_view` v jedné dávce.
-33. Po `consent({analytics:false})` zmizí `oe_aid` z cookie i `localStorage` do 100 ms.
+33. Po `consent({analytics:false})` zmizí `ml_aid` z cookie i `localStorage` do 100 ms.
 34. Přepnutí karty (`visibilitychange` na `hidden`) odešle frontu přes `sendBeacon` s `Content-Type: text/plain;charset=UTF-8` a bez preflightu.
 35. Požadavek s `Origin` mimo `tracking_domains` dostane 403 a kód `origin_not_allowed`.
 36. Dávka s 51 událostmi vrátí 422 a kód `too_many_items`.
@@ -2912,12 +2912,12 @@ Vektory vlastní část 1 (`fixtures/token/vectors.json`), tato část je jen ko
 
 ### 10.6 Předání identity z kliku
 
-55. Kompletní tok od kliku po vazbu proběhne a `oe_token` zmizí z adresního řádku dřív, než se odešle první `page_view`.
-56. Druhé použití téhož `oe_token` vrátí 409 a kód `token_already_used`.
-57. Použití `oe_token` 16 minut po vydání vrátí 410 a kód `token_expired`.
-58. Použití `oe_token` z jiné domény, než pro kterou byl vydaný, vrátí 403.
+55. Kompletní tok od kliku po vazbu proběhne a `ml_token` zmizí z adresního řádku dřív, než se odešle první `page_view`.
+56. Druhé použití téhož `ml_token` vrátí 409 a kód `token_already_used`.
+57. Použití `ml_token` 16 minut po vydání vrátí 410 a kód `token_expired`.
+58. Použití `ml_token` z jiné domény, než pro kterou byl vydaný, vrátí 403.
 59. Ve všech třech chybových případech pokračuje tracking anonymně a uživatel na webu nic nepozná.
-60. `oe_token` neobsahuje `contact_id` ani e-mail: dekódovaný payload má přesně 54 bajtů a žádný z nich neodpovídá identifikátoru kontaktu.
+60. `ml_token` neobsahuje `contact_id` ani e-mail: dekódovaný payload má přesně 54 bajtů a žádný z nich neodpovídá identifikátoru kontaktu.
 
 ### 10.7 Reporty a timeline
 
@@ -2937,7 +2937,7 @@ Vektory vlastní část 1 (`fixtures/token/vectors.json`), tato část je jen ko
 74. Job `tracking.recompute_engagement_windows` se nedotkne kontaktu, který má všechna okna na nule.
 75. `contact_engagement.opens_total` počítá jen ověřená otevření: kampaň otevřená výhradně Apple proxy ho nezvýší.
 76. Kontakt bez jediné odeslané zprávy nemá řádek v `contact_engagement` a preset „nikdy neotevřel" ho přesto vrátí.
-77. `oe rebuild-engagement` přepočítá tabulku od nuly a výsledek se rovná stavu udržovanému přírůstkově.
+77. `mlain rebuild-engagement` přepočítá tabulku od nuly a výsledek se rovná stavu udržovanému přírůstkově.
 78. Segmentační dotaz nad `contact_engagement` z jiného workspace vrátí nula řádků i při obejití repository vrstvy (RLS).
 
 79. Testovací odeslání na volně zadanou adresu nemá v HTML žádný `img` na `/t/o/` ani žádný odkaz na `/t/c/`.
@@ -3019,9 +3019,9 @@ Sender nepotřebuje pro tokeny **žádnou** závislost mimo standardní knihovnu
 
 ### 12.1 Část 4b (sender, Go)
 
-Nejtěsnější vazba v projektu. Odpověď na dotazy z tvé zprávy je v 3.1: **formát je zmrazený v části 1, sekce 4.10.3, a je jiný, než jsi předpokládal.** Konkrétně: žádný JSON (souhlas s tvou obavou, `encoding/json` a `JSON.stringify` se rozejdou), pevný binární layout, ale `type` je ASCII znak, ne číslo, celý blok včetně MAC je v jednom base64url, MAC se počítá nad **binárním** vstupem s prefixem `"openengage/token/v1"`, ne nad textovou podobou.
+Nejtěsnější vazba v projektu. Odpověď na dotazy z tvé zprávy je v 3.1: **formát je zmrazený v části 1, sekce 4.10.3, a je jiný, než jsi předpokládal.** Konkrétně: žádný JSON (souhlas s tvou obavou, `encoding/json` a `JSON.stringify` se rozejdou), pevný binární layout, ale `type` je ASCII znak, ne číslo, celý blok včetně MAC je v jednom base64url, MAC se počítá nad **binárním** vstupem s prefixem `"mailer/token/v1"`, ne nad textovou podobou.
 
-Tvoje předpoklady, které **platí**: token neobsahuje čitelný e-mail; HMAC se zkracuje na 16 bajtů; prefix `t1` a jeho kontrola před vším ostatním; base64url bez paddingu; open a click token **neexpirují**. Tvoje předpoklady, které **neplatí**: `salt` je `"openengage/v1"` a `info` je `"openengage/v1/tracking-token"` (ne `"tracking-token"`), a `SECRET_KEY` se před HKDF **dekóduje z base64url na 32 bajtů**, nepoužívá se jako řetězec.
+Tvoje předpoklady, které **platí**: token neobsahuje čitelný e-mail; HMAC se zkracuje na 16 bajtů; prefix `t1` a jeho kontrola před vším ostatním; base64url bez paddingu; open a click token **neexpirují**. Tvoje předpoklady, které **neplatí**: `salt` je `"mailer/v1"` a `info` je `"mailer/v1/tracking-token"` (ne `"tracking-token"`), a `SECRET_KEY` se před HKDF **dekóduje z base64url na 32 bajtů**, nepoužívá se jako řetězec.
 
 1. **Implementovat formát podle 4.10.3 části 1** a projít testem proti `packages/contracts/fixtures/token/vectors.json`. Vektory jsem přepočítal nezávisle a sedí, viz 3.1.3.
 2. **Token typu `o`** pro každou zprávu, když `campaigns.track_opens = true`, plus pixel podle 3.2.1 těsně před `</body>`. Do plain textu nikdy.
@@ -3156,7 +3156,7 @@ Kontrakt 4.10.3 přebírám beze změny, jak žádá P5-1. Odpovědi na tvoje po
 
 **Co potřebuju od části 1**
 
-1. **Sloupcový grant na `web_events`.** Konvence 2.1 řadí `web_events` mezi append-only s `REVOKE UPDATE, DELETE`. To znemožňuje doplnění identity, GDPR anonymizaci i vrácení sloučení. Navrhuju `GRANT UPDATE (contact_id, identity_merge_id, erased_at) ON web_events TO openengage_app` a `GRANT DELETE ON web_events TO openengage_maintenance`. Zachová to záměr konvence (obsah události je neměnný) a pokus o `UPDATE` jiného sloupce selže hlasitě. Viz 2.2 a rozpor 13.7.
+1. **Sloupcový grant na `web_events`.** Konvence 2.1 řadí `web_events` mezi append-only s `REVOKE UPDATE, DELETE`. To znemožňuje doplnění identity, GDPR anonymizaci i vrácení sloučení. Navrhuju `GRANT UPDATE (contact_id, identity_merge_id, erased_at) ON web_events TO mlain_app` a `GRANT DELETE ON web_events TO mlain_maintenance`. Zachová to záměr konvence (obsah události je neměnný) a pokus o `UPDATE` jiného sloupce selže hlasitě. Viz 2.2 a rozpor 13.7.
 2. ~~**Pomocná funkce `uuidv7_timestamp(uuid)`**~~ **Požadavek stažen.** Po zavedení `message_created_at` do tokenu ji nepotřebuje žádná cesta v této části. Nechávám to tu přeškrtnuté, aby bylo dohledatelné, že se tím nikdo nemusí zabývat.
 3. **`platform.maintain_partitions` musí obsluhovat i `web_events` a `message_engagement`.** Obojí je v seznamu partitionovaných tabulek v 2.1, takže předpokládám, že ano; potřebuju to potvrdit, protože chybějící partition znamená zastavený zápis událostí.
 4. **Healthcheck musí zahrnout kontrolu existence partition pro aktuální měsíc**, jinak se chybějící partition projeví až tím, že se přestanou ukládat události, a nikdo si toho nevšimne.
@@ -3213,7 +3213,7 @@ Hlavní specifikace, kapitola 4.4: „Identifikační token: krátkodobý (minut
 Hlavní specifikace, kapitola 6.7, uvádí jako příklad:
 
 ```js
-OpenEngage.identify("customer_8472", { email: "...", first_name: "Jan" });
+Mlain.identify("customer_8472", { email: "...", first_name: "Jan" });
 ```
 
 Kapitola 6.1 přitom říká: „Web SDK **nesmí** podvrhnout cizí e-mail."
@@ -3253,9 +3253,9 @@ U `web_events` to nejde splnit doslova. Tři operace, které jsou v zadání té
 **Návrh: sloupcový grant místo úplného zákazu.**
 
 ```sql
-REVOKE UPDATE, DELETE ON web_events FROM openengage_app;
-GRANT  UPDATE (contact_id, identity_merge_id, erased_at) ON web_events TO openengage_app;
-GRANT  DELETE ON web_events TO openengage_maintenance;
+REVOKE UPDATE, DELETE ON web_events FROM mlain_app;
+GRANT  UPDATE (contact_id, identity_merge_id, erased_at) ON web_events TO mlain_app;
+GRANT  DELETE ON web_events TO mlain_maintenance;
 ```
 
 Zachovává to záměr konvence (obsah události je neměnný a nikdo ho nepřepíše) a zároveň to dělá hranici tvrdší, ne měkčí: dnes by `REVOKE UPDATE` znamenal, že se doplnění identity buď udělá pod rolí s plnými právy, nebo se neudělá vůbec. Sloupcový grant je standardní PostgreSQL a pokus o `UPDATE` jiného sloupce skončí chybou oprávnění, tedy v testu.
@@ -3264,7 +3264,7 @@ Alternativa, kterou jsem zvážil a zamítl: neukládat `contact_id` do událost
 
 ### 13.8 Identity token nese `contact_id` a neváže cílový host (rozpor s částí 1)
 
-Kontrakt 4.10.3 části 1 definuje payload identity tokenu jako `workspace_id`(16) `contact_id`(16) `campaign_id`(16) `nonce`(8) `expires_at`(u32). Tento token se přidává do adresy stránky na webu zákazníka jako `?oe_token=...`. Mám k tomu dvě výhrady, obě řešitelné, ani jedna blokující.
+Kontrakt 4.10.3 části 1 definuje payload identity tokenu jako `workspace_id`(16) `contact_id`(16) `campaign_id`(16) `nonce`(8) `expires_at`(u32). Tento token se přidává do adresy stránky na webu zákazníka jako `?ml_token=...`. Mám k tomu dvě výhrady, obě řešitelné, ani jedna blokující.
 
 **a) `contact_id` cestuje adresním řádkem prohlížeče.**
 
@@ -3344,7 +3344,7 @@ Tahle část specifikuje SDK podstatně bohatší (session, dávkování, offlin
 | ~~7~~ | ~~Retence per workspace, nebo jen globální?~~ | **uzavřeno** | **Globální retence pro celou instalaci, ne per workspace.** Per workspace by znamenala mazání řádků místo zahazování celých oddílů, tedy podstatně dražší údržbu |
 | 8 | Sledovat pozici odkazu (dva odkazy na stejnou URL zvlášť)? | produkt | Návrh: ano. Po sladění s částí 1 je `link_id` samostatné UUID na každý odkaz, takže se to děje samo. Otázka je jen, jestli to zobrazovat |
 | 9 | Rozšířit povolený seznam licencí o Unlicense, CC0 a BlueOak-1.0.0? | část 1 | Odblokovalo by to `isbot` a `lru-cache`. Bez toho si píšeme obojí sami, což je pár desítek řádků |
-| 10 | Je 15 minut správná platnost `oe_token`? | produkt | Kompromis mezi bezpečností a scénářem „vrátím se k tomu později" |
+| 10 | Je 15 minut správná platnost `ml_token`? | produkt | Kompromis mezi bezpečností a scénářem „vrátím se k tomu později" |
 | 11 | Kdy se ověří, že Apple stále posílá `User-Agent: Mozilla/5.0`? | tým, empiricky | Celá klasifikace MPP na tom stojí. Nutné ověřit na skutečném Apple Mail účtu **před** hackathonem a pak průběžně sledovat metriku |
 | 12 | Bude segmentace nad `properties` webových událostí v MVP 0? | produkt plus část 2 | Z odpovědi plyne, jestli je potřeba GIN index (2.2), což mění výkonový rozpočet zápisu |
 | 13 | Kdo vlastní `message_events`, když do ní zapisují dvě části? | synchronizace 4a a 5 | Návrh: DDL vlastní 4a, typy `open` a `click` zapisuje 5 |

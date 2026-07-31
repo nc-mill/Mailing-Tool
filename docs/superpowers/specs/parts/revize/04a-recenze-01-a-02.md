@@ -51,13 +51,13 @@ Rozhodnout musí část 1, protože vlastní kontrakt, ale **nemůže to zůstat
 
 ### A2. Kontrakt povoluje senderu `claimed → skipped` po kontrole suppression, ale granty mu to neumožňují (VÁŽNÉ, vlastní ověření)
 
-**Místo:** část 1, 4.10.1, tabulka přechodů (řádek `claimed → skipped`, důvod „kontrola suppression těsně před odesláním selhala") versus tentýž dokument, blok `GRANT` pro `openengage_sender` (ř. 2461 až 2478).
+**Místo:** část 1, 4.10.1, tabulka přechodů (řádek `claimed → skipped`, důvod „kontrola suppression těsně před odesláním selhala") versus tentýž dokument, blok `GRANT` pro `mlain_sender` (ř. 2461 až 2478).
 
 **Problém:** Přechod předpokládá, že sender umí zjistit, že je adresa na suppression listu. Granty ale dávají senderu `SELECT` jen na `messages`, `campaigns`, `sending_providers`, `campaign_links` a `workspaces`. **Na `suppressions` nemá nic.** Komentář v grantech to dokonce potvrzuje („Žádná práva na contacts…"). Přechod je tedy v kontraktu popsaný, ale neproveditelný.
 
 Je to vnitřní rozpor jednoho dokumentu, ne spor mezi částmi.
 
-**Jak by to mělo být:** Buď doplnit `GRANT SELECT ON suppressions TO openengage_sender` a v kontraktu popsat, že kontrola musí být dávková (`WHERE email = ANY($1)`, ne dotaz na zprávu), nebo řádek `claimed → skipped` z tabulky přechodů odstranit a napsat, že kontrola suppression je výhradně na aplikaci.
+**Jak by to mělo být:** Buď doplnit `GRANT SELECT ON suppressions TO mlain_sender` a v kontraktu popsat, že kontrola musí být dávková (`WHERE email = ANY($1)`, ne dotaz na zprávu), nebo řádek `claimed → skipped` z tabulky přechodů odstranit a napsat, že kontrola suppression je výhradně na aplikaci.
 
 Pro část 4a to je rozdíl mezi oknem „desítky sekund" a „jednotky sekund", ve kterém může odejít mail právě odhlášenému člověku (moje kapitola 3.4.3). Preferuju první variantu, ale funguje to i bez ní.
 
@@ -65,7 +65,7 @@ Pro část 4a to je rozdíl mezi oknem „desítky sekund" a „jednotky sekund"
 
 ### A3. Sender dostal `INSERT` do `message_events`, aniž o tom ví vlastník té tabulky (VÁŽNÉ, vlastní ověření)
 
-**Místo:** část 1, ř. 2471: `GRANT INSERT ON message_events TO openengage_sender;`
+**Místo:** část 1, ř. 2471: `GRANT INSERT ON message_events TO mlain_sender;`
 
 **Problém:** `message_events` vlastní část 4a. Grant znamená, že do ní zapisuje i sender, pravděpodobně událost `sent`. Jenže část 4a k té tabulce v mezičase doplnila tři **`NOT NULL` sloupce**, o kterých kontrakt mlčí: `message_created_at`, `recipient` a `rank`. Sender, který je nevyplní, dostane chybu při vložení.
 
@@ -159,11 +159,11 @@ Bez něj Postgres buď projde primární klíč a filtruje `workspace_id` až po
 
 **Místo:** část 2, ř. 333 až 336 (`ALTER TABLE contacts ENABLE ROW LEVEL SECURITY`, politika `ws_isolation`). Souvisí s částí 1, sekce 3.x, ř. 893 až 908.
 
-**Problém:** Izolace je dvouvrstvá a RLS čte `current_setting('openengage.workspace_id')`, nastavené přes `set_config(..., true)` na začátku transakce, tedy `SET LOCAL`. Moje materializace běží **po dávkách, každá dávka ve vlastní transakci** (3.3.3). Každá z těch dvou set transakcí tedy musí session proměnnou nastavit znovu. Pokud to worker udělá jednou na začátku jobu, druhá a další dávka vrátí nula řádků a **materializace tiše skončí s prázdným publikem**.
+**Problém:** Izolace je dvouvrstvá a RLS čte `current_setting('mlain.workspace_id')`, nastavené přes `set_config(..., true)` na začátku transakce, tedy `SET LOCAL`. Moje materializace běží **po dávkách, každá dávka ve vlastní transakci** (3.3.3). Každá z těch dvou set transakcí tedy musí session proměnnou nastavit znovu. Pokud to worker udělá jednou na začátku jobu, druhá a další dávka vrátí nula řádků a **materializace tiše skončí s prázdným publikem**.
 
 Část 1 to má popsané správně („repository vrstva vždy otevírá transakci"), ale ani jedna část neupozorňuje na dávkové joby, kde je transakcí mnoho a job je jeden. To je přesně případ importu (část 2), materializace (část 4a) a retenčních jobů.
 
-**Jak by to mělo být:** Doplnit do konvence jednu větu: **každá transakce dávkového jobu musí nastavit `openengage.workspace_id` znovu**, a poskytnout na to helper (`withWorkspaceTx(workspaceId, fn)`), aby se na to nedalo zapomenout. Ideálně přidat test, který pustí dvoudávkový job a ověří, že druhá dávka vrátí řádky.
+**Jak by to mělo být:** Doplnit do konvence jednu větu: **každá transakce dávkového jobu musí nastavit `mlain.workspace_id` znovu**, a poskytnout na to helper (`withWorkspaceTx(workspaceId, fn)`), aby se na to nedalo zapomenout. Ideálně přidat test, který pustí dvoudávkový job a ověří, že druhá dávka vrátí řádky.
 
 ---
 
