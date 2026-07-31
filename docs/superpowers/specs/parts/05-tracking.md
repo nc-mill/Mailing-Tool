@@ -3007,15 +3007,16 @@ Tvoje předpoklady, které **platí**: token neobsahuje čitelný e-mail; HMAC s
 
    | `type` | Zapisuje | Poznámka |
    |---|---|---|
-   | `sent` | část 4b (sender) | |
-   | `failed` | část 4b | |
-   | `render_warning` | část 4b | Agregovaně, viz bod 3 |
-   | `circuit_breaker_open` | část 4b | Pozastavení kampaně senderem |
    | `delivered`, `bounce`, `complaint` | část 4a | Z událostí providera |
    | `open`, `click` | **část 5** | Z trackovacích endpointů |
    | `unsubscribe` | část 2 | Z odhlašovacího endpointu |
+   | `circuit_breaker_open` | část 4b | Pozastavení kampaně senderem, řádově jednotky na kampaň |
 
-   Cokoliv mimo tenhle výčet je chyba a `ck_message_events__type` to musí odmítnout. Sender tedy smí `sent`, `failed`, `render_warning` a `circuit_breaker_open`, nic jiného.
+   Cokoliv mimo tenhle výčet je chyba a `ck_message_events__type` to musí odmítnout.
+
+   **Typy `sent` a `failed` v tomhle výčtu nejsou a je to změna oproti mé předchozí verzi.** Nález části 4b (P5.15) je správný: `sent` znamená jeden `INSERT` navíc na každou odeslanou zprávu, tedy dva miliony zápisů místo jednoho u milionové kampaně, a stav přitom už je na řádku `messages`. Prošel jsem, co z toho v této části skutečně čtu, a je to jen `campaign_stats.sent`, `campaign_stats.failed` a graf průběhu. Všechno tři jde odvodit z `messages` a je to popsané v 3.9.5.
+
+   **Praktický důsledek pro sender:** v běžném provozu nezapisuje do `message_events` **nic**. Když se `render_warning` přesune do vlastní tabulky (bod 3), zbude mu jediný typ `circuit_breaker_open`, což je řádově jednotky řádků na kampaň. Stojí pak za zvážení, jestli mu grant `INSERT ON message_events` nechat vůbec, nebo to udělat přes samostatnou tabulku a hranici ještě zúžit. Rozhodnutí je části 1, z mého pohledu je užší lepší.
 
 3. **`render_warning` se agreguje, nezapisuje se po jednom.** Návrh části 4b beru i s odůvodněním: kampaň na 50 000 příjemců, kde šablona sahá na pole, které polovina kontaktů nemá, vyrobí 25 000 řádků nesoucích tutéž informaci. Nese to nulovou informaci navíc oproti jednomu řádku s počítadlem a přitom to zdvojnásobí objem `message_events` u té kampaně.
 

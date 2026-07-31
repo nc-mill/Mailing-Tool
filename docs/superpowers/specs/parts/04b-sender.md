@@ -273,7 +273,18 @@ Sender nikdy nečte: `contacts`, `lists`, `list_subscriptions`, `suppressions`, 
 | `message_events` (jen `INSERT`) | `render_warning` | chybějící hodnota v `render_data`, oříznutý cyklus (kontraktní politika 4.10.2) |
 | `message_events` (jen `INSERT`) | `circuit_breaker_open` | sender otevřel pojistku a pozastavil kampaň (3.13) |
 
-**Sender do `message_events` nikdy nezapisuje typy `open` a `click`**, přestože na to podle grantů právo má. Zapisuje je výhradně aplikace z trackovacích endpointů. Kdyby je psal i sender, rozešly by se unikátní počty v reportech. Požadavek části 5, přebírám ho beze změny.
+**Uzavřený výčet typů, které sender zapisuje** (dohodnuto s částí 5, `ck_message_events__type` to má vynucovat):
+
+| `type` | Zapisuje |
+|---|---|
+| `sent`, `failed`, `render_warning`, `circuit_breaker_open` | **sender (4b)** |
+| `delivered`, `bounce`, `complaint` | 4a |
+| `open`, `click` | 5 |
+| `unsubscribe` | 2 |
+
+Sender do `message_events` **nikdy nezapisuje `open` ani `click`**, přestože na to podle grantů právo má. Kdyby je psal, rozešly by se unikátní počty v reportech.
+
+**Dvě věci ze schématu části 5 potřebují dořešit, viz P5.15 a P5.16.** První je, že `sent` a `failed` znamenají jeden `INSERT` navíc na každou odeslanou zprávu, tedy zdvojnásobení zápisů v horké cestě. Druhá je, že schéma má `contact_id uuid NOT NULL`, ale u testovacího odeslání na volnou adresu žádný kontakt neexistuje.
 
 Zápis do `message_events` je novinka oproti mému konceptu; grant na něj dává kontrakt 4.10.1. Schéma tabulky vlastní část 5, potřebuji od ní sloupce a povolené hodnoty `type`, viz požadavek P5.10.
 
@@ -1349,6 +1360,10 @@ EmailTags: []types.MessageTag{
 
 Ověřeno v dokumentaci: název i hodnota message tagu smí obsahovat **jen ASCII písmena, číslice, podtržítko a pomlčku**, nejvýše 256 znaků. Kanonický zápis UUID (`0192f4c1-8a2e-7b13-9f45-2c6d8e0a1b33`) tomu vyhovuje, protože pomlčka je povolená. Není potřeba žádné překódování.
 
+**`message_created_at` se bere z claimnutého řádku, nikdy z hodin.** Claim dotaz vrací `created_at` a ta hodnota jde do tokenu beze změny. Dopočítávat ji z `now()` nebo z času odeslání je chyba, která se projeví až u zpráv ležících v outboxu přes půlnoc na konci měsíce: token by ukazoval do jiné partition, aplikace by zprávu nenašla a otevření by se tiše nezapočítalo. Upozornila na to část 5 a je to past, kterou implementace snadno spadne, protože „čas vydání tokenu" zní přirozeněji než „čas materializace kampaně".
+
+Tuhle hodnotu drží Go struktura `MessageKey` (3.1) jako druhou složku identity, takže se k ní implementace dostane, aniž by ji musela hledat.
+
 K čemu tagy slouží:
 
 1. **`oe_msg` je záchranná síť pro nejisté zprávy** (3.4.5). Bez něj by po pádu senderu nešlo spárovat událost se zprávou, u které se `provider_message_id` nikdy nezapsalo. Tohle je jeho hlavní důvod existence.
@@ -2167,8 +2182,11 @@ Zbývající požadavky:
 
 | # | Co potřebuji | Proč |
 |---|---|---|
-| P5.10 | **Schéma tabulky `message_events`**: sloupce, povinnost `created_at` kvůli partitioningu, povolené hodnoty `type` | Kontrakt 4.10.1 mi dává `INSERT` a kontrakt 4.10.2 po mně chce zapisovat `render_warning`. Bez schématu to nenapíšu. |
-| P5.11 | Rozhodnutí, jestli se `render_warning` agreguje | Kampaň na 50 000 příjemců s jedním nevyplněným polem u poloviny z nich vyrobí 25 000 identických řádků. Doporučuji agregaci na dvojici (kampaň, cesta) s počítadlem. |
+| ~~P5.10~~ | **VYŘEŠENO**, schéma je v 12.2.1 části 5. `message_created_at` je povinné a mám ho z claimnutého řádku, takže ho při zápisu znám bez dohledávání. |
+| ~~P5.11~~ | **VYŘEŠENO**, agregovat ano, tvar jeden řádek na trojici (kampaň, kód, cesta) s počítadlem. Podporuji i návrh dát to do samostatné `campaign_render_warnings` místo do `message_events`, viz P5.16. |
+| **P5.15** | **Je jeden `INSERT` do `message_events` na každou odeslanou zprávu opravdu potřeba?** Typy `sent` a `failed` znamenají zdvojnásobení zápisů v horké cestě: u milionové kampaně dva miliony řádků místo jednoho milionu. Stav přitom už je na řádku `messages` a `idx_messages__campaign_status` ho umí spočítat. | Kdyby to šlo odvodit z `messages`, ušetří se celá jedna tabulka zápisů. Když to potřebné je, budu `INSERT` provádět **v téže transakci** jako `UPDATE` stavu (D3a a D3c), aby nemohlo vzniknout jedno bez druhého. Napiš prosím, jestli to tak stačí. |
+| **P5.16** | **`contact_id uuid NOT NULL` ve schématu `message_events` blokuje testovací odeslání.** Test na volně zadanou adresu žádný kontakt nemá a `messages.contact_id` je u něj `NULL` (K9). | Buď povolit `NULL` i tady, nebo z testovacích odeslání události nezapisovat vůbec. Druhá varianta je z mého pohledu lepší: test se stejně nezapočítává do statistik. |
+| **P5.17** | Podporuji **samostatnou tabulku `campaign_render_warnings`** místo agregovaných řádků v `message_events` | Tvůj argument sedí: agregace potřebuje `INSERT ... ON CONFLICT DO UPDATE`, tedy `UPDATE` právo, a rozšiřovat ho na celou `message_events` je horší než založit tabulku. Navíc je `message_events` jinak append-only a řádek s počítadlem tam koncepčně nepatří. |
 | P5.13 | **Podporuji tvůj požadavek na `payload_hex` u každého vektoru** a na doplnění hraničních případů (implicitní versus explicitní `key_id = 1`, `issued_at = 4294967295`, UUID samých `ff`, `key_id = 0`, nadbytečné bajty na konci) | Pořadí bajtů UUID je dnes popsané jen slovně. `payload_hex` je jediná věc, která zabrání tomu, aby se dvě implementace rozešly na endianitě, aniž by to kterýkoliv vektor odhalil. |
 | P5.14 | Potvrzení, do kterých typů `message_events` sender **smí** zapisovat | Tvůj zákaz `open` a `click` beru a mám ho v 2.3. Potřebuji ale uzavřený výčet toho, co psát smím, ne jen výčet zákazů. Dnes zapisuji `render_warning` a `circuit_breaker_open`. |
 
@@ -2176,7 +2194,7 @@ Zbývající požadavky:
 
 Stojí za zaznamenání, že kdyby payload nesl místo `issued_at` hodnotu `messages.created_at`, měla bys partition určenou přesně a okno bys nepotřebovala. **Nenavrhuji to měnit**, protože vektory kontraktu 3 jsou už spočítané a ověřené a přepočítávat je kvůli tomuhle se nevyplatí. Levnější cesta ke stejné jistotě je požadavek P4a.25 níže: zaručit, že se čas v UUIDv7 neliší od `created_at` o víc, než kolik je tvoje okno.
 
-Mimochodem, část 3 ve své zprávě uvádí payload click tokenu jako `... link_id(16) message_created_at(u32)`. Normativní znění v části 1, sekci 4.10.3, je `issued_at(u32)`. Na část 3 to nemá dopad, protože tokeny nevyrábí, ale ať se to nezakoření.
+**Oprava mého dřívějšího tvrzení.** Napsal jsem, že část 3 uvádí payload click tokenu chybně jako `... link_id(16) message_created_at(u32)` a že normativní je `issued_at`. Bylo to naopak: část 3 byla napřed a po zmrazení je `message_created_at` normativní. Moje poznámka vycházela ze znění před zmrazením. Nic se nezakořenilo a část 3 měla pravdu.
 
 ## 11. Rozpory
 
