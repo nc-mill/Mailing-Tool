@@ -3538,7 +3538,7 @@ Dlaždice a jejich zdroje. Sloupec „Zdroj" je závazný, protože z něj plyne
 | 1 | **Odesláno** | 7 / 30 / 90 dní | součet `campaign_stats.sent` | část 5, 5.5 | dlaždice ukáže vlastní chybu, zbytek stránky funguje |
 | 2 | **Kliklo** (hlavní číslo, největší) | totéž | vážený průměr `clicks_unique / delivered_effective` přes kampaně | část 5, 3.11.3 | totéž |
 | 3 | **Otevřelo, z toho automatických** | totéž | `opens_unique / delivered_effective` a `opens_unique_apple / opens_unique` | část 5, 3.11.2 | totéž |
-| 4 | **Problémy** (vrácené a stížnosti) | totéž | míra bounce a complaint s prahovými barvami (bounce > 5 %, stížnosti > 0,1 %) | část 5, 5.5, prahy z části 4a 3.15.2 | totéž |
+| 4 | **Problémy** (vrácené a stížnosti) | totéž | míra bounce a complaint s prahovými barvami (bounce > 4 %, stížnosti > 0,1 %) | část 5, 5.5, prahy z části 4a 3.15.2 | totéž |
 | 5 | **Na webu právě teď** | 24 h | `count(distinct contact_id)` z `web_events` | část 5, 5.5 | totéž, delší cache (5 min) |
 | 6 | **Poslední kampaně** | posledních 5 | `campaign_stats` | část 5, 5.5 | totéž |
 

@@ -3311,7 +3311,7 @@ Tohle je nejdůležitější blok, protože jsme dvě poloviny jednoho toku.
 
 ### 11.3 „Bounce > 5 %, complaints > 0,1 %" jako prahy varování je nepřesné
 
-**Kde:** kapitola 6.6 hlavní specifikace: „varování při překročení prahů (bounce > 5 %, complaints > 0,1 %)".
+**Kde:** kapitola 6.6 hlavní specifikace. **UZAVŘENO 2026-07-31:** hlavní specifikace, část 5 i část 6 jsou opravené na práh varování 4 % s odkazem sem, takže rozpor zanikl.
 
 **Rozpor:** ta čísla nejsou prahy pro varování, jsou to prahy, **při kterých AWS už jedná** a dává účet pod dohled. Varovat až v okamžiku, kdy je účet pod dohledem, je pozdě.
 

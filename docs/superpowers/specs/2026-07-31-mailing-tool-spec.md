@@ -546,7 +546,7 @@ Rozdělení odpovědnosti: **sender (Go)** odesílá, **aplikace (TypeScript)** 
 - Detekce SES sandboxu a zobrazení kvót (`GetSendQuota`). Sandbox znamená 200 příjemců za 24 hodin a 1 zpráva za sekundu, uživatel to musí vidět dřív, než spustí kampaň na 10 000 lidí.
 - Throttling odesílání podle kvóty providera, exponenciální backoff, pauza a obnovení kampaně.
 - Automatické zpracování: tvrdý bounce a stížnost → okamžitý zápis do suppression listu. Bez toho AWS účet zablokuje.
-- Dashboard doručitelnosti: bounce rate, complaint rate, varování při překročení prahů (bounce > 5 %, complaints > 0,1 %).
+- Dashboard doručitelnosti: bounce rate, complaint rate, varování při překročení prahů (bounce > 4 %, complaints > 0,1 %), automatická pauza při 8 % a 0,3 %; prahy vlastní část 4a, 3.15.2.
 
 ### 6.7 Tracking
 

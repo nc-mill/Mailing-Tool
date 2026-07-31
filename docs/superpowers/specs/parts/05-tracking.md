@@ -2848,7 +2848,7 @@ Cesta: `/[workspace]`
 | Odeslané zprávy | 7 / 30 / 90 dní | součet `campaign_stats.sent` | 60 s |
 | Míra prokliku, trend | totéž | vážený průměr přes kampaně | 60 s |
 | Míra otevření s podílem automatických | totéž | vážený průměr | 60 s |
-| Míra odmítnutí a stížností | totéž | s prahovými barvami (bounce > 5 %, complaints > 0,1 %) | 60 s |
+| Míra odmítnutí a stížností | totéž | s prahovými barvami (bounce > 4 %, complaints > 0,1 %), prahy vlastní část 4a, 3.15.2 | 60 s |
 | Aktivní kontakty na webu | 24 h | `count(distinct contact_id)` z `web_events` | 5 min |
 | Poslední kampaně | posledních 5 | `campaign_stats` | 60 s |
 
