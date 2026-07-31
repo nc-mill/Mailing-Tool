@@ -403,18 +403,11 @@ Dvě pravidla, která z toho plynou:
 1. Hlavičky vkládáme sami.
 2. **Funkci SES pro správu odběratelů nepoužíváme**, protože když je zapnutá, SES naše hlavičky přepíše.
 
-**Z veřejných zdrojů se to potvrdit nedá**, AWS nikde nedokumentuje, které hlavičky podepisuje. Rozhodne jeden testovací mail, práce na pět minut:
+**Ověřeno na skutečných zprávách.** AWS to sice nikde nedokumentuje, ale v korpusech reálných e-mailů se našly čtyři vzorky a žádný protipříklad. Nejsilnější je zpráva nesoucí **jen podpis od SES**, která obě hlavičky v podepsaném seznamu má, takže je tam nemohl dát nikdo jiný. Seznam se navíc skládá z přítomných hlaviček, ne z pevného výčtu: v jednom vzorku hlavička chyběla ve zprávě a odpovídajícím způsobem chyběla i v podpisu.
 
-Poslat přes `SendEmail` s obsahem typu `Raw`, s Easy DKIM, **bez** funkce pro správu odběratelů, na vlastní schránku na Gmailu. Do hlaviček dát unikátní token, ať se pozná případné přepsání. Pak v Gmailu zobrazit originál a přečíst:
+Dokumentace AWS to potvrzuje z druhé strany, uvádí jako přepisované **jen `Date` a `Message-ID`**.
 
-1. **Jsou obě hlavičky pro odhlášení v seznamu podepsaných hlaviček?** Tohle je ta odpověď.
-2. Zůstal token beze změny?
-
-**Pozor na výklad:** jestli Gmail ukáže tlačítko „Odhlásit", nic nedokazuje, protože závisí i na reputaci a objemu odesílatele. Rozhoduje jen ten seznam podepsaných hlaviček.
-
-Když tam hlavičky nebudou, musí sender podepisovat sám. V tom případě podepsat jen minimální sadu a **nikdy `Message-ID`**, protože ho SES přepisuje a rozbil by tím náš podpis. Dva podpisy vedle sebe jsou v pořádku.
-
-Kdybychom někdy přešli na vlastní DKIM klíč, **test se musí zopakovat**, je to jiná cesta kódem.
+**Zbývá potvrdit před spuštěním, ne před vývojem:** poslat jednu zprávu na vlastní schránku na Gmailu a v „zobrazit originál" zkontrolovat podepsaný seznam. **Pozor na výklad:** jestli Gmail ukáže tlačítko „Odhlásit", nic nedokazuje, protože závisí i na reputaci a objemu. Rozhoduje jen ten seznam.
 
 #### 6.2.2 Apple: pro MVP to zjednodušujeme
 
