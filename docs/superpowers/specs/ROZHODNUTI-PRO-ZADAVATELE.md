@@ -245,9 +245,9 @@ Tím padá argument „museli bychom hlídat druhé heslo na serveru". Dešifrov
 
 **Registrace: tři režimy místo dvou.**
 
-- `closed` — po prvotním nastavení nelze vytvořit žádný další účet
-- `invite` — účty jen přes pozvánku, **doporučený výchozí stav**
-- `open` — veřejná registrace s ověřením e-mailu
+- `closed`: po prvotním nastavení nelze vytvořit žádný další účet
+- `invite`: účty jen přes pozvánku, **doporučený výchozí stav**
+- `open`: veřejná registrace s ověřením e-mailu
 
 **Retence záznamu o činnosti: rozdělená podle citlivosti.**
 
