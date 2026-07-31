@@ -128,8 +128,10 @@ Provozní náklad samotného Amazonu je při psaní tohoto dokumentu v řádu je
 Na tyhle otázky nepotřebujete znát kód. Odpovědi mění produkt.
 
 1. **Automatická brzda:** má se kampaň sama pozastavit při 8 % bounce rate, nebo má jen varovat a nechat rozhodnutí na člověku? Navrhuju pozastavit. Souhlasíte?
+   **Rozhodnuto:** pozastavit při 8 %, žluté varování už při 4 %. Práh varování se posunul z původních 5 % dolů, aby zbyl prostor zasáhnout dřív, než účet přebere pod dohled Amazon. Obojí se vyhodnocuje až po `GUARD_MIN_SENT` předaných zprávách, viz 3.15.2.
 2. **Kolik měkkých bounců znamená vyřazení adresy?** Navrhuju 3 během 30 dní. Konzervativnější je 5, agresivnější 2.
 3. **Smí uživatel vzít adresu ze suppression listu ručně zpátky?** Navrhuju: u měkkých bounců a ručně přidaných ano (s potvrzením a zápisem do auditu), u tvrdých bounců a stížností ne. Tohle je hranice mezi „nástroj chrání uživatele" a „nástroj uživateli poroučí".
+   **Rozhodnuto:** protinávrh části 4a se stahuje, platí verze části 2. Tvrdý odraz jde odblokovat nejdřív po 30 dnech od zápisu a vždy jen po jedné adrese, stížnost nikdy, hromadné odblokování neexistuje. Suppression list vlastní **část 2** a tato část ho nespecifikuje znovu, jen ho používá.
 4. **Testovací odeslání a suppression list:** má test na vlastní adresu obejít suppression list? Navrhuju ano pro adresy vlastníka účtu, protože jinak si vývojář nezkusí nic poté, co si sám omylem nahlásil spam.
 5. **Zmeškaný plán:** kampaň měla odejít v 9:00, server běžel až v 16:00. Odeslat, nebo počkat na člověka? Navrhuju hranici 6 hodin: do 6 hodin odeslat, po 6 hodinách se zeptat.
 6. **Co s kampaní, u které se uprostřed ukáže, že provider je zablokovaný?** Navrhuju automatické pozastavení a jasné hlášení. Alternativa je zkoušet dál a plnit frontu chyb.
@@ -1983,7 +1985,7 @@ Jmenovatel u stížností je `delivered`, protože stěžovat si může jen ten,
 | Metrika | Práh | Akce | Zdroj prahu |
 |---|---|---|---|
 | bounce_rate | 2 % | informace v dashboardu | doporučení AWS |
-| bounce_rate | 5 % | žluté varování, mail vlastníkovi projektu | AWS: účet jde pod dohled |
+| bounce_rate | 4 % | žluté varování, mail vlastníkovi projektu | pod hranicí 5 %, od které Amazon dává účet pod dohled |
 | bounce_rate | 8 % | **automatická pauza běžících kampaní** (`bounce_guard`) | naše brzda pod AWS hranicí 10 % |
 | bounce_rate | 10 % | červené hlášení, provider `degraded` | AWS: může zastavit odesílání |
 | complaint_rate | 0,05 % | informace | polovina AWS hranice |
@@ -1994,7 +1996,11 @@ Jmenovatel u stížností je `delivered`, protože stěžovat si může jen ten,
 
 Brzda čte **z `message_events`**, ne ze `status`. Jmenovatel je `sent_count` (kolik jsme předali provideru), čitatel je počet událostí `bounced_hard` nebo `complained` pro danou kampaň. Kdyby čitatel vycházel ze `status`, byl by po zavedení koncového `sent` **vždy nula** a brzda by nesepnula nikdy, i kdyby se odrazila celá kampaň. Je to nejtišší možná porucha: nic neselže, jen ochrana přestane existovat.
 
-Brzda se vyhodnocuje jen tehdy, když má kampaň předaných alespoň **500 zpráv**. Bez toho by tři bouncy z prvních deseti zastavily kampaň.
+**Rozhodnuto (práh varování 4 %):** varování od 2 % by se ozývalo prakticky pořád a nikdo by ho po pár týdnech nečetl, varování až od 5 % by přišlo ve chvíli, kdy Amazon už sám jedná. Čtyři procenta jsou poslední místo, kde se to dá ještě v klidu vyřešit.
+
+Brzda se vyhodnocuje jen tehdy, když má kampaň předaných alespoň **500 zpráv** (`GUARD_MIN_SENT`). Bez toho by tři bouncy z prvních deseti zastavily kampaň.
+
+**Stejná podlaha platí i pro žluté varování.** Prahy 4 % a 0,1 % se vyhodnocují až po `GUARD_MIN_SENT` předaných zprávách, stejně jako automatická pauza. Bez podlahy by kampaň na 25 lidí s jediným odrazem měla 4 % a spustila varování, které o doručitelnosti nevypovídá nic. Podlaha se tedy vztahuje na celou tabulku prahů, ne jen na řádky s pauzou.
 
 Brzda je konfigurovatelná (`BOUNCE_GUARD_RATE`, `COMPLAINT_GUARD_RATE`, `GUARD_MIN_SENT`) a v nastavení projektu jde vypnout, ale vypnutí vyžaduje explicitní potvrzení s textem, co to znamená, a zápis do auditu.
 
@@ -3038,7 +3044,11 @@ Mechanismus je přitom dobrý a chci ho: bez něj zůstane každá nejednoznačn
 
 **Doporučuju A.** Je to nejmenší možná změna a dobře se hájí: přechod nemění realitu, opravuje naši neznalost o ní. Stav `ambiguous_dispatch` doslova znamená „nevíme, jestli jsme předali", a událost od providera je důkaz, že ano. Zákaz `failed → sent` má chránit před tím, aby se selhání tiše přepsalo na úspěch; tady se nepřepisuje selhání, ale nejistota.
 
-Pokud padne B, musím upravit 3.9.5 a přidat do UI trvalou kategorii „nejisté odeslání" s vysvětlením, proč se čísla nikdy nesrovnají.
+**ROZHODNUTO: varianta A.** Kontrakt 4.10.1 dostává úzkou výjimku, která povoluje přechod `failed → sent` **výhradně** tehdy, když `error_code = 'ambiguous_dispatch'` a přechod provádí aplikace při zpracování události od providera. Vázanost na konkrétní hodnotu `error_code` dělá výjimku auditovatelnou. Zdůvodnění je to výše: nepřepisuje se selhání, ale nejistota.
+
+**Varianta B zamítnuta:** kampaň by napořád vykazovala selhání, která selháními nebyla, a `sent_count` by byl trvale podhodnocený. **Varianta C zamítnuta** jako nejdražší, nový stav by zasáhl kontrakt, sender, claim dotaz i UI.
+
+Změna kontraktu je zanesená v části 1, sekce 4.10.1, včetně testovacího scénáře, který ověřuje, že s jiným `error_code` přechod selže.
 
 ### 11.10 Plochý versus vnořený tvar `render_data` (moje vlastní chyba, opravená)
 
@@ -3062,15 +3072,15 @@ Pokud padne B, musím upravit 3.9.5 a přidat do UI trvalou kategorii „nejist�
 
 | # | Otázka | Kdo rozhoduje | Můj návrh |
 |---|---|---|---|
-| O1 | Má se kampaň při 8 % bounce rate sama pozastavit, nebo jen varovat? | produkt (Petr) | Pozastavit. Zablokovaný účet je dražší než přerušená kampaň. |
-| O2 | Smí uživatel odebrat adresu ze suppression listu? | produkt + právní | U měkkých bounců a ručních zápisů ano s potvrzením a auditem, u tvrdých bounců a stížností ne. |
-| O3 | Kolik soft bounců znamená suppression? | produkt | 3 za 30 dní. |
-| O4 | Catch-up okno pro zmeškaný plán: 6 hodin? | produkt | Ano, konfigurovatelné. |
-| O5 | Má nástroj sám zakládat SNS topic a odběr v účtu uživatele? | produkt + bezpečnost | Ano jako výchozí, s ručním režimem jako alternativou. Bez automatiky je onboarding výrazně horší. |
-| O6 | Retence `messages` 90 dní? | produkt | Ano. Uživatel po 90 dnech neuvidí detail jednotlivé zprávy. |
+| O1 | ~~Má se kampaň při 8 % bounce rate sama pozastavit, nebo jen varovat?~~ | **uzavřeno** | Obojí: žluté varování při **4 %**, automatická pauza při **8 %**. Práh varování se posunul z 5 % dolů, aby zbyl prostor zasáhnout dřív, než účet vezme pod dohled Amazon. Obě hranice se vyhodnocují až po `GUARD_MIN_SENT`, viz 3.15.2. |
+| O2 | ~~Smí uživatel odebrat adresu ze suppression listu?~~ | **uzavřeno** | Platí verze **části 2**, protinávrh 4a se stahuje: tvrdý odraz jde odblokovat nejdřív po 30 dnech a jen po jedné adrese, stížnost nikdy, hromadné odblokování neexistuje. Suppression list vlastní část 2. |
+| O3 | ~~Kolik soft bounců znamená suppression?~~ | **uzavřeno** | 3 měkké odrazy v okně 30 dní. |
+| O4 | ~~Catch-up okno pro zmeškaný plán: 6 hodin?~~ | **uzavřeno** | Ano, 6 hodin, konfigurovatelné. |
+| O5 | ~~Má nástroj sám zakládat SNS topic a odběr v účtu uživatele?~~ | **uzavřeno** | Automatické založení konfigurace v AWS účtu je výchozí režim, ruční režim zůstává jako alternativa. |
+| O6 | ~~Retence `messages` 90 dní?~~ | **uzavřeno** | Ano, 90 dní pro detail zprávy. Agregované statistiky kampaně zůstávají. |
 | O7 | Kanonizace SNS string to sign: závěrečný newline ano, nebo ne? | technické, empiricky | Ověřit proti reálné zprávě a použít `sns-validator`. Zapsat do golden fixture. |
-| O8 | SMTP bez zpětné vazby: podporovat v MVP 0? | produkt | Ano, ale s výslovným varováním v UI. |
+| O8 | ~~SMTP bez zpětné vazby: podporovat v MVP 0?~~ | **uzavřeno** | Obecné SMTP podporovat, ale s výslovným varováním v UI, že se suppression list u tohohle provideru neplní sám. |
 | O9 | ~~Kdo generuje `Message-ID` a v jaké doméně?~~ | **uzavřeno** | Vyřešeno kontraktem 4.10.1: sender, tvar `<oe.{base32_lower(uuid_bytes(id))}@{sending_domain}>`, deterministicky z `messages.id`. |
-| O10 | Má se odeslání blokovat při chybějícím DMARC? | produkt | Ne, jen varovat. Gmail a Yahoo to sice vyžadují, ale blokovat kvůli tomu první kampaň nového uživatele je moc tvrdé. |
-| O11 | Anonymizace versus mazání zpráv při GDPR výmazu kontaktu | právní | Anonymizovat, aby nezmizely statistiky kampaní. Potřebuje potvrzení odborníkem. |
+| O10 | ~~Má se odeslání blokovat při chybějícím DMARC?~~ | **uzavřeno** | Chybějící DMARC jen varovat, neblokovat. Gmail a Yahoo ho sice vyžadují, ale blokovat kvůli tomu první kampaň nového uživatele je moc tvrdé. |
+| O11 | Anonymizace versus mazání zpráv při GDPR výmazu kontaktu | **čeká na právníka** | Návrh zůstává: anonymizovat, aby nezmizely statistiky kampaní. Rozhodnutí je odložené do posouzení právníkem, produkt ho nezavírá. |
 | O12 | Sdílení kvóty mezi víc běžícími sendery | část 4b | Nemám názor na algoritmus, ale potřebuju vědět, jestli se dělí staticky (kvóta / počet senderů), nebo dynamicky. Ovlivňuje to, jak počítám `eta_seconds`. |

@@ -2694,7 +2694,9 @@ Sender očekával značky `__OE_CLICK_<n>__` a `__OE_OPEN_PIXEL__`, které jsem 
 
 #### K21. VÁŽNÝ, ROZHODUJE SE ZVLÁŠŤ: sender nemá právo pozastavit kampaň
 
-**Stav:** orchestrátor potvrdil věcnou správnost a rozhoduje o rozšíření práv samostatně, protože jde o bezpečnostní hranici. Do rozhodnutí sender kampaň nepozastavuje a chová se podle prozatímního postupu v 3.13.
+**Stav: ROZHODNUTO, schváleno se sloupcovým grantem.** Kontrakt 4.10.1 v části 1 dostává `GRANT UPDATE (status, pause_reason) ON campaigns TO openengage_sender` a `campaigns` nový sloupec `pause_reason jsonb`. Platí tři omezení zapsaná v kontraktu: grant je sloupcový, sender smí provést jediný přechod `sending → paused` se současným zápisem `pause_reason` (odpauzování je výhradně akce uživatele nebo aplikace), a každé automatické pozastavení jde do auditu, přičemž do `audit_log` zapisuje aplikace, ne sender. Prozatímní postup v 3.13 tím přestává platit.
+
+Původní text nálezu zůstává níž jako zdůvodnění.
 
 Kontraktní role z 4.10.1 má na `campaigns` jen `GRANT SELECT`. Sender ale potřebuje kampaň pozastavit ve dvou situacích, které jsou obě součástí zadání:
 
@@ -2794,7 +2796,8 @@ Otázky, které nedokážu rozhodnout sám. Otázky vzniklé z rozporů s kontra
 |---|---|---|---|
 | ~~O1~~ | **ROZHODNUTO.** Výchozí `AMBIGUOUS_DISPATCH_POLICY` je **`fail` pro SES a `retry` pro SMTP**. Zdůvodnění opřené o deterministický `Message-ID` je vyhozené, protože na SES neplatí (K3). |
 | O2 | Je přijatelné, aby se nástroj u dvou providerů choval v tomhle bodě různě? Alternativa je jedno chování pro oba a horší výsledek u jednoho z nich. | Produkt | Různě. Uživatel to uvidí jen jako jednu větu v nastavení providera. |
-| O3 | Má existovat "okamžité zastavení" kampaně, které zahodí rozpracovanou dávku? | Produkt | Ne v MVP 0. Přidalo by stav, který je nutně nejistý, a řeší problém, který skoro nikdo nemá. |
+| ~~O3~~ | ~~Má existovat "okamžité zastavení" kampaně, které zahodí rozpracovanou dávku?~~ **ROZHODNUTO: v MVP 0 nedělat.** Pozastavení dokončí rozpracovanou dávku, což jsou jednotky sekund. Tvrdé zastavení by přidalo stav, který je nutně nejistý, a řešilo by problém, který v praxi skoro nikdo nemá. | **uzavřeno** | |
+| ~~K21~~ | ~~Smí sender pozastavit kampaň?~~ **ROZHODNUTO: schváleno se sloupcovým grantem.** `GRANT UPDATE (status, pause_reason) ON campaigns` plus nový sloupec `campaigns.pause_reason jsonb`, se třemi omezeními zapsanými v kontraktu (sloupcový grant, jediný přechod `sending → paused` se současným zápisem `pause_reason`, audit zapisuje aplikace). Rozbor je v K21, změna kontraktu v části 1, sekce 4.10.1. | **uzavřeno** | |
 | O4 | Je 5 % z prvních 1 000 zpráv správná hranice pro zastavení kampaně kvůli chybám renderu? | Produkt | Ano, přebírám z kontraktu. Znamená to, že v nejhorším případě odejde padesát vadných mailů. Nižší práh by reagoval na náhodný shluk. |
 | O5 | Je `*liquid.Template.Render` z `osteele/liquid` bezpečné volat souběžně? | Ověřit čtením zdrojáku a testem s `-race` | Do ověření držet jednu sadu šablon per worker, což je bezpečné v obou případech. Při 32 workerech je to paměťově zanedbatelné. |
 | O6 | **Jaká je skutečná doba parsování a interpolace šablony o 100 kB?** Kontrakt 5 vynutil náhradu značek před parsováním, takže se **parsuje na každou zprávu**, ne jednou na kampaň (rozbor v 3.7.1). | Benchmark, **první, který se v senderu napíše** | Odhad: parsování 0,2 až 1 ms, interpolace 30 až 150 µs. Při 50 zprávách za sekundu to je 1 až 5 procent jádra, tedy zanedbatelné. Je to ale odhad, ne měření, a kdyby byl špatný, náhradní cesta (značka jako Liquid proměnná) je popsaná v 3.7.1. |

@@ -39,6 +39,27 @@ Commit a push provede orchestrátor **až když projde všech deset bodů**. Zad
 - [ ] Nikde není navržená GPL, LGPL ani jiná copyleft závislost
 - [ ] Každá část dodala strukturovaný souhrn (rozpory, požadavky, otevřené otázky)
 
+## Průchod s rozhodnutími zadavatele k části 4 (2026-07-31)
+
+Proběhl jeden průchod specifikacemi, který zanesl schválená rozhodnutí zadavatele k části 4.
+Uzavřené otázky zůstávají v dokumentech čitelné i s odůvodněním, neškrtaly se beze stopy.
+
+| Co se zaneslo | Kam |
+|---|---|
+| Práh žlutého varování u míry odrazů 5 % → **4 %**, se stejnou podlahou `GUARD_MIN_SENT` jako automatická pauza | 4a, 3.15.2 a kapitola 0 |
+| Uzavřeno O1 až O6, O8 a O10; O11 překlopeno na „čeká na právníka" | 4a, kapitola 12 |
+| Suppression: platí verze části 2, protinávrh 4a stažen | 4a kapitola 0 a 12, 2 kapitola 13 |
+| Uzavřeno O3 (tvrdé zastavení kampaně v MVP 0 nedělat) a K21 | 4b, kapitoly 10 a 12 |
+| Uzavřeno O5 (`fail` pro SES, `retry` pro SMTP), O7 překlopeno na „čeká na právníka" | 1, kapitola 12 |
+| Uzavřena otázka 7 (globální retence), otázky 2 a 3 překlopeny na „čeká na právníka" | 5, kapitola 14 |
+
+**Dvě změny zmrazeného kontraktu 4.10.1** (obě schválené zadavatelem):
+
+1. **Úzká výjimka ze zákazu `failed → sent`**, povolená výhradně při `error_code = 'ambiguous_dispatch'` a jen když přechod provádí aplikace při zpracování události od providera. Doplněné testovací scénáře `OB-21` a `OB-22`.
+2. **Sloupcový grant na pozastavení kampaně** senderem, `GRANT UPDATE (status, pause_reason) ON campaigns`, se sloupcem `campaigns.pause_reason jsonb` a třemi omezeními (sloupcový grant, jediný přechod `sending → paused`, audit zapisuje aplikace).
+
+**Zrušený strop u kontroly otisků v suppression listu.** Kontrola počítá otisk pod všemi známými pokoleními klíče, bez horního omezení; zrušil se i limit pěti položek u `SECRET_KEY_PREVIOUS`. Se stropem by se nejstarší záznamy přestaly dát ověřit a smazaný člověk by se vrátil prvním dalším importem, aniž by cokoliv selhalo. K tomu přibyl požadavek, aby recovery bundle nesl celý keyring a aby `oe doctor` hlásil chybějící stará pokolení jako kritickou chybu.
+
 ## Poznámka k metodě
 
 Výstup subagenta se nebere jako doklad hotové práce. Každá oprava se ověřuje grepem

@@ -3336,12 +3336,12 @@ Tahle část specifikuje SDK podstatně bohatší (session, dávkování, offlin
 | # | Otázka | Kdo rozhoduje | Proč to nejde rozhodnout tady |
 |---|---|---|---|
 | 1 | Je pixel v e-mailu podle čl. 5(3) ePrivacy podmíněný souhlasem, nebo ho pokrývá souhlas s e-mailovým marketingem? | právník, ne technik | EDPB Guidelines 2/2023 to výslovně řeší, ale závěr závisí na výkladu a na trhu. Z odpovědi plyne požadavek 12.3.6, který dnes nikdo nevlastní |
-| 2 | Je `anonymize` (odstranění `contact_id` z událostí) dostatečná anonymizace podle GDPR, nebo je nutné mazat? | právník | Ovlivňuje výchozí hodnotu v 3.15.3 a to, jestli výmaz rozbije historické reporty |
-| 3 | Je odvolání souhlasu `personalization` důvod odstranit `contact_id` i ze **starých** událostí? | právník | Návrh je nechat je, protože vznikly za platného souhlasu. Opačný výklad je obhajitelný |
+| 2 | Je `anonymize` (odstranění `contact_id` z událostí) dostatečná anonymizace podle GDPR, nebo je nutné mazat? | **čeká na právníka** | Ovlivňuje výchozí hodnotu v 3.15.3 a to, jestli výmaz rozbije historické reporty. Produkt otázku nezavírá, čeká se na právní posouzení |
+| 3 | Je odvolání souhlasu `personalization` důvod odstranit `contact_id` i ze **starých** událostí? | **čeká na právníka** | Návrh je nechat je, protože vznikly za platného souhlasu. Opačný výklad je obhajitelný. Produkt otázku nezavírá, čeká se na právní posouzení |
 | 4 | Hlavní metrika na dashboardu: proklik, nebo otevření? | produkt (Petr) | Je to proti zvyklostem oboru a proti očekávání uživatelů z Ecomailu. Viz 0.7 otázka 1 |
 | 5 | Odečítat automatická otevření vždy, nebo přepínačem? | produkt | Návrh: vždy zobrazovat oboje, bez přepínače. Klaviyo a Mailchimp mají přepínač |
 | 6 | Ukládat zemi z IP adresy? | produkt plus právník | Výchozí návrh je vypnuto |
-| 7 | Retence per workspace, nebo jen globální? | produkt | Per workspace znamená mazání řádků místo dropu partition, tedy podstatně dražší údržbu. Návrh: MVP 0 globální |
+| ~~7~~ | ~~Retence per workspace, nebo jen globální?~~ | **uzavřeno** | **Globální retence pro celou instalaci, ne per workspace.** Per workspace by znamenala mazání řádků místo zahazování celých oddílů, tedy podstatně dražší údržbu |
 | 8 | Sledovat pozici odkazu (dva odkazy na stejnou URL zvlášť)? | produkt | Návrh: ano. Po sladění s částí 1 je `link_id` samostatné UUID na každý odkaz, takže se to děje samo. Otázka je jen, jestli to zobrazovat |
 | 9 | Rozšířit povolený seznam licencí o Unlicense, CC0 a BlueOak-1.0.0? | část 1 | Odblokovalo by to `isbot` a `lru-cache`. Bez toho si píšeme obojí sami, což je pár desítek řádků |
 | 10 | Je 15 minut správná platnost `oe_token`? | produkt | Kompromis mezi bezpečností a scénářem „vrátím se k tomu později" |

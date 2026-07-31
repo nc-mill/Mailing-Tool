@@ -1262,10 +1262,20 @@ Zvažovaná odpověď byla samostatný klíč, který se z návrhu nikdy nerotuj
 
 1. Purpose `openengage/v1/suppression-fingerprint`, odvozený běžně přes HKDF a **rotovatelný jako všechno ostatní**.
 2. Otisk se ukládá spolu s `key_id`, stejně jako token a šifrová obálka: `suppressions.fingerprint bytea` plus `suppressions.fingerprint_key_id smallint`. Přesné DDL vlastní část 2.
-3. Kontrola, jestli je adresa na suppression listu, spočítá otisk **pro každé známé pokolení klíče** a hledá `WHERE fingerprint = ANY($1)`. Pokolení je nejvýš šest (aktuální plus limit pěti v `SECRET_KEY_PREVIOUS`), takže jde o **jeden indexovaný dotaz s polem šesti hodnot**, ne o šest dotazů.
+3. Kontrola, jestli je adresa na suppression listu, spočítá otisk **pro všechna známá pokolení klíče, bez horního omezení**, a hledá `WHERE fingerprint = ANY($1)`. Je to **jeden indexovaný dotaz s polem tolika hodnot, kolik je pokolení**, ne dotaz na pokolení.
 4. Nové záznamy se zapisují vždy s aktuálním `key_id`. Přepočítat staré nejde a nemusí, protože se ověřují svým pokolením.
 
-Cena je šest HMAC výpočtů na adresu. Při importu pěti milionů kontaktů je to třicet milionů HMAC, tedy jednotky desítek sekund jednovláknově a v dávkovaném importu se to ztratí v šumu. Proti tomu stojí zachovaná schopnost rotovat klíč po bezpečnostním incidentu.
+> **Strop na počet pokolení neexistuje (KONTRAKT, ROZHODNUTO).** Dřívější znění mluvilo o „nejvýš šesti pokoleních" (aktuální plus pět předchozích). Ten strop se **ruší** a nesmí se vrátit, ani jako validace `SECRET_KEY_PREVIOUS`.
+>
+> Otisk starého záznamu **nelze nikdy přepočítat**, protože původní adresa je po výmazu podle GDPR pryč. Po překročení stropu by se tedy nejstarší záznamy přestaly dát ověřit a **smazaný člověk by se vrátil prvním dalším importem, aniž by cokoliv selhalo nebo se zalogovalo**. Je to nejtišší možná porucha: žádná chyba, žádný záznam v logu, jen zmizelá ochrana.
+>
+> Cena za zrušení stropu je zanedbatelná. Jedna operace otisku trvá řádově mikrosekundu, takže při deseti pokoleních a importu sto tisíc kontaktů jde zhruba o sekundu navíc. Přirozeným stropem je počet rotací za životnost instalace, což jsou jednotky za roky, ne stovky.
+
+Cena je jeden HMAC na pokolení a adresu. Při šesti pokoleních a importu pěti milionů kontaktů je to třicet milionů HMAC, tedy jednotky desítek sekund jednovláknově a v dávkovaném importu se to ztratí v šumu. Proti tomu stojí zachovaná schopnost rotovat klíč po bezpečnostním incidentu.
+
+**Záloha a keyring.** Bezpečnostní klíč v záloze schválně není, takže obnova stojí na tom, co si provozovatel uložil zvlášť. Ten **recovery bundle musí nést celý keyring**, tedy aktuální `SECRET_KEY` **i všechna předchozí pokolení** ze `SECRET_KEY_PREVIOUS`. Kdyby nesl jen aktuální klíč, obnova ze zálohy by rozbila přesně totéž co strop na pokolení: suppression list by zůstal, ale nejstarší otisky by se přestaly dát ověřit a smazaní lidé by se vrátili. Dokumentace k záloze to musí říkat stejně hlasitě jako to, že klíč v záloze není.
+
+**Kontrola zdraví instalace.** `oe doctor` porovná pokolení použitá v datech (`SELECT DISTINCT fingerprint_key_id FROM suppressions`, totéž pro trackovací tokeny) se seznamem klíčů, které instalace zná. Každé chybějící pokolení hlásí jako **kritickou chybu**, ne jako doporučení. Chybějící starý klíč není kosmetický nedostatek, je to už nastalá tichá ztráta ochrany.
 
 > **Tvrdé pravidlo, které kontroluje `oe doctor`: `SECRET_KEY_PREVIOUS` se nikdy nevyprazdňuje.** Ani po `oe rotate-credentials`. Credentials jsou jediné, co se dá přešifrovat; trackovací tokeny ve starých e-mailech a suppression otisky po výmazu se přešifrovat nedají nikdy. `oe rotate-credentials` proto po doběhnutí **nesmí** hlásit, že staré klíče jdou odebrat, a `oe doctor` hlásí prázdné `SECRET_KEY_PREVIOUS` při neprázdném suppression listu jako kritický nález.
 
@@ -2477,7 +2487,7 @@ Legenda sloupce "Kdo": W = web, K = worker, S = sender.
 |---|---|---|---|---|---|
 | `APP_URL` | URL | **ano** | | W K | absolutní URL s `http` nebo `https`, bez koncového lomítka. Používá se v odkazech v e-mailech a pro `Origin` kontrolu. Chybí = start selže. |
 | `SECRET_KEY` | string | **ano** | | W K S | `[<key_id>:]<base64url>`, po dekódování přesně 32 B. Odmítne se známý ukázkový klíč z dokumentace. |
-| `SECRET_KEY_PREVIOUS` | string | ne | prázdné | W K S | čárkou oddělený seznam `<key_id>:<base64url>`, nejvýš 5 položek |
+| `SECRET_KEY_PREVIOUS` | string | ne | prázdné | W K S | čárkou oddělený seznam `<key_id>:<base64url>`, **bez horního počtu položek** (strop by znemožnil ověřit nejstarší otisky, viz 3.10) |
 | `DATABASE_URL` | URL | **ano** | | W K | `postgres://`, role `openengage_app` |
 | `DATABASE_URL_SENDER` | URL | ne | odvozeno z `DATABASE_URL` s uživatelem `openengage_sender` | S | při `MODE=all` se dopočítá, jinak povinná |
 | `DATABASE_POOL_MAX` | int | ne | 10 | W K | 1 až 100 |
@@ -2760,6 +2770,12 @@ Uvedení jen dvou sloupců není tichá chyba, ale tvrdý `ERROR: there is no un
 | `sent`, `failed`, `skipped` | (nic) | | **koncové stavy, žádný přechod zpět** |
 
 Zakázané přechody, které musí odmítnout aplikační kód a musí mít test: `sent → pending`, `sent → claimed`, **`sent → failed`**, `failed → sent`, `skipped → cokoliv`, `pending → sent` (bez claimu).
+
+> **Jediná výjimka ze zákazu `failed → sent` (KONTRAKT).** Přechod `failed → sent` je povolený **výhradně** tehdy, když má zpráva `error_code = 'ambiguous_dispatch'` a přechod provádí **aplikace** při zpracování události od providera. Sender tuhle výjimku nemá, provádí ji jen aplikační kód zpracovávající příchozí události.
+>
+> Důvod: `ambiguous_dispatch` znamená „nevíme, jestli jsme zprávu předali". Událost od providera je důkaz, že předaná byla, takže se nepřepisuje selhání, ale nejistota. Bez výjimky by kampaň napořád vykazovala selhání, která selháními nebyla, a `sent_count` by byl trvale podhodnocený.
+>
+> Vázanost na konkrétní hodnotu `error_code` dělá výjimku auditovatelnou: je to jedna hodnota v jednom sloupci, dá se na ni napsat test i dotaz do auditu. S jakýmkoliv jiným `error_code` musí přechod `failed → sent` selhat, včetně `NULL`. Rozbor je v části 4a, kapitola 11.13.
 
 **`sent` je koncový, i když později přijde tvrdý bounce.**
 
@@ -3048,12 +3064,18 @@ ALTER DEFAULT PRIVILEGES FOR ROLE openengage_migrator IN SCHEMA public
 
 `SELECT ON suppressions` je nutný, jinak je přechod `claimed → skipped` (kontrola suppression těsně před odesláním), který kontrakt sám povoluje, fyzicky neproveditelný.
 
-**Sender smí kampaň pozastavit, nic víc (KONTRAKT).** Je to jediná zapisovací pravomoc senderu mimo `messages` a je omezená na dva sloupce:
+**Sender smí kampaň pozastavit, nic víc (KONTRAKT).** Je to jediná zapisovací pravomoc senderu mimo `messages` a je omezená na dva sloupce. Grant je **sloupcový**, nikdy na celou tabulku: sender nesmí sáhnout na `compiled_html`, `subject` ani na nic dalšího.
+
+Sloupec `campaigns.pause_reason` je součástí kontraktu a má typ **`jsonb`**. DDL tabulky `campaigns` vlastní část 4a, ale sloupec musí existovat a mít tenhle typ, jinak sender pozastavení neprovede:
+
+```sql
+ALTER TABLE campaigns ADD COLUMN pause_reason jsonb;
+```
 
 | Pravidlo | |
 |---|---|
 | Povolený přechod | **výhradně `sending → paused`**. Nic jiného, ani `queueing → paused`, ani cokoliv zpět |
-| Povinný zápis | `pause_reason` musí být neprázdný a z uzavřeného výčtu (`render_failure_rate`, `credentials_undecryptable`, `provider_quota_exhausted`, `provider_unavailable`) |
+| Povinný zápis | `pause_reason` musí být neprázdný objekt s klíčem `code` z uzavřeného výčtu (`render_failure_rate`, `credentials_undecryptable`, `provider_quota_exhausted`, `provider_unavailable`) |
 | Odpauzování | **výhradně akce uživatele nebo aplikace.** Sender kampaň nikdy nerozjede zpět, ani když příčina pominula |
 | Audit | každé automatické pozastavení zapisuje aplikace do `audit_log` jako `campaign.auto_paused` s důvodem, jakmile změnu uvidí |
 
@@ -3125,6 +3147,8 @@ Vlastník smí tabulku rozšiřovat, nesmí měnit název, typ ani sémantiku vy
 | `OB-18` | Claim nad kampaní s `deleted_at IS NOT NULL` ve stavu `sending` | vrátí 0 řádků v kroku 1 i v kroku 2 |
 | `OB-19` | Sender A drží claim, reaper ho uvolní, claimne sender B, **teprve pak** se A pokusí o D1 | D1 ovlivní 0 řádků, **A neodešle nic** a zprávu z dávky zahodí. Odešle ji jen B. Bez stráže v D1 se odešle dvakrát |
 | `OB-20` | Totéž, ale A se dostane až k D3 (zpráva už u providera) | D3 ovlivní 0 řádků, A nezapisuje nic a loguje `claim_lost_after_dispatch`. O řádku rozhodne nový vlastník, výsledek je `sent` nebo `ambiguous_dispatch`, **nikdy dvojí zápis `sent` s různým `provider_message_id`** |
+| `OB-21` | Zpráva ve stavu `failed` s `error_code = 'ambiguous_dispatch'`, aplikace zpracuje událost od providera a přepne ji na `sent` | přechod **uspěje**, doplní se `provider_message_id` a `sent_at` |
+| `OB-22` | Tentýž přechod `failed → sent` u zprávy s jiným `error_code` (například `render_failure`, `provider_rejected`) i s `error_code IS NULL` | přechod **musí selhat** ve všech případech. Test běží pro každou hodnotu zvlášť, aby neprošel omylem na prázdné množině |
 
 **Všechny scénáře běží pod rolí `openengage_sender`.** Spuštění pod migrátorem je v CI chyba, protože zamaskuje chybějící politiku `sender_bypass`.
 
@@ -4066,7 +4090,7 @@ Next.js 16 přejmenoval `middleware.ts` na `proxy.ts` a exportovanou funkci na `
 | O2 | **Go, nebo Rust pro sender.** Hlavní specifikace to nechává otevřené. Všechny čtyři kontrakty jsou napsané jazykově neutrálně (binární formáty, HKDF, AES-GCM, SQL), takže rozhodnutí neblokuje mě, ale blokuje track B2. | člověk, před hodinou 0 | Go, podle argumentace v kapitole 3.3 hlavní specifikace. Kontrakty jsou v Rustu implementovatelné se stejným úsilím. |
 | O3 | **Ukládání assetů v self-hosted nasazení.** Adresář `/data/uploads` znamená, že škálování na víc replik `MODE=web` vyžaduje sdílený svazek. Alternativa je ukládat obrázky do Postgresu jako `bytea` (jednoduchá záloha, horší výkon) nebo volitelné S3. | člověk, ovlivňuje část 3 | `/data/uploads` pro MVP 0, protože jedna replika stačí. Rozhodnutí zapsat do dokumentace, aby nikdo nečekal, že tři repliky budou fungovat bez sdíleného svazku. |
 | O4 | **TypeScript 7 versus 5.9.** TypeScript 7.0.2 (nativní kompilátor) je od 2026-07-31 pod tagem `latest`. Je rychlejší, ale ekosystém pluginů a typových nástrojů (`tsd`, ESLint typed rules, Drizzle generika) na něj nemusí být připravený. | tým, v hodině 0 | Zkusit 7.0.2 v prvních třiceti minutách. Když cokoliv z `drizzle-kit`, `@hono/zod-openapi` nebo `vitest` selže, přepnout na 5.9.3 bez diskuse. Hackathon není místo na ladění kompilátoru. |
-| O5 | **`AMBIGUOUS_DISPATCH_POLICY` výchozí hodnota.** Mechanismus popisuje 4.10.1, výchozí hodnota je produktové rozhodnutí: raději vzácný duplikát, nebo raději vzácná nedoručená zpráva. | člověk, spolu s částí 4 | `retry`. Nedoručený e-mail uživatel pozná a naštve ho; duplikát s identickým `Message-ID` často odchytí přijímající server. |
+| ~~O5~~ | ~~**`AMBIGUOUS_DISPATCH_POLICY` výchozí hodnota.**~~ Mechanismus popisuje 4.10.1. | **uzavřeno** | **`fail` pro SES, `retry` pro obecné SMTP.** Původní doporučení `retry` pro oba providery se opíralo o deterministický `Message-ID`, který měl duplikáty odchytit na straně příjemce. Nález K3 části 4b ukázal, že **Amazon SES `Message-ID` vždy přepisuje vlastní hodnotou**, takže na hlavním provideru ta pojistka vůbec neexistuje a duplikát by dorazil jako dva různé e-maily. U obecného SMTP naše hlavička projde, takže tam `retry` platí dál. |
 | O6 | **Rate limiting při víc replikách bez Redisu.** Backend `postgres` u `rate-limiter-flexible` znamená zápis do databáze na každý požadavek chráněného endpointu. U ingestion endpointu s 500 událostmi za sekundu to je 500 zápisů navíc. | člověk, až bude potřeba škálovat | MVP 0: `memory`, jedna replika. Až přijde potřeba víc replik, je to okamžik, kdy se Redis nebo Valkey vyplatí, přesně jak předjímá kapitola 3.5 hlavní specifikace. |
-| O7 | **Retence auditního logu 24 měsíců** je můj odhad, ne právní stanovisko. Obsahuje IP adresy, tedy osobní údaje. | člověk, případně s právníkem | Ponechat 24 měsíců jako výchozí a konfigurovatelnost `AUDIT_RETENTION_MONTHS` zdůraznit v dokumentaci ke GDPR. |
+| O7 | **Retence auditního logu 24 měsíců** je můj odhad, ne právní stanovisko. Obsahuje IP adresy, tedy osobní údaje. | **čeká na právníka** | Návrh zůstává: 24 měsíců jako výchozí a konfigurovatelnost `AUDIT_RETENTION_MONTHS` zdůraznit v dokumentaci ke GDPR. Produkt otázku nezavírá, čeká se na právní posouzení. |
 | O8 | **Chování při `MODE=all` a pádu jednoho procesu.** Zvolil jsem ukončení celého kontejneru, aby restart obnovil konzistentní stav. Alternativa je restart jen spadlého potomka, což udrží web naživu i při opakovaně padajícím senderu. | tým | Ukončit kontejner. Supervizor uvnitř kontejneru je zdroj situací, ve kterých healthcheck lže. |

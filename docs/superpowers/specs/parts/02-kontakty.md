@@ -3818,7 +3818,7 @@ Navrhuju roli `openengage_gdpr` s `DELETE ON consents` a ničím navíc, použí
 | # | Otázka | Kdo rozhoduje | Návrh |
 |---|---|---|---|
 | O1 | Má se u nejistého rodu použít nejlepší odhad, nebo neutrální oslovení? | produkt | Neutrální při politice `strict`, odhad při `balanced`. Výchozí `balanced`, protože jinak dostane většina kontaktů „Dobrý den" bez jména a funkce ztratí smysl |
-| O2 | Je 30denní čekání a jedna adresa po druhé u odblokování tvrdých odrazů únosné? | produkt | Ano, s tím, že hromadné odblokování prostě neexistuje. Reálný případ „firma změnila server" se řeší tím, že to nebyl tvrdý odraz, ale měkký |
+| ~~O2~~ | ~~Je 30denní čekání a jedna adresa po druhé u odblokování tvrdých odrazů únosné?~~ | **uzavřeno** | **Návrh potvrzen beze změny.** Tvrdý odraz jde odblokovat nejdřív po 30 dnech a vždy jen po jedné adrese, stížnost nikdy, hromadné odblokování neexistuje. Reálný případ „firma změnila server" se řeší tím, že to nebyl tvrdý odraz, ale měkký. Tahle verze platí i pro část 4a, která svůj protinávrh stáhla |
 | O3 | Dvoukrokové potvrzení jako výchozí, nebo jednokrokové? | produkt, ideálně s právníkem | Dvoukrokové. Cena je 5 až 15 procent konverze, přínos je, že potvrzení skutečně udělal člověk |
 | O4 | Je uchování HMAC otisku vymazané adresy obhajitelné podle GDPR? | právník | Ano, jako opatření k výkonu práva subjektu. Alternativa (nulová stopa) znamená, že další import člověka vzkřísí, což je horší porušení. K potvrzení |
 | O5 | Odkud vzít slovník českých křestních jmen s ověřenou licencí? | vývoj | Kandidáti: otevřená data ČSÚ o četnosti jmen, seznam z Wikidat (CC0), ruční sestavení z 3 000 nejčastějších jmen. Musí se ověřit licence a uvést v `NOTICE`. Modul funguje i bez slovníku |
