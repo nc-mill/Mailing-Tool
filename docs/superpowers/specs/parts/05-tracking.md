@@ -50,7 +50,7 @@ Kromě toho tahle část počítá čísla do reportů (kolik lidí kampaň dost
 | Skript se bez souhlasu nespustí vůbec | Nesbíráme nic, dokud návštěvník nesouhlasí. Není to filtr až po sběru |
 | Reporty ukazují otevření ve třech číslech místo jednoho | Uživatel vidí, kolik z otevření je pravděpodobně falešných. Podrobně v 0.4 |
 | Hlavní číslo na dashboardu je proklik, ne otevření | Proklik se dá měřit spolehlivě, otevření ne. Vedeme uživatele k číslu, kterému může věřit |
-| Časová osa se drží 26 měsíců, pak se maže | Databáze nenaroste do nekonečna. Doba jde nastavit od 3 do 120 měsíců |
+| Časová osa se drží 37 měsíců, pak se maže | Databáze nenaroste do nekonečna. Doba jde nastavit od 3 do 120 měsíců, platí pro celou instalaci |
 
 ### 0.4 Proč čísla v reportech nejsou přesná
 
@@ -134,7 +134,7 @@ Alternativa, kterou nedoporučuju: skrýt otevření úplně. Uživatelé je zna
 | Neukládáme IP adresy | Podstatně menší riziko podle GDPR | Nemáme přesnou geolokaci a hůř se dohledávají zneužití |
 | Vlastní minimalistický skript místo hotové knihovny | Velikost do 5 kB, žádná cizí závislost v prohlížeči zákazníka | Musíme ho napsat a testovat sami |
 
-Provozní dopad na velikost dat: při 100 000 kontaktech a průměrné aktivitě to vychází zhruba na 20 až 60 milionů událostí za rok, tedy jednotky až desítky GB. Retence 26 měsíců drží databázi ve velikosti, kterou zvládne jeden běžný server.
+Provozní dopad na velikost dat: při 100 000 kontaktech a průměrné aktivitě to vychází zhruba na 20 až 60 milionů událostí za rok, tedy jednotky až desítky GB. Retence 37 měsíců drží databázi ve velikosti, kterou zvládne jeden běžný server.
 
 ### 0.7 Otázky pro recenzenta
 
@@ -143,7 +143,7 @@ Tyhle otázky jdou zodpovědět bez znalosti kódu a potřebuju na ně odpověď
 1. **Souhlasí recenzent s tím, že hlavní metrikou na dashboardu bude proklik, a ne otevření?** Je to proti zvyklostem oboru a proti tomu, na co jsou uživatelé z Ecomailu zvyklí.
 2. **Mají se falešná Apple otevření z čísel odečítat automaticky, nebo má být přepínač?** Klaviyo a Mailchimp mají přepínač. Návrh je odečítat vždy a zobrazovat oboje. Přepínač znamená, že si každý vybere číslo, které se mu líbí.
 3. **Má se ukládat země odvozená z IP adresy?** Zapnuto to znamená lepší reporty, vypnuto to znamená menší riziko podle GDPR. Návrh: vypnuto ve výchozím stavu, zapínatelné na úrovni projektu.
-4. **Jak dlouho se mají držet události?** Návrh 26 měsíců, protože to pokryje meziroční srovnání plus rezervu. Delší doba znamená větší databázi a větší riziko.
+4. ~~**Jak dlouho se mají držet události?**~~ **Zodpovězeno zadavatelem: 37 měsíců, globálně pro celou instalaci, ne per projekt.** Pokryje to tři plné roky meziročního srovnání plus měsíc rezervy. Podrobně v 3.15.1.
 5. **Má se sledovat i to, na kterou konkrétní pozici odkazu v mailu se kliklo** (dva odkazy na stejnou adresu, jeden v obrázku a jeden v textu)? Je to informace navíc pro optimalizaci šablon, ale zvětší to tabulku odkazů.
 6. **Má nástroj nabízet takzvané „prediktivní otevření"**, tedy dopočítání pravděpodobných otevření u Apple uživatelů podle chování zbytku? Některé nástroje to dělají. Je to statistický odhad, který vypadá jako fakt. Návrh: nedělat.
 7. **Kdo je v cílovém zákazníkovi zodpovědný za souhlasy?** Náš skript souhlas konzumuje, ale nezobrazuje cookie lištu. Předpokládáme, že zákazník má vlastní řešení (Cookiebot a podobně) a jen nám souhlas předá. Je to správný předpoklad, nebo máme lištu dodávat?
@@ -195,8 +195,8 @@ Tato část byla původně psaná proti předpokladům, protože `parts/01-platf
 |---|---|---|
 | `SECRET_KEY` se používá jako UTF-8 bajty řetězce | 3.10: `SECRET_KEY` je base64url bez paddingu, dekóduje se na přesně 32 B, `MASTER = base64url_decode(SECRET_KEY)` | **Formát tokenů kompletně přepsán**, viz 3.1 |
 | HKDF `salt = "mailer.tracking.v1"`, `info` s epochou | 3.10: `salt = "mailer/v1"`, `info = "mailer/v1/tracking-token"`, bez epochy | Přepsáno, klíč se nevěže na `key_id` |
-| Vlastní tvar tokenu `t1.<payload>.<tag>`, MAC nad ASCII | 4.10.3: `"t1" || base64url(type ‖ key_id ‖ payload ‖ mac)`, MAC nad binárním vstupem s prefixem `"mailer/token/v1"` | Přepsáno |
-| `kind` jako `uint8` 1/2/3, generace klíče jako `key_epoch` 0 až 255 | 4.10.3: `type` jako ASCII znak `o`/`c`/`i`/`u`, `key_id` 1 až 255 | Přepsáno |
+| Vlastní tvar tokenu: prefix a tečkový formát se dvěma oddělovači, MAC nad ASCII | 4.10.3: `"t1" || base64url(type ‖ key_id ‖ payload ‖ mac)`, MAC nad binárním vstupem s prefixem `"mailer/token/v1"` | Přepsáno |
+| Číselné pole pro typ tokenu (`uint8` s hodnotami 1/2/3), generace klíče jako `key_epoch` 0 až 255 | 4.10.3: `type` jako ASCII znak `o`/`c`/`i`/`u`, `key_id` 1 až 255 | Přepsáno |
 | `link_id` je `uint32` odpovídající `campaign_links.position` | 4.10.3: `link_id` je UUID (16 B), tedy `campaign_links.id` | Přepsáno, viz 3.4.1. Je to lepší, redirect nepotřebuje `campaign_id` |
 | Token nese `campaign_id`, aby redirect nemusel do databáze | 4.10.3: open a click token nesou `workspace_id` a `message_id`, click navíc `link_id` | Horká cesta přepsána, viz 3.4.4 a 3.2.3 |
 | Identifikační token nese `message_id` a `host_hash`, nikdy `contact_id` | 4.10.3: identity token nese `workspace_id`, `contact_id`, `campaign_id`, `nonce`, `expires_at` | Přepsáno. **Bezpečnostní výhrada v 13.8** |
@@ -234,7 +234,7 @@ Tato část byla původně psaná proti předpokladům, protože `parts/01-platf
 | `campaign_stats_buckets` | část 5 | ne | průběh v čase pro graf |
 | `campaign_link_stats` | část 5 | ne | statistika na odkaz |
 | `proxy_ranges` | část 5 | ne | cache IP rozsahů obrazových proxy |
-| `message_events` | **část 4a** | RANGE (`created_at`), měsíčně | zapisujeme do ní open a click, viz 12.2 |
+| `message_events` | **část 4a** | RANGE (`received_at`), měsíčně | zapisujeme do ní open a click, viz 12.2 |
 | `messages`, `campaign_links` | **část 4a** | | jen čteme |
 
 **Izolace projektů: RLS na každé tabulce této části.** Konvence 3.6 části 1 vyžaduje nad každou tabulkou s `workspace_id` politiku `ws_isolation`. Původní verze tohoto dokumentu spoléhala jen na repository vrstvu, což je aplikační pojistka, ne databázová.
@@ -281,26 +281,43 @@ CREATE TABLE web_events (
   anonymous_id      uuid        NULL,
   contact_id        uuid        NULL,
   session_id        uuid        NULL,
-  source            text        NOT NULL DEFAULT 'web',-- web | server | email | import
+  source            text        NOT NULL DEFAULT 'web',-- viz ck_web_events__source
   page              jsonb       NOT NULL DEFAULT '{}'::jsonb,
   properties        jsonb       NOT NULL DEFAULT '{}'::jsonb,
   context           jsonb       NOT NULL DEFAULT '{}'::jsonb,
   identity_merge_id uuid        NULL,                  -- vyplněno, když contact_id doplnilo slučování
   erased_at         timestamptz NULL,                  -- GDPR výmaz odstřihl vazbu, viz 3.15.3
   PRIMARY KEY (id, received_at),
-  CONSTRAINT ck_web_events__source  CHECK (source IN ('web','server','email','import')),
+  CONSTRAINT ck_web_events__source  CHECK (
+    source IN ('web','server','email','automation','import')),
   CONSTRAINT ck_web_events__name    CHECK (name ~ '^[a-z][a-z0-9_]{0,63}$'),
   CONSTRAINT ck_web_events__subject CHECK (
     anonymous_id IS NOT NULL OR contact_id IS NOT NULL OR erased_at IS NOT NULL),
   -- Okno mezi vznikem a doručením. Ohraničuje, o kolik partition zpět musí
   -- timeline sáhnout, když řadí podle occurred_at. Vynucuje 3.7.2.
+  -- Platí pro ŽIVÉ zdroje. Dávkový import je z něj vyňatý, viz 2.2.1.
   CONSTRAINT ck_web_events__lag CHECK (
-    occurred_at >  received_at - interval '7 days' AND
-    occurred_at <= received_at + interval '60 seconds')
+    source = 'import' OR (
+      occurred_at >  received_at - interval '7 days' AND
+      occurred_at <= received_at + interval '60 seconds'))
 ) PARTITION BY RANGE (received_at);
 ```
 
 `ingested_at` z předchozí verze zaniká, `received_at` je totéž a je to konvenční název.
+
+**Výčet `ck_web_events__source` je registr s vlastníkem, ne zmrazený `CHECK`.** Vlastníkem je tato část. Doplnil jsem `automation`, protože s ním timeline v 3.12.1 už dnes počítá jako se zdrojem položek a `TimelineItem.source` ho vyjmenovává; předchozí verze výčtu ho neměla, takže by první událost z automatizace spadla na `23514`. Byl to rozpor uvnitř dokumentu, ne úmysl.
+
+Pravidla registru:
+
+| | |
+|---|---|
+| Vlastník | část 5 |
+| Dnešní hodnoty | `web`, `server`, `email`, `automation`, `import` |
+| Přidání hodnoty | migrace `CHECK` plus řádek v této tabulce plus doplnění do `TimelineItem.source` ve 4.2. Není to změna kontraktu a nepotřebuje synchronizaci všech částí |
+| Odebrání hodnoty | nikdy, dokud existuje řádek, který ji nese |
+| Chování klienta | musí neznámou hodnotu **tolerovat**, viz 4.2 |
+
+`CHECK` na největší tabulce projektu má smysl: chytá překlep v kódu při zápisu, což je přesně to, co chytat má. Co smysl nemá, je chápat ho jako zmrazený seznam, na jehož rozšíření se čeká na synchronizaci všech částí. Totéž platí pro `ck_message_events__type` (12.2.1), jen tam je vlastníkem část 4a.
 
 **Proč je `erased_at` v `CHECK`.** Původní verze constraintu zněla `anonymous_id IS NOT NULL OR contact_id IS NOT NULL` a byla **chyba, která by GDPR výmaz úplně rozbila**. Serverová událost (`source = 'server'`) má vyplněné jen `contact_id`. Výmaz podle 3.15.3 ho nastavuje na `NULL`, takže by u každé takové události skončil chybou `23514` a **výchozí režim výmazu by nikdy neproběhl**. Nález části 1, oprava přijata.
 
@@ -323,7 +340,7 @@ Cizí klíče na `contacts` a `workspaces` **nejsou**, což konvence 2.1 části
 ) PARTITION BY RANGE (received_day);
 ```
 
-Tuhle variantu **zamítám**, uvádím ji jen proto, aby bylo vidět, že jsem ji zvážil: denní granularita partition znamená při retenci 26 měsíců 790 partition, což měřitelně zpomaluje plánování dotazů (3.14.2).
+Tuhle variantu **zamítám**, uvádím ji jen proto, aby bylo vidět, že jsem ji zvážil: denní granularita partition znamená při retenci 37 měsíců zhruba 1 125 partition, což měřitelně zpomaluje plánování dotazů (3.14.2).
 
 **Zvolené řešení: samostatný unikátní index bez partičního klíče nejde, takže deduplikace jde do aplikace.** Vkládá se přes `INSERT ... ON CONFLICT (id, received_at) DO NOTHING`, což zachytí opakování v rámci jednoho zpracování dávky, a navíc se před vložením dávka profiltruje proti `EXISTS` dotazu nad indexem `idx_web_events__dedup` v okně posledních 7 dní. Okno 7 dní odpovídá životnosti offline fronty v SDK (3.6.6), takže pokrývá každý reálný případ opakovaného odeslání.
 
@@ -334,7 +351,7 @@ CREATE INDEX idx_web_events__dedup ON web_events (workspace_id, id);
 
 Zbytkové riziko: událost odeslaná znovu po víc než 7 dnech se uloží dvakrát. SDK to nedělá, protože po 7 dnech frontu zahazuje. Kdyby to udělal cizí klient, projeví se to jako dvě identické položky v timeline, ne jako poškozená data. Přijatelné, zapsané.
 
-**Zbytkové riziko, které tím vzniká:** klíč neobsahuje `workspace_id`, takže klient, který by uhodl `id` cizí události, by mohl svým zápisem způsobit, že se cizí událost zahodí jako duplicita. `id` je UUIDv7 a útočník by musel uhodnout 74 náhodných bitů, takže jde o teoretickou možnost. Zapisuju ji, aby se na ni při případném přechodu na kratší ID nezapomnělo. Alternativa `PRIMARY KEY (id, created_at, workspace_id)` by konvenci neporušila, jen ji rozšířila; nechávám rozhodnutí na části 1.
+**Zbytkové riziko, které tím vzniká:** klíč neobsahuje `workspace_id`, takže klient, který by uhodl `id` cizí události, by mohl svým zápisem způsobit, že se cizí událost zahodí jako duplicita. `id` je UUIDv7 a útočník by musel uhodnout 74 náhodných bitů, takže jde o teoretickou možnost. Zapisuju ji, aby se na ni při případném přechodu na kratší ID nezapomnělo. Alternativa `PRIMARY KEY (id, received_at, workspace_id)` by konvenci neporušila, jen ji rozšířila; nechávám rozhodnutí na části 1. (Dřívější znění tady uvádělo `created_at` jako složku klíče. To byl zbytek po změně partičního klíče: sloupec `created_at` v této tabulce neexistuje, partiční klíč i druhá složka PK je `received_at`.)
 
 Indexy podle jmenné konvence `idx_<tabulka>__<sloupce>` z 2.1 části 1 (zakládají se na rodiči, Postgres je propaguje na partition):
 
@@ -412,12 +429,47 @@ type EventContext = {
 
 `context.ip` neexistuje. IP adresa se použije pro rate limiting a pro odvození `country`, do databáze se nikdy nezapisuje.
 
+### 2.2.1 Dávkový import historie: výjimka ze sedmidenního okna
+
+**Rozhodnutí zadavatele.** Sedmidenní okno mezi vznikem a přijetím události **zůstává pro živé cesty** a **navíc se zavádí oddělená dávková cesta pro import historie, která je z něj vyňatá**.
+
+**Proč okno u živých cest zůstává.** Živé zdroje jsou skript v prohlížeči a serverové události v reálném čase. U obou přichází čas události od třetí strany, u prohlížeče od hodin, které si uživatel může nastavit na rok 1970 nebo 2099. Okno je jediné místo, kde se taková hodnota zastaví, a zároveň ohraničuje, o kolik oddílů zpět musí timeline sáhnout, když řadí podle `occurred_at` (2.2). Kdyby platilo „jakýkoliv čas", timeline by musela prohledávat celou retenci a rozpočet 120 ms by padl. Sedm dní odpovídá životnosti offline fronty v SDK (3.6.6), takže žádný reálný živý případ neuřízne.
+
+**Proč se přesto zavádí importní cesta.** Zákazník při nástupu potřebuje nahrát historii objednávek, aby segment „kdo u nás nakoupil za posledních dvanáct měsíců" fungoval **první den**, ne až za rok. Bez toho je nový zákazník dvanáct měsíců bez nejcennějšího segmentu, který produkt nabízí. Nutit ho k tomu, aby si historii posílal jako živé události s dnešním časem, by data znehodnotilo: každá objednávka by v timeline seděla na dnešku a časové segmenty by lhaly.
+
+**Co pro importní cestu platí:**
+
+| Vlastnost | Živá cesta (`web`, `server`, `email`, `automation`) | Importní cesta (`source = 'import'`) |
+|---|---|---|
+| Endpoint | `POST /e/track`, `POST /api/v1/events` | `POST /api/v1/events/import` |
+| Autorizace | veřejný klíč `ml_pub_` v těle, nebo privátní klíč se scope `events:write` | **výhradně** privátní klíč se scope `events:import`, nikdy veřejný klíč |
+| CORS | `*` (3.7.5) | žádné, není to endpoint pro prohlížeč |
+| `ck_web_events__lag` | platí | **neplatí** |
+| `received_at` | vždy `now()` | odvozené z `occurred_at`, aby řádek padl do oddílu podle **času vzniku** |
+| Skutečný čas nahrání | `= received_at` | `context.imported_at` |
+| Velikost dávky | 50 událostí (3.7.3) | 1 000 událostí |
+| Rate limit | podle 3.7.4 | 10 dávek za minutu na workspace |
+| Korekce hodin (3.7.2) | ano | **ne**, čas se bere tak, jak přišel |
+| Spouštění automatizací | ano (MVP 2) | **nikdy**, viz níž |
+| Zápis `contacts.last_activity_at` | ano | **ne**, historická událost není aktivita |
+| Deduplikace | okno 7 dní (2.2) | `ON CONFLICT (id, received_at) DO NOTHING`, `id` dodává importér a musí být stabilní mezi pokusy |
+
+**`received_at` u importu je čas vzniku, ne čas nahrání, a je to podstatné.** Partiční klíč je `received_at` a timeline i retence prořezávají oddíly podle něj (2.2). Kdyby import zapsal `received_at = now()`, roční historie by se celá slila do aktuálního měsíčního oddílu: timeline dotaz na loňský listopad by ji **nenašel**, protože prořezávací podmínka na `received_at` by tam nesahala, a retence by ji zahodila v jiný okamžik než zbytek dat z té doby. Proto se `received_at` odvozuje z `occurred_at` a řádek padne tam, kam patří. Právě proto musí být `ck_web_events__lag` u importu vypnutý: obě hodnoty spolu u importu nesouvisejí tak, jak constraint předpokládá, a v hraničním případě (cílový oddíl neexistuje, viz níž) se dokonce záměrně rozejdou.
+
+**Oddíl musí existovat.** Import do měsíce, pro který není založený oddíl, **selže hlasitě** chybou `tracking_import_partition_missing` (422) s uvedením chybějícího měsíce. Výchozí oddíl se nezakládá (3.14.1), takže tiché selhání nehrozí. Import proto před během zavolá `platform.maintain_partitions` s explicitním rozsahem měsíců odvozeným z dávky; dozakládání zpětných oddílů je operace části 1 a je to požadavek 12.5.19. Události starší než `TRACKING_RETENTION_MONTHS` se odmítnou s kódem `tracking_import_beyond_retention`, protože by je nejbližší noční retenční běh stejně zahodil.
+
+**Import nikdy nespouští živé reakce.** Nahrání roční historie objednávek nesmí rozeslat rok starých automatizací, nesmí posunout `last_activity_at` a nesmí vypustit odchozí webhooky (4.3). Je to nejnebezpečnější vlastnost celé importní cesty: bez tohohle pravidla by první import u zákazníka poslal jeho zákazníkům tisíce e-mailů. Přepočet segmentů se naopak spustí, ale **jednou na konci celého importu**, ne po každé dávce.
+
+**Rozpor, který se tím odstraňuje.** Sloupec `source` hodnotu `import` deklaroval od začátku, ale `ck_web_events__lag` ji fakticky zakazoval: importovaná událost stará šest měsíců by constraint porušila a `INSERT` by skončil chybou `23514`. Hodnota `import` tedy byla v dokumentu deklarovaná a zároveň nepoužitelná. Teď je použitelná a má popsaný režim.
+
+Viz požadavky 12.5.19, 12.5.20 a 12.4.9.
+
 ### 2.3 `web_event_months`
 
 ```sql
 -- Řídká mapa "v kterých měsících má tento subjekt vůbec nějaká data".
 -- Bez ní musí timeline prohledat všechny měsíční partition pozpátku,
--- i když kontakt existuje tři měsíce a partition je jich 26.
+-- i když kontakt existuje tři měsíce a partition je jich 37.
 CREATE TABLE web_event_months (
   workspace_id uuid NOT NULL,
   subject_kind text NOT NULL,      -- 'contact' | 'anonymous'
@@ -428,7 +480,7 @@ CREATE TABLE web_event_months (
 );
 ```
 
-Zapisuje se při zpracování dávky událostí přes `INSERT ... ON CONFLICT DO NOTHING`. Jedna dávka typicky přidá nula řádků, protože už existují. Velikost: počet subjektů krát počet aktivních měsíců, tedy u 100 000 kontaktů a 26 měsíců maximálně 2,6 milionu řádků, reálně řádově méně.
+Zapisuje se při zpracování dávky událostí přes `INSERT ... ON CONFLICT DO NOTHING`. Jedna dávka typicky přidá nula řádků, protože už existují. Velikost: počet subjektů krát počet aktivních měsíců, tedy u 100 000 kontaktů a 37 měsíců maximálně 3,7 milionu řádků, reálně řádově méně.
 
 ### 2.4 Identity
 
@@ -532,7 +584,8 @@ CREATE TABLE message_engagement (
   created_at     timestamptz NOT NULL,     -- = messages.created_at, partiční klíč
   workspace_id   uuid        NOT NULL,
   campaign_id    uuid        NOT NULL,
-  contact_id     uuid        NOT NULL,
+  contact_id     uuid        NULL,        -- NULL až po GDPR výmazu, viz erased_at níž
+  erased_at      timestamptz NULL,        -- GDPR výmaz odstřihl vazbu, viz 3.15.3
 
   first_open_at      timestamptz NULL,
   last_open_at       timestamptz NULL,
@@ -548,7 +601,11 @@ CREATE TABLE message_engagement (
   human_click_count  int         NOT NULL DEFAULT 0,
   clicked_links      int         NOT NULL DEFAULT 0,  -- počet různých link_id
 
-  PRIMARY KEY (message_id, created_at)
+  PRIMARY KEY (message_id, created_at),
+  -- Stejný vzor jako ck_web_events__subject v 2.2: řádek buď má subjekt,
+  -- nebo je na něm vidět, že ho schválně nemá po výmazu.
+  CONSTRAINT ck_message_engagement__subject CHECK (
+    contact_id IS NOT NULL OR erased_at IS NOT NULL)
 ) PARTITION BY RANGE (created_at);
 
 CREATE INDEX idx_message_engagement__campaign
@@ -563,6 +620,16 @@ CREATE INDEX idx_message_engagement__contact
 ```
 
 `open_class_mask` bity: 1 = human, 2 = proxy_apple, 4 = proxy_image, 8 = bot, 16 = unknown.
+
+**Proč `contact_id` připouští `NULL` a proč přibylo `erased_at`.** Předchozí verze měla `contact_id NOT NULL` a byl to **blokující rozpor uvnitř tohoto dokumentu**: tabulka kroků výmazu v 3.15.3 předepisuje `message_engagement.contact_id -> NULL`, takže by hook `tracking.erase_contact` skončil chybou `23514` u prvního kontaktu, který kdy něco otevřel, a **výmaz by nikdy neproběhl**. Je to přesně tentýž nález, který dokument u `web_events` už jednou správně vyřešil (2.2), jen se tam neuplatnil.
+
+Řešení je proto stejné a záměrně doslova stejné, aby se obě tabulky chovaly předvídatelně:
+
+1. `contact_id` je `NULL`, ale jen jako **výsledek výmazu**, nikdy při normálním zápisu. Řádek `message_engagement` vzniká výhradně z události ke zprávě, která `contact_id` má; testovací odeslání se netrackuje (3.16), takže bez výmazu je hodnota vždy vyplněná.
+2. `erased_at` odlišuje „schválně bez subjektu po výmazu" od „chybí, protože se něco pokazilo". `CHECK` tuhle datovou vadu dál hlídá.
+3. Sloupce `contact_id` a `erased_at` musí být ve sloupcovém grantu pro `mlain_app` stejně jako u `web_events` (12.5.1 a 12.5.16), jinak výmaz narazí na oprávnění místo na constraint.
+
+Index `idx_message_engagement__contact` zůstává beze změny: je částečný přes `first_open_at IS NOT NULL`, a vymazaný řádek s `contact_id IS NULL` do dotazů podle kontaktu z definice nespadne.
 
 ### 2.7 `contact_engagement` (rollup na kontakt)
 
@@ -692,15 +759,19 @@ CREATE TABLE campaign_stats_buckets (
 
 ```sql
 CREATE TABLE campaign_link_stats (
-  campaign_id   uuid   NOT NULL,
   workspace_id  uuid   NOT NULL,
-  link_id       int    NOT NULL,
+  campaign_id   uuid   NOT NULL,
+  link_id       uuid   NOT NULL,          -- = campaign_links.id, viz kontrakt 4.10.3
   clicks_total  bigint NOT NULL DEFAULT 0,
   clicks_unique bigint NOT NULL DEFAULT 0,
   clicks_human  bigint NOT NULL DEFAULT 0,
-  PRIMARY KEY (campaign_id, link_id)
+  PRIMARY KEY (workspace_id, campaign_id, link_id)
 );
 ```
+
+**Oprava typu `link_id` na `uuid`.** Předchozí verze měla `int` a byl to **blokující zbytek zamítnutého návrhu** s pořadovým číslem odkazu. Kontrakt 4.10.3 části 1 i zbytek této části (3.1.2, 3.4.1, 12.1.3) mají `link_id` jako UUID, tedy `campaign_links.id`. Do `int` sloupce se UUID neuloží a job `tracking.process_engagement` (3.9.2, krok 6), který statistiku odkazů plní, by na prvním kliku spadl s chybou typu. `position` zůstává v `campaign_links` jako pořadí pro zobrazení, do statistiky ani do tokenu nejde.
+
+**`workspace_id` je nově součástí primárního klíče.** Tabulka má RLS politiku `ws_isolation` (2.1) a `workspace_id` v klíči znamená, že se politika vyhodnocuje nad indexovaným sloupcem a že upsert z jobu nemůže omylem trefit řádek cizího projektu. `campaign_id` je sice samo o sobě unikátní napříč instalací, ale spoléhat na to při zápisu je slabší záruka než klíč.
 
 ### 2.9 `proxy_ranges`
 
@@ -731,7 +802,9 @@ V MVP 0 se tabulka plní jen ručně vloženými rozsahy a pevným `17.0.0.0/8`.
 
 **Bajtový formát tokenů vlastní část 1**, sekce 4.10.3, a je **zmrazený**. Nekopíruju ho sem, protože dva popisy téhož jsou horší než jeden odkaz. Tato část vlastní **sémantiku**: který typ tokenu smí projít na kterém endpointu, co se s ním stane, jak dlouho platí identifikační token a jak se vynucuje jeho jednorázovost.
 
-Původní návrh v této části měl vlastní layout (`t1.<payload>.<tag>`, `kind` jako číslo, `link_id` jako `uint32`, `campaign_id` v tokenu). Byl nahrazen. Rozdíly jsou vypsané v 1.4, výhrady, které si po sladění ponechávám, v 13.8 a 13.9.
+Původní návrh v této části měl vlastní layout: tečkový formát se dvěma oddělovači, číselné pole pro typ tokenu, `link_id` jako `uint32` a `campaign_id` v tokenu. Byl nahrazen. Rozdíly jsou vypsané v 1.4, výhrady, které si po sladění ponechávám, v 13.8 a 13.9.
+
+> **Proč doslovný tvar starého tokenu není v dokumentu nikde napsaný.** Zrušený tečkový formát se z tohoto souboru odstranil i z historických porovnávacích tabulek. Kdyby v něm zůstal, kontrola projektu, která hledá zbytky zamítnutého návrhu podle vzorku, by ho našla ve specifikaci a nedalo by se rozlišit, jestli jde o záznam historie, nebo o živý požadavek. Historie se popisuje slovně, závazný je jen tvar z 4.10.3 části 1.
 
 #### 3.1.2 Shrnutí formátu pro čtenáře této části
 
@@ -752,6 +825,8 @@ K_tracking= HKDF(SHA-256, ikm = base64url_decode(SECRET_KEY), salt = "mailer/v1"
 | unsubscribe | `u` | `workspace_id`(16) `message_id`(16) `contact_id`(16) `list_id`(16) `message_created_at`(u32) | 117 | sender | **část 2** |
 
 `link_id` je UUID (`campaign_links.id`), ne pořadové číslo. Zkrácení na `position` je v kontraktu výslovně zamítnuté a souhlasím s odůvodněním: `position` se překompilováním šablony přečísluje a zneplatnila by se tím tiše všechna už odeslaná tokeny.
+
+**Názvosloví typů: závazné je `type` a jeho ASCII znak.** Označování typů tokenů pořadovým číslem i číselné pole pro typ pocházejí ze zrušeného návrhu, kde byl typ `uint8`. V celém dokumentu se proto mluví o **tokenu typu `o`, `c`, `i` a `u`** a jinak nikdy. Píšu to nahlas, protože stará čísla se do textu opakovaně vracela a jsou zavádějící: číslo typu ze starého návrhu se snadno zamění za `key_id` z kontraktu a výsledkem je token, který projde podpisem a spadne až na kontrole typu proti endpointu (3.1.4).
 
 #### 3.1.2.1 Vlastnictví tokenu typu `u` (unsubscribe)
 
@@ -912,6 +987,23 @@ GET  {TRACKING_DOMAIN}/e/oe.js          web SDK
 
 Cesty jsou bez verze v segmentu. Verzi nese samotný token (`t1`) a u ingestion pole `v` v payloadu. Je to odchylka od `/api/v1/**`, ale záměrná: adresa `/t/o/...` je zapečená v odeslaných e-mailech napořád a nesmí se nikdy měnit.
 
+#### 3.1.9 Verzování payloadu SDK: pole `v`
+
+Pole `v` nesou payloady `POST /e/track` (3.7.1) i `POST /e/identify` (4.1). Dokument ho zaváděl bez pravidel, což je u SDK, které se distribuuje i jako npm balíček `@mlain/sdk-web` a bundluje se do webů zákazníků, mezera s dlouhým dosahem: **jednou zabundlovaná verze na cizím webu žije roky a nikdo ji neaktualizuje.** Zákazník, který si SDK zabundloval v roce 2026, může posílat `v: 1` v roce 2032 a musí to fungovat. Pravidla proto zní:
+
+| Pravidlo | Znění |
+|---|---|
+| Podpora `v: 1` | **Bez časového omezení.** Server ji nesmí přestat přijímat, dokud se produkt jmenuje takhle. Není za tím žádná deprecation lhůta a žádné datum konce |
+| Neznámé `v` | `400` s kódem **`tracking_payload_version_unsupported`** a polem `params.supported` se seznamem podporovaných verzí. Dávka se **celá** zahodí, nezpracovává se částečně |
+| Chybějící `v` | Totéž co neznámé. Nedoplňuje se výchozí hodnota, protože „chybí" a „je jedna" nejsou totéž a tiché doplnění by skrylo rozbitý build u zákazníka |
+| Nová verze payloadu | Zavádí se **aditivně vedle staré**. Server umí `v: 1` i `v: 2` současně, po neomezenou dobu. Nová verze nikdy neruší podporu staré |
+| Kdy se verze zvedá | Jen při **nekompatibilní** změně tvaru (přejmenování nebo odebrání pole, změna významu). Přidání volitelného pole verzi nezvedá, staré SDK ho prostě neposílá |
+| Chování SDK | SDK verzi **nevyjednává** a neptá se serveru, co umí. Pošle svoje `v` a při `tracking_payload_version_unsupported` vyvolá `error` handler a přestane odesílat, aby netočilo retry na chybu, která se sama nespraví |
+
+Kód `tracking_payload_version_unsupported` je označený jako interní: koncovému návštěvníkovi webu se nikdy nezobrazí, projeví se tiše a jde do konzole v `debug` režimu a do diagnostiky v UI (5.4, bod 4), aby zákazník viděl, že má na webu SDK, kterému server nerozumí.
+
+**Proč `400` a ne `422`.** Neznámá verze payloadu není chyba obsahu, který by šlo opravit doplněním pole, ale chyba kontraktu, se kterým klient přišel. Opakovat požadavek nemá smysl, což `400` říká přesněji.
+
 ### 3.2 Open pixel
 
 #### 3.2.1 Vložení do zprávy
@@ -923,7 +1015,7 @@ Sender vloží těsně před `</body>` (a když `</body>` chybí, na konec HTML 
      alt="" style="display:block;width:1px;height:1px;border:0;outline:none;text-decoration:none">
 ```
 
-Do plain textové varianty se pixel nevkládá nikdy. Když je `campaigns.track_opens = false`, pixel se nevloží vůbec a token typu 1 se pro danou kampaň negeneruje.
+Do plain textové varianty se pixel nevkládá nikdy. Když je `campaigns.track_opens = false`, pixel se nevloží vůbec a token typu `o` se pro danou kampaň negeneruje.
 
 #### 3.2.2 Odpověď
 
@@ -964,7 +1056,7 @@ Proč `no-store`: aby Gmail proxy a poštovní klienty nekešovaly a případné
 5. vrátit GIF
 ```
 
-Token typu `o` nese `workspace_id` a `message_id`, ale **ne `campaign_id`**. Kampaň se dohledává až v asynchronním zpracování dávky (3.9.2) dotazem na `messages` s časovým oknem odvozeným z UUIDv7 podle 3.1.7. V horké cestě se do databáze nesahá vůbec.
+Token typu `o` nese `workspace_id`, `message_id` a `message_created_at`, ale **ne `campaign_id`**. Kampaň se dohledává až v asynchronním zpracování dávky (3.9.2) **rovnostním dotazem** `WHERE id = $1 AND created_at = to_timestamp($2)` podle 3.1.7, tedy přímým zásahem do primárního klíče jedné partition. V horké cestě se do databáze nesahá vůbec.
 
 Zápis do databáze je **asynchronní**, viz 3.9.1. Odpověď neblokuje na databázi.
 
@@ -972,10 +1064,12 @@ Limity a ochrana:
 
 | Limit | Hodnota | Chování při překročení |
 |---|---|---|
-| Otevření jedné zprávy za den | 100 | Další se zahodí, čítač `tracking.open.capped` |
-| Požadavků na `/t/o/` z jedné IP | 300/min | HTTP 200 s GIFem, ale bez zápisu |
+| Otevření jedné zprávy za den | 100 | Další se zahodí, čítač `tracking_open_capped_total` |
+| Požadavků na `/t/o/` z jedné IP | podle 4.5 části 1 (dnes 600/min), viz 3.7.4 | HTTP 200 s GIFem, ale bez zápisu |
 | Délka URL | 512 znaků | 404 |
 | Timeout zpracování | 50 ms | Vrátí GIF, událost se zahodí |
+
+Řádek s limitem na IP je **odkaz, ne vlastní hodnota**. Předchozí verze tady uváděla 300 za minutu, zatímco 3.7.4 přebírá z tabulky 4.5 části 1 hodnotu 600 a hned nad tím deklaruje, že limity z části 1 přebírám beze změny a neduplikuju. Dvě čísla pro tentýž limit ve stejném dokumentu znamenají, že implementátor nasadí to, na které narazí dřív. Závazná je hodnota z části 1; tady se na ni jen odkazuje, aby se při její změně nemusel měnit ještě jeden řádek.
 
 #### 3.2.4 Souhlas a otevření
 
@@ -1018,7 +1112,7 @@ type OpenClass =
 Pravidlo 4 je klíčové a stojí na empirickém zjištění, které dokumentují Postmark, SocketLabs i Litmus: Apple proxy posílá doslova `Mozilla/5.0` bez dalších tokenů, což žádný skutečný klient nedělá. **Apple to může kdykoliv změnit bez ohlášení.** Proto:
 
 - Pravidlo je v konfiguraci jako datová tabulka, ne zadrátované v kódu.
-- Metrika `tracking.open.class_share` se vystavuje na `/api/v1/admin/metrics`, aby šel poznat skokový posun.
+- Podíly tříd se vystavují na `/api/v1/admin/metrics` z čítače `tracking_open_total{class}` (9.1), aby šel poznat skokový posun. Samostatná metrika pro podíl se nezavádí, počítá se v dotazu nad čítačem.
 - Do dokumentace se píše, že jde o heuristiku, ne o jistotu.
 
 Pravidlo 9 a 10: seznam asi dvaceti regulárních výrazů udržovaných v `packages/core/tracking/ua-rules.ts`. Nepoužíváme knihovnu na parsování UA, viz kapitola 11.
@@ -1138,7 +1232,7 @@ Souběžné požadavky na tutéž kampaň čekají na jedno naplnění (single f
 |---|---|---|---|
 | Klik na cizí doménu (bez `ml_token`) | ≤ 3 ms | ≤ 30 ms | Žádný dotaz do DB, žádný zápis v horké cestě |
 | Klik na vlastní doménu, `message_id` v cache | ≤ 4 ms | ≤ 35 ms | Cache zásah |
-| Klik na vlastní doménu, cache miss | ≤ 8 ms | ≤ 60 ms | Jedno hledání podle PK ve dvou partition |
+| Klik na vlastní doménu, cache miss | ≤ 8 ms | ≤ 60 ms | Jedno rovnostní hledání podle obou složek PK v jedné partition (3.1.7) |
 | Nejhorší přijatelná hodnota | | 200 ms | Nad ní se zaloguje varování a metrika `tracking_redirect_duration_seconds` |
 | Tvrdý strop na dohledání kontaktu | | 30 ms | Po překročení se `ml_token` nepřidá a přesměruje se bez něj |
 
@@ -1168,7 +1262,7 @@ Krok 6 a 7 jsou to, co brání úniku identity na cizí web. Když odkaz vede na
 
 **Krok 7 potřebuje `contact_id`, které v click tokenu není.** Identity token podle kontraktu 4.10.3 nese `contact_id`, takže ho redirect musí odněkud vzít, a jediný zdroj je `messages`. To vrací jedno čtení do horké cesty, kterému se původní návrh vyhýbal. Zmírnění:
 
-- Čte se dotazem s časovým oknem z UUIDv7 podle 3.1.7, tedy nejvýš dvě partition a hledání podle primárního klíče.
+- Čte se **rovnostním dotazem** `WHERE id = $1 AND created_at = to_timestamp($2)` podle 3.1.7, tedy jedna partition a hledání podle primárního klíče. Obě složky klíče nese click token.
 - Čte se **jen tehdy**, když jsou splněné obě podmínky kroku 7, tedy jen u kliků na vlastní doménu zákazníka. U odkazů ven (sociální sítě, partnerské weby) se nečte nic.
 - Výsledek se cachuje na 15 minut pod klíčem `message_id`, protože tentýž člověk obvykle klikne v jednom mailu vícekrát.
 - Když čtení selže nebo trvá přes 30 ms, `ml_token` se **nepřidá** a přesměrování proběhne bez něj. Ztratí se propojení identity u jednoho kliku, což je nesrovnatelně menší škoda než pomalé přesměrování.
@@ -1204,7 +1298,7 @@ Pravidlo 6 se vyhodnocuje také v asynchronním zpracování, v rámci jedné d�
 
 Klasifikace `scanner`, `bot` a `prefetch` **se ukládá** (na rozdíl od `bot` u otevření), protože se z ní počítá diagnostická dlaždice „odfiltrované strojové prokliky". Do metrik prokliku se nepočítají.
 
-Důsledek pro identity resolution: `ml_token` se přidává jen u `click_class = 'human'`, ale klasifikace v horké cestě má k dispozici jen pravidla 1 až 4 a 7. Pravidla 5 a 6 se dopočítají později. To znamená, že skener může dostat `ml_token`. Není to problém: token je vázaný na cílový host, platí 15 minut, je jednorázový a skener ho nespotřebuje, protože nespouští JavaScript. Kdyby ho spotřeboval, vznikla by vazba anonymního ID skeneru na kontakt, což je neškodné a projeví se to jen jako jedna zbytečná anonymní identita.
+Důsledek pro identity resolution: `ml_token` se přidává jen u `click_class = 'human'`, ale klasifikace v horké cestě má k dispozici jen pravidla 1 až 4 a 7. Pravidla 5 a 6 se dopočítají později. To znamená, že skener může dostat `ml_token`. Není to problém: token se přidává **jen na host registrovaný v `tracking_domains`** daného workspace, platí 15 minut, je jednorázový a skener ho nespotřebuje, protože nespouští JavaScript. (Dřívější znění tady slibovalo, že je token „vázaný na cílový host". To kontrakt nedává: payload nemá pole pro host a při spotřebování se ověřuje jen to, že `Origin` je **některá** z registrovaných domén workspace. Podrobně v 13.8 b.) Kdyby ho spotřeboval, vznikla by vazba anonymního ID skeneru na kontakt, což je neškodné a projeví se to jen jako jedna zbytečná anonymní identita.
 
 ### 3.6 Web SDK (`packages/sdk-web`)
 
@@ -1224,10 +1318,10 @@ Důsledek pro identity resolution: `ml_token` se přidává jen u `click_class =
 
 ```html
 <script>
-  window.Mlain Mailer = window.Mlain Mailer || function(){ (Mlain.q = Mlain.q || []).push(arguments) };
-  Mlain Mailer('init', { key: 'ml_pub_aebagbafaydqqcik', host: 'https://events.shop.cz' });
+  window.Mlain = window.Mlain || function(){ (Mlain.q = Mlain.q || []).push(arguments) };
+  Mlain('init', { key: 'ml_pub_aebagbafaydqqcik', host: 'https://events.shop.cz' });
 </script>
-<script async src="https://events.shop.cz/e/oe.js"></script>
+<script async src="https://events.shop.cz/e/ml.js"></script>
 ```
 
 Fronta `Mlain.q` umožňuje volat API dřív, než se skript načte. Po načtení se fronta přehraje.
@@ -1293,8 +1387,44 @@ Chování jednotlivých metod:
 | Podepsaný | `externalId`, traits včetně `email`, plus `options.signature` | Ověří podpis a povolí i zápis e-mailu a založení kontaktu |
 
 Podpis vyrábí server zákazníka svým **privátním** API klíčem:
-`signature = base64url(HMAC-SHA256(secret_key_bytes, externalId + "\n" + canonicalJson(traits)))`.
+
+```
+signature = base64url_nopad( HMAC-SHA256( secret_key_bytes,
+              utf8( external_id ) || 0x0A || jcs( traits ) ) )
+```
+
 Bez podpisu server odmítne payload s e-mailem chybou `tracking_identify_unsigned_pii` (HTTP 422) a událost zahodí. Tím se plní požadavek z kapitoly 6.1 hlavní specifikace, že web SDK nesmí podvrhnout cizí e-mail.
+
+**`jcs` je JSON Canonicalization Scheme podle RFC 8785. Závazně, jmenovitě, bez vlastní varianty.** Předchozí verze psala `canonicalJson(traits)` a nikde neurčovala, co to je. Byla to nejhorší možná mezera právě tady: podpis vyrábí server zákazníka **ve svém jazyce** (PHP, Python, Ruby, Go), ověřuje ho náš Node, a kanonizace JSONu je klasické místo, kde se dvě implementace rozejdou na drobnosti, kterou nikdo nevidí. Rozejdou se na pořadí klíčů, na tom, jestli se `1.0` serializuje jako `1` nebo `1.0`, na escapování diakritiky a na tom, jestli je za dvojtečkou mezera. Výsledek je „podpis nesedí" bez jediné stopy, kde.
+
+RFC 8785 tyhle čtyři věci určuje jednoznačně: klíče se řadí podle UTF-16 code unitů, čísla se serializují podle ECMAScript `Number::toString`, řetězce se escapují minimálně, mezi tokeny nejsou žádné mezery. Implementace existují ve všech cílových jazycích, takže si zákazník nic nepíše.
+
+Doplňující pravidla, která RFC neřeší a rozejít se na nich jde stejně snadno:
+
+| Pravidlo | Znění |
+|---|---|
+| Prázdné `traits` | Kanonizují se jako `{}`, ne jako prázdný řetězec |
+| Oddělovač | Jeden bajt `0x0A` (LF), nikdy `\r\n` |
+| `external_id` | Vstupuje jako **surové UTF-8**, nekanonizuje se a neescapuje. Nesmí obsahovat `0x0A`; když obsahuje, server podpis odmítne, ne aby se snažil hádat |
+| Kódování podpisu | base64url **bez** paddingu, stejně jako u trackovacích tokenů |
+| Porovnání | V konstantním čase (6.1) |
+| Klíč | Bajty privátního API klíče workspace, ne jeho textová podoba a ne odvozený klíč |
+
+**Testovací vektor.** Patří do `packages/contracts/fixtures/identify/signature.json` a je to požadavek 12.5.21. Zákazníkova implementace musí sednout na tenhle řetězec, jinak se rozejde v provozu:
+
+```
+secret_key_bytes = utf8("ml_live_0123456789abcdef")
+external_id      = "customer_8472"
+traits           = { "first_name": "Jan", "email": "jan@example.cz",
+                     "orders": 3, "ltv": 1490.5, "vip": true, "note": "čeština" }
+
+jcs(traits) =
+{"email":"jan@example.cz","first_name":"Jan","ltv":1490.5,"note":"čeština","orders":3,"vip":true}
+```
+
+Vektor je schválně postavený tak, aby chytil všechny čtyři obvyklé rozchody naráz: klíče jsou v zápisu **jiném** než abecedním (kanonizace je musí přeskládat), `ltv` je desetinné číslo, `orders` je celé číslo zapsané bez desetinné části, `note` obsahuje diakritiku, která se podle RFC 8785 zapisuje jako **surové UTF-8** a **neescapuje** se do podoby `č`, a `vip` je boolean. Implementace, která projde na plochém řetězci bez těchto případů, se v provozu stejně rozejde.
+
+**Hodnotu `signature` do vektoru dopočítá část 1 při zakládání fixture**, stejně jako u trackovacích tokenů: dva nezávislé dopočty téhož čísla ve dvou dokumentech jsou přesně ten způsob, jak vzniknou dvě různá čísla. Já dodávám vstupy a očekávaný tvar `jcs(traits)`, který je na rozchodu ta zajímavá část.
 
 **`reset`** vygeneruje nové `anonymous_id`, zapíše `identity_bindings` se `source = 'reset'` a `contact_id = NULL`, ukončí session. Používá se při odhlášení uživatele z e-shopu. Předchozí historie zůstává navázaná na kontakt, nová se od kontaktu odpojí.
 
@@ -1377,7 +1507,7 @@ Cesta je z konvence 4.1 a 6 části 1, která `/e/track` jmenovitě uvádí jako
 
 ```ts
 type IngestBatch = {
-  v: 1;                     // verze payloadu, viz 3.1.8
+  v: 1;                     // verze payloadu, pravidla v 3.1.9
   key: string;              // ml_pub_<16 znaků base32>, viz 3.5 části 1
   sent_at: string;          // ISO 8601 UTC s Z, čas klienta, slouží ke korekci hodin
   anonymous_id?: string;    // UUID, povinné pro source 'web'
@@ -1397,7 +1527,9 @@ type IngestEvent = {
 
 Pole se jmenuje `occurred_at`, ne `ts` ani `created_at`: `created_at` je až serverem přepočítaná hodnota, která jde do sloupce, a rozlišení obojího je nutné, protože 3.7.2 mezi nimi počítá korekci hodin.
 
-Serverová varianta `POST /api/v1/events` má stejný tvar událostí, ale místo `key` v těle používá privátní API klíč v hlavičce `Authorization: Bearer ml_live_...` a smí navíc uvést `contact_id` nebo `email` přímo na události. Ta varianta patří do veřejného API a řídí se konvencemi části 1 včetně formátu chyb a idempotence podle 4.4.
+Serverová varianta `POST /api/v1/events` má stejný tvar událostí, ale místo `key` v těle používá privátní API klíč v hlavičce `Authorization: Bearer ml_live_...` a smí navíc uvést `contact_id` nebo `email` přímo na události. Ta varianta patří do veřejného API a řídí se konvencemi části 1 včetně formátu chyb a idempotence podle 4.4. **Je to pořád živá cesta**, takže pro ni platí sedmidenní okno i korekce hodin.
+
+Pro nahrání historie slouží **oddělený** endpoint `POST /api/v1/events/import` se scope `events:import`, který ze sedmidenního okna vyňatý je. Jeho pravidla, autorizace a omezení jsou v **2.2.1**; tady je jmenuju jen proto, aby si ho nikdo nespletl s `POST /api/v1/events`.
 
 #### 3.7.2 Korekce času
 
@@ -1413,6 +1545,8 @@ Když je `|skew|` větší než 24 hodin, `skew` se nepoužije a `occurred_at = 
 
 Obě hranice jsou zároveň vynucené constraintem `ck_web_events__lag` (2.2) a ohraničují, o kolik partition musí timeline sáhnout zpět. Dolní hranice 7 dní odpovídá životnosti offline fronty v SDK, horní pokrývá hodiny klienta napřed.
 
+**Korekce ani okno se nevztahují na dávkový import** (2.2.1). Tam se čas bere tak, jak přišel, protože ho dodává server zákazníka z vlastní databáze objednávek, ne prohlížeč, a smyslem importu je právě uložit událost s jejím původním časem.
+
 #### 3.7.3 Validace a limity
 
 | Limit | Hodnota | Chování při překročení |
@@ -1420,15 +1554,26 @@ Obě hranice jsou zároveň vynucené constraintem `ck_web_events__lag` (2.2) a 
 | Velikost těla | 64 kB | `413`, kód `payload_too_large`. Konvence 4.1 části 1 dává obecný limit 1 MiB, pro `/e/track` ho zpřísňuju |
 | Počet událostí v dávce | 50 | `422`, kód `too_many_items` |
 | Velikost jedné události po serializaci | 8 kB | Událost se zahodí, dávka projde, v odpovědi `rejected` s kódem `tracking_event_too_large` |
-| Počet vlastností v `properties` | 32 | Přebytečné klíče se zahodí (abecedně od konce) |
-| Délka klíče vlastnosti | 64 znaků | Klíč se zahodí |
-| Délka řetězcové hodnoty | 1 024 znaků | Ořeže se |
-| Hloubka vnoření v `properties` | 3 | Hlubší úrovně se nahradí `null` |
+| Počet vlastností v `properties` | `TRACKING_PROPERTIES_MAX_KEYS`, výchozí 32 | Přebytečné klíče se zahodí (abecedně od konce), **nález `tracking_properties_keys_dropped`** |
+| Délka klíče vlastnosti | 64 znaků | Klíč se zahodí, nález `tracking_properties_keys_dropped` |
+| Délka řetězcové hodnoty | `TRACKING_PROPERTIES_MAX_STRING`, výchozí 1 024 znaků | Ořeže se, **nález `tracking_properties_value_truncated`** |
+| Hloubka vnoření v `properties` | `TRACKING_PROPERTIES_MAX_DEPTH`, výchozí 3 | Hlubší úrovně se nahradí `null`, **nález `tracking_properties_depth_truncated`** |
 | Délka `name` | 64 znaků | Událost se zahodí, kód `tracking_invalid_event_name` |
 | Délka URL v `page` | 2 048 znaků | Ořeže se |
 | Počet `tracking_domains` na workspace | 20 | `422` při zakládání, kód `tracking_domain_limit_reached` |
 
 Neplatná dávka jako celek (chybí `key`, není JSON, chybí `events`) vrací `400`. Neplatná **jednotlivá** událost dávku nezastaví, projdou ostatní.
+
+**Ořez `properties` už není tichý a limity nejsou zadrátované.** Obojí byla mezera, kterou je vidět až u zákazníka. Dřív se přebytečné klíče, dlouhé řetězce a hluboké vnoření zahodily bez jakékoliv stopy a limity nešly nastavit; zákazník, který posílá do košíkové události 40 vlastností nebo strukturu o čtyřech úrovních, dostal do databáze osekaná data a **nikde se to nedozvěděl**. Projevilo se to až tím, že mu v segmentu chybí kontakty, a hledalo se to týdny, protože v odpovědi ani v logu nic nebylo.
+
+Dvě opravy:
+
+1. **Limity jsou konfigurační proměnné** (`TRACKING_PROPERTIES_MAX_KEYS`, `TRACKING_PROPERTIES_MAX_STRING`, `TRACKING_PROPERTIES_MAX_DEPTH`), zapsané do téhož zod schématu jako zbytek konfigurace, viz kapitola 8. Nezvyšují se bezmyšlenkovitě: každý klíč navíc je jsonb v tabulce s desítkami milionů řádků. Ale existuje páka pro zákazníka, který ji opravdu potřebuje, a nemusí kvůli ní forkovat produkt.
+2. **Ořez se hlásí ve `findings`** odpovědi `202` (3.7.5) se `severity: "warning"`. Událost projde a je započítaná v `accepted`, protože zahodit ji kvůli jedné dlouhé hodnotě by byla horší škoda. Nález nese v `params` index události v dávce, jméno dotčeného klíče a číslo limitu, aby zákazník viděl, co má opravit, ne jen že se něco stalo.
+
+Délka klíče vlastnosti (64 znaků) konfigurovatelná **není**: souvisí s pravidlem pro jména událostí a s tím, co je čitelné ve filtrech UI, ne s objemem dat.
+
+Diagnostika v UI (5.4, bod 4) tyhle nálezy počítá za posledních 24 hodin, takže zákazník nemusí číst odpovědi API, aby si jich všiml.
 
 #### 3.7.3.1 Čištění URL
 
@@ -1490,9 +1635,19 @@ Chyby celé dávky se vrací jako `application/problem+json` podle 4.2 části 1
     { "severity": "warning", "code": "tracking_event_too_large",
       "params": { "index": 3, "size_bytes": 9412 } },
     { "severity": "warning", "code": "tracking_invalid_event_name",
-      "params": { "index": 11, "name": "Product Viewed" } }
+      "params": { "index": 11, "name": "Product Viewed" } },
+    { "severity": "warning", "code": "tracking_properties_keys_dropped",
+      "params": { "index": 7, "dropped": 8, "limit": 32,
+                  "keys": ["variant_9", "variant_10"] } },
+    { "severity": "warning", "code": "tracking_properties_value_truncated",
+      "params": { "index": 7, "key": "description", "limit": 1024,
+                  "original_length": 4096 } },
+    { "severity": "warning", "code": "tracking_properties_depth_truncated",
+      "params": { "index": 12, "key": "cart.items.0.options", "limit": 3 } }
   ] }
 ```
+
+Události s ořezanými `properties` jsou započítané v `accepted`, ne v `rejected`: uložily se, jen ne celé. Pole `keys` v prvním nálezu je zkrácený vzorek (nejvýš 5 jmen), ne úplný seznam, aby odpověď nenarostla o to, co se právě zahazovalo pro velikost.
 
 Pozice v dávce jde do `params.index`, protože `path` v `findings` znamená cestu v JSONu, a index položky v dávce jí není.
 
@@ -1505,6 +1660,8 @@ Access-Control-Allow-Headers: Content-Type
 Access-Control-Max-Age: 86400
 ```
 
+**Totéž musí platit pro `POST /e/identify` a pro `OPTIONS /e/*`.** V seznamu výjimek části 1 to dnes není a bez toho neprojde preflight u cross-origin JSON POST z kroku 9 sekvence v 3.10.1, tedy se nikdy nespotřebuje `ml_token`. Je to požadavek 12.5.10a.
+
 `Access-Control-Allow-Credentials` se **nenastavuje** a nastavit ho ani nejde: v kombinaci s `*` je to podle specifikace neplatné. To je v pořádku, protože cookie se na ingestion neposílají a autentizace je výhradně veřejným klíčem v těle.
 
 **CORS `*` neznamená, že se přijme cokoliv.** Kontrola `Origin` proti `tracking_domains` se dělá **v aplikační logice**, ne přes CORS hlavičku, a nevyhovující požadavek dostane `403` s `code = "origin_not_allowed"`. Rozdíl je podstatný: CORS chrání prohlížeč před čtením odpovědi, naše kontrola chrání data před zápisem. Kdybychom se spoléhali jen na CORS, prošel by jakýkoliv požadavek z curlu.
@@ -1513,9 +1670,16 @@ Když `Origin` neodpovídá žádné registrované doméně, požadavek se odmí
 
 #### 3.7.6 Deduplikace
 
-Klient generuje `id` každé události. Server vkládá přes `INSERT ... ON CONFLICT (id, created_at) DO NOTHING`. Duplicita se v odpovědi projeví jako `accepted`, protože klient nemá důvod ji řešit.
+Klient generuje `id` každé události. Mechanismus deduplikace **vlastní kapitola 2.2** a tahle sekce se na ni jen odkazuje, aby existoval jediný popis:
 
-Okno deduplikace je efektivně nekonečné v rámci retence, protože klíč obsahuje `created_at`. Když klient pošle tutéž událost s jiným `occurred_at` (což by znamenalo, že si ji přepsal), vznikne duplicita. SDK `occurred_at` po zařazení do fronty nemění.
+1. **Aplikační deduplikace v okně 7 dní.** Před vložením se dávka profiltruje `EXISTS` dotazem nad indexem `idx_web_events__dedup` proti událostem přijatým za posledních 7 dní. Okno odpovídá životnosti offline fronty v SDK (3.6.6).
+2. **`INSERT ... ON CONFLICT (id, received_at) DO NOTHING` uvnitř dávky.** Zachytí opakování téhož `id` v rámci jednoho zpracování, tedy případ, kdy klient tutéž událost pošle dvakrát v jedné dávce.
+
+Duplicita se v odpovědi projeví jako `accepted`, protože klient nemá důvod ji řešit.
+
+> **Zdůvodnění přepisu této kapitoly.** Předchozí znění slibovalo „efektivně nekonečné okno deduplikace, protože klíč obsahuje `created_at`". To přestalo platit změnou partičního klíče a byl to zbytek po pivotu, který dokument nedostihl: sloupec `created_at` ve `web_events` neexistuje, primární klíč je `(id, received_at)` a kapitola 2.2 výslovně dokazuje, že `ON CONFLICT` duplicitu napříč dávkami nezachytí, protože `received_at` se při opakovaném odeslání liší. Skutečné okno je 7 dní a je aplikační, ne databázové. Zbytkové riziko (opakování po víc než 7 dnech) je popsané v 2.2 a přijaté.
+
+Když klient pošle tutéž událost s jiným `occurred_at` (což by znamenalo, že si ji přepsal), vznikne duplicita. SDK `occurred_at` po zařazení do fronty nemění.
 
 ### 3.8 Identity resolution
 
@@ -1577,7 +1741,7 @@ bind(workspace_id, anonymous_id, contact_id, source, evidence, now):
         UPDATE contact_id=nový, bound_at=now, bind_count=bind_count+1
         vložit identity_bindings(valid_from=now, contact_id=nový, source, evidence)
         NESLUČOVAT historii
-        zvýšit metriku tracking.identity.rebind
+        zvýšit metriku tracking_identity_bind_total{result="rebound"}
         pokud bind_count > 5 v posledních 24 h -> označit identities jako 'shared'
         vrátit 'rebound'
 ```
@@ -1701,7 +1865,7 @@ Endpointy `/t/o/` a `/t/c/` nepíšou do databáze synchronně. Zapisují do buf
 | Kapacita bufferu | 20 000 položek |
 | Vyprázdnění | po 250 ms nebo po 500 položkách |
 | Zápis | `INSERT INTO message_events` s `unnest`, jeden příkaz na dávku |
-| Při plném bufferu | Nejstarší se zahodí, čítač `tracking.writer.dropped` |
+| Při plném bufferu | Nejstarší se zahodí, čítač `tracking_writer_dropped_total` |
 | Při chybě zápisu | 3 pokusy s odstupem 100, 300, 900 ms, pak zahodit a zalogovat |
 | Graceful shutdown | Vyprázdnit před ukončením, timeout 5 s |
 
@@ -2006,6 +2170,51 @@ Míra odmítnutí se počítá z `sent`, ne z `delivered_effective`, protože od
 
 Metrika `link_share = clicks_human / suma clicks_human všech odkazů`.
 
+#### 3.11.6 Konverze a tržby: připravená cesta, do MVP 0 se nedělá
+
+Úvodní příběh této části (0.1) končí tím, že Jana hodí boty za 1 490 Kč do košíku, a propojení kliku v mailu s chováním na webu je deklarovaný diferenciátor produktu (0.1, poslední odstavec). Agregace v 2.8 přesto nemají pro konverze a tržby jediný sloupec. **Teď se to nestaví**, ale zapisuju cestu, aby budoucí doplnění nesahalo na zmrazené tvary. Je to stejný typ záznamu jako shardovaný čítač v 3.9.2: rozhodnutí odložit, ne rozhodnutí nedělat.
+
+**Atribuční pravidlo (návrh, k rozhodnutí produktu):**
+
+| Prvek | Návrh |
+|---|---|
+| Co je konverze | Webová událost, jejíž `name` je v konfigurovatelném seznamu konverzních událostí workspace, typicky `order_completed` |
+| Kde je hodnota | `properties.value` (číslo) a `properties.currency` (ISO 4217). Bez `value` je konverze započítaná v počtu, ne v tržbě |
+| Komu se přiznává | Poslednímu **kliku třídy `human`** téhož kontaktu, který nastal do N dní před konverzí (last touch, jedna kampaň, žádné dělení mezi kampaně) |
+| Okno N | `TRACKING_ATTRIBUTION_WINDOW_DAYS`, návrh výchozí 7, rozsah 1 až 90 |
+| Otevření | Neatribuuje se. Otevření je měkký odhad (0.4) a stavět na něm tržby by vyrobilo čísla, kterým se nedá věřit |
+| Deduplikace | Jedna konverzní událost se přizná nejvýš jedné kampani |
+
+Last touch a jedna kampaň jsou schválně nejjednodušší možný model. Multi touch atribuce se dá doplnit později **aditivně**, protože rozšiřující tabulka níž nese `campaign_id` a váhu; přechod na ni tedy nemění tvar existujících sloupců.
+
+**Rozšiřující tabulka, ne nové sloupce v `campaign_stats`:**
+
+```sql
+-- NEZAKLÁDÁ SE V MVP 0. Zapsaný tvar, aby budoucí doplnění nesahalo
+-- na campaign_stats, jejíž tvar čte report, dashboard i SSE.
+CREATE TABLE campaign_conversion_stats (
+  workspace_id     uuid   NOT NULL,
+  campaign_id      uuid   NOT NULL,
+  currency         char(3) NOT NULL,          -- tržby se nikdy nesčítají přes měny
+  conversions      bigint NOT NULL DEFAULT 0, -- počet konverzních událostí
+  converting_contacts bigint NOT NULL DEFAULT 0, -- unikátní kontakty
+  revenue_minor    bigint NOT NULL DEFAULT 0, -- v nejmenší jednotce měny, nikdy float
+  attribution_window_days int NOT NULL,       -- s jakým oknem se to počítalo
+  updated_at       timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (workspace_id, campaign_id, currency)
+);
+```
+
+Tři vlastnosti, na kterých ten tvar stojí a které se později těžko mění:
+
+1. **`currency` je součástí klíče.** Jeden řádek na měnu, žádné sčítání přes měny a žádný přepočet kurzem v databázi. E-shop s CZK i EUR dostane dva řádky a UI je ukáže vedle sebe. Kdyby se to udělalo jedním sloupcem, znamenalo by pozdější doplnění druhé měny migraci dat, ne migraci schématu.
+2. **`revenue_minor` je `bigint` v nejmenší jednotce měny.** Haléře, ne koruny, a nikdy `float`. Peníze v plovoucí čárce se v reportu projeví jako součet, který nesedí na haléře, a nedá se to zpětně opravit.
+3. **`attribution_window_days` je uložené na řádku.** Když někdo okno změní, staré řádky drží hodnotu, se kterou vznikly, a v UI jde ukázat, že se čísla mezi obdobími počítala jinak. Bez toho by změna nastavení tiše přepsala historii.
+
+**Co se tím nemění a proč je to celé v samostatné tabulce.** `campaign_stats` má pevný tvar, který čte report (4.2), dashboard (5.5) i SSE stream (3.13.3), a její `version` řídí `ETag`. Přidávat do ní sloupce, které v MVP 0 budou vždy nulové, znamená posílat je v každé odpovědi a v každé SSE zprávě. Samostatná tabulka se joinuje jen tam, kde konverze někdo chce, a `campaign_stats` zůstává zmrazená.
+
+**Co bude potřeba, až se to bude stavět:** konfigurace seznamu konverzních událostí na workspace, job, který po zápisu konverzní události dohledá poslední klik v okně, a dlaždice v reportu (5.1) mezi bodem 4 a 5. Nic z toho nesahá na tokeny, na `web_events` ani na `message_events`.
+
 ### 3.12 Customer timeline
 
 #### 3.12.1 Co timeline obsahuje
@@ -2050,7 +2259,7 @@ Parametry `$3` a `$4` (okno) se určují takto:
 2. Timeline načítá po **měsících sestupně**, jen ty, které v seznamu jsou.
 3. Když jeden měsíc nedá dost položek, přejde se na další v seznamu.
 
-Bez kroku 1 by dotaz na kontakt se třemi měsíci historie musel projít 26 měsíčních partition, každou s jedním index scanem, tedy 26 zbytečných přístupů. S ním jsou to 3.
+Bez kroku 1 by dotaz na kontakt se třemi měsíci historie musel projít 37 měsíčních partition, každou s jedním index scanem, tedy 37 zbytečných přístupů. S ním jsou to 3.
 
 | Parametr | Hodnota |
 |---|---|
@@ -2061,19 +2270,19 @@ Bez kroku 1 by dotaz na kontakt se třemi měsíci historie musel projít 26 mě
 
 #### 3.12.3 Výkon při sto milionech událostí
 
-Předpoklad: 100 000 000 řádků `web_events`, 26 měsíčních partition, tedy zhruba 4 miliony řádků na partition.
+Předpoklad: 100 000 000 řádků `web_events`, 37 měsíčních partition, tedy zhruba 2,7 milionu řádků na partition.
 
 | Dotaz | Plán | Odhad |
 |---|---|---|
 | Timeline kontaktu, první stránka | 1 až 3 index scany nad `web_events_contact_ts_idx` v 1 až 3 partition, každý vrátí ≤ 51 řádků | < 10 ms |
 | Timeline kontaktu, hluboká stránka (rok zpět) | Totéž, protože keyset kurzor se přeloží na `occurred_at` a okno partition na `received_at` | < 10 ms |
-| `web_event_months` pro kontakt | Index-only scan, ≤ 26 řádků | < 1 ms |
+| `web_event_months` pro kontakt | Index-only scan, ≤ 37 řádků | < 1 ms |
 | Anonymní timeline před spojením | `web_events_anon_ts_idx` | < 10 ms |
 | Report kampaně | Jeden řádek `campaign_stats` podle PK | < 1 ms |
 | Graf průběhu kampaně | ≤ 288 řádků `campaign_stats_buckets` | < 5 ms |
 | Statistika odkazů | ≤ 200 řádků `campaign_link_stats` | < 5 ms |
 
-Co je z toho nutné ověřit měřením, ne odhadem: chování při 100+ partition (retence 120 měsíců), kde už samotné plánování dotazu stojí měřitelný čas. Proto je maximum retence 120 měsíců a doporučená hodnota 26.
+Co je z toho nutné ověřit měřením, ne odhadem: chování při 100+ partition (retence 120 měsíců), kde už samotné plánování dotazu stojí měřitelný čas. Proto je maximum retence 120 měsíců a výchozí hodnota 37.
 
 **Kde to praskne dřív:** ne u čtení timeline, ale u zápisu. Při 2 000 událostech za sekundu je to 2 000 řádků do `web_events` plus indexy, tedy zhruba 5 zápisových operací na událost. To je horní hranice pro jeden běžný server. Nad ní je potřeba buď zvětšit dávkování (přidat frontu s agregací), nebo přijmout vzorkování `page_view` událostí.
 
@@ -2195,7 +2404,7 @@ Partitioning je konvence z části 1, sekce 2.1, a údržbu dělá její job `pl
 | Pojmenování `<tabulka>_yYYYYmMM` | `web_events_y2026m08` |
 | Job `platform.maintain_partitions` denně ve 02:00 UTC, tři měsíce dopředu | Vlastní job `db.maintain_partitions` z původního návrhu **zrušen** |
 | Stejná logika synchronně při startu aplikace | Čerstvá instalace má partition ihned |
-| Výchozí partition (`DEFAULT`) se nezakládá | Čas události se v 3.7.2 ořezává tak, aby partition vždy existovala |
+| Výchozí partition (`DEFAULT`) se nezakládá | U živých cest se čas události v 3.7.2 ořezává tak, aby partition vždy existovala. U dávkového importu (2.2.1) se neořezává, chybějící oddíl se dozaloží a jinak import selže hlasitě kódem `tracking_import_partition_missing` |
 | Odpojení a smazání staré partition dělá retenční job vlastníka tabulky | Retenční politiku dodávám v 3.15, je to požadavek P5-4 z části 1 |
 | DDL partition generuje výhradně `createMonthlyPartitions` v `packages/db` | Nepíšu vlastní generátor |
 
@@ -2205,13 +2414,15 @@ Rozhodnutí **nepoužívat `pg_partman`** je společné a část 1 ho zdůvodňu
 
 | Tabulka | Partiční klíč | Granularita | Retence |
 |---|---|---|---|
-| `web_events` | `received_at` (náš čas přijetí) | měsíc | `TRACKING_RETENTION_MONTHS`, výchozí 26 |
+| `web_events` | `received_at` (náš čas přijetí) | měsíc | `TRACKING_RETENTION_MONTHS`, výchozí 37 |
 | `message_engagement` | `created_at` (= `messages.created_at`) | měsíc | totéž |
 | `message_events` (vlastní část 4a) | `received_at` | měsíc | totéž, viz požadavek 12.2.13 |
 
-Měsíční granularita, ne denní. Denní by při retenci 26 měsíců znamenalo 790 partition, což už měřitelně zpomaluje plánování dotazů. Měsíční dává 26 partition, tedy bezpečně v pásmu, kde je režie zanedbatelná.
+**Partiční klíč `message_events` je `received_at`.** Píšu to zvlášť, protože předchozí verze dokumentu uváděla na dvou místech `created_at` (přehledová tabulka 2.1 a uvozující věta požadavku 12.2.1), zatímco DDL v 12.2.1 i konvence 2.1 části 1 měly `received_at`. Sjednoceno na `received_at`, protože partiční klíč musí být čas generovaný námi, ne hodnota, která přichází zvenku. `message_engagement` je jediná tabulka této části s jiným klíčem (`created_at` = `messages.created_at`) a je to schválně: ta hodnota je náš čas z materializace, ne čas od třetí strany, a drží řádek engagementu ve stejném oddílu jako zprávu (2.6).
 
-**Odpovědi na P5-4 z části 1:** výchozí retence je **26 měsíců** pro `web_events` i `message_events`, konfigurační proměnná je `TRACKING_RETENTION_MONTHS`, povolený rozsah 3 až 120. Odůvodnění čísla je v 3.15.1.
+Měsíční granularita, ne denní. Denní by při retenci 37 měsíců znamenalo zhruba 1 125 partition, což už měřitelně zpomaluje plánování dotazů. Měsíční dává 37 partition, tedy bezpečně v pásmu, kde je režie zanedbatelná.
+
+**Odpovědi na P5-4 z části 1:** výchozí retence je **37 měsíců** pro `web_events` i `message_events`, konfigurační proměnná je `TRACKING_RETENTION_MONTHS`, povolený rozsah 3 až 120, **nastavuje se globálně pro celou instalaci**. Odůvodnění čísla je v 3.15.1.
 
 `message_engagement` a `message_events` musí mít **stejnou** retenci jako `messages` (část 4a), jinak zůstanou statistiky bez zpráv nebo naopak. Viz požadavek 12.2.13.
 
@@ -2219,19 +2430,31 @@ Měsíční granularita, ne denní. Denní by při retenci 26 měsíců znamenal
 
 #### 3.15.1 Nastavení retence
 
-Per workspace, v `workspaces.settings`:
+**Retence je globální pro celou instalaci. Rozhodnutí zadavatele, uzavřeno, viz otázka 7 v kapitole 14.**
+
+| | Hodnota |
+|---|---|
+| Retence `web_events`, `message_events`, `message_engagement` | `TRACKING_RETENTION_MONTHS`, výchozí **37 měsíců**, rozsah 3 až 120 |
+| Retence anonymních identit bez vazby na kontakt | 400 dní, odpovídá životnosti cookie (3.15.2, krok 1) |
+| Kde se nastavuje | konfigurační proměnná instance (kapitola 8), ne `workspaces.settings` |
+
+Výchozí hodnota 37 měsíců je rozhodnutí zadavatele: pokrývá tři plné roky meziročního srovnání plus měsíc rezervy na to, aby srovnávací období nezmizelo dřív, než ho někdo otevře.
+
+**Zamítnutá varianta: retence per workspace.** Uvádím ji, aby bylo za rok dohledatelné, že se zvažovala a proč padla.
 
 ```ts
+// ZAMÍTNUTO. Nezavádět. Ponecháno jen jako záznam zvážené varianty.
+// Konflikt s uzavřeným rozhodnutím zadavatele o globální retenci.
 type TrackingRetention = {
-  web_events_months: number;        // výchozí 26, rozsah 3 až 120
-  message_events_months: number;    // výchozí 26, rozsah 3 až 120
-  anonymous_identities_days: number; // výchozí 400, rozsah 30 až 1095
+  web_events_months: number;
+  message_events_months: number;
+  anonymous_identities_days: number;
 };
 ```
 
-Retence je **per instance, ne per workspace**, protože partition jsou společné pro celou databázi. Efektivní retence je maximum přes všechny workspace. Nastavení per workspace se realizuje **mazáním řádků** v rámci partition, ne dropem partition. To je pomalejší, ale běží to v noci po dávkách.
+Důvod zamítnutí: partition jsou společné pro celou databázi, takže efektivní retence by stejně byla maximum přes všechny workspace. Kratší retence jednoho projektu by se musela realizovat **mazáním řádků uvnitř partition** místo odpojení celého oddílu, což je řádově dražší údržba, drží mrtvé místo v tabulce až do `VACUUM` a rozbíjí slib z 7.5, že smazání oddílu se čtyřmi miliony řádků trvá pod 5 sekund. Za to se nekupuje nic, co by zákazník uměl vysvětlit.
 
-Pro MVP 0 se nabízí jen globální nastavení `TRACKING_RETENTION_MONTHS`. Per workspace retence je poznamenaná jako otevřená otázka, viz 14.
+Dřívější verze tohohle dokumentu snippet `TrackingRetention` uváděla jako návrh a odkazovala na „otevřenou otázku". Otázka je uzavřená a snippet je od té chvíle zamítnutá varianta, ne plán.
 
 #### 3.15.2 Job `tracking.enforce_retention`
 
@@ -2261,7 +2484,7 @@ Vlastní to část 2 (její 4.14.4) a volá hook `tracking.erase_contact(contact
 | `web_events.contact_id` | `NULL`, zároveň `erased_at = now()` | totéž |
 | `web_events.anonymous_id` | **zůstává** | zůstává |
 | `web_events.page`, `properties`, `context` | pročistí se klíče z `TRACKING_PII_PROPERTY_KEYS` | totéž |
-| `message_engagement.contact_id` | `NULL` | totéž |
+| `message_engagement.contact_id` | `NULL`, zároveň `erased_at = now()` | totéž |
 | `identities` | smazáno | smazáno |
 | `identity_bindings` | smazáno | smazáno |
 | `identity_merges` | smazáno | smazáno |
@@ -2300,8 +2523,8 @@ Export **neobsahuje** interní identifikátory zpráv ani tokeny.
 
 | Nastavení | Co se nestane | Co uvidí uživatel v reportu |
 |---|---|---|
-| `campaigns.track_opens = false` | Pixel se nevloží, token typu 1 nevznikne | Místo čísel otevření text „Měření otevření bylo pro tuto kampaň vypnuté" |
-| `campaigns.track_clicks = false` | Odkazy se nepřepíšou, token typu 2 nevznikne, `campaign_links` se plní jen kvůli náhledu | Místo čísel prokliku text „Měření prokliků bylo vypnuté". Statistika odkazů se nezobrazí vůbec |
+| `campaigns.track_opens = false` | Pixel se nevloží, token typu `o` nevznikne | Místo čísel otevření text „Měření otevření bylo pro tuto kampaň vypnuté" |
+| `campaigns.track_clicks = false` | Odkazy se nepřepíšou, token typu `c` nevznikne, `campaign_links` se plní jen kvůli náhledu | Místo čísel prokliku text „Měření prokliků bylo vypnuté". Statistika odkazů se nezobrazí vůbec |
 | Obojí vypnuté | Zpráva se odešle beze změn v HTML | Report ukazuje jen doručení, odmítnutí, stížnosti a odhlášení |
 | Workspace nemá `tracking_domains` | SDK se nespustí, `ml_token` se nepřidává | Timeline obsahuje jen e-mailové položky |
 | Souhlas `analytics` odvolaný | Žádné webové události | Timeline má mezeru, u kontaktu je poznámka „od 14. 5. 2026 nesouhlasí se sledováním" |
@@ -2312,7 +2535,9 @@ Export **neobsahuje** interní identifikátory zpráv ani tokeny.
 
 1. Test se z definice nezapočítává do statistik, takže řádek v timeline nemá komu pomoct.
 2. Kdyby se token vygeneroval a událost jen zahodila, existovala by platná trackovací adresa, ke které nevede žádná zpráva. Každé její otevření by skončilo neúspěšným dohledáním a rostl by čítač `tracking_message_lookup_miss_total`, který je alertovaný jako porušení invariantu I1. Byl by to falešný poplach na nejcitlivější metrice, kterou mám.
-3. `message_engagement.contact_id` i `message_events.contact_id` tím můžou zůstat `NOT NULL` a nikde se neřeší anonymní zpráva.
+3. Nikde se tím neřeší „zpráva bez kontaktu" jako běžný provozní stav: každý řádek `message_engagement` i `message_events` vzniká ke zprávě, která `contact_id` má.
+
+   **Pozor, z bodu 3 neplyne `NOT NULL`.** Dřívější znění z něj vyvozovalo, že `message_engagement.contact_id` a `message_events.contact_id` můžou zůstat `NOT NULL`. To bylo špatně a bylo to blokující: GDPR výmaz podle 3.15.3 ty sloupce nuluje, takže `NOT NULL` by ho shodil. Netrackování testů odstraňuje jen jeden zdroj prázdné hodnoty (zprávu bez kontaktu), ne ten druhý (výmaz po letech). `contact_id` je proto v obou tabulkách `NULL`-ovatelný a doprovází ho `erased_at` (2.6, a pro `message_events` požadavek 12.2.1).
 
 Cena: tester neuvidí, že měření funguje. Řeším to druhou variantou testu, **„odeslat test jako konkrétní kontakt"**, kde jde o skutečnou zprávu skutečnému kontaktu a měří se normálně. Kdo chce ověřit tracking, použije ji; kdo chce zkontrolovat vzhled na své adrese, použije obyčejný test. Obojí patří do UI části 4a a je to požadavek 12.2.16.
 
@@ -2366,7 +2591,8 @@ Chybové kódy podle 4.4: `token_malformed`, `token_signature_invalid`, `token_t
 | `GET` | `/api/v1/tracking/domains` | `settings:read` | Seznam domén |
 | `POST` | `/api/v1/tracking/domains` | `settings:write` | Přidat doménu |
 | `DELETE` | `/api/v1/tracking/domains/{id}` | `settings:write` | Odebrat doménu |
-| `POST` | `/api/v1/events` | `events:write` | Serverové události |
+| `POST` | `/api/v1/events` | `events:write` | Serverové události v reálném čase (živá cesta) |
+| `POST` | `/api/v1/events/import` | `events:import` | Dávkový import historie, vyňatý ze sedmidenního okna, viz 2.2.1 |
 
 #### `GET /api/v1/campaigns/{id}/stats`
 
@@ -2432,8 +2658,11 @@ type TimelineResponse = {
 type TimelineItem = {
   id: string;
   occurred_at: string;
-  source: 'email' | 'web' | 'contact' | 'automation';
-  type: string;                        // 'message_opened', 'page_view', ...
+  // Otevřený výčet. Dnešní hodnoty: 'email' | 'web' | 'contact' | 'automation'.
+  // Klient MUSÍ tolerovat neznámou hodnotu, viz níž.
+  source: string;
+  // Otevřený výčet. 'message_opened', 'page_view', 'circuit_breaker_open', ...
+  type: string;
   title: string;                       // už lokalizovaný text pro zobrazení
   detail?: Record<string, unknown>;
   campaign?: { id: string; name: string };
@@ -2444,11 +2673,34 @@ type TimelineItem = {
 
 `title` se skládá na serveru, aby se stejný text nemusel implementovat v každém klientovi API. Lokalizuje se podle `Accept-Language` nebo podle jazyka uživatele.
 
+**`source` i `type` jsou otevřené výčty a klient musí neznámou hodnotu tolerovat.** Je to závazné pravidlo pro část 6 (UI) i pro `sdk-node`, ne doporučení:
+
+1. Neznámá hodnota **nesmí** vyhodit výjimku, nesmí položku zahodit a nesmí rozbít stránku. Zobrazí se **generická položka**: neutrální ikona, `title` ze serveru (ten je vždy vyplněný a už lokalizovaný) a čas. Rozbalitelný detail se zobrazí, když `detail` přijde.
+2. Ve filtru timeline (5.3) se neznámý zdroj chová jako „ostatní", nefiltruje se z „všechno".
+3. Klient nesmí `source` ani `type` použít jako klíč do exhaustivního `switch` bez větve `default`. TypeScript typ je proto `string`, ne union: union by v klientovi vyrobil kód, který se u neznámé hodnoty chová nedefinovaně, a chyba by se objevila až v provozu u zákazníka.
+
+Důvod je konkrétní: `type` odpovídá registru `ck_message_events__type` (12.2.1), který vlastní část 4a, a `source` registru `ck_web_events__source` (2.2), který vlastním já. Obojí je navržené tak, aby se hodnota dala přidat migrací `CHECK` bez synchronizace všech částí. To může fungovat **jen tehdy**, když klient starší verze novou hodnotu přežije. Bez tohohle pravidla by každé přidání typu znamenalo koordinované nasazení serveru a UI, což je přesně to, čemu se registr vyhýbá. `title` skládaný na serveru je to, co generickou položku dělá použitelnou i pro typ, o kterém klient nikdy neslyšel.
+
 #### `GET /api/v1/campaigns/{id}/recipients`
 
 Query: `filter` z množiny `all | opened | clicked | not_opened | not_clicked | bounced | complained | unsubscribed | machine_open_only`, `cursor`, `limit`.
 
-Odpověď obsahuje kontakt (id, e-mail, jméno) a jeho `firstOpenAt`, `firstClickAt`, `openCount`, `clickCount`, `openReliability`. Slouží mimo jiné k tomu, aby si uživatel mohl z reportu udělat segment.
+Klíče v odpovědi jsou `snake_case` podle konvence 4.1 části 1, stejně jako u ostatních endpointů této části:
+
+```ts
+type RecipientItem = {
+  contact_id: string;
+  email: string;
+  name: string | null;
+  first_open_at: string | null;
+  first_click_at: string | null;
+  open_count: number;
+  click_count: number;
+  open_reliability: 'confirmed' | 'machine' | null;
+};
+```
+
+Slouží mimo jiné k tomu, aby si uživatel mohl z reportu udělat segment. (Předchozí verze tady vyjmenovávala `firstOpenAt`, `firstClickAt`, `openCount`, `clickCount` a `openReliability`, přestože 1.4 deklaruje, že jsou všechny payloady přepsané na `snake_case`. Byl to zbytek po pivotu; konverzi na `camelCase` dělá až TypeScript klient v `sdk-node`, ne API.)
 
 ### 4.3 Události pro odchozí webhooky
 
@@ -2501,6 +2753,14 @@ Poznámka k `too_many_items`: část 1 dává limit dávkového endpointu 1 000 
 | `tracking_merge_not_revertible` | 409 | ne | Sloučení není ve stavu `completed` ani `truncated` | „Toto sloučení už nejde vrátit." |
 | `tracking_disabled` | 409 | ne | Operace nad kampaní s vypnutým měřením | „Měření bylo pro tuto kampaň vypnuté." |
 | `tracking_timeline_window_too_large` | 422 | ne | Požadavek na víc než 3 měsíce naráz | „Zvolte kratší období." |
+| `tracking_import_partition_missing` | 422 | ano, po založení oddílu | Import do měsíce, pro který není oddíl (2.2.1) | „Pro období {month} zatím není připravené úložiště. Zkuste to znovu za chvíli." |
+| `tracking_import_beyond_retention` | 422 | ne | Importovaná událost je starší než retence (2.2.1) | „Události starší než {months} měsíců se neukládají, byly by hned smazané." |
+| `tracking_payload_version_unsupported` | 400 | ne | Neznámá hodnota `v` v payloadu (3.1.9) | interní, nezobrazuje se |
+| `tracking_properties_keys_dropped` | 202 `findings` | ne | Ořez počtu klíčů nebo dlouhý klíč (3.7.3) | „Událost měla víc vlastností, než se ukládá. Uloženo prvních {limit}." |
+| `tracking_properties_value_truncated` | 202 `findings` | ne | Ořez délky řetězcové hodnoty (3.7.3) | „Hodnota vlastnosti {key} byla zkrácena na {limit} znaků." |
+| `tracking_properties_depth_truncated` | 202 `findings` | ne | Ořez hloubky vnoření (3.7.3) | „Vlastnost {key} je zanořená hlouběji, než se ukládá." |
+
+Tři kódy `tracking_properties_*` se **nikdy nevrací jako chyba**. Jsou to nálezy se `severity: "warning"` uvnitř úspěšné odpovědi `202` a jejich smyslem je, aby ořez přestal být tichý (3.7.3). Sloupec HTTP je u nich uvedený jen proto, aby bylo vidět, že se s nimi nemá zacházet jako se stavovým kódem.
 
 Kódy z první tabulky označené jako „interní" se koncovému uživateli nikdy nezobrazují: projeví se buď tiše (tracking pokračuje anonymně), nebo obecnou hláškou. V odpovědi API a v logu jsou kvůli ladění.
 
@@ -2592,7 +2852,7 @@ Cesta: `/[workspace]`
 | Aktivní kontakty na webu | 24 h | `count(distinct contact_id)` z `web_events` | 5 min |
 | Poslední kampaně | posledních 5 | `campaign_stats` | 60 s |
 
-Zastaralost hodnoty se pozná podle toho, že odpověď obsahuje `computedAt`. Když je starší než dvojnásobek cache TTL, UI zobrazí u dlaždice čas výpočtu malým písmem. Nikdy se nezobrazuje zastaralá hodnota bez označení.
+Zastaralost hodnoty se pozná podle toho, že odpověď obsahuje `computed_at` (`snake_case` podle 4.1 části 1, dřív tu bylo `computedAt`). Když je starší než dvojnásobek cache TTL, UI zobrazí u dlaždice čas výpočtu malým písmem. Nikdy se nezobrazuje zastaralá hodnota bez označení.
 
 Dotaz „aktivní kontakty na webu" je jediný dashboardový dotaz, který sahá do `web_events` a agreguje. Proto má delší cache a je omezený na jednu partition (posledních 24 hodin).
 
@@ -2634,7 +2894,7 @@ Dotaz „aktivní kontakty na webu" je jediný dashboardový dotaz, který sahá
 | Open redirect na naší doméně | Phishing pod cizí značkou, poškození reputace domény | Cíl výhradně z `campaign_links` podle `link_id`, nikdy ze vstupu (3.4.3) |
 | Podvržení otevření nebo kliku | Zkreslené reporty | HMAC podpis tokenu, bez klíče nejde token vyrobit |
 | Odečtení e-mailu z odkazu v mailu | Únik osobního údaje při přeposlání | Token neobsahuje e-mail ani `contact_id` |
-| Únik identity na cizí web | Cizí web zjistí, kdo je jeho návštěvník | `ml_token` jen na registrované domény, vázaný na host, jednorázový, 15 minut |
+| Únik identity na cizí web | Cizí web zjistí, kdo je jeho návštěvník | `ml_token` se přidává **jen** na hosty registrované v `tracking_domains` workspace (3.4.6 krok 7), při spotřebování se `Origin` kontroluje proti témuž seznamu, token je jednorázový a platí 15 minut. **Vazbu na konkrétní cílový host token nenese**, kontrakt pro ni nemá pole, viz 13.8 b |
 | Odečtení tokenu z `Referer` | Cizí web získá platný token | `Referrer-Policy: no-referrer` na redirectu |
 | Token zůstane v adresním řádku a v analytice | Únik do cizích systémů | `history.replaceState` hned po přečtení, plus `ml_token` v seznamu odstraňovaných parametrů |
 | Zaplavení ingestion falešnými událostmi | Nafouknutá databáze | Rate limity, kontrola `Origin`, limity velikosti |
@@ -2650,7 +2910,7 @@ Dotaz „aktivní kontakty na webu" je jediný dashboardový dotaz, který sahá
 | Údaj | Poznámka |
 |---|---|
 | `SECRET_KEY`, `K_track` | Ani při `debug` úrovni |
-| Celý token | V logu jen prvních 8 znaků payloadu a `kind` |
+| Celý token | V logu jen prvních 8 znaků payloadu a `type` (znak `o`, `c`, `i`, `u`) |
 | E-mailová adresa | Do logu jen `contact_id` |
 | Surová IP adresa | Do logu jen `/24` prefix u IPv4 a `/48` u IPv6, a jen na úrovni `warn` a výš |
 | Obsah `properties` | Při chybě se loguje jen seznam klíčů, ne hodnoty |
@@ -2706,7 +2966,7 @@ Referenční instalace, ze které se počítají všechny limity:
 | Prokliků za měsíc | 30 000 |
 | Webových událostí za měsíc | 2 000 000 |
 | Špička webových událostí | 200/s, krátkodobě 1 000/s |
-| Řádků `web_events` po 26 měsících | 52 000 000 |
+| Řádků `web_events` po 37 měsících | 74 000 000 |
 
 Horní hranice, pro kterou návrh ještě platí: 5 milionů kontaktů, 100 milionů řádků `web_events`, 2 000 událostí/s trvale.
 
@@ -2740,7 +3000,7 @@ Seřazeno podle toho, co narazí jako první:
 
 1. **Zápis `web_events`.** Pět zápisových operací na událost (tabulka plus čtyři indexy). Nad 2 000 událostí/s je potřeba buď zvětšit dávky, nebo vzorkovat `page_view`.
 2. **Kontence na `campaign_stats`.** Při víc než 20 UPDATE téhož řádku za sekundu se objeví čekání na zámek. Řešení je shardovaný čítač, popsané v 3.9.2.
-3. **Počet partition.** Nad 100 partition roste čas plánování dotazů. Proto je doporučená retence 26 měsíců.
+3. **Počet partition.** Nad 100 partition roste čas plánování dotazů. Výchozí retence 37 měsíců dává 37 partition, tedy s velkou rezervou pod tou hranicí. Nastavení nad 100 měsíců je potřeba změřit.
 4. **`identity_token_uses`.** Při extrémní špičce kliků roste rychle. Úklidový job běží hodinově, což při 15minutové platnosti stačí s velkou rezervou.
 5. **Paměť LRU cache odkazů.** 10 000 kampaní po 50 odkazech s průměrnou délkou 80 znaků je zhruba 40 MB. Při větším počtu souběžně aktivních kampaní se sníží kapacita cache.
 6. **SSE spojení.** 500 na instanci. Nad to se přepíná na polling.
@@ -2775,7 +3035,7 @@ Navrhované doplnění:
 | `TRACKING_IDENTITY_TOKEN_TTL_SECONDS` | int | ne | `900` | W | 60 až 3600 |
 | `TRACKING_MERGE_WINDOW_DAYS` | int | ne | `30` | K | 1 až 365 |
 | `TRACKING_MERGE_MAX_EVENTS` | int | ne | `10000` | K | 100 až 1000000 |
-| `TRACKING_RETENTION_MONTHS` | int | ne | `26` | K | 3 až 120, odpověď na P5-4 části 1 |
+| `TRACKING_RETENTION_MONTHS` | int | ne | `37` | K | 3 až 120, odpověď na P5-4 části 1, globální pro instalaci |
 | `TRACKING_APPLE_RELAY_RANGES` | bool | ne | `false` | W K | |
 | `TRACKING_STORE_COUNTRY` | bool | ne | `false` | W | Když `true`, musí být k dispozici GeoIP databáze |
 | `TRACKING_GEOIP_DB_PATH` | cesta | ne | prázdné | W | Soubor musí existovat, když je `TRACKING_STORE_COUNTRY=true` |
@@ -2785,6 +3045,12 @@ Navrhované doplnění:
 | `TRACKING_WRITER_BATCH` | int | ne | `500` | W | 50 až 5000 |
 | `TRACKING_SSE_MAX_CONNECTIONS` | int | ne | `500` | W | 10 až 10000 |
 | `TRACKING_ALLOW_SERVERSIDE_PUBLIC_KEY` | bool | ne | `false` | W | |
+| `TRACKING_PROPERTIES_MAX_KEYS` | int | ne | `32` | W | 1 až 256, viz 3.7.3 |
+| `TRACKING_PROPERTIES_MAX_DEPTH` | int | ne | `3` | W | 1 až 10, viz 3.7.3 |
+| `TRACKING_PROPERTIES_MAX_STRING` | int | ne | `1024` | W | 64 až 16384, viz 3.7.3 |
+| `TRACKING_IMPORT_BATCH_MAX_EVENTS` | int | ne | `1000` | W K | 1 až 5000, viz 2.2.1 |
+
+Tři proměnné `TRACKING_PROPERTIES_*` jsou nové a mají jasné varování v dokumentaci: každý klíč navíc je jsonb na tabulce s desítkami milionů řádků, takže zvýšení `TRACKING_PROPERTIES_MAX_KEYS` na 256 znamená měřitelně větší tabulku a pomalejší zápis. Horní meze validace jsou proto nízké schválně; jsou tam jako páka pro konkrétní potřebu, ne jako pozvánka k vypnutí limitů.
 
 `TRACKING_PARTITION_PREMAKE_MONTHS` z původního návrhu **zrušena**, předstih partition řídí část 1 (tři měsíce, sekce 2.1). `TRACKING_KEY_EPOCH` **zrušena**, generaci klíče nese `SECRET_KEY` ve tvaru `<key_id>:<base64url>` podle 3.10 části 1.
 
@@ -2800,19 +3066,26 @@ Prefix `tracking_`, formát Prometheus na `/api/v1/admin/metrics` (chráněno po
 
 | Metrika | Typ | Popis |
 |---|---|---|
-| `tracking_open_total{class}` | counter | Otevření podle třídy |
+| `tracking_open_total{class}` | counter | Otevření podle třídy. Z něj se počítá i podíl tříd (3.3.2) |
+| `tracking_open_capped_total` | counter | Otevření zahozená stropem 100 na zprávu a den (3.2.3) |
 | `tracking_click_total{class}` | counter | Prokliky podle třídy |
 | `tracking_token_invalid_total{code}` | counter | Neplatné tokeny podle kódu |
+| `tracking_message_lookup_miss_total` | counter | Dohledání zprávy z tokenu neuspělo ani v kroku 2 fallbacku (3.1.2.2). **Alertované**, protože růst znamená porušený invariant I1 |
 | `tracking_writer_buffer_size` | gauge | Aktuální velikost bufferu |
 | `tracking_writer_dropped_total` | counter | Zahozené položky |
 | `tracking_writer_flush_duration_seconds` | histogram | Doba zápisu dávky |
 | `tracking_ingest_events_total{result}` | counter | accepted / rejected |
 | `tracking_ingest_duration_seconds` | histogram | Latence ingestion |
-| `tracking_identity_bind_total{result}` | counter | created / bound / unchanged / rebound |
+| `tracking_ingest_truncated_total{limit}` | counter | Tiché ořezy v `properties` podle druhu limitu (3.7.3) |
+| `tracking_identity_bind_total{result}` | counter | created / bound / unchanged / rebound / **restricted** |
 | `tracking_identity_merge_events_total` | counter | Doplněných událostí |
 | `tracking_sse_connections` | gauge | Otevřená spojení |
 | `tracking_partition_missing` | gauge | 1, když chybí partition pro aktuální měsíc |
 | `tracking_redirect_duration_seconds` | histogram | Latence přesměrování |
+
+**Jediná závazná notace je podtržítková.** Dřívější verze dokumentu vedle tohohle katalogu používala na čtyřech místech tečkové názvy (`tracking.open.capped`, `tracking.open.class_share`, `tracking.writer.dropped`, `tracking.identity.rebind`). Tečka v názvu Prometheus metriky není platná, takže by ty čtyři metriky buď neexistovaly, nebo by je někdo přejmenoval po svém a nesouhlasily by s alerty v 9.2. Sjednoceno na `tracking_<oblast>_<věc>_total` pro čítače a rozlišení podle dimenze řeší **label**, ne další název metriky: proto je z `tracking.identity.rebind` hodnota labelu `result="rebound"` a hodnota `result="restricted"` (3.8.3, krok 0) je doplněná do téhož čítače. `tracking.open.class_share` zaniká bez náhrady, podíl je dotaz nad `tracking_open_total{class}`.
+
+Tečkové názvy zůstávají jen tam, kde o metriky nejde: jména pg-boss jobů (`tracking.process_engagement`), i18n klíče (5.6) a klíče v `workspaces.settings`.
 
 ### 9.2 Alerty, které se mají nastavit
 
@@ -2821,6 +3094,7 @@ Prefix `tracking_`, formát Prometheus na `/api/v1/admin/metrics` (chráněno po
 | `tracking_partition_missing > 0` | kritická | Zápis událostí přestane fungovat |
 | `tracking_writer_dropped_total` roste | vysoká | Ztrácejí se prokliky |
 | `tracking_token_invalid_total{code="token_unknown_key"}` roste | vysoká | Špatně nastavená rotace, rozbité odkazy |
+| `tracking_message_lookup_miss_total` roste | vysoká | Porušený invariant I1 (3.1.2.2). Události se ukládají, ale nezapočítají se do reportu kampaně |
 | Podíl `proxy_apple` skokově klesne o víc než 20 bodů | střední | Apple pravděpodobně změnil `User-Agent`, heuristika přestala fungovat |
 | `tracking_redirect_duration_seconds` p99 > 200 ms | střední | Cache nefunguje |
 | Nula událostí za 24 h u workspace, který dřív měl | nízká | Zákazník si nejspíš rozbil web, zobrazí se mu to v diagnostice |
@@ -2893,7 +3167,7 @@ Vektory vlastní část 1 (`fixtures/token/vectors.json`), tato část je jen ko
 39. `page_view` s adresou `https://x.cz/a?token=abc&utm_source=news` se uloží s `page.url` bez `token` a s `context.campaign.source = 'news'`.
 40. `identify('u1', { email: 'a@b.cz' })` bez podpisu vrátí 422 a kód `tracking_identify_unsigned_pii` a e-mail kontaktu se nezmění.
 41. Vypnutí sítě, 30 událostí, zapnutí sítě: všech 30 dorazí po obnovení, žádná se neztratí a žádná nedorazí dvakrát.
-42. Odpověď ingestion neobsahuje `contactId` ani e-mail v žádném poli.
+42. Odpověď ingestion neobsahuje `contact_id` ani e-mail v žádném poli.
 
 ### 10.5 Identity resolution
 
@@ -2915,9 +3189,13 @@ Vektory vlastní část 1 (`fixtures/token/vectors.json`), tato část je jen ko
 55. Kompletní tok od kliku po vazbu proběhne a `ml_token` zmizí z adresního řádku dřív, než se odešle první `page_view`.
 56. Druhé použití téhož `ml_token` vrátí 409 a kód `token_already_used`.
 57. Použití `ml_token` 16 minut po vydání vrátí 410 a kód `token_expired`.
-58. Použití `ml_token` z jiné domény, než pro kterou byl vydaný, vrátí 403.
+58. **Použití `ml_token` s hlavičkou `Origin`, která není žádnou z `tracking_domains` daného workspace, vrátí 403 a kód `origin_not_allowed`.** Druhá půlka téhož testu je stejně důležitá a je to dnešní chování, ne chyba: token vydaný při kliku směřujícím na `shop.cz` **projde** i s `Origin: https://blog.shop.cz`, když je `blog.shop.cz` v `tracking_domains` téhož workspace.
+
+    **Zdůvodnění přepisu tohoto kritéria.** Předchozí znění testovalo použití „z jiné domény, než pro kterou byl vydaný". Takový test nejde napsat: token podle zmrazeného kontraktu 4.10.3 nenese cílový host ani jeho otisk, takže server nemá s čím porovnávat a doména vydání se z tokenu nedá zjistit. Ověřitelný invariant je příslušnost `Origin` k doménám workspace. Vazba na konkrétní host je návrh na `t2` v 13.8 b, ne dnešní chování.
 59. Ve všech třech chybových případech pokračuje tracking anonymně a uživatel na webu nic nepozná.
-60. `ml_token` neobsahuje `contact_id` ani e-mail: dekódovaný payload má přesně 54 bajtů a žádný z nich neodpovídá identifikátoru kontaktu.
+60. **`ml_token` neobsahuje nic čitelného a je celý krytý MAC.** Dekódovaný payload má přesně **60 bajtů** podle zmrazeného kontraktu 4.10.3 (`workspace_id` 16, `contact_id` 16, `campaign_id` 16, `nonce` 8, `expires_at` 4) a neobsahuje e-mailovou adresu ani žádný jiný čitelný řetězec. `contact_id` v něm **je**, ale výhradně v binární podobě a je součástí vstupu do HMAC, takže ho nejde zaměnit bez zneplatnění tokenu. Test: dekódovaný payload neobsahuje `@`, žádný podřetězec e-mailu kontaktu ani jméno, a změna libovolného bitu v `contact_id` vede k `token_signature_invalid`.
+
+    **Zdůvodnění přepisu tohoto kritéria.** Předchozí znění tvrdilo „payload má 54 bajtů a neobsahuje `contact_id`". Obojí bylo v rozporu se zmrazeným kontraktem: délka je 60 bajtů (ověřeno vektorem v 3.1.3, kde identity token vychází na 106 znaků) a `contact_id` payload obsahuje. Kritérium tedy testovalo stav, který nikdy nemohl nastat, a spadlo by na první implementaci podle kontraktu. Skutečný invariant je „nic čitelného, všechno kryté MAC", ne „bez `contact_id`". Že by tam `contact_id` být nemuselo a proč by to bylo lepší, je moje výhrada v **13.8**; je zapsaná jako návrh pro `t2` a **není** to dnešní chování.
 
 ### 10.7 Reporty a timeline
 
@@ -2925,8 +3203,8 @@ Vektory vlastní část 1 (`fixtures/token/vectors.json`), tato část je jen ko
 62. Ověřená míra otevření v předchozím případě je 200 / (1000 − 300) = 28,6 %, ne 20 %.
 63. CTOR se počítá z `opens_unique_human`, ne z `opens_unique`.
 64. Report kampaně s milionem zpráv se načte pod 200 ms.
-65. Kampaň s `track_opens = false` zobrazí v reportu text, ne nulu, a `openRate` v API je `null`.
-66. Kampaň s méně než 200 doručenými zobrazí absolutní počty a příznak `smallSample: true`.
+65. Kampaň s `track_opens = false` zobrazí v reportu text, ne nulu, a `rates.open_rate` v API je `null`.
+66. Kampaň s méně než 200 doručenými zobrazí absolutní počty a příznak `small_sample: true`.
 67. Timeline kontaktu se 100 000 událostmi vrátí první stránku pod 120 ms a dvacátou stránku také pod 120 ms.
 68. Timeline zobrazí otevření třídy `proxy_apple` s `reliability: 'machine'`.
 69. Timeline nezobrazí položky tříd `bot`, `scanner` ani `prefetch`.
@@ -3030,7 +3308,7 @@ Tvoje předpoklady, které **platí**: token neobsahuje čitelný e-mail; HMAC s
 5. **Tvůj postup s nepřepsanými odkazy je správný a je to i moje rozhodnutí.** Odkaz, který v `campaign_links` není, se nechá být. Doplňuju k tomu jednu věc: část 3 na to musí v editoru upozornit, jinak uživatel nepochopí, proč se odkaz neměří (požadavek 12.6.3).
 6. **Přepisuješ odkazy i v plain textu.** To původní návrh nepředpokládal a je to správně, jinak by prokliky z textové části chyběly. Potvrzuju.
 7. **`message_created_at`** je hodnota `messages.created_at` převedená na unixové sekundy, `uint32` big endian. Nesmí se dopočítávat z času odeslání ani ze `now()`, bere se z řádku, který sender claimnul. Claim dotaz v 4.10.1 ho vrací.
-8. **`message_id` musí být UUIDv7** a totožné s `messages.id`. Není to kosmetika: z časové složky v UUIDv7 se odvozuje partition při dohledání zprávy (3.1.7). Bez toho každé otevření prohledá všechny partition.
+8. **`message_id` v tokenu musí být totožné s `messages.id`.** Partition se **neodvozuje z UUIDv7**, to je zrušené zdůvodnění z doby před zavedením `message_created_at`: dohledání je rovnostní dotaz `WHERE id = $1 AND created_at = to_timestamp($2)` nad oběma složkami primárního klíče (3.1.7) a časová složka UUID v něm nehraje žádnou roli. Kritické je proto pole `message_created_at` (bod 7), ne verze UUID. Konvence 2.1 části 1 stejně UUIDv7 u primárních klíčů vyžaduje, takže požadavek nikam nemizí, jen přestává být podmínkou funkčnosti trackingu.
 9. **`workspace_id` v tokenu** musí být totožné s `messages.workspace_id`.
 10. **Základ URL je `TRACKING_DOMAIN`**, ne `APP_URL`. Je to už v tabulce 4.9 části 1 ve tvém sloupci. Odkazy jsou `{TRACKING_DOMAIN}/t/o/{token}` a `{TRACKING_DOMAIN}/t/c/{token}`.
 11. Sender **nesmí** logovat vyrobené tokeny v plné podobě. Do logu nejvýš prvních 8 znaků a typ.
@@ -3041,7 +3319,7 @@ Tvoje předpoklady, které **platí**: token neobsahuje čitelný e-mail; HMAC s
 
 ### 12.2 Část 4a (kampaně, aplikační strana)
 
-1. **DDL tabulky `message_events`** musí sedět na konvenci 2.1 části 1 (partition podle `created_at`, PK `(id, created_at)`) a musí nést `workspace_id`, `campaign_id`, `contact_id` a odkaz na zprávu **včetně obou složek jejího klíče**. Navrhované minimum:
+1. **DDL tabulky `message_events`** musí sedět na konvenci 2.1 části 1 (**partiční klíč je `received_at`, PK `(id, received_at)`**) a musí nést `workspace_id`, `campaign_id`, `contact_id` a odkaz na zprávu **včetně obou složek jejího klíče**. Navrhované minimum:
 
    ```sql
    CREATE TABLE message_events (
@@ -3052,15 +3330,19 @@ Tvoje předpoklady, které **platí**: token neobsahuje čitelný e-mail; HMAC s
      message_id         uuid        NOT NULL,
      message_created_at timestamptz NOT NULL,   -- druhá složka PK zprávy, viz R5 části 1
      campaign_id        uuid        NOT NULL,
-     contact_id         uuid        NOT NULL,
+     contact_id         uuid        NULL,   -- NULL až po GDPR výmazu, viz erased_at
+     erased_at          timestamptz NULL,   -- GDPR výmaz odstřihl vazbu, vzor z 2.2
      type               text        NOT NULL,
-     -- 'sent','delivered','open','click','bounce','complaint','unsubscribe','failed'
      subtype            text        NULL,   -- 'hard','soft','transient'; u open a click třída
      link_id            uuid        NULL,   -- campaign_links.id
      -- (issued_at zaniká, čas z tokenu je message_created_at a je to složka klíče výš)
      metadata           jsonb       NOT NULL DEFAULT '{}'::jsonb,
      PRIMARY KEY (id, received_at),
-     CONSTRAINT ck_message_events__type CHECK (type IN (...))
+     CONSTRAINT ck_message_events__type CHECK (type IN (
+       'delivered','bounce','complaint','open','click','unsubscribe',
+       'circuit_breaker_open')),
+     CONSTRAINT ck_message_events__subject CHECK (
+       contact_id IS NOT NULL OR erased_at IS NOT NULL)
    ) PARTITION BY RANGE (received_at);
 
    CREATE INDEX idx_message_events__campaign_type
@@ -3071,7 +3353,15 @@ Tvoje předpoklady, které **platí**: token neobsahuje čitelný e-mail; HMAC s
      ON message_events (workspace_id, contact_id, ts DESC);
    ```
 
-   `message_created_at` je přímý důsledek rozporu R5 z části 1. Bez něj nejde ze žádné události dohledat zpráva jinak než prohledáním všech partition. Já si ho při zápisu open a click spočítám z UUIDv7 podle 3.1.7 a uložím, takže při čtení už se nic dopočítávat nemusí.
+   `message_created_at` je přímý důsledek rozporu R5 z části 1. Bez něj nejde ze žádné události dohledat zpráva jinak než prohledáním všech partition. Já ho při zápisu open a click **přebírám přímo z tokenu** (nese ho jako `uint32` sekund) a uložím, takže se nikde nic nedopočítává. Dřívější znění tady slibovalo dopočet z UUIDv7; to je zrušené, funkce `uuidv7_timestamp` je nepotřebná a požadavek na ni je stažený (12.5.2).
+
+   **Tři opravy proti mé předchozí verzi tohoto DDL, všechny kvůli rozporu uvnitř tohoto dokumentu:**
+
+   - **Partiční klíč je `received_at`, ne `created_at`.** Uvozující věta dřív říkala `created_at`, přestože DDL o tři řádky níž, přehledová tabulka v 3.14.2 i konvence 2.1 části 1 mají `received_at`. Sjednoceno na `received_at`, protože partiční klíč musí být čas, který generujeme my.
+   - **`message_id` a `message_created_at` už nejsou `NOT NULL` kvůli `render_warning`, protože `render_warning` do téhle tabulky nepatří.** Viz bod 3: řádky typu `render_warning` mají obě pole prázdná a přímo si tak odporovaly s `NOT NULL` ve stejném požadavku. Rozhodnutí je vyjmout je do samostatné tabulky `campaign_render_warnings` a `NOT NULL` na obou sloupcích **ponechat**, protože pro všechny zbylé typy je odkaz na zprávu povinný a je to jediná věc, která drží dohledání zprávy levné.
+   - **`contact_id` je `NULL`-ovatelný a doprovází ho `erased_at`.** Vynucuje to GDPR výmaz (3.15.3), který sloupec nuluje. Podrobně v 2.6 a v bodě 17 níž.
+
+   **Výčet v `ck_message_events__type` je uzavřený, ale je to registr, ne zmrazená konstanta.** Hodnoty odpovídají tabulce v bodě 2. `sent` a `failed` v něm nejsou (3.9.5), `render_warning` v něm není (bod 3). Vlastníkem registru je **část 4a**; přidání hodnoty je migrace `CHECK`, ne změna kontraktu, a stačí k němu záznam v tabulce v bodě 2 a informace této části, aby se hodnota doplnila do klasifikace timeline (3.12.1). Klienti API musí neznámý `type` tolerovat, viz `TimelineItem` ve 4.2.
 
 2. **Uzavřený výčet, kdo do `message_events` zapisuje který typ** (odpověď na P5.14 od části 4b, která správně chtěla výčet povolení místo výčtu zákazů):
 
@@ -3086,22 +3376,35 @@ Tvoje předpoklady, které **platí**: token neobsahuje čitelný e-mail; HMAC s
 
    **Typy `sent` a `failed` v tomhle výčtu nejsou a je to změna oproti mé předchozí verzi.** Nález části 4b (P5.15) je správný: `sent` znamená jeden `INSERT` navíc na každou odeslanou zprávu, tedy dva miliony zápisů místo jednoho u milionové kampaně, a stav přitom už je na řádku `messages`. Prošel jsem, co z toho v této části skutečně čtu, a je to jen `campaign_stats.sent`, `campaign_stats.failed` a graf průběhu. Všechno tři jde odvodit z `messages` a je to popsané v 3.9.5.
 
-   **Praktický důsledek pro sender:** v běžném provozu nezapisuje do `message_events` **nic**. Když se `render_warning` přesune do vlastní tabulky (bod 3), zbude mu jediný typ `circuit_breaker_open`, což je řádově jednotky řádků na kampaň. Stojí pak za zvážení, jestli mu grant `INSERT ON message_events` nechat vůbec, nebo to udělat přes samostatnou tabulku a hranici ještě zúžit. Rozhodnutí je části 1, z mého pohledu je užší lepší.
+   **Praktický důsledek pro sender:** v běžném provozu nezapisuje do `message_events` **nic**. `render_warning` je rozhodnutím v bodě 3 přesunutý do vlastní tabulky `campaign_render_warnings`, takže senderu zbývá jediný typ `circuit_breaker_open`, což je řádově jednotky řádků na kampaň. Stojí pak za zvážení, jestli mu grant `INSERT ON message_events` nechat vůbec. Rozhodnutí je části 1, z mého pohledu je užší lepší.
 
-3. **`render_warning` se agreguje, nezapisuje se po jednom.** Návrh části 4b beru i s odůvodněním: kampaň na 50 000 příjemců, kde šablona sahá na pole, které polovina kontaktů nemá, vyrobí 25 000 řádků nesoucích tutéž informaci. Nese to nulovou informaci navíc oproti jednomu řádku s počítadlem a přitom to zdvojnásobí objem `message_events` u té kampaně.
+3. **`render_warning` se agreguje a jde do samostatné tabulky `campaign_render_warnings`, ne do `message_events`. Rozhodnuto.** Návrh části 4b na agregaci beru i s odůvodněním: kampaň na 50 000 příjemců, kde šablona sahá na pole, které polovina kontaktů nemá, vyrobí 25 000 řádků nesoucích tutéž informaci. Nese to nulovou informaci navíc oproti jednomu řádku s počítadlem a přitom to zdvojnásobí objem `message_events` u té kampaně.
 
-   Tvar: jeden řádek na trojici (kampaň, kód varování, cesta), `message_id` je `NULL`, počet v `metadata`:
+   **Proč se rozhoduje teď a proč ve prospěch samostatné tabulky.** Předchozí verze nechávala volbu otevřenou („doporučuju"), a tím si tenhle požadavek **sám odporoval**: DDL v bodě 1 má `message_id` i `message_created_at` jako `NOT NULL`, ale tvar řádku `render_warning` o kus dál má obě pole `NULL`. Jedno z toho musí padnout. Padá `render_warning`, protože:
 
+   - `message_events` je append-only tabulka událostí ke **konkrétní zprávě**. Řádek s počítadlem, který se opakovaně přepisuje a ke zprávě nepatří, je v ní cizí těleso.
+   - Kdyby v ní zůstal, musely by se `message_id` a `message_created_at` uvolnit na `NULL` pro **všechny** typy. Tím by přestala platit jediná záruka, na které stojí levné dohledání zprávy (3.1.7), a chyba by se projevila až jako prohledání všech partition.
+   - Agregace vyžaduje `UPDATE` právo, které sender na `message_events` nemá a mít nemá. Samostatná tabulka mu dá úzký grant přesně na to jedno místo.
+
+   ```sql
+   -- Vlastní část 4a. Tvar je návrh, závazné je jen to, že tahle data
+   -- nejsou v message_events.
+   CREATE TABLE campaign_render_warnings (
+     workspace_id uuid        NOT NULL,
+     campaign_id  uuid        NOT NULL,
+     code         text        NOT NULL,   -- 'missing_value', ...
+     path         text        NOT NULL,   -- 'contact.attributes.city'
+     count        bigint      NOT NULL DEFAULT 0,
+     first_seen_at timestamptz NOT NULL DEFAULT now(),
+     last_seen_at  timestamptz NOT NULL DEFAULT now(),
+     sample       jsonb       NOT NULL DEFAULT '[]'::jsonb,
+     PRIMARY KEY (workspace_id, campaign_id, code, path)
+   );
    ```
-   type = 'render_warning'
-   message_id = NULL, message_created_at = NULL
-   metadata = { "code": "missing_value", "path": "contact.attributes.city",
-                "count": 24187, "first_message_id": "...", "sample": ["...", "..."] }
-   ```
 
-   Sender ho drží v paměti a zapisuje jednou za 10 sekund a na konci kampaně přes `INSERT ... ON CONFLICT (campaign_id, code, path) DO UPDATE SET count = count + excluded.count`. To vyžaduje unikátní index a tedy `UPDATE` právo na `message_events` pro senderovu roli, které dnes nemá (má jen `INSERT`). Rozhodnutí, jestli se rozšíří grant, nebo se agregace udělá jinam, patří části 4a a 1; z mého pohledu je čistší varianta samostatná tabulka `campaign_render_warnings`, protože `message_events` je jinak append-only a řádek s počítadlem tam koncepčně nepatří. **Doporučuju samostatnou tabulku.**
+   Sender varování drží v paměti a zapisuje jednou za 10 sekund a na konci kampaně přes `INSERT ... ON CONFLICT (workspace_id, campaign_id, code, path) DO UPDATE SET count = count + excluded.count, last_seen_at = now()`. Potřebuje k tomu `INSERT` a `UPDATE` na téhle jedné tabulce, nic víc. **`message_events` tím zůstává append-only a `NOT NULL` na obou složkách odkazu na zprávu platí bez výjimky.**
 
-   Do reportu kampaně (5.1, panel Diagnostika) se z toho zobrazí „U 24 187 příjemců chyběla hodnota `contact.attributes.city`" s odkazem na šablonu. Je to jedna z nejužitečnějších diagnostik, jaké nástroj může dát, a bez agregace by se v ní nedalo číst.
+   Do reportu kampaně (5.1, panel Diagnostika) se z toho zobrazí „U 24 187 příjemců chyběla hodnota `contact.attributes.city`" s odkazem na šablonu. Je to jedna z nejužitečnějších diagnostik, jaké nástroj může dát, a bez agregace by se v ní nedalo číst. Čtu ji já, zapisuje ji sender, DDL vlastní část 4a.
 
 4. **Typy `open` a `click` nezapisuje nikdo jiný než část 5.** Sender má sice `INSERT` grant, ale tuhle možnost pro ně nepoužívá (12.1.13), jinak by vznikly duplicity v unikátních počtech.
 5. **Po zápisu událostí od providera zařadit job `tracking.process_provider_events`** s ID zapsaných událostí, aby se z nich daly aktualizovat `campaign_stats`. Alternativa (polling) by znamenala další dotaz každou sekundu navždy.
@@ -3116,7 +3419,9 @@ Tvoje předpoklady, které **platí**: token neobsahuje čitelný e-mail; HMAC s
 14. **Index `idx_messages__campaign_sent_at (campaign_id, sent_at) WHERE sent_at IS NOT NULL`.** Bez něj nejde přírůstkově číst průběh odesílání podle 3.9.5 a musel bych se vrátit k událostem `sent`, tedy k milionu zápisů navíc na kampaň. Částečný, takže je malý.
 15. **Index `idx_messages__contact (workspace_id, contact_id, created_at DESC)`.** Timeline kontaktu potřebuje „které kampaně dostal" napříč kampaněmi. Dnešní `uq_messages__campaign_contact` je vedený od `campaign_id`, takže na tenhle dotaz neodpoví. Bez něj by timeline u kontaktu prohledávala všechny partition `messages`.
 16. **Testovací odeslání se netrackuje vůbec.** Reakce na váš nález K9 a na P5.16 od části 4b. Zpráva bez `contact_id` (test na volně zadanou adresu) **nesmí dostat pixel ani přepsané odkazy**, takže pro ni nevznikne token a nemůže vzniknout ani událost. Podrobně v 3.16.
-17. **`messages.contact_id` je v kontraktu 4.10.1 `NOT NULL`, ale testovací odeslání ho podle části 4b nemá.** To je rozpor uvnitř vaší domény, ne se mnou, a nemám preferenci, jak ho vyřešíte. Jen potřebuju vědět výsledek, protože z něj plyne, jestli `message_engagement.contact_id` a `message_events.contact_id` mohou zůstat `NOT NULL`. Moje pozice: **ano, mohou**, protože testy se netrackují a žádná událost k nim nevznikne.
+17. **`messages.contact_id` je v kontraktu 4.10.1 `NOT NULL`, ale testovací odeslání ho podle části 4b nemá.** To je rozpor uvnitř vaší domény, ne se mnou, a nemám preferenci, jak ho vyřešíte.
+
+    **Moje dřívější pozice („`message_engagement.contact_id` a `message_events.contact_id` mohou zůstat `NOT NULL`, protože testy se netrackují") je stažená a byla chybná.** Netrackování testů odstraňuje jen jeden ze dvou zdrojů prázdné hodnoty. Ten druhý je GDPR výmaz: 3.15.3 oba sloupce nuluje, takže s `NOT NULL` by hook `tracking.erase_contact` spadl na chybě `23514` u každého kontaktu, který kdy něco otevřel. **Oba sloupce proto musí být `NULL`-ovatelné** a doprovázet je má `erased_at` podle vzoru z 2.2 a 2.6. Váš výsledek u `messages.contact_id` tím pádem moje tabulky neblokuje, ať dopadne jakkoliv.
 
 ### 12.3 Část 2 (kontakty a souhlasy)
 
@@ -3139,7 +3444,8 @@ Tvoje předpoklady, které **platí**: token neobsahuje čitelný e-mail; HMAC s
 6. **Klouzavá okna (`*_7d`, `*_30d`, `*_90d`) jsou aktuální k poslednímu nočnímu běhu**, ne k této vteřině. Absolutní hodnoty (`last_open_at`, `consecutive_no_open`, `*_total`) jsou aktuální vždy. Doporučuju presety stavět na absolutních hodnotách a okna používat jen tam, kde jinak nejde. V UI u presetu, který okna používá, patří poznámka „data k dnešní 4:15".
 7. **GDPR čl. 18 respektuju** (3.8.3, krok 0): u kontaktu s `processing_restricted = true` nezakládám vazbu, nespouštím slučování a neaktualizuju `last_activity_at`. Události se ukládají anonymně. Potřebuju od vás potvrdit, že anonymní sběr je v pořádku; kdyby ne, zahodím událost úplně, je to jeden řádek.
 8. **Režimy výmazu `anonymize` a `purge`** přebírám ve vašem názvosloví, viz 3.15.3. V trackingu dělají obojí totéž.
-9. Operátory nad webovými událostmi („navštívil stránku X", „udělal událost Y") čtou z `web_events` přes `idx_web_events__name_created`. Potřebuju vědět dopředu, jestli budou v MVP 0, protože z toho plyne, jestli je nutný GIN index nad `properties` (2.2).
+9. **Přepočet segmentů po dávkovém importu historie** (2.2.1) se spouští **jednou na konci celého importu**, ne po každé dávce a ne po každé události. Import roční historie objednávek je typicky statisíce událostí; přepočítávat segment po každé dávce by znamenalo stovky běhů se stejným výsledkem. Potřebuju od vás vstupní bod „přepočítej segmenty dotčených kontaktů" s dávkovým seznamem `contact_id`, ne per kontakt. Zároveň platí, že import **nespouští automatizace ani webhooky**; kdyby je segmentační přepočet spouštěl nepřímo, je to blokující nález a chci o něm vědět.
+10. Operátory nad webovými událostmi („navštívil stránku X", „udělal událost Y") čtou z `web_events` přes `idx_web_events__name_occurred` (2.2). Dřívější znění tady jmenovalo index `idx_web_events__name_created`, který po změně partičního klíče neexistuje; řadicí sloupec je `occurred_at`. Dotaz musí kromě podmínky na `occurred_at` nést i podmínku na `received_at`, jinak neprořízne partition (2.2). Potřebuju vědět dopředu, jestli budou v MVP 0, protože z toho plyne, jestli je nutný GIN index nad `properties` (2.2).
 
 ### 12.5 Část 1 (platforma)
 
@@ -3152,7 +3458,7 @@ Kontrakt 4.10.3 přebírám beze změny, jak žádá P5-1. Odpovědi na tvoje po
 | P5-1 | Formát tokenů převzat beze změny. Sémantiku a expiraci `identity` tokenu vlastním já a je v 3.1.5 a 3.10.2: 15 minut, jednorázově, konfigurovatelné `TRACKING_IDENTITY_TOKEN_TTL_SECONDS` v rozsahu 60 až 3600. Dvě výhrady k obsahu payloadu jsou v 13.8, nejsou blokující. |
 | P5-2 | Mechanismus jednorázovosti `nonce`: tabulka `identity_token_uses` (2.4), unikátní primární klíč nad `nonce`, úklidový job `tracking.cleanup_token_uses` hodinově, retence = TTL tokenu. Popis v 3.1.6 a 3.10.3. |
 | P5-3 | SSE infrastruktura je v 3.13 a **rozhodnutí se změnilo**: SSE se použije jen nad HTTP/2 a HTTP/3, jinak polling. Důvod je limit šesti spojení v HTTP/1.1, podrobně v 3.13.1 a v rozporu 13.11. Indikátor stavu z 5.4 části 1 používám a v režimu polling ho držím ve stavu „připojeno". |
-| P5-4 | Retence `web_events` i `message_events` je **26 měsíců**, proměnná `TRACKING_RETENTION_MONTHS`, rozsah 3 až 120. Odůvodnění v 3.15.1. Retence `messages` musí být stejná, viz 12.2.13. |
+| P5-4 | Retence `web_events` i `message_events` je **37 měsíců**, proměnná `TRACKING_RETENTION_MONTHS`, rozsah 3 až 120, **globální pro celou instalaci** (rozhodnutí zadavatele, otázka 7 v kapitole 14 je uzavřená). Odůvodnění v 3.15.1. Retence `messages` musí být stejná, viz 12.2.13. |
 
 **Co potřebuju od části 1**
 
@@ -3166,13 +3472,32 @@ Kontrakt 4.10.3 přebírám beze změny, jak žádá P5-1. Odpovědi na tvoje po
 8. **Metriky.** Tato část vystavuje čítače v 9.1 pod prefixem `tracking_`. Potřebuju potvrdit, že `/metrics` s `METRICS_TOKEN` je to správné místo a že prefix nekoliduje.
 9. **Vyloučení `/t/**` z CSRF a ze session middleware.** Jsou to veřejné bezstavové endpointy volané poštovním klientem. Předpokládám, že to plyne z rozdělení povrchů v 4.1, ale je to bezpečnostně důležité dost na to, aby to bylo napsané.
 10. **`/e/track` a `/e/identify` nesmí vyžadovat `Origin` shodný s `APP_URL`.** Kód `origin_not_allowed` má v katalogu 4.2 popis „`Origin` neodpovídá `APP_URL`". U mých endpointů se porovnává proti `tracking_domains` workspace, což jsou cizí domény zákazníka. Potřebuju, aby to obecná kontrola v middleware nezablokovala dřív, než se dostane ke mně.
+
+    **10a. Rozšířit CORS výjimku o `POST /e/identify` a `OPTIONS /e/*`.** Sekce 6 části 1 dnes uvádí CORS výjimku jen pro `/e/track`, `/f/**` a `/api/v1/openapi.json`. To **nestačí a rozbije to předání identity z kliku v mailu**, tedy hlavní diferenciátor produktu.
+
+    Proč: krok 9 sekvence v 3.10.1 je `POST /e/identify` s tělem `application/json`, volaný z JavaScriptu na doméně zákazníka (`shop.cz`) proti `TRACKING_DOMAIN` (`events.shop.cz`). To je cross-origin požadavek s netriviálním `Content-Type`, takže prohlížeč **povinně** pošle preflight `OPTIONS`. Bez CORS výjimky preflight neprojde, `fetch` selže ještě před odesláním těla a `ml_token` se nikdy nespotřebuje. Navenek se to projeví jako „identifikace prostě nefunguje" bez jediné chyby na serveru, protože požadavek se na server nedostane. Obejít se to nedá tak jako u `/e/track`: tam se při odchodu ze stránky posílá `text/plain` přes `sendBeacon` (3.6.6), ale `identify` se volá při načtení stránky a odpověď se čte, takže `sendBeacon` není použitelný.
+
+    Konkrétně žádám:
+
+    | Cesta | Metoda | Požadavek |
+    |---|---|---|
+    | `/e/identify` | `POST` | `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Headers: Content-Type`, `Access-Control-Max-Age: 86400` |
+    | `/e/*` | `OPTIONS` | Odpověď `204` s týmiž hlavičkami plus `Access-Control-Allow-Methods: POST, OPTIONS`, bez autentizace a bez CSRF |
+
+    `Access-Control-Allow-Credentials` se nenastavuje ani u jednoho (v kombinaci s `*` je to neplatné a cookie se na tyhle endpointy neposílají). **CORS `*` tady neznamená, že se přijme cokoliv:** kontrola `Origin` proti `tracking_domains` workspace je aplikační a běží po preflightu, viz 3.7.5. Rozdíl je podstatný, CORS chrání prohlížeč před čtením odpovědi, naše kontrola chrání data před zápisem.
+
+    Tabulka veřejných endpointů ve 4.1 tohoto dokumentu `OPTIONS /e/*` už uvádí, takže jde o sladění části 1 se stavem, se kterým tahle část počítá, ne o nový návrh.
 11. **Dva rate limity navíc** do tabulky 4.5: `POST /e/identify` 30 za minutu na IP a `POST /e/track` 600 událostí za minutu na `anonymous_id`. Zdůvodnění v 3.7.4.
 12. **Doplnění konfiguračních proměnných** z kapitoly 8 do tabulky 4.9, aby existoval jeden seznam a jedno zod schéma.
 13. **`TRUST_PROXY` je pro tracking kritická.** Bez správného nastavení se klasifikace otevření podle IP i rate limiting dělají nad adresou reverzní proxy. Prosím zmínku v dokumentaci u nastavení trackingu, ne jen u rate limitingu.
 15. **Potvrdit, že RLS funguje nad partitionovanými tabulkami a neruší partition pruning.** `web_events` má RLS politiku `ws_isolation` a zároveň je partitionovaná podle `received_at`. Potřebuju vědět, že plánovač po aplikaci politiky pořád prořezává partition, protože na tom stojí celý výkonový rozpočet timeline (7.2 a 7.3). Když by pruning padal, je to zásadní zjištění pro celý projekt, ne jen pro mě.
 16. **Sloupec `erased_at` do sloupcového grantu** z bodu 1, jinak GDPR výmaz narazí na oprávnění.
 17. **`TRACKING_DOMAIN` se odvozuje z `APP_URL`, ale sender `APP_URL` v tabulce 4.9 nemá.** Nález K7 části 4b, potvrzuju ho a je to moje závislost: sender staví moje odkazy. Když operátor `TRACKING_DOMAIN` nenastaví a sender nemá z čeho odvodit výchozí hodnotu, vyrobí odkazy bez hostu a **rozbije se každý pixel a každý klik v kampani**, přitom aplikace nastartuje bez chyby. Řešení podle mě: buď `APP_URL` přidat senderu do sloupce „Kdo", nebo `TRACKING_DOMAIN` udělat pro sender povinnou. Druhá varianta je bezpečnější, protože selže při startu, ne až u příjemce.
-18. **Registrace mých chybových kódů** z 4.4 v `packages/core/errors/registry.ts` a auditních akcí `tracking.merge_reverted`, `tracking.domain_added`, `tracking.domain_removed`, `tracking.identity_detached`.
+18. **Registrace mých chybových kódů** z 4.4 v `packages/core/errors/registry.ts` a auditních akcí `tracking.merge_reverted`, `tracking.domain_added`, `tracking.domain_removed`, `tracking.identity_detached`, `tracking.events_imported`.
+19. **Dozakládání zpětných oddílů pro import historie.** `platform.maintain_partitions` dnes zakládá tři měsíce dopředu (2.1). Dávkový import podle 2.2.1 potřebuje navíc **explicitní volání s rozsahem měsíců dozadu**, aby se roční historie měla kam uložit. Potřebuju k tomu dvě věci: funkci, které předám rozsah měsíců a ona chybějící oddíly doplní idempotentně, a záruku, že zakládání oddílu zpětně neuzamkne rodičovskou tabulku déle, než na kolik stačí `lock_timeout` u živého zápisu. Bez toho import buď selže, nebo na několik sekund zastaví příjem živých událostí. Vlastní by to měla část 1, protože DDL oddílů generuje výhradně `createMonthlyPartitions` v `packages/db` a já si vlastní generátor psát nemám.
+20. **Nový scope `events:import`** vedle `events:write`. Dávkový import obchází sedmidenní okno, zapisuje do historických oddílů a nespouští automatizace, což je jiná úroveň oprávnění než zápis běžné serverové události. Klíč pro web analytiku nemá mít možnost přepsat historii.
+21. **Testovací vektor podpisu pro `identify`** do `packages/contracts/fixtures/identify/signature.json`. Vstupy a očekávaný tvar kanonizace dodávám v 3.6.3, hodnotu `signature` dopočítej při zakládání fixture. Kanonizace je **RFC 8785 (JCS)**, jmenovitě, ne „nějaký kanonický JSON". Bez vektoru se implementace zákazníka v cizím jazyce rozejde s naším ověřením a projeví se to jako „podpis nesedí" bez jediné stopy, kde. Je to stejný typ rizika jako u trackovacích tokenů a řeší se stejně.
+22. **Konfigurační proměnné pro limity `properties`** (`TRACKING_PROPERTIES_MAX_KEYS`, `TRACKING_PROPERTIES_MAX_DEPTH`, `TRACKING_PROPERTIES_MAX_STRING`) do tabulky 4.9 a do téhož zod schématu, viz kapitola 8 a 3.7.3.
 
 ### 12.6 Část 3 (obsah)
 
@@ -3297,9 +3622,9 @@ Kontrakt dává open a click tokenu `workspace_id` a `message_id`. Report ale po
 
 **U kliku to problém není:** cíl se dohledá podle `link_id`, což je `campaign_links.id`, a z toho řádku je `campaign_id` rovnou k dispozici. Horká cesta se `messages` nedotkne.
 
-**U otevření to problém je**, ale řeší se tím, že se kampaň dohledá až v asynchronním zpracování dávky (3.9.2), ne v horké cestě. Dotaz je díky UUIDv7 oknu (3.1.7) hledání podle primárního klíče nejvýš ve dvou partition.
+**U otevření to problém je**, ale řeší se tím, že se kampaň dohledá až v asynchronním zpracování dávky (3.9.2), ne v horké cestě. Dotaz je díky poli `message_created_at` v tokenu **rovnostní** hledání podle obou složek primárního klíče v jedné partition (3.1.7), ne prohledávání časového okna.
 
-Nenavrhuju změnu. Zapisuju to proto, aby bylo dohledatelné, proč open pixel nepíše `campaign_id` rovnou a proč na tom závisí invariant z 12.2.10.
+Nenavrhuju změnu. Zapisuju to proto, aby bylo dohledatelné, proč open pixel nepíše `campaign_id` rovnou a proč na tom závisí invariant I1 z 4.10.1 části 1 (můj požadavek 12.2.12).
 
 ### 13.10 Limit 120 požadavků za minutu na dvojici veřejný klíč a IP je nízký
 
@@ -3341,7 +3666,7 @@ Tahle část specifikuje SDK podstatně bohatší (session, dávkování, offlin
 | 4 | Hlavní metrika na dashboardu: proklik, nebo otevření? | produkt (Petr) | Je to proti zvyklostem oboru a proti očekávání uživatelů z Ecomailu. Viz 0.7 otázka 1 |
 | 5 | Odečítat automatická otevření vždy, nebo přepínačem? | produkt | Návrh: vždy zobrazovat oboje, bez přepínače. Klaviyo a Mailchimp mají přepínač |
 | 6 | Ukládat zemi z IP adresy? | produkt plus právník | Výchozí návrh je vypnuto |
-| ~~7~~ | ~~Retence per workspace, nebo jen globální?~~ | **uzavřeno** | **Globální retence pro celou instalaci, ne per workspace.** Per workspace by znamenala mazání řádků místo zahazování celých oddílů, tedy podstatně dražší údržbu |
+| ~~7~~ | ~~Retence per workspace, nebo jen globální?~~ | **uzavřeno, rozhodl zadavatel** | **Globální retence pro celou instalaci, ne per workspace, výchozí 37 měsíců.** Per workspace by znamenala mazání řádků místo zahazování celých oddílů, tedy podstatně dražší údržbu. Zamítnutá varianta je i s odůvodněním zapsaná v 3.15.1 |
 | 8 | Sledovat pozici odkazu (dva odkazy na stejnou URL zvlášť)? | produkt | Návrh: ano. Po sladění s částí 1 je `link_id` samostatné UUID na každý odkaz, takže se to děje samo. Otázka je jen, jestli to zobrazovat |
 | 9 | Rozšířit povolený seznam licencí o Unlicense, CC0 a BlueOak-1.0.0? | část 1 | Odblokovalo by to `isbot` a `lru-cache`. Bez toho si píšeme obojí sami, což je pár desítek řádků |
 | 10 | Je 15 minut správná platnost `ml_token`? | produkt | Kompromis mezi bezpečností a scénářem „vrátím se k tomu později" |
