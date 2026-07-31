@@ -128,7 +128,7 @@ Provozní náklad samotného Amazonu je při psaní tohoto dokumentu v řádu je
 Na tyhle otázky nepotřebujete znát kód. Odpovědi mění produkt.
 
 1. **Automatická brzda:** má se kampaň sama pozastavit při 8 % bounce rate, nebo má jen varovat a nechat rozhodnutí na člověku? Navrhuju pozastavit. Souhlasíte?
-   **Rozhodnuto:** pozastavit při 8 %, žluté varování už při 4 %. Práh varování se posunul z původních 5 % dolů, aby zbyl prostor zasáhnout dřív, než účet přebere pod dohled Amazon. Obojí se vyhodnocuje až po `GUARD_MIN_SENT` předaných zprávách, viz 3.15.2.
+   **Rozhodnuto:** pozastavit při 8 %, žluté varování už při 4 %. Práh varování se posunul z původních 5 % dolů, aby zbyl prostor zasáhnout dřív, než účet přebere pod dohled Amazon. Obojí se vyhodnocuje až po `DELIVERABILITY_GUARD_MIN_SENT` předaných zprávách, viz 3.15.2.
 2. **Kolik měkkých bounců znamená vyřazení adresy?** Navrhuju 3 během 30 dní. Konzervativnější je 5, agresivnější 2.
 3. **Smí uživatel vzít adresu ze suppression listu ručně zpátky?** Navrhuju: u měkkých bounců a ručně přidaných ano (s potvrzením a zápisem do auditu), u tvrdých bounců a stížností ne. Tohle je hranice mezi „nástroj chrání uživatele" a „nástroj uživateli poroučí".
    **Rozhodnuto:** protinávrh části 4a se stahuje, platí verze části 2. Tvrdý odraz jde odblokovat nejdřív po 30 dnech od zápisu a vždy jen po jedné adrese, stížnost nikdy, hromadné odblokování neexistuje. Suppression list vlastní **část 2** a tato část ho nespecifikuje znovu, jen ho používá.
@@ -223,7 +223,7 @@ Tuhle část jsem psal proti dvanácti vlastním předpokladům, protože `parts
 | Reaper | job v aplikaci (`outbox.reap`) | **běží v senderu**, podmíněný `dispatch_started_at IS NULL` | Job `outbox.reap` z aplikace **odstraněn**, viz 3.7.3. |
 | Typ `email` | `citext` | `text` | Používám `text`, porovnání dělám přes `lower()`. |
 | Unikátní index | `(campaign_id, contact_id)` na partition | `uq_messages__campaign_contact (campaign_id, contact_id, created_at)` na partitionované tabulce | Moje pravidlo „jedno `created_at` na celou kampaň" (2.4) je s tímhle indexem **plně kompatibilní** a je nutné k tomu, aby index skutečně bránil duplicitám. |
-| Zrušení kampaně | `pending → skipped` | tabulka přechodů uvádí `pending → failed` (aplikace, zrušení kampaně) | Zůstávám u `skipped`, protože `pending → skipped` je v téže tabulce povolený a sémanticky správný. Zapsáno jako rozpor 11.6. |
+| Zrušení kampaně | `pending → skipped` | **dnes také `pending → skipped`**, řádek `pending → failed` pro zrušení kampaně z kontraktu zmizel a přibyl scénář `OB-14` | Nic neměním, rozpor 11.6 je **uzavřený**. |
 | Kontrola suppression před odesláním | dělá jen aplikace | část 1 povoluje i `claimed → skipped` senderem | Vítám. Zmenšuje to okno z 3.4.3. Zapsáno jako požadavek R4b.13. |
 | Sloupce navíc | – | `dispatch_started_at`, `updated_at` | Přebírám beze změny, jsou senderovy. |
 | `attempts` | `int` | **`smallint`** | Opraveno. Při milionu řádků na kampaň se dva bajty počítají. |
@@ -244,7 +244,10 @@ CREATE TABLE sending_providers (
   id                  uuid PRIMARY KEY DEFAULT uuidv7(),
   workspace_id        uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   name                text NOT NULL,
-  type                text NOT NULL,                     -- 'ses' | 'smtp'
+  -- 'ses' | 'smtp'. Uzavřený výčet schválně, ale ne navždy: MVP 2 slibuje
+  -- pluginové providery a rozšíření je jednořádková migrace. Aplikační kód proto
+  -- nesmí s vyčerpaností výčtu počítat, viz 3.11.
+  type                text NOT NULL,
   config_encrypted    text NOT NULL,                     -- viz P7, obálka AES-256-GCM
   config_public       jsonb NOT NULL DEFAULT '{}'::jsonb,-- necitlivá část, viz 2.1.1
   is_default          boolean NOT NULL DEFAULT false,
@@ -415,7 +418,10 @@ CREATE TABLE campaigns (
   started_at        timestamptz,
   finished_at       timestamptz,
   paused_at         timestamptz,
-  pause_reason      text,                     -- 'user' | 'quota' | 'provider_blocked' | 'bounce_guard' | 'complaint_guard'
+  -- KONTRAKTNÍ SLOUPEC (část 1, 4.10.1). Typ je jsonb, ne text, protože do něj
+  -- zapisuje i sender a potřebuje vedle kódu předat i zdroj, čas a svoje ID.
+  -- Závazný tvar objektu a registr kódů jsou v 3.6.1.
+  pause_reason      jsonb,
   cancel_reason     text,
   last_error        jsonb,
   created_by        uuid REFERENCES users(id) ON DELETE SET NULL,
@@ -450,6 +456,43 @@ CREATE INDEX idx_campaigns__running
 -- ve stavu `sending` musí nejdřív projít `cancel`. Vynucuje to API, viz 3.6.3.
 ```
 
+#### 2.3.1 Rezerva pro varianty obsahu (MVP 1, DDL kvůli dopředné kompatibilitě)
+
+Obsah kampaně je dnes v pěti skalárních sloupcích přímo na `campaigns` (`subject`, `preheader`, `from_name`, `from_email`, `reply_to`, plus `design` a `compiled_*`). Jedna kampaň má tedy právě jednu verzi obsahu a **A/B test z MVP 1 se do toho modelu nevejde**: potřebuje dvě znění předmětu nebo dvě šablony u téže kampaně a u každé zprávy záznam, které znění dostala.
+
+**Rozhodnutí zadavatele: rezerva se zakládá teď a zůstane prázdná.** Důvody jsou dva a oba jsou precedenční, ne teoretické. Projekt už jednou rozhodl stejně u tabulky `content_snippets` v části 3 (2.5: „V MVP 0 se tabulka založí, ale UI ji nepoužívá. Je tu proto, aby se pak nemuselo migrovat `design`."). A migrace je podle vlastní specifikace tohohle projektu nejrizikovější operace u self-hosted instalací, kde aktualizuje zákazník, kdy chce, a rollback neexistuje. Přidat prázdný nepovinný sloupec dnes stojí jeden `ALTER TABLE` bez přepisu dat; přidat ho za rok do tabulky s desítkami milionů řádků je něco jiného.
+
+```sql
+-- MVP 1. V MVP 0 se tabulka založí a zůstane prázdná, UI ji nepoužívá.
+CREATE TABLE campaign_content_variants (
+  id            uuid PRIMARY KEY DEFAULT uuidv7(),
+  workspace_id  uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  campaign_id   uuid NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  label         text NOT NULL,              -- 'A', 'B', ... pro report
+  weight        smallint NOT NULL DEFAULT 1,-- poměr rozdělení publika
+  -- Přepisy obsahu. NULL znamená "ber hodnotu ze sloupce kampaně".
+  subject       text,
+  preheader     text,
+  from_name     text,
+  design        jsonb,
+  compiled_html text,
+  compiled_text text,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX uq_campaign_content_variants__campaign_label
+  ON campaign_content_variants (campaign_id, label);
+```
+
+`messages` k tomu dostane **nepovinný odkaz na variantu** (`content_variant_id`, DDL v 2.4) a platí jediné pravidlo:
+
+> **Prázdná hodnota `messages.content_variant_id` znamená „ber obsah ze sloupců kampaně".**
+
+V MVP 0 je prázdný vždy, protože varianty nikdo nezakládá. Materializační `INSERT` v 3.3.3 sloupec vůbec neuvádí a nechává na něm `DEFAULT NULL`. **Chování se tedy nemění a Go strana se nemění taky:** sender čte hlavičku kampaně přesně jako dnes a větev „zpráva má variantu" v MVP 0 nikdy nenastane. Až přijde MVP 1, přibude senderu jedna podmínka a jeden `COALESCE`, ne migrace outboxu.
+
+Pravidlo musí být v kontraktu, ne jen tady, protože ho čte Go strana a bez něj by si dvě implementace vyložily prázdnou hodnotu každá jinak. **Vyžádáno jako R1.16 na část 1**, sám do kontraktu nesahám.
+
 ### 2.4 `messages`, outbox
 
 **Kontraktní podmnožinu (sloupce, stavy, přechody, claim dotaz, heartbeat, reaper) vlastní část 1, sekce 4.10.1, a tento dokument ji vědomě neopisuje.** Dva různé popisy outboxu jsou horší než jeden, a kdyby se rozešly, rozejdou se i implementace. Tabulku jako celek vlastním já, takže tady je jen to, co k ní přidávám.
@@ -465,7 +508,17 @@ Z kontraktu je pro tuto část podstatné, a proto to shrnuju jednou větou na p
 | Unikátnost publika | `uq_messages__campaign_contact (campaign_id, contact_id, created_at)` | idempotence materializace, viz invariant níže |
 | Přechody, které dělám já | `(vznik) → pending`, `pending → skipped` | vše ostatní dělá sender |
 
-Sloupce ani jejich sémantiku neměním. Přidávám dva indexy, které kontrakt nemá a aplikační strana bez nich nefunguje:
+Sloupce ani jejich sémantiku neměním. Přidávám **jeden vlastní sloupec** a dva indexy, které kontrakt nemá a aplikační strana bez nich nefunguje.
+
+```sql
+-- Rezerva pro varianty obsahu (A/B test, MVP 1). Viz 2.3.1.
+-- V MVP 0 je vždy NULL, materializace ho v INSERTu vůbec neuvádí.
+-- Prázdná hodnota znamená "ber obsah ze sloupců kampaně".
+ALTER TABLE messages
+  ADD COLUMN content_variant_id uuid REFERENCES campaign_content_variants(id) ON DELETE SET NULL;
+```
+
+Kontrakt přidávání sloupců výslovně dovoluje („Část 4 smí přidávat sloupce a indexy"), takže tenhle sloupec sám o sobě změnu kontraktu nevyžaduje. **Vyžaduje ji ale pravidlo o prázdné hodnotě**, protože podle něj se rozhoduje Go strana. Zapsáno jako R1.16.
 
 ```sql
 -- Párování příchozích událostí od providera na zprávu (3.9.4).
@@ -483,9 +536,17 @@ CREATE INDEX idx_messages__ws_email_pending
 
 **Proč je `created_at` v primárním klíči a v unikátním indexu.** Postgres vyžaduje, aby unikátní index na partitionované tabulce obsahoval partition key. Bez `created_at` v `uq_messages__campaign_contact` by index nešel vytvořit, a bez něj by materializace nebyla idempotentní.
 
-**Invariant, bez kterého ten index nefunguje.** Protože `created_at` je součástí klíče, dva řádky se stejnou dvojicí `(campaign_id, contact_id)`, ale různým `created_at`, index **nezachytí**. Proto platí tvrdé pravidlo: **všechny řádky jedné kampaně mají `created_at` nastavené na jednu jedinou hodnotu, a to `campaigns.audience_built_at`.** Materializace tedy nikdy nepřeteče přes hranici měsíce ani nevygeneruje dva různé časy, i kdyby běžela hodinu nebo se restartovala. `audience_built_at` se nastavuje jednou při přechodu do `queueing` (`COALESCE`, takže opakování ho nezmění) a nikdy se nemění. Sender `created_at` nikdy nepřepisuje.
+**Invariant I1, bez kterého ten index nefunguje.** Protože `created_at` je součástí klíče, dva řádky se stejnou dvojicí `(campaign_id, contact_id)`, ale různým `created_at`, index **nezachytí**. Proto platí tvrdé pravidlo:
 
-Tenhle invariant je nutný doplněk kontraktu a je zapsaný jako požadavek R1.11.
+> **Všechny řádky, které vytvoří jeden materializační běh jedné dávkové (batch) kampaně, mají `created_at` nastavené na jednu jedinou hodnotu, a to `campaigns.audience_built_at` té kampaně.**
+
+Materializace tedy nikdy nepřeteče přes hranici měsíce ani nevygeneruje dva různé časy, i kdyby běžela hodinu nebo se restartovala. `audience_built_at` se nastavuje jednou při přechodu do `queueing` (`COALESCE`, takže opakování ho nezmění) a nikdy se nemění. Sender `created_at` nikdy nepřepisuje.
+
+**Formulace je úzká schválně a dřív úzká nebyla.** Předchozí znění mluvilo o „všech řádcích jedné kampaně" a působilo jako obecná vlastnost tabulky `messages`. Kdyby se v té podobě dostalo do zmrazeného kontraktu, změnilo by se lokální rozhodnutí o dávkových kampaních v celoproduktové pravidlo, které **zakazuje opakované a průběžné kampaně**: automatizace, drip sekvence a transakční proud jsou přesně ty případy, kde jedna logická kampaň produkuje zprávy průběžně po měsíce a jedno `created_at` na ně dát nejde ani teoreticky. Invariant je vlastnost **jednoho materializačního běhu batch kampaně**, ne tabulky.
+
+**Jak se série a opakování řeší, až přijdou.** Ne rozvolněním invariantu, ale novými řádky v `campaigns`: každé spuštění nebo každý běh série je vlastní řádek `campaigns` s odkazem na rodiče (například `parent_campaign_id`, sloupec dnes neexistuje a zavede ho ta funkce, která ho bude potřebovat). Každý takový řádek má vlastní `audience_built_at` a invariant pro něj platí beze změny, jen se týká jeho vlastních zpráv. Report série je pak agregace přes rodiče. Tahle cesta je navíc nutná i z jiného důvodu: čítače, `revision` a neměnnost obsahu během odesílání jsou v 3.7 definované na řádku kampaně, takže dvě spuštění pod jedním řádkem by si je přepisovala navzájem.
+
+Invariant je v kontraktu části 1 (4.10.1) už zapsaný, viz R1.11.
 
 **Sender nikdy nemaže řádky.** Mazání dělá retenční job aplikace (3.18) odpojením partition.
 
@@ -534,7 +595,7 @@ Původně jsem partitionoval podle `ts` a byla to chyba: `ts` je hodnota od tře
 
 **Proč je tu `message_created_at` a `recipient`.** Primární klíč `messages` je `(id, created_at)`, takže odkaz jen přes `message_id` je neúplný a každý skok z události na zprávu by prohledal všechny partition. Obě denormalizovaná pole se zapisují při vzniku události, jsou neměnná a stojí 24 bajtů na řádek. Alternativa (dohledávat je pokaždé) by u desítek milionů událostí byla řádově dražší.
 
-`recipient` je adresa v okamžiku odeslání, ne aktuální adresa kontaktu. Když si kontakt změní e-mail, historická událost dál ukazuje, kam skutečně odešla. Při GDPR výmazu se anonymizuje spolu s `messages.email` (R2.5).
+`recipient` je adresa v okamžiku odeslání, ne aktuální adresa kontaktu. Když si kontakt změní e-mail, historická událost dál ukazuje, kam skutečně odešla. Při GDPR výmazu se anonymizuje spolu s `messages.email` (R2.5). **Anonymizace místo smazání řádku je návrhové řešení, které podléhá právnímu posouzení**: otevřená otázka O11 ho vede jako čekající na právníka a ten může rozhodnout, že se řádky musí mazat. Do té doby platí tenhle návrh, ale nesmí se citovat jako uzavřené pravidlo.
 
 #### 2.5.1 Úplný soupis dvousložkových odkazů v této části
 
@@ -574,15 +635,25 @@ CREATE TABLE provider_event_receipts (
   PRIMARY KEY (id, received_at)
 ) PARTITION BY RANGE (received_at);
 
--- Dedup. Unikátní index na partition, okno duplicit SNS je řádově hodiny, takže měsíční partition stačí.
+-- Dedup. POZOR: received_at v indexu je vynucené, ne volba. Unikátní index na
+-- partitionované tabulce MUSÍ obsahovat partiční klíč, jinak ho Postgres odmítne
+-- vytvořit. Totéž pravidlo tenhle dokument správně uvádí u uq_messages__campaign_contact
+-- (2.4) a u uq_message_events__once_per_message (3.9.1); tady chybělo a index by
+-- migraci položil. Navazující ON CONFLICT (workspace_id, dedup_key) by navíc na
+-- rodičovské tabulce skončil chybou "there is no unique or exclusion constraint
+-- matching the ON CONFLICT specification".
 CREATE UNIQUE INDEX uq_provider_event_receipts__dedup
-  ON provider_event_receipts (workspace_id, dedup_key);
+  ON provider_event_receipts (workspace_id, dedup_key, received_at);
 
 -- Fronta nespárovaných událostí (událost dorazila dřív, než sender zapsal provider_message_id).
 CREATE INDEX idx_provider_event_receipts__unmatched
   ON provider_event_receipts (received_at)
   WHERE status = 'unmatched';
 ```
+
+**Co z `received_at` v unikátním indexu plyne pro dedup.** `received_at` je `now()`, tedy u každého doručení jiné. Samotný `ON CONFLICT` by proto **nikdy nesepnul** a dedup by fyzicky neexistoval. Skutečnou deduplikaci dělá explicitní `WHERE NOT EXISTS` nad prefixem indexu `(workspace_id, dedup_key)`, omezený na aktuální oddíl, a `ON CONFLICT` zůstává jen jako pojistka proti dvěma workerům ve stejné mikrosekundě. Dotaz je v 3.9.1.
+
+**Dedup tedy platí uvnitř oddílu**, tedy v rámci kalendářního měsíce. Pro SNS to stačí: okno opakovaných doručení téže publikované zprávy je řádově minuty až hodiny, takže obě kopie skoro vždy padnou do stejného měsíce. **Přes hranici měsíce zajišťuje dedup druhá vrstva**, `content_key` z 3.9.1, která se vyhodnocuje uvnitř jobu `provider_event.process` a na oddíly se neváže vůbec. Je to stejná konstrukce jako u `uq_message_events__once_per_message` a stejné zdůvodnění.
 
 ### 2.7 `campaign_links`
 
@@ -682,7 +753,7 @@ CREATE TABLE campaign_audience_progress (
 | `partially_sent` | Odesílání skončilo, ale část zpráv je `failed` nebo `skipped` nad prahem 1 %. | job `campaign.watchdog` |
 | `cancelled` | Uživatel zrušil. Zbylé `pending` zprávy jsou `skipped`. | uživatel |
 | `failed` | Kampaň nešla vůbec spustit (kompilace, materializace, provider). Nic neodešlo. | job |
-| `schedule_missed` | Naplánovaný čas uplynul o víc než `SCHEDULE_CATCHUP_HOURS` (výchozí 6). | plánovač |
+| `schedule_missed` | Naplánovaný čas uplynul o víc než `CAMPAIGN_SCHEDULE_CATCHUP_HOURS` (výchozí 6). | plánovač |
 
 #### 3.1.2 Diagram přechodů
 
@@ -725,9 +796,9 @@ CREATE TABLE campaign_audience_progress (
 |---|---|---|---|---|---|---|---|---|---|---|
 | **draft** | – | ✅ `schedule` | ✅ `send` | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **scheduled** | ✅ `unschedule` | ✅ `reschedule` | ✅ plánovač | ❌ | ❌ | ❌ | ❌ | ✅ `cancel` | ❌ | ✅ plánovač |
-| **queueing** | ❌ | ❌ | – | ✅ job | ❌ | ❌ | ❌ | ✅ `cancel` | ✅ job | ❌ |
+| **queueing** | ❌ | ❌ | – | ✅ job | ✅ `pause`, brzda, `materialize_timeout` | ❌ | ❌ | ✅ `cancel` | ✅ job | ❌ |
 | **sending** | ❌ | ❌ | ❌ | – | ✅ `pause` | ✅ watchdog | ✅ watchdog | ✅ `cancel` | ❌ | ❌ |
-| **paused** | ❌ | ❌ | ❌ | ✅ `resume` | – | ❌ | ❌ | ✅ `cancel` | ❌ | ❌ |
+| **paused** | ❌ | ❌ | ✅ `resume` při nedokončené materializaci | ✅ `resume` | – | ❌ | ❌ | ✅ `cancel` | ❌ | ❌ |
 | **sent** | ❌ | ❌ | ❌ | ❌ | ❌ | – | ❌ | ❌ | ❌ | ❌ |
 | **partially_sent** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | – | ❌ | ❌ | ❌ |
 | **cancelled** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | – | ❌ | ❌ |
@@ -739,9 +810,13 @@ CREATE TABLE campaign_audience_progress (
 - `sent → sending` (znovuodeslání). Zakázáno. Odeslání kampaně dvakrát je nejčastější příčina toho, že se lidé odhlašují. Kdo chce poslat znovu, udělá **duplikát kampaně**, což je jiná akce s vlastním ID (endpoint `POST /campaigns/{id}/duplicate`).
 - `cancelled → sending`. Zakázáno ze stejného důvodu, plus proto, že outbox už je vyprázdněný.
 - `paused → sent`. Zakázáno. Pozastavená kampaň musí projít buď `resume`, nebo `cancel`. Jinak by uživatel nevěděl, jestli zbytek odešel.
-- `queueing → paused`. Zakázáno. Materializace je krátká a přerušovat ji uprostřed by komplikovalo kurzor. Kdo chce zastavit během `queueing`, dá `cancel`, který materializaci ukončí a nasadí `skipped` na to, co už vzniklo.
+- `queueing → paused`. **Povoleno, změna oproti dřívějšímu znění.** Dřív tu stálo „zakázáno, materializace je krátká a přerušovat ji uprostřed by komplikovalo kurzor". Obojí bylo mylné a dokument si to sám protiřečil: strop materializace je `CAMPAIGN_MATERIALIZE_MAX_MINUTES` s výchozí hodnotou **60 minut**, takže krátká není, kurzor je trvanlivý v `campaign_audience_progress` a 3.3.6 přechod `queueing → paused` sama předepisovala pro `materialize_timeout`. Zakázaný přechod v tabulce znamenal, že by ten `UPDATE` zasáhl nula řádků a kampaň by po překročení stropu visela v `queueing` navždy.
 
-  **Pozor: zrušení během `queueing` už nemusí být bez následků.** Claim dotaz v kontraktu bere kampaně ve stavu `queueing` **i** `sending`, takže sender odebírá práci už během materializace. To je záměrné a je to výhoda (uživatel vidí první odeslané zprávy do několika sekund i u milionového publika, viz 3.3.6), ale znamená to, že `cancel` během `queueing` může zastihnout kampaň, ze které už část zpráv odešla. UI proto nesmí u zrušení během `queueing` tvrdit „nic neodešlo"; musí ukázat skutečný `sent_count` stejně jako u zrušení během `sending`. Jediný stav, kde je zaručeno, že neodešlo nic, je undo okno podle 3.6.4, protože tam brání odeslání `next_attempt_at` v budoucnosti, ne stav kampaně.
+  Kontrakt části 1 to mezitím ujasnil ze své strany (4.10.1, poznámka „Pozor na rozsah omezení"): omezení, že se pozastavuje jen z `queueing` a `sending`, platí pro **sender**. **Aplikaci neomezuje** a `materialize_timeout` je uveden jako legitimní případ.
+
+  Přechod tedy smí provést uživatel tlačítkem Pozastavit i aplikace (ochranná brzda, `materialize_timeout`, `provider_blocked`, vyčerpaná kvóta). `resume` vrátí kampaň do `queueing`, ne do `sending`, a materializace pokračuje od kurzoru, viz 3.6.2.
+
+  **Pozor: zrušení i pozastavení během `queueing` už nemusí být bez následků.** Claim dotaz v kontraktu bere kampaně ve stavu `queueing` **i** `sending`, takže sender odebírá práci už během materializace. To je záměrné a je to výhoda (uživatel vidí první odeslané zprávy do několika sekund i u milionového publika, viz 3.3.6), ale znamená to, že `cancel` během `queueing` může zastihnout kampaň, ze které už část zpráv odešla. UI proto nesmí u zrušení během `queueing` tvrdit „nic neodešlo"; musí ukázat skutečný `sent_count` stejně jako u zrušení během `sending`. Jediný stav, kde je zaručeno, že neodešlo nic, je undo okno podle 3.6.4, protože tam brání odeslání `next_attempt_at` v budoucnosti, ne stav kampaně.
 - `sending → draft`. Zakázáno. Kampaň, ze které něco odešlo, se už nikdy nesmí stát draftem, jinak by se v reportech objevil obsah, který nikdo nedostal.
 
 #### 3.1.4 Vynucení přechodů
@@ -879,18 +954,19 @@ WITH candidates AS (
             WHERE s.workspace_id = c.workspace_id
               AND s.removed_at IS NULL          -- měkce odebraná suppression neplatí
               AND (   lower(s.email::text) = lower(c.email::text)
-                   OR s.email_hash = c.email_hash )   -- viz 3.3.5
+                   OR s.fingerprint = ANY(c.email_fingerprints) )   -- viz 3.3.5
          )
    ORDER BY c.id
-   LIMIT $batch_size                          -- MATERIALIZE_BATCH_SIZE, výchozí 5000
+   LIMIT $batch_size                          -- CAMPAIGN_MATERIALIZE_BATCH_SIZE, výchozí 5000
 ),
 inserted AS (
   INSERT INTO messages (
-    id, workspace_id, campaign_id, contact_id, email,
+    workspace_id, campaign_id, contact_id, email,
     render_data, status, next_attempt_at, created_at
   )
   SELECT
-    uuidv7(),                                  -- generuje aplikace, ne DB, viz P1
+    -- `id` se v seznamu sloupců nevyskytuje schválně: doplní ho DEFAULT uuidv7()
+    -- přímo v Postgresu 18 (předpoklad P1). Aplikace UUID negeneruje.
     $ws, $campaign_id, cand.id, cand.email,
     /* $render_data_expr, viz 3.3.4 */         jsonb_build_object(...),
     'pending',
@@ -915,6 +991,21 @@ UPDATE campaign_audience_progress
        updated_at = now()
  WHERE campaign_id = $campaign_id;
 ```
+
+**Po každé dávce se navíc kontroluje stav kampaně a smyčka se podle něj ukončuje.** Není to optimalizace, je to jediná ochrana proti závodu popsanému v 3.6.3: bez ní běžící dávka po úklidu zrušené kampaně vloží další `pending` řádky, které už nikdo neclaimne a které navěky brání odpojení oddílu (3.18.2).
+
+```sql
+-- Běží ve stejné transakci jako posun kurzoru, hned po něm.
+SELECT status FROM campaigns WHERE id = $campaign_id AND workspace_id = $ws;
+```
+
+| Zjištěný stav | Co smyčka udělá |
+|---|---|
+| `queueing` | pokračuje další dávkou |
+| `sending` | pokračuje (materializace mohla doběhnout krok 3 v jiném běhu) |
+| `paused` | zastaví se, kurzor zůstane, `resume` naváže |
+| `cancelled` | zastaví se **a znovu spustí úklid z 3.6.3** nad tím, co stihla vložit |
+| cokoliv jiného | zastaví se a zaloguje `warn` |
 
 Krok 3, po vyčerpání kurzoru:
 
@@ -987,7 +1078,7 @@ Pravidla:
 
 - Vnoření je nejvýš **dvě úrovně** (`contact.attr.<key>`). Hlubší struktury ani pole se nesnapshotují, protože Liquid subset z hlavní specifikace neumí vnořené cykly a nebylo by je jak vyrenderovat.
 - Hodnota, která je `NULL`, se **zapíše jako `null`**, ne vynechá. Sender pak rozliší „pole neexistuje" (chyba šablony) od „pole je prázdné" (normální stav, řeší `| default:`).
-- Tvrdý strop **8 kB na zprávu**. Při překročení se zpráva založí rovnou ve stavu `skipped` (kontraktní přechod `(vznik) → skipped`) s `error_code = 'invalid_recipient'` a s popisem v `error_detail`, a započítá se do `skipped_invalid`. Vlastní kód `render_data_too_large` nezavádím, protože `messages.error_code` je uzavřený výčet. Osm kilobajtů je asi 30krát víc, než potřebuje běžná šablona, takže překročení znamená chybu v šabloně, ne v datech.
+- Tvrdý strop **8 kB na zprávu**. Při překročení se zpráva založí rovnou ve stavu `skipped` (kontraktní přechod `(vznik) → skipped`) s `error_code = 'render_data_too_large'` a s popisem v `error_detail`, a započítá se do `skipped_invalid`. Dřívější znění tu mělo `invalid_recipient` s poznámkou, že vlastní kód nezavádím, protože výčet je uzavřený. **Část 1 mezitím `render_data_too_large` do registru doplnila** (4.10.1, ověřeno čtením) právě proto, že `invalid_recipient` je sémanticky lživý: jde o chybu šablony, ne o vadnou adresu, a report si to vykládal jako neplatný kontakt. Osm kilobajtů je asi 30krát víc, než potřebuje běžná šablona, takže překročení znamená chybu v šabloně, ne v datech.
 - **Nikdy neobsahuje e-mailovou adresu.** Ta je v samostatném sloupci `messages.email`, protože ji sender potřebuje jako obálkovou adresu vždy a nesmí se stát, že se dvě kopie rozejdou.
 
 **Proč `unsubscribe_url` a `webview_url` v `render_data` nejsou.** Část 4b je tam chtěla, ale kontrakt 3 části 1 to rozhoduje jinak a má pravdu: unsubscribe token má payload `workspace_id(16) message_id(16) contact_id(16) list_id(16) issued_at(u32)` a **sender ho vyrábí**. Kdyby ho stavěla aplikace, znamenalo by to zhruba 117 znaků URL navíc u každé zprávy v databázi (u milionové kampaně přes 100 MB) a druhou implementaci téhož podpisu na straně, která ho podle kontraktu vyrábět nemá. Sender má všechny vstupy k dispozici:
@@ -1010,15 +1101,15 @@ Suppression list se kontroluje **dvěma způsoby najednou**, ne jedním:
 | Větev | Kdy zabere |
 |---|---|
 | `lower(s.email) = lower(c.email)` | běžný případ, adresa je na seznamu v čitelné podobě |
-| `s.email_hash = c.email_hash` | adresa byla anonymizovaná po výmazu podle GDPR, čitelná verze už neexistuje |
+| `s.fingerprint = ANY(c.email_fingerprints)` | adresa byla anonymizovaná po výmazu podle GDPR, čitelná verze už neexistuje |
 
 Druhá větev je jediné, co po výmazu zbude. Scénář, který bez ní selže: člověk uplatní právo na výmaz, část 2 mu smaže kontakt a do `suppressions` zapíše řádek s placeholderem místo adresy a s otiskem. O měsíc později přijde nový import se stejnou adresou, vznikne nový kontakt, a protože plaintextová větev nemá co porovnat, materializace ho pustí do publika. **Poslali bychom poštu člověku, jehož výmaz jsme provedli správně**, což je horší než výmaz neprovést, protože o tom máme důkaz v auditu.
 
-**Porovnávají se dva uložené sloupce, nepočítá se nic.** `contacts.email_hash` i `suppressions.email_hash` jsou `bytea` naplněné částí 2, takže materializace dělá obyčejný join přes `idx_contacts__ws_email_hash`. `SUPPRESSION_HASH_KEY` **nepotřebuju znát ani jednou**.
+**Rotace klíče je vyřešená a materializace klíč nepotřebuje.** Kontrakt části 1 (3.10) předepisuje, že se otisk počítá **pro všechna známá pokolení klíče, bez horního omezení**, a hledá se `WHERE fingerprint = ANY($1)`. Část 2 z toho udělala tvar, který se dá použít i v dávce: `suppressions` nese **jeden** otisk plus `fingerprint_key_id` (plaintext je po výmazu pryč, přepočítat ho nejde), kdežto `contacts` nese **pole otisků pod všemi pokoleními** ve sloupci `email_fingerprints bytea[]` s GIN indexem, protože u kontaktu plaintext adresy máme a otisk umíme kdykoliv dopočítat.
 
-Je to důležitější, než vypadá. Kontrakt části 1 (3.10) popisuje kontrolu suppression tak, že se otisk **spočítá pro každé známé pokolení klíče** a hledá se `WHERE fingerprint = ANY($1)`. To je správný postup, když ověřuješ **jednu adresu** (přihlášení do formuláře, import jednoho kontaktu). Pro materializaci milionového publika by to znamenalo šest HMAC na kontakt, tedy **šest milionů kryptografických operací navíc**, a navíc přístup materializace ke klíči, který nemá důvod mít.
+Materializace proto píše `s.fingerprint = ANY(c.email_fingerprints)`. Je to jeden indexovaný průchod, splňuje to kontraktní pravidlo „hledej přes všechna pokolení" a **`SECRET_KEY` ani odvozený klíč `mailer/v1/suppression-fingerprint` materializace nepotřebuje znát ani jednou**. Milionové publikum tedy neznamená miliony HMAC operací navíc; ty se udělaly jednou při zápisu kontaktu.
 
-Materializace proto používá druhý, rovnocenný postup: **join dvou předpočítaných sloupců**. Podmínkou je, že obě strany nesou otisk počítaný **stejným pokolením klíče**. Nesoulad mezi kontraktem a částí 2 v tomhle bodě hlásím orchestrátorovi, viz kapitola 11.12.
+Rozdíl proti dřívějšímu znění tohoto dokumentu: dřív se joinovaly dva skalární sloupce `email_hash` a vlastní kapitola 11.12 přiznávala, že po rotaci klíče join **tiše přestane nacházet shody**. To už neplatí, pole otisků na straně kontaktu tu díru zavírá. Zbývající povinnost je provozní, ne návrhová: po rotaci musí job přepočítat `contacts.email_fingerprints`, aby v poli bylo i nové pokolení. Viz R2.13 a 11.12.
 
 #### 3.3.6 Chování při milionu kontaktů
 
@@ -1033,13 +1124,33 @@ Materializace proto používá druhý, rovnocenný postup: **join dvou předpoč
 
 Sender může začít odebírat práci **už během materializace**, protože zprávy jsou zapisované po dávkách se stavem `pending`. Proto přechod do `sending` není podmínkou pro odesílání, je to jen značka pro UI. Tohle je záměrné: uživatel vidí první odeslané zprávy do několika sekund po zmáčknutí Odeslat i u velkého publika.
 
-Ochrana proti nekonečné materializaci: job má strop `MATERIALIZE_MAX_MINUTES` (výchozí 60). Po překročení se kampaň převede do `paused` s `pause_reason = 'materialize_timeout'`, kurzor zůstane a lze pokračovat.
+Ochrana proti nekonečné materializaci: job má strop `CAMPAIGN_MATERIALIZE_MAX_MINUTES` (výchozí 60). Po překročení se kampaň převede z `queueing` do `paused` s `pause_reason.code = 'materialize_timeout'`, kurzor zůstane a `resume` pokračuje od něj.
+
+**Přechod `queueing → paused` je pro aplikaci povolený**, viz 3.1.3 a 3.6.1. Dřívější znění ho zakazovalo v tabulce přechodů a zároveň ho tady předepisovalo, což byl vnitřní rozpor: job by strop překročil, `UPDATE` by zasáhl nula řádků a kampaň by v `queueing` visela dál bez jakéhokoliv projevu poruchy.
 
 #### 3.3.7 Idempotence materializace
 
 Materializace může běžet vícekrát: worker spadne, pg-boss job se opakuje, uživatel dvakrát klikne. Ochrany jsou tři, každá sama o sobě dostačující:
 
-1. **Přechod stavu.** `draft → queueing` proběhne jen jednou, druhý pokus nevrátí řádek a job skončí jako no-op.
+1. **Přechod stavu.** `draft → queueing` proběhne jen jednou. **No-op je ale jen samotné převzetí přechodu, ne celý job.** Tohle je oprava dřívějšího znění, které říkalo „druhý pokus nevrátí řádek a job skončí", a bylo to nebezpečně špatně: po pádu workeru je kampaň už ve stavu `queueing`, druhý pokus o přechod tedy nikdy řádek nevrátí, job by skončil a **kampaň by v `queueing` zůstala trčet navždy**. Akceptační kritérium 10 (restart workeru uprostřed materializace milionu kontaktů) by nešlo splnit.
+
+   Job proto po neúspěšném přechodu zjistí, v jakém stavu kampaň je, a rozhodne se podle toho:
+
+   ```sql
+   -- Krok 1 nevrátil řádek. Zjisti proč.
+   SELECT status, audience_built_at
+     FROM campaigns
+    WHERE id = $campaign_id AND workspace_id = $ws;
+   ```
+
+   | Zjištěný stav | Co job udělá |
+   |---|---|
+   | `queueing` nebo `sending` | **Pokračuje.** Načte `audience_built_at` z tohohle `SELECT`u (krok 1 ho vrátit nemohl), načte kurzor z `campaign_audience_progress` a jede od něj dál. Když je `phase = 'done'`, jen dopočítá krok 3. |
+   | `paused` | Skončí. Materializaci znovu pošle až `resume` (3.6.2). |
+   | `cancelled`, `failed`, `sent`, `partially_sent` | Skončí jako no-op, je to opožděný duplikát jobu. |
+   | `draft`, `scheduled`, `schedule_missed` | Skončí a zaloguje `warn`. Znamená to, že mezitím někdo kampaň vrátil zpátky, což by neměl umět. |
+
+   Načtení `audience_built_at` SELECTem je nutné, ne kosmetické: bez něj by druhý běh neznal hodnotu invariantu I1 a musel by ji generovat znovu, čímž by vznikla druhá sada `created_at` a unikátní index by duplicity přestal zachytávat.
 2. **pg-boss `singletonKey`.** Job se posílá s `singletonKey = 'campaign.materialize:' + campaign_id`, takže dvě instance stejného jobu nemůžou běžet souběžně.
 3. **Unikátní index `uq_messages__campaign_contact (campaign_id, contact_id, created_at)`** s `ON CONFLICT` nad **všemi třemi** sloupci. I kdyby první dvě selhaly, duplicitní řádek nevznikne. `ON CONFLICT` jen nad dvěma sloupci je tvrdý error (`there is no unique or exclusion constraint matching the ON CONFLICT specification`) a materializace by neproběhla vůbec; funguje to jen díky invariantu I1, tedy že `created_at` je pro celou kampaň jedna hodnota.
 
@@ -1055,14 +1166,27 @@ Publikum je zmrazené, ale **souhlas není**. Když se člověk odhlásí, nesm�
 
 ```ts
 // packages/core/campaigns
-export async function revokePendingMessages(input: {
-  workspaceId: string;
-  contactIds?: string[];   // preferovaná větev
-  emails?: string[];       // pro případy, kdy známe jen adresu (SES event)
-  listId?: string | null;  // OMEZENÍ ROZSAHU, viz níže
-  reason: 'unsubscribed' | 'suppressed' | 'contact_deleted' | 'contact_status_changed';
-}): Promise<{ revoked: number }>;
+export async function revokePendingMessages(
+  ctx: WorkspaceContext,          // projekt se bere odsud, ne z těla, sjednoceno s částí 2
+  input: {
+    contactId?: string;           // jeden kontakt, tvar, kterým volá část 2
+    contactIds?: string[];        // dávka, preferovaná větev uvnitř této části
+    emails?: string[];            // pro případy, kdy známe jen adresu (SES event)
+    listId: string | null;        // POVINNÝ, omezení rozsahu, viz níže
+    reason:
+      | 'unsubscribed'
+      | 'suppressed'
+      | 'contact_deleted'
+      | 'contact_anonymized'
+      | 'processing_restricted'
+      | 'contact_status_changed';
+  },
+): Promise<{ revoked: number }>;
 ```
+
+**Signatura je sjednocená s částí 2, která funkci volá.** Dřívější znění mělo `workspaceId` v těle, chybělo mu `contactId` v jednotném čísle a mělo užší výčet `reason`, takže volání z části 2 (`revokePendingMessages(ctx, { contactId, listId, reason })`, viz její 4.9.4) by se do něj netrefilo ani typem, ani hodnotou. Platí tvar výše: `ctx` jako první argument, `listId` povinný, `contactId` i `contactIds` přijatelné, a výčet `reason` je sjednocení obou stran, tedy všech šest míst, ze kterých část 2 funkci volá.
+
+**Hodnota `reason` jde přímo do `messages.error_code` a všech šest je v kontraktním registru.** Registr `messages.error_code` vlastní část 1 (4.10.1) a `contact_deleted` i `contact_status_changed` v něm dřív chyběly. **Byly doplněny 2026-07-31**, ověřeno čtením části 1, takže dřívější poznámka „je potřeba je zaregistrovat" je uzavřená a nezbývá z ní žádná akce. Registr má dnes i `contact_anonymized` a `processing_restricted`, které používá část 2, a `render_data_too_large`, který používám v 3.3.4.
 
 **Parametr `listId` je povinný v tom smyslu, že volající musí vědomě rozhodnout.** Bez něj vzniká tichá ztráta pošty: člověk se odhlásí z jednoho newsletteru a přijde i o čekající zprávy z kampaní na úplně jiné seznamy, na které přihlášený zůstal. Nikdo si toho nevšimne, protože zprávy skončí jako `skipped` s věrohodným důvodem.
 
@@ -1102,20 +1226,40 @@ UPDATE messages m
    SET status = 'skipped',
        error_code = 'suppressed',
        updated_at = now()
-  FROM suppressions s
-  LEFT JOIN contacts c ON c.id = m.contact_id     -- kvůli otisku, viz níže
  WHERE m.status = 'pending'
-   AND m.workspace_id = s.workspace_id
-   AND s.removed_at IS NULL
-   AND (   lower(m.email) = lower(s.email::text)  -- citext versus text, viz R2.9
-        OR s.email_hash = c.email_hash );
+   AND (
+     EXISTS (                                        -- větev 1: čitelná adresa
+       SELECT 1
+         FROM suppressions s
+        WHERE s.workspace_id = m.workspace_id
+          AND s.removed_at IS NULL
+          AND lower(s.email::text) = lower(m.email)  -- citext versus text, viz R2.9
+     )
+     OR EXISTS (                                     -- větev 2: otisk, viz níže
+       SELECT 1
+         FROM contacts c
+         JOIN suppressions s
+           ON s.workspace_id = c.workspace_id
+          AND s.fingerprint  = ANY(c.email_fingerprints)
+        WHERE c.id = m.contact_id
+          AND s.removed_at IS NULL
+     )
+   );
 ```
 
-Dvě podmínky, obě nutné:
+**Tenhle dotaz byl dřív napsaný tak, že by neproběhl.** Znění před opravou mělo tvar `UPDATE messages m ... FROM suppressions s LEFT JOIN contacts c ON c.id = m.contact_id`, tedy odkaz na cílovou tabulku `UPDATE`u uvnitř `ON` ve `FROM`. PostgreSQL to odmítá chybou `invalid reference to FROM-clause entry for table "m"`, protože cílová tabulka je do dotazu přidaná mimo strom spojení a ve `FROM` na ni jde odkazovat jen ve `WHERE`. Kontrakt části 1 to popisuje u vlastního claim dotazu (4.10.1, „Proč spojovací podmínky ve `WHERE` a ne v `ON`") a **kvůli přesně téhle třídě chyb zavedl scénář `OB-00`**, který každý normativní dotaz spustí proti čerstvě zmigrované databázi a ověří, že projde parserem a plánovačem.
+
+**Dotaz výše proto patří do sady `OB-00`**, stejně jako materializační SQL z 3.3.3, claim v kontraktu a úklid při zrušení kampaně z 3.6.3. Prázdný výsledek je úspěch, testuje se jen to, že dotaz vůbec běží. Bez toho by se chyba tohohle typu projevila až na produkci, protože záchytná cesta nemá koho zaujmout, když neběží.
+
+Oprava má tvar dvou nezávislých `EXISTS`, ne jednoho joinu, a to ze dvou důvodů. Korelace na `m` je v obou případech ve `WHERE` poddotazu, takže dotaz je platný. A obě větve se dají naplánovat každá přes svůj index, což u jedné disjunkce se `LEFT JOIN` nešlo.
+
+Tři podmínky, všechny nutné:
 
 `s.removed_at IS NULL`, protože část 2 umožňuje suppression měkce odebrat (u měkkých odrazů kdykoliv, u tvrdých po 30 dnech se schválením admina). Bez toho by legitimně odblokovaná adresa zůstala vyloučená navždy a nikdo by nepřišel na to proč.
 
-Větev přes `email_hash`, protože **plaintextová větev mine adresy anonymizované po výmazu podle GDPR**. U nich se `suppressions.email` nahradí placeholderem a jediné, co z původní adresy zbude, je otisk. Bez druhé větve by se vymazaný člověk po novém importu dostal zpátky do publika, přestože jeho výmaz proběhl správně. Popsáno v 3.3.5.
+Větev přes otisk, protože **plaintextová větev mine adresy anonymizované po výmazu podle GDPR**. U nich se `suppressions.email` nahradí placeholderem a jediné, co z původní adresy zbude, je otisk. Bez druhé větve by se vymazaný člověk po novém importu dostal zpátky do publika, přestože jeho výmaz proběhl správně. Tvar `s.fingerprint = ANY(c.email_fingerprints)` je sladěný s kontraktem části 1 (3.10) a s DDL části 2, popsáno v 3.3.5.
+
+`m.status = 'pending'` v hlavním `WHERE`, aby se dotaz opřel o částečný index `idx_messages__ws_email_pending` a nesahal na zprávy, které má sender v ruce.
 
 #### 3.4.3 Okno, ve kterém může mail odejít i tak
 
@@ -1148,12 +1292,14 @@ Výchozí zóna je `workspaces.settings.campaigns.timezone`, uživatel ji může
 
 #### 3.5.2 Meze
 
-| Mez | Hodnota | Chování při překročení |
-|---|---|---|
-| Minimum do budoucnosti | 5 minut | `422 campaign_schedule_too_soon` |
-| Maximum do budoucnosti | 365 dní | `422 campaign_schedule_too_far` |
-| Granularita | 1 minuta, sekundy se ořežou na 0 | tiše |
-| Catch-up okno | `SCHEDULE_CATCHUP_HOURS`, výchozí 6 | po překročení `schedule_missed` |
+| Mez | Hodnota | Konfigurovatelná | Chování při překročení |
+|---|---|---|---|
+| Minimum do budoucnosti | 5 minut | **ne, konstanta** | `422 campaign_schedule_too_soon` |
+| Maximum do budoucnosti | 365 dní | **ne, konstanta** | `422 campaign_schedule_too_far` |
+| Granularita | 1 minuta, sekundy se ořežou na 0 | ne, konstanta | tiše |
+| Catch-up okno | `CAMPAIGN_SCHEDULE_CATCHUP_HOURS`, výchozí 6 | ano | po překročení `schedule_missed` |
+
+**Proč jsou 5 minut a 365 dní konstanty, a ne konfigurační proměnné.** Obojí je **validace vstupu veřejného API**, ne provozní parametr. Zpřísnění validace existujícího pole je podle definice části 1 (4.6) breaking change, a rozvolnění zase mění, co API přijme; kdyby to byla proměnná prostředí, choval by se `POST /campaigns/{id}/schedule` na dvou instalacích jinak a klient by to nemohl vědět předem. Obě čísla navíc nemají provozní obsah, který by se lišil instalace od instalace: pět minut je dolní mez, pod kterou plánovač s cyklem 30 sekund a preflightem nedává smysl, a 365 dní je hranice, za kterou naplánovaná kampaň přestává být plán a stává se zapomenutým řádkem. Konstanty jsou v `packages/core/campaigns/constants.ts`, ne rozeseté v kódu.
 
 #### 3.5.3 Plánovač
 
@@ -1202,38 +1348,93 @@ Pauza musí být rychlá a nesmí nic ztratit. Mechanismus: sender **neptá se a
 
 ```sql
 UPDATE campaigns
-   SET status = 'paused', paused_at = now(), pause_reason = $reason, updated_at = now()
- WHERE id = $id AND workspace_id = $ws AND status = 'sending'
+   SET status = 'paused', paused_at = now(), pause_reason = $reason::jsonb, updated_at = now()
+ WHERE id = $id AND workspace_id = $ws AND status IN ('queueing','sending')
 RETURNING id;
 ```
+
+**Proč `IN ('queueing','sending')` a ne jen `sending`.** Dřívější znění filtrovalo na `sending` a zároveň v 3.3.6 předepisovalo pauzu z `queueing` při `materialize_timeout`. Dvě věty proti sobě, a ta v SQL by vyhrála: `UPDATE` by zasáhl nula řádků, job by považoval pauzu za provedenou a kampaň by v `queueing` visela navždy. Kontrakt části 1 to ujasnil (4.10.1): omezení na `queueing` a `sending` platí pro **sender**, aplikaci neomezuje vůbec. Aplikace tedy pozastavuje z obou odesílacích stavů, což je nadmnožina toho, co smí sender, a menší množina než cokoliv jiného.
 
 Latence pauzy = doba, než sender dokončí rozpracovanou dávku. Při dávce 500 zpráv a 14 zprávách za sekundu (typická SES kvóta) je to do 36 sekund. UI proto říká „Pozastavuje se…" a přepne na „Pozastaveno", až `sent_count` přestane růst po dobu 5 sekund.
 
 Zprávy ve stavu `claimed` doběhnou. Zprávy ve stavu `pending` zůstanou `pending` a čekají.
 
-Důvody pauzy (`pause_reason`):
+#### 3.6.1.1 `pause_reason` je `jsonb` s jedním závazným tvarem
 
-| Hodnota | Kdo nastavuje | Automatické obnovení |
+**`campaigns.pause_reason` je kontraktní sloupec typu `jsonb`** (část 1, 4.10.1). Dřívější znění tohoto dokumentu ho mělo jako `text` s plochým výčtem hodnot, což by neprošlo: do sloupce zapisuje i sender přes sloupcový `GRANT UPDATE (status, pause_reason)` a potřebuje vedle kódu předat i to, kdo pauzu udělal, kdy a která instance senderu to byla. Textový sloupec by ty tři údaje neunesl a Go strana by do něj zapsala JSON jako řetězec.
+
+Existuje **jeden** závazný tvar objektu, ne dva:
+
+```jsonc
+{
+  "code":      "provider_quota_exhausted",  // povinné, z registru níže
+  "source":    "sender",                    // povinné: "sender" | "app" | "user"
+  "detail":    "SES daily quota reached",   // nepovinné, technický text pro log
+  "sender_id": "mlain-ws-7f3a",             // nepovinné, jen když source = "sender"
+  "at":        "2026-07-31T14:22:31Z"       // povinné, ISO 8601 v UTC
+}
+```
+
+Registr kódů je rozdělený podle toho, kdo zápis provádí. **Sender smí zapsat jen svoje čtyři**, ostatní jsou aplikační:
+
+| `code` | Kdo zapisuje | Kdy | Automatické obnovení |
+|---|---|---|---|
+| `render_failure_rate` | **sender** | podíl selhání renderu překročil práh | ne |
+| `credentials_undecryptable` | **sender** | credentials providera nejdou dešifrovat | ne |
+| `provider_quota_exhausted` | **sender**, a viz níže i aplikace | provider hlásí vyčerpanou kvótu | **ano**, job `campaign.resume_on_quota` (3.14.4) |
+| `provider_unavailable` | **sender** | provider je nedostupný, circuit breaker sepnul | ne |
+| `user` | aplikace | člověk zmáčkl Pozastavit | ne |
+| `bounce_guard` | aplikace | ochranná brzda na míru odrazů (3.15.2) | ne |
+| `complaint_guard` | aplikace | ochranná brzda na míru stížností (3.15.2) | ne |
+| `provider_blocked` | aplikace | provider je `blocked` (`SHUTDOWN` nebo `sending_enabled = false`) | ne |
+| `materialize_timeout` | aplikace | materializace překročila `CAMPAIGN_MATERIALIZE_MAX_MINUTES` | ne, ale `resume` pokračuje od kurzoru |
+
+**Hodnota `quota` z dřívějšího znění zaniká.** V registru není a nikdy nebyla; správný kód pro vyčerpanou kvótu je `provider_quota_exhausted`. Aplikace ho zapisuje se `source: "app"`, když vyčerpání zjistí sama z `GetAccount` (3.14.4), sender se `source: "sender"`, když ho zjistí z odpovědi provideru. **Kód popisuje příčinu, `source` říká, kdo zápis provedl**, a rozhodování se dělá podle `code`. Registr části 1 má u tohohle kódu ve sloupci „kdo zapisuje" jen sender, takže žádám o rozšíření na obě strany, viz R1.17. Do té doby platí, že aplikace zapisuje tentýž kód s jiným `source`, což registr neporušuje v ničem, co by šlo otestovat.
+
+#### 3.6.1.2 Obsluha senderových kódů
+
+Sender pozastaví kampaň sám, bez toho, aby se aplikace ptal. Aplikace se o tom dozví až tím, že vidí změněný řádek. Z toho plynou **tři povinnosti, které dřívější znění nemělo**, protože o senderových kódech nevědělo vůbec.
+
+**1. UI musí umět zobrazit všech devět kódů, ne pět.** Kampaň pozastavená senderem s kódem `credentials_undecryptable` by se v dřívějším návrhu zobrazila jako pauza bez důvodu, protože katalog hlášek ten kód neznal. Texty:
+
+| `code` | cs | en |
 |---|---|---|
-| `user` | uživatel | ne |
-| `quota` | job `campaign.watchdog` při vyčerpání denní kvóty | ano, po půlnoci UTC posunu okna kvóty |
-| `provider_blocked` | příjem `enforcement_status = SHUTDOWN` nebo `sending_enabled = false` | ne |
-| `bounce_guard` | brzda z 3.15 | ne |
-| `complaint_guard` | brzda z 3.15 | ne |
-| `materialize_timeout` | job materializace | ne, ale `resume` pokračuje v materializaci |
+| `render_failure_rate` | „Šablona selhává při renderu u velké části příjemců. Kampaň jsme zastavili, než se to opraví." | „The template is failing to render for a large share of recipients. We stopped the campaign until it's fixed." |
+| `credentials_undecryptable` | „Nepodařilo se rozšifrovat přístupové údaje odesílacího účtu. Nejspíš probíhá rotace klíče." | „We couldn't decrypt the sending account credentials. A key rotation is probably in progress." |
+| `provider_quota_exhausted` | „Vyčerpali jste denní limit Amazonu. Kampaň bude automaticky pokračovat, jakmile se limit uvolní." | „You've used up today's Amazon quota. The campaign will resume automatically once the quota resets." |
+| `provider_unavailable` | „Odesílací služba neodpovídá. Zkusíme to znovu, kampaň zatím stojí." | „The sending service is not responding. The campaign is on hold while we retry." |
+
+**2. Job `campaign.resume_on_quota` musí rozhodovat podle `code`, ne podle staré textové hodnoty.** Tohle je konkrétní chyba, kterou by dřívější znění vyrobilo: job obnovoval kampaně s `pause_reason = 'quota'`, kdežto sender zapisuje `provider_quota_exhausted`. Kampaň pozastavenou senderem kvůli vyčerpané kvótě by tedy **nikdy nerozjel**, i kdyby kvóta byla dávno volná, a nic by neselhalo ani se nezalogovalo. Uživatel by viděl kampaň, která stojí a tvrdí, že bude pokračovat sama. Dotaz jobu je proto:
+
+```sql
+SELECT id FROM campaigns
+ WHERE status = 'paused'
+   AND pause_reason ->> 'code' = 'provider_quota_exhausted'
+   AND deleted_at IS NULL;
+```
+
+Bez ohledu na `source`. Kdo pauzu zapsal, na rozhodnutí „kvóta je zase volná, jeď dál" nic nemění.
+
+**3. Audit `campaign.auto_paused` zapisuje aplikace, i když pauzu provedl sender.** Předepisuje to kontrakt (4.10.1: „každé automatické pozastavení zapisuje aplikace do `audit_log` jako `campaign.auto_paused` s důvodem, jakmile změnu uvidí"). Sender do `audit_log` nemá granty a mít je nemá, takže bez toho by pauzy provedené senderem v auditu **vůbec nebyly**. Zajišťuje to job `campaign.watchdog`: při každém běhu porovná stav kampaně s posledním zapsaným auditem a na nově pozastavené kampaně zapíše `campaign.auto_paused` s celým objektem `pause_reason` v detailu a s `actor = 'system'`. Pauzy vyvolané uživatelem (`code = 'user'`) se do `campaign.auto_paused` nezapisují, ty už pokrývá `campaign.status_changed` se skutečným aktérem.
 
 #### 3.6.2 Obnovení
 
 ```sql
 UPDATE campaigns
-   SET status = 'sending', paused_at = NULL, pause_reason = NULL, updated_at = now()
+   SET status = CASE
+                  WHEN EXISTS (SELECT 1 FROM campaign_audience_progress p
+                                WHERE p.campaign_id = campaigns.id AND p.phase <> 'done')
+                  THEN 'queueing'
+                  ELSE 'sending'
+                END,
+       paused_at = NULL, pause_reason = NULL, updated_at = now()
  WHERE id = $id AND workspace_id = $ws AND status = 'paused'
-RETURNING id;
+RETURNING id, status;
 ```
 
 Před tím proběhne zkrácený preflight (kontroly 3, 7, 9, 10 z 3.2). Když provider mezitím přestal být použitelný, `resume` vrátí `422` a kampaň zůstane `paused`.
 
-Když byla kampaň pozastavena během materializace (`campaign_audience_progress.phase = 'materializing'`), `resume` znovu pošle job `campaign.materialize`, který pokračuje od kurzoru.
+**Cílový stav není vždy `sending`.** Když byla kampaň pozastavena během materializace (`campaign_audience_progress.phase <> 'done'`), vrací se do `queueing` a `resume` znovu pošle job `campaign.materialize`, který pokračuje od kurzoru. Dřívější znění posílalo kampaň vždy do `sending` a zároveň slibovalo pokračování materializace, což by nefungovalo: krok 3 materializace (dopočet `total_count` a `audience_size`) má podmínku `WHERE status = 'queueing'`, takže by zasáhl nula řádků a kampaň by navždy zůstala s nulovým `total_count`, tedy s nesmyslným ukazatelem průběhu a nefunkčním uzavíracím pravidlem z 3.7.2. Sender rozdíl mezi `queueing` a `sending` nevnímá, claim dotaz bere oba stavy.
 
 #### 3.6.3 Zrušení
 
@@ -1262,6 +1463,37 @@ UPDATE messages
 
 Zprávy ve stavu `claimed` se neruší, doběhnou. Po doběhnutí watchdog dopočítá čítače.
 
+#### 3.6.3.1 Zrušení během materializace: závod, který se musí ošetřit výslovně
+
+Text v 3.1.3 slibuje, že `cancel` během `queueing` „materializaci ukončí a nasadí `skipped` na to, co už vzniklo". **Samo o sobě to není pravda** a je to nejzrádnější druh chyby, protože všechny tři kroky výše proběhnou úspěšně:
+
+1. Krok 1 přepne kampaň na `cancelled`.
+2. Krok 2 označí jako `skipped` všechny `pending` řádky, které v tu chvíli existují.
+3. Materializační smyčka o tom neví, protože stav kampaně mezi dávkami nekontrolovala, a **vloží další dávku `pending` řádků po úklidu**.
+
+Výsledek: zrušená kampaň s několika tisíci `pending` zpráv, které nikdo neclaimne (claim dotaz bere jen `queueing` a `sending`), které nikdo znovu neuklidí (úklid proběhl jednorázově) a které **navěky brání odpojení oddílu**, protože veto retenčního jobu z 3.18.2 hledá přesně takové řádky. Za rok se to projeví jako neubývající databáze, jejíž příčina je v kampani zrušené loni.
+
+Ošetření má dvě části a obě jsou povinné:
+
+**A. Materializační smyčka kontroluje stav kampaně po každé dávce** a při `cancelled` se zastaví. Předepsáno v 3.3.3.
+
+**B. Úklid se po zastavení smyčky zopakuje.** Kontrola stavu i zastavení smyčky jsou samy o sobě závod: mezi kontrolou a koncem dávky se dá stihnout další `INSERT`. Job proto po zjištění `cancelled` provede krok 2 z 3.6.3 ještě jednou nad vlastní kampaní a teprve pak skončí. Druhé opakování je levné, protože po zastavení smyčky už nikdo nic nevkládá, a jeho výsledek je nula nebo jednotky tisíc řádků.
+
+Symetricky totéž platí pro `cancel` doručený ve chvíli, kdy job zrovna neběží: úklid v 3.6.3 běží po dávkách po 10 000 řádcích, dokud `UPDATE` vrací nenulový počet, ne jedním průchodem.
+
+**Kontrolní dotaz, který na tenhle stav ukazuje**, patří do `outbox.stall_watch` (3.7.4) vedle stávajících dvou:
+
+```sql
+SELECT m.campaign_id, count(*) AS orphaned_pending
+  FROM messages m
+  JOIN campaigns c ON c.id = m.campaign_id
+ WHERE m.status = 'pending'
+   AND c.status IN ('cancelled','sent','partially_sent','failed')
+ GROUP BY m.campaign_id;
+```
+
+Nenulový výsledek znamená, že selhalo A i B, a je to porucha, ne provozní stav. Hlásí se jako `error`, ne jako varování.
+
 `cancelled` kampaň má v reportu jasně napsané „Zrušeno. Odesláno 12 340 z 50 000 příjemců." Statistiky pro odeslanou část zůstávají platné a dál se aktualizují příchozími událostmi.
 
 #### 3.6.4 Vrácení kampaně a undo okno
@@ -1281,13 +1513,20 @@ Claim dotaz z kontraktu už podmínku `m.next_attempt_at <= now()` obsahuje, tak
 
 | Parametr | Hodnota |
 |---|---|
-| Výchozí délka okna | 60 sekund, nastavitelné v projektu (`CAMPAIGN_UNDO_WINDOW_SECONDS`, rozsah 0 až 900) |
+| Výchozí délka okna | 60 sekund |
+| Kde se nastavuje | `workspaces.settings.campaigns.undo_window_seconds`, tedy **na úrovni projektu** |
+| Odkud se bere výchozí hodnota a strop | `CAMPAIGN_UNDO_WINDOW_SECONDS` (env instalace, výchozí 60, rozsah 0 až 900) |
+| Rozsah pro projekt | 0 až hodnota z env, tedy projekt smí okno **zkrátit nebo vypnout, ne prodloužit** |
 | Chování při 0 | funkce je vypnutá, odesílá se okamžitě |
 | Co uživatel vidí | Odpočet „Odesíláme za 47 s" s velkým tlačítkem **Vzít zpět** / **Undo** |
 | Co dělá Vzít zpět | `sending → cancelled`, všechny zprávy `pending → skipped`. **Neodešel ani jeden mail.** |
 | Po vypršení | Tlačítko se změní na Pozastavit a platí 3.6.1 |
 
 Zdůvodnění výchozí minuty: nejčastější chyba není špatné publikum (to uživatel vidí v preflightu), ale překlep v předmětu, který si přečte až v okamžiku, kdy zmáčkne Odeslat. Šedesát sekund tuhle chybu zachytí a zpozdí kampaň zanedbatelně.
+
+**Sjednocení dvou míst, která si dřív protiřečila.** Undo okno bylo v tomhle dokumentu na jednom místě popsané jako „nastavitelné v projektu" a na druhém (tabulka 4.6) jako proměnná prostředí celé instalace. To jsou dvě různá nastavení a implementátor by podle toho, kterou kapitolu čte, postavil buď jedno, nebo druhé. **Platí obojí ve vztahu nadřízenosti**, stejným mechanismem jako u prahů ochranných brzd v 3.15.2: env je výchozí hodnota **a zároveň strop**, projekt se smí pohybovat jen pod ní.
+
+Směr stropu je tady opačný než u brzd a je to schválně. U brzd je nebezpečná volba volnější práh, tady je nebezpečná volba **delší** okno: uživatel zmáčkne Odeslat, čeká, že se odesílá, a ono se pět minut nic neděje. Provozovatel instalace tedy určuje, jak dlouhé zdržení je ještě přijatelné, a projekt si smí okno zkrátit nebo vypnout, protože tím škodí nejvýš sám sobě a zkrácení nikoho nepřekvapí.
 
 **2. Zastavení rozjeté kampaně (část už odešla).** To je `pause` nebo `cancel` podle 3.6.1 a 3.6.3. UI o tom **nikdy nemluví jako o vrácení**, protože odeslaný mail vrátit nejde. Text je „Zastaveno. Odesláno 12 340 z 50 000, ty už zpátky nevezmeme." / „Stopped. 12,340 of 50,000 sent, those can't be recalled."
 
@@ -1403,6 +1642,7 @@ HAVING count(*) > 0;
 | Nález | Význam | Reakce |
 |---|---|---|
 | `reaper_backlog > 0` | claim vypršel před víc než 5 minutami a nikdo ho neuvolnil | žádný sender neběží. Kampaň se **nepozastavuje**, ale v UI se objeví „Odesílání stojí. Zkontrolujte, jestli běží odesílací proces." |
+| `orphaned_pending > 0` | `pending` zprávy v kampani, která je v koncovém stavu (druhý dotaz v 3.6.3.1) | **porucha, ne provozní stav.** Znamená, že selhal závod zrušení s materializací a ty řádky navěky brání odpojení oddílu (3.18.2). Hlásí se jako `error`, ne varování, a řeší se doběhnutím úklidu z 3.6.3 nad dotčenou kampaní. |
 | `ambiguous > 0` | odesílání začalo před víc než 15 minutami a nedoběhlo | pravděpodobný pád senderu mezi voláním provideru a zápisem výsledku. Číslo se ukazuje v dashboardu jako „nejasně odeslané zprávy". Rozhodnutí, co s nimi, vlastní část 4b (viz R4b.12). |
 
 Zprávy, které cyklí (`attempts` vysoké, stále `pending`), řeší retry politika senderu, ne aplikace.
@@ -1533,14 +1773,24 @@ content_key = 'ses:' || sha256(
 Zpracování je tedy:
 
 ```sql
-INSERT INTO provider_event_receipts (id, workspace_id, provider_id, dedup_key, sns_message_id,
+INSERT INTO provider_event_receipts (workspace_id, provider_id, dedup_key, sns_message_id,
                                      event_type, raw, received_at, status)
-VALUES ($id, $ws, $provider, $dedup_key, $sns_id, $type, $raw, $now, 'received')
-ON CONFLICT (workspace_id, dedup_key) DO NOTHING
+SELECT $ws, $provider, $dedup_key, $sns_id, $type, $raw, $now, 'received'
+ WHERE NOT EXISTS (
+   SELECT 1 FROM provider_event_receipts
+    WHERE workspace_id = $ws
+      AND dedup_key    = $dedup_key
+      AND received_at >= date_trunc('month', $now)   -- jen aktuální oddíl, viz 2.6
+ )
+ON CONFLICT (workspace_id, dedup_key, received_at) DO NOTHING
 RETURNING id;
 ```
 
 Když `RETURNING` nevrátí nic, zpráva už byla přijata a zpracování končí. Endpoint vrátí `200` a nic dalšího nedělá.
+
+**Proč `NOT EXISTS` a ne jen `ON CONFLICT`.** Unikátní index musí obsahovat partiční klíč `received_at` (2.6), a ten je `now()`, tedy pokaždé jiný. `ON CONFLICT (workspace_id, dedup_key, received_at)` by proto nikdy nesepnul a dedup by neexistoval. Skutečnou práci dělá `NOT EXISTS`, které jede po prefixu téhož indexu `(workspace_id, dedup_key)` a je omezené na aktuální oddíl, takže se neprohledávají všechny měsíce zpětně. `ON CONFLICT` zůstává jako pojistka proti závodu dvou workerů ve stejné mikrosekundě.
+
+`id` v seznamu sloupců není: doplní ho `DEFAULT uuidv7()`, stejně jako v materializaci.
 
 Totéž se zopakuje s `content_key` uvnitř jobu `provider_event.process`, než se událost zapíše do `message_events`.
 
@@ -1576,7 +1826,7 @@ Typy, které se opakovat mohou (`delivery_delayed`, `opened`, `clicked`), tímto
 
 SNS **negarantuje pořadí**. `Delivery` může dorazit po `Bounce`, `Send` po `Delivery`.
 
-Řešení stojí na dvou pravidlech:
+Řešení stojí na **čtyřech** pravidlech. Dřívější znění tvrdilo, že na dvou, a pak jich vyjmenovalo čtyři, přičemž dvě z nich měla shodně očíslovaná jako „Pravidlo 3". Přečíslováno:
 
 **Pravidlo 1: `message_events` je append only a přijímá cokoliv.** Každá platná událost se uloží se svým vlastním `ts` od providera. Reporty (část 5) počítají výhradně z téhle tabulky, takže pořadí příjmu je pro ně irelevantní.
 
@@ -1610,7 +1860,7 @@ Důsledky, které jsou správné:
 
 Jediné dvě události, které by stav změnit chtěly (`Reject` a `Rendering Failure`), nastávají **před** předáním zprávy, takže zpráva v tu chvíli není `sent` a sender ji označí jako `failed` sám z odpovědi API. Do zpracování událostí to tedy nezasahuje.
 
-**Pravidlo 3: události pro dosud neznámou zprávu.** Když sender ještě nestihl zapsat `provider_message_id`, událost nemá kam patřit. Uloží se do `provider_event_receipts` se stavem `unmatched`. Job `provider_event.rematch` běží každých 30 sekund a zkusí spárovat všechny `unmatched` mladší než 24 hodin. Po 24 hodinách se zaznamená jako `invalid` s kódem `unmatched_expired` a v dashboardu doručitelnosti se objeví číslo „nespárovaných událostí", protože trvale rostoucí hodnota znamená chybu v párování.
+**Pravidlo 4: události pro dosud neznámou zprávu.** Když sender ještě nestihl zapsat `provider_message_id`, událost nemá kam patřit. Uloží se do `provider_event_receipts` se stavem `unmatched`. Job `provider_event.rematch` běží každých 30 sekund a zkusí spárovat všechny `unmatched` mladší než 24 hodin. Po 24 hodinách se zaznamená jako `invalid` s kódem `unmatched_expired` a v dashboardu doručitelnosti se objeví číslo „nespárovaných událostí", protože trvale rostoucí hodnota znamená chybu v párování.
 
 #### 3.9.4 Párování události na zprávu
 
@@ -1693,7 +1943,9 @@ Kompletní mapování všech kombinací, které SES posílá, ověřeno proti do
 | `Transient` | `CustomTimeoutExceeded` | soft | čítač | ne | |
 | `Undetermined` | `Undetermined` | soft | čítač | ne | |
 
-Třída **content** je vlastní vynález a je důležitá: `MessageTooLarge` není chyba příjemce a bylo by nesprávné za ni penalizovat kontakt. Místo toho se počítá na úrovni kampaně a při překročení 100 výskytů se kampaň pozastaví s `pause_reason = 'bounce_guard'` a hlášením „Zpráva je pro řadu příjemců příliš velká. Zmenšete obrázky v šabloně."
+Třída **content** je vlastní vynález a je důležitá: `MessageTooLarge` není chyba příjemce a bylo by nesprávné za ni penalizovat kontakt. Místo toho se počítá na úrovni kampaně a při překročení prahu `DELIVERABILITY_CONTENT_BOUNCE_LIMIT` (výchozí **100** výskytů) se kampaň pozastaví s `pause_reason.code = 'bounce_guard'` a hlášením „Zpráva je pro řadu příjemců příliš velká. Zmenšete obrázky v šabloně."
+
+Práh je konfigurační proměnná, ne konstanta v próze (4.6). Sto výskytů je hodnota, u které se u kampaně na 50 000 lidí ještě dá říct „ojedinělá vada u přísných serverů", a nad kterou už jde o vadu šablony. Instalace, které posílají výrazně větší kampaně, si ho legitimně posunou.
 
 #### 3.10.2 Prahy soft bounců
 
@@ -1766,7 +2018,9 @@ Bezprostředně po zápisu se volá `revokePendingMessages` z 3.4.1, takže adre
 | `blocked` | `enforcement_status = SHUTDOWN` nebo `sending_enabled = false` nebo klíč přestal platit | ne |
 | `disabled` | uživatel provider ručně vypnul | ne |
 
-Přechody `ready ↔ degraded ↔ blocked` provádí job `provider.refresh_quota` (3.14) automaticky. Přechod do `blocked` navíc pozastaví všechny běžící kampaně toho provideru s `pause_reason = 'provider_blocked'`.
+Přechody `ready ↔ degraded ↔ blocked` provádí job `provider.refresh_quota` (3.14) automaticky. Přechod do `blocked` navíc pozastaví všechny běžící kampaně toho provideru s `pause_reason.code = 'provider_blocked'` a `source: "app"`.
+
+**`CHECK (type IN ('ses','smtp'))` v 2.1 je uzavřený výčet a MVP 2 slibuje pluginové providery.** Není to chyba, ale je to místo, které se bude rozšiřovat, a musí být napsané jak. Rozšíření je jednořádková migrace (`ALTER TABLE ... DROP CONSTRAINT ... ADD CONSTRAINT`), takže omezení zůstává, protože v MVP 0 chrání před překlepem. **Aplikační kód ale nesmí s vyčerpaností toho výčtu počítat**: žádný `switch` nad `sending_providers.type` nesmí být bez větve `default`, která neznámý typ ohlásí jako nepodporovaný provider a nechá zbytek systému běžet. Totéž platí pro `status` výše.
 
 ### 3.12 Ověření domény a generování DKIM přes SES (kontrolní otázka 16)
 
@@ -1953,11 +2207,15 @@ Když `production_access = false`:
 
 #### 3.14.4 Překročení kvóty za běhu
 
-Když během odesílání klesne `quota_max_24h - quota_sent_24h` pod 100:
+Když během odesílání klesne `quota_max_24h - quota_sent_24h` pod `CAMPAIGN_QUOTA_PAUSE_REMAINING` (výchozí **100**):
 
-1. Kampaň přejde do `paused` s `pause_reason = 'quota'`.
+1. Kampaň přejde do `paused` s `pause_reason = {"code":"provider_quota_exhausted","source":"app","at":…}`.
 2. Uživatel dostane hlášení „Vyčerpali jste denní limit Amazonu. Kampaň bude automaticky pokračovat, jakmile se limit uvolní."
-3. Job `campaign.resume_on_quota` běží každých 10 minut a obnoví kampaně s `pause_reason = 'quota'`, u nichž je dostupná kvóta zase nad 1 000.
+3. Job `campaign.resume_on_quota` běží každých 10 minut a obnoví kampaně, u kterých `pause_reason ->> 'code' = 'provider_quota_exhausted'` a dostupná kvóta je zase nad `CAMPAIGN_QUOTA_RESUME_REMAINING` (výchozí **1 000**).
+
+**Job vybírá podle `code`, ne podle `source`.** Kdyby vybíral podle staré textové hodnoty `'quota'`, jak stálo v dřívějším znění, minul by každou kampaň pozastavenou senderem, protože ten zapisuje `provider_quota_exhausted`. Kampaň by stála donekonečna a tvrdila uživateli, že bude pokračovat sama. Rozbor v 3.6.1.2.
+
+**Prahy 100 a 1 000 jsou konfigurační proměnné, ne konstanty v próze** (4.6). Mezera mezi nimi je hystereze a musí zůstat: kdyby se pauzovalo i obnovovalo na stejném čísle, kampaň by u vyčerpané kvóty cyklila mezi `paused` a `sending` každých deset minut.
 
 Když SES vrátí `TooManyRequestsException` (429), řeší to sender backoffem a do aplikace to nejde. Když vrátí `AccountSuspendedException` nebo `SendingPausedException`, sender to musí označit jako trvalou chybu a aplikace na to reaguje přechodem provideru do `blocked` (požadavek R4b.6).
 
@@ -1980,6 +2238,16 @@ Jmenovatel `sent` naopak z `messages` pochází, protože je to počet skutečn�
 
 Jmenovatel u stížností je `delivered`, protože stěžovat si může jen ten, komu zpráva došla. AWS to počítá jinak (jen vůči doménám s feedback loopem), takže naše číslo je odhad. **Tohle musí být v UI napsané:** „Naše číslo je odhad. Závazná je hodnota v konzoli Amazonu."
 
+**Dashboardová metrika a brzda mají u stížností různý jmenovatel a je to schválně.** Dřívější znění to mělo na dvou místech proti sobě: vzorec výše dělí `complaints / delivered`, kdežto 3.15.2 říkala, že jmenovatel obou brzd je `sent_count`. Obojí je správně, každé k něčemu jinému:
+
+| Kde | Metrika | Jmenovatel | Proč právě ten |
+|---|---|---|---|
+| Dashboard doručitelnosti (3.15.1) | `complaint_rate` | `delivered` z `deliverability_snapshots` | Je to zpětný pohled na uzavřené období a odpovídá tomu, co měří provider. Stěžovat si může jen ten, komu zpráva došla. |
+| Automatická brzda kampaně (3.15.2) | `complaint_rate` kampaně | `sent_count` kampaně | Brzda rozhoduje **za běhu**, kdy `delivered` teprve dobíhá a je systematicky podhodnocené. Poměr proti `delivered` by uprostřed kampaně skákal a v prvních minutách by dělil skoro nulou. |
+| Obojí | `bounce_rate` | `sent` respektive `sent_count` | Stejně jako to počítá AWS. |
+
+Praktický důsledek: **brzda sepne o něco později než dashboard**, protože `sent_count >= delivered`. Je to bezpečný směr, protože brzda zastavuje kampaň a falešný poplach uprostřed rozesílky je dražší než o minutu opožděný zásah. Musí to být napsané tady, protože jinak si někdo při čtení dvou kapitol vedle sebe vyloží rozdíl jako chybu a „opraví" ho.
+
 #### 3.15.2 Prahy a co se při nich děje
 
 | Metrika | Práh | Akce | Zdroj prahu |
@@ -1994,15 +2262,43 @@ Jmenovatel u stížností je `delivered`, protože stěžovat si může jen ten,
 | `enforcement_status` | `PROBATION` | provider `degraded`, červené hlášení | AWS |
 | `enforcement_status` | `SHUTDOWN` | provider `blocked`, pauza všech kampaní | AWS |
 
-Brzda čte **z `message_events`**, ne ze `status`. Jmenovatel je `sent_count` (kolik jsme předali provideru), čitatel je počet událostí `bounced_hard` nebo `complained` pro danou kampaň. Kdyby čitatel vycházel ze `status`, byl by po zavedení koncového `sent` **vždy nula** a brzda by nesepnula nikdy, i kdyby se odrazila celá kampaň. Je to nejtišší možná porucha: nic neselže, jen ochrana přestane existovat.
+Brzda čte **z `message_events`**, ne ze `status`. Jmenovatel je u obou brzd `sent_count` kampaně (kolik jsme předali provideru), čitatel je počet událostí `bounced_hard` nebo `complained` pro danou kampaň. Rozdíl proti dashboardovému `complaint_rate`, který dělí `delivered`, je vysvětlený v 3.15.1 a je záměrný. Kdyby čitatel vycházel ze `status`, byl by po zavedení koncového `sent` **vždy nula** a brzda by nesepnula nikdy, i kdyby se odrazila celá kampaň. Je to nejtišší možná porucha: nic neselže, jen ochrana přestane existovat.
 
 **Rozhodnuto (práh varování 4 %):** varování od 2 % by se ozývalo prakticky pořád a nikdo by ho po pár týdnech nečetl, varování až od 5 % by přišlo ve chvíli, kdy Amazon už sám jedná. Čtyři procenta jsou poslední místo, kde se to dá ještě v klidu vyřešit.
 
-Brzda se vyhodnocuje jen tehdy, když má kampaň předaných alespoň **500 zpráv** (`GUARD_MIN_SENT`). Bez toho by tři bouncy z prvních deseti zastavily kampaň.
+Brzda se vyhodnocuje jen tehdy, když má kampaň předaných alespoň **500 zpráv** (`DELIVERABILITY_GUARD_MIN_SENT`). Bez toho by tři bouncy z prvních deseti zastavily kampaň.
 
-**Stejná podlaha platí i pro žluté varování.** Prahy 4 % a 0,1 % se vyhodnocují až po `GUARD_MIN_SENT` předaných zprávách, stejně jako automatická pauza. Bez podlahy by kampaň na 25 lidí s jediným odrazem měla 4 % a spustila varování, které o doručitelnosti nevypovídá nic. Podlaha se tedy vztahuje na celou tabulku prahů, ne jen na řádky s pauzou.
+**Stejná podlaha platí i pro žluté varování.** Prahy 4 % a 0,1 % se vyhodnocují až po `DELIVERABILITY_GUARD_MIN_SENT` předaných zprávách, stejně jako automatická pauza. Bez podlahy by kampaň na 25 lidí s jediným odrazem měla 4 % a spustila varování, které o doručitelnosti nevypovídá nic. Podlaha se tedy vztahuje na celou tabulku prahů, ne jen na řádky s pauzou.
 
-Brzda je konfigurovatelná (`BOUNCE_GUARD_RATE`, `COMPLAINT_GUARD_RATE`, `GUARD_MIN_SENT`) a v nastavení projektu jde vypnout, ale vypnutí vyžaduje explicitní potvrzení s textem, co to znamená, a zápis do auditu.
+#### 3.15.2.1 Prahy jdou nastavit per projekt, ale jen směrem k přísnosti
+
+**Rozhodnutí zadavatele.** Dřívější návrh měl prahy jen jako proměnné prostředí celé instalace, k tomu jedinou možnost „v nastavení projektu jde brzdu vypnout". To je přesně obráceně, než by mělo být: **umožňovalo to tu nebezpečnou volbu (vypnout ochranu úplně) a neumožňovalo tu bezpečnou (nastavit si přísnější práh).**
+
+Platí tedy:
+
+> Hodnota z konfigurace instalace je zároveň **výchozí hodnota i strop**. Projekt smí nastavit práh **přísnější** (nižší), nikdy volnější. Kdo má instalační `DELIVERABILITY_BOUNCE_GUARD_RATE = 0.08`, smí si v projektu dát 5 %, ale ne 12 %.
+
+Tři důvody, každý sám o sobě dostačující:
+
+1. **Čísla jsou odvozená z hranic Amazonu**, ne z našeho odhadu. Osm procent je práh pod hranicí 10 %, od které Amazon může zastavit odesílání, 0,3 % je pod hranicí 0,5 %. Volnější práh proto nemá legitimní důvod: existuje jen jako způsob, jak si zničit odesílací účet. Přísnější práh naproti tomu **je normální opatrnost**, kterou agentura uplatní u nového klienta, jehož databázi zatím nezná.
+2. **Brzda chrání odesílací účet a odesílací účet je v tomhle produktu per projekt** (0.2, 3.11). Nastavení, které chrání per-projektový zdroj, patří na úroveň projektu. Kdyby zůstalo jen na instalaci, jeden klient s vyčištěnou databází a druhý s deset let starým exportem by museli sdílet jedno číslo.
+3. **Vypnutí brzdy zůstává možné jen změnou instalační proměnné na 0**, tedy rozhodnutím provozovatele, ne uživatele projektu. Vyžaduje explicitní potvrzení s textem, co to znamená, a zápis do auditu.
+
+Uložení a rozsahy:
+
+| Klíč v `workspaces.settings.deliverability` | Odpovídá env proměnné | Výchozí a strop | Rozsah pro projekt |
+|---|---|---|---|
+| `bounce_guard_rate` | `DELIVERABILITY_BOUNCE_GUARD_RATE` | 0.08 | 0 (vypnuto) až hodnota env |
+| `complaint_guard_rate` | `DELIVERABILITY_COMPLAINT_GUARD_RATE` | 0.003 | 0 (vypnuto) až hodnota env |
+| `bounce_warn_rate` | `DELIVERABILITY_BOUNCE_WARN_RATE` | 0.04 | 0 až hodnota env |
+| `complaint_warn_rate` | `DELIVERABILITY_COMPLAINT_WARN_RATE` | 0.001 | 0 až hodnota env |
+| `guard_min_sent` | `DELIVERABILITY_GUARD_MIN_SENT` | 500 | 1 až hodnota env |
+
+**Prahy varování dostávají konfiguraci nově.** Dosud byly 4 % a 0,1 % zadané jen v próze v tabulce výše, přestože se podle nich posílá mail vlastníkovi projektu. U nich navíc nehrozí nic: varování nikdy nic nezastaví, takže je nebylo proč držet jako konstanty.
+
+**U `guard_min_sent` znamená „přísnější" také nižší číslo**, i když je to podlaha a ne sazba. Nižší podlaha totiž znamená, že brzda zabere dřív, tedy s menším počtem odeslaných zpráv. Projekt ji proto smí jen snižovat a env hodnota je horní mez, stejně jako u sazeb. Cena za snížení je vyšší riziko planého poplachu na malé kampani, a to je riziko, které nese projekt sám.
+
+Validaci provádí zod schéma `workspaces.settings.deliverability` exportované z `packages/core/campaigns` (konvence části 1, 2.5). Pokus zapsat volnější hodnotu vrací `422 validation_failed` s `path` na konkrétní klíč, ne tiché oříznutí, protože tiché oříznutí by uživateli tvrdilo, že nastavil něco, co nenastavil.
 
 #### 3.15.3 Dlaždice dashboardu
 
@@ -2030,7 +2326,7 @@ Sestavení MIME vlastní část 4b. **Politiku, tedy co tam má být a proč, vl
 | `List-Id` | `<campaign-list.<workspace_slug>.<APP_HOST>>` | Umožní příjemci filtrovat, snižuje pravděpodobnost stížnosti |
 | `Precedence` | `bulk` | Zabrání automatickým odpovědím typu „jsem na dovolené" |
 | `Auto-Submitted` | `auto-generated` | RFC 3834, totéž |
-| `Message-ID` | `<oe.{base32_lower(uuid_bytes(messages.id))}@{sending_domain}>` | Přesný tvar vlastní kontrakt 4.10.1 části 1, nevymýšlím ho. Je **deterministicky odvozený z `messages.id` a nikdy neobsahuje číslo pokusu ani čas**, takže opakovaný pokus po nejasném odeslání má identický `Message-ID` a přijímající server duplikát zahodí. |
+| `Message-ID` | `<oe.{base32_lower(uuid_bytes(messages.id))}@{sending_domain}>` | Přesný tvar vlastní kontrakt 4.10.1 části 1, nevymýšlím ho. Je **deterministicky odvozený z `messages.id` a nikdy neobsahuje číslo pokusu ani čas**, takže opakovaný pokus po nejasném odeslání pošle identickou hlavičku. **Pozor: u SES se k příjemci nedostane**, SES `Message-ID` vždy přepisuje vlastní hodnotou. Pojistka „přijímající server duplikát zahodí" proto platí jen u obecného SMTP, viz 4.6. |
 | `X-Entity-Ref-ID` | `<message_id>` | Zabrání Gmailu shlukovat různé zprávy do jednoho vlákna |
 
 #### 3.16.2 Klíčové pravidlo pro one-click
@@ -2066,22 +2362,34 @@ Chování:
 | Vlastnost | Rozhodnutí |
 |---|---|
 | Jde do outboxu? | Ano, ale s `campaign_id` nastaveným na kampaň a příznakem `render_data['_test'] = true`. Důvod: testovací mail musí projít úplně stejnou cestou jako ostrý, jinak test nic netestuje. |
-| Počítá se do statistik? | **Ne.** Zprávy s `_test` se vylučují z `total_count` i z `deliverability_snapshots`. Rozpoznávají se podle `messages.render_data ? '_test'`. |
+| Počítá se do statistik? | **Ne.** Zprávy s `_test` se vylučují z `total_count` i z `deliverability_snapshots`. Rozpoznávají se dnes podle `messages.render_data ? '_test'`, viz varování níže. |
 | Obchází suppression list? | **Ano**, ale jen pro adresy, které jsou e-mailem některého člena projektu (`memberships` join `users.email`). Cizí adresa na suppression listu vrátí `422 test_recipient_suppressed`. |
 | Odkud data pro merge tagy? | Když je `contact_id`, ze skutečného kontaktu. Když není, z prvních 20 kontaktů publika se vybere náhodný. Když je publikum prázdné, použijí se ukázková data (`Jana`, `Nováková`, `Jano`, `Dobrý den, Jano`). |
 | Předmět | Prefixuje se `[TEST] `, aby se v schránce nepletl s ostrým odeslením. |
-| Limit | 20 testů na kampaň za hodinu, `429 rate_limited` s polem `retry_after`. |
+| Limit | `CAMPAIGN_TEST_SEND_PER_HOUR` testů na kampaň za hodinu (výchozí **20**), `429 rate_limited` s polem `retry_after`. Je to konfigurační proměnná (4.6), ne konstanta v próze: u ladění šablony s obrázky je dvacet testů za hodinu málo a je to čistě otázka zátěže instalace, ne správnosti. |
 | Kdy lze | Ve stavech `draft`, `scheduled`, `schedule_missed`, `paused`. Ne během `queueing` a `sending`. |
 | Stav kampaně | Nemění se. |
 
 Testovací zprávy se z outboxu mažou po 7 dnech (retence v 3.18).
+
+#### 3.17.1 Příznak `_test` je dočasná realizace, ne rozhraní
+
+`render_data['_test'] = true` supluje dimenzi, která v datovém modelu chybí: **druh zprávy**. `messages` dnes neumí říct, jestli je řádek kampaňová zpráva, testovací odeslání, nebo (v budoucnu) transakční e-mail. Příznak schovaný v personalizačních datech to zastupuje a má to tři konkrétní důsledky, z nichž ani jeden není v pořádku:
+
+1. **Statistiky se filtrují dotazem do JSONB.** Každý report, každý rollup a každá agregace musí nést `NOT (render_data ? '_test')`. Kdo na to zapomene v jednom dotazu z deseti, dostane čísla, která se liší od zbytku aplikace, a nikdo nepozná proč.
+2. **`render_data` má být snapshot personalizace**, tedy data pro šablonu. Řídicí příznak v něm je cizí těleso: kompilace ho nezná, `compiled_fields` ho neobsahují a šablona s `{{ _test }}` by ho omylem vyrenderovala.
+3. **Anonymizace při výmazu `render_data` vyprazdňuje** (6.5), takže by z testovací zprávy po výmazu kontaktu zmizelo i to, že byla testovací, a připočetla by se do statistik zpětně.
+
+**Správné řešení je kontraktní sloupec `messages.kind`** s hodnotami `campaign` a `test` (a s prostorem pro `transactional`), podle kterého se filtruje indexem, ne funkcí nad JSONB. Sloupec je v outboxu, tedy v kontraktní podmnožině, takže si ho nesmím zavést sám. **Vyžádáno jako R1.18 na část 1.**
+
+Do doby, než ho kontrakt dostane, platí `_test`. **Není to ale rozhraní pro část 5** a nesmí se tak dokumentovat: R5.6 žádá „vyloučit testovací zprávy ze všech reportů", ne „filtrovat podle `render_data ? '_test'`". Až přijde `messages.kind`, změní se jedno místo v této části a část 5 nemusí měnit nic.
 
 ### 3.18 Retence
 
 | Data | Doba | Job |
 |---|---|---|
 | `messages` (partition) | `MESSAGE_RETENTION_DAYS`, výchozí 90 | `retention.drop_message_partitions`, `DROP TABLE` celé partition |
-| `message_events` (partition) | `EVENT_RETENTION_DAYS`, výchozí 365 | totéž |
+| `message_events` (partition) | `MESSAGE_EVENT_RETENTION_DAYS`, výchozí 365 | totéž |
 | `provider_event_receipts.raw` | 30 dní | `UPDATE ... SET raw = '{}'::jsonb`, řádek zůstane kvůli dedupu |
 | `provider_event_receipts` (partition) | 90 dní | `DROP TABLE` |
 | `deliverability_snapshots` | neomezeně | – |
@@ -2156,10 +2464,17 @@ Všechny cesty jsou pod `/api/v1`, autentizace a formát chyb podle konvence č�
 
 #### 4.1.1 Typy
 
+**Výčty ve veřejném API jsou otevřené, ne uzavřené.** Platí pravidlo části 1 (4.6): přidání hodnoty do výčtu **v odpovědi** není breaking change a smí přijít kdykoliv v rámci `v1`. Klient proto musí neznámou hodnotu tolerovat, nikdy nesmí mít `switch` bez větve `default` a nikdy nesmí odpověď zahodit jen proto, že hodnotu nezná. Aby to typový systém nesváděl k opaku, jsou výčty v `sdk-node` typované vzorem `'a' | 'b' | (string & {})`, který napovídá známé hodnoty a přitom nezakazuje neznámé.
+
+**Pravidlo platí na všechny výčty, které tahle část posílá ven**, ne jen na ty, u kterých je rozšiřitelný tvar níž vypsaný: `CampaignStatus` (4.1.1), `PauseReasonCode` (4.1.1), typ události v payloadu `message.*` (4.4), `bounce_class`, `ses_verification_status`, `dkim_status` a `DnsRecord.purpose` (4.3) i `severity` ve `Finding`. U `severity` je rozšíření nejméně pravděpodobné, ale i tam platí, že klient nesmí odpověď zahodit kvůli neznámé hodnotě; ať ji zobrazí jako neutrální.
+
 ```ts
-type CampaignStatus =
+type KnownCampaignStatus =
   | 'draft' | 'scheduled' | 'queueing' | 'sending' | 'paused'
   | 'sent' | 'partially_sent' | 'cancelled' | 'failed' | 'schedule_missed';
+
+// Otevřený výčet: nové stavy smí přibýt v rámci v1, klient je musí tolerovat.
+type CampaignStatus = KnownCampaignStatus | (string & {});
 
 type Campaign = {
   id: string;
@@ -2195,8 +2510,22 @@ type CampaignCounters = {
   pending: number;                    // dopočítané: total - sent - failed - skipped
 };
 
-type PauseReason = 'user' | 'quota' | 'provider_blocked'
-                 | 'bounce_guard' | 'complaint_guard' | 'materialize_timeout';
+// pause_reason je jsonb s jedním závazným tvarem, viz 3.6.1.1. Ne řetězec.
+type PauseReasonCode =
+  // zapisuje sender
+  | 'render_failure_rate' | 'credentials_undecryptable'
+  | 'provider_quota_exhausted' | 'provider_unavailable'
+  // zapisuje aplikace
+  | 'user' | 'bounce_guard' | 'complaint_guard'
+  | 'provider_blocked' | 'materialize_timeout';
+
+type PauseReason = {
+  code: PauseReasonCode | (string & {});   // otevřený výčet, viz úvod 4.1.1
+  source: 'sender' | 'app' | 'user';
+  detail?: string;
+  sender_id?: string;                      // jen když source = 'sender'
+  at: string;                              // ISO 8601 UTC
+};
 
 type SendCampaignRequest = { confirm_recipient_count: number };
 ```
@@ -2344,7 +2673,7 @@ Doručování vlastní část 1 (P8), tato část deklaruje typy a payloady.
 | Událost | Kdy |
 |---|---|
 | `campaign.sending_started` | přechod do `sending` |
-| `campaign.paused` | přechod do `paused`, včetně `pause_reason` |
+| `campaign.paused` | přechod do `paused`, včetně celého objektu `pause_reason` (3.6.1.1), tedy i u pauz provedených senderem |
 | `campaign.resumed` | přechod zpět do `sending` |
 | `campaign.cancelled` | zrušení |
 | `campaign.sent` | uzavření jako `sent` nebo `partially_sent` |
@@ -2384,7 +2713,11 @@ type MessageEventData = {
   campaign: { id: string; name: string };
   contact: { id: string };
   event: {
-    type: 'delivered' | 'bounced_hard' | 'bounced_soft' | 'complained' | 'failed';
+    // Otevřený výčet stejně jako CampaignStatus: část 5 k němu přidává `opened`
+    // a `clicked` a další typy smí přibýt v rámci v1. Klient musí neznámý typ
+    // tolerovat, typicky ho zaznamenat a jinak ignorovat.
+    type: 'delivered' | 'bounced_hard' | 'bounced_soft' | 'complained' | 'failed'
+        | (string & {});
     bounce_class?: 'hard' | 'soft' | 'content';
     bounce_type?: string;          // SES bounceType
     bounce_sub_type?: string;      // SES bounceSubType
@@ -2434,12 +2767,18 @@ Pojmenování bez prefixu, podle konvence části 1. Sloupec „Proces" použív
 | `CAMPAIGN_MAX_RECIPIENTS` | int | ne | 2000000 | W K | 1 až 50000000 |
 | `CAMPAIGN_PARTIAL_THRESHOLD` | float | ne | 0.01 | K | 0 až 1 |
 | `CAMPAIGN_SCHEDULE_CATCHUP_HOURS` | int | ne | 6 | K | 0 až 168 |
-| `CAMPAIGN_UNDO_WINDOW_SECONDS` | int | ne | 60 | W K | 0 až 900, hodnota 0 undo okno vypíná (3.6.4) |
+| `CAMPAIGN_UNDO_WINDOW_SECONDS` | int | ne | 60 | W K | 0 až 900, hodnota 0 undo okno vypíná (3.6.4). **Výchozí hodnota i strop pro `settings.campaigns.undo_window_seconds`** |
+| `CAMPAIGN_QUOTA_PAUSE_REMAINING` | int | ne | 100 | K | 0 až 1000000, pauza při poklesu zbývající kvóty pod tuhle hodnotu (3.14.4) |
+| `CAMPAIGN_QUOTA_RESUME_REMAINING` | int | ne | 1000 | K | 0 až 1000000, musí být **větší** než `CAMPAIGN_QUOTA_PAUSE_REMAINING`, jinak kampaň cykluje (3.14.4) |
+| `CAMPAIGN_TEST_SEND_PER_HOUR` | int | ne | 20 | W | 1 až 1000, limit testovacích odeslání na kampaň za hodinu (3.17) |
 | `SOFT_BOUNCE_THRESHOLD` | int | ne | 3 | K | 1 až 20 |
 | `SOFT_BOUNCE_WINDOW_DAYS` | int | ne | 30 | K | 1 až 365 |
-| `DELIVERABILITY_BOUNCE_GUARD_RATE` | float | ne | 0.08 | K | 0 až 1, hodnota 0 brzdu vypíná |
-| `DELIVERABILITY_COMPLAINT_GUARD_RATE` | float | ne | 0.003 | K | 0 až 1, hodnota 0 brzdu vypíná |
-| `DELIVERABILITY_GUARD_MIN_SENT` | int | ne | 500 | K | 1 až 1000000 |
+| `DELIVERABILITY_BOUNCE_GUARD_RATE` | float | ne | 0.08 | K | 0 až 1, hodnota 0 brzdu vypíná. **Výchozí hodnota i strop pro projekt** (3.15.2.1) |
+| `DELIVERABILITY_COMPLAINT_GUARD_RATE` | float | ne | 0.003 | K | 0 až 1, hodnota 0 brzdu vypíná. **Výchozí hodnota i strop pro projekt** |
+| `DELIVERABILITY_BOUNCE_WARN_RATE` | float | ne | 0.04 | K | 0 až 1. **Výchozí hodnota i strop pro projekt** |
+| `DELIVERABILITY_COMPLAINT_WARN_RATE` | float | ne | 0.001 | K | 0 až 1. **Výchozí hodnota i strop pro projekt** |
+| `DELIVERABILITY_GUARD_MIN_SENT` | int | ne | 500 | K | 1 až 1000000. **Výchozí hodnota i strop pro projekt** |
+| `DELIVERABILITY_CONTENT_BOUNCE_LIMIT` | int | ne | 100 | K | 1 až 1000000, práh brzdy pro třídu **content** (3.10.1) |
 | `MESSAGE_RETENTION_DAYS` | int | ne | 90 | K | 7 až 3650 |
 | `MESSAGE_EVENT_RETENTION_DAYS` | int | ne | 365 | K | 7 až 3650 |
 | `SNS_CERT_CACHE_SECONDS` | int | ne | 86400 | W | 60 až 604800 |
@@ -2448,15 +2787,27 @@ Pojmenování bez prefixu, podle konvence části 1. Sloupec „Proces" použív
 | `DNS_CHECK_CONCURRENCY` | int | ne | 10 | K | 1 až 50 |
 | `AWS_API_TIMEOUT_MS` | int | ne | 5000 | W K | 1000 až 60000 |
 
-Navíc **`AMBIGUOUS_DISPATCH_POLICY`**, jejíž výchozí hodnotu podle části 1 (požadavek P4-2) vlastním já, i když mechanismus popisuje kontrakt 1:
+Navíc **politika nejednoznačného odeslání**, jejíž výchozí hodnoty podle části 1 (požadavek P4-2) vlastním já, i když mechanismus popisuje kontrakt 1. **Jsou to dvě proměnné, ne jedna:**
 
 | Proměnná | Typ | Povinná | Výchozí | Proces | Validace |
 |---|---|---|---|---|---|
-| `AMBIGUOUS_DISPATCH_POLICY` | enum | ne | **`retry`** | S | `retry` nebo `fail` |
+| `AMBIGUOUS_DISPATCH_POLICY_SES` | enum | ne | **`fail`** | S | `retry` nebo `fail` |
+| `AMBIGUOUS_DISPATCH_POLICY_SMTP` | enum | ne | **`retry`** | S | `retry` nebo `fail` |
 
-Zdůvodnění výchozí hodnoty `retry`: nedoručený e-mail uživatel pozná a naštve ho, kdežto duplikát s **identickým** `Message-ID` většina přijímajících serverů zahodí. Ta identita je podmínka, ne detail: pokud by opakovaný pokus dostal nové `Message-ID`, změnil by se `retry` z pojistky na zaručený duplikát.
+**Oprava proti dřívějšímu znění.** Tenhle dokument měl jedinou proměnnou `AMBIGUOUS_DISPATCH_POLICY` s výchozí hodnotou `retry` a zdůvodňoval ji tím, že opakovaný pokus má identický deterministický `Message-ID`, takže přijímající server duplikát zahodí. **Ten předpoklad je vyvrácený: Amazon SES `Message-ID` vždy přepisuje vlastní hodnotou**, takže na hlavním provideru naše deterministická hlavička k příjemci nikdy nedorazí a pojistka tam neexistuje. Duplikát by dorazil jako dva různé e-maily. Zjištění pochází z nálezu K3 části 4b a část 1 podle něj kontrakt upravila.
 
-**Podmínka je splněná na úrovni kontraktu**, ne dohodou: 4.10.1 části 1 předepisuje `Message-ID` deterministicky odvozený z `messages.id` a výslovně říká, že nikdy nezahrnuje číslo pokusu ani čas. Scénář `OB-11` to ověřuje testem. Výchozí hodnota `retry` tedy platí bez výhrad. Počet nejednoznačných případů ukazuju v dashboardu (3.7.4), aby šla odhalit systematická chyba.
+Rozdělení tedy zní:
+
+| Provider | Proměnná | Výchozí | Proč |
+|---|---|---|---|
+| SES | `AMBIGUOUS_DISPATCH_POLICY_SES` | **`fail`** | SES `Message-ID` přepisuje, duplikát by nikdo nezachytil. Radši jedna nedoručená zpráva, kterou uživatel vidí jako „nejisté odeslání" a může ji doposlat, než dva doručené e-maily. |
+| obecné SMTP | `AMBIGUOUS_DISPATCH_POLICY_SMTP` | **`retry`** | Naše hlavička projde beze změny a přijímající servery duplikát podle `Message-ID` běžně odchytí, takže pojistka funguje. |
+
+**Věta „přijímající server duplikát podle `Message-ID` zahodí" tedy platí u SMTP a neplatí u SES.** Kdekoliv se v tomhle dokumentu objevovala bez rozlišení, je opravená; hlavičková tabulka v 3.16.1 to má taky.
+
+Rozhodnutí `fail` u SES má cenu, kterou je nutné unést v UI: nejednoznačné zprávy musí být v reportu **rozeznatelné**, ne schované mezi běžnými selháními. Mají `error_code = 'ambiguous_dispatch'`, zobrazují se jako samostatná kategorie „nejisté odeslání" a jde z nich udělat publikum pro doposlání. Bez toho by `fail` znamenalo tiše zahozené zprávy. Počet nejednoznačných případů navíc ukazuju v dashboardu (3.7.4), aby šla odhalit systematická chyba.
+
+Vlastní kapitola 11.13 s tímhle rozdělením už počítá: mechanismus se značkou `ml_msg` (3.9.5) opravuje `failed → sent`, jakmile pro nejednoznačnou zprávu dorazí událost, a to je právě větev, do které se zprávy dostanou při politice `fail`.
 
 Zrušené proti dřívějšímu návrhu: `OUTBOX_CLAIM_TIMEOUT_SECONDS` a `OUTBOX_MAX_REAPS`. Vypršení claimu a jeho uvolňování vlastní sender přes `SENDER_CLAIM_TTL_SECONDS` (část 1, výchozí 300 s), aplikace do toho nesahá.
 
@@ -2528,7 +2879,7 @@ Příklad textů preflightu:
 Rozdíl mezi „odesláno" a součtem „doručeno + nedoručeno" je počet zpráv, u kterých ještě nemáme zpětnou vazbu. Během rozesílky je velký a postupně klesá, což UI musí unést bez toho, aby to vypadalo jako chyba.
 - Odhad zbývajícího času, aktuální rychlost.
 - Tlačítka Pozastavit a Zrušit.
-- Při `paused` velký oranžový box s důvodem a tlačítkem Pokračovat.
+- Při `paused` velký oranžový box s důvodem a tlačítkem Pokračovat. Text se vybírá podle `pause_reason ->> 'code'` a katalog musí pokrývat **všech devět kódů z 3.6.1.1, včetně čtyř, které zapisuje sender**. Kdyby pokrýval jen aplikační, kampaň zastavená senderem kvůli nedešifrovatelným credentials by se zobrazila jako pauza bez důvodu. U kódu `provider_quota_exhausted` box navíc říká, že kampaň pokračuje sama, a tlačítko Pokračovat je vedle toho jako ruční zkratka.
 - Při automatické brzdě červený box: „Kampaň jsme sami pozastavili. Nedoručitelnost je {rate} %, což ohrožuje váš odesílací účet. Než budete pokračovat, projděte si adresy, které selhaly." plus tlačítko „Zobrazit chyby".
 
 Stavy: načítání = kostra, chyba = „Průběh se nepodařilo načíst, zkoušíme dál", prázdný stav neexistuje.
@@ -2611,6 +2962,8 @@ V UI je varianta „minimální oprávnění", kde uživatel dá jen `ses:SendEm
 
 Při výmazu kontaktu (GDPR) se v `messages` a `message_events` **anonymizuje adresa** na `erased+{contact_id}@erased.invalid` a `render_data` se vyprázdní, ale řádky zůstávají, aby nezmizely statistiky kampaní. Tvar placeholderu je sjednocený s částí 2, dřív jsem používal vlastní. Doména `.invalid` je rezervovaná RFC 2606, takže na ni nikdy nic neodejde.
 
+**Tohle je návrhové řešení podléhající právnímu posouzení, ne uzavřené pravidlo.** Otevřená otázka O11 („anonymizace versus mazání zpráv při GDPR výmazu") je vedená jako čekající na právníka. Kapitola je psaná normativně, protože implementace potřebuje z čeho vyjít, ale kdyby posouzení dopadlo opačně, mění se tři místa v tomhle dokumentu (tady, 2.5 a R2.5) a funkce `anonymizeMessages` se změní na `deleteMessages`. Nikde jinde na tom nic nestojí.
+
 ---
 
 ## 7. Výkon
@@ -2655,9 +3008,15 @@ Při výmazu kontaktu (GDPR) se v `messages` a `message_events` **anonymizuje ad
 2. Volání `POST /campaigns/{id}/send` na kampaň ve stavu `sent` vrátí `409` s `Content-Type: application/problem+json` a `code = "invalid_state_transition"`, stav kampaně se nezmění.
 3. Dvě souběžná volání `POST /campaigns/{id}/send` skončí tak, že právě jedno vrátí `202` a druhé `409`. V outboxu je právě `audience_size` řádků.
 4. `PATCH /campaigns/{id}` s novým předmětem na kampaň ve stavu `scheduled` vrátí `409 campaign_locked`.
-5. Po `POST /campaigns/{id}/pause` během `sending` přestane `sent_count` růst nejpozději do doby zpracování jedné dávky senderu plus 5 sekund. Zajistí to podmínka `c.status = 'sending'` v claim dotazu, aplikace senderu nic neposílá.
+5. Po `POST /campaigns/{id}/pause` během `sending` přestane `sent_count` růst nejpozději do doby zpracování jedné dávky senderu plus 5 sekund. Zajistí to podmínka `c.status IN ('queueing','sending')` v claim dotazu, aplikace senderu nic neposílá. Totéž platí pro pauzu během `queueing`, protože claim bere oba stavy a pauza je vyvádí z obou.
 6. Po `POST /campaigns/{id}/cancel` na kampaň s 50 000 zprávami, z nichž 12 000 je `sent`, platí: `status = 'cancelled'`, počet `sent` zůstane 12 000, počet `skipped` je 38 000 minus zprávy, které byly `claimed`.
 7. `POST /campaigns/{id}/resume` na kampaň pozastavenou kvůli `provider_blocked` vrátí `422 provider_sending_paused`, dokud se stav provideru nezmění.
+7a. `POST /campaigns/{id}/pause` na kampaň ve stavu `queueing` uspěje, kampaň přejde do `paused` a materializační smyčka se zastaví nejpozději po dokončení rozpracované dávky. Kurzor v `campaign_audience_progress` zůstane.
+7b. `POST /campaigns/{id}/resume` na kampaň pozastavenou během materializace ji vrátí do **`queueing`**, ne `sending`, materializace doběhne od kurzoru a `total_count` i `audience_size` se nakonec vyplní. Kampaň pozastavená po dokončení materializace se vrací do `sending`.
+7c. Materializace, která překročí `CAMPAIGN_MATERIALIZE_MAX_MINUTES`, převede kampaň z `queueing` do `paused` s `pause_reason ->> 'code' = 'materialize_timeout'` a `source = 'app'`. `UPDATE` musí zasáhnout **jeden** řádek; nula řádků je selhání testu, protože přesně tak se projevoval zakázaný přechod.
+7d. `campaigns.pause_reason` je typu `jsonb` (dotaz do `information_schema.columns`), zapsaná hodnota je neprázdný objekt s klíči `code`, `source` a `at`, a `code` je hodnota z registru v 3.6.1.1.
+7e. Kampaň pozastavená senderem s `code = 'provider_quota_exhausted'` a `source = 'sender'` se po uvolnění kvóty nad `CAMPAIGN_QUOTA_RESUME_REMAINING` **obnoví jobem `campaign.resume_on_quota`**, stejně jako kampaň pozastavená aplikací s týmž kódem. Test běží pro obě hodnoty `source` zvlášť.
+7f. Každé automatické pozastavení, včetně provedeného senderem, má do 15 sekund záznam `campaign.auto_paused` v `audit_log` s celým objektem `pause_reason` v detailu. Pauza s `code = 'user'` takový záznam **nemá**.
 
 ### 8.2 Materializace publika
 
@@ -2668,6 +3027,10 @@ Při výmazu kontaktu (GDPR) se v `messages` a `message_events` **anonymizuje ad
 12. Všechny řádky jedné kampaně mají identickou hodnotu `created_at` rovnou `campaigns.audience_built_at`.
 13. `render_data` obsahuje právě klíče odvozené z `campaigns.compiled_fields`, nic navíc, a neobsahuje klíč `email`.
 14. Materializace 1 000 000 kontaktů doběhne do 5 minut na referenčním hardwaru (4 vCPU, 8 GB RAM, NVMe).
+14a. **Závod zrušení s materializací.** `POST /campaigns/{id}/cancel` odeslaný uprostřed materializace 1 000 000 kontaktů (typicky po zhruba 100 z 200 dávek) vede k tomu, že po doběhnutí jobu **neexistuje ani jedna zpráva té kampaně ve stavu `pending`**. Ověřuje se dotazem `SELECT count(*) FROM messages WHERE campaign_id = $1 AND status = 'pending'`, který musí vrátit nulu. Test se opakuje aspoň dvacetkrát s náhodným okamžikem zrušení, protože jde o závod a jeden průchod nic nedokazuje.
+14b. Tentýž scénář s vypnutou kontrolou stavu po dávce **musí selhat**. Bez toho by kritérium 14a prošlo i u implementace, která závod neošetřuje, protože zrušení by se náhodou trefilo mezi dávky.
+14c. Po 14a se partition, ve které kampaň leží, dá odpojit retenčním jobem, jakmile vyprší retenční okno. Veto z 3.18.2 ji nesmí blokovat, protože žádná `pending` ani `claimed` zpráva v ní nezbyla.
+14d. Restart workeru uprostřed materializace nevede k tomu, že by kampaň zůstala v `queueing` bez dalšího postupu: druhý běh jobu načte `audience_built_at` SELECTem, naváže na kurzor a dokončí i krok 3. Ověřuje se tím, že po restartu má kampaň nakonec `status = 'sending'` a nenulový `total_count`.
 
 ### 8.3 Změny publika během odesílání
 
@@ -2682,7 +3045,7 @@ Při výmazu kontaktu (GDPR) se v `messages` a `message_events` **anonymizuje ad
 20. Tělo s `TopicArn` cizího topicu vrátí `401` s `params.reason = "topic_mismatch"`.
 21. Platná zpráva typu `SubscriptionConfirmation` vede k potvrzení odběru a stav provideru se posune z `verifying` na `ready` (za předpokladu splnění ostatních podmínek).
 22. Tatáž `Notification` doručená třikrát vytvoří právě jeden řádek v `provider_event_receipts` a právě jeden řádek v `message_events`.
-23. `Delivery` doručená po `Bounce Permanent` pro tutéž zprávu: v `message_events` jsou obě události, `messages.status` zůstane `failed`.
+23. `Delivery` doručená po `Bounce Permanent` pro tutéž zprávu: v `message_events` jsou obě události, `messages.status` zůstane **`sent`**. Dřívější znění tu mělo `failed`, což si protiřečilo s pravidlem 2 v 3.9.3 (`sent` je koncový stav), s kritérii 24 a 27, s vlastním výkladem v 3.9.3 („obě události jsou v `message_events`, stav se nemění ani jednou") i s kontraktním scénářem `OB-15`, který u pozdního bouncu k už `sent` zprávě očekává, že stav zůstane `sent`.
 24. `Send` doručená po `Delivery`: `messages.status` zůstane `sent`, obě události jsou v `message_events`.
 25. Událost pro `provider_message_id`, který ještě není v `messages`, se uloží jako `unmatched` a po zápisu `provider_message_id` senderem se do 30 sekund spáruje.
 26. Zpráva se `Timestamp` starším než 1 hodina se přijme s `200`, ale nezpracuje a označí jako `invalid` s `params.reason = "stale_timestamp"`.
@@ -2701,7 +3064,8 @@ Při výmazu kontaktu (GDPR) se v `messages` a `message_events` **anonymizuje ad
 
 34. Kampaň na 300 příjemců proti provideru v sandboxu (`Max24HourSend = 200`) vrátí v preflightu chybu `provider_sandbox` a nelze ji odeslat.
 35. Kampaň na 60 000 příjemců proti provideru, kterému zbývá 50 000 zpráv, vrátí `provider_quota_exceeded`.
-36. Když bounce rate kampaně překročí 8 % při alespoň 500 odeslaných zprávách, kampaň se do 15 sekund pozastaví s `pause_reason = 'bounce_guard'`.
+36. Když bounce rate kampaně překročí 8 % při alespoň 500 odeslaných zprávách, kampaň se do 15 sekund pozastaví s `pause_reason ->> 'code' = 'bounce_guard'` a `source = 'app'`.
+36a. Projekt, který má v `settings.deliverability.bounce_guard_rate` hodnotu 0.05, se pozastaví už při 5 %. Pokus zapsat do téhož klíče 0.12 při instalační hodnotě 0.08 vrátí `422 validation_failed` s `path` na ten klíč, ne tiché oříznutí na 0.08.
 37. Když bounce rate překročí 8 % při 200 odeslaných zprávách, kampaň se **nepozastaví**.
 38. Změna `EnforcementStatus` na `SHUTDOWN` pozastaví všechny běžící kampaně daného provideru a nastaví ho na `blocked`.
 
@@ -2755,7 +3119,7 @@ Při výmazu kontaktu (GDPR) se v `messages` a `message_events` **anonymizuje ad
 73. Kontakt, jehož adresa je na suppression listu v čitelné podobě, se do publika nedostane.
 74. Kontakt, jehož adresa byla anonymizovaná po výmazu podle GDPR (v `suppressions` je placeholder a otisk), se po novém importu **do publika nedostane** a v `campaign_audience_progress.skipped_suppressed` se započítá.
 75. Suppression s vyplněným `removed_at` kontakt z publika **nevylučuje**.
-76. Kontakt s otiskem počítaným starším pokolením klíče se vyloučí i po rotaci `SUPPRESSION_HASH_KEY`.
+76. Suppression řádek s otiskem zapsaným **starším pokolením klíče** vyloučí kontakt z publika i po rotaci klíče, protože `contacts.email_fingerprints` nese otisky pod všemi známými pokoleními a dotaz je `s.fingerprint = ANY(c.email_fingerprints)`. Test: zapiš suppression pod pokolením 1, zrotuj klíč, přepočítej `email_fingerprints`, materializuj a ověř, že kontakt v outboxu není. **Druhá polovina téhož testu:** tentýž scénář **bez** přepočtu `email_fingerprints` musí selhat, ne projít. Jinak kritérium netestuje nic a provozní krok z R2.13 by šlo vynechat.
 77. Job `outbox.reconcile` zruší `pending` zprávy i tehdy, když se shoda najde jen přes otisk, ne přes čitelnou adresu.
 
 ### 8.13 Oddělení předání a doručení
@@ -2838,7 +3202,7 @@ Všechny licence jsou v povolené sadě (MIT, Apache-2.0, BSD, ISC). Žádná GP
 |---|---|
 | R1.1 | Potvrdit nebo opravit dvanáct předpokladů z kapitoly 1.5. |
 | R1.2 | Vlastnit finální DDL `messages` a claim dotaz (kontrakt 1). Můj návrh je v 2.4. Potřebuju v něm zachovat: `created_at` v primárním klíči, unikátní index `(campaign_id, contact_id)` na partition, sloupce `render_data`, `email`, `attempts`, `next_attempt_at`, `claimed_by`, `claimed_at`. |
-| R1.3 | Doplnit do kontraktu 1 invariant o jednotném `created_at` na kampaň (viz R1.11). Bez něj index `uq_messages__campaign_contact` duplicity nezachytí, protože `created_at` je jeho součástí. |
+| R1.3 | **Vyřízeno kontraktem, zbývá upřesnění.** Invariant I1 o jednotném `created_at` je v 4.10.1 zapsaný. Zbývá zúžit jeho formulaci, viz R1.11. |
 | R1.4 | Přesný formát obálky šifrování credentials (kontrakt 4) včetně HKDF `info` řetězce, protože ho musí umět i Go. |
 | R1.5 | Mechanismus zakládání partition pro `messages`, `message_events` a `provider_event_receipts` včetně zakládání indexů uvedených v kapitole 2. |
 | R1.6 | Vyjmout `/api/webhooks/ses/*` z globálního rate limitingu a z CSRF ochrany. |
@@ -2846,11 +3210,14 @@ Všechny licence jsou v povolené sadě (MIT, Apache-2.0, BSD, ISC). Žádná GP
 | R1.8 | **Opraveno podle skutečného stavu části 1.** Granty pro `mlain_sender` jsou `SELECT, UPDATE` na `messages`, `SELECT` na `campaigns`, `sending_providers`, `campaign_links`, `workspaces` a **`INSERT` na `message_events`**. Poslední jmenované jsem měl v dokumentu popřené a bylo to špatně. Otevřená otázka z toho plynoucí je v nálezu A3 revize: pokud sender do `message_events` skutečně zapisuje, musí vyplnit i `message_created_at`, `recipient` a `rank`, které jsou `NOT NULL`. Moje preference je, aby nezapisoval a událost `sent` vytvářela aplikace ze SES eventu `Send`. |
 | R1.9 | Infrastruktura odchozích webhooků, do které deklaruju události z 4.4. |
 | R1.10 | Katalog chybových kódů, do kterého přidávám kódy z 4.1.2 jako hodnoty pole `code` v RFC 9457 odpovědi. Potřebuju k nim doplnit `type` URI a anglické `title`. |
-| R1.11 | **Doplnit do kontraktu 1 invariant:** všechny řádky jedné kampaně mají identickou hodnotu `created_at` rovnou `campaigns.audience_built_at`, a sender ji nikdy nepřepisuje. Bez toho index `uq_messages__campaign_contact (campaign_id, contact_id, created_at)` duplicity nezachytí, protože dvě materializace v různých okamžicích vytvoří dva různé klíče. Zdůvodnění je v 2.4. |
+| R1.11 | **Invariant I1 je v kontraktu, žádám o zúžení jeho formulace.** Dnes v 4.10.1 zní „Všechny řádky jedné kampaně mají `created_at` rovné `campaigns.audience_built_at`", tedy jako obecná vlastnost tabulky `messages`. V té podobě je to celoproduktové pravidlo, které **zakazuje opakované a průběžné kampaně**: automatizace, drip sekvence a transakční proud produkují zprávy průběžně po měsíce a jedno `created_at` na ně dát nejde. Žádám o formulaci **„všechny řádky, které vytvoří jeden materializační běh jedné dávkové (batch) kampaně"**, plus větu, že série a opakování se řeší novými řádky `campaigns` s odkazem na rodiče, ne rozvolněním invariantu. Vlastnost, kterou index potřebuje, tím neslábne ani o kus: unikátnost se vyhodnocuje v rámci `campaign_id`, takže rozsah „jeden běh jedné kampaně" je přesně ten, na kterém index stojí. Rozbor v mé 2.4. |
 | R1.12 | Potvrdit, že smím na `messages` přidat indexy `idx_messages__provider_message_id` a `idx_messages__ws_email_pending` (2.4). Kontrakt to dovoluje, ale mají dopad na rychlost zápisu, takže to má vědět i část 4b. |
-| R1.13 | **Zapracovat mé konfigurační proměnné do tabulky 4.9** (18 položek, seznam v mé 4.6). Poslal jsem ti je zprávou v tvaru tvé tabulky. Patří mezi ně `AMBIGUOUS_DISPATCH_POLICY` s výchozí hodnotou `retry`, kterou podle P4-2 vlastním já. |
+| R1.13 | **Zapracovat mé konfigurační proměnné do tabulky 4.9.** Základ (18 položek) tam už je, ověřeno čtením, včetně dvojice `AMBIGUOUS_DISPATCH_POLICY_SES` = `fail` a `AMBIGUOUS_DISPATCH_POLICY_SMTP` = `retry`, kterou podle P4-2 vlastním já a kterou jsem si opravil ve své 4.6. **Nově prosím o šest dalších**, které dosud byly zadané prózou uvnitř mých kapitol a katalog je nezná: `CAMPAIGN_QUOTA_PAUSE_REMAINING` (100), `CAMPAIGN_QUOTA_RESUME_REMAINING` (1000), `CAMPAIGN_TEST_SEND_PER_HOUR` (20), `DELIVERABILITY_BOUNCE_WARN_RATE` (0.04), `DELIVERABILITY_COMPLAINT_WARN_RATE` (0.001), `DELIVERABILITY_CONTENT_BOUNCE_LIMIT` (100). Typy a rozsahy jsou v mé 4.6. U pěti proměnných z rodiny `DELIVERABILITY_*` a u `CAMPAIGN_UNDO_WINDOW_SECONDS` navíc patří do popisu věta, že jsou to **současně výchozí hodnota i strop pro nastavení projektu** (3.15.2.1 a 3.6.4), protože jinak si je někdo vyloží jako pevnou hodnotu instalace. |
 | R1.14 | **Zaregistrovat mé chybové kódy** do `packages/core/errors/registry.ts` (14 vlastních po revizi, seznam v 4.1.2), každý s HTTP statusem a příznakem opakovatelnosti, plus `type` URI a anglický `title`. |
-| R1.15 | Claim dotaz v kontraktu 1 filtruje `w.deleted_at IS NULL` u workspace, ale **měkce smazanou kampaň nefiltruje**. Buď doplnit `c.deleted_at IS NULL`, nebo potvrdit, že se na to spolehnout nemám a smazání kampaně ve stavu `sending` musím blokovat na úrovni API. Zvolil jsem zatím druhou variantu (3.6.3), ale první je bezpečnější. |
+| R1.15 | **Vyřízeno.** Claim dotaz v kontraktu 1 dnes filtruje `c.deleted_at IS NULL` i `w.deleted_at IS NULL`, ověřeno čtením 4.10.1. Blokace na úrovni API (3.6.3) zůstává jako druhá vrstva, ne jako jediná. |
+| R1.16 | **Zanést do kontraktu 1 pravidlo o variantě obsahu.** Zavádím na `messages` nepovinný sloupec `content_variant_id uuid` jako rezervu pro A/B test z MVP 1 (moje 2.3.1 a 2.4). Přidání sloupce kontrakt dovoluje a o to nežádám. Žádám o **jednu větu v kontraktu**: *prázdná hodnota `messages.content_variant_id` znamená, že se obsah bere ze sloupců kampaně*. Musí to být v kontraktu, protože podle toho se rozhoduje Go strana, a bez toho by si TS a Go vyložily prázdnou hodnotu každý jinak. V MVP 0 je sloupec vždy prázdný, materializace ho v `INSERT`u neuvádí, takže **dnes se nemění chování ani jeden řádek kódu senderu**. Zakládám to teď, protože přidat prázdný sloupec dnes stojí jeden `ALTER TABLE`, kdežto za rok do partitionované tabulky s desítkami milionů řádků na self-hosted instalacích je to ta nejrizikovější operace, jakou tenhle produkt zná. Stejné rozhodnutí projekt už jednou udělal u `content_snippets` v části 3. |
+| R1.17 | **Rozšířit registr kódů `pause_reason`** (4.10.1) tak, aby `provider_quota_exhausted` směla zapisovat **i aplikace**, ne jen sender. Vyčerpanou kvótu zjistí obojí: sender z odpovědi provideru, aplikace z `GetAccount` v jobu `provider.refresh_quota` (moje 3.14.4). Registr má dnes u toho kódu jen sender, takže aplikace nemá co zapsat, a zavést pro totéž druhý kód by znamenalo, že obnovovací job musí hlídat dva a při přidání třetího pisatele tři. **Kód popisuje příčinu, `source` říká, kdo zápis provedl.** Prosím tedy o změnu sloupce „kdo zapisuje" na „sender nebo aplikace" u tohohle jediného kódu; ostatní osm ať zůstane rozdělených, jak jsou. |
+| R1.18 | **Doplnit do kontraktu 1 sloupec `messages.kind`** s hodnotami `campaign` a `test` (a s prostorem pro `transactional`), `NOT NULL DEFAULT 'campaign'`. Dnes tuhle dimenzi supluje příznak `render_data['_test']` a statistiky se filtrují dotazem do JSONB (moje 3.17.1). Tři důvody, proč to nestačí: filtr `NOT (render_data ? '_test')` musí být v každém reportu, rollupu i agregaci a stačí ho v jednom z deseti dotazů vynechat; `render_data` má být snapshot personalizace pro šablonu, ne nosič řídicích příznaků; a anonymizace při výmazu `render_data` vyprazdňuje, takže by testovací zpráva po výmazu kontaktu přestala být rozeznatelná a připočetla by se do statistik zpětně. Sloupec je v outboxu, tedy v kontraktní podmnožině, proto si ho nesmím zavést sám. Do té doby platí `_test` jako **dočasná realizace**, ne jako rozhraní pro část 5. |
 
 ### 10.2 Na část 2 (kontakty a segmenty)
 
@@ -2860,15 +3227,15 @@ Všechny licence jsou v povolené sadě (MIT, Apache-2.0, BSD, ISC). Žádná GP
 | R2.2 | **Funkce `suppressions.add(...)`** podle 3.10.4, idempotentní, s podporou `reason` z mého výčtu (`hard_bounce`, `complaint`, `soft_bounce_threshold`, `ses_suppressed`) a `source = 'ses_event'`. |
 | R2.3 | **Odhlašovací endpoint `/u/<token>`** musí přijímat `POST` s tělem `List-Unsubscribe=One-Click` a odhlásit okamžitě bez potvrzovací stránky (RFC 8058). Na `GET` zobrazí preference. Bez session, bez CSRF, odpověď do 2 sekund, idempotentní. Formát tokenu vlastní část 5. |
 | R2.4 | Při odhlášení, změně stavu kontaktu a zápisu na suppression list **volat `campaigns.revokePendingMessages`** podle 3.4.1, **ne psát vlastní `UPDATE` nad `messages`**. Ve vaší sekci o odhlášení máte přímý `UPDATE messages SET ... error = 'unsubscribed'`, který navíc použije sloupec `error`, jaký v kontraktu neexistuje (je tam `error_code` a `error_detail`), takže by spadl.<br><br>Při odhlášení z jednoho seznamu předejte `listId`. Bez něj zrušíte i čekající zprávy z kampaní na jiné seznamy, na kterých je kontakt dál přihlášený, a je to tichá ztráta pošty. |
-| R2.5 | Při výmazu kontaktu (GDPR) volat `campaigns.anonymizeMessages(contactId)`, který přepíše `messages.email` a vyprázdní `render_data`, ale řádky zachová. Potvrdit, že to odpovídá vašemu výkladu výmazu. |
+| R2.5 | Při výmazu kontaktu (GDPR) volat `campaigns.anonymizeMessages(contactId)`, který přepíše `messages.email` a vyprázdní `render_data`, ale řádky zachová. Potvrdit, že to odpovídá vašemu výkladu výmazu. **Pozor: je to návrh podléhající právnímu posouzení**, otevřená otázka O11. Nespoléhejte se na něj jako na hotové rozhodnutí; kdyby právník rozhodl pro mazání řádků, změní se název i chování téhle funkce. |
 | R2.6 | Materializace snapshotuje **všechna pole z katalogu `CONTACT_MERGE_FIELDS`**, který vlastní část 2, ne z mého vlastního výčtu. Původně jsem tu měl deset sloupců a byl to užší seznam než katalog: chyběly `middle_name`, `title_prefix`, `title_suffix`, `gender`, `locale` a `created_at`. Uživatel by dal do šablony `{{ contact.title_prefix }}`, validátor by to propustil a příjemce by dostal prázdno. Potřebuju tedy katalog jako **exportovanou konstantu s mapováním merge tag → sloupec**, ne jako text v dokumentu.<br><br>**Výjimka `contact.email`:** ten merge tag se do `render_data` **nesnapshotuje**, sender ho bere z `messages.email`. Kdyby se snapshotoval, byla by adresa v databázi dvakrát a mohla by se rozejít. Katalog ho musí obsahovat (aby ho validátor propustil), ale s příznakem, že jeho zdrojem je outbox, ne `render_data`.<br><br>Potvrdit, že `greeting` je skutečný sloupec, ne funkce za běhu. **Ověřeno vlastní revizí, je to sloupec** (`02-kontakty.md` ř. 301), takže tenhle bod je uzavřený. |
 | R2.7 | Index na `contacts (workspace_id, id)` nebo takový, který umožní kurzorový průchod `WHERE workspace_id = $1 AND id > $2 ORDER BY id LIMIT 5000` bez seřazení celé tabulky. |
 | R2.8 | Definovat, co znamená „platná e-mailová adresa" pro účely materializace, a poskytnout tutéž validaci, jakou používá import. Nechci mít dvě různá pravidla. |
 | R2.9 | `suppressions.email` je `citext`, `messages.email` je podle kontraktu `text`. Join mezi nimi se vyhodnotí v citext sémantice a nemusí použít můj funkcionální index `(workspace_id, lower(email))`. Řeším to u sebe explicitním `lower(m.email) = lower(s.email::text)`, ale dejte prosím vědět, jestli nechcete raději doplnit index `suppressions ((email::text))`. Stejný efekt potká každého, kdo bude joinovat `contacts` na `messages`. |
-| R2.10 | Doplnit `'ses_suppressed'` do `CHECK (reason IN (...))` u `suppressions`. Zapisuju ho, když SES odmítne zprávu kvůli svému vlastnímu účtovému nebo tenant seznamu. Je to jiný případ než `hard_bounce`: nepočítá se do naší bounce rate a adresa mohla být zablokovaná cizí vinou, takže `removable = true`. |
-| R2.11 | Práh měkkých odrazů vlastní tato část a je **3 odrazy v okně 30 dní**, ne 5 ve 14, jak máte v textu. Zdůvodnění: kdo posílá newsletter týdně, nasbírá ve 14 dnech nejvýš dva odrazy, takže práh 5/14 by se u běžné frekvence nikdy neuplatnil. Nahraďte prosím obě místa odkazem na `SOFT_BOUNCE_THRESHOLD` a `SOFT_BOUNCE_WINDOW_DAYS`. |
+| R2.10 | **UZAVŘENO.** `'ses_suppressed'` v `CHECK (reason IN (...))` u `suppressions` už je, ověřeno čtením `02-kontakty.md`. Část 2 ho navíc správně odlišuje od `hard_bounce` (odebírá se v konzoli SES, ne u nás) a má k němu poznámku, že až přibude druhý provider, přidá se `provider_suppressed` a tahle hodnota zůstane historická. S tím souhlasím, nic dalšího nežádám. |
+| R2.11 | **UZAVŘENO.** Ověřeno čtením `02-kontakty.md`: část 2 dnes uvádí, že práh měkkých odrazů **vlastní část 4a** (3 odrazy ve 30 dnech), hodnotu nedefinuje ani nekopíruje a jen konzumuje volání `suppressions.add` s `reason = 'soft_bounce_threshold'`. To je přesně to, oč jsem žádal. Hodnoty zůstávají v `SOFT_BOUNCE_THRESHOLD` a `SOFT_BOUNCE_WINDOW_DAYS`. |
 | R2.12 | Katalog `CONTACT_MERGE_FIELDS` exportovat jako konstantu s mapováním merge tag → sloupec, viz R2.6. |
-| R2.13 | **Otisky adres pro kontrolu suppression.** Materializace joinuje `c.email_hash = s.email_hash`, tedy dva už uložené sloupce, a `SUPPRESSION_HASH_KEY` nepotřebuje znát. Obojí u vás existuje včetně indexů, takže z mé strany není co doplňovat. **Potřebuju ale záruku, že oba sloupce nesou otisk počítaný stejným pokolením klíče.** Kontrakt části 1 (3.10) zavádí `fingerprint_key_id` a rotaci klíče; vaše DDL má `email_hash` bez `key_id`. Až se to sladí, po rotaci musí existovat job, který přepočítá **oba** sloupce, jinak join přestane fungovat a suppression list tiše přestane platit. Podrobně v mé kapitole 11.12. |
+| R2.13 | **Otisky adres pro kontrolu suppression. Návrhová část vyřešena, zbývá provozní.** Ověřeno čtením `02-kontakty.md`: `contacts.email_fingerprints bytea[]` nese otisky pod **všemi známými pokoleními** klíče a má GIN index, `suppressions.fingerprint bytea` plus `fingerprint_key_id` nese jeden otisk pod pokolením, kterým byl zapsaný. To je správné rozdělení: u kontaktu plaintext máme a otisk umíme dopočítat, u suppression řádku po výmazu ne. Materializace i rekoncilace proto píšou `s.fingerprint = ANY(c.email_fingerprints)` (moje 3.3.3, 3.3.5 a 3.4.2), což splňuje kontraktní pravidlo „hledej přes všechna pokolení" a **nepotřebuje znát klíč**. Dřívější znění tohohle požadavku mluvilo o joinu dvou skalárních `email_hash`, což bylo zastaralé.<br><br>**Co od vás potřebuju:** po rotaci `SECRET_KEY` musí běžet job, který doplní nové pokolení do `contacts.email_fingerprints` u všech kontaktů. Dokud neproběhne, kontakty nesou jen stará pokolení a suppression řádky zapsané po rotaci se s nimi netrefí. Je to jediná zbývající tichá porucha v tomhle mechanismu a musí na ni být test, viz mé kritérium 76. |
 
 ### 10.3 Na část 3 (obsah a šablony)
 
@@ -2896,7 +3263,7 @@ Tohle je nejdůležitější blok, protože jsme dvě poloviny jednoho toku.
 | R4b.4 | Sender zapisuje `provider_message_id` **do stejné transakce**, ve které nastavuje `status = 'sent'`. Bez toho mi události od SES nebudou mít co spárovat. |
 | R4b.5 | Sender čte kvótu a rychlost z `sending_providers.quota_max_send_rate`, **nevolá `GetAccount` sám**. Aktualizaci sloupce dělám já každých 15 minut. |
 | R4b.6 | Sender rozlišuje trvalé chyby providera a zapisuje je do `messages.error` s kódem, který umím rozpoznat. Potřebuju minimálně: `account_suspended` (SES `AccountSuspendedException`), `sending_paused` (`SendingPausedException`), `mail_from_not_verified` (`MailFromDomainNotVerifiedException`), `message_rejected` (`MessageRejected`), `rate_limited` (`TooManyRequestsException`). Na první dva reaguju přechodem provideru do `blocked`. |
-| R4b.7 | **Vyřízeno kontraktem.** Claim dotaz v části 1 už podmínku `c.status = 'sending'` obsahuje, takže pauza funguje bez komunikace se mnou. Zbývá jediná otevřená věc, kterou řeším s částí 1 jako R1.15: dotaz filtruje `w.deleted_at IS NULL` u workspace, ale měkce smazanou kampaň nefiltruje. |
+| R4b.7 | **Vyřízeno kontraktem.** Claim dotaz v části 1 obsahuje podmínku `c.status IN ('queueing','sending')`, ne `c.status = 'sending'`, jak jsem dřív citoval. Rozdíl je podstatný: sender odebírá práci **už během materializace**, což je záměr (uživatel vidí první odeslané zprávy do několika sekund), a pauza z toho důvodu musí fungovat z obou stavů, viz moje 3.6.1. Odpauzování bez komunikace se mnou funguje v obou případech. Otevřená věc kolem měkce smazané kampaně je uzavřená, viz R1.15. |
 | R4b.8 | Sender vkládá hlavičky podle politiky v 3.16. Hodnoty `List-Unsubscribe` staví z trackovacího tokenu (kontrakt 3, vlastní část 5) a z `mail_from_domain`, který mu předám v `campaigns` nebo `sending_providers`. Potvrďte, odkud je chcete číst. |
 | R4b.9 | Sender posílá přes SES **`SendEmail` s `Content.Raw`**, ne `Content.Simple`. Zdůvodnění: potřebujeme plnou kontrolu nad hlavičkami `List-Unsubscribe`, `List-Unsubscribe-Post`, `Precedence` a `Message-ID`, a `Simple` je v tomhle omezené. `ConfigurationSetName` bere z `config_public.configurationSetName`. |
 | R4b.10 | Sender přidává `EmailTags` s klíči `ml_msg` (hodnota `messages.id`), **`ml_mday`** (hodnota `to_char(created_at,'YYYYMMDD')`, viz 3.9.5), `ml_campaign` a `ml_workspace`. Bez `ml_mday` mi samotné `ml_msg` nestačí, protože primární klíč zprávy je dvousložkový a lookup podle samotného ID projde všechny partition. Používám je pro dohledání v CloudWatch a pro fine-grained feedback. Pozor na omezení SES: název i hodnota jen ASCII písmena, číslice, podtržítko a pomlčka, max 256 znaků. UUID s pomlčkami projde. |
@@ -2907,7 +3274,7 @@ Tohle je nejdůležitější blok, protože jsme dvě poloviny jednoho toku.
 | R4b.15 | Načítejte `campaigns.revision` v claim dotazu a použijte `(campaign_id, revision)` jako klíč cache hlavičky kampaně (3.7.3). Cache pak nepotřebuje TTL a nemůže zastarat. |
 | R4b.16 | `subject` a `preheader` jsou Liquid šablony, ale renderují se v **textovém režimu bez HTML escapování**. Tělo se renderuje s escapováním podle kontraktu 2. Jsou to tedy dva různé režimy volání téhož enginu. `&amp;` v předmětu je viditelná chyba, kterou uvidí každý příjemce. |
 | R4b.17 | **Vaše navržené DDL `messages` je v rozporu s kontraktem 1 části 1.** Konkrétně: `error jsonb` versus kontraktní `error_code text` + `error_detail text`; chybí `claim_expires_at` a `updated_at`; váš `idempotency_key` v kontraktu není. Kontrakt vlastní část 1, takže platí její verze. `dispatch_started_at`, který navrhujete, tam **je** a řeší přesně ten problém, kvůli kterému jste chtěli `idempotency_key`. Když trváte na `idempotency_key`, je to změna kontraktu a musí projít částí 1, ne dohodou mezi námi dvěma. |
-| R4b.18 | **Vyřízeno kontraktem.** Výchozí `AMBIGUOUS_DISPATCH_POLICY = retry` platí, protože deterministický `Message-ID` je přímo v 4.10.1 a ověřuje ho scénář `OB-11`. Zbývá jen to, že počet nejednoznačných případů (`dispatch_started_at` starší než 15 minut) ukazuju v dashboardu, takže tenhle stav nesmí být pro sender normální provozní situace. |
+| R4b.18 | **Opraveno podle kontraktu, moje dřívější verze byla špatně.** Nejsou to jedna proměnná a jedna výchozí hodnota, ale dvě: `AMBIGUOUS_DISPATCH_POLICY_SES` = **`fail`** a `AMBIGUOUS_DISPATCH_POLICY_SMTP` = **`retry`**. Vaše zjištění K3 bylo správné: **SES `Message-ID` vždy přepisuje**, takže deterministická hlavička se k příjemci nedostane a pojistka „server duplikát zahodí" na hlavním provideru neexistuje. Scénář `OB-11` ověřuje, že hlavičku posíláme identickou, ne že ji příjemce uvidí.<br><br>Z toho pro vás plyne: politiku čtete z prostředí per typ provideru, ne jednu globální, a stav `ambiguous_dispatch` je u SES **běžný důsledek pádu, ne anomálie**. Počet takových zpráv ukazuju v dashboardu (3.7.4) a v reportu jsou jako samostatná kategorie „nejisté odeslání", ne mezi selháními. |
 
 ### 10.5 Na část 5 (tracking a reporty)
 
@@ -2918,7 +3285,7 @@ Tohle je nejdůležitější blok, protože jsme dvě poloviny jednoho toku.
 | R5.3 | Katalog typů událostí z 3.9.2 je můj, vy k němu přidáváte `opened` a `clicked`. Potvrďte, že se nepřekrýváme a že používáte tutéž tabulku `message_events`. |
 | R5.4 | SSE kanál pro živý průběh kampaně konzumující `CampaignProgress` z 4.2. |
 | R5.5 | Metrika „nespárované události" na dashboardu doručitelnosti (počet `provider_event_receipts` se stavem `unmatched`). |
-| R5.6 | Zprávy s `render_data._test = true` **vyloučit ze všech reportů a statistik**. |
+| R5.6 | **Testovací zprávy vyloučit ze všech reportů a statistik.** Nepište si prosím do kódu podmínku `render_data ? '_test'`. Ten příznak je **dočasná realizace**, ne rozhraní: supluje chybějící dimenzi „druh zprávy" a žádám část 1 o kontraktní sloupec `messages.kind` (R1.18), po jehož zavedení `_test` zmizí. Konzumujte proto pomocnou funkci nebo pohled, který dodám z `packages/core/campaigns`, ať se změna odehraje na jednom místě a vaše reporty se neopraví až tím, že jim začnou sedět čísla. Podrobně v mé 3.17.1. |
 | R5.7 | **Pozor na dvousložkový klíč zprávy.** Trackovací token nese podle kontraktu 3 jen `message_id`, ne `created_at`. Když z open nebo click endpointu potřebujete dohledat zprávu (kvůli `campaign_id` a `contact_id`), samotné `message_id` vede na sken všech partition. Doporučený postup: omezte rozsah pomocí `issued_at` z tokenu, který máte, výrazem `created_at BETWEEN to_timestamp($issued_at) - interval '30 days' AND to_timestamp($issued_at)`. `issued_at` je vždy větší nebo rovno `created_at` zprávy, protože zpráva vzniká při materializaci a token se vyrábí až při odeslání; rozdíl je nejvýš doba běhu kampaně. Tím se dostanete na jednu až dvě partition. |
 | R5.8 | Když do `message_events` zapisujete `opened` a `clicked`, **vyplňte i `message_created_at`, `recipient` a `rank`** (2.5). Pro `opened` a `clicked` použijte rank 40 a 50, aby zapadly mezi `delivered` (30) a `bounced_soft` (60). Bez `message_created_at` bude timeline zprávy skenovat všechny partition. |
 
@@ -2974,15 +3341,15 @@ Tohle je nejdůležitější blok, protože jsme dvě poloviny jednoho toku.
 
 **Dopad:** žádný, jen upřesnění cesty.
 
-### 11.6 Zrušení kampaně: `skipped`, ne `failed`
+### 11.6 Zrušení kampaně: `skipped`, ne `failed`. UZAVŘENO
 
-**Kde:** část 1, kontrakt 1, tabulka přechodů, řádek `pending → failed` s podmínkou „zrušení kampaně".
+**Kde:** část 1, kontrakt 1, tabulka přechodů, dřívější řádek `pending → failed` s podmínkou „zrušení kampaně".
 
-**Rozpor:** `failed` znamená „pokusili jsme se odeslat a nepovedlo se". Zrušená kampaň se o odeslání nepokusila. Kdyby zrušení psalo `failed`, započítalo by se do `failed_count`, kampaň by podle pravidla v 3.7.2 vypadala jako `partially_sent` a dashboard doručitelnosti by ukazoval desítky tisíc selhání, která žádná selhání nejsou.
+**Byl to rozpor:** `failed` znamená „pokusili jsme se odeslat a nepovedlo se". Zrušená kampaň se o odeslání nepokusila. Kdyby zrušení psalo `failed`, započítalo by se do `failed_count`, kampaň by podle pravidla v 3.7.2 vypadala jako `partially_sent` a dashboard doručitelnosti by ukazoval desítky tisíc selhání, která žádná selhání nejsou.
 
-**Moje řešení:** zrušení kampaně píše `pending → skipped` s `error_code = 'campaign_cancelled'`. Tentýž přechod je v kontraktu už povolený (řádek „kontakt se mezitím odhlásil nebo je na suppression listu"), takže **kontrakt neporušuju**, jen ho používám s jiným důvodem.
+**Stav: uzavřeno, ověřeno čtením části 1.** Kontraktní tabulka přechodů dnes vede zrušení kampaně na řádku `pending → skipped` („kontakt se mezitím odhlásil, dostal se na suppression list, **nebo byla kampaň zrušena**") a řádek `pending → failed` pro tenhle případ zmizel. Navíc přibyl scénář `OB-14`, který u zrušení kampaně s 500 `pending` a 50 `claimed` očekává, že 500 přejde na `skipped` a **žádný na `failed`**.
 
-**Dopad:** doporučuju v kontraktu buď řádek `pending → failed` odstranit, nebo u něj upřesnit, že se pro zrušení kampaně nepoužívá.
+Moje 3.6.3 tedy s kontraktem souhlasí beze zbytku a z tohohle rozporu nezbývá žádná akce.
 
 ### 11.7 Postgres 18 místo 17. UZAVŘENO
 
@@ -3012,19 +3379,25 @@ Doporučuju do kontraktu 1 doplnit větu, že **každý odkaz na zprávu z jiné
 
 ### 11.12 Otisk adresy: kontrakt počítá, materializace joinuje (HLÁSÍM NAHLAS)
 
-**Kde:** kontrakt části 1, sekce 3.10, bod 3: „Kontrola, jestli je adresa na suppression listu, spočítá otisk **pro každé známé pokolení klíče** a hledá `WHERE fingerprint = ANY($1)`." Proti tomu část 2, DDL `contacts.email_hash bytea` a `suppressions.email_hash bytea`, obojí **bez `key_id`**.
+**Kde:** kontrakt části 1, sekce 3.10, bod 3: „Kontrola, jestli je adresa na suppression listu, spočítá otisk **pro všechna známá pokolení klíče, bez horního omezení**, a hledá `WHERE fingerprint = ANY($1)`." Proti tomu moje dřívější materializace, která joinovala dva skalární sloupce `email_hash` bez `key_id`.
+
+**Stav: vyřešeno, kapitolu nechávám jako záznam.** Obojí se mezitím posunulo a rozpor zmizel. Níže je původní rozbor a pod ním, co z něj zbývá.
 
 **Není to chyba kontraktu, je to neúplnost, která se projeví až po první rotaci klíče.** Popisuju obojí, protože orchestrátor chtěl slyšet nahlas i to, co vypadá jen jako detail.
 
-**Problém 1: dva různé postupy pro dvě různé úlohy.** Postup z kontraktu (spočítat šest otisků, hledat `ANY`) je správný, když ověřuješ **jednu adresu**: přihlášení přes formulář, import jednoho kontaktu, testovací odeslání. Pro materializaci milionového publika by ale znamenal šest milionů HMAC operací navíc a přístup materializace ke `SUPPRESSION_HASH_KEY`, který nemá důvod mít. Materializace proto joinuje dva už uložené sloupce, což je jeden index scan. Oba postupy jsou legitimní, ale **kontrakt zmiňuje jen jeden** a implementátor materializace by z něj vyčetl, že má počítat.
+**Problém 1 (vyřešený): dva různé postupy pro dvě různé úlohy.** Postup z kontraktu (spočítat otisk pro každé pokolení, hledat `ANY`) je správný, když ověřuješ **jednu adresu**. Pro materializaci milionového publika by znamenal miliony HMAC operací navíc a přístup materializace ke klíči, který nemá důvod mít.
 
-**Problém 2: po rotaci klíče join tiše přestane sedět.** Kontrakt zavádí `suppressions.fingerprint_key_id`, ale `contacts.email_hash` žádné `key_id` nemá. Po rotaci `SUPPRESSION_HASH_KEY` tedy nastane stav, kdy `suppressions` nese otisky pokolení 2 a `contacts` pořád pokolení 1. Join `c.email_hash = s.email_hash` **přestane nacházet shody a suppression list přes otisk přestane platit**, aniž by cokoliv selhalo nebo se zalogovalo. Projeví se to jako pošta odeslaná lidem, kteří uplatnili právo na výmaz.
+**Řešení, které mezitím zavedla část 2, je lepší než obě varianty, které jsem zvažoval:** předpočítat otisky **na straně kontaktu, pod všemi pokoleními**, do sloupce `contacts.email_fingerprints bytea[]` s GIN indexem. Materializace pak píše `s.fingerprint = ANY(c.email_fingerprints)`, což je jeden indexovaný průchod, splňuje kontraktní pravidlo „hledej přes všechna pokolení" doslova, a klíč nepotřebuje znát. HMAC operace se udělají jednou při zápisu kontaktu, ne při každé materializaci.
 
-**Návrh, nic neměním:**
+**Problém 2 (zmenšený z návrhového na provozní): po rotaci klíče přestane join sedět.** V původním návrhu se dvou skalárních `email_hash` to byla tichá porucha bez jakéhokoliv projevu: `suppressions` by nesly pokolení 2, `contacts` pokolení 1, join by přestal nacházet shody a lidé, kteří uplatnili právo na výmaz, by dostali poštu.
 
-1. Do kontraktu doplnit větu, že pro **dávkové úlohy** je rovnocenný postup join předpočítaných otisků, a že podmínkou je shodné pokolení klíče na obou stranách.
-2. Část 2 doplní `contacts.email_hash_key_id smallint` a rotace `SUPPRESSION_HASH_KEY` dostane job, který přepočítá **oba** sloupce. Dokud neproběhne, musí platit starý i nový otisk.
-3. Do sady testů přidat scénář „rotace klíče a poté materializace", protože bez něj se tenhle stav neodhalí.
+Pole otisků na straně kontaktu tu díru zavírá **za předpokladu, že se pole po rotaci doplní**. Zbývá tedy provozní povinnost, ne návrhová vada: po rotaci `SECRET_KEY` musí běžet job, který nové pokolení dopočítá do `contacts.email_fingerprints` u všech kontaktů. Dokud neproběhne, netrefí se s kontaktem suppression řádky zapsané **po** rotaci, což je menší a dočasné okno než původní stav, ale pořád okno. Proto na to mám dvoudílné akceptační kritérium 76.
+
+**Co z toho zbývá:**
+
+1. ~~Do kontraktu doplnit větu o rovnocenném postupu pro dávkové úlohy.~~ **Odpadá.** Tvar `= ANY(pole)` je přímo ten postup, který kontrakt předepisuje, jen s otisky spočítanými předem. Žádná výjimka pro dávkové úlohy není potřeba.
+2. ~~Část 2 doplní `contacts.email_hash_key_id`.~~ **Vyřešeno jinak a líp:** `contacts.email_fingerprints bytea[]` místo skaláru s `key_id`.
+3. **Zůstává:** job, který po rotaci klíče doplní nové pokolení do `contacts.email_fingerprints`, a testovací scénář „rotace klíče a poté materializace". Bez toho testu se tenhle stav neodhalí, protože se neprojeví žádnou chybou.
 
 Zapsáno jako požadavek R2.13.
 
@@ -3066,7 +3439,7 @@ Změna kontraktu je zanesená v části 1, sekce 4.10.1, včetně testovacího s
 
 **Rozpor:** kontrakt 1 (část 1, sekce 4.10.1) má `error_code text` a `error_detail text` a `idempotency_key` neobsahuje. Kontraktní podmnožinu vlastní část 1 a explicitně říká, že se názvy, typy ani sémantika kontraktních sloupců nesmí měnit.
 
-**Moje stanovisko:** platí verze části 1 a moje kapitola 2.4 ji přebírá. Problém, kvůli kterému 4b chtěla `idempotency_key`, řeší kontraktní `dispatch_started_at` v kombinaci s `AMBIGUOUS_DISPATCH_POLICY`. Pokud by se ukázalo, že to nestačí, je to změna kontraktu a patří na společnou synchronizaci, ne do dvoustranné dohody mezi částmi 4a a 4b. Zapsáno jako R4b.17.
+**Moje stanovisko:** platí verze části 1 a moje kapitola 2.4 ji přebírá. Problém, kvůli kterému 4b chtěla `idempotency_key`, řeší kontraktní `dispatch_started_at` a `ambiguous_count` v kombinaci s dvojicí `AMBIGUOUS_DISPATCH_POLICY_SES` a `AMBIGUOUS_DISPATCH_POLICY_SMTP`. Pokud by se ukázalo, že to nestačí, je to změna kontraktu a patří na společnou synchronizaci, ne do dvoustranné dohody mezi částmi 4a a 4b. Zapsáno jako R4b.17.
 
 ---
 
@@ -3074,7 +3447,7 @@ Změna kontraktu je zanesená v části 1, sekce 4.10.1, včetně testovacího s
 
 | # | Otázka | Kdo rozhoduje | Můj návrh |
 |---|---|---|---|
-| O1 | ~~Má se kampaň při 8 % bounce rate sama pozastavit, nebo jen varovat?~~ | **uzavřeno** | Obojí: žluté varování při **4 %**, automatická pauza při **8 %**. Práh varování se posunul z 5 % dolů, aby zbyl prostor zasáhnout dřív, než účet vezme pod dohled Amazon. Obě hranice se vyhodnocují až po `GUARD_MIN_SENT`, viz 3.15.2. |
+| O1 | ~~Má se kampaň při 8 % bounce rate sama pozastavit, nebo jen varovat?~~ | **uzavřeno** | Obojí: žluté varování při **4 %**, automatická pauza při **8 %**. Práh varování se posunul z 5 % dolů, aby zbyl prostor zasáhnout dřív, než účet vezme pod dohled Amazon. Obě hranice se vyhodnocují až po `DELIVERABILITY_GUARD_MIN_SENT`, viz 3.15.2. |
 | O2 | ~~Smí uživatel odebrat adresu ze suppression listu?~~ | **uzavřeno** | Platí verze **části 2**, protinávrh 4a se stahuje: tvrdý odraz jde odblokovat nejdřív po 30 dnech a jen po jedné adrese, stížnost nikdy, hromadné odblokování neexistuje. Suppression list vlastní část 2. |
 | O3 | ~~Kolik soft bounců znamená suppression?~~ | **uzavřeno** | 3 měkké odrazy v okně 30 dní. |
 | O4 | ~~Catch-up okno pro zmeškaný plán: 6 hodin?~~ | **uzavřeno** | Ano, 6 hodin, konfigurovatelné. |
