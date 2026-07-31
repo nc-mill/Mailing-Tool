@@ -39,7 +39,7 @@ Kontroly z předchozího kola:
 
 Kontroly doplněné po vlně 3, všechny ověřené skriptem proti obsahu souborů, ne podle hlášení agentů:
 
-- [x] Nikde není starý název produktu mimo zdrojové materiály (`Reference-konverzace.txt`, `transcribe.txt`)
+- [x] Nikde není starý název produktu. Dvě povolené výjimky: zdrojové materiály (`Reference-konverzace.txt`, `transcribe.txt`) a jedna věta v `revize/05`, která popisuje chybu ve skriptu na přepočet vektorů a kde jsou oba tvary řetězce podstatou vysvětlení
 - [x] Domain separator řetězce jsou ve tvaru `mailer/...` a neobsahují jméno produktu
 - [x] Žádná stará hodnota testovacího vektoru v žádném souboru
 - [x] `pause_reason` je `jsonb` v částech 1 i 4a a nikde není `text`
