@@ -114,6 +114,26 @@ Instalace opravdu do pěti minut běží. **Odeslat první kampaň ale za pět m
 
 ---
 
+## 3b. Dvě věci, které přišly na poslední chvíli a jsou vážné
+
+### Trackovací pixel může vyžadovat souhlas, a produkt to dnes neumí
+
+**Evropský sbor pro ochranu osobních údajů vydal v říjnu 2024 pokyny, které trackovací pixel v e-mailu výslovně řadí pod pravidla o souhlasu.** Autor části 5 z toho vyvozuje, že **nelze automaticky spoléhat na to, že souhlas se zasíláním obchodních sdělení pokrývá i měření otevření**, a že to je potřeba vyřešit s právníkem před spuštěním provozu.
+
+**Konkrétní mezera:** kdyby právník řekl, že pixel souhlas vyžaduje, produkt by potřeboval umět **souhlas s měřením zvlášť u každého kontaktu** a schopnost u konkrétního příjemce pixel nevložit. Autor to napsal doslova: „Dnes to není v návrhu ani jedné části." **A nikdo to nevlastní.**
+
+**Doporučení:** dát tuhle otázku právníkovi jako první z celého seznamu, protože z odpovědi plyne práce, kterou dnes nikdo nemá zadanou. Vypnout měření otevření per kampaň i globálně produkt umí, per kontakt ne.
+
+### Nenastavená trackovací doména rozbije všechno a nikdo si toho nevšimne
+
+Když provozovatel nenastaví doménu pro trackovací odkazy, sender vyrobí odkazy bez adresy serveru a **rozbije se každý pixel a každý proklik v kampani. Aplikace přitom nastartuje bez jediné chyby.**
+
+Marketér uvidí kampaň s nulovou otevřeností a bude hledat příčinu v obsahu.
+
+**Doporučení:** udělat tu proměnnou pro odesílací komponentu povinnou, aby se to projevilo pádem při startu, ne až u příjemce. Je to jednořádková změna a autoři ji navrhují.
+
+---
+
 ## 4. Co potřebuje právníka
 
 Autoři to sami označili, není to jejich odbornost:

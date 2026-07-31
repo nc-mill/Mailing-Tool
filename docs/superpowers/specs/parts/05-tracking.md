@@ -665,8 +665,9 @@ CREATE TABLE campaign_stats (
   clicks_unique_human  bigint NOT NULL DEFAULT 0,
   clicks_scanner       bigint NOT NULL DEFAULT 0,
 
-  first_event_at timestamptz NULL,
-  last_event_at  timestamptz NULL,
+  first_event_at        timestamptz NULL,
+  last_event_at         timestamptz NULL,
+  progress_watermark_at timestamptz NULL,   -- nejvyšší zpracované messages.sent_at, viz 3.9.5
   updated_at     timestamptz NOT NULL DEFAULT now(),
   version        bigint NOT NULL DEFAULT 0   -- inkrementuje se při každé změně, používá SSE
 );
@@ -1817,6 +1818,55 @@ běží každý den ve 04:15 UTC, po retenci
 
 **Rekonstrukce po havárii.** Když se `contact_engagement` rozejde s realitou (chyba v jobu, obnovená záloha), je zdrojem pravdy `message_engagement` a `message_events`. Existuje příkaz `oe rebuild-engagement --workspace <id>`, který tabulku přepočítá od nuly po dávkách. Při 5 milionech kontaktů běží řádově desítky minut a nezastavuje provoz, protože píše jen do `contact_engagement`.
 
+#### 3.9.5 Průběh odesílání se čte z `messages`, ne z událostí
+
+Změna oproti předchozí verzi, vyvolaná nálezem části 4b (P5.15). Předtím jsem se spoléhal na to, že sender zapíše událost `sent` ke každé odeslané zprávě a já z nich složím čítače. To je jeden `INSERT` navíc na každou zprávu, tedy u milionové kampaně milion zápisů za data, která už jsou na řádku `messages`.
+
+**Co z toho v této části skutečně potřebuju:** `campaign_stats.sent`, `campaign_stats.failed` a časovou řadu do grafu průběhu. Nic víc. Všechno tři se dá číst přímo z outboxu.
+
+**Job `tracking.refresh_campaign_progress`**
+
+```
+běží, dokud je aspoň jedna kampaň ve stavu 'sending', plus jednou po dokončení
+interval: 2 s; u kampaní nad 200 000 zpráv 10 s
+
+1. pro každou aktivní kampaň:
+     SELECT date_trunc('minute', sent_at) - (extract(minute from sent_at)::int % 5) * interval '1 minute'
+              AS bucket,
+            count(*) FILTER (WHERE status = 'sent')   AS sent,
+            count(*) FILTER (WHERE status = 'failed') AS failed,
+            max(sent_at) AS watermark
+       FROM messages
+      WHERE campaign_id = $1
+        AND created_at  = $2                    -- audience_built_at, prořízne partition
+        AND sent_at    >= $3 - interval '10 minutes'   -- watermark minus dva bloky
+      GROUP BY bucket
+2. UPSERT campaign_stats_buckets ... ON CONFLICT DO UPDATE SET sent = excluded.sent
+3. UPDATE campaign_stats SET sent = ..., failed = ..., progress_watermark_at = watermark
+```
+
+Dvě vlastnosti, na kterých to stojí:
+
+- **Je to přírůstkové.** Vodoznak `progress_watermark_at` se posouvá, takže se každý běh dívá jen na zprávy odeslané od minule. Potřebuje k tomu index `idx_messages__campaign_sent_at`, viz požadavek 12.2.14.
+- **Je to idempotentní**, protože se poslední dva pětiminutové bloky **přepisují celou hodnotou**, ne přičtením. Opakovaný běh po pádu dá tentýž výsledek. Kdyby se přičítalo, dvojí běh by čísla nafoukl, což je přesně ta chyba, kterou konvence o idempotenci jobů z části 1 míří zachytit.
+
+Odečet deseti minut v kroku 1 pokrývá zprávy, které dorazily do už zapsaného bloku (sender běží ve víc instancích a `sent_at` není napříč nimi striktně monotónní).
+
+**Proč to není horší než události.** Poll každé 2 sekundy zní jako zátěž, ale čte se rozsah indexu od vodoznaku, tedy typicky pár set řádků. Při 200 zprávách za sekundu je to 400 řádků na jeden běh. Oproti tomu událostní varianta zapisovala 400 řádků do `message_events` **a** je pak stejně musela přečíst.
+
+**Kde to je horší a co s tím.** Kampaň zastavená a po týdnu obnovená má vodoznak starý týden, takže první běh po obnovení přečte víc. Ošetřuje to podmínka `created_at = $2`, která drží dotaz v jedné partition, a strop: když je rozsah větší než 100 000 řádků, job ho zpracuje po dávkách a průběh se dorovná během několika sekund.
+
+`campaign_stats` proto dostává sloupec navíc:
+
+```sql
+ALTER TABLE campaign_stats
+  ADD COLUMN progress_watermark_at timestamptz;   -- nejvyšší zpracované sent_at
+```
+
+**Co tím zaniká:** typ `sent` a `failed` v `message_events` (12.2.2), a s ním i většina důvodů, proč sender do té tabulky vůbec zapisuje.
+
+**Co tím nezaniká:** timeline kontaktu pořád potřebuje položku „dostal kampaň X". Čte se z `messages` přes index `idx_messages__contact`, viz požadavek 12.2.15. Je to jedna větev `UNION ALL` navíc v dotazu z 3.12.2 a nese `sent_at`, `status` a `error_code`, tedy víc, než by nesla událost.
+
 ### 3.10 Předání identity z kliku v mailu
 
 #### 3.10.1 Sekvence
@@ -1964,7 +2014,8 @@ Jedna sjednocená časová osa. Zdroje:
 
 | Zdroj | Typy položek | Tabulka |
 |---|---|---|
-| E-mail | `message_sent`, `message_delivered`, `message_opened`, `message_clicked`, `message_bounced`, `message_complained` | `message_events` |
+| E-mail, životní cyklus zprávy | `message_sent`, `message_failed` | **`messages`** (ne události, viz 3.9.5) |
+| E-mail, po doručení | `message_delivered`, `message_opened`, `message_clicked`, `message_bounced`, `message_complained` | `message_events` |
 | Web | `page_view`, `session_started` a vlastní události zákazníka | `web_events` |
 | Kontakt | `contact_created`, `list_subscribed`, `list_unsubscribed`, `consent_changed` | část 2 |
 | Automatizace (MVP 2) | `automation_entered`, `automation_step`, `automation_exited` | část 4 |
@@ -3043,6 +3094,10 @@ Tvoje předpoklady, které **platí**: token neobsahuje čitelný e-mail; HMAC s
 11. **Atribuce odhlášení ke kampani**: `unsubscribed` v `campaign_stats` potřebuje vědět, ze které kampaně odhlášení přišlo. Token typu `u` nese `message_id`, takže to jde, ale potřebuju, aby se ta informace do `message_events` zapsala.
 12. **Invariant I1 z 4.10.1: všechny řádky kampaně mají `created_at` rovné `campaigns.audience_built_at` s nulovou sub-sekundovou složkou.** Nahrazuje můj původní požadavek na blízkost `created_at` a času v UUIDv7, který tímhle padá. Je to teď **jediná** věc, na které stojí dohledání zprávy z každého otevření a kliku. Scénář `OB-13` z části 1 ho testuje a to mi stačí, jen potřebuju vědět, že platí i pro zprávy přidané do kampaně dodatečně (opakovaná materializace, doslání). Když by pro ně platit nemohl, chci to vědět teď, ne až podle růstu čítače `tracking_message_lookup_miss_total`.
 13. **Retence `messages` musí být stejná jako retence `message_events` a `message_engagement`**, tedy `TRACKING_RETENTION_MONTHS`. Jinak zůstanou statistiky bez zpráv nebo zprávy bez statistik.
+14. **Index `idx_messages__campaign_sent_at (campaign_id, sent_at) WHERE sent_at IS NOT NULL`.** Bez něj nejde přírůstkově číst průběh odesílání podle 3.9.5 a musel bych se vrátit k událostem `sent`, tedy k milionu zápisů navíc na kampaň. Částečný, takže je malý.
+15. **Index `idx_messages__contact (workspace_id, contact_id, created_at DESC)`.** Timeline kontaktu potřebuje „které kampaně dostal" napříč kampaněmi. Dnešní `uq_messages__campaign_contact` je vedený od `campaign_id`, takže na tenhle dotaz neodpoví. Bez něj by timeline u kontaktu prohledávala všechny partition `messages`.
+16. **Testovací odeslání se netrackuje vůbec.** Reakce na váš nález K9 a na P5.16 od části 4b. Zpráva bez `contact_id` (test na volně zadanou adresu) **nesmí dostat pixel ani přepsané odkazy**, takže pro ni nevznikne token a nemůže vzniknout ani událost. Podrobně v 3.16.
+17. **`messages.contact_id` je v kontraktu 4.10.1 `NOT NULL`, ale testovací odeslání ho podle části 4b nemá.** To je rozpor uvnitř vaší domény, ne se mnou, a nemám preferenci, jak ho vyřešíte. Jen potřebuju vědět výsledek, protože z něj plyne, jestli `message_engagement.contact_id` a `message_events.contact_id` mohou zůstat `NOT NULL`. Moje pozice: **ano, mohou**, protože testy se netrackují a žádná událost k nim nevznikne.
 
 ### 12.3 Část 2 (kontakty a souhlasy)
 
