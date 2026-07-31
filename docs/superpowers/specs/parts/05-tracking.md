@@ -209,7 +209,7 @@ Tato část byla původně psaná proti předpokladům, protože `parts/01-platf
 | Index bez jmenné konvence | 2.1: `idx_<tabulka>__<sloupce>`, `uq_<tabulka>__<sloupce>` | Všechny indexy přejmenovány |
 | Konfigurace `TRACKING_URL` | 4.9: `TRACKING_DOMAIN` | Přejmenováno, viz kapitola 8 |
 | Rate limiting token bucket, vlastní čísla | 4.5: posuvné okno s pevnými sloty, `rate-limiter-flexible`, konkrétní limity | Převzato, viz 3.7.4 a výhrada v 13.10 |
-| PostgreSQL 17 | 2.1: PostgreSQL 18 kvůli `uuidv7()` | Bez dopadu na tuto část, jen využívám `uuidv7()` v DDL |
+| PostgreSQL 17 | 2.1: poslední produkční verze PostgreSQL, dnes 18 (rozhodnutí zadavatele, závazné je pravidlo, ne číslo) | Uzavřeno. Bez dopadu na tuto část, jen využívám `uuidv7()` v DDL |
 
 **Co z části 1 přebírám beze změny a nekopíruju sem:** formát a ověřování API klíčů (3.5), veřejný klíč `oe_pub_` (3.5), izolaci workspace a RLS (3.6), stránkování kurzorem (4.3), idempotenci zápisů (4.4), i18n katalogy (3.9), bezpečnostní hlavičky a CSP (6), audit log (3.7), infrastrukturu odchozích webhooků (3.8).
 

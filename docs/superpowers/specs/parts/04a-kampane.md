@@ -233,7 +233,7 @@ Tuhle část jsem psal proti dvanácti vlastním předpokladům, protože `parts
 
 ## 2. Datový model
 
-Veškeré DDL je psané pro PostgreSQL 17. Zdrojem pravdy je Drizzle schéma v `packages/db`, tohle je jeho čitelný zápis.
+Veškeré DDL je psané pro poslední produkční verzi PostgreSQL, dnes **18** (rozhodnutí zadavatele, pravidlo viz část 1, kapitola 2.1). Dřívější znění tady uvádělo 17, což neodpovídalo ani rozhodnutí, ani vlastní kapitole 11.7 téhle části. Zdrojem pravdy je Drizzle schéma v `packages/db`, tohle je jeho čitelný zápis.
 
 ### 2.1 `sending_providers`
 
@@ -1026,7 +1026,7 @@ Materializace proto používá druhý, rovnocenný postup: **join dvou předpoč
 |---|---|
 | Velikost dávky | 5 000 kontaktů |
 | Počet dávek na milion | 200 |
-| Doba jedné dávky (Postgres 17, SSD, index na `contacts(workspace_id, id)`) | 150 až 600 ms podle složitosti segmentu |
+| Doba jedné dávky (Postgres 18, SSD, index na `contacts(workspace_id, id)`) | 150 až 600 ms podle složitosti segmentu |
 | Celková doba pro milion | 1 až 4 minuty |
 | Přírůstek dat | zhruba 300 B na zprávu při typickém `render_data`, tedy asi 300 MB na milion |
 | Zámky | žádný dlouhý zámek, každá dávka je vlastní transakce |
@@ -2984,11 +2984,13 @@ Tohle je nejdůležitější blok, protože jsme dvě poloviny jednoho toku.
 
 **Dopad:** doporučuju v kontraktu buď řádek `pending → failed` odstranit, nebo u něj upřesnit, že se pro zrušení kampaně nepoužívá.
 
-### 11.7 Postgres 18 místo 17
+### 11.7 Postgres 18 místo 17. UZAVŘENO
 
-**Kde:** hlavní specifikace uvádí PostgreSQL 17, část 1 rozhodla o 18 kvůli vestavěné `uuidv7()`.
+**Kde:** hlavní specifikace uváděla PostgreSQL 17, část 1 navrhovala 18 kvůli vestavěné `uuidv7()`.
 
-**Není to můj rozpor**, jen ho zaznamenávám, protože se ho drží i moje DDL: sloupce `id` mají `DEFAULT uuidv7()` a materializační SQL v 3.3.3 se na to spoléhá. Kdyby se rozhodnutí vrátilo k 17, musím v materializaci generovat ID v aplikaci a předávat je v `INSERT`.
+**Uzavřeno rozhodnutím zadavatele:** projekt cílí na **poslední produkční verzi PostgreSQL**, dnes 18. Závazné je pravidlo, ne číslo. Hlavní specifikace je opravená.
+
+**Nebyl to můj rozpor**, jen jsem ho zaznamenal, protože se ho drží i moje DDL: sloupce `id` mají `DEFAULT uuidv7()` a materializační SQL v 3.3.3 se na to spoléhá. Záložní varianta pro 17 (generovat ID v aplikaci a předávat je v `INSERT`) se nepoužije.
 
 ### 11.8 Sender nečte kontakty, ale musí číst `campaigns`
 

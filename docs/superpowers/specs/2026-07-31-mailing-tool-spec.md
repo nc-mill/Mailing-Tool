@@ -108,7 +108,7 @@ Tohle není kompromis kvůli rozdělení jazyků, je to lepší architektura sam
 | Frontend | Next.js 16, App Router, React 19, TypeScript | Reaktivní UI, standalone build do image |
 | UI kit | Tailwind + shadcn/ui | Rychlost, konzistence, žádný design od nuly |
 | API | Route Handlers v Next.js + Hono router pro veřejné API | Jeden proces, sdílené typy |
-| Databáze | PostgreSQL 17 + Drizzle ORM | Typové migrace, partitioning pro eventy |
+| Databáze | PostgreSQL, vždy poslední produkční verze (dnes 18) + Drizzle ORM | Typové migrace, partitioning pro eventy, vestavěná `uuidv7()` |
 | Fronta aplikačních jobů | **pg-boss** nad Postgresem | Nula dalších kontejnerů, viz 3.4 |
 | Šablony a render | Blokový JSON + EmailBuilder.js (MIT) | Hotový editor i renderer, nestavíme rok |
 | Personalizace | LiquidJS | Známý marketérům, bezpečná podmnožina |
@@ -117,18 +117,26 @@ Tohle není kompromis kvůli rozdělení jazyků, je to lepší architektura sam
 | i18n | next-intl | Katalogy zpráv, cs + en od začátku |
 | Testy | Vitest + Playwright | Rychlé jednotky, E2E na golden path |
 
-### 3.3 Sender: doporučuju Go
+**Verze PostgreSQL je pravidlo, ne číslo. ROZHODNUTO.** Projekt cílí na **poslední produkční (stabilní) verzi PostgreSQL**. K 2026-07-31 je to **18**, a to je hodnota, která stojí v Docker image, v testcontainers i v CI. Až vyjde 19 jako produkční, cílem se stává 19 a čísla v dokumentaci se přepíšou. Závazné je pravidlo, konkrétní číslo je jen jeho dnešní hodnota. Dřívější znění téhle tabulky uvádělo 17, což pravidlu neodpovídalo. Vedlejší přínos verze 18: vestavěná funkce `uuidv7()`, na které stojí primární klíče (podrobně v části 1, kapitola 2.1).
 
-Volba je mezi Go a Rustem. Python je mimo hru, protože chcete kompilovanou binárku, a to je správný požadavek: sender má být jedna statická binárka bez runtime závislostí.
+### 3.3 Sender: Go. ROZHODNUTO
 
-**Doporučuju Go**, a to ze čtyř důvodů:
+Volba byla mezi Go a Rustem. Python byl mimo hru, protože chcete kompilovanou binárku, a to je správný požadavek: sender má být jedna statická binárka bez runtime závislostí.
+
+**Zadavatel rozhodl pro Go.** Tři důvody, které rozhodly:
+
+- **Kompilace v jednotkách sekund místo minut.** Na hackathonu je to rozdíl hodin mrtvého času v tom tracku, který má nejvíc integračních nejistot.
+- **Výrazně větší základna přispěvatelů.** Stavíme open-source projekt, který má žít z komunity, a lidí schopných poslat PR do Go infrastrukturní služby je řádově víc než u Rustu.
+- **Výkonová výhoda Rustu se nemá o co opřít.** Strop určuje kvóta Amazonu, ne jazyk. Zátěž je IO-bound a limitovaná zvenku.
+
+Původní argumentace, která k tomuhle rozhodnutí vedla, zůstává níž pro doložení:
 
 1. **Iterace na hackathonu.** Go se kompiluje v jednotkách sekund, Rust v desítkách sekund až minutách. Za dva až tři dny je to hodiny mrtvého času přesně v tom tracku, který má nejvíc integračních nejistot (SES, SMTP, MIME, throttling).
 2. **Přispěvatelé.** Stavíme open-source projekt pod MIT, který má žít z komunity. Základna lidí schopných poslat PR do Go infrastrukturní služby je výrazně větší než u Rustu. U OSS projektu tohle váží víc než syrový výkon.
 3. **Zátěž je IO-bound a limitovaná zvenku.** Strop určuje kvóta SES, ne jazyk. Výhody Rustu (paměť, absence GC, předvídatelná latence) se tady nemají o co opřít. Goroutine plus token bucket je přesně tvar téhle úlohy.
 4. **AWS SDK for Go v2** je Apache-2.0, udržovaný přímo AWS a SES část je kompletní. AWS SDK for Rust je použitelný, ale ekosystém kolem MIME a SMTP je menší.
 
-**Kdy by vyhrál Rust:** pokud tým Rust denně píše (pak argument o kompilaci padá), nebo pokud by stejná binárka měla později polykat i event ingestion v řádu statisíců eventů za sekundu. To je ale jiná služba a jiné rozhodnutí.
+**Kdy by vyhrál Rust:** pokud tým Rust denně píše (pak argument o kompilaci padá), nebo pokud by stejná binárka měla později polykat i event ingestion v řádu statisíců eventů za sekundu. To je ale jiná služba a jiné rozhodnutí. Ani jeden z těch případů nenastal, proto Go.
 
 **Volba je vratná.** Kontrakt senderu je outbox tabulka a formát trackovacích tokenů, obojí jazykově neutrální. Když se ukáže, že Rust je lepší, přepíše se sender, aniž se sáhne na cokoliv jiného. Právě proto to rozdělení stojí za to.
 
@@ -683,7 +691,7 @@ services:
       SECRET_KEY: ...
     volumes: [ "./data:/data" ]
   postgres:
-    image: postgres:17
+    image: postgres:18-alpine   # vždy poslední produkční verze, pravidlo viz 3.2
     profiles: [ "bundled" ]     # vypnutelné, když už Postgres máte
 ```
 
@@ -784,7 +792,7 @@ Všechno permisivní, žádný konflikt. Apache-2.0 je s MIT distribucí slučit
 
 ### Zbývá rozhodnout
 
-1. **Go, nebo Rust pro sender.** Doporučuju **Go**, odůvodnění v 3.3. Rust dává smysl, pokud tým Rust denně píše. Rozhodnutí je vratné, kontrakt je jazykově neutrální, ale zvolit je potřeba před hodinou nula.
+1. ~~**Go, nebo Rust pro sender.**~~ **ROZHODNUTO: Go.** Rozhodl zadavatel. Důvody: kompilace v jednotkách sekund místo minut, výrazně větší základna přispěvatelů pro open-source projekt, a výkonová výhoda Rustu se nemá o co opřít, protože strop určuje kvóta Amazonu, ne jazyk. Odůvodnění v 3.3. Track B2 tím není blokovaný.
 2. **Název produktu.** V dokumentu používám pracovní OpenEngage z referenční konverzace. Repozitář se jmenuje Mailing-Tool. Ovlivňuje jmenný prostor balíčků, název Docker image a globální objekt web SDK, takže je lepší to vědět předem než pak přejmenovávat.
 3. **Délka hackathonu a velikost týmu.** Plán v kapitole 8 počítá s 2 až 3 dny a šesti paralelními tracky. Při menším týmu se řeže rozsah, nikdy ne demo skript.
 

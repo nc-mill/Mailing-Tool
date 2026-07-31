@@ -3793,7 +3793,7 @@ Hlavní specifikace se neupravuje. Následující body se při rozpisu ukázaly 
 
 **R12. Kapitola 6.3 neuvádí riziko poškozeného výstupu při vynuceném rodu.** Měřením se ukázalo, že `vocative("Nováková", false, true)` vrátí `"Novákováe"`. Návrh: nikdy nevolat s vynuceným mužským rodem u nejistého rodu, plus pojistka „výsledek delší o víc než 3 znaky znamená `low`", viz 4.4.6.
 
-**R13. Kapitola 5 uvádí `PostgreSQL 17`, část 1 volí 18.** Přijímám volbu části 1, viz 2.1. Zaznamenáno jen kvůli úplnosti, rozhodnutí je na části 1.
+**~~R13. Kapitola 5 uvádí `PostgreSQL 17`, část 1 volí 18.~~ UZAVŘENO.** Zadavatel rozhodl, že projekt cílí na **poslední produkční verzi PostgreSQL**, dnes **18**. Závazné je to pravidlo, ne číslo. Hlavní specifikace je opravená, přijímám to, viz 2.1.
 
 ### 12.1 Rozpory s částí 1
 

@@ -27,6 +27,8 @@ Tři pravidla, která nesmí porušit:
 
 Celý zbytek nástroje (obrazovky, editor šablon, import kontaktů, reporty) je napsaný v TypeScriptu, což je jazyk, ve kterém se dnes staví většina webových aplikací. Sender je napsaný v Go a je to jediná výjimka v celém projektu. Vypadá to jako rozmar, ale má to tři konkrétní důvody.
 
+**Volba jazyka je rozhodnutá: Go.** Zvažoval se ještě Rust. Zadavatel rozhodl pro Go, protože se kompiluje v jednotkách sekund místo minut, má výrazně větší základnu přispěvatelů pro open-source projekt, a výkonová výhoda Rustu se nemá o co opřít, protože strop určuje kvóta Amazonu, ne jazyk. Tahle část se tím řídí a celý text níž počítá s Go.
+
 **Důvod první: jiný charakter práce.** Zbytek aplikace je "široký a mělký". Má stovky obrazovek a funkcí, každá se používá občas, a hlavní požadavek je, aby se daly rychle měnit. Sender je "úzký a hluboký". Umí jedinou věc, ta se skoro nikdy nemění, ale musí ji udělat padesát tisíckrát po sobě bez chyby a bez toho, aby mu došla paměť. Tohle jsou dva odlišné inženýrské problémy a každý má jiné optimální řešení.
 
 **Důvod druhý: uživatel dostane jeden soubor.** Program v Go se dá zkompilovat do jediného souboru o velikosti pár megabajtů, který nepotřebuje nic dalšího nainstalovaného. Nemá závislosti, které by mohly zestárnout nebo se pohádat mezi sebou. Pro nástroj, jehož hlavní slib zní "spustíte jeden příkaz a do pěti minut vám to běží", to má hodnotu. Jinak by odesílání záviselo na stejném velkém a proměnlivém běhovém prostředí jako zbytek aplikace, a když by se v něm něco pokazilo, přestaly by chodit maily.
@@ -2785,7 +2787,7 @@ Následující nálezy platí proti hlavní specifikaci. **Většina z nich je �
 | R4 | Hlavní specifikace i zadání se ptají na `SendRawEmail`, ta ale v SES API v2 neexistuje | **Trvá.** V API v2 se raw posílá jako `SendEmail` s obsahem typu `Raw`. Volba raw obsahu je zdůvodněná v 3.9.1. |
 | R5 | Sender má podle hlavní specifikace práva jen na `messages`, `campaigns` a `sending_providers`, ale má přepisovat odkazy | **Vyřešeno.** Kontrakt přidává `workspaces`, `campaign_links` a `message_events` a část 1 to sama uvádí jako svůj rozpor R4. |
 | R6 | `campaigns` nemá sloupec pro verzi zkompilované šablony, sender nemá jak invalidovat cache | **Trvá.** Není v kontraktu ani v části 1. Viz P4a.2. |
-| R7 | Hlavní specifikace uvádí PostgreSQL 17 | **Vyřešeno.** Část 1 navrhuje 18 kvůli `uuidv7()` a zdůvodňuje to. Senderu to vyhovuje. |
+| R7 | Hlavní specifikace uváděla PostgreSQL 17 | **Uzavřeno rozhodnutím zadavatele.** Projekt cílí na poslední produkční verzi PostgreSQL, dnes **18**. Závazné je to pravidlo, ne číslo. Hlavní specifikace i část 1 (2.1, R1) jsou opravené. Senderu to vyhovuje, `uuidv7()` je v jádře. |
 | R8 | Hlavní specifikace neřeší testovací odeslání v outboxu | **Trvá.** Viz K9. |
 
 ## 12. Otevřené otázky

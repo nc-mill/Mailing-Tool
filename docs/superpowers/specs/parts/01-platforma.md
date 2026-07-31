@@ -211,7 +211,7 @@ Dvě záměrné výjimky, kde tato část zasahuje do cizího území, protože 
 
 Platí pro všechny tabulky ve všech částech.
 
-**Verze PostgreSQL: 18.** Hlavní specifikace uvádí 17. Důvod pro 18 je vestavěná funkce `uuidv7()`, kterou 17 nemá, viz sekce 11, rozpor R1. Rozšíření: `citext` (jen pro e-maily). `pgcrypto` není potřeba, `gen_random_uuid()` i `uuidv7()` jsou v jádře.
+**Verze PostgreSQL: pravidlo, ne číslo. ROZHODNUTO.** Zadavatel rozhodl, že projekt cílí na **poslední produkční (stabilní) verzi PostgreSQL**. K 2026-07-31 je to **18** a to je hodnota, se kterou se pracuje všude v téhle části: Docker image `postgres:18-alpine`, testcontainers, CI. Až se produkční verzí stane 19, cílem je 19 a čísla se v dokumentaci přepíšou. Závazné je pravidlo, číslo je jen jeho dnešní hodnota. Pravidlo shodou okolností vyřešilo i rozpor R1 (viz sekce 11): 18 má vestavěnou funkci `uuidv7()`, kterou 17 nemá, takže `DEFAULT uuidv7()` v DDL drží. Rozšíření: `citext` (jen pro e-maily). `pgcrypto` není potřeba, `gen_random_uuid()` i `uuidv7()` jsou v jádře.
 
 **Pojmenování**
 
@@ -4044,13 +4044,13 @@ Jak se idempotence dosahuje, podle typu jobu:
 
 ## 11. Rozpory s hlavní specifikací
 
-**R1. PostgreSQL 17 versus 18.**
+**~~R1. PostgreSQL 17 versus 18.~~ UZAVŘENO: poslední produkční verze, dnes 18.**
 
-Hlavní specifikace, kapitola 3.2, uvádí PostgreSQL 17. Navrhuji **18**.
+**Rozhodnutí zadavatele:** projekt cílí na **poslední produkční (stabilní) verzi PostgreSQL**, což je k 2026-07-31 **18**. Rozhodnutí je zapsané jako pravidlo, ne jako číslo. Hlavní specifikace byla opravena z 17 na tohle pravidlo (kapitola 3.2). Až bude produkční verzí 19, cílem je 19.
 
-Důvod: primární klíče jsou UUIDv7 (viz 2.1). Funkce `uuidv7()` je součástí jádra až od PostgreSQL 18 (ověřeno v release notes k 18.0, autor Andrey Borodin, podle RFC 9562). Na 17 by ID musela generovat výhradně aplikace, což znamená, že každý `INSERT` v ruční migraci, každý seed a každý ladicí příkaz by potřeboval vlastní generátor. PostgreSQL 18.4 je k 2026-07-31 aktuální stabilní verze a oficiální image `postgres:18-alpine` existuje. Cena změny je nulová, protože v MVP 0 zatím žádná instalace neběží.
+Původní argumentace, která k tomu vedla, zůstává pro doložení: hlavní specifikace, kapitola 3.2, uváděla PostgreSQL 17. Navrhoval jsem **18**. Důvod: primární klíče jsou UUIDv7 (viz 2.1). Funkce `uuidv7()` je součástí jádra až od PostgreSQL 18 (ověřeno v release notes k 18.0, autor Andrey Borodin, podle RFC 9562). Na 17 by ID musela generovat výhradně aplikace, což znamená, že každý `INSERT` v ruční migraci, každý seed a každý ladicí příkaz by potřeboval vlastní generátor. PostgreSQL 18.4 je k 2026-07-31 aktuální stabilní verze a oficiální image `postgres:18-alpine` existuje. Cena změny je nulová, protože v MVP 0 zatím žádná instalace neběží.
 
-Kdyby se rozhodlo zůstat na 17: všechny `DEFAULT uuidv7()` se nahradí generováním v aplikaci a v ruční migraci se použije `gen_random_uuid()` s poznámkou, že tyto konkrétní řádky nejsou časově řazené. Funkčně to projde, jen je to horší.
+Záložní varianta pro 17 (všechny `DEFAULT uuidv7()` nahradit generováním v aplikaci a v ruční migraci použít `gen_random_uuid()`) **se nepoužije**, rozpor je uzavřený ve prospěch 18.
 
 **R2. Filtr `escape` v Liquid subsetu.**
 
@@ -4087,7 +4087,7 @@ Next.js 16 přejmenoval `middleware.ts` na `proxy.ts` a exportovanou funkci na `
 | ID | Otázka | Kdo rozhoduje | Doporučení |
 |---|---|---|---|
 | O1 | **Název produktu.** Ovlivňuje jmenný prostor balíčků (`@openengage/*`), název Docker image, prefix API klíčů (`oe_live_`), prefix tokenů (`t1`), název globálního objektu SDK a všechny domain separator řetězce v kryptografii (`openengage/v1/...`). Změna po hodině 0 znamená přepis kontraktů a všech testovacích vektorů. | člověk, před hodinou 0 | Pokud padne rozhodnutí do dvou hodin, cena je nulová. Potom rychle roste. Doporučuji rozhodnout jako úplně první bod hackathonu. |
-| O2 | **Go, nebo Rust pro sender.** Hlavní specifikace to nechává otevřené. Všechny čtyři kontrakty jsou napsané jazykově neutrálně (binární formáty, HKDF, AES-GCM, SQL), takže rozhodnutí neblokuje mě, ale blokuje track B2. | člověk, před hodinou 0 | Go, podle argumentace v kapitole 3.3 hlavní specifikace. Kontrakty jsou v Rustu implementovatelné se stejným úsilím. |
+| ~~O2~~ | ~~**Go, nebo Rust pro sender.**~~ Všechny čtyři kontrakty jsou napsané jazykově neutrálně (binární formáty, HKDF, AES-GCM, SQL), takže rozhodnutí neblokovalo mě, ale blokovalo track B2. | **uzavřeno** | **Go.** Rozhodl zadavatel. Důvody: kompilace v jednotkách sekund místo minut, výrazně větší základna přispěvatelů pro open-source projekt, a výkonová výhoda Rustu se nemá o co opřít, protože strop určuje kvóta Amazonu, ne jazyk. Track B2 je odblokovaný. Odůvodnění v kapitole 3.3 hlavní specifikace. |
 | O3 | **Ukládání assetů v self-hosted nasazení.** Adresář `/data/uploads` znamená, že škálování na víc replik `MODE=web` vyžaduje sdílený svazek. Alternativa je ukládat obrázky do Postgresu jako `bytea` (jednoduchá záloha, horší výkon) nebo volitelné S3. | člověk, ovlivňuje část 3 | `/data/uploads` pro MVP 0, protože jedna replika stačí. Rozhodnutí zapsat do dokumentace, aby nikdo nečekal, že tři repliky budou fungovat bez sdíleného svazku. |
 | O4 | **TypeScript 7 versus 5.9.** TypeScript 7.0.2 (nativní kompilátor) je od 2026-07-31 pod tagem `latest`. Je rychlejší, ale ekosystém pluginů a typových nástrojů (`tsd`, ESLint typed rules, Drizzle generika) na něj nemusí být připravený. | tým, v hodině 0 | Zkusit 7.0.2 v prvních třiceti minutách. Když cokoliv z `drizzle-kit`, `@hono/zod-openapi` nebo `vitest` selže, přepnout na 5.9.3 bez diskuse. Hackathon není místo na ladění kompilátoru. |
 | ~~O5~~ | ~~**`AMBIGUOUS_DISPATCH_POLICY` výchozí hodnota.**~~ Mechanismus popisuje 4.10.1. | **uzavřeno** | **`fail` pro SES, `retry` pro obecné SMTP.** Původní doporučení `retry` pro oba providery se opíralo o deterministický `Message-ID`, který měl duplikáty odchytit na straně příjemce. Nález K3 části 4b ukázal, že **Amazon SES `Message-ID` vždy přepisuje vlastní hodnotou**, takže na hlavním provideru ta pojistka vůbec neexistuje a duplikát by dorazil jako dva různé e-maily. U obecného SMTP naše hlavička projde, takže tam `retry` platí dál. |
