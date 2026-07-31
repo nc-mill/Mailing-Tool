@@ -186,6 +186,33 @@ Rozhodnuto zadavatelem 2026-07-31.
 
 **Retence 37 měsíců** je nad původním návrhem 26 a je v povoleném rozsahu. Pokryje tři roky meziročního srovnání s rezervou. Cena je větší databáze a delší doba, po kterou držíme osobní údaje, což patří do dokumentace ke GDPR.
 
+### Odpovědi na otázky části 6 (UI a UX)
+
+Rozhodnuto zadavatelem 2026-07-31.
+
+| Otázka | Rozhodnutí |
+|---|---|
+| Hlavní metrika v reportu | **Proklik**, ne otevření. Shodné s částí 5. |
+| Okno na zrušení odeslání 60 s | **V pořádku**, ponechat |
+| Zkušební režim hned při prvním spuštění | **Ano** |
+| Ukázková data v produktu | **Ano**, ale **50 kontaktů, ne 200** |
+| Vykání ve všech textech rozhraní | **Ano** |
+| Český název pro merge tag | **„Doplňovaný údaj"**, v editoru „Vložit údaj o příjemci" |
+| Jazyky od prvního dne | **Čeština a angličtina** |
+| Smazání kontaktu nemaže historii v reportech | **Ano, přijatelné** |
+
+**Nový požadavek k ukázkovým datům.** Ukázkové kontakty i ukázkové kampaně musí jít **hromadně označit a smazat**, aby si uživatel mohl projekt úplně vyčistit, až si nástroj osahá. Bez toho zůstane v čerstvé instalaci padesát smyšlených lidí, které bude mazat po jednom. Týká se to částí 2 (kontakty) a 4a (kampaně).
+
+**K názvu „doplňovaný údaj".** Vybráno proto, že člověk, který ten výraz vidí poprvé, z něj pozná, co dělá. Ecomail používá „personalizace" (pojmenovává účel, ne tu věc, a používá se i pro jiné věci), Mailchimp „slučovací značky" (doslovný překlad, česky to nikdo neřekne), vývojáři „proměnná" (přesné, pro marketéra prázdné). **Vyhledávání v nápovědě musí najít i „personalizaci"**, protože zákazník přicházející z Ecomailu bude hledat to slovo. Synonymum v rejstříku, ne druhý název v rozhraní.
+
+**K zastavení rozesílky uprostřed.** Zadavatel se ptal, jestli jde rozesílku zastavit a zbytek neposlat. **Ano, a je to funkce, kterou konkurence buď nemá vůbec, nebo ji dává jen v nejdražším tarifu.** Vyplývá z toho, že publikum se vypíše do fronty a odesílací komponenta si z ní bere dávky po pěti stech:
+
+- **Pozastavit:** do pěti sekund přestane brát nové dávky, rozpracovanou dokončí (může odejít ještě až 500 zpráv), zbytek čeká ve frontě.
+- **Zrušit zbytek rozesílky:** co ve frontě zbylo, se označí jako neodeslané a **už nikdy neodejde**.
+- Co fyzicky odešlo, vzít zpět nejde.
+
+Rozhraní to má rozdělené na dvě samostatná tlačítka, aby si nikdo nespletl pauzu se zrušením. Mailchimp totéž nabízí až v Premium a jen nad 10 000 příjemců, Ecomail, Sendy ani Listmonk to nemají.
+
 ---
 
 ## 4. Co potřebuje právníka
