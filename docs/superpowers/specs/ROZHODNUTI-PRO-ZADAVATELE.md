@@ -14,29 +14,41 @@ Dokument je řazený podle naléhavosti, ne podle částí.
 
 ---
 
-## 1. Rozhodnout před první řádkou kódu
+## 1. Rozhodnutí, která blokovala start. Všechna padla.
 
-### 1.1 Název produktu
+Tahle kapitola je vyřízená. Zůstává tu proto, aby bylo dohledatelné, co se rozhodlo a proč.
 
-**O co jde.** Pracovně se používá OpenEngage. Název ale není jen nápis na webu, je zapečený v technických identifikátorech: v názvech balíčků, v názvu Docker image, v předponě API klíčů (`oe_live_`), v předponě trackovacích odkazů, v rezervované doméně pro odkazy v mailech, a hlavně **ve výpočtu šifrovacích klíčů a podpisů**.
+### 1.1 Jazyk odesílacího enginu: **Go**
 
-**Co se stane, když se rozhodne pozdě.** Změna názvu po začátku implementace znamená přepis všech podepsaných formátů a všech testovacích vzorků ve čtyřech zmrazených kontraktech mezi dvěma jazyky. Dnes je cena nulová, po týdnu je to den práce, po měsíci víc.
+Aplikace je v TypeScriptu, ale komponenta, která fyzicky posílá maily, je samostatný program v kompilovaném jazyce. Ve hře byl Go a Rust.
 
-**Doporučení:** rozhodnout jako úplně první bod, dřív než kdokoli otevře editor.
+**Rozhodnuto: Go.** Kompiluje se v sekundách místo minut, což na hackathonu rozhoduje, a základna lidí schopných přispět do open-source projektu v Go je výrazně větší. Výkonová výhoda Rustu se nemá o co opřít, protože strop určuje kvóta Amazonu, ne jazyk.
 
-### 1.2 Jazyk odesílacího enginu: Go, nebo Rust
+Volba je vratná: kontrakty jsou psané jazykově neutrálně, takže přepis senderu později nesáhne na nic jiného.
 
-**O co jde.** Aplikace je v TypeScriptu, ale komponenta, která fyzicky posílá maily, je samostatný program v kompilovaném jazyce. Vy jste zmínil obojí.
+### 1.2 Verze databáze: **poslední produkční**
 
-**Doporučení: Go.** Kompiluje se v sekundách místo minut, což na hackathonu rozhoduje, a základna lidí schopných přispět do open-source projektu v Go je výrazně větší. Výkonová výhoda Rustu se tady nemá o co opřít, protože rychlost stejně určuje limit Amazonu, ne jazyk.
+**Rozhodnuto jako pravidlo, ne jako číslo:** projekt cílí na poslední produkční verzi PostgreSQL, aktuálně 18. Číslo by za rok zestaralo, pravidlo ne.
 
-**Volba je vratná.** Kontrakty jsou napsané jazykově neutrálně, takže přepis senderu později nesáhne na nic jiného.
+Osmnáctka je podstatná proto, že generování identifikátorů je tam součástí jádra. Na sedmnáctce by je musela obcházet aplikace v každé migraci i v každém seedu.
 
-### 1.3 Verze databáze: PostgreSQL 18 místo 17
+### 1.3 Editor a renderer: **`react-email` plus vlastní tenké rozhraní**
 
-**O co jde.** Hlavní specifikace uvádí 17. Autor části 1 doporučuje 18, protože funkce pro generování identifikátorů je součástí jádra až od osmnáctky. Na sedmnáctce by ji musela obcházet aplikace na každém místě.
+Původní návrh byl použít `@usewaypoint/email-builder`. **Praktické ověření (nainstalováno a spuštěno, ne přečteno) ho vyřadilo:** balíček z npm editor vůbec neobsahuje, negeneruje hlavičku dokumentu, takže nemá responzivitu ani tmavý režim, a **neumí textovou variantu**, kterou specifikace vyžaduje.
 
-**Doporučení: 18.** Je to aktuální stabilní verze, oficiální image existuje a cena změny je dnes nulová, protože nikde nic neběží.
+**Rozhodnuto: `@react-email/components` jako renderer, editor vlastní.** MIT, 3,1 milionu stažení týdně proti 58 tisícům, oficiálně React 19, dává hlavičku dokumentu, preheader, tabulkový layout, konstrukce pro Outlook i textovou variantu. Že ta kombinace funguje není teorie, knihovna Maily je přesně ona.
+
+Cena je **změřených zhruba 3 000 řádků** vlastního rozhraní, z toho polovina panel vlastností, což je mechanická formulářová práce.
+
+Zamítnuté alternativy i s důvodem: **Maily** kvůli licenci (autor ji v roce 2025 vědomě změnil pryč od MIT, protože mu produkt přeprodávali, pak napsal, že je to „stoprocentně MIT", ale za patnáct měsíců to do balíčku nedoplnil). **GrapesJS** zůstává jako dokumentovaná náhradní cesta, zamítnut kvůli 400 kB v prohlížeči a nutnosti zamykat obecný stavitel webu.
+
+### 1.4 Název produktu: **není blokátor**
+
+Pracovní název byl OpenEngage a mění se. Nový zatím není určený.
+
+**Neblokuje start vývoje, pokud se od prvního commitu píše jako jedna konstanta.** Cena změny je vysoká jen tehdy, když se jméno rozteče do desítek míst jako doslovný text. Když bude na jednom místě, přejmenování znamená změnit konstantu a přepočítat testovací vektory skriptem, což je práce na půl hodiny. Část 1 ty vektory přepočítala dvakrát za jeden den, takže víme, že to jde.
+
+**Zapsat do implementačního plánu jako pravidlo.** Jméno se objevuje v odvození šifrovacích klíčů, v předponě API klíčů, v rezervované doméně pro trackovací odkazy, ve značce pro pixel, v prefixu CSS tříd a v názvu balíčků. Všude jako konstanta, nikde doslovně.
 
 ---
 
@@ -357,16 +369,36 @@ Pro úplnost, ať víte, co se rozhodlo bez vás:
 
 ---
 
-## 6. Přehled podle částí
+## 6. Co zbývá otevřené
 
-| Část | Otevřených otázek | Nejdůležitější |
-|---|---|---|
-| 1 Platforma | 8 | Název produktu, Go versus Rust, verze databáze, retence auditu |
-| 2 Kontakty | viz souhrn | GDPR operace, chování importu při konfliktech |
-| 3 Obsah | viz souhrn | Volba editoru, testování v poštovních klientech |
-| 4a Kampaně | 12 | Automatické pozastavení, zakládání v AWS účtu, anonymizace versus mazání |
-| 4b Sender | viz souhrn | Chování při nejistém odeslání |
-| 5 Tracking | viz souhrn | Živé aktualizace v prohlížeči, právní posouzení pixelu |
-| 6 UI a UX | viz souhrn | Kde je premisa se zvládnutelností nesplnitelná |
+Stav k 2026-07-31 večer. **Produktová rozhodnutí jsou hotová a implementační plány se psát můžou.** Otevřené jsou tři skupiny věcí, z nichž ani jedna psaní plánů nebrání.
 
-Souhrny několika částí ještě dobíhaly v okamžiku sestavení tohoto dokumentu. Chybějící položky jsou dohledatelné v kapitolách „Otevřené otázky" jednotlivých souborů v `parts/`.
+### 6.1 Právník, šest otázek
+
+Kapitola 4. **Blokuje spuštění provozu, ne psaní plánů ani kódu.**
+
+Jediná z nich, za kterou visí nezadaná práce, je ta o trackovacím pixelu: kdyby vyšlo, že vyžaduje souhlas, produkt dnes neumí souhlas s měřením zvlášť u každého kontaktu ani vynechat pixel u konkrétního příjemce. Je to práce na půl dne a **nikdo ji nemá zadanou**.
+
+### 6.2 Šest empirických ověření, která nikdo nevlastní
+
+Nejsou to rozhodnutí, jsou to testy na pár minut. **Dvě z nich mění návrh, když dopadnou špatně:**
+
+| Co ověřit | Co se stane, když dopadne špatně |
+|---|---|
+| Podepisuje SES i hlavičky pro odhlášení? | Gmail nenabídne tlačítko „Odhlásit" a **mění se bezpečnostní model**, protože by musel podepisovat sender a držet privátní klíč |
+| Posílá Apple pořád stejný identifikátor prohlížeče? | **Padá celá klasifikace falešných otevření** |
+| Jak dlouho trvá zpracování šablony? | Výkonový rozpočet senderu stojí na odhadu, ne měření |
+| Je Go knihovna na Liquid bezpečná při souběhu? | Nutná jiná strategie sdílení šablon mezi vlákny |
+| Umí `go-mail` sestavit zprávu do bufferu? | MIME se musí sestavit vlastním kódem |
+| Rozlišuje SES sekundovou a denní kvótu různými chybami? | Sender by denní kvótu považoval za throttling a kampaň by se zasekla |
+
+**Doporučuju je přidělit jmenovitě před začátkem implementace.** Většina je na pět minut, ale první dvě mění návrh.
+
+### 6.3 Dvě věci, na které nikdo nezapomněl, ale nikdo je nevlastní
+
+- **Souhlas s měřením per kontakt** (viz 6.1)
+- **Nenastavená trackovací doména** rozbije každý pixel a proklik v kampani, přičemž aplikace nastartuje bez chyby. Oprava je udělat tu proměnnou pro odesílací komponentu povinnou, aby to spadlo při startu. Jednořádková změna.
+
+### 6.4 Kde hledat detail
+
+Otevřené otázky jednotlivých částí jsou v jejich kapitolách „Otevřené otázky" v adresáři `parts/`. Většina je uzavřená s rozhodnutím a zdůvodněním přímo na místě, zbytek je označený jako „čeká na právníka".
