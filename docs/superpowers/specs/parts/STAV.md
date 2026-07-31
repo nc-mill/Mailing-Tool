@@ -1,7 +1,8 @@
 # Stav zpracování specifikací
 
-Poslední aktualizace: 2026-07-31, kontrakt zmrazen, běží závěrečné sladění
+Poslední aktualizace: 2026-07-31, po revizi kódu a jednom kole rozmrazení kontraktu
 Orchestrátor: hlavní agent. Subagenti nesahají na git.
+Název produktu: **Mlain Mailer**, rozhodnuto zadavatelem, zaneseno.
 
 ## Hotovo
 
@@ -15,29 +16,50 @@ Orchestrátor: hlavní agent. Subagenti nesahají na git.
 | Provedení změn v kontraktu | hotové, kontrakt **ZMRAZEN** |
 | Pátý kontrakt (značky pro tracking) | uzavřen z obou stran, části 3 a 4b |
 
-## Běží
+| Vlna 3: revize kusů kódu, 21 agentů, tři optiky na část | hotová, `revize/05-revize-kodu-vsech-casti.md` |
+| Rozhodnutí zadavatele k osmi bodům revize | hotová, `ROZHODNUTI-PRO-ZADAVATELE.md` kapitola 3d |
+| Přejmenování na Mlain Mailer, tři koše | hotové, vektory přepočítané |
+| Druhé kolo rozmrazení kontraktu | hotové, kontrakt **znovu ZMRAZEN** |
+| Narovnání všech sedmi částí podle revize | hotové |
 
-| Část | Co zbývá |
-|---|---|
-| 4a Kampaně | sladění se zmrazeným kontraktem |
-| 4b Sender | sladění, plus opakované prověření kontraktu očima Go implementátora |
-| 5 Tracking | tři blokující nálezy + přepočet vektorů tokenu + rozhodnutí o SSE |
-| 6 UI a UX | obnova ztracených kapitol 9 až 18 |
+## Závěrečná kontrola: co prošlo
 
-## Závěrečná kontrola: co musí projít
+Kontroly z předchozího kola:
 
-Commit a push provede orchestrátor **až když projde všech deset bodů**. Zadavatel to schválil předem.
+- [x] Sedm dokumentů má všechny sekce podle šablony
+- [x] Část 6 má obnovené kapitoly 9 až 18
+- [x] Část 5 má uzavřené tři blokující nálezy: `contact_engagement`, `processing_restricted`, RLS
+- [x] Část 5 nemá nikde starý tečkový tvar tokenu
+- [x] Testovací vektory tokenu sedí mezi částí 1 a částí 5
+- [x] Formát značek pro tracking sedí mezi částí 3 a částí 4b
+- [x] Části 4a, 4b a 5 hlásí dokončené sladění se zmrazeným kontraktem
+- [x] Nikde není dlouhá pomlčka
+- [x] Nikde není navržená GPL, LGPL ani jiná copyleft závislost
+- [x] Každá část dodala strukturovaný souhrn
 
-- [ ] Sedm dokumentů má všechny sekce podle šablony (0 až 12)
-- [ ] Část 6 má obnovené kapitoly 9 až 18 (slovníček, katalog hlášek, přístupnost, lokalizace, akceptační kritéria, požadavky, rozpory)
-- [ ] Část 5 má uzavřené tři blokující nálezy: `contact_engagement`, `processing_restricted`, RLS
-- [ ] Část 5 nemá nikde starý tečkový tvar tokenu
-- [ ] Testovací vektory tokenu sedí mezi částí 1 a částí 5
-- [ ] Formát značek pro tracking sedí mezi částí 3 a částí 4b
-- [ ] Části 4a, 4b a 5 hlásí dokončené sladění se zmrazeným kontraktem
-- [ ] Nikde není dlouhá pomlčka
-- [ ] Nikde není navržená GPL, LGPL ani jiná copyleft závislost
-- [ ] Každá část dodala strukturovaný souhrn (rozpory, požadavky, otevřené otázky)
+Kontroly doplněné po vlně 3, všechny ověřené skriptem proti obsahu souborů, ne podle hlášení agentů:
+
+- [x] Nikde není starý název produktu mimo zdrojové materiály (`Reference-konverzace.txt`, `transcribe.txt`)
+- [x] Domain separator řetězce jsou ve tvaru `mailer/...` a neobsahují jméno produktu
+- [x] Žádná stará hodnota testovacího vektoru v žádném souboru
+- [x] `pause_reason` je `jsonb` v částech 1 i 4a a nikde není `text`
+- [x] `ambiguous_count` je ve sloupcovém grantu senderu
+- [x] Claim dotaz bere `queueing` i `sending` v částech 1 i 4b
+- [x] Claim vylučuje nekampáňové zprávy výslovnou podmínkou
+- [x] Zápis výsledku hlídá `claimed_by` v částech 1 i 4b
+- [x] Velikost dávky je 100 podle rozhodnutí zadavatele
+- [x] Práh varování u odrazů je 4 % ve všech částech i v hlavní specifikaci
+- [x] Model otisků suppression je shodný v částech 1 a 2, `SUPPRESSION_HASH_KEY` neexistuje
+- [x] Registr `messages.error_code` obsahuje kódy, které do něj části zapisují
+- [x] `content_variant_id`, `messages.kind` a kořen `_present` jsou v kontraktu a v konzumujících částech
+
+## Co zbývá
+
+| Co | Kdo | Poznámka |
+|---|---|---|
+| Šest otázek pro právníka | zadavatel | Blokuje spuštění provozu, ne psaní kódu |
+| Čtyři empirická ověření | tým, před implementací | Většina je na pět minut, dvě mění návrh, když dopadnou špatně |
+| Souhlas s měřením per kontakt | nikdo to nevlastní | Práce na půl dne, závisí na odpovědi právníka |
 
 ## Průchod s rozhodnutími zadavatele k části 4 (2026-07-31)
 

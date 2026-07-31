@@ -4,7 +4,7 @@ Vlastník: hlavní agent (orchestrátor)
 Datum: 2026-07-31
 Předmět revize: všech sedm částí v `parts/`, hlavní specifikace, `ROZHODNUTI-PRO-ZADAVATELE.md`
 Zadání zadavatele: ověřit, že jednotlivé snippety kódu odpovídají tomu, co popisujeme textově, a že kusy kódu nebrání v rozvoji a rozsahu toho, co slibujeme
-Stav: **žádná oprava neprovedena**, dokument je podklad k rozhodnutí
+Stav: **VYŘÍZENO 2026-07-31.** Zadavatel rozhodl o osmi bodech, všechny kategorie byly zapracované do sedmi částí a ověřené skriptem proti obsahu souborů. Dokument zůstává jako doklad, co se našlo a proč se to opravilo.
 
 ---
 
@@ -444,9 +444,36 @@ Každý krok zlevňuje ten další.
 
 ---
 
-## 11. Co potřebuje rozhodnutí, ne opravu
+## 11. Rozhodnutí zadavatele (2026-07-31, VYŘÍZENO)
 
-Body, kde revize neví, co je správně, protože jde o volbu, ne o chybu.
+Osm bodů, kde revize nevěděla, co je správně, protože šlo o volbu, ne o chybu. Zadavatel rozhodl, všechno je zanesené. U dvou bodů se ukázalo, že původní doporučení projektu bylo vyloženě špatné, a stojí za to, aby to bylo dohledatelné.
+
+| # | Rozhodnutí | Kam se zaneslo |
+|---|---|---|
+| 1 | Podmínka je **vlastnost bloku** se zavřeným seznamem operátorů, pravdivost se počítá **mimo Liquid**. Cyklus jde do gramatiky teď, vydává se až s transakčními maily | 3 (3.1.10, 3.3.5a), 1 (kořen `_present` ve 4.10.2) |
+| 2 | **Rezerva pro varianty obsahu založit teď a nechat prázdnou** | 1 (`messages.content_variant_id`), 4a (2.3.1) |
+| 3 | **`campaign_id` nepovinné teď**, s výslovným vyloučením v claim dotazu | 1 (4.10.1), 4b (3.2) |
+| 4 | **Sedmé místo v menu rezervované** pro Automatizace, argument přepsaný z počtu na obsah | 6 (0.2, 4.1, R7, O8) |
+| 5 | Sedmidenní okno zůstává pro živý provoz, **import dostane oddělenou cestu** | 5 (2.2.1, 3.11.6) |
+| 6 | **Jazyk otevřen na BCP 47**, popisky na mapu s povinnou angličtinou | 3 (3.1.9), 2 (`LocalizedText`), 1 |
+| 7 | **Prahy brzd per projekt, ale jen směrem k přísnosti**, env je výchozí hodnota i strop | 4a (3.15.2.1) |
+| 8 | Jméno **Mlain Mailer** a rozdělení výskytů do **tří košů** | hlavní specifikace 3.6, všechny části |
+
+### Dvě rozhodnutí, kde bylo původní doporučení projektu špatné
+
+**Jméno produktu jako jedna konstanta.** Doporučení znělo rozumně a pro většinu výskytů platilo, ale řetězec uvnitř výpočtu otisků smazaných adres je součást receptu, ne jméno. Otisky nejdou přepočítat, protože plaintext je po výmazu pryč. Kdo by při přejmenování poctivě aktualizoval konstantu všude, jak mu doporučení ukládalo, znehodnotil by každý otisk vzniklý před přejmenováním. Import by proběhl úspěšně, nic by se nezalogovalo, smazaní lidé by dostali mail. Je to tentýž mechanismus, jaký zadavatel sám zachytil u stropu na počet klíčů.
+
+**Ochranné brzdy.** Dosavadní návrh umožňoval brzdu na úrovni projektu **vypnout**, ale ne **zpřísnit**. Umožňoval tedy tu nebezpečnou volbu a neumožňoval tu bezpečnou. Argument autora proti nastavitelnosti (čísla jsou odvozená z hranic Amazonu, ne preference) platí jen jedním směrem: volnější práh nemá legitimní důvod, přísnější je normální opatrnost agentury u nového klienta.
+
+### Poznámka k metodě, která se osvědčila
+
+Přepočet testovacích vektorů proběhl tak, že se **nejdřív reprodukovaly staré hodnoty starými řetězci**. Šestnáct z šestnácti sedělo bajt na bajt, čímž se ověřil model odvození, a teprve pak se počítaly nové. Při prvním pokusu ta kontrola odhalila chybu ve skriptu (prefix MAC složený řetězcovou interpolací dal `openengage/v1/token/v1` místo `openengage/token/v1`), která by se jinak tiše propsala do všech pěti tokenů. Stejný postup použil i agent u podpisu webhooku.
+
+---
+
+## 12. Původní znění: co potřebovalo rozhodnutí
+
+Ponecháno pro doložení, jak byly otázky formulované, než padla rozhodnutí výše.
 
 1. **Podmínky a cykly v blokovém modelu** (C1): obalový uzel, nebo vlastnost bloku `visibleWhen`? A urychlit K4, protože dnes neexistuje platný zápis podmínky „pole není prázdné".
 2. **Rezerva pro varianty obsahu v `campaigns`** (C2): zavést nullable `variant_id` teď, nebo přijmout, že A/B v MVP 1 znamená verzi 2 kontraktu?
