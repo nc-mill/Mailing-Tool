@@ -197,13 +197,28 @@ Rozhodnuto zadavatelem 2026-07-31.
 | Zkušební režim hned při prvním spuštění | **Ano** |
 | Ukázková data v produktu | **Ano**, ale **50 kontaktů, ne 200** |
 | Vykání ve všech textech rozhraní | **Ano** |
-| Český název pro merge tag | **„Doplňovaný údaj"**, v editoru „Vložit údaj o příjemci" |
+| Český název pro merge tag | **„Personalizace"** |
 | Jazyky od prvního dne | **Čeština a angličtina** |
 | Smazání kontaktu nemaže historii v reportech | **Ano, přijatelné** |
 
 **Nový požadavek k ukázkovým datům.** Ukázkové kontakty i ukázkové kampaně musí jít **hromadně označit a smazat**, aby si uživatel mohl projekt úplně vyčistit, až si nástroj osahá. Bez toho zůstane v čerstvé instalaci padesát smyšlených lidí, které bude mazat po jednom. Týká se to částí 2 (kontakty) a 4a (kampaně).
 
-**K názvu „doplňovaný údaj".** Vybráno proto, že člověk, který ten výraz vidí poprvé, z něj pozná, co dělá. Ecomail používá „personalizace" (pojmenovává účel, ne tu věc, a používá se i pro jiné věci), Mailchimp „slučovací značky" (doslovný překlad, česky to nikdo neřekne), vývojáři „proměnná" (přesné, pro marketéra prázdné). **Vyhledávání v nápovědě musí najít i „personalizaci"**, protože zákazník přicházející z Ecomailu bude hledat to slovo. Synonymum v rejstříku, ne druhý název v rozhraní.
+**K názvu „personalizace".** Autor části 6 navrhoval „doplňovaný údaj" s odůvodněním, že je srozumitelný na první pohled. Zadavatel rozhodl pro **„personalizaci"** a důvod je silnější: je to slovo, které česká cílovka **už zná z Ecomailu**, takže zákazník při přechodu nemusí přeučovat slovník. Srozumitelnost na první pohled se týká jen prvního setkání, shoda s trhem se týká každého dalšího dne.
+
+Důsledek pro slovníček v části 6: „personalizace" se přesouvá ze seznamu **zakázaných** výrazů mezi **závazné**. Alternativy „doplňovaný údaj", „slučovací značka", „merge tag", „placeholder" a „proměnná" zůstávají v rozhraní zakázané, aby se pro jednu věc neobjevily tři názvy.
+
+### Velikost dávky při odesílání
+
+**Rozhodnuto: výchozí velikost dávky je 100 (místo původních 500) a je nastavitelná.**
+
+Nastavitelnost patří na **úroveň instalace**, ne jako ovládací prvek v rozhraní kampaně. Je to technický parametr, u kterého uživatel nemá jak poznat, jestli má zvolit sto nebo tři sta, a špatná hodnota se projeví až za provozu.
+
+**Dvě věci, které menší dávka zlepší:**
+
+1. **Pauza zabere dřív.** Rozpracovaná dávka se vždy dokončí, takže po zmáčknutí pauzy odejde ještě nejvýš tolik zpráv, kolik je velikost dávky. Při stovce je to sto místo pěti set, což přímo vylepšuje scénář „uvědomím si chybu uprostřed rozesílky".
+2. **Zmizí planý poplach v sandboxu Amazonu.** Sender hlídá, jestli se dávka nezasekla. Při limitu sandboxu jedné zprávy za sekundu trvá pětisetka přes osm minut a hlídač by na ni hlásil poplach pokaždé. Stovka trvá minutu a půl. Upozorňovala na to část 4b.
+
+Cena je o něco víc dotazů do databáze, při těchto objemech zanedbatelná.
 
 **K zastavení rozesílky uprostřed.** Zadavatel se ptal, jestli jde rozesílku zastavit a zbytek neposlat. **Ano, a je to funkce, kterou konkurence buď nemá vůbec, nebo ji dává jen v nejdražším tarifu.** Vyplývá z toho, že publikum se vypíše do fronty a odesílací komponenta si z ní bere dávky po pěti stech:
 
