@@ -32,7 +32,11 @@ Pátá možnost, **"nedělat nic a doufat"**, není v tomhle dokumentu použitá
 
 ### 0.2 Co uživatel uvidí
 
-Aplikace má šest hlavních míst a nic víc. To je vědomé, protože každá další položka v menu je další rozhodnutí, které musí uživatel udělat, než se dostane k práci.
+Aplikace má v MVP 0 šest hlavních míst. **Šest je stav MVP 0, ne strop produktu.** Sedmé místo je už teď rezervované pro **Automatizace** (MVP 2), aby se pro ně později nemusela navigace překopávat ani je někam nacpat pod cizí položku.
+
+Smysl nikdy nebyl v čísle šest. Pravidlo zní: **každá položka menu je rozhodnutí, které musí udělat uživatel, než se dostane k práci.** Proto se nová položka zavádí jen tehdy, když za ní stojí samostatná úloha, kterou uživatel v hlavě opravdu vede jako samostatnou. Automatizace tenhle test projdou (je to jiná úloha než jednorázová kampaň, s vlastním životním cyklem), a proto pro ně místo držíme. „Nástroje" ani „Pokročilé" by ho neprošly.
+
+*Zdůvodnění změny: původní znění „šest hlavních míst a nic víc, to je vědomé" dělalo z čísla argument. Číslo argument není, obsah položky ano. Automatizace jsou v produktovém plánu od MVP 2 a s formulací na strop by neměly kde bydlet.*
 
 | Kde | Co tam dělá |
 |---|---|
@@ -41,7 +45,8 @@ Aplikace má šest hlavních míst a nic víc. To je vědomé, protože každá 
 | **Kampaně** | Rozepsané, naplánované, odeslané. U každé odeslané její report. |
 | **Šablony** | Vzhledy e-mailů, editor, AI asistent. |
 | **Statistiky** | Doručitelnost a vývoj v čase napříč kampaněmi. |
-| **Nastavení** | Odesílání a domény, uživatelé, klíče k API, jazyk, zálohy. |
+| **Nastavení** | Odesílání a domény, uživatelé, klíče k API, jazyk, zálohy, sledování, AI, audit log. |
+| **Automatizace** *(rezervováno, MVP 2)* | Spouštěče a série e-mailů, které se posílají samy. V MVP 0 položka neexistuje, ale místo v menu je pro ni držené. |
 
 Nahoře je vždycky přepínač projektu (jeden projekt bývá jeden klient nebo jedna značka), vyhledávání a ikona **Úloh**, kde se dá kdykoliv podívat, co běží na pozadí.
 
@@ -75,7 +80,7 @@ Tohle je nejdůležitější část mého výstupu a čekal bych, že se o ní b
 | 2 | **Založení účtu u Amazonu a klíčů k SES** | Cizí konzole, cizí registrace, platební karta, IAM oprávnění. Nemáme na to vliv a nesmíme to obejít. | **Nabídnout snazší cestu jako výchozí.** SMTP od hostingu, který většina českých firem už má, je první volba a je označená jako doporučená pro objemy do zhruba dvou tisíc e-mailů denně. SES je druhá volba pro ty, kdo rostou, s poctivým odhadem "zabere to asi 30 minut a potřebujete přístup k firemnímu účtu AWS". Plus hotová šablona pro AWS CloudFormation, která vyrobí správně omezeného uživatele a vypíše dva údaje ke zkopírování. |
 | 3 | **Proč Amazon zablokuje účet při stížnostech na spam** | Je to skutečné riziko s finančním dopadem a nedá se odstínit, protože reakce musí přijít od uživatele (přestat posílat na starou databázi). | **Odstínit, co jde, a vysvětlit až v okamžiku, kdy na tom záleží.** Suppression list se plní automaticky, takže uživatel je v bezpečí, i když netuší, že existuje. Vysvětlení se ukáže teprve tehdy, když čísla zčervenají, a to konkrétní větou "z posledních 5 000 e-mailů si 8 lidí stěžovalo na spam, to je čtyřikrát víc, než Amazon toleruje" plus tři konkrétní kroky. Ne kurz doručitelnosti na uvítanou. |
 | 4 | **Logika AND a OR v segmentech** | Lidé si "a" v běžné řeči vykládají opačně, než jak funguje v logice ("zákazníci z Prahy a z Brna" znamená v řeči sjednocení, v logice prázdnou množinu). | **Zjednodušit a ověřit na datech.** Žádné AND a OR v rozhraní, místo toho výběr "splňují všechny podmínky / splňují alespoň jednu". Nad tím česká věta, pod tím počet a **pět skutečných jmen**. Když segment vyjde prázdný, nástroj řekne, která konkrétní podmínka ho vyprázdnila. |
-| 5 | **Míra otevření je z principu nepravdivá** | Apple Mail Privacy Protection generuje falešná otevření a my je nikdy nespočítáme přesně. | **Poctivě vysvětlit a změnit hierarchii.** Hlavní metrikou je kliknutí. Otevření je uvedené o patro níž, rozdělené na "pravděpodobně automatická" a "potvrzená kliknutím", s vysvětlením na jedno kliknutí. Nikdy neukážeme jedno velké číslo, o kterém víme, že je nafouknuté. |
+| 5 | **Míra otevření je z principu nepravdivá** | Apple Mail Privacy Protection generuje falešná otevření a my je nikdy nespočítáme přesně. | **Poctivě vysvětlit a změnit hierarchii.** Hlavní metrikou je kliknutí. Otevření je uvedené o patro níž, rozdělené na "ověřená", "pravděpodobně automatická" a "nejistá", tedy přesně na skupiny, které umí spočítat část 5, s vysvětlením na jedno kliknutí. Nikdy neukážeme jedno velké číslo, o kterém víme, že je nafouknuté. |
 | 6 | **Vizuální editor e-mailu ovládaný myší** | Skládání bloků tažením myši je pro část uživatelů (motorika, čtečka obrazovky, jen klávesnice) nepoužitelné a e-mailový layout má tvrdé technické limity. | **Klávesová alternativa jako povinnost, ne jako doplněk.** Každý blok má v nabídce "Posunout nahoru", "Posunout dolů", "Duplikovat", "Smazat". Tažení myší je zrychlení pro toho, kdo ho zvládne, ne jediná cesta. Je to zároveň požadavek přístupnosti (WCAG 2.2, kritérium Dragging Movements). |
 | 7 | **Docker compose a příkazová řádka při instalaci** | První obrazovka produktu je terminál a s tím nic neuděláme, protože je to self-hosted nástroj. | **Nechat to na tom, kdo instaluje, a nezatěžovat tím toho, kdo pak pracuje.** Instalaci dělá jednou technický člověk. Požadavek na část 1 je, aby kontejner vypsal čitelný rámeček s adresou a aby dvě nejčastější chyby (obsazený port, nedostupná databáze) měly srozumitelnou hlášku s návodem. Od okamžiku otevření prohlížeče už příkazová řádka nikde není potřeba. |
 
@@ -115,7 +120,7 @@ Všechny jdou zodpovědět bez znalosti kódu.
 | Dlouhé operace | Centrum úloh, chování při zavření karty, živý průběh, notifikace o dokončení |
 | Nevratné akce | Škála rizika a odstupňovaná ochrana, okno na zrušení, hromadné destruktivní akce |
 | Stavy obrazovek | Katalog patnácti stavů a matice, které obrazovky který stav mají |
-| Klíčové obrazovky | Detailní návrh osmi nejtěžších obrazovek produktu, plus čtyři doplněné po revizi části 2 (blokované adresy, formuláře, souhlasy a GDPR, příchozí webhooky) |
+| Klíčové obrazovky | Detailní návrh osmi nejtěžších obrazovek produktu, plus čtyři doplněné po revizi části 2 (blokované adresy, formuláře, souhlasy a GDPR, příchozí webhooky), plus Přehled a tři obrazovky Statistik (8.11) |
 | Mikrotexty a tón | Pravidla psaní, závazný slovníček cs a en, pravidla pro tlačítka a dialogy |
 | Chybové hlášky | Anatomie hlášky a katalog pětadvaceti konkrétních hlášek cs a en |
 | Přístupnost | Cílová úroveň, konkrétní požadavky, způsob ověření, brána v CI |
@@ -143,11 +148,11 @@ Dokument je sladěný s `01-platforma.md` ve verzi z 2026-07-31 (3 344 řádků)
 | U1 | Next.js App Router, mutace přes server actions nebo interní API | potvrzeno, plus `middleware.ts` se v Next.js 16 jmenuje `proxy.ts` a runtime je vždy Node.js | beze změny |
 | U2 | `packages/ui` jako design systém, vlastní ho část 1 | potvrzeno, Tailwind 4 plus shadcn/ui zkopírovaný do `packages/ui/src/components`, `lucide-react`, sémantické tokeny v `tokens.css` | potvrzuju volbu, viz 13.2 |
 | U3 | i18n `next-intl`, ICU MessageFormat | potvrzeno, ale **klíče jsou vnořený JSON v `camelCase`, ne ploché s tečkami**, zdrojem pravdy je `en.json`, používá se kategorie `=0` | **opravil jsem 12.8 a 12.3** |
-| U4 | `{ error: { type, code, message, details, request_id } }`, text skládá rozhraní | **RFC 9457 Problem Details**, `application/problem+json`. `code` je pole, podle kterého se klient rozhoduje. `detail` je lokalizovaný na serveru přes `Accept-Language`. Část 1 výslovně píše: *"Klient, který chce vlastní texty, se řídí `code` a `errors[].code`, ne textem."* | **Můj původní rozpor byl z velké části neopodstatněný a stahuju ho.** Zbývá jediná, mnohem menší potřeba: rozšiřující člen `params`. Viz U→1.1 a R6. |
+| U4 | `{ error: { type, code, message, details, request_id } }`, text skládá rozhraní | **RFC 9457 Problem Details**, `application/problem+json`. `code` je pole, podle kterého se klient rozhoduje. `detail` je lokalizovaný na serveru přes `Accept-Language`. Část 1 výslovně píše: *"Klient, který chce vlastní texty, se řídí `code` a `errors[].code`, ne textem."* | **Můj původní rozpor byl neopodstatněný a stahuju ho celý.** Rozšiřující člen `params`, který jsem si vyžádal, část 1 v 4.2 **už má**, včetně `findings[]` a příkladů přesně pro preflight kampaně a kvótu. Ověřeno čtením `01-platforma.md`. Zbývá jediná drobnost: `params` a `findings` chybí v jejím **kompletním typu `Problem` pro `sdk-node`** (4.8), takže by je typovaný klient neviděl. Viz U→1.1 a R6. |
 | U5 | Mechanismus dlouhých úloh nad pg-boss s `progress` a `total` | v části 1 jsem nenašel | zůstává jako požadavek U→1.3 |
 | U6 | Živý průběh přes SSE | potvrzeno, infrastrukturu vlastní část 5, část 1 dodává jen prvek indikátoru spojení a pravidlo, že žádná obrazovka nesmí být na živém spojení závislá | souhlasím a přebírám, viz 5.9 |
 | U7 | Role `owner`, `admin`, `editor`, `viewer` | potvrzeno, plus **úplná matice 45 oprávnění** tvaru `resource:action` | **použil jsem skutečné názvy oprávnění** v 7.1 (stav S11) a našel jsem v matici jeden problém, viz R18 |
-| U8 | Editor je EmailBuilder.js za adaptérem | potvrzeno částí 3 | beze změny |
+| U8 | Editor je EmailBuilder.js za adaptérem | **Zamítnuto částí 3 dne 2026-07-31.** Balíček `@usewaypoint/email-builder` z npm editor vůbec neobsahuje (exportuje jen `Reader` a `renderToStaticMarkup`), negeneruje hlavičku dokumentu a neumí textovou variantu. Rozhodnutí zadavatele: renderer je `@react-email/components` a `@react-email/render` (MIT), **editor je vlastní a tenký** nad blokovým JSON modelem, rozsah odhadnutý na zhruba 3 000 řádků. GrapesJS zůstává dokumentovanou náhradní cestou. | **Přepsal jsem 8.5 a 13.2 a zrušil odmítnutí `@dnd-kit` v 16.3.** Hlavní důsledek pro tuhle část: klávesová alternativa k tažení bloků už není požadavek na adaptér nad cizí knihovnou, ale **návrh od nuly**, a to mění rozsah práce. Viz 8.5 a U→3.1. |
 | U9 | (nový) Cesty | `/{locale?}/w/{workspace_slug}/{sekce}`, `localePrefix: 'as-needed'` | **přepsal jsem kapitolu 4.3** na jejich tvar |
 | U10 | (nový) Stránkování | **cursor, ne offset.** `limit` 1 až 200, výchozí 50. **Celkový počet se v seznamech nevrací.** | **přepsal jsem 4.2 a 14.2.** Číslované stránkování jsem musel opustit, viz R19. |
 | U11 | (nový) Časové zóny | UI podle `users.timezone`, reporty a exporty podle `workspaces.timezone`, API vždy UTC | **opravil jsem 12.4** |
@@ -279,7 +284,7 @@ Prázdný stav je nejnavštěvovanější obrazovka nového uživatele. Je to p�
 
 Když je číslo nepřesné, přiznáme to na místě, kde stojí, a řekneme proč a co s tím. Nikdy ne v nápovědě, do které se nikdo nepodívá.
 
-> **Dobře.** V reportu je u otevření trvale viditelná poznámka "Část otevření vyrábějí poštovní programy automaticky" s odkazem na vysvětlení a rozpad na "pravděpodobně automatická" a "potvrzená kliknutím".
+> **Dobře.** V reportu je u otevření trvale viditelná poznámka "Část otevření vyrábějí poštovní programy automaticky" s odkazem na vysvětlení a rozpad na "ověřená", "pravděpodobně automatická" a "nejistá".
 >
 > **Špatně.** Velké číslo "73 % otevřelo" jako hlavní metrika reportu, protože vypadá dobře.
 >
@@ -330,7 +335,9 @@ Nedokončený obsah se ukládá automaticky. Uživatel nikdy nepřijde o práci 
 
 ### 4.1 Mapa aplikace
 
-Šest hlavních míst, hloubka nejvýš tři úrovně. Vše, co je hlouběji, se otevírá jako panel nebo dialog nad kontextem, ne jako další stránka.
+Šest hlavních míst v MVP 0 plus jedno rezervované, hloubka nejvýš tři úrovně. Vše, co je hlouběji, se otevírá jako panel nebo dialog nad kontextem, ne jako další stránka.
+
+**Sedmé místo je rezervované pro Automatizace (MVP 2)** a v MVP 0 se nezobrazuje. Pravidlo pro zavedení další položky není počet, ale obsah: *položka menu je rozhodnutí, které musí udělat uživatel*, takže se zavádí jen za samostatnou úlohu s vlastním životním cyklem. Viz 0.2.
 
 ```
 Přehled
@@ -371,9 +378,16 @@ Nastavení
 ├── Klíče k API
 ├── Webhooky                  odchozí i příchozí, s logem požadavků
 ├── Souhlasy a soukromí       účely souhlasu, žádosti podle GDPR, retence
+├── Sledování                 trackovací domény, kód k vložení, souhlasy, diagnostika, soukromí
+├── AI asistent               klíč k modelu, měsíční strop útraty, spotřeba za 30 dní
+├── Audit log                 kdo co udělal, filtry, export
 ├── Zálohy
 └── Můj účet                  jméno, heslo, jazyk rozhraní, relace
+
+Automatizace                  rezervováno pro MVP 2, v MVP 0 se nezobrazuje
 ```
+
+*Zdůvodnění: tři podstránky Nastavení chyběly, přestože se na ně dokument i ostatní části odkazují. Nastavení AI klíče a útraty potřebuje hláška o vyčerpaném stropu (10.3) a část 3 slibuje zobrazení spotřeby za 30 dní. Nastavení sledování potřebuje text, který posílá uživatele „do nastavení" vypnout tracking, a část 5 tam má tabulku trackovacích domén (její 5.4). Audit log tenhle dokument předpokládá, když v 7.2b píše, že ho editor nevidí. Obsah těch obrazovek vlastní části 3, 5 a 1, tahle část dodává jen jejich místo v mapě.*
 
 **Co tady vědomě není.** Žádná položka "Nástroje", "Ostatní" ani "Pokročilé". Když se něco nedá zařadit, znamená to, že je špatně pojmenované nebo že tam nepatří.
 
@@ -391,7 +405,7 @@ Nastavení
 │  Statistiky  │  │ ☐ │ jana@firma.cz   │ Jana N.  │ Aktivní│     │  │
 │  Nastavení   │  │ ☐ │ petr@firma.cz   │ Petr S.  │ Aktivní│     │  │
 │              │  └───────────────────────────────────────────────┘  │
-│              │  Zobrazeno 50 z 1 000+       ‹ Předchozí   Další › │
+│              │  Zobrazeno 50 z ~12 000      ‹ Předchozí   Další › │
 ├──────────────┴─────────────────────────────────────────────────────┤
 │  Zkušební režim: e-maily se odešlou jen na ověřené adresy. Nastavit │
 └────────────────────────────────────────────────────────────────────┘
@@ -404,6 +418,7 @@ Nastavení
 | Ikona úloh (⚙ 3) | Počet běžících úloh na pozadí. Kliknutím se otevře Centrum úloh, viz 5.7. Když neběží nic, ikona je bez odznaku, ale zůstává, aby se dala najít historie. |
 | Systémový pruh dole | Celoaplikační stavy: zkušební režim, ztráta spojení, běžící rozesílka, blížící se konec zálohy. Nejvýš jeden najednou, priorita v 7.4. |
 | Boční menu | Sbalitelné na ikony. Stav sbalení se pamatuje na uživatele, ne na prohlížeč. |
+| Počet v patičce tabulky | **Notace s vlnovkou: "Zobrazeno 50 z ~12 000".** Část 1 celkový počet v seznamech nevrací, ukazuje se odhad. Závazný tvar je v 14.2. *Dřívější zápis „Zobrazeno 50 z 1 000+" tomu odporoval a je opravený, aby model a kapitola o výkonu říkaly totéž.* |
 
 **Mobilní rozložení.** Nástroj se na mobilu primárně **čte**, nepracuje se v něm. Plná podpora je pro: Přehled, report kampaně, detail kontaktu, časová osa, centrum úloh, pozastavení a zrušení rozesílky. Editor šablony, segment builder a import mobil nepodporují a řeknou to větou "Tuhle obrazovku otevřete na počítači, potřebuje víc místa" místo toho, aby se rozsypaly. Pozastavení rozesílky na mobilu je **povinné**, protože přesně to člověk potřebuje udělat, když zjistí problém a není u počítače.
 
@@ -469,6 +484,21 @@ Poslední řádek je důležitý a je to vědomé rozhodnutí proti zvyku. Varov
 | `Shift + klik` | Označit rozsah řádků |
 
 Zkratky s jedním písmenem se ignorují, když je fokus v textovém poli. Přehled zkratek je dostupný přes `?` i z nabídky uživatele, protože zkratka na zobrazení zkratek je vtip, ne funkce.
+
+**Zkratky jsou jazykově nezávislé.** Vazba klávesy na akci je **jedna pro všechny jazyky** a nikdy se nepřekládá. `g` `k` je Kontakty i v anglickém rozhraní, kde se sekce jmenuje Contacts. Lokalizuje se jen **popis** v nápovědě `?` a v nabídkách, ne samotná klávesa.
+
+Důvod: mnemotechnika `g k` (kontakty), `g c` (kampaně) a `g s` (šablony) dává smysl jen česky, ale angličtina je v produktu od prvního dne. Kdyby se zkratky překládaly, vznikly by dvě mapy kláves, dvě sady kolizí a uživatel přepínající jazyk by přišel o svalovou paměť. Cena je, že v angličtině je vazba `g k` → Contacts nemnemotechnická. To je přijatelné: zkratky se učí opakováním, ne odvozováním, a nápověda je vždy po ruce.
+
+Praktická pravidla, která z toho plynou:
+
+| Pravidlo | Konkrétně |
+|---|---|
+| Klávesa je konstanta v kódu | Mapa `shortcut → action` je jeden soubor bez závislosti na locale. Překladový katalog do ní nesahá. |
+| Nápověda popisuje lokalizovaně | `?` ukazuje `g` `k` s popisem „Přejít na Kontakty" nebo „Go to Contacts". Popis je překladový klíč, klávesa je literál. |
+| Zápis kláves se nepřekládá | Názvy kláves (`Ctrl`, `Cmd`, `Shift`, `Esc`, `Enter`) zůstávají anglicky v obou jazycích. Patří do seznamu nepřekládaných výrazů v 12.6. |
+| Nová zkratka se neváže na slovo | Při návrhu další zkratky se nehledá počáteční písmeno českého ani anglického názvu. Rozhoduje volné místo v mapě a blízkost prstů, mnemotechnika je bonus, ne kritérium. |
+
+*Zdůvodnění: bez tohohle pravidla by první anglický uživatel nebo první další jazyk vynutil rozhodnutí za běhu, a to rozhodnutí by se pravděpodobně udělalo špatně (překlad zkratek), protože vypadá vstřícněji.*
 
 ---
 ## 5. Zpětná vazba na akce
@@ -736,7 +766,7 @@ Riziko akce se určí ze tří os. Součet rozhoduje o úrovni ochrany.
 | Smazání štítku | 0 | 1 | 0 | 1 | N1 |
 | Archivace šablony | 0 | 0 | 0 | 0 | N1 |
 | Smazání jednoho kontaktu | 0 | 2 | 0 | 2 | N2 |
-| Smazání segmentu | 0 | 1 | 1 | 2 | N2 |
+| Smazání segmentu | 0 | 0 | 1 | 1 | **N1**, viz poznámka pod tabulkou |
 | Odebrání člena týmu | 0 | 0 | 1 | 1 | N1 |
 | Hromadné smazání 500 kontaktů | 2 | 2 | 0 | 4 | N3 |
 | Hromadné smazání 50 000 kontaktů | 2 | 2 | 0 | 4 | N3 |
@@ -750,6 +780,14 @@ Riziko akce se určí ze tří os. Součet rozhoduje o úrovni ochrany.
 | Odstranění adresy z blokovaných | 0 | 1 | 2 | 3 | N2 |
 | Hromadné odhlášení segmentu (čištění databáze) | 2 | 2 | 2 | 6 | N4 |
 | Obnova ze zálohy | 2 | 2 | 2 | 6 | N4 |
+
+**Smazání segmentu je N1, ne N2, a nemá potvrzovací dialog.** *Dřív si dokument protiřečil na třech místech: tahle tabulka mu dávala N2 s potvrzovacím dialogem, tabulka obnovitelnosti v 6.6 mu dávala „vrátit zpět ano, 10 s, koš 30 dní", a zákaz v 6.7 potvrzovací dialog u vratné akce výslovně zakazuje.* Rozhodnutí je ve prospěch vratnosti, protože ji máme technicky hotovou a vlastní pravidlo v 6.2 zní, že vratnost je vždycky lepší než potvrzování. Smazání segmentu tedy:
+
+- proběhne rovnou, bez dialogu,
+- ukáže toast „Segment Neaktivní smazán" s tlačítkem **Vrátit zpět** po dobu 10 s,
+- definici drží 30 dní v koši, odkud jde obnovit i po vypršení okna.
+
+Osa **Obnovitelnost** je proto 0 („plně vratné"), ne 1. Smazání segmentu **nemaže kontakty**, jen definici výpočtu, takže se nemá co ztratit. Osa Vnějšího dopadu zůstává 1, protože segment může používat kolega v naplánované kampani. Na to se ale odpovídá jinak než dialogem: **když je segment použitý v naplánované nebo běžící kampani, smazat nejde vůbec** a rozhraní místo dialogu ukáže seznam kampaní, které ho drží.
 
 **Odeslání kampaně nemá N4 s opisováním názvu, ačkoliv na to podle bodů vychází.** Je to nejčastější důležitá akce v produktu, dělá se každý týden a opisování názvu by se po třetí kampani stalo automatickým pohybem, který nic nechrání. Místo toho má vlastní, silnější a méně otravný režim.
 
@@ -855,7 +893,7 @@ Nabídka "Radši pozastavit" přímo v dialogu je tam, protože **většina lid�
 ┌────────────────────────────────────────────────────────────────────┐
 │  Letní výprodej                                    ⏸ POZASTAVENO   │
 │                                                                      │
-│  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░  428 z 1 153        (37 %)  │
+│  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░  428 z 1 129        (37 %)  │
 │                                                                      │
 │  Pozastavili jste rozesílku ve 14:41. Zbývá 725 příjemců.           │
 │  Zprávy čekají a odešlou se, jakmile budete chtít.                   │
@@ -887,7 +925,7 @@ se seznamem.
 │                                                                      │
 │  Je 14:38, tedy o 6 hodin a 38 minut později.                       │
 │                                                                      │
-│  [ Odeslat teď 1 153 lidem ]  [ Naplánovat jinak ]  [ Nechat být ]  │
+│  [ Odeslat teď 1 129 lidem ]  [ Naplánovat jinak ]  [ Nechat být ]  │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -946,7 +984,7 @@ Hromadná akce nad "vše odpovídající filtru" navíc v dialogu zopakuje **pou
 | Odebrání kontaktu ze seznamu | ano | 10 s | Skutečné vrácení, členství se obnoví včetně data přihlášení |
 | Odebrání štítku | ano | 10 s | totéž |
 | Archivace šablony nebo kampaně | ano | 10 s | Archivace je logická, vrácení je změna příznaku |
-| Smazání segmentu | ano | 10 s | Definice se drží 30 dní v koši |
+| Smazání segmentu | ano | 10 s | Definice se drží 30 dní v koši. **Bez potvrzovacího dialogu**, úroveň N1, viz 6.2. Zablokované, když segment drží naplánovaná nebo běžící kampaň |
 | Smazání kontaktu | **ne** | | Nabízí se export před smazáním |
 | Odeslání kampaně | zvláštní, viz 6.3 | 60 s | Kampaň čeká ve stavu `scheduled` |
 | Odhlášení kontaktu ručně | ano | 10 s | |
@@ -1005,7 +1043,9 @@ Obrazovka není jen "obsah". Je to patnáct stavů a když se na některý zapom
 
 ● povinné ○ neaplikuje se
 
-**S8 (částečná data) je na dashboardu a v reportu povinné a je to důležité.** Dashboard skládá data z pěti zdrojů. Když jeden selže (třeba dotaz na kvótu SES, protože AWS nedopovědělo), nesmí to zabít celou obrazovku. Dlaždice s kvótou ukáže vlastní chybu, zbytek funguje.
+**S8 (částečná data) je na dashboardu a v reportu povinné a je to důležité.** Dashboard skládá data z pěti zdrojů, které jsou vyjmenované v 8.11.1. Když jeden selže (třeba dotaz na kvótu SES, protože AWS nedopovědělo), nesmí to zabít celou obrazovku. Dlaždice s kvótou ukáže vlastní chybu, zbytek funguje.
+
+*Zdůvodnění doplnění odkazu: dokument tvrdil „pět zdrojů", ale nikde je nevyjmenoval, takže z toho nešlo udělat ani implementaci, ani test. Výčet je teď v 8.11.1.*
 
 ### 7.2b Oprávnění: co která role neuvidí
 
@@ -1027,7 +1067,17 @@ Rozdíl mezi jedničkou a dvojkou je v tom, jestli uživatel o existenci té mo�
 
 ### 7.3 Prázdné stavy: konkrétní texty
 
-Prázdný stav je nejnavštěvovanější obrazovka nového uživatele. Tady jsou závazné texty pro nejdůležitější případy. Anglické varianty jsou v katalogu 9.2 a 10.2.
+Prázdný stav je nejnavštěvovanější obrazovka nového uživatele. Anglické varianty jsou v katalogu 9.2 a 10.2.
+
+**Co je tady závazné a co ne.** *Zdůvodnění: texty níž byly dřív označené jako závazné doslova. To je neudržitelné. Text v rozhraní se ladí podle toho, jak se uživatelé chovají, a mění se každým přeformulováním v překladovém katalogu. Kdyby byl závazný slovo od slova, každá úprava slovosledu by byla porušením specifikace, nebo, což je horší a pravděpodobnější, by se specifikace přestala číst.*
+
+| Vrstva | Závaznost | Kde je zdroj pravdy |
+|---|---|---|
+| **Struktura prázdného stavu** (vysvětlení konceptu, primární akce, sekundární cesta, odkaz na vysvětlení) | **normativní** | katalog stavů 7.1, řádek S1 |
+| **Pravidla psaní** (deset pravidel z 9.1, anatomie hlášky z 10.1, slovníček 9.2) | **normativní** | kapitoly 9 a 10 |
+| **Konkrétní znění vět** | **referenční první verze** | překladové katalogy `cs.json` a `en.json` |
+
+Texty níž jsou tedy **referenční první verze**: mají se použít jako výchozí obsah katalogů a jsou napsané tak, aby prošly pravidly z kapitol 9 a 10. Jakmile se dostanou do `cs.json` a `en.json`, **zdrojem pravdy jsou katalogy**, ne tenhle dokument. Změna textu v katalogu není rozpor se specifikací, dokud neporuší strukturu nebo některé pravidlo. Změna struktury (například zmizení primární akce z prázdného stavu) rozpor je a hlídá ji test z 15.3.
 
 **Kontakty, S1**
 
@@ -1063,13 +1113,15 @@ Prázdný stav je nejnavštěvovanější obrazovka nového uživatele. Tady jso
 
 > ### Zatím jste neposlali žádnou kampaň
 >
-> Kampaň je jeden e-mail poslaný najednou skupině lidí. Vyberete, komu, napíšete co, a nástroj to rozešle a spočítá, jak to dopadlo.
+> Kampaň je e-mail, který pošlete najednou skupině lidí. Vyberete, komu, napíšete co, a nástroj to rozešle a spočítá, jak to dopadlo.
 >
 > **[Vytvořit kampaň]**
 >
 > Než začnete, budete potřebovat kontakty a nastavené odesílání.
 > ✓ Kontakty máte (12 480)
 > ⚠ Odesílání zatím nastavené není. [Nastavit]
+
+*Definice je zjemněná z původního „Kampaň je **jeden** e-mail poslaný najednou". Od MVP 1 může mít kampaň víc variant obsahu (A/B test) a definice, která slibuje jeden e-mail, by pak byla nepravdivá a musela by se přepisovat. „E-mail, který pošlete najednou skupině lidí" platí v obou případech a pro netechnického čtenáře znamená totéž. A/B varianty rozšíří záložky Obsah a Report obrazovky kampaně, nevzniká pro ně nový průvodce ani nový typ entity, viz 8.6.1.*
 
 **Tabulka po filtrování, S2**
 
@@ -1099,8 +1151,11 @@ Prázdný stav je nejnavštěvovanější obrazovka nového uživatele. Tady jso
 | 2 | Offline | "Ztratili jsme spojení. Zkoušíme se připojit… Vaše změny se uloží, jakmile se to podaří." | varování |
 | 3 | Běžící rozesílka | "Rozesílka Letní výprodej: 3 214 z 12 480. [Zobrazit]" | neutrální |
 | 4 | Běžící import nebo jiná úloha | "Import kontakty.csv: 8 400 z 12 000. [Zobrazit]" | neutrální |
-| 5 | Zkušební režim | "Zkušební režim: e-maily se odešlou jen na ověřené adresy. [Nastavit doménu]" | informace |
-| 6 | Dostupná aktualizace aplikace | "Je k dispozici nová verze nástroje. [Co je nového]" | informace |
+| 5 | Blížící se konec zálohy | "Poslední záloha je stará 9 dní a za 5 dní vyprší. [Zálohovat teď]" | varování |
+| 6 | Zkušební režim | "Zkušební režim: e-maily se odešlou jen na ověřené adresy. [Nastavit doménu]" | informace |
+| 7 | Dostupná aktualizace aplikace | "Je k dispozici nová verze nástroje. [Co je nového]" | informace |
+
+*Zdůvodnění zařazení: pruh „blížící se konec zálohy" byl ve výčtu pruhů ve 4.2, ale v téhle tabulce chyběl, takže při pravidle „nejvýš jeden pruh, vyhrává nižší číslo" neměl definované pořadí a v praxi by se nezobrazil nikdy.* Je zařazený **nad zkušební režim** záměrně: zkušební režim je trvalý stav, který by jinak vyhrával pořád, kdežto varování o záloze je časově omezené a po vyřešení zmizí. Kdyby bylo pod ním, uživatel ve zkušebním režimu by ho neuviděl. Pruh se týká jen role owner (`backups:read`), ostatním rolím se nezobrazuje a soutěže o místo se neúčastní.
 
 **Anatomie chybového bloku (S9).**
 
@@ -1138,7 +1193,7 @@ Poslední řádek je vědomé rozhodnutí. Odeslání kampaně nikdy nepatří d
 ---
 ## 8. Klíčové obrazovky
 
-Osm obrazovek, které rozhodují o tom, jestli produkt obstojí. U každé: co uživatel vidí, co může udělat, co se stane potom, jaké jsou stavy a chyby.
+Osm obrazovek, které rozhodují o tom, jestli produkt obstojí, plus čtyři doplněné po revizi části 2 (8.10) a Přehled se Statistikami (8.11). U každé: co uživatel vidí, co může udělat, co se stane potom, jaké jsou stavy a chyby.
 
 ### 8.1 První spuštění a onboarding
 
@@ -1171,7 +1226,7 @@ A pro dvě nejčastější selhání konkrétní, jednající hlášky:
 
 #### 8.1.2 Krok 1 a 2: účet a projekt
 
-Dvě obrazovky, dohromady sedm polí. Nic víc.
+Dvě obrazovky, dohromady osm polí. Nic víc. *(Opraveno ze „sedmi": model má čtyři pole u účtu, tedy jméno, e-mail, heslo a jazyk rozhraní, a čtyři u projektu, tedy název, jazyk e-mailů, časovou zónu a tón oslovení.)*
 
 ```
 Účet správce                             Váš první projekt
@@ -1309,10 +1364,11 @@ Poslední věta je klíčová: odstraňuje strach z nevratného rozhodnutí na z
 
 #### 8.2.2 Krok 2: přístupové údaje
 
-**SMTP.** Pět polí a jeden test. Nad formulářem je nabídka známých českých poskytovatelů (Wedos, Forpsi, Active24, Webglobe, Seznam, Google Workspace, Microsoft 365), po výběru se předvyplní server, port a šifrování a zůstane jen jméno a heslo.
+**SMTP.** Pět polí a jeden test. Nad formulářem je nabídka známých českých poskytovatelů (Wedos, Forpsi, Active24, Webglobe, Seznam, Google Workspace, Microsoft 365), po výběru se předvyplní server, port a šifrování a zůstane jen jméno a heslo. **Konkrétní seznam poskytovatelů i předvyplněné hodnoty jsou ilustrativní počáteční sada k datu 2026-07-31, ne normativní obsah téhle specifikace.** Zdroj pravdy a proces údržby jsou v 8.2.10.
 
 ```
 Poskytovatel   [Wedos                    ▾]   nebo [Vyplnit ručně]
+               (seznam je ilustrativní počáteční sada, viz 8.2.10)
 
 Server         [smtp.wedos.net             ]  předvyplněno
 Port           [587                        ]  předvyplněno
@@ -1400,8 +1456,8 @@ Toto je varování, ne blokace. Když uživatel trvá na svém, může pokračov
 │                                                                  │
 │  Poštovní servery jako Gmail nebo Seznam musí poznat, že        │
 │  e-maily posíláte opravdu vy, a ne někdo, kdo se za vás vydává. │
-│  Potvrdíte jim to tím, že do nastavení své domény přidáte tři   │
-│  krátké záznamy.                                                 │
+│  Potvrdíte jim to tím, že do nastavení své domény přidáte pět   │
+│  krátkých záznamů.                                               │
 │                                                                  │
 │  Bez toho velká část e-mailů skončí ve spamu.                   │
 │                                                                  │
@@ -1414,7 +1470,7 @@ Toto je varování, ne blokace. Když uživatel trvá na svém, může pokračov
 │  ├──────────────────────────────────────────────────────────┤   │
 │  │ ● Pošlu to člověku, který spravuje náš web    DOPORUČENO │   │
 │  │   Připravíme odkaz a e-mail. Ten člověk se nemusí        │   │
-│  │   do nástroje přihlašovat a uvidí jen ty tři záznamy.    │   │
+│  │   do nástroje přihlašovat a uvidí jen těch pět záznamů.  │   │
 │  ├──────────────────────────────────────────────────────────┤   │
 │  │ ○ Zatím ne, chci si nástroj vyzkoušet                    │   │
 │  │   Zapneme zkušební režim. Můžete si posílat e-maily      │   │
@@ -1425,6 +1481,18 @@ Toto je varování, ne blokace. Když uživatel trvá na svém, může pokračov
 
 **Tohle je moje hlavní odpověď na "zvládne to babička".** Nezvládne. Ale zvládne vybrat prostřední možnost a přeposlat e-mail.
 
+**Kolik záznamů to vlastně je.** *Dřív dokument na několika místech sliboval „tři záznamy", zatímco model ukazoval karty číslované 1, 4 a 3. Obojí bylo špatně.* Ověřeno v části 4a (její 3.12.1 a 3.13): základní sada je **pět záznamů** a číslují se průběžně:
+
+| Karta | Typ | Název | Co to je | Zdroj |
+|---|---|---|---|---|
+| 1 až 3 | CNAME | `<token>._domainkey` | **Tři** DKIM podpisové záznamy. SES vrací tři tokeny, ne jeden. Hodnota se vždy bere z odpovědi API, nikdy se neskládá natvrdo | 04a 3.12.1 krok 4 |
+| 4 | TXT | `@` (kořen domény) | SPF, musí obsahovat `include:amazonses.com` a doména smí mít jen jeden SPF záznam | 04a 3.13.1 |
+| 5 | TXT | `_dmarc` | DMARC, doporučeně `p=none` na začátek | 04a 3.12.1 krok 6 a 3.13.3 |
+
+**Šestý a sedmý záznam jsou volitelné** a přibývají jen při zapnutí vlastní MAIL FROM domény (04a 3.12.1 krok 5): `MX` na `mail.<doména>` a SPF `TXT` na `mail.<doména>`. V tom případě se SPF přesouvá z kořene na `mail.<doména>`, takže celkový počet je šest, ne sedm. Rozhraní počet nikdy nepíše natvrdo do textu, **bere ho z počtu skutečně vygenerovaných karet.** Text zní „přidáte {count, plural, ...} záznam/záznamy/záznamů" a je to jeden překladový klíč s ICU pluralem, viz 12.3.
+
+Vlastní MAIL FROM se v MVP 0 uživateli nenabízí jako volba v průvodci. Zapíná se v nastavení domény pro toho, komu DMARC hlásí problém se zarovnáním SPF (04a 3.13.3 to pojmenovává jako „Kvůli přísnému SPF zarovnání musíte nastavit vlastní MAIL FROM doménu"). Pro průvodce platí pět.
+
 #### 8.2.5 Delegační odkaz
 
 Volba "Pošlu to člověku, který spravuje náš web" vygeneruje:
@@ -1432,19 +1500,19 @@ Volba "Pošlu to člověku, který spravuje náš web" vygeneruje:
 | Prvek | Vlastnost |
 |---|---|
 | Odkaz | `/d/{token}`, platný 14 dní, jednoúčelový, bez přihlášení, jen ke čtení plus tlačítko "Zkontrolovat" |
-| Co odkaz ukazuje | Jen tři záznamy pro tuhle jednu doménu, návod podle poskytovatele, stav ověření. **Nic z nástroje.** Žádné kontakty, žádné kampaně, žádný název projektu kromě jména firmy. |
+| Co odkaz ukazuje | Jen záznamy pro tuhle jednu doménu (v základní sadě pět, viz 8.2.4), návod podle poskytovatele, stav ověření. **Nic z nástroje.** Žádné kontakty, žádné kampaně, žádný název projektu kromě jména firmy. |
 | Předepsaný e-mail | Vygenerovaný text cs a en, uživatel ho může odeslat přímo z nástroje, nebo zkopírovat |
 | Zpětná vazba | Když se záznamy objeví, iniciátorovi přijde e-mail "Doména kolo-shop.cz je ověřená, můžete odesílat" a na Přehledu se rozsvítí krok |
 | Zrušení | Odkaz jde kdykoliv zneplatnit v nastavení domény |
 | Zabezpečení | Token je náhodný, 32 bajtů, uložený jako hash. Stránka má `noindex`. Nedá se z ní nic změnit kromě spuštění kontroly. |
 
-Předepsaný e-mail, česky:
+Předepsaný e-mail, česky. Počet záznamů je v šabloně proměnná s ICU pluralem, ne pevné slovo, protože při vlastní MAIL FROM doméně jich je šest:
 
-> **Předmět:** Prosba o přidání tří DNS záznamů pro doménu kolo-shop.cz
+> **Předmět:** Prosba o přidání DNS záznamů pro doménu kolo-shop.cz
 >
 > Dobrý den,
 >
-> začínáme používat nástroj na rozesílání newsletterů a potřebujeme k tomu do DNS domény kolo-shop.cz přidat tři záznamy. Bez nich by naše e-maily končily ve spamu.
+> začínáme používat nástroj na rozesílání newsletterů a potřebujeme k tomu do DNS domény kolo-shop.cz přidat pět záznamů: tři podpisové CNAME pro DKIM, jeden TXT se SPF a jeden TXT s DMARC. Bez nich by naše e-maily končily ve spamu.
 >
 > Všechno potřebné je na téhle stránce, včetně hodnot ke zkopírování a návodu:
 >
@@ -1457,11 +1525,11 @@ Předepsaný e-mail, česky:
 
 English version:
 
-> **Subject:** Request to add three DNS records for kolo-shop.cz
+> **Subject:** Request to add DNS records for kolo-shop.cz
 >
 > Hello,
 >
-> we are setting up a newsletter tool and need three DNS records added to the kolo-shop.cz zone. Without them our emails would land in spam.
+> we are setting up a newsletter tool and need five DNS records added to the kolo-shop.cz zone: three CNAME records for DKIM signing, one TXT record for SPF and one TXT record for DMARC. Without them our emails would land in spam.
 >
 > Everything you need, including the values to copy and step-by-step instructions, is on this page:
 >
@@ -1522,7 +1590,7 @@ Jádro celé kapitoly. Vidí ji buď uživatel, nebo správce přes delegační 
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-**Detekce poskytovatele.** Nástroj se zeptá na `NS` záznamy domény a podle nich určí poskytovatele. Tabulka pokrývá české i světové:
+**Detekce poskytovatele.** Nástroj se zeptá na `NS` záznamy domény a podle nich určí poskytovatele. Tabulka níž je **ilustrativní počáteční sada k datu 2026-07-31**, ne normativní obsah. Závazné je jen chování: mechanismus detekce podle `NS`, existence obecného návodu pro neznámého poskytovatele a pravidlo, že návod je posloupnost kliknutí pojmenovaná slovy toho poskytovatele. Zdroj pravdy a proces údržby jsou v 8.2.10.
 
 | NS obsahuje | Poskytovatel | Návod |
 |---|---|---|
@@ -1572,11 +1640,11 @@ Návod pro známého poskytovatele je konkrétní posloupnost kliknutí pojmenov
 
 #### 8.2.7 DMARC: co doporučit začátečníkovi
 
-DMARC je jediný ze tří záznamů, který může uškodit, když se nastaví špatně. Přísná politika může zablokovat firemní e-maily z jiných systémů (fakturační, CRM, formuláře na webu).
+DMARC je pátá a poslední karta a **jediný ze záznamů, který může uškodit**, když se nastaví špatně. Přísná politika může zablokovat firemní e-maily z jiných systémů (fakturační, CRM, formuláře na webu). *Číslo karty bylo dřív 3, což si protiřečilo s kartou SPF číslo 4 a s tím, že samotný DKIM zabírá karty 1 až 3.*
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  3. DMARC                                        ⏳ Čekáme     │
+│  5. DMARC                                        ⏳ Čekáme     │
 │                                                                 │
 │  Typ     TXT                                                    │
 │  Název   _dmarc                                    [Kopírovat] │
@@ -1611,7 +1679,31 @@ Nikdy nedoporučujeme `p=reject` nováčkovi. Je to technicky lepší, ale je to
 | Kampaň v zkušebním režimu | Statistiky se počítají normálně, ale report má trvalý pruh "Kampaň proběhla ve zkušebním režimu, odešla jen na ověřené adresy" |
 | Přechod ven | Jakmile se doména ověří, pruh se změní na "Doména je ověřená. [Vypnout zkušební režim]" a je to jedno kliknutí |
 
+#### 8.2.9 Riziko zkušebního režimu
+
 **Riziko, které jsem nevyřešil:** uživatel si postaví kampaň na 20 000 lidí a teprve při odeslání zjistí, že je ve zkušebním režimu. Zmírňuju to tím, že na obrazovce publika je pruh: "Zkušební režim: z vybraných 12 480 příjemců se e-mail odešle jen 2 ověřeným adresám." Číslo v pruhu je ta nejsrozumitelnější forma varování, jakou umím vymyslet.
+
+#### 8.2.10 Živá data o poskytovatelích: klikací návody a SMTP předvolby
+
+*Zdůvodnění: tabulka třinácti DNS poskytovatelů (8.2.6) a seznam SMTP předvoleb (8.2.2) popisují cizí produkty, které se mění bez ohlášení. Zapsané ve specifikaci zastarají tiše a produkt bude s jistotou radit špatnou cestu, protože „Klientské centrum → Domény → DNS" se u kteréhokoliv z nich může přejmenovat kdykoliv. Cena špatného návodu je vysoká: uživatel usoudí, že chyba je v něm, a vzdá to.*
+
+**Rozhodnutí: obsah se z této specifikace stěhuje do datového souboru v repozitáři.** Specifikace vlastní mechanismus, datový soubor vlastní obsah.
+
+| | Specifikace (normativní) | Datový soubor (živý obsah) |
+|---|---|---|
+| Co obsahuje | Že detekce podle `NS` existuje, tvar karty návodu, povinný obecný fallback, pravidlo o pojmenování kroků slovy poskytovatele, chování při neznámém poskytovateli | Konkrétní poskytovatelé, vzory `NS`, texty kroků, SMTP hostname, porty, typ šifrování, zvláštní upozornění (Cloudflare proxy) |
+| Kde žije | tenhle dokument | `packages/core/data/dns-providers.json` a `packages/core/data/smtp-presets.json` |
+| Jak se mění | revizí specifikace | pull requestem, bez dotyku specifikace |
+
+Požadavky na ten datový soubor, které jsou naopak normativní:
+
+1. **Každá položka nese `verifiedAt`** (datum posledního ověření člověkem) a rozhraní ho zobrazuje v návodu malým písmem: „Návod ověřen 31. 7. 2026". Uživatel tak pozná, jak starou radu čte.
+2. **Položka starší než 12 měsíců se označí jako neověřená** a nad návod se vloží věta „Tenhle návod jsme dlouho neověřovali, panel poskytovatele mohl vypadat jinak. Držte se hodnot záznamu, ne názvů tlačítek." Návod se nesmaže, jen se z něj přestane dělat jistota.
+3. **U každého návodu je odkaz „Návod nesedí"**, který otevře předvyplněné hlášení do repozitáře. Je to jediný realistický způsob, jak se o změně dozvíme, protože sami panely třinácti poskytovatelů sledovat nebudeme.
+4. **Neznámý poskytovatel není chyba.** Obecný návod je plnohodnotná cesta, ne nouzový stav, a nesmí být podaný jako selhání nástroje.
+5. **Hodnoty záznamů nikdy nepocházejí z tohoto souboru.** Ty vždy vyrábí část 4a z odpovědi SES API (04a 3.12.1). Datový soubor obsahuje jen návod, kam je vložit. Kdyby se do něj někdy dostala hodnota, byl by to bug.
+
+Totéž platí pro SMTP předvolby: hostname a port poskytovatele jsou fakt o cizí službě s vlastní životností. Předvolba je **jen předvyplnění pole**, uživatel ho může přepsat a tlačítko „Otestovat připojení" je konečný rozhodčí. Špatná předvolba tak vede k neúspěšnému testu s konkrétní hláškou, ne k tiše rozbité kampani.
 
 ---
 ### 8.3 Import kontaktů
@@ -1657,7 +1749,7 @@ Nejdůležitější krok, o kterém většina nástrojů mlčí. Tady se chytí 
 │  Rozpoznali jsme:                                          │
 │  Kódování   Windows-1250 (čeština z Excelu)   [Změnit ▾]  │
 │  Oddělovač  středník ;                        [Změnit ▾]  │
-│  Řádků      12 480, z toho 1 hlavička                     │
+│  Řádků      12 480, z toho 1 hlavička → 12 479 kontaktů   │
 │                                                            │
 │  ┌──────────────────────────────────────────────────────┐ │
 │  │ Email            │ Jmeno a prijmeni │ Mesto          │ │
@@ -1673,6 +1765,8 @@ Nejdůležitější krok, o kterém většina nástrojů mlčí. Tady se chytí 
 │         [ Ano, je to správně ]   [ Ne, je to rozsypané ]  │
 └──────────────────────────────────────────────────────────┘
 ```
+
+**Hlavička není kontakt.** *Dřív dokument v tomhle kroku uvedl „12 480, z toho 1 hlavička" a všechna navazující čísla pak počítal z 12 480, takže hlavičku importoval jako kontakt.* Závazné pravidlo: **všechna čísla dál v průvodci se počítají z datových řádků**, tedy z 12 479, a rozhraní tuhle mezisumu ukazuje už tady, aby uživatel viděl, odkud další čísla vznikla. Řetěz čísel v celém 8.3 je proto: 12 480 řádků → 12 479 datových → minus 6 bez e-mailu → minus 12 duplicit → **12 461 k importu**.
 
 **Otázka místo nastavení.** Netechnický člověk neví, co je Windows-1250, ale okamžitě pozná, jestli je jeho město napsané správně. Tlačítko "Ne, je to rozsypané" nabídne tři nejpravděpodobnější alternativy kódování s okamžitým náhledem a nechá vybrat podle toho, které vypadá dobře.
 
@@ -1737,7 +1831,7 @@ Tady se prodává jedna z hlavních funkcí produktu. Náhled ukazuje **výslede
 │  │ n.kim@…     │        │ Nguyen    │  ?   │ Kim      │ Dobrý den  │ │
 │  └─────────────┴────────┴───────────┴──────┴──────────┴────────────┘ │
 │                                                                        │
-│  Prvních 20 z 12 480 řádků.        [ Zobrazit dalších 20 ]           │
+│  Prvních 20 z 12 479 řádků.        [ Zobrazit dalších 20 ]           │
 │                                                                        │
 │  ℹ U 143 kontaktů si nejsme jistí oslovením. Po importu vám je       │
 │    ukážeme a necháme rozhodnout. Do té doby je oslovíme neutrálně    │
@@ -1788,7 +1882,7 @@ Tady se prodává jedna z hlavních funkcí produktu. Náhled ukazuje **výslede
 │    sdělení, nebo že k tomu mám jiný právní důvod.               │
 │    [Co to znamená]                                              │
 │                                                                  │
-│                       [ Zpět ]  [ Naimportovat 12 462 kontaktů ]│
+│                       [ Zpět ]  [ Naimportovat 12 461 kontaktů ]│
 └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1797,7 +1891,7 @@ Tady se prodává jedna z hlavních funkcí produktu. Náhled ukazuje **výslede
 | **Volby kolize popsané větou, ne názvem** | "Doplnit" a pod tím vysvětlení. "Update" nebo "Merge" nikomu nic neřekne. |
 | **Výchozí je Doplnit** | Nejméně destruktivní volba, která zároveň dělá to, co uživatel obvykle chce. |
 | **Souhlas jako checkbox, ne skryté ujednání** | Není to temný vzorec, je to jediné místo, kde se dá netechnickému člověku vysvětlit, že nakoupená databáze je nelegální. Odkaz "Co to znamená" otevře tři odstavce česky, bez právnických frází. |
-| **Číslo na tlačítku** | 12 462, ne 12 480. Šest řádků bez e-mailu a dvanáct duplicit je už odečtených. Uživatel vidí skutečný výsledek. |
+| **Číslo na tlačítku** | 12 461, ne 12 480 ani 12 479. Hlavička souboru, šest řádků bez e-mailu a dvanáct duplicit jsou už odečtené. Uživatel vidí skutečný výsledek. *(Opraveno z 12 462, kde se hlavička počítala jako kontakt.)* |
 
 #### 8.3.6 Krok 6: průběh a výsledek
 
@@ -1807,7 +1901,7 @@ Průběh je akce třídy A4:
 ┌──────────────────────────────────────────────────────────┐
 │  Importujeme kontakty                                     │
 │                                                            │
-│  ████████████████░░░░░░░░  8 400 z 12 462  (67 %)         │
+│  ████████████████░░░░░░░░  8 400 z 12 461  (67 %)         │
 │  Zbývá asi 40 sekund                                       │
 │                                                            │
 │  Import běží na serveru. Okno můžete zavřít, po návratu   │
@@ -1817,13 +1911,13 @@ Průběh je akce třídy A4:
 └──────────────────────────────────────────────────────────┘
 ```
 
-Zrušení importu je N2: "Zrušit import? Zpracovaných 8 400 kontaktů v databázi zůstane. Zbylých 4 062 se nenaimportuje. Půjde pokračovat od místa, kde jsme skončili."
+Zrušení importu je N2: "Zrušit import? Zpracovaných 8 400 kontaktů v databázi zůstane. Zbylých 4 061 se nenaimportuje. Půjde pokračovat od místa, kde jsme skončili."
 
 **Pokračování od místa zrušení.** Část 2 (4.6.10) má `resume_from_import_id` a `checkpoint_byte`, takže zrušený import jde dokončit bez toho, aby se prvních 8 400 řádků procházelo znovu. Uživatel to musí vidět, jinak zrušený import znamená "začínám od nuly" a nikdo ho nezruší, ani když ví, že je špatně:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Import jste zrušili na řádku 8 400 z 12 462              │
+│  Import jste zrušili na řádku 8 400 z 12 461              │
 │                                                            │
 │  Zpracované kontakty v databázi zůstaly.                  │
 │                                                            │
@@ -1835,8 +1929,8 @@ Zrušení importu je N2: "Zrušit import? Zpracovaných 8 400 kontaktů v datab�
 
 | Stav | Nadpis obrazovky | Co uživatel může dělat |
 |---|---|---|
-| `completed` | ✓ Naimportováno 12 462 kontaktů | zobrazit kontakty, vrátit import |
-| `completed_with_errors` | ⚠ Naimportováno 12 397 z 12 462 | totéž plus stáhnout chybné řádky |
+| `completed` | ✓ Naimportováno 12 461 kontaktů | zobrazit kontakty, vrátit import |
+| `completed_with_errors` | ⚠ Naimportováno 12 396 z 12 461 | totéž plus stáhnout chybné řádky |
 | `cancelled` | ⏸ Import jste zrušili na řádku 8 400 | pokračovat, nebo vrátit |
 | `failed` | ✕ Import se nepodařilo dokončit | **nic se nenaimportovalo**, plus důvod a co s tím |
 
@@ -1846,11 +1940,11 @@ Stav `failed` je nejdůležitější rozlišit, protože znamená, že se **neza
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  ⚠ Naimportováno 12 397 z 12 462 kontaktů                      │
+│  ⚠ Naimportováno 12 396 z 12 461 kontaktů                      │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │ Nových kontaktů                                    9 812 │  │
-│  │ Doplněných u existujících                          2 585 │  │
+│  │ Doplněných u existujících                          2 584 │  │
 │  │ Přeskočeno, protože jsou na blokovaných adresách       9 │  │
 │  │ Nepodařilo se                                         56 │  │
 │  └──────────────────────────────────────────────────────────┘  │
@@ -1906,7 +2000,7 @@ Stav `failed` je nejdůležitější rozlišit, protože znamená, že se **neza
 
 Varování se **shlukují po kódu**, nikdy se nevypisuje 84 řádků. U každého je odkaz na výpis dotčených řádků. Když je varování nula, řádek se nezobrazí vůbec, aby sekce nezplaněla.
 
-**Chyby na úrovni řádku** používají kódy části 2 (4.6.11) a rozhraní k nim dodává český text. Úplný převod pro šestnáct kódů:
+**Chyby na úrovni řádku** používají kódy části 2 (4.6.11) a rozhraní k nim dodává český text. Úplný převod pro **dvacet kódů**. *(Opraveno ze „šestnácti": část 2 definuje na úrovni řádku dvacet kódů a tabulka pod tímhle odstavcem jich má také dvacet. Druhý výskyt téhož tvrzení, v rozpadu katalogu v 10.2, už dvacet uvádí správně.)*
 
 | Kód | Text ve sloupci "Proč" |
 |---|---|
@@ -2199,11 +2293,52 @@ Kontakty, které [ splňují   ▾ ] [ všechny podmínky ▾ ]
 | Kontakty, které **nesplňují všechny** podmínky (tedy aspoň jednu porušují) | `and` | `true` |
 | Kontakty, které **nesplňují ani jednu** podmínku | `or` | `true` |
 
-Třetí řádek je jazykově zrádný, protože "nesplňují všechny" si část lidí přečte jako "nesplňují žádnou". Proto se pod větou s aktivní negací zobrazuje **vysvětlující řádek**:
+Třetí řádek je jazykově zrádný, protože "nesplňují všechny" si část lidí přečte jako "nesplňují žádnou". Proto se pod větou s aktivní negací zobrazuje **vysvětlující řádek, a to u obou negovaných kombinací**, ne jen u té třetí:
 
-> ℹ Do segmentu spadnou kontakty, u kterých **neplatí aspoň jedna** z podmínek níž.
+> ℹ *(`and` + `not`)* Do segmentu spadnou kontakty, u kterých **neplatí aspoň jedna** z podmínek níž.
+
+> ℹ *(`or` + `not`)* Do segmentu spadnou jen kontakty, u kterých **neplatí ani jedna** z podmínek níž.
 
 Negace na vnořené skupině se ovládá stejně, jen ve větě té skupiny.
+
+**Věta builderu je šablona per locale, ne česká věta s dírami.**
+
+*Zdůvodnění: celý tenhle mechanismus dosud stál na jedné české větě, do které jsou vsazené dva ovládací prvky, a čtyři kombinace negace stály na rozdílu mezi „nesplňují všechny" a „nesplňují ani jednu". To je jemnost, která v jiném jazyce nemusí existovat vůbec, a hlavně to porušovalo vlastní pravidlo lokalizace z 12.1: **řetězce se nikdy neskládají z fragmentů.** Věta poskládaná ze tří kusů („Kontakty, které" + hodnota prvního seznamu + hodnota druhého seznamu) je přesně to skládání z fragmentů, jen se to schovalo za ovládací prvky.*
+
+**Požadavek: věta je jedna ICU zpráva per locale, s pojmenovanými sloty, do kterých se vykreslují ovládací prvky.** Ne tři nezávislé řetězce, ne zřetězení, ne pořadí zadrátované v JSX.
+
+```
+segments.builder.groupSentence:
+  cs: "Kontakty, které {polarity} {quantifier}"
+  en: "Contacts that {polarity} {quantifier}"
+```
+
+Sloty `{polarity}` a `{quantifier}` **nejsou text, jsou to pozice ovládacích prvků.** Renderer zprávu rozloží na části a mezi ně vloží React komponenty rozbalovacích seznamů. Tím se získá to podstatné: **jazyk smí sloty přeuspořádat, obalit dalšími slovy nebo je sloučit do jednoho**, aniž by se sáhlo do kódu. Jazyk, ve kterém by věta musela znít „Ze všech podmínek musí platit: ..." s obráceným pořadím, se vyřeší v katalogu.
+
+Hodnoty obou seznamů jsou samostatné klíče, protože se objevují i mimo větu (v souhrnu segmentu, v rozpadu publika, v exportu definice):
+
+| Klíč | cs | en |
+|---|---|---|
+| `segments.builder.polarity.match` | splňují | match |
+| `segments.builder.polarity.notMatch` | nesplňují | do not match |
+| `segments.builder.quantifier.all` | všechny podmínky | all of these conditions |
+| `segments.builder.quantifier.any` | alespoň jednu podmínku | at least one of these conditions |
+
+**Anglické znění všech čtyř kombinací**, včetně vysvětlujících řádků, protože právě tam se ta jemnost láme:
+
+| `op` | `not` | Věta cs | Věta en | Vysvětlující řádek en |
+|---|---|---|---|---|
+| `and` | `false` | Kontakty, které **splňují všechny** podmínky | Contacts that **match all** of these conditions | – |
+| `or` | `false` | Kontakty, které **splňují alespoň jednu** podmínku | Contacts that **match at least one** of these conditions | – |
+| `and` | `true` | Kontakty, které **nesplňují všechny** podmínky | Contacts that **do not match all** of these conditions | Contacts get in when **at least one** condition below is false for them. |
+| `or` | `true` | Kontakty, které **nesplňují ani jednu** podmínku | Contacts that **match none** of these conditions | Contacts get in only when **every** condition below is false for them. |
+
+Dvě věci na anglické variantě stojí za pozornost a jsou v ní schválně:
+
+1. **„do not match all" není „match none".** Angličtina tu má stejnou past jako čeština, jen jinak položenou: rodilý mluvčí čte „don't match all" spolehlivěji než Čech „nesplňují všechny", ale pořád ne jistě. Proto **vysvětlující řádek je v obou jazycích povinný u obou negovaných kombinací**, ne jen u třetí. V češtině dosud byl jen u jedné.
+2. **`quantifier` obsahuje v angličtině slovo „conditions" i „condition"**, protože angličtina nemá českou vazbu, kde se počítanost skryje. Klíč proto nese celou frázi, ne jen kvantifikátor. Kdyby nesl jen „all", věta by se musela dolepovat a byli bychom zpátky u skládání fragmentů.
+
+**Akceptační kritérium:** přepnutí jazyka na anglický musí změnit větu builderu jedním klíčem a nesmí vyžadovat změnu v komponentě. Test to ověří tak, že do katalogu vloží testovací locale s obráceným pořadím slotů a zkontroluje, že se prvky vykreslí v novém pořadí.
 
 #### 8.4.2c Prázdné hodnoty a tříhodnotová logika
 
@@ -2474,11 +2609,31 @@ Bez tohohle rozpadu vzniká otázka „proč mi to poslalo jen 1 129, když v se
 |---|---|
 | **Stav uložení v hlavičce** | "Uloženo v 14:32" / "Ukládáme…" / "Nepodařilo se uložit, zkoušíme to znovu". Nikdy toast, protože ukládání je nepřetržité a toast by se objevoval každé dvě sekundy. |
 | **Ovládání bloku při najetí** | ⋮⋮ táhnout, ↑↓ posunout, 🗑 smazat, plus nabídka "…" s duplikováním a uložením jako znovupoužitelný blok |
-| **Klávesová obsluha** | Blok se dá vybrat `Tab`em, posunout `Alt + ↑/↓`, duplikovat `Ctrl+D`, smazat `Delete` s možností vrátit. Toto je **povinnost daná normou**, ne doplněk: WCAG 2.2, kritérium 2.5.7 Dragging Movements (úroveň AA) vyžaduje alternativu bez tažení u každé akce, která jde provést tažením. EmailBuilder.js ji podle všeho nemá, takže ji musí dodat adaptér části 3. Viz U→3.1 a 11.3. |
+| **Klávesová obsluha** | Blok se dá vybrat `Tab`em, posunout `Alt + ↑/↓`, duplikovat `Ctrl+D`, smazat `Delete` s možností vrátit. Toto je **povinnost daná normou**, ne doplněk: WCAG 2.2, kritérium 2.5.7 Dragging Movements (úroveň AA) vyžaduje alternativu bez tažení u každé akce, která jde provést tažením. **Editor je od rozhodnutí z 2026-07-31 vlastní, takže tuhle obsluhu nikdo nedodá a navrhuje se od nuly**, viz poznámku pod tabulkou. Viz U→3.1 a 11.3. |
 | **Panel vlastností vpravo** | Mění se podle vybraného bloku. Když není vybraný žádný, ukazuje vlastnosti celého e-mailu (šířka, barva pozadí, písmo). |
 | **Vkládání údajů o příjemci** | Tlačítko "Vložit údaj o příjemci" v panelu textu, ne psaní `{{ }}` ručně. Vložený údaj se v editoru zobrazí jako **žeton** `{Oslovení}`, ne jako Liquid kód. |
 
 **Žeton místo kódu** je zásadní rozhodnutí. `{{ contact.first_name_vocative }}` je pro netechnického člověka nečitelný řetězec, který navíc svádí k ručním úpravám a rozbití. Žeton se dá vybrat, smazat a přesunout jako jeden znak a při najetí ukáže "5. pád jména, například Jano. Když jméno neznáme, vynechá se."
+
+**Čím editor je a čím není (rozhodnutí zadavatele z 2026-07-31).**
+
+*Zdůvodnění přepsání: tenhle dokument na čtyřech místech tvrdil, že editor je `@usewaypoint/email-builder` za adaptérem části 3, „potvrzeno částí 3". Část 3 to 2026-07-31 zamítla po praktickém ověření balíčku: npm balíček editor vůbec neobsahuje (exportuje jen `Reader` a `renderToStaticMarkup`, samotný editor je aplikace v repozitáři postavená na Material UI), negeneruje hlavičku dokumentu a neumí textovou variantu. Ověřeno čtením `03-obsah.md`, kapitoly 3.3.1 a 3.3.3.*
+
+| Vrstva | Rozhodnutí |
+|---|---|
+| **Renderer** | `@react-email/components` a `@react-email/render` (obojí MIT). Dodává hlavičku dokumentu, tabulkový layout, MSO konstrukce pro Outlook, preheader i textovou variantu. Vlastní renderer je tím zrušený. |
+| **Editor** | **Vlastní a tenký**, nad blokovým JSON modelem části 3. Rozsah odhadnutý na **zhruba 3 000 řádků** při 6 až 8 typech bloků, z toho zhruba polovina je panel vlastností generovaný z descriptorů. |
+| **Náhradní cesta** | **GrapesJS** (BSD-3) zůstává dokumentovanou náhradní cestou pro editor, kdyby se vlastní ukázal jako slepá ulička. |
+| **Co se nepoužije** | `@usewaypoint/email-builder` ani jako editor, ani jako renderer. |
+
+**Důsledek pro tuhle část, který je potřeba pojmenovat nahlas: klávesová alternativa k tažení bloků se navrhuje od nuly.** Dřív to byl požadavek na adaptér nad cizí knihovnou, tedy „doplňte, co knihovně chybí". Teď to je návrh vlastní interakce, a to je jiný rozsah práce. Konkrétně je potřeba navrhnout a postavit:
+
+1. **Model výběru bloku z klávesnice**: co je fokusovatelné, jak se fokus chová při vnoření (blok uvnitř sloupce), jak se z bloku vystoupí zpět do seznamu.
+2. **Přesun bez tažení** včetně cíle přesunu: `Alt + ↑/↓` v rámci úrovně a rozhodnutí, jak se blok dostane do sloupce a ven z něj.
+3. **Oznamování čtečce**: kam se blok přesunul a na které pozici z kolika teď je. Bez toho je klávesová cesta formálně splněná a prakticky nepoužitelná.
+4. **Rovnocennost obou cest**: každá operace dostupná tažením musí být dostupná i z klávesnice, a naopak žádná operace nesmí být jen v kontextové nabídce myši.
+
+Tohle **není volitelný doplněk a není to práce, kterou uspoří knihovna.** WCAG 2.2, kritérium 2.5.7 (úroveň AA) je pro nás povinné podle 11.1 a evropské legislativy podle 11.2. Odhad rozsahu vlastního editoru z části 3 (zhruba 3 000 řádků) tuhle položku musí obsahovat, jinak je podstřelený. Akceptační kritérium 54 v 15.4 to hlídá.
 
 #### 8.5.2 Náhled
 
@@ -2631,7 +2786,7 @@ Poznámka o písmech je tam proto, že uživatel s brand manuálem bude čekat s
 
 #### 8.6.1 Struktura obrazovky kampaně
 
-Čtyři záložky nad jedním obsahem, ne pětikrokový průvodce:
+Záložky nad jedním obsahem, ne pětikrokový průvodce. V MVP 0 jsou čtyři:
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
@@ -2653,6 +2808,17 @@ Poznámka o písmech je tam proto, že uživatel s brand manuálem bude čekat s
 
 Kompromis: **kontrolní seznam na záložce Příprava plní roli průvodce.** Ukazuje, co chybí, v pořadí, v jakém to má smysl dělat, a odkazuje rovnou na místo. Nový uživatel tak dostane vedení, zkušený nedostane překážku.
 
+**Záložky jsou otevřený seznam, ne pevná čtveřice.** *Zdůvodnění: formulace „čtyři záložky" dělala z počtu kontrakt a nepočítala s A/B variantami z MVP 1.* Pravidlo je: **A/B varianty rozšíří obsah stávajících záložek, nezakládají další průvodce.**
+
+| Co přinese A/B (MVP 1) | Kam to půjde |
+|---|---|
+| Dvě a víc variant předmětu nebo obsahu | do záložky **Obsah** jako přepínač variant nad editorem, ne nová záložka |
+| Rozdělení publika mezi varianty a velikost testovací skupiny | do záložky **Publikum** jako další blok pod výběrem segmentů |
+| Srovnání výsledků variant a vyhlášení vítěze | do záložky **Report** jako sloupec navíc a řádek „vítěz" |
+| Podmínky vyhodnocení (kdy a podle čeho se vybírá vítěz) | do **kontrolního seznamu** na Přípravě jako další položky |
+
+Nová záložka smí přibýt jen tehdy, když jde o obsah, který uživatel opravdu vede jako samostatnou věc, ne jako variantu už existující. Stejný test jako u položek hlavního menu v 0.2.
+
 #### 8.6.2 Kontrolní seznam připravenosti
 
 ```
@@ -2662,7 +2828,8 @@ Kompromis: **kontrolní seznam na záložce Příprava plní roli průvodce.** U
 │  ✓  Předmět              Letní výprodej začíná, slevy až 20 %       │
 │  ✓  Odesílatel           Jana z Kolo Shopu <jana@kolo-shop.cz>      │
 │  ✓  Obsah                6 bloků, poslední úprava před 4 minutami   │
-│  ✓  Publikum             1 153 příjemců                              │
+│  ✓  Publikum             1 129 příjemců  [ Rozpad ]                  │
+│                          ze segmentu Aktivní zákazníci z Brna (1 208)│
 │  ✓  Odesílací doména     kolo-shop.cz ověřená                        │
 │  ✓  Odhlašovací odkaz    v patičce                                   │
 │  ✓  Doplňované údaje     3 použité, všechny existují                 │
@@ -2675,11 +2842,27 @@ Kompromis: **kontrolní seznam na záložce Příprava plní roli průvodce.** U
 │                          [ Zobrazit ]                                │
 │                                                                      │
 │  ℹ  Odhad doby           Rozesílka potrvá asi 4 minuty              │
-│  ℹ  Vyloučeno            55 kontaktů (43 odhlášených, 12 blokovaných)│
+│  ℹ  Vyloučeno            79 kontaktů: 12 blokovaných, 43 odhlášených,│
+│                          17 nepotvrzených, 4 pozastavená, 3 s        │
+│                          omezeným zpracováním          [ Rozpad ]    │
 │                                                                      │
-│                                          [ Odeslat 1 153 e-mailů ]  │
+│                                          [ Odeslat 1 129 e-mailů ]  │
 └────────────────────────────────────────────────────────────────────┘
 ```
+
+**Publikum v kontrolním seznamu ukazuje stejné číslo jako rozpad v 8.4.6, a je to úplné číslo.** *Dřív se ty dvě obrazovky nad týmž segmentem rozcházely: rozpad v 8.4.6 odečítal blokované, odhlášené, nepotvrzené, pozastavené a s omezeným zpracováním a dával 1 129, kdežto kontrolní seznam odečítal jen odhlášené a blokované a dával 1 153. Rozdíl 24 lidí byl přitom právě na tlačítku, které spouští nevratnou akci.*
+
+Rozhodnutí: **platí úplný rozpad.** Kontrolní seznam nesmí mít vlastní, jednodušší výpočet. Konkrétně z toho plyne:
+
+| Pravidlo | Konkrétně |
+|---|---|
+| **Jeden zdroj čísla** | Číslo v řádku Publikum, číslo na tlačítku, číslo v potvrzovacím dialogu a číslo v rozpadu v 8.4.6 pocházejí z **jednoho volání** stejného endpointu. Kontrolní seznam nesmí spočítat publikum sám. |
+| **Všech pět bran, ne dvě** | Odečítají se blokované adresy, odhlášení, nepotvrzené přihlášení k seznamu, pozastavená komunikace na vlastní žádost a omezené zpracování podle GDPR. Plus duplicitní e-maily a ukázkové kontakty, i když bývají nulové. Pořadí bran určuje část 2 (její 4.1.6). |
+| **Řádek Vyloučeno je pojmenovaný, ne souhrnný** | Nikdy „55 vyloučeno", vždy rozpis po branách. Kontakt s omezeným zpracováním podle GDPR by se jinak nikde neobjevil a uživatel by neměl jak zjistit, proč čísla nesedí. |
+| **Odkaz Rozpad vede na tentýž rozpad** | Otevře panel s tabulkou z 8.4.6, kde je každý odečtový řádek odkaz na seznam konkrétních lidí. |
+| **Nulové brány se nezobrazují** | Řádek s nulou by seznam zaplevelil. V rozpadu za odkazem jsou ale všechny, i nulové, aby bylo vidět, že se kontrolovaly. |
+
+Test, který to hlídá, je v 15.4: **součet vyloučených plus výsledný počet se musí rovnat vstupnímu počtu segmentu**, a to na obou obrazovkách současně.
 
 **Tři úrovně položek:**
 
@@ -2745,8 +2928,9 @@ Tři konkrétní kroky, ne odkaz na dokumentaci. První z nich je proveditelný 
 ┌──────────────────────────────────────────────────────────────┐
 │  Odeslat kampaň Letní výprodej?                               │
 │                                                                │
-│  Komu        1 153 příjemcům                                   │
-│              segment Aktivní zákazníci z Brna                  │
+│  Komu        1 129 příjemcům                                   │
+│              segment Aktivní zákazníci z Brna (1 208),          │
+│              79 vyloučených                                     │
 │  Od          Jana z Kolo Shopu <jana@kolo-shop.cz>             │
 │  Předmět     Letní výprodej začíná, slevy až 20 %              │
 │  Odhlášení   odkaz v patičce                                   │
@@ -2759,7 +2943,7 @@ Tři konkrétní kroky, ne odkaz na dokumentaci. První z nich je proveditelný 
 │  Po odeslání budete mít 60 sekund na zrušení.                  │
 │  Potom už e-maily zpátky vzít nejde.                           │
 │                                                                │
-│         [ Zpět k úpravám ]      [ Odeslat 1 153 e-mailů ]      │
+│         [ Zpět k úpravám ]      [ Odeslat 1 129 e-mailů ]      │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -2780,7 +2964,7 @@ Po potvrzení nastupuje celostránkový stav popsaný v 6.3, po jeho vypršení 
 ┌────────────────────────────────────────────────────────────────────┐
 │  Letní výprodej                                      ● ODESÍLÁME    │
 │                                                                      │
-│  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░  428 z 1 153        (37 %)  │
+│  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░  428 z 1 129        (37 %)  │
 │                                                                      │
 │  Rychlost        14 e-mailů za sekundu                              │
 │  Zbývá           asi 1 minuta                                        │
@@ -2816,7 +3000,7 @@ Automatické pozastavení při vysoké míře nedoručení ochrání uživatele 
 ┌────────────────────────────────────────────────────────────────────┐
 │  ✓ Kampaň Letní výprodej je odeslaná                                │
 │                                                                      │
-│  1 153 e-mailů odesláno za 4 minuty a 12 sekund.                    │
+│  1 129 e-mailů odesláno za 4 minuty a 12 sekund.                    │
 │  Doručeno 1 141, nedoručeno 12.                                      │
 │                                                                      │
 │  Otevření a kliknutí začnou přicházet během několika minut.         │
@@ -2849,7 +3033,7 @@ Důsledky, se kterými se musí návrh vyrovnat:
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │  ← Kampaně   Letní výprodej                              ODESLÁNO     │
-│  odesláno 31. 7. 2026 v 14:38 · 1 153 příjemcům · Jana Nováková      │
+│  odesláno 31. 7. 2026 v 14:38 · 1 129 příjemcům · Jana Nováková      │
 │                                                                        │
 │  ┌────────────────┬────────────────┬────────────────┐                 │
 │  │  DORUČENO      │  KLIKLO        │  ODHLÁSILO SE  │                 │
@@ -2862,8 +3046,8 @@ Důsledky, se kterými se musí návrh vyrovnat:
 │  832 kontaktů (72,9 %)                                    ⓘ Vysvětlit │
 │  ┌────────────────────────────────────────────────────────────────┐   │
 │  │ ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░         │   │
-│  │ 187 potvrzeno kliknutím  ·  411 pravděpodobně automatické      │   │
-│  │ ·  234 nejisté                                                  │   │
+│  │ 387 ověřených · 411 pravděpodobně automatických · 34           │   │
+│  │ nejistých.  Z ověřených jich 187 navíc kliklo na odkaz.        │   │
 │  └────────────────────────────────────────────────────────────────┘   │
 │  ⚠ Část otevření vyrábějí poštovní programy samy, bez toho aby        │
 │    e-mail někdo četl. Spolehlivé číslo je kliknutí.                   │
@@ -2889,7 +3073,7 @@ Důsledky, se kterými se musí návrh vyrovnat:
 |---|---|
 | **Doručeno, kliklo, odhlásilo se jako tři hlavní dlaždice** | Všechna tři čísla jsou obhajitelná. Kliknutí je jediná spolehlivá míra zájmu. |
 | **Otevření o patro níž, ale výrazně** | Skrýt je nemůžeme, uživatel je zná a hledal by je. Ale nesmí být hlavní. |
-| **Rozpad otevření na tři skupiny** | Nejpoctivější, co umíme. Nepředstíráme, že známe přesné číslo, ale dáváme uživateli spodní a horní mez. |
+| **Rozpad otevření na tři skupiny** | Nejpoctivější, co umíme. Nepředstíráme, že známe přesné číslo, ale dáváme uživateli spodní a horní mez. **Skupiny jsou přesně ty tři, které vrací část 5**, viz 8.7.3. |
 | **Trvalá poznámka pod otevřením** | Ne v nápovědě, kam se nikdo nepodívá. Přímo pod číslem, vždycky. |
 | **Jmenovatel u každého procenta** | "16,4 % z doručených", ne jen "16,4 %". Různé nástroje počítají z různých jmenovatelů a bez uvedení se čísla nedají porovnat. |
 | **"✓ v normě" u nedoručení a spamu** | Uživatel neví, jestli je 1 % moc. Nástroj to ví a řekne to. Při překročení se změní na "⚠ vysoké" s vysvětlením a kroky. |
@@ -2897,13 +3081,23 @@ Důsledky, se kterými se musí návrh vyrovnat:
 
 #### 8.7.3 Klasifikace otevření
 
-| Skupina | Definice | Jistota |
-|---|---|---|
-| **Potvrzeno kliknutím** | Kontakt v kampani klikl na odkaz. Klik od člověka je téměř jistý. | Spodní mez skutečných otevření |
-| **Pravděpodobně automatické** | Otevření přišlo z rozsahu IP adres nebo s user agentem, který odpovídá známým předstahovacím službám (Apple MPP, Gmail Image Proxy), nebo přišlo do 10 sekund od doručení | Vysoká, ale ne stoprocentní |
-| **Nejisté** | Zbytek | Někde mezi |
+*Zdůvodnění přepsání: dřívější znění téhle tabulky si vymýšlelo vlastní klasifikaci. Mělo skupinu „potvrzeno kliknutím", která v části 5 jako třída otevření neexistuje, a pravidlo „přišlo do 10 sekund od doručení", které mezi jedenácti klasifikačními pravidly části 5 (její 3.3.2) není a nikdy nebylo. Ověřeno čtením `05-tracking.md`. Rozhraní tedy tvrdilo něco, co mu žádné API nemohlo dodat.*
 
-Detekci vlastní část 5. Tato kapitola vlastní jen **jak se to podá**, a podává se to tak, že uživatel dostane rozsah, ne falešnou přesnost.
+**Skupiny v pruhu jsou přesně ty, které vrací část 5** (její 3.3.4 a 3.11.2):
+
+| Skupina v rozhraní | Metrika části 5 | Definice podle části 5 | Jistota |
+|---|---|---|---|
+| **Ověřená** | `opens_unique_human` | Zprávy s alespoň jedním otevřením třídy `human` nebo `proxy_image`, tedy `first_human_open_at IS NOT NULL` | Nejvyšší, jakou umíme |
+| **Pravděpodobně automatická** | `opens_unique_apple` | Zprávy, kde maska tříd obsahuje `proxy_apple` a **neobsahuje** `human` ani `proxy_image` | Vysoká, ale ne stoprocentní |
+| **Nejistá** | `opens_unique − opens_unique_human − opens_unique_apple` | Zbytek, tedy zprávy otevřené jen se třídou `unknown` | Nevíme |
+
+Klasifikaci vlastní část 5 a dělá ji jedenácti pravidly nad `User-Agent`, hlavičkami a IP rozsahy (její 3.3.2). Časové kritérium mezi nimi není. Třída `bot` se do otevření nepočítá vůbec a část 5 ji ani neukládá, takže se v pruhu neobjeví.
+
+**„Kliklo" není třída otevření, je to samostatná věta pod pruhem.** Myšlenka spodní meze byla správná, jen byla zapsaná jako klasifikace otevření, což nesedí. Podává se tedy takhle: pod pruhem je věta „Z ověřených jich {n} navíc kliklo na odkaz", kde `{n}` je `clicks_unique_human` z části 5. Je to existující metrika, nevyžaduje nic nového a dává uživateli tvrdou spodní mez skutečného zájmu.
+
+**Jmenovatel ověřené míry otevření je jiný** a musí to být v rozhraní napsané. Část 5 (její 3.11.2) ji počítá jako `opens_unique_human / (delivered_effective − opens_unique_apple)`, protože příjemci s Apple MPP se do jmenovatele nesmí počítat: nikdy nemůžou být v čitateli a míra by systematicky podstřelovala. Rozhraní proto u tohohle čísla píše „z doručených bez Apple Mailu", ne „z doručených".
+
+Tato kapitola vlastní jen **jak se to podá**, a podává se to tak, že uživatel dostane rozsah, ne falešnou přesnost.
 
 **Vysvětlení pod ⓘ:**
 
@@ -2929,13 +3123,13 @@ Poslední odstavec je důležitý, aby uživatel nezavrhl otevření úplně. Na
 
 | Stav | Zobrazení |
 |---|---|
-| Kampaň se odesílá | Report je dostupný a živý, dlaždice se aktualizují každých 5 s, nahoře pruh "Kampaň se ještě odesílá, 428 z 1 153" |
+| Kampaň se odesílá | Report je dostupný a živý, dlaždice se aktualizují každých 5 s, nahoře pruh "Kampaň se ještě odesílá, 428 z 1 129" |
 | Do 15 minut po odeslání | Pruh "Čísla se ještě dopočítávají. Většina otevření a kliknutí dorazí během první hodiny." |
 | Do 72 hodin | Bez pruhu, ale u exportu poznámka "Čísla se ještě mohou mírně změnit" |
 | Po 72 hodinách | Report je považovaný za konečný |
 | Tracking vypnutý | Dlaždice otevření a kliknutí se **nezobrazí vůbec** a místo nich je blok "Sledování otevření a kliknutí bylo pro tuhle kampaň vypnuté, proto tu čísla nejsou." Nikdy neukazujeme nuly, které vypadají jako neúspěch. |
 | Tracking kliknutí zapnutý, otevření vypnuté | Otevření se nezobrazí, kliknutí ano, s poznámkou |
-| Kampaň zastavená | "Rozesílka byla zastavena po 428 z 1 153 e-mailů. Procenta níž se počítají z odeslaných, ne z původního publika." |
+| Kampaň zastavená | "Rozesílka byla zastavena po 428 z 1 129 e-mailů. Procenta níž se počítají z odeslaných, ne z původního publika." |
 | Kampaň ve zkušebním režimu | Trvalý pruh, viz 8.2.8 |
 | Report starší kampaně po smazání kontaktů | "Část kontaktů z téhle kampaně byla smazána. Souhrnná čísla platí, ale u jednotlivých lidí se nedostanete dál." |
 
@@ -3302,6 +3496,90 @@ Obrazovka pro „objednávka v e-shopu založí a přihlásí kontakt bez psaní
 
 Stav `dropped` proto **není chyba** a nesmí se tak zobrazovat: „Požadavek jsme uložili, ale zatím nevíme, co s ním. [Namapovat pole]".
 
+### 8.11 Přehled a Statistiky
+
+*Zdůvodnění doplnění: obě obrazovky měly v matici 7.2 předepsané povinné stavy a 7.2 se odvolávala na „pět zdrojů dashboardu", ale samotný návrh nikde nebyl. Přehled je přitom **první obrazovka po přihlášení**, takže bez návrhu by ji někdo poskládal ad hoc. Tahle podkapitola dodává rozvržení, dlaždice a jejich zdroje. Definice metrik a jejich výpočet vlastní část 5 (její 3.11 katalog metrik a 5.5 dashboard), tahle část vlastní jen to, jak se podávají.*
+
+#### 8.11.1 Přehled: dlaždice a jejich zdroje
+
+Cesta: `/w/{slug}`. Endpoint `GET /api/v1/dashboard` (část 5, její 4.2 a 5.5).
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│  Přehled                                    Období: 7 · 30 · 90 dní │
+│                                                                      │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │ ▶ Rozesílka Letní výprodej: 3 214 z 12 480 (28 %)  [Zobrazit]│  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                      │
+│  ┌───────────────┬───────────────┬───────────────┬───────────────┐ │
+│  │ Odesláno      │ Kliklo        │ Otevřelo      │ Problémy      │ │
+│  │ 48 320        │ 3,8 %  ▲0,4   │ 24,1 %        │ 0,9 % vráceno │ │
+│  │ za 30 dní     │ hlavní číslo  │ z toho 41 %   │ 0,04 % stížn. │ │
+│  │               │               │ automatických │ ✓ v pořádku   │ │
+│  └───────────────┴───────────────┴───────────────┴───────────────┘ │
+│                                                                      │
+│  ┌──────────────────────────────┬───────────────────────────────┐  │
+│  │ Poslední kampaně             │ Na webu právě teď             │  │
+│  │ Letní výprodej   odesílá se  │ 34 kontaktů za 24 h           │  │
+│  │ Novinky 7/2026   3,1 % kliků │ (spočítáno před 3 minutami)   │  │
+│  │ Vítejte u nás    5,7 % kliků │                               │  │
+│  └──────────────────────────────┴───────────────────────────────┘  │
+│                                                                      │
+│  ⚠ Doména kolo-shop.cz ztratila DKIM. Nové kampaně nepůjde     │
+│    odeslat.  [Opravit]                                              │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+Dlaždice a jejich zdroje. Sloupec „Zdroj" je závazný, protože z něj plyne chování při selhání (stav S8):
+
+| # | Dlaždice | Období | Zdroj | Vlastník zdroje | Když zdroj selže |
+|---|---|---|---|---|---|
+| 1 | **Odesláno** | 7 / 30 / 90 dní | součet `campaign_stats.sent` | část 5, 5.5 | dlaždice ukáže vlastní chybu, zbytek stránky funguje |
+| 2 | **Kliklo** (hlavní číslo, největší) | totéž | vážený průměr `clicks_unique / delivered_effective` přes kampaně | část 5, 3.11.3 | totéž |
+| 3 | **Otevřelo, z toho automatických** | totéž | `opens_unique / delivered_effective` a `opens_unique_apple / opens_unique` | část 5, 3.11.2 | totéž |
+| 4 | **Problémy** (vrácené a stížnosti) | totéž | míra bounce a complaint s prahovými barvami (bounce > 5 %, stížnosti > 0,1 %) | část 5, 5.5, prahy z části 4a 3.15.2 | totéž |
+| 5 | **Na webu právě teď** | 24 h | `count(distinct contact_id)` z `web_events` | část 5, 5.5 | totéž, delší cache (5 min) |
+| 6 | **Poslední kampaně** | posledních 5 | `campaign_stats` | část 5, 5.5 | totéž |
+
+**Pět zdrojů, na které se odvolává 7.2**, a tedy pět nezávislých selhání, která nesmí shodit stránku:
+
+| # | Zdroj | Co z něj je | Vlastník |
+|---|---|---|---|
+| 1 | `campaign_stats` | dlaždice 1 až 4 a 6 | část 5 |
+| 2 | `web_events` | dlaždice 5 | část 5 |
+| 3 | kvóta a stav provideru | pruh „zbývá vám dnes X zpráv", zkušební režim | část 4a, 3.14 a 3.11 |
+| 4 | stav odesílacích domén a doručitelnosti | výstražný řádek dole, prahy a brzdy | část 4a, 3.13 a 3.15 |
+| 5 | stav projektu a rozdělané práce | běžící rozesílka nahoře, kroky onboardingu, rozepsané kampaně | části 1 a 4a |
+
+Pravidla podání, která tahle část vlastní:
+
+| Pravidlo | Konkrétně |
+|---|---|
+| **Hlavní číslo je proklik** | Dlaždice Kliklo je vizuálně největší. Otevření je vedle ní, menší, a vždy s podílem automatických. Vychází z principu P7 a shoduje se s částí 5 (její 0.4). |
+| **Zastaralá hodnota je označená** | Odpověď nese `computedAt`. Když je starší než dvojnásobek cache TTL, u dlaždice se malým písmem zobrazí čas výpočtu. Zastaralá hodnota se nikdy neukazuje jako čerstvá. Viz stav S7. |
+| **Živé aktualizace tu nejsou** | Dashboard se neaktualizuje sám přes SSE, část 5 to výslovně zakazuje (její 4.3). Aktualizuje se při návratu na kartu a tlačítkem. Výjimka je jen pruh běžící rozesílky, který čte stejný zdroj jako systémový pruh. |
+| **Prázdný stav S1 učí** | Do první odeslané kampaně nejsou na Přehledu dlaždice, ale seznam kroků: kontakty → odesílání → první kampaň, s odškrtnutím hotového. Text je v 7.3. |
+| **Stav S14 místo prázdných grafů** | Když ještě neexistuje žádná odeslaná kampaň, dlaždice s mírami se nezobrazí vůbec. Nikdy neukazujeme 0 % jako by to byl výsledek. |
+
+#### 8.11.2 Statistiky: tři obrazovky
+
+Sekce Statistiky má tři obrazovky podle mapy v 4.1. **Obsah, definice metrik a jejich výpočet vlastní část 5** (její 3.11 katalog metrik pro čísla, 5.5 pro agregaci napříč kampaněmi) a část 4a (její 3.15 dashboard doručitelnosti, prahy a automatické brzdy). Tahle část dodává jen strukturu a pravidla podání:
+
+| Obrazovka | Cesta | Co zodpovídá | Struktura | Vlastník obsahu |
+|---|---|---|---|---|
+| **Doručitelnost** | `/w/{slug}/stats/deliverability` | „Neblíží se mi zablokování účtu?" | Nahoře semafor stavu provideru, pod ním míra vrácení a stížností proti prahům s vyznačeným prahem v grafu, dole seznam kampaní, které čísla nejvíc zhoršily, s odkazem na jejich report | část 4a, 3.15 |
+| **Vývoj v čase** | `/w/{slug}/stats/campaigns` | „Zlepšuju se, nebo zhoršuju?" | Graf mír (doručeno, kliklo, otevřelo, odhlásilo) přes kampaně v čase, přepínač období, tabulka kampaní pod grafem se stejnými sloupci a řazením | část 5, 3.11 |
+| **Vývoj kontaktů** | `/w/{slug}/stats/contacts` | „Roste mi databáze, nebo se scvrkává?" | Graf přírůstků a úbytků po dnech (přihlášení, potvrzení, odhlášení, vyřazení kvůli vrácení), pod ním rozpad podle zdroje přihlášení | část 2 |
+
+Tvrdá pravidla pro všechny tři, která platí bez ohledu na to, jaká čísla dodá vlastník:
+
+1. **Osa Y u mír nikdy nezačíná jinde než na nule** bez výslovného označení. Useknutá osa je nejběžnější způsob, jak grafem zalhat. Viz princip P7.
+2. **Každý graf má tabulkovou alternativu** dostupnou z klávesnice a čtečkou obrazovky. Požadavek 11.3, samotný graf není přístupný obsah.
+3. **Období se pamatuje na uživatele**, ne na obrazovku, a je v URL, aby šel odkaz poslat kolegovi.
+4. **Prázdný stav S1** vysvětlí, kolik kampaní je potřeba, než graf začne dávat smysl („Trend se ukáže od třetí odeslané kampaně"), místo prázdné plochy s osami.
+5. **Míra otevření tu nikdy nestojí sama.** Vždy vedle ní stojí podíl automatických otevření, stejně jako v reportu. Viz 8.7.
+
 ---
 
 ## 9. Mikrotexty a tón
@@ -3315,12 +3593,12 @@ Texty v rozhraní nejsou dekorace, jsou to instrukce. Píše je vývojář v oka
 | 1 | **Vykáme.** V celém rozhraní, včetně tlačítek, chyb a prázdných stavů. Nikdy netykáme. | "Nahraj si kontakty" | "Nahrajte si kontakty" |
 | 2 | **Píšeme, co se stane, ne jak se jmenuje funkce.** | "Spustit synchronizaci publika" | "Spočítat, komu se e-mail odešle" |
 | 3 | **Tlačítko je sloveso a předmět.** Nikdy "OK", "Ano", "Potvrdit". | "OK" | "Smazat 12 kontaktů" |
-| 4 | **Vždy uvádíme číslo, když je akce hromadná.** | "Odeslat kampaň" | "Odeslat 1 153 e-mailů" |
-| 5 | **Aktivní rod a druhá osoba množného čísla.** Kdo co udělal. | "Kontakty byly naimportovány" | "Naimportovali jsme 12 397 kontaktů" |
+| 4 | **Vždy uvádíme číslo, když je akce hromadná.** | "Odeslat kampaň" | "Odeslat 1 129 e-mailů" |
+| 5 | **Aktivní rod a druhá osoba množného čísla.** Kdo co udělal. | "Kontakty byly naimportovány" | "Naimportovali jsme 12 396 kontaktů" |
 | 6 | **Chyba říká, co se stalo, proč a co s tím.** Tři části, v tomhle pořadí. | "Nastala chyba" | viz 10.1 |
 | 7 | **Žádné omluvy, žádné "ups".** Nástroj se neomlouvá, nástroj řeší. | "Ups! Něco se pokazilo 😔" | "Kontakty se nepodařilo načíst." |
 | 8 | **Nejvýš jeden vykřičník na obrazovku a jen u skutečné radosti.** | "Uloženo!" | "Uloženo" |
-| 9 | **Nepoužíváme závorky pro důležitou informaci.** Co je důležité, patří do věty. | "Kampaň odešla (kromě 43 odhlášených)" | "Kampaň odešla 1 153 lidem. 43 odhlášeným jsme ji neposlali." |
+| 9 | **Nepoužíváme závorky pro důležitou informaci.** Co je důležité, patří do věty. | "Kampaň odešla (kromě 43 odhlášených)" | "Kampaň odešla 1 129 lidem. 43 odhlášeným jsme ji neposlali." |
 | 10 | **Nikdy neříkáme "jednoduše", "stačí" a "prostě".** Když to bylo jednoduché, uživatel by tu nebyl. | "Stačí přidat DNS záznam" | "Přidejte DNS záznam. Zabere to asi 10 minut." |
 
 **Doplňková pravidla pro angličtinu:**
@@ -3464,7 +3742,7 @@ Sloupec "Nikdy nepoužívat" je stejně závazný jako sloupec s překladem. Kon
 | Potvrzení destruktivní akce | Smazat 12 kontaktů | Delete 12 contacts |
 | Vytvoření | Vytvořit kampaň | Create campaign |
 | Přidání do existujícího | Přidat kontakt | Add contact |
-| Odeslání | Odeslat 1 153 e-mailů | Send 1,153 emails |
+| Odeslání | Odeslat 1 129 e-mailů | Send 1,129 emails |
 | Zopakování po chybě | Zkusit znovu | Try again |
 | Další krok průvodce | Pokračovat | Continue |
 | Poslední krok průvodce | název konkrétní akce, ne "Dokončit" | |
@@ -3572,12 +3850,26 @@ Dobře:   "Server odmítl přihlášení.
 | Vrstva | Co dodává | Kdo |
 |---|---|---|
 | `code` | strojově čitelný identifikátor, podle kterého se rozhraní rozhoduje | část 1 a doménové části |
-| `params` | hodnoty k dosazení do textu (`{ used: 8400, limit: 10000 }`) | **chybí, viz U→1.1** |
+| `params` | hodnoty k dosazení do textu (`{ used: 8400, limit: 10000 }`) | **část 1, existuje.** Zavedený v její 4.2 jako rozšiřující člen na kořeni i uvnitř `findings[]`. Zbývá jen doplnit ho do typu `Problem` pro `sdk-node`, viz U→1.1 |
 | `detail` | lokalizovaný text pro klienty API a pro případy, na které rozhraní nemá vlastní text | část 1 |
 | text na obrazovce | plná hláška podle katalogu 10.3, s kontextovými tlačítky | rozhraní |
 | `request_id` | pro dohledání v logu | část 1 |
 
-Jediné, co k tomu od části 1 potřebuju navíc, je rozšiřující člen **`params`**. RFC 9457 rozšiřující členy povoluje. Bez nich nejde napsat hláška 16, protože "Váš denní limit je 10 000 a dnes jste už poslali 8 400" jsou dvě čísla, která rozhraní nemá odkud vzít.
+**Rozšiřující člen `params` už v části 1 je a můj původní požadavek je tímto vyřízený.** Ověřeno čtením `01-platforma.md`: její 4.2 zavádí `params` jako rozšiřující člen a odůvodňuje ho přesně těmi případy, kvůli kterým jsem ho chtěl, tedy preflightem kampaně a kvótou, včetně příkladu `"params": { "remaining": 0, "reset_at": ..., "quota": 50000 }`. Zároveň zavádí `findings[]` s vlastní závažností a s `params` uvnitř každého nálezu. Hláška 16 („Váš denní limit je 10 000 a dnes jste už poslali 8 400") tedy má odkud vzít obě čísla.
+
+**Zbývá jediná, mnohem menší vada, a ta platí dál.** Část 1 popisuje `params` a `findings` normativně v próze a v tabulce polí, ale ve svém **kompletním typu `Problem` pro `sdk-node`** (její 4.8) je nemá:
+
+```ts
+export type Problem = {
+  type: string; title: string; status: number; detail: string;
+  instance: string; code: string; request_id: string;
+  errors?: Array<{ path: string; code: string; message: string }>;
+  retry_after?: number;
+  // params ani findings tu nejsou
+};
+```
+
+Důsledek je praktický, ne formální: typovaný klient by k `params` a `findings` nedostal přístup bez přetypování, takže **rozhraní by muselo obcházet vlastní SDK** právě u těch hlášek, kvůli kterým ta pole vznikla. Požadavek je proto přeformulovaný na doplnění obou polí do typu, viz U→1.1.
 
 ### 10.2 Mapování na katalogy kódů částí 1 a 2
 
@@ -3589,18 +3881,18 @@ Jediné, co k tomu od části 1 potřebuju navíc, je rozšiřující člen **`p
 | 2 | Nevybraný sloupec s e-mailem | `no_email_column_mapped` | část 2 | `suggestedColumn` |
 | 3 | Stejný soubor už dnes nahraný | `import_duplicate` (409) | část 2 | `import_id`, `status`, `created_at`, `created_rows` |
 | 4 | Soubor je moc velký | `file_too_large` | část 2 | `actualBytes`, `limitBytes` |
-| 5 | SMTP odmítl přihlášení | `smtp_auth_failed` | část 4a | `host`, `username` |
+| 5 | SMTP odmítl přihlášení | `provider_smtp_auth_failed` | část 4a | `host`, `username` |
 | 6 | Amazon odmítl klíče | `ses_invalid_credentials` | část 4a | `keyIdMasked` |
-| 7 | Účet v testovacím režimu | `ses_sandbox_restricted` | část 4a | `verifiedCount`, `recipientCount`, `dailyLimit` |
+| 7 | Účet v testovacím režimu | `provider_sandbox` | část 4a | `verifiedCount`, `recipientCount`, `dailyLimit` |
 | 8 | DNS záznam zatím nevidíme | `dns_record_not_found` | část 4a | `recordType`, `recordName` |
 | 9 | Dva SPF záznamy | `dns_spf_multiple_records` | část 4a | `found[]`, `mergedValue` |
 | 10 | Název obsahuje doménu dvakrát | `dns_record_name_duplicated` | část 4a | `foundName`, `expectedName` |
 | 11 | Záznam má jinou hodnotu | `dns_record_value_mismatch` | část 4a | `expected`, `found`, `diffIndex` |
-| 12 | Doména není ověřená | `campaign_domain_not_verified` | část 4a | `domain` |
-| 13 | Prázdné publikum | `campaign_empty_audience` | část 4a | `segmentId`, `segmentName` |
-| 14 | Neexistující doplňovaný údaj | `campaign_merge_tag_unknown` | část 3 | `tagPath`, `tagLabel` |
+| 12 | Doména není ověřená | `domain_dkim_missing` nebo `domain_spf_missing` | část 4a | `domain`, plus `recordType` podle toho, který ze dvou kódů přišel |
+| 13 | Prázdné publikum | `campaign_audience_empty` | část 4a | `segmentId`, `segmentName` |
+| 14 | Neexistující doplňovaný údaj | `campaign_unknown_merge_field` | část 4a, vrací ho preflight | `tagPath`, `tagLabel` |
 | 15 | Vysoká míra stížností | `campaign_complaint_rate_too_high` | část 4a | `complaints`, `sample`, `rate`, `threshold` |
-| 16 | Kvóta na dnes | `quota_exceeded` (obecný) | část 1, doplňuje 4a | `used`, `limit`, `remaining`, `recipients`, `resetsAt` |
+| 16 | Kvóta na dnes | `provider_quota_exceeded` | část 4a | `recipients`, `remaining`, `reset_at`, `quota`. **Ne obecný `quota_exceeded`**, ten část 4a výslovně nepoužívá |
 | 17 | Příliš složitý segment | `segment_too_complex` | část 2 | `conditionCount`, `limit` |
 | 18 | Počet se nespočítal včas | `segment_count_estimated` | část 2 | `estimate`, `totalContacts` |
 | 19 | Chybí klíč k AI | `ai_no_api_key` | část 3 | žádné |
@@ -3627,12 +3919,23 @@ Jediné, co k tomu od části 1 potřebuju navíc, je rozšiřující člen **`p
 
 1. **Hláška 22 potřebuje od `forbidden` mnohem víc, než dnes nese.** Věta "Nemáte oprávnění" je k ničemu. Použitelná hláška musí říct, které oprávnění chybí, kdo ho má a koho konkrétně oslovit. Viz U→1.1.
 2. **Hláška 24 nemá vlastníka.** Smazání kontaktu, který je právě v běžící rozesílce, spadá mezi část 2 (maže) a část 4a (rozesílá). Viz U→2.10.
-3. **Kódy `ses_*`, `smtp_*` a `dns_*` v části 4a jsem nenašel**, ale doména je jednoznačně její. Viz U→4a.13.
-4. **Několik mých hlášek jsou obecné kódy s bohatším podáním.** To je v pořádku a je to přesně to, k čemu je oddělení `code` od textu dobré: `quota_exceeded` je pro API klienta dost, pro člověka ne.
+3. **Kódy providerů a domén v části 4a existují, jen se jmenují jinak, než jsem předpokládal.** Ověřeno čtením `04a-kampane.md`, její 4.1.2. Přejmenoval jsem je v mapování i v katalogu 10.3 na skutečné názvy: `provider_smtp_auth_failed`, `provider_sandbox`, `provider_quota_exceeded`, `campaign_audience_empty`, `campaign_unknown_merge_field`, a místo vymyšleného `campaign_domain_not_verified` používám dvojici `domain_dkim_missing` a `domain_spf_missing`. Konvence části 4a je předpona podle **domény kódu** (`provider_`, `domain_`, `campaign_`), ne podle jména služby, takže žádné `ses_*` ani `smtp_*` nevzniklo a vzniknout nemá. Zbývá jen skupina `dns_*` z hlášek 8 až 11, viz U→4a.13.
+4. **Několik mých hlášek jsou obecné kódy s bohatším podáním.** To je v pořádku a je to přesně to, k čemu je oddělení `code` od textu dobré: `forbidden` je pro API klienta dost, pro člověka ne. **Pozor ale na `quota_exceeded`:** obecný kód sice existuje, ale část 4a ho výslovně **nepoužívá** a pro kvótu providera má vlastní `provider_quota_exceeded`. Důvod je věcný a rozhraní ho musí respektovat: obecný kód znamená naši kvótu, kdežto `provider_quota_exceeded` je kvóta cizí služby a uživatel s ní naloží jinak (žádost u Amazonu, ne upgrade u nás).
 
 ### 10.3 Katalog hlášek
 
 Pětadvacet hlášek pro reálné situace.
+
+**Závazná je anatomie, ne znění.** *Zdůvodnění stejné jako u prázdných stavů v 7.3: hláška se přeformuluje pokaždé, když se ukáže, že jí lidé nerozumějí, a to je žádoucí. Kdyby bylo znění závazné doslova, buď by se hlášky nikdy nezlepšovaly, nebo by dokument okamžitě přestal odpovídat skutečnosti.*
+
+| Vrstva | Závaznost |
+|---|---|
+| **Anatomie hlášky z 10.1** (co se stalo, proč, co s tím, akce) a zákaz surových technických chyb z 10.4 | **normativní** |
+| **Mapování hláška → `code` → vlastník** v 10.2, včetně tvarů `params` | **normativní**, je to kontrakt s ostatními částmi |
+| **Pravidla tónu a slovníček** z 9.1 a 9.2 | **normativní** |
+| **Konkrétní česká a anglická věta** | **referenční první verze**, zdroj pravdy jsou `cs.json` a `en.json` |
+
+Prakticky to znamená: implementace **musí** mít pro každý kód z 10.2 hlášku, která splňuje anatomii a pravidla, a musí mít obě jazykové varianty. **Nemusí** mít přesně tahle slova. Testy proto kontrolují strukturu a pokrytí kódů, ne shodu řetězců, viz 15.5.
 
 ---
 
@@ -3684,7 +3987,7 @@ Pětadvacet hlášek pro reálné situace.
 
 ---
 
-**5. `smtp_auth_failed`** (Nastavení odesílání)
+**5. `provider_smtp_auth_failed`** (Nastavení odesílání)
 
 > **cs** Server odmítl přihlášení
 > Server `smtp.wedos.net` nepřijal zadané jméno a heslo. U některých poskytovatelů je přihlašovací jméno celá e-mailová adresa (`jana@kolo-shop.cz`), u jiných jen část před zavináčem (`jana`).
@@ -3708,14 +4011,14 @@ Pětadvacet hlášek pro reálné situace.
 
 ---
 
-**7. `ses_sandbox_restricted`** (Odeslání)
+**7. `provider_sandbox`** (Odeslání)
 
 > **cs** Váš účet u Amazonu je zatím v testovacím režimu
-> V něm smíte posílat jen na adresy, které si u Amazonu ověříte, a nejvýš 200 e-mailů denně. Z vašich 1 153 příjemců je ověřený 1. Uvolnění se žádá formulářem u Amazonu, schválení trvá obvykle jeden pracovní den.
+> V něm smíte posílat jen na adresy, které si u Amazonu ověříte, a nejvýš 200 e-mailů denně. Z vašich 1 129 příjemců je ověřený 1. Uvolnění se žádá formulářem u Amazonu, schválení trvá obvykle jeden pracovní den.
 > [ Otevřít formulář u Amazonu ] [ Co do formuláře napsat ]
 
 > **en** Your Amazon account is still in test mode
-> In test mode you can only send to addresses verified with Amazon, and no more than 200 emails per day. Of your 1,153 recipients, 1 is verified. You request production access through a form at Amazon, approval usually takes one business day.
+> In test mode you can only send to addresses verified with Amazon, and no more than 200 emails per day. Of your 1,129 recipients, 1 is verified. You request production access through a form at Amazon, approval usually takes one business day.
 > [ Open the form at Amazon ] [ What to write in the form ]
 
 ---
@@ -3776,7 +4079,7 @@ Pětadvacet hlášek pro reálné situace.
 
 ---
 
-**12. `campaign_domain_not_verified`** (Kampaň, kontrolní seznam)
+**12. `domain_dkim_missing` a `domain_spf_missing`** (Kampaň, kontrolní seznam)
 
 > **cs** Kampaň zatím nejde odeslat, doména není ověřená
 > Bez ověření domény by velká část e-mailů skončila ve spamu, takže odeslání blokujeme. Ověření zabere asi 10 minut a záznamy může přidat i váš správce webu.
@@ -3786,9 +4089,11 @@ Pětadvacet hlášek pro reálné situace.
 > Without domain verification a large share of your emails would land in spam, so we block sending. Verification takes about 10 minutes and your web administrator can add the records for you.
 > [ Verify domain ] [ Send it to your web admin ] [ Turn on test mode ]
 
+*Hláška pokrývá dva kódy, protože pro uživatele je to jedna situace a jedno řešení: dojít do průvodce DNS. **Druhá věta se ale liší podle kódu**, aby uživatel v průvodci věděl, na kterou kartu se dívat. U `domain_dkim_missing`: „Chybí podpisové záznamy DKIM (karty 1 až 3)." U `domain_spf_missing`: „Chybí nebo je špatně záznam SPF (karta 4)." Když přijdou oba nálezy najednou, spojí se do jedné věty. Původní vymyšlený kód `campaign_domain_not_verified` v části 4a neexistuje a rozhraní by na něj čekalo marně.*
+
 ---
 
-**13. `campaign_empty_audience`** (Kampaň, kontrolní seznam)
+**13. `campaign_audience_empty`** (Kampaň, kontrolní seznam)
 
 > **cs** Kampaň nemá žádné příjemce
 > Vybraný segment **Aktivní zákazníci z Brna** je momentálně prázdný. Zkontrolujte jeho podmínky, nebo vyberte jiný seznam.
@@ -3800,7 +4105,7 @@ Pětadvacet hlášek pro reálné situace.
 
 ---
 
-**14. `campaign_merge_tag_unknown`** (Kampaň, kontrolní seznam)
+**14. `campaign_unknown_merge_field`** (Kampaň, kontrolní seznam)
 
 > **cs** E-mail používá údaj, který v projektu neexistuje
 > V textu je doplňovaný údaj **Věrnostní body**, ale takové pole v projektu není. Nejspíš ho někdo smazal nebo přejmenoval. Bez opravy by v e-mailu zůstalo prázdné místo.
@@ -3826,7 +4131,7 @@ Pětadvacet hlášek pro reálné situace.
 
 ---
 
-**16. `quota_exceeded`** (Odeslání)
+**16. `provider_quota_exceeded`** (Odeslání)
 
 > **cs** Kampaň je větší, než kolik smíte dnes odeslat
 > Váš denní limit u Amazonu je 10 000 e-mailů a dnes jste už poslali 8 400. Zbývá 1 600, kampaň má 12 480 příjemců.
@@ -3944,13 +4249,15 @@ Pětadvacet hlášek pro reálné situace.
 
 > **cs** Webhook jsme vypnuli, protože 20krát po sobě selhal
 > Adresa `https://eshop.cz/hooks/mlain` od 29. 7. odpovídá chybou 500. Po dvaceti neúspěšných pokusech jsme posílání zastavili, aby se fronta nezaplnila.
-> Až problém na vaší straně vyřešíte, webhook znovu zapněte. Události z doby výpadku se neposílají zpětně.
+> Až problém na vaší straně vyřešíte, webhook znovu zapněte. Nabídneme vám přitom přehrání událostí za posledních 24 hodin. Co je starší, se doposlat nedá.
 > [ Zobrazit poslední chyby ] [ Zapnout znovu ]
 
 > **en** We disabled this webhook after 20 consecutive failures
 > The endpoint `https://eshop.cz/hooks/mlain` has been returning HTTP 500 since July 29. After twenty failed attempts we stopped delivering to avoid filling the queue.
-> Once you've fixed the problem on your side, re-enable it. Events from the outage period are not replayed.
+> Once you've fixed the problem on your side, re-enable it. We'll offer to replay the last 24 hours of events. Anything older than that cannot be redelivered.
 > [ Show recent errors ] [ Re-enable ]
+
+*Zdůvodnění opravy: obě varianty dřív tvrdily, že se události z doby výpadku neposílají zpětně. Část 1 (její 3.11, deaktivace endpointu) u tlačítka „Znovu aktivovat" výslovně slibuje, že se vynuluje čítač a **nabídne se přehrání posledních 24 hodin událostí**. Ověřeno čtením `01-platforma.md`. Hláška uživatele zbytečně odrazovala od nápravy a zároveň lhala o tom, co produkt umí. Hranice 24 hodin je v textu uvedená schválně, aby si nikdo nemyslel, že se doposílá týden zpět.*
 
 ---
 
@@ -4297,11 +4604,12 @@ Realizace: rozšíření `unaccent` v Postgresu plus trigramový index nad `unac
 | Názvy DNS záznamů (CNAME, TXT, `_domainkey`) | ano | Uživatel je opisuje do cizího systému |
 | Hodnoty SPF a DMARC | ano | Musí sedět znak po znaku |
 | Názvy poskytovatelů (Amazon SES, WEDOS, Cloudflare) | ano | Vlastní jména |
-| Kódy chyb (`smtp_auth_failed`) | ano | Strojově čitelné |
+| Kódy chyb (`provider_smtp_auth_failed`) | ano | Strojově čitelné |
 | Názvy polí v běžném exportním CSV | **ne**, překládají se podle jazyka uživatele | Uživatel otevírá CSV v Excelu |
 | **Hlavička v `errors.csv` u importu** | **ano, nepřekládá se nikdy** | Soubor má **stejnou hlavičku, kódování i oddělovač jako původní vstup**, aby ho uživatel opravil a nahrál zpátky bez přemapování (část 2, 4.6.11). Kdyby se hlavička přeložila, automapování by při opětovném nahrání selhalo a smysl funkce by zmizel. Přidané sloupce `_error_code` a `_error_detail` zůstávají anglicky, protože `_error_code` je strojový a `_error_detail` je text, který uživatel jen čte. |
 | Názvy vlastních polí | ne, jsou to data uživatele | |
 | Merge tagy v šabloně | technicky ne, ale v editoru se zobrazují jako přeložené žetony | Viz 8.5.1 |
+| **Klávesové zkratky** (`g` `k`, `Ctrl+K`) a názvy kláves (`Ctrl`, `Cmd`, `Shift`, `Esc`, `Enter`) | **ano, nikdy se nepřekládají** | Vazba klávesy na akci je jedna pro všechny jazyky, jinak by vznikly dvě mapy kláves a uživatel by při přepnutí jazyka přišel o svalovou paměť. Lokalizuje se jen **popis** zkratky v nápovědě. Viz 4.5. |
 
 Poslední řádek je zajímavý: v uloženém dokumentu je `{{ contact.first_name_vocative }}`, v editoru se to uživateli zobrazuje jako `{5. pád jména}` a v anglickém rozhraní jako `{First name, vocative}`. Šablona se tím nemění, mění se jen zobrazení.
 
@@ -4339,7 +4647,7 @@ Systémové e-maily jsou podle 3.9 části 1 uložené jako **blokové šablony*
 
 Volbu knihovny vlastní část 1. Tato kapitola říká, **co ta volba musí unést**, a doplňuje mé doporučení s ověřenými fakty.
 
-### 13.1 Sedm komponent, na kterých se to láme
+### 13.1 Osm komponent, na kterých se to láme
 
 Devadesát procent aplikace postaví jakákoliv rozumná knihovna. Rozhodují tyhle:
 
@@ -4352,12 +4660,26 @@ Devadesát procent aplikace postaví jakákoliv rozumná knihovna. Rozhodují ty
 | K5 | **Toast a oznámení** | celá aplikace | Fronta a nejvýš tři naráz; slučování duplicit; odpočet u akce "Vrátit zpět"; pozastavení při hoveru i fokusu; `role="status"` versus `role="alert"`; zavření z klávesnice; nezavírání chyb samo |
 | K6 | **Náhled e-mailu** | editor, kampaň | Izolace stylů e-mailu od stylů aplikace (iframe se `sandbox`); přepínání šířky; tmavý režim; bez odchozích požadavků na cizí zdroje |
 | K7 | **Grafy** | report, dashboard doručitelnosti | Textová alternativa k datům (tabulka pod grafem); čitelnost bez rozlišení barev; klávesová dostupnost hodnot; tooltip dostupný i z klávesnice |
+| K8 | **Časová osa** | detail kontaktu, historie kampaně, audit log | **Shlukování sérií** stejného typu událostí v krátkém okně do jednoho rozbalitelného řádku s počtem; **oddělovače dnů** jako neposouvané mezinadpisy („Dnes", „Včera", „12. června"), které se počítají v časové zóně uživatele; **věty skládané ze slotů, ne z fragmentů**, s tvarem slovesa podle rodu kontaktu a s neutrálním podstatným jménem u neznámého rodu; **načítání po dávkách** nejnovější první, bez skoku scrollu při doskočení další dávky; každá položka má trvalou kotvu v URL; celá osa je průchozí z klávesnice a rozbalení shluku je ohlášené čtečce |
 
-Dvě z nich (K4 a K1) mají v požadavcích slovo "povinná" u klávesové alternativy. Není to zdvořilost, je to podmínka souladu s WCAG 2.2, viz 11.3.
+*Zdůvodnění doplnění K8: detail kontaktu (8.8) na časové ose stojí a měl na ni čtyři tvrdé požadavky, ale kapitola o design systému ji vůbec neznala. Šlo o komponentu, kterou by někdo postavil ad hoc, přestože každý z těch čtyř požadavků je netriviální. Shlukování je datová i vizuální logika, oddělovače dnů závisí na časové zóně, věty podle rodu se dotýkají pravidla o skládání textů z 12.3 a načítání po dávkách má vlastní past se skokem scrollu. Časová osa se navíc použije nejméně třikrát (kontakt, kampaň, audit log), takže je to komponenta, ne obrazovka.*
+
+Tři z nich (K1, K4 a K8) mají v požadavcích klávesovou alternativu nebo plnou klávesovou průchodnost. Není to zdvořilost, je to podmínka souladu s WCAG 2.2, viz 11.3.
 
 **Část 2 si v 11.5 vyžádala čtyři komponenty** a všechny jsou pokryté: vícekrokový průvodce (K3), tabulka s hromadným výběrem přežívajícím přestránkování (K1), vizuální query builder s vnořenými skupinami (K2) a veřejné stránky mimo layout aplikace fungující bez JavaScriptu (8.9).
 
-### 13.2 Doporučení
+### 13.2 Doporučení k datu 2026-07-31, ne normativní volba
+
+**Co je v téhle podkapitole závazné a co ne.** *Zdůvodnění: volbu knihoven vlastní část 1 (viz 1.2), tahle část dodává požadavky. Konkrétní balíčky s verzemi, počty stažení a daty poslední aktualizace jsou fakta ke dni ověření a zastarají během týdnů. Kdyby byly normativní, byla by tahle kapitola v rozporu s vlastnictvím z 1.2 a zároveň by ji každé vydání knihovny učinilo neplatnou.*
+
+| Vrstva | Závaznost |
+|---|---|
+| **Tvrdé požadavky na komponenty** v tabulce 13.1 (K1 až K8) | **normativní.** Komponenta, která je nesplní, se nesmí použít, ať se jmenuje jakkoliv. |
+| **Licenční pravidla**: povolené licence pro produkční závislosti jsou MIT, Apache-2.0, BSD a ISC; balíček bez souboru LICENSE v tarballu se nepustí dovnitř; licenční brána běží v CI | **normativní** |
+| **Pravidlo vlastního rozhraní** u knihoven, u kterých hrozí opuštění nebo výměna | **normativní** |
+| **Konkrétní balíčky, verze a čísla níž** | **doporučení k datu 2026-07-31.** Rozhoduje část 1. |
+
+Prakticky: kdo staví K1, může sáhnout po jiné knihovně než po `@tanstack/react-table`, ale musí doložit, že splní všechny tvrdé požadavky K1 z 13.1 a projde licenční bránou. To je celé kritérium.
 
 **Potvrzuji volbu Tailwind CSS 4 plus shadcn/ui** z hlavní specifikace i z části 1. Ověřená fakta a odůvodnění:
 
@@ -4382,7 +4704,7 @@ Dvě z nich (K4 a K1) mají v požadavcích slovo "povinná" u klávesové alter
 | **React Aria Components** (`react-aria-components`) | 1.19.0, Apache-2.0, 2026-07-31, 3 695 499 stažení týdně | **Ne, i když je to z hlediska přístupnosti nejsilnější kandidát.** Cena je jiný stylovací model, strmější křivka učení a menší ekosystém hotových vzorů. **Ponechávám jako doporučení pro jednotlivé komponenty**, u kterých se ukáže, že Radix nestačí, protože obojí jde v jedné aplikaci kombinovat. |
 | `@mantine/core`, `@chakra-ui/react`, `@heroui/react`, `antd`, `@mui/material` | neověřoval jsem podrobně | Ne. Všechny přinášejí vlastní stylovací systém, který se s Tailwindem tluče. |
 
-**Konkrétní volby pro sedm rizikových komponent:**
+**Doporučené balíčky pro rizikové komponenty, k datu 2026-07-31.** Normativní jsou jen požadavky ve sloupci „Poznámka", které začínají slovem *Požadavek*, a licenční pravidla. Samotné názvy balíčků a verze jsou doporučení, o kterém rozhoduje část 1:
 
 | # | Volba | Ověřeno | Poznámka |
 |---|---|---|---|
@@ -4393,8 +4715,11 @@ Dvě z nich (K4 a K1) mají v požadavcích slovo "povinná" u klávesové alter
 | K5 toast | `sonner` 2.0.7 (MIT, 2025-08-02, 43 829 989/týden) **jako základ, s vlastní vrstvou** | ano | **Riziko: poslední vydání je skoro rok staré.** Naše požadavky z 5.4 žádná knihovna z krabice nemá, takže tak jako tak píšeme vlastní obal. Záložní plán: postavit toast na Radix Toast. |
 | K6 náhled e-mailu | **žádná knihovna**, obyčejný `<iframe sandbox srcdoc>` | | `react-frame-component` 5.3.2 (MIT, ověřeno) je pro náhled statického HTML zbytečný. Iframe se `sandbox` je zároveň bezpečnostní opatření. |
 | K7 grafy | `recharts` 3.10.1 (MIT, 2026-07-25, 49 405 294/týden) | ano | Deklarativní, dobře se do něj doplňuje textová alternativa. |
+| K8 časová osa | **žádná knihovna**, vlastní komponenta | | *Požadavek:* shlukování, oddělovače dnů v zóně uživatele, věty ze slotů podle rodu a dávkové načítání bez skoku scrollu jsou naše doménová logika. Hotové „timeline" komponenty řeší jen vizuální stranu a všechny čtyři požadavky by se stejně psaly ručně. |
 
-**Riziko stárnutí několika balíčků.** Tři z doporučených (`sonner`, `cmdk`, `@dnd-kit/core`) mají poslední vydání staré rok nebo víc. U všech tří jde o malé, funkčně hotové knihovny s miliony stažení, takže to samo o sobě není důvod k odmítnutí. Je to ale důvod je držet za vlastním rozhraním. U `@dnd-kit` navíc platí, že tažení bloků v editoru přichází s EmailBuilder.js (část 3), takže ho v MVP 0 nejspíš nepotřebujeme vůbec.
+**Riziko stárnutí několika balíčků.** Tři z doporučených (`sonner`, `cmdk`, `@dnd-kit/core`) mají poslední vydání staré rok nebo víc. U všech tří jde o malé, funkčně hotové knihovny s miliony stažení, takže to samo o sobě není důvod k odmítnutí. Je to ale důvod je držet za vlastním rozhraním.
+
+**`@dnd-kit` je po rozhodnutí z 2026-07-31 naopak pravděpodobně potřeba.** Dřív tu stálo, že tažení bloků přichází hotové s EmailBuilder.js z části 3, takže ho v MVP 0 nepotřebujeme. To už neplatí: editor je vlastní (viz 16.3 a 8.5), takže přetahování bloků si píšeme sami. Rozhodnutí, jestli k tomu použít `@dnd-kit` nebo nativní HTML5 drag and drop, patří části 1. Z pohledu téhle části platí jen tvrdý požadavek: **ať se použije cokoliv, musí k tažení existovat rovnocenná klávesová cesta** (WCAG 2.2, kritérium 2.5.7), a ta se u vlastního editoru navrhuje od nuly, nedědí se po knihovně.
 
 ---
 
@@ -4492,11 +4817,11 @@ Testovatelné věty. Z každé musí jít napsat test, aniž se člověk ptá.
 ### 15.3 Stavy obrazovek
 
 19. Každá obrazovka ze seznamu v 7.2 má implementované všechny stavy označené ●. Kontroluje se sadou testů, které simulují prázdnou odpověď, chybu, 403, 404 a offline.
-20. Prázdný stav obsahuje aspoň dvě věty vysvětlení a aspoň jednu akci. Kontroluje se testem nad snapshoty prázdných stavů.
+20. Prázdný stav obsahuje aspoň dvě věty vysvětlení a aspoň jednu akci. **Kontroluje se strukturálním testem, ne snapshotem řetězců:** test ověřuje, že blok prázdného stavu obsahuje vysvětlující text o dané délce a aspoň jeden prvek s rolí tlačítka nebo odkazu. *Změna formulace textu test neshodí, odstranění akce nebo vysvětlení ano. Snapshot na doslovné znění by při každé úpravě textu vyžadoval přegenerování, což je práce, kterou nikdo neprovádí vědomě, takže by se snapshoty schvalovaly naslepo a přestaly by cokoliv chránit.*
 21. Prázdný stav po filtrování se liší od prázdného stavu bez dat a obsahuje slovní popis použitého filtru a tlačítko na jeho zrušení.
 22. Chybový stav načtení obsahuje sbalitelné podrobnosti s kódem chyby a `request_id` a tlačítko na zkopírování.
 23. Uživatel s rolí `viewer` na obrazovce kampaně vidí obsah jako text, ne jako zašedlá formulářová pole, a nahoře pruh s vysvětlením.
-24. Dashboard, jehož jedna dlaždice selže, zobrazí zbylé dlaždice funkční a v selhané dlaždici vlastní chybu s možností opakování.
+24. Dashboard, jehož jedna dlaždice selže, zobrazí zbylé dlaždice funkční a v selhané dlaždici vlastní chybu s možností opakování. Test se pouští proti všem pěti zdrojům z 8.11.1 zvlášť.
 
 ### 15.4 Klíčové obrazovky
 
@@ -4529,17 +4854,19 @@ Testovatelné věty. Z každé musí jít napsat test, aniž se člověk ptá.
 51. Preset, který nebyl nikdy počítaný, zobrazí "Spočítat", nikdy nulu.
 52. Šest presetů čištění má `preset_key` shodný s 4.12 části 2 a karta u prvních dvou uvádí podmínku "dostali aspoň N e-mailů".
 53. Poslední krok reaktivačního scénáře zobrazí potvrzení 3 dny předem v aplikaci i e-mailem, s možností odložit i zrušit.
-54. Editor šablony umožňuje přesunout blok nahoru a dolů výhradně z klávesnice, bez použití myši.
+54. Editor šablony umožňuje přesunout blok nahoru a dolů výhradně z klávesnice, bez použití myši, **a po přesunu oznámí čtečce obrazovky novou pozici bloku ve tvaru „Nadpis, pozice 3 z 7"**. Kritérium platí pro vlastní editor a je součástí jeho rozsahu, ne požadavkem na cizí knihovnu.
 55. Náhled šablony má tlačítko "Kontakt bez jména", které zobrazí náhled s prázdnými osobními údaji a použitým fallbackem.
 56. Kontrolní seznam kampaně obsahuje všechny položky z katalogu v 8.6.2 a blokující položky brání odeslání.
 57. Report kampaně nezobrazuje míru otevření jako hlavní metriku. Hlavní tři dlaždice jsou doručeno, kliklo, odhlásilo se.
-58. U míry otevření je trvale viditelná poznámka o nepřesnosti a rozpad na potvrzené kliknutím, pravděpodobně automatické a nejisté.
+58. U míry otevření je trvale viditelná poznámka o nepřesnosti a rozpad na ověřená, pravděpodobně automatická a nejistá otevření, tedy na skupiny odpovídající `opens_unique_human`, `opens_unique_apple` a zbytku podle 3.11.2 části 5. Pod pruhem je věta s počtem těch, kdo navíc klikli. **Rozhraní nikde nepoužívá „potvrzeno kliknutím" jako třídu otevření a nikde nepracuje s kritériem 10 sekund od doručení**, protože ani jedno v části 5 neexistuje.
 59. U každého procenta v reportu je uvedený jmenovatel.
 60. Report kampaně s vypnutým sledováním nezobrazuje nuly, ale vysvětlení, že se nesledovalo.
 61. Časová osa kontaktu používá tvary sloves podle rodu kontaktu a u neznámého rodu neutrální podstatné jméno.
 62. Detail kontaktu s `processing_restricted = true` zobrazí vysvětlující blok s větou, že kontakt vypadl ze všech segmentů.
 63. Detail kontaktu zobrazí odlišný odznak a doplňující větu pro každou z šesti hodnot `contacts.status` a pro každý ze tří příznaků.
 64. Rozpad publika kampaně obsahuje samostatné odečtové řádky pro odhlášené, blokované, nepotvrzené, pozastavené a s omezeným zpracováním, a každý je odkaz na seznam.
+64b. **Číslo publika v kontrolním seznamu, číslo na tlačítku Odeslat, číslo v potvrzovacím dialogu a výsledek rozpadu v 8.4.6 se rovnají**, a součet vyloučených plus výsledný počet se rovná vstupnímu počtu segmentu. Test staví segment se všemi pěti druhy vyloučených kontaktů a porovnává všechna čtyři místa naráz.
+64c. Řádek „Vyloučeno" v kontrolním seznamu je **rozepsaný po branách**, nikdy souhrnný, a nulové brány se v něm nezobrazují.
 65. Blokované adresy zobrazují u důvodu `complaint` zámek s vysvětlením, ne zašedlé tlačítko. Hromadný výběr nenabízí odebrání u důvodů, které to nedovolují.
 66. Odhlašovací stránka při odhlášení ze seznamu zobrazí text `public.unsubscribe.listScope`, ne tvrzení, že už nepřijde nic.
 67. Obrazovka příchozího webhooku zobrazí poslední požadavek se stavem `dropped` jako nabídku k namapování, ne jako chybu.
@@ -4550,11 +4877,16 @@ Testovatelné věty. Z každé musí jít napsat test, aniž se člověk ptá.
 69. V žádném katalogu se nevyskytuje výraz ze sloupce "Nikdy nepoužívat" ve slovníku 9.2, včetně hodnoty `subscribed` jako stavu. Kontroluje se v CI.
 70. Každý klíč v `cs.json` má protějšek v `en.json` a naopak. Kontroluje se v CI, chybějící klíč shodí build.
 71. Žádný řetězec se neskládá zřetězením fragmentů ani dynamickým klíčem. Kontroluje se lint pravidlem.
+71b. **Věta segment builderu je jedna ICU zpráva per locale s pojmenovanými sloty** `{polarity}` a `{quantifier}`, ne tři nezávislé řetězce. Test vloží testovací locale s obráceným pořadím slotů a ověří, že se ovládací prvky vykreslí v novém pořadí bez zásahu do komponenty. Viz 8.4.2b.
+71c. **Obě negované kombinace segment builderu mají vysvětlující řádek v obou jazycích.** Segment s `not: true` zobrazí vysvětlení bez ohledu na to, jestli je `op` roven `and`, nebo `or`.
+71d. **Klávesové zkratky jsou v obou jazycích shodné.** Test porovná mapu zkratek pro `cs` a `en` a musí být identická. Lokalizované jsou jen popisy v nápovědě. Viz 4.5.
 72. Všechny počty v textech používají ICU `plural` včetně kategorie `=0`. Kontroluje se testem s hodnotami 0, 1, 2, 5, 21, 100 a 1,5.
 73. Řazení kontaktů podle příjmení vrací pořadí Cimrman, Čapek, Dvořák, Havel, Chalupa, Ilona, Řezník, Sova, Šimek, Žák.
 74. Vyhledávání výrazu `novak` najde kontakt s příjmením Novák a naopak `Novák` najde `novak`.
 75. Čas naplánované kampaně se zobrazuje v časové zóně projektu a při odlišné zóně uživatele je u něj poznámka s převodem.
 76. Neznámý chybový kód, na který rozhraní nemá vlastní text, zobrazí `detail` ze serveru a `request_id`, nikdy prázdnou obrazovku.
+76b. **Každý kód z mapování 10.2 má klíč v `cs.json` i v `en.json`** a text pod ním splňuje anatomii z 10.1: má nadpis, vysvětlující odstavec a aspoň jednu akci. Kontroluje se v CI proti seznamu kódů, ne proti znění vět. *Kritérium schválně nekontroluje shodu se zněním v 10.3: to jsou referenční první verze, zdroj pravdy jsou katalogy. Kontroluje se pokrytí a struktura, což je to, co skutečně chrání uživatele.*
+76c. **Prázdné stavy a hlášky se nekontrolují snapshotem doslovného textu.** Žádný test v repozitáři nesmí selhat jen proto, že se přeformulovala věta. Testy kontrolují strukturu, pokrytí klíčů, existenci obou jazyků a dodržení zákazů ze slovníku 9.2.
 
 ### 15.6 Výkon
 
@@ -4570,6 +4902,14 @@ Testovatelné věty. Z každé musí jít napsat test, aniž se člověk ptá.
 ## 16. Závislosti
 
 Vše ověřeno **2026-07-31** příkazy `npm view <balíček> license version time.modified` a `curl -s https://api.npmjs.org/downloads/point/last-week/<balíček>`. Povolené licence pro produkční závislosti: MIT, Apache-2.0, BSD, ISC.
+
+**Celá tahle kapitola je doporučení ke dni 2026-07-31, ne normativní volba.** *Zdůvodnění: volba a integrace knihoven patří části 1 (viz 1.2), a čísla verzí i počty stažení jsou fakta s životností v řádu týdnů.* Normativní z téhle kapitoly zůstávají tři věci:
+
+1. **Licenční pravidla.** Povolené licence pro produkční závislosti jsou MIT, Apache-2.0, BSD a ISC. LGPL a GPL jsou zakázané. Balíček s prázdným polem `license` nebo bez souboru LICENSE v tarballu se nepustí dovnitř bez ohledu na to, co tvrdí repozitář.
+2. **Požadavek, aby licenční brána rozlišovala `dependencies` a `devDependencies`** (16.4).
+3. **Konkrétní licenční nálezy** z 16.3 a 16.4, tedy že `pa11y` je LGPL-3.0-only a že `axe-core` je MPL-2.0. To jsou zjištěná fakta, ne preference, a mají platnost, dokud je někdo nevyvrátí novým ověřením.
+
+Všechno ostatní, včetně verdiktů „doporučit" a „odmítnuto z jiného než licenčního důvodu", je vstup pro rozhodnutí části 1.
 
 ### 16.1 Doporučené produkční závislosti
 
@@ -4616,7 +4956,7 @@ Vše ověřeno **2026-07-31** příkazy `npm view <balíček> license version ti
 | `echarts` | 6.1.0 | Apache-2.0 | Licenčně v pořádku, ale příliš těžké na pět grafů. |
 | `@uppy/core` | 5.2.0 | MIT | Licenčně v pořádku, ale velké a půlku funkcí nepotřebujeme. |
 | `react-frame-component` | 5.3.2 | MIT | Zbytečné, `<iframe sandbox srcdoc>` stačí. |
-| `@dnd-kit/core` | 6.3.1 | MIT | Nezavádět v MVP 0. Tažení bloků přichází s EmailBuilder.js z části 3. Poslední vydání 2024-12-05. |
+| `@dnd-kit/core` | 6.3.1 | MIT | **Odmítnutí zrušeno k 2026-07-31.** Původní důvod zněl „tažení bloků přichází s EmailBuilder.js z části 3", a ten padl: část 3 `@usewaypoint/email-builder` zamítla a editor je vlastní, takže přetahování bloků si píšeme sami. Balíček je tedy zpátky ve hře jako kandidát pro editor a rozhoduje o něm část 1. Poslední vydání 2024-12-05, tedy platí pravidlo o vlastním rozhraní z 13.2. **Nezávisle na volbě knihovny platí, že klávesová alternativa k tažení se u vlastního editoru navrhuje od nuly**, viz 8.5 a 11.3. |
 
 ### 16.4 Poznámka k licenční bráně
 
@@ -4635,7 +4975,7 @@ Konkrétní požadavky. Každý má číslo, adresáta, tvar a odůvodnění.
 
 | # | Požadavek | V jakém tvaru | Proč |
 |---|---|---|---|
-| U→1.1 | **Rozšiřující člen `params` v chybové odpovědi.** RFC 9457 rozšiřující členy povoluje a část 1 už dvě má (`errors`, `retry_after`). Potřebuju třetí: hodnoty k dosazení do textu. Konkrétní tvary jsou v tabulce 10.2. **Zvlášť u `forbidden`** potřebuju `requiredPermission`, `currentRole`, `grantedByRoles[]` a `contactableMembers[]`. | `params: Record<string, string \| number \| string[]>` jako rozšiřující člen, typovaný per `code` v `packages/core/errors/registry.ts` | Bez toho nejde napsat hláška 16 ani 22. Zbytek mého původního rozporu o chybách jsem po přečtení skutečného textu stáhl, viz R6. |
+| U→1.1 | **Vyřízeno co do podstaty, zbývá jedna nesrovnalost uvnitř části 1.** Rozšiřující členy `params` a `findings` v 4.2 máte, popsané normativně a s příklady. Ale ve **vlastním „kompletním typu `Problem` pro `sdk-node`"** v 4.8 ani jeden není, takže typ neodpovídá tomu, co API skutečně posílá, a typovaný klient by se k `params` dostal jen přetypováním. Prosím doplnit obě pole do typu. | `findings?: Array<{ code: string; severity: 'error' \| 'warning' \| 'info'; message: string; path?: string; params?: Record<string, string \| number \| string[]> }>` a `params?: Record<string, string \| number \| string[]>` do `export type Problem`. K tomu typování `params` per `code` v `packages/core/errors/registry.ts` | Bez doplnění do typu bude rozhraní obcházet vlastní SDK přesně u hlášek, kvůli kterým ta pole vznikla (16 a 22). **Zvlášť u `forbidden`** potřebuju v `params` hodnoty `requiredPermission`, `currentRole`, `grantedByRoles[]` a `contactableMembers[]`. Úroveň `info` v `severity` souvisí s U→4a.3. |
 | U→1.2 | **Komponentní základ pro šest kanálů zpětné vazby** z 5.3, včetně toastu s odpočtem, s pozastavením při hoveru a fokusu, s frontou a se slučováním duplicit. | Komponenty v `packages/ui` plus dokumentovaný hook | Bez sdílené komponenty si každá obrazovka vyrobí vlastní a pravidla z kapitoly 5 se nedají vynutit. |
 | U→1.3 | **Centrum úloh** jako součást skořápky: panel v hlavičce, odznak s počtem běžících úloh, stránka `/w/{slug}/jobs/{jobId}`, historie 30 dní. Napojení na pg-boss včetně `progress` a `total`. | Komponenta plus interní API | Vlastní ho skořápka, protože přesahuje domény. Části 2 a 4a do něj jen zapisují své úlohy. |
 | U→1.4 | **Lint pravidlo zakazující `disabled` na tlačítku primární akce**, s allowlistem. | ESLint pravidlo ve sdílené konfiguraci | Vynucení principu P5. |
@@ -4675,7 +5015,7 @@ Konkrétní požadavky. Každý má číslo, adresáta, tvar a odůvodnění.
 
 | # | Požadavek | V jakém tvaru | Proč |
 |---|---|---|---|
-| U→3.1 | **Klávesová alternativa k tažení bloků myší.** Každý blok má akce "Posunout nahoru", "Posunout dolů", "Duplikovat", "Smazat" dostupné z klávesnice. | Součást adaptéru nad editorem | WCAG 2.2, SC 2.5.7 Dragging Movements. Podmínka souladu, ne vylepšení. |
+| U→3.1 | **Klávesová alternativa k tažení bloků myší.** Každý blok má akce "Posunout nahoru", "Posunout dolů", "Duplikovat", "Smazat" dostupné z klávesnice, včetně oznamování nové pozice čtečce obrazovky. **Přeformulováno po zamítnutí `@usewaypoint/email-builder` z 2026-07-31:** není to už doplněk adaptéru nad cizí knihovnou, ale **návrh od nuly ve vlastním editoru**. | Součást návrhu vlastního editoru, ne obal nad knihovnou. Rozpis toho, co se musí navrhnout, je v 8.5.1 | WCAG 2.2, SC 2.5.7 Dragging Movements. Podmínka souladu, ne vylepšení. **Prosím zohlednit v odhadu rozsahu editoru (3 000 řádků), tahle položka v něm musí být.** |
 | U→3.2 | **Merge tagy se v editoru zobrazují jako přeložené žetony**, ne jako Liquid kód. | Mapování `tag → zobrazený název` v katalogu překladů | Viz 8.5.1. |
 | U→3.3 | **Náhled s prázdnými osobními údaji** jako pojmenovaná funkce ("Kontakt bez jména"). | Tlačítko plus API pro náhled s prázdným kontextem | Nejčastější chyba v odeslaných e-mailech, viz 8.5.2. |
 | U→3.4 | **Náhled textové verze** jako rovnocenný třetí režim. | Součást náhledu | Textovou verzi nikdo nekontroluje a odchází s každou zprávou. |
@@ -4691,7 +5031,7 @@ Konkrétní požadavky. Každý má číslo, adresáta, tvar a odůvodnění.
 |---|---|---|---|
 | U→4a.1 | **Okno na zrušení odeslání.** Kampaň po potvrzení jde do `scheduled` se `scheduled_at = now() + delay`, kde `delay` je nastavení projektu 0 až 300 s, výchozí 60. `unschedule` ji vrací do `draft`. | Nastavení projektu plus využití existujících přechodů | Jádro ochrany nevratné akce, viz 6.3. Nepřidává novou architekturu. |
 | U→4a.2 | **Pozastavení a zrušení jsou v rozhraní důsledně oddělené.** Potřebuju u `paused` i `pause_reason` a u automatické brzdy podkladová čísla. | `{ status, pauseReason, pauseParams }` | Viz 6.4. Uživatel musí vidět, jestli kampaň pozastavil sám, nebo brzda, a proč. |
-| U→4a.3 | **Rozšířit `preflight` o úrovně `warning` a `info`**, ne jen blokující kontroly, a o `params` pro složení textu. | `{ items: [{ key, level, params }] }` | Katalog položek je v 8.6.2. Dnes vracíte jen blokující kontroly, takže varování nemá kde vzniknout. |
+| U→4a.3 | **Přeformulováno proti skutečnému stavu.** Dvě úrovně (`error`, `warning`) i předání varování při úspěchu už máte, přebírám je beze změny. Potřebuju k tomu: **(a)** třetí úroveň **`info`** pro položky, které jen informují a nesmí se objevit v potvrzovacím dialogu (odhad doby rozesílky, rozpad vyloučených, počet použitých doplňovaných údajů), a **(b)** doplnění kontrol, které v katalogu 3.2 nejsou, ale kontrolní seznam je má: chybějící testovací odeslání, nezkontrolovaný náhled bez jména, krátká textová varianta, obrázek bez alternativního textu, zapnutý zkušební režim a předmět delší než 60 znaků. | `severity: 'error' \| 'warning' \| 'info'` ve `findings[]` podle konvence části 1, plus rozšíření tabulky kontrol v 3.2 | Katalog položek je v 8.6.2. **Bez úrovně `info` by informační položky buď zmizely, nebo by se musely tvářit jako varování a objevily by se v dialogu**, čímž by dialog zplaněl. Pravidlo z části 1, že 4xx s `findings` smí vzniknout jen při aspoň jednom `error`, tím není dotčené: položky `info` chodí v odpovědi na úspěch. |
 | U→4a.4 | **Automatické pozastavení při vysoké míře nedoručení** během rozesílky. | Přechod na `paused` s důvodem | Viz 8.6.4. Ochrání uživatele před ztrátou účtu u Amazonu. |
 | U→4a.5 | **Míra stížností nad 0,3 % blokuje odeslání**, mezi 0,1 % a 0,3 % varuje. | Položka preflightu plus nastavení | Viz 8.6.2 a R1. |
 | U→4a.6 | **Odhad doby rozesílky** ze současné kvóty a rychlosti. | Pole v preflightu a v průběhu | Uživatel se rozhoduje, jestli může odejít. |
@@ -4701,13 +5041,14 @@ Konkrétní požadavky. Každý má číslo, adresáta, tvar a odůvodnění.
 | U→4a.10 | **Delegační odkaz na DNS**: token, 14 dní, jen ke čtení plus spuštění kontroly, bez přihlášení. | Endpoint plus stránka `/d/{token}` | Hlavní odpověď na "zvládne to babička", viz 8.2.5. |
 | U→4a.11 | **Varování u odesílací adresy na veřejné doméně** jako varování, ne blokace. | Validace plus položka preflightu | Viz 8.2.3. |
 | U→4a.12 | **Ukázková odeslaná kampaň s reportem** jako součást ukázkových dat. | Součást seedu | Report je obrazovka, která prodává, a jinak ji nejde ukázat před prvním odesláním. |
-| U→4a.13 | **Registrace doménových kódů `ses_*`, `smtp_*` a `dns_*`** do registru podle konvence části 1, včetně `params` z 10.2. | Zápis do registru plus tvary `params` | Devět z mých pětadvaceti hlášek je vaše doména. |
+| U→4a.13 | **Zúženo po ověření.** Kódy providerů a domén už máte, jen jsem si je vymyslel jinak a opravil jsem se podle vaší 4.1.2. Zbývá **skupina `dns_*`** pro hlášky 8 až 11 (záznam nenalezen, dva SPF záznamy, název obsahuje doménu dvakrát, jiná hodnota záznamu), kterou jsem u vás nenašel. | Registrace `dns_record_not_found`, `dns_spf_multiple_records`, `dns_record_name_duplicated`, `dns_record_value_mismatch` plus tvary `params` z 10.2 | Vaše 3.13 tyhle situace rozlišuje a má pro ně texty, ale jako `findings[].code` v `DomainChecks`, ne jako registrované chybové kódy. Rozhraní z nich staví čtyři různé karty s různými akcemi, takže potřebuje stabilní kódy. |
 
 ### Na část 5 (tracking a reporty)
 
 | # | Požadavek | V jakém tvaru | Proč |
 |---|---|---|---|
-| U→5.1 | **Sladit pojmenování tří čísel otevření.** Navrhuju tři **vzájemně se vylučující** skupiny, jejichž součet dá celek. | Sladit v revizi | Skupiny, které se nesčítají do celku, čtenáře matou. Rozhodnutí je na vás. |
+| U→5.1 | **Vyřízeno, přebírám vaše skupiny beze změny.** Rozhraní ukazuje ověřená (`opens_unique_human`), pravděpodobně automatická (`opens_unique_apple`) a nejistá (zbytek). Ty tři se vylučují a sčítají do `opens_unique`, takže původní požadavek je splněný už vaším návrhem. | nic, jen potřebuju **zbytek dopočítaný na serveru**, ne v rozhraní | Můj původní návrh měl vlastní skupinu „potvrzeno kliknutím" a kritérium „do 10 sekund od doručení". Ani jedno u vás neexistuje, byla to moje chyba a je opravená v 8.7.3. |
+| U→5.1b | **`clicks_unique_human` v odpovědi reportu**, aby šla pod pruh otevření napsat věta „z ověřených jich {n} navíc kliklo". | už v `CampaignStatsResponse` máte, jen potvrzuju, že se na to spoléhám | Nahrazuje moji zrušenou skupinu „potvrzeno kliknutím" a nevyžaduje žádnou novou klasifikaci. |
 | U→5.2 | **Souhlasím s tím, že hlavní metrikou je proklik.** Nejde o požadavek, ale o potvrzení, ke kterému jsme došli nezávisle. | | |
 | U→5.3 | **Jmenovatel u každého procenta** v API i v UI. | `{ value, total, basis }` | Bez jmenovatele se čísla nedají porovnat s jiným nástrojem. |
 | U→5.4 | **Prahové hodnocení metrik** ("v normě", "vysoké") dodává server, ne rozhraní. | `{ value, status, threshold }` | Uživatel neví, jestli je 1 % moc. Prahy patří k doméně doručitelnosti. |
@@ -4736,8 +5077,8 @@ Konkrétní požadavky. Každý má číslo, adresáta, tvar a odůvodnění.
 
 | # | Místo | Rozpor | Návrh |
 |---|---|---|---|
-| R6 | Část 1, 4.2: chybový formát | **Původně jsem to psal jako zásadní rozpor. Po přečtení skutečného textu ho z velké části stahuju.** Část 1 zavádí RFC 9457, kde `code` je pole, podle kterého se klient rozhoduje, a výslovně počítá s tím, že klient si text složí sám. | Zbývá jediná menší věc: **rozšiřující člen `params`**. Viz U→1.1 a mapování v 10.2. |
-| R7 | Část 1, 5.2: struktura postranního menu (osm položek) | Segmenty a Formuláře patří pod Kontakty a Reporty jsou vlastnost kampaně, ne samostatné místo. | Šest položek podle kapitoly 4.1. Rozhodnutí patří na synchronizaci. |
+| R6 | Část 1: chybový formát | **Rozpor je uzavřený.** Část 1 zavádí RFC 9457, kde `code` je pole, podle kterého se klient rozhoduje, výslovně počítá s tím, že si klient text složí sám, a **v 4.2 už má `params` i `findings`**, které jsem si vyžádal. | Rozpor odpadá. Zbývá vnitřní nesoulad uvnitř části 1: typ `Problem` v 4.8 obě pole nemá, přestože je 4.2 popisuje normativně. Není to rozpor se mnou, ale s ní samotnou. Viz U→1.1. |
+| R7 | Část 1, 5.2: struktura postranního menu | **Spor není o počet položek a přeformulovávám ho.** Dřív tenhle řádek tlačil na část 1, aby z osmi položek slevila na šest, což je argument číslem a neobstojí. Věcná námitka je jiná a platí dál: **Segmenty a Formuláře patří pod Kontakty** (uživatel je vede jako práci s kontakty, ne jako samostatnou úlohu) a **Reporty jsou vlastnost kampaně**, ne samostatné místo, protože report bez kampaně neexistuje. | Zařadit Segmenty a Formuláře pod Kontakty a Reporty pod Kampaně. **Počet položek tím vyjde na šest, ale to je důsledek, ne cíl.** Sedmé místo je zároveň rezervované pro Automatizace z MVP 2, takže námitka není o tom, že produkt musí mít málo položek. Kritérium pro každou položku je v 0.2: samostatná úloha s vlastním životním cyklem. |
 | R8 | Část 1, 5.2: "Sekce, na kterou uživatel nemá oprávnění, se v navigaci nezobrazuje." | Souhlasím pro celé sekce. Nesouhlasím pro **akce uvnitř obrazovky**. | Viz 7.2b a U→1.10. |
 | R9 | Část 1, 5.1: přístupnost testuje `axe-core` v Playwrightu | Automat zachytí jen část problémů a nezachytí právě ty nejrizikovější: klávesová obsluha editoru, drag and drop, správa fokusu v průvodcích. | Kapitola 11.4 doplňuje ruční kontrolní seznam a scénář se čtečkou. |
 | R10 | Část 1, 5.3: texty prázdných stavů a hlášek | Texty jsou v pořádku, ale jinak formulované než v mém katalogu. | Slovníček 9.2 je závazný pro celou aplikaci. Konkrétně "API klíč" versus "Klíč k API". |
@@ -4764,7 +5105,7 @@ Konkrétní požadavky. Každý má číslo, adresáta, tvar a odůvodnění.
 | # | Místo | Rozpor | Návrh |
 |---|---|---|---|
 | R14 | Část 4a: "tlačítko Odeslat je zašedlé se srozumitelným důvodem" | **Přímý rozpor s principem P5.** Zašedlé tlačítko není fokusovatelné, čtečka ho oznámí jako nedostupné bez důvodu a uživatel nemá kam kliknout. | Tlačítko zůstává aktivní. Kliknutí s blokující položkou přesune fokus na první blokující položku a ohlásí ji. Rozhodnutí patří mně, jde o interakci, ne o doménu. |
-| R15 | Část 4a: `preflight` vrací jen blokující kontroly | Kontrolní seznam z 8.6.2 má tři úrovně. Varování nemá kde vzniknout. | Rozšířit o `level`. Viz U→4a.3. |
+| R15 | Část 4a: závažnost nálezů preflightu | **Zúženo po ověření, původní rozpor byl z velké části neopodstatněný.** Část 4a v 3.2 sloupec Závažnost má, s hodnotami *blokuje* a *varuje* (kontroly 6 a 14), a v témže odstavci popisuje, že se varování při úspěchu předají v odpovědi na `202`, ne v chybě. Ověřeno čtením `04a-kampane.md`. Zbývají dvě menší věci: **chybí úroveň `info`** a **katalog kontrol v 3.2 nepokrývá celý kontrolní seznam z 8.6.2**. | Doplnit třetí úroveň `info` a chybějící kontroly. Viz U→4a.3. |
 | R16 | Část 4a: stav `cancelled` je terminální | Souhlasím s modelem. Musel jsem kvůli němu opravit vlastní dialog, který dřív sliboval možnost pokračovat. | Rozhraní odděluje "Pozastavit" a "Zrušit zbytek rozesílky" a v dialogu zrušení nabízí pozastavení jako alternativu. Viz 6.4. |
 
 ### 18.5 S částí 5 (tracking)
@@ -4786,8 +5127,8 @@ Konkrétní požadavky. Každý má číslo, adresáta, tvar a odůvodnění.
 | O5 | **Vykání ve všech textech rozhraní.** | Ano. | Zadavatel |
 | O6 | **Český název pro merge tag.** | "Doplňovaný údaj", v editoru "Vložit údaj o příjemci". | Zadavatel, nejde to později levně změnit |
 | O7 | **Blokuje vysoká míra stížností odeslání, nebo jen varuje?** | Blokuje nad 0,3 %, s možností vědomého přebití a auditem. Viz R1. | Zadavatel spolu s částí 4a |
-| O8 | **Struktura postranního menu: šest položek, nebo osm?** | Šest, viz R7. | Synchronizace s částí 1 |
-| O9 | **Rozšiřující člen `params` v chybové odpovědi.** | Zavést. Bez toho nejde napsat polovina katalogu 10.3. Viz R6. | Synchronizace s částí 1 |
+| O8 | **Struktura postranního menu: patří Segmenty, Formuláře a Reporty do hlavního menu, nebo pod nadřazenou položku?** *(Otázka přeformulovaná: dřív zněla „šest položek, nebo osm?", což z počtu dělalo rozhodnutí.)* | Segmenty a Formuláře pod Kontakty, Reporty pod Kampaně. V MVP 0 z toho vyjde šest položek, sedmá je rezervovaná pro Automatizace (MVP 2). Viz R7 a 0.2. | Synchronizace s částí 1 |
+| ~~O9~~ | ~~**Rozšiřující člen `params` v chybové odpovědi.**~~ | **VYŘÍZENO.** Část 1 ho v 4.2 má, i s `findings[]` a s příklady pro preflight a kvótu. Otázka zaniká. Zbylá drobnost (doplnit `params` a `findings` do typu `Problem` v 4.8) není otevřená otázka, ale konkrétní požadavek U→1.1. | – |
 | O10 | **Web Push notifikace o dokončení dlouhých úloh.** | Nezavádět. E-mail je pro tenhle produkt spolehlivější. | Zadavatel |
 | O11 | **Mobilní podpora editoru a segment builderu.** | Nepodporovat, říct to větou. Podporovat čtení, report a pozastavení rozesílky. | Zadavatel |
 | O12 | **Nekonečné rolování v tabulkách.** | Ne, kurzorové stránkování s tlačítky. Viz 14.2. | Rozhodl jsem sám, uvádím pro případ nesouhlasu |
