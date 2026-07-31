@@ -111,7 +111,7 @@ Konkrétně:
 1. Otisk se ukládá **spolu s `key_id`**, stejně jako token a šifrová obálka: `suppressions.fingerprint bytea` plus `suppressions.fingerprint_key_id smallint`.
 2. Nový purpose `mailer/v1/suppression-fingerprint`, odvozený běžně přes HKDF. **Rotovatelný jako všechno ostatní.**
 3. Při kontrole, jestli je adresa na suppression listu, se spočítá otisk **pro každé známé pokolení klíče** a hledá se `WHERE fingerprint = ANY($1)`. Pokolení je nejvýš šest (aktuální plus limit pěti v `SECRET_KEY_PREVIOUS`), takže jde o jeden indexovaný dotaz s polem šesti hodnot, ne o šest dotazů.
-4. Do `mlain doctor` a do dokumentace k rotaci přibude tvrdé pravidlo: **`SECRET_KEY_PREVIOUS` se nesmí vyprázdnit, dokud existuje jediný suppression záznam nebo dokud nám záleží na trackovacích odkazech ze starých kampaní.** `oe rotate-credentials` proto **nesmí** hlásit „hotovo, staré klíče můžete odebrat", protože credentials jsou jediné, co se dá přešifrovat.
+4. Do `mlain doctor` a do dokumentace k rotaci přibude tvrdé pravidlo: **`SECRET_KEY_PREVIOUS` se nesmí vyprázdnit, dokud existuje jediný suppression záznam nebo dokud nám záleží na trackovacích odkazech ze starých kampaní.** `mlain rotate-credentials` proto **nesmí** hlásit „hotovo, staré klíče můžete odebrat", protože credentials jsou jediné, co se dá přešifrovat.
 
 **Cena.** Šest HMAC výpočtů na adresu při importu. Při importu pěti milionů kontaktů je to třicet milionů HMAC, tedy jednotky desítek sekund jednovláknově a v dávkovaném importu se to ztratí v šumu. Proti tomu stojí zachovaná schopnost rotovat klíč po bezpečnostním incidentu. Ten obchod je jednoznačný.
 

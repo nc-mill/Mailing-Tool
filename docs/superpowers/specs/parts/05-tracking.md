@@ -980,7 +980,7 @@ GET  {TRACKING_DOMAIN}/t/c/{token}      click redirect
 GET  {TRACKING_DOMAIN}/t/expired        informační stránka pro neplatné tokeny
 POST {TRACKING_DOMAIN}/e/track          ingestion událostí
 POST {TRACKING_DOMAIN}/e/identify       konzumace ml_token
-GET  {TRACKING_DOMAIN}/e/oe.js          web SDK
+GET  {TRACKING_DOMAIN}/e/ml.js          web SDK
 ```
 
 `TRACKING_DOMAIN` je konfigurační proměnná z tabulky 4.9 části 1, ve výchozím stavu odvozená z `APP_URL`. Nastavuje se na vlastní subdoménu zákazníka (`https://events.shop.cz`), aby SDK i pixely přežily blokátory. Sender ji musí znát, aby tvořil správné odkazy (je v jeho sloupci „Kdo" v tabulce 4.9).
@@ -1253,8 +1253,8 @@ Zápis kliku jde do bufferu v paměti a odpověď se odesílá okamžitě. Buffe
 7. pokud click_class = 'human'
       a workspace má web tracking zapnutý
       a host odpovídá tracking_domains (přesná shoda nebo subdoména při include_subdomains):
-        oe = mintIdentityToken(workspace_id, contact_id, campaign_id, ttl=15 min)
-        target = appendQueryParam(link.url, 'ml_token', oe)
+        token = mintIdentityToken(workspace_id, contact_id, campaign_id, ttl=15 min)
+        target = appendQueryParam(link.url, 'ml_token', token)
 8. 302 Location: target
 ```
 
@@ -1309,7 +1309,7 @@ Důsledek pro identity resolution: `ml_token` se přidává jen u `click_class =
 | Cíl | ≤ 4 200 B gzip |
 | Tvrdý limit, CI padá | 5 120 B gzip |
 | Formát | IIFE, ES2019, žádné závislosti, žádný polyfill |
-| Distribuce | `{TRACKING_DOMAIN}/e/oe.js`, `Cache-Control: public, max-age=3600, stale-while-revalidate=86400` |
+| Distribuce | `{TRACKING_DOMAIN}/e/ml.js`, `Cache-Control: public, max-age=3600, stale-while-revalidate=86400` |
 | Verzování | Obsah odpovídá verzi instance. Při upgradu instance se změní `ETag` |
 
 Žádná runtime závislost. Bundluje se esbuildem, který je součástí buildu z části 1.
@@ -2556,7 +2556,7 @@ Segmenty založené na engagementu (část 2) musí umět rozlišit totéž. Kam
 | `GET` | `/t/o/{token}` | Open pixel | `200 image/gif`, 42 B, vždy |
 | `GET`, `HEAD` | `/t/c/{token}` | Click redirect | `302` na cíl, nebo `302` na `/t/expired` |
 | `GET` | `/t/expired` | Informační stránka | `200 text/html` |
-| `GET` | `/e/oe.js` | Web SDK | `200 application/javascript` |
+| `GET` | `/e/ml.js` | Web SDK | `200 application/javascript` |
 | `OPTIONS` | `/e/*` | CORS preflight | `204` |
 | `POST` | `/e/track` | Příjem událostí | `202` |
 | `POST` | `/e/identify` | Konzumace `ml_token` | `202` |
@@ -3155,7 +3155,7 @@ Vektory vlastní část 1 (`fixtures/token/vectors.json`), tato část je jen ko
 
 ### 10.4 Web SDK a ingestion
 
-30. Sestavený `oe.js` má gzip velikost pod 5 120 B, jinak CI padá.
+30. Sestavený `ml.js` má gzip velikost pod 5 120 B, jinak CI padá.
 31. Bez volání `consent` SDK nezapíše do `document.cookie`, `localStorage` ani `sessionStorage` nic a neodešle žádný požadavek.
 32. Po `consent({analytics:true})` se odešle `session_started` a `page_view` v jedné dávce.
 33. Po `consent({analytics:false})` zmizí `ml_aid` z cookie i `localStorage` do 100 ms.

@@ -2625,7 +2625,7 @@ Doporučuji zároveň doplnit testovací scénář, který to hlídá: `OB-12` "
 
 **Stav: opraveno v kontraktu.** Zmírnění (a) se dnes jmenuje „Deterministický `Message-ID`, ale jen u SMTP", výslovně říká, že SES hlavičku přepíše a že zmírnění pro SES neplatí, a výchozí politika je rozdělená na `AMBIGUOUS_DISPATCH_POLICY_SES` = `fail` a `AMBIGUOUS_DISPATCH_POLICY_SMTP` = `retry`. Text níž zůstává jako doklad zjištění.
 
-Původní znění kontraktu 4.10.1, zmírnění (a): "Sender vždy generuje `Message-ID: <oe.{base32_lower(...)}@{sending_domain}>`. Opakované odeslání téže zprávy má proto identický `Message-ID` a většina přijímajících MTA a poštovních klientů ho deduplikuje."
+Původní znění kontraktu 4.10.1, zmírnění (a): "Sender vždy generuje `Message-ID: <ml.{base32_lower(...)}@{sending_domain}>`. Opakované odeslání téže zprávy má proto identický `Message-ID` a většina přijímajících MTA a poštovních klientů ho deduplikuje."
 
 Ověřeno v dokumentaci AWS ("Amazon SES header fields"), doslovné znění:
 
@@ -2883,7 +2883,7 @@ Navrhoval jsem dvě varianty: buď předávat i pole `created_at` a párovat dvo
 
 #### K13. DROBNÉ: `base32_lower` není jednoznačně určený
 
-Kontrakt 4.10.1: `Message-ID: <oe.{base32_lower(uuid_bytes(messages.id))}@{sending_domain}>`, a testovací scénář `OB-11` porovnává řetězec.
+Kontrakt 4.10.1: `Message-ID: <ml.{base32_lower(uuid_bytes(messages.id))}@{sending_domain}>`, a testovací scénář `OB-11` porovnává řetězec.
 
 Nespecifikované je: která abeceda (RFC 4648 standardní, nebo Crockford, nebo hex-base32), a jestli se doplňuje padding. Go `encoding/base32` nabízí `StdEncoding`, `HexEncoding` a `RawStdEncoding` a dávají různé výsledky. 16 bajtů v base32 je 26 znaků plus 6 znaků paddingu.
 

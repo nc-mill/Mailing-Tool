@@ -2326,7 +2326,7 @@ Sestavení MIME vlastní část 4b. **Politiku, tedy co tam má být a proč, vl
 | `List-Id` | `<campaign-list.<workspace_slug>.<APP_HOST>>` | Umožní příjemci filtrovat, snižuje pravděpodobnost stížnosti |
 | `Precedence` | `bulk` | Zabrání automatickým odpovědím typu „jsem na dovolené" |
 | `Auto-Submitted` | `auto-generated` | RFC 3834, totéž |
-| `Message-ID` | `<oe.{base32_lower(uuid_bytes(messages.id))}@{sending_domain}>` | Přesný tvar vlastní kontrakt 4.10.1 části 1, nevymýšlím ho. Je **deterministicky odvozený z `messages.id` a nikdy neobsahuje číslo pokusu ani čas**, takže opakovaný pokus po nejasném odeslání pošle identickou hlavičku. **Pozor: u SES se k příjemci nedostane**, SES `Message-ID` vždy přepisuje vlastní hodnotou. Pojistka „přijímající server duplikát zahodí" proto platí jen u obecného SMTP, viz 4.6. |
+| `Message-ID` | `<ml.{base32_lower(uuid_bytes(messages.id))}@{sending_domain}>` | Přesný tvar vlastní kontrakt 4.10.1 části 1, nevymýšlím ho. Je **deterministicky odvozený z `messages.id` a nikdy neobsahuje číslo pokusu ani čas**, takže opakovaný pokus po nejasném odeslání pošle identickou hlavičku. **Pozor: u SES se k příjemci nedostane**, SES `Message-ID` vždy přepisuje vlastní hodnotou. Pojistka „přijímající server duplikát zahodí" proto platí jen u obecného SMTP, viz 4.6. |
 | `X-Entity-Ref-ID` | `<message_id>` | Zabrání Gmailu shlukovat různé zprávy do jednoho vlákna |
 
 #### 3.16.2 Klíčové pravidlo pro one-click
@@ -3455,7 +3455,7 @@ Změna kontraktu je zanesená v části 1, sekce 4.10.1, včetně testovacího s
 | O6 | ~~Retence `messages` 90 dní?~~ | **uzavřeno** | Ano, 90 dní pro detail zprávy. Agregované statistiky kampaně zůstávají. |
 | O7 | Kanonizace SNS string to sign: závěrečný newline ano, nebo ne? | technické, empiricky | Ověřit proti reálné zprávě a použít `sns-validator`. Zapsat do golden fixture. |
 | O8 | ~~SMTP bez zpětné vazby: podporovat v MVP 0?~~ | **uzavřeno** | Obecné SMTP podporovat, ale s výslovným varováním v UI, že se suppression list u tohohle provideru neplní sám. |
-| O9 | ~~Kdo generuje `Message-ID` a v jaké doméně?~~ | **uzavřeno** | Vyřešeno kontraktem 4.10.1: sender, tvar `<oe.{base32_lower(uuid_bytes(id))}@{sending_domain}>`, deterministicky z `messages.id`. |
+| O9 | ~~Kdo generuje `Message-ID` a v jaké doméně?~~ | **uzavřeno** | Vyřešeno kontraktem 4.10.1: sender, tvar `<ml.{base32_lower(uuid_bytes(id))}@{sending_domain}>`, deterministicky z `messages.id`. |
 | O10 | ~~Má se odeslání blokovat při chybějícím DMARC?~~ | **uzavřeno** | Chybějící DMARC jen varovat, neblokovat. Gmail a Yahoo ho sice vyžadují, ale blokovat kvůli tomu první kampaň nového uživatele je moc tvrdé. |
 | O11 | Anonymizace versus mazání zpráv při GDPR výmazu kontaktu | **čeká na právníka** | Návrh zůstává: anonymizovat, aby nezmizely statistiky kampaní. Rozhodnutí je odložené do posouzení právníkem, produkt ho nezavírá. |
 | O12 | Sdílení kvóty mezi víc běžícími sendery | část 4b | Nemám názor na algoritmus, ale potřebuju vědět, jestli se dělí staticky (kvóta / počet senderů), nebo dynamicky. Ovlivňuje to, jak počítám `eta_seconds`. |

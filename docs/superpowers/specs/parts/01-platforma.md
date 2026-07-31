@@ -1424,7 +1424,7 @@ Cena je jeden HMAC na pokolení a adresu. Při šesti pokoleních a importu pět
 
 **Kontrola zdraví instalace.** `mlain doctor` porovná pokolení použitá v datech (`SELECT DISTINCT fingerprint_key_id FROM suppressions`, totéž pro trackovací tokeny) se seznamem klíčů, které instalace zná. Každé chybějící pokolení hlásí jako **kritickou chybu**, ne jako doporučení. Chybějící starý klíč není kosmetický nedostatek, je to už nastalá tichá ztráta ochrany.
 
-> **Tvrdé pravidlo, které kontroluje `mlain doctor`: `SECRET_KEY_PREVIOUS` se nikdy nevyprazdňuje.** Ani po `oe rotate-credentials`. Credentials jsou jediné, co se dá přešifrovat; trackovací tokeny ve starých e-mailech a suppression otisky po výmazu se přešifrovat nedají nikdy. `oe rotate-credentials` proto po doběhnutí **nesmí** hlásit, že staré klíče jdou odebrat, a `mlain doctor` hlásí prázdné `SECRET_KEY_PREVIOUS` při neprázdném suppression listu jako kritický nález.
+> **Tvrdé pravidlo, které kontroluje `mlain doctor`: `SECRET_KEY_PREVIOUS` se nikdy nevyprazdňuje.** Ani po `mlain rotate-credentials`. Credentials jsou jediné, co se dá přešifrovat; trackovací tokeny ve starých e-mailech a suppression otisky po výmazu se přešifrovat nedají nikdy. `mlain rotate-credentials` proto po doběhnutí **nesmí** hlásit, že staré klíče jdou odebrat, a `mlain doctor` hlásí prázdné `SECRET_KEY_PREVIOUS` při neprázdném suppression listu jako kritický nález.
 
 **Co tím není vyřešené, a je poctivé to říct:** e-mailové adresy jsou vyčíslitelná množina. Kdo získá databázi **i** klíč, prolomí otisky hrubou silou bez ohledu na zvolené schéma. Otisk chrání proti úniku samotné databáze, ne proti úniku obojího. Patří to do dokumentace ke GDPR, ne do volby klíče.
 
@@ -1455,12 +1455,12 @@ K_secret-key-fingerprint= 58c150fe5d466b4fa3e4d69d855c79763d1f0ccf0875c05594ff93
 **Postup rotace**
 
 ```
-0. oe genkey --id 2                     vypíše nový klíč
+0. mlain genkey --id 2                     vypíše nový klíč
 1. SECRET_KEY_PREVIOUS=1:<starý>        do prostředí VŠECH procesů
    SECRET_KEY=2:<nový>
 2. docker compose up -d                 restart VŠECH procesů, ověřit /readyz u každého
    >>> TEPRVE TEĎ smí přijít krok 3 <<<
-3. oe rotate-credentials                přešifruje všechna uložená tajemství na key_id 2
+3. mlain rotate-credentials                přešifruje všechna uložená tajemství na key_id 2
 4. Počkat na expiraci identity tokenů (15 minut)
 5. SECRET_KEY_PREVIOUS SE NEODEBÍRÁ, viz níže
 ```
@@ -1475,7 +1475,7 @@ Proto je navíc normativní tohle:
 
 | Artefakt | Chování při rotaci |
 |---|---|
-| Zašifrované credentials providerů, AI klíče, tajemství webhooků | Dešifrují se starým klíčem podle `key_id` v obálce. `oe rotate-credentials` je projde a přešifruje novým. Do té doby fungují dál. |
+| Zašifrované credentials providerů, AI klíče, tajemství webhooků | Dešifrují se starým klíčem podle `key_id` v obálce. `mlain rotate-credentials` je projde a přešifruje novým. Do té doby fungují dál. |
 | Trackovací tokeny v už odeslaných e-mailech | Ověřují se starým klíčem podle `key_id` v tokenu. **Nikdy nevyprší**, protože e-mail v cizí schránce leží roky. Proto se `SECRET_KEY_PREVIOUS` u trackovacích klíčů nesmí odebrat nikdy, dokud nám záleží na starých kampaních. Doporučení v dokumentaci: staré klíče v `SECRET_KEY_PREVIOUS` nechat trvale. |
 | Identifikační token z kliku (`ml_token`) | Platnost 15 minut, po rotaci stačí počkat 15 minut. |
 | Potvrzovací odkazy double opt-in | Platnost 14 dní, viz část 2. |
@@ -1483,7 +1483,7 @@ Proto je navíc normativní tohle:
 | Session cookies | Nedotčeno, session token je náhodný a v databázi, ne odvozený ze `SECRET_KEY`. |
 | Hesla | Nedotčeno, viz 3.1 (žádný pepper). |
 | API klíče | Nedotčeno, hash je SHA-256 bez klíče. |
-| Podpisy odchozích webhooků | Nedotčeno, tajemství je per endpoint a je uložené zašifrovaně; přešifruje ho `oe rotate-credentials`. |
+| Podpisy odchozích webhooků | Nedotčeno, tajemství je per endpoint a je uložené zašifrovaně; přešifruje ho `mlain rotate-credentials`. |
 
 **Ztráta `SECRET_KEY`** je nevratná pro zašifrované credentials. `mlain doctor` to detekuje (otisk nesedí, dešifrování selže) a nabídne jedinou možnou opravu: znovu zadat přístupy k providerům a AI klíče. Trackovací tokeny ze starých kampaní přestanou platit a klik z takového e-mailu skončí na `/t/expired` s neutrální stránkou a přesměrováním na domovskou stránku workspace.
 ### 3.11 Monorepo a build
@@ -1646,7 +1646,7 @@ COPY --from=node-builder --chown=root:root /app/apps/worker/dist ./apps/worker/d
 COPY --from=node-builder --chown=root:root /app/packages/db/migrations ./packages/db/migrations
 COPY --from=sender-builder --chown=root:root /out/ml-sender /usr/local/bin/ml-sender
 COPY --chown=root:root docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY --chown=root:root docker/oe /usr/local/bin/mlain
+COPY --chown=root:root docker/mlain /usr/local/bin/mlain
 
 # Data se zapisují jen do /data, aplikační soubory jsou pro běžícího uživatele
 # jen ke čtení. Kontejner tedy jde spustit s read-only rootfs.
@@ -1793,7 +1793,7 @@ services:
       # nemá runner z 3.13 čím se připojit.
       DATABASE_URL_MIGRATOR: ${DATABASE_URL_MIGRATOR:-postgres://mlain_migrator:${POSTGRES_PASSWORD:-mlain}@postgres:5432/mlain}
       DATABASE_URL_SENDER: ${DATABASE_URL_SENDER:-postgres://mlain_sender:mlain@postgres:5432/mlain}
-      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY je povinná, vygenerujte ji příkazem oe genkey}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY je povinná, vygenerujte ji příkazem mlain genkey}
       DEFAULT_LOCALE: ${DEFAULT_LOCALE:-cs}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT:-3001}
@@ -1886,9 +1886,9 @@ packages/db/migrations/
 První řádek souboru smí nést direktivy runneru:
 
 ```sql
--- oe:no-transaction        migrace poběží mimo transakci (CREATE INDEX CONCURRENTLY)
--- oe:timeout=600           lock_timeout a statement_timeout v sekundách (výchozí 60)
--- oe:expand                migrace je zpětně kompatibilní (viz expand/contract)
+-- mlain:no-transaction        migrace poběží mimo transakci (CREATE INDEX CONCURRENTLY)
+-- mlain:timeout=600           lock_timeout a statement_timeout v sekundách (výchozí 60)
+-- mlain:expand                migrace je zpětně kompatibilní (viz expand/contract)
 ```
 
 **Běh při startu s víc replikami (otázka 11)**
@@ -1924,14 +1924,14 @@ Zámek je session-scoped advisory lock, takže se uvolní i když proces spadne.
 - Migrace, která spadne v transakci, se celá rollbackne. Předchozí migrace zůstávají aplikované, protože každá má vlastní transakci.
 - Runner ukončí proces s exit code **3** a vypíše číslo migrace, chybu z Postgresu a příkaz, na kterém spadla.
 - Kontejner restartuje a pokusí se znovu. Když je chyba deterministická (například kolize dat s novým `UNIQUE`), zacyklí se restart. Proto runner po **třech** neúspěších stejné migrace (počítáno v `system_settings.settings`) přestane a nastartuje aplikaci v **režimu údržby**: web odpovídá 503 s `migration_failed` na všem kromě `/api/health` a stránky s návodem.
-- Migrace `oe:no-transaction`, která spadne uprostřed, může nechat databázi v částečném stavu. Proto smí obsahovat **jen idempotentní příkazy** (`CREATE INDEX CONCURRENTLY IF NOT EXISTS`, `DROP INDEX IF EXISTS`). Kontroluje to lint pravidlo `migration-lint` v CI.
+- Migrace `mlain:no-transaction`, která spadne uprostřed, může nechat databázi v částečném stavu. Proto smí obsahovat **jen idempotentní příkazy** (`CREATE INDEX CONCURRENTLY IF NOT EXISTS`, `DROP INDEX IF EXISTS`). Kontroluje to lint pravidlo `migration-lint` v CI.
 
 **Index na partitionované tabulce: třífázový postup (KONVENCE)**
 
 `CREATE INDEX CONCURRENTLY` **na partitionované tabulce v PostgreSQL neexistuje**, příkaz skončí chybou. A prostý `CREATE INDEX` na rodiči zamkne rodiče i všechny partition po celou dobu stavby, což u `messages` s miliony řádků znamená zastavené odesílání. Jediný bezpečný postup je tenhle a `migration-lint` ho vynucuje jako **jediný povolený vzor** pro partitionované tabulky:
 
 ```sql
--- oe:no-transaction
+-- mlain:no-transaction
 
 -- Fáze 1: prázdný index jen na rodiči. Zamkne jen katalog, je to okamžité.
 CREATE INDEX IF NOT EXISTS idx_messages__claimable
@@ -2958,7 +2958,8 @@ CREATE TABLE messages (
   id                  uuid        NOT NULL DEFAULT uuidv7(),
   workspace_id        uuid        NOT NULL,
   campaign_id         uuid,       -- NULL = nekampáňová zpráva, viz rezerva níž
-  variant_id          uuid,       -- NULL = obsah ze sloupců kampaně, viz rezerva níž
+  content_variant_id  uuid,       -- NULL = obsah ze sloupců kampaně, viz rezerva níž
+  kind                text        NOT NULL DEFAULT 'campaign',
   contact_id          uuid        NOT NULL,
   email               text        NOT NULL,
   render_data         jsonb       NOT NULL DEFAULT '{}'::jsonb,
@@ -2978,7 +2979,9 @@ CREATE TABLE messages (
   updated_at          timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (id, created_at),
   CONSTRAINT ck_messages__status
-    CHECK (status IN ('pending','claimed','sent','failed','skipped'))
+    CHECK (status IN ('pending','claimed','sent','failed','skipped')),
+  CONSTRAINT ck_messages__kind
+    CHECK (kind IN ('campaign','test'))
 ) PARTITION BY RANGE (created_at);
 
 -- Claim dotaz senderu, druhý krok. Vede campaign_id jako první sloupec schválně:
@@ -3036,7 +3039,9 @@ ALTER TABLE messages_y2026m08 SET (
 | Sloupec | Význam prázdné hodnoty | Kdy se zaplní |
 |---|---|---|
 | `campaign_id` | zpráva **nepatří kampani** (transakční mail, zpráva ze scénáře automatizace) | MVP 1 a dál |
-| `variant_id` | obsah se bere **ze sloupců kampaně**, tedy dnešní chování | až přijde A/B test obsahu (MVP 1) |
+| `content_variant_id` | obsah se bere **ze sloupců kampaně**, tedy dnešní chování | až přijde A/B test obsahu (MVP 1). Cílová tabulka `campaign_content_variants` je v části 4a, taky prázdná |
+
+**Sloupec `kind` (KONTRAKT, doplněn 2026-07-31).** Nese druh zprávy, v MVP 0 hodnoty `campaign` a `test`, s prostorem pro `transactional`. Nahrazuje dosavadní praxi, kdy se testovací odeslání poznávalo podle magického klíče `_test` uvnitř personalizačních dat a statistiky ho vylučovaly dotazem do JSONB. Ten příznak byl fakticky rozhraní mezi částmi 4a a 5, jen nepojmenované, a každý další druh zprávy by přidal další magický klíč a další podmínku do každého reportu.
 
 > **Nekampáňové zprávy se v MVP 0 vylučují VÝSLOVNOU podmínkou, ne mlčky.** Claim dotaz má `AND m.campaign_id IS NOT NULL`, přestože vnitřní spojení na `campaigns` by je zahodilo samo. Je to schválně: kdyby se to nechalo na spojení, první nekampáňová zpráva by navěky ležela ve frontě a nikdo by se nedozvěděl proč. Výslovná podmínka je rozdíl mezi „zatím nepodporováno" a „tiše se ztrácí".
 >
@@ -3171,7 +3176,7 @@ Sender prochází kampaně ze seznamu cyklicky (round robin), aby jedna velká k
 | Parametr | Zdroj | Výchozí |
 |---|---|---|
 | `$1` `claimed_by` | `SENDER_ID` | hostname + PID, max 64 znaků |
-| `$2` velikost dávky | `SENDER_BATCH_SIZE` | 500 |
+| `$2` velikost dávky | `SENDER_BATCH_SIZE` | 100 |
 | `$3` TTL claimu v sekundách | `SENDER_CLAIM_TTL_SECONDS` | 300 |
 
 Poznámky, které nejsou volitelné:
@@ -3260,7 +3265,7 @@ Když sender zemře mezi D2 a D3, zůstane řádek se `status='claimed'`, `dispa
 **a) Deterministický `Message-ID`, ale jen u SMTP.** Sender vždy generuje
 
 ```
-Message-ID: <oe.{base32_lower(uuid_bytes(messages.id))}@{sending_domain}>
+Message-ID: <ml.{base32_lower(uuid_bytes(messages.id))}@{sending_domain}>
 ```
 
 Nikdy nezahrnuje číslo pokusu ani čas. Opakované odeslání téže zprávy má proto identický `Message-ID` a většina přijímajících MTA a poštovních klientů ho deduplikuje.
@@ -3412,17 +3417,21 @@ ALTER TABLE campaigns ADD COLUMN pause_reason jsonb;
 
 **Registr kódů (KONTRAKT, rozšiřuje se společným rozhodnutím).** Rozdělený podle toho, kdo zápis provádí. Sender smí zapsat **jen svoje čtyři**, ostatní jsou aplikační.
 
-| `code` | Kdo zapisuje | Kdy |
+| `code` | Smí zapsat sender | Kdy |
 |---|---|---|
-| `render_failure_rate` | sender | podíl selhání renderu překročil práh |
-| `credentials_undecryptable` | sender | credentials providera nejdou dešifrovat |
-| `provider_quota_exhausted` | sender | provider hlásí vyčerpanou kvótu |
-| `provider_unavailable` | sender | provider je nedostupný, circuit breaker sepnul |
-| `user` | aplikace | člověk zmáčkl Pozastavit |
-| `bounce_guard` | aplikace | ochranná brzda na míru odrazů |
-| `complaint_guard` | aplikace | ochranná brzda na míru stížností |
-| `provider_blocked` | aplikace | provider je `blocked` (například `SHUTDOWN` u SES) |
-| `materialize_timeout` | aplikace | materializace publika překročila časový strop |
+| `render_failure_rate` | **ano** | podíl selhání renderu překročil práh |
+| `credentials_undecryptable` | **ano** | credentials providera nejdou dešifrovat |
+| `provider_quota_exhausted` | **ano** | provider hlásí vyčerpanou kvótu |
+| `provider_unavailable` | **ano** | provider je nedostupný, circuit breaker sepnul |
+| `user` | ne | člověk zmáčkl Pozastavit |
+| `bounce_guard` | ne | ochranná brzda na míru odrazů |
+| `complaint_guard` | ne | ochranná brzda na míru stížností |
+| `provider_blocked` | ne | provider je `blocked` (například `SHUTDOWN` u SES) |
+| `materialize_timeout` | ne | materializace publika překročila časový strop |
+
+> **Omezení míří na sender, ne na kód.** Sender smí zapsat **jen ty čtyři** označené hodnoty. Aplikace smí zapsat **kteroukoliv**, včetně těch čtyř: vyčerpanou kvótu může detekovat i ona, například z hlášení providera mimo odesílací cestu. Kdo zápis provedl, se pozná z pole `source`, ne z hodnoty `code`. Sloupec je tedy o pravomoci senderu, ne o rozdělení jmenného prostoru.
+>
+> **Konkrétní příčina jde do `detail`, ne do `code`.** Sender mapuje sedm různých fatálních situací (selhání ověření u providera, odmítnutí STARTTLS, nedostupnost sítě a další) na jediné `provider_unavailable`. Je to schválně: `code` řídí chování a UI, `detail` nese konkrétní kód z katalogu senderu pro log a pro podporu. Kdyby se každá příčina promítla do `code`, musela by se každá nová chyba providera projednat jako změna zmrazeného kontraktu.
 
 ```sql
 UPDATE campaigns
@@ -3488,7 +3497,7 @@ Vlastník smí tabulku rozšiřovat, nesmí měnit název, typ ani sémantiku vy
 | ID | Scénář | Očekávaný výsledek |
 |---|---|---|
 | **`OB-00`** | **Spustit každý normativní dotaz z tohoto kontraktu proti čerstvě zmigrované databázi. Netvrdí nic o výsledku, jen že dotaz projde parserem a plánovačem.** Běží **první ze všech** | žádná chyba. Prázdný výsledek je v pořádku |
-| `OB-01` | dva sendery, 1 000 zpráv, dávka 500 | každá zpráva claimnutá právě jednou, žádné čekání |
+| `OB-01` | dva sendery, 1 000 zpráv, dávka 100 | každá zpráva claimnutá právě jednou, žádné čekání |
 | `OB-02` | claim, pak SIGKILL, pak reaper po TTL | zprávy zpět na `pending`, `attempts` nezměněné |
 | `OB-03` | claim, `dispatch_started_at` nastavené, SIGKILL, reaper po 2×TTL, politika `retry` | `pending`, `error_code = 'ambiguous_dispatch'`, `attempts = 1` |
 | `OB-04` | totéž, druhý výskyt | `failed`, bez ohledu na politiku |
@@ -3497,7 +3506,7 @@ Vlastník smí tabulku rozšiřovat, nesmí měnit název, typ ani sémantiku vy
 | `OB-07` | pokus o `UPDATE ... SET status='sent'` z `pending` | odmítnuto aplikační kontrolou, test na zakázaný přechod |
 | `OB-08` | sender se pokusí `DELETE FROM messages` | chyba oprávnění z Postgresu |
 | `OB-09` | sender se pokusí `SELECT * FROM contacts` | chyba oprávnění z Postgresu |
-| `OB-10` | graceful shutdown uprostřed dávky 500 | rozpracované dokončené, zbytek `pending`, žádná ztráta |
+| `OB-10` | graceful shutdown uprostřed dávky 100 | rozpracované dokončené, zbytek `pending`, žádná ztráta |
 | `OB-11` | `Message-ID` u dvou pokusů téže zprávy | identický řetězec |
 | `OB-12` | **Pozastavená kampaň s 200 000 řádky `pending` vedle běžící kampaně s 1 000 řádky.** Claim běžící kampaně | vrátí dávku do **10 ms**. Bez dvoukrokového claimu a bez `campaign_id` v indexu trvá sekundy. Tenhle scénář je jediná ochrana proti tomu, aby se patologie vrátila |
 | `OB-13` | Materializace 1 000 zpráv ve dvou dávkách po 500 | všech 1 000 řádků má **identické** `created_at` rovné `campaigns.audience_built_at` a to má nulovou sub-sekundovou složku (invariant I1) |
@@ -3553,6 +3562,18 @@ Společný jmenovatel: **specifikace popisovala žádoucí stav, ale nepojmenova
 | `contact_status_changed` | aplikace | kontakt přestal být způsobilý (změna stavu nebo souhlasu) |
 | `render_data_too_large` | aplikace | personalizační data překročila limit |
 
+**Registr je jeden soubor, ale plní ho tři vlastníci.** Tabulka výše **není** úplný výčet, je to podmnožina, kterou musí znát obě strany, protože na ni navazuje chování nebo report. Kompletní registr vzniká sloučením tří zdrojů a CI ho vynucuje jako celek:
+
+| Zdroj | Kdo registruje | Příklady |
+|---|---|---|
+| Tabulka výše | část 1 | `ambiguous_dispatch`, `suppressed`, `campaign_cancelled` |
+| Katalog chyb senderu (část 4b, kapitola 4.2) | část 4b | `provider_auth_failed`, `smtp_recipient_rejected`, `render_timeout` |
+| Aplikační důvody vyřazení (části 2 a 4a) | části 2 a 4a | `contact_deleted`, `processing_restricted` |
+
+> **Proč ne jeden uzavřený výčet v kontraktu (upřesněno 2026-07-31, nález části 4b).** Katalog senderu má dnes 31 kódů a s každým dalším providerem poroste. Kdyby musely všechny projít změnou zmrazeného kontraktu, byla by změna kontraktu součástí každého přidání providera, což je přesně to, čemu se kontrakt má vyhnout. Vlastník si registruje své kódy sám; kontrakt drží jen ty, na kterých stojí chování druhé strany.
+>
+> **Co z toho plyne pro CI:** kontrola „hodnota mimo výčet je chyba" se pouští proti **sloučenému** registru, ne proti tabulce výše. Kdyby se pouštěla proti ní, spadla by na první zprávě, kterou sender označí kódem svého providera.
+
 Nový kód přidává vlastník příslušné části a musí ho zaregistrovat, stejně jako u HTTP kódů.
 
 > **Pět kódů doplněno 2026-07-31 (nález z revize 5).** Části 2 a 4a je zapisovaly, aniž byly v registru, takže by je CI odmítlo. `render_data_too_large` je navíc náhrada za dosavadní praxi, kdy se překročení limitu personalizačních dat hlásilo kódem `invalid_recipient`. To je sémanticky lživé, protože jde o chybu šablony, ne o vadnou adresu, a report si to vykládal jako neplatný kontakt.
@@ -3577,7 +3598,9 @@ Nový kód přidává vlastník příslušné části a musí ho zaregistrovat, 
 
 - LiquidJS se instancuje s `jsTruthy: false` (výchozí hodnota). Se zapnutým `jsTruthy` se pravdivost rozejde s Go, protože prázdný řetězec a nula začnou být nepravdivé. Kontrola je součástí testu `LQ-3xx`.
 - LiquidJS se instancuje se `strictFilters: true` a `strictVariables: false`. Neznámý filtr má být chyba (chytí ho validátor), neznámá proměnná má být prázdný řetězec (bod 1 níže).
-- Obě strany registrují pětici filtrů **před** prvním renderem a žádná strana neregistruje nic navíc.
+- Obě strany registrují pětici filtrů **před** prvním renderem. Žádný jiný filtr nesmí být použitelný.
+
+> **Formulováno jako chování, ne jako stav registru (opraveno 2026-07-31).** Dřívější znění „žádná strana neregistruje nic navíc" se nedá implementovat: konstruktor LiquidJS vestavěné filtry registruje vždy a odregistrovat je neumí. Jediná cesta je přepsat je funkcí, která vyhodí chybu. Závazný je proto **behaviorální test**: render s libovolným názvem filtru mimo naši pětici musí selhat. Test introspekcí registru se nepíše, protože ho přes veřejné API nejde napsat a implementátor by buď sahal do vnitřností knihovny, nebo by ho tiše vynechal.
 
 **Řetězcové literály nejsou v autorské šabloně povolené. ROZHODNUTO 2026-07-31.**
 
@@ -3726,8 +3749,13 @@ campaign.name             campaign.subject
 workspace.name            workspace.sender_address
 unsubscribe_url           one_click_unsubscribe_url
 preferences_url           webview_url
+_present.<slug>           dopočítaná pravdivost pole, viz níž (jen kompilovaná šablona)
 _context.timezone         _context.locale     (interní, validátor je v šabloně zakáže)
 ```
+
+**`_present.<slug>` je kořen pro podmíněné zobrazení bloku (aditivní doplnění 2026-07-31).** Autor ho nikdy nepíše a validátor **autorské** šablony ho odmítne stejně jako `_context`. Vzniká výhradně kompilací z vlastnosti bloku, kterou uživatel nastaví v panelu vlastností: kompilace emituje `{% if _present.contact__city %}` a materializace publika mapu naplní podle `renderSchema.presence`.
+
+Důvod, proč se pravdivost počítá mimo Liquid a ne v šabloně: emitovaná konstrukce takhle neobsahuje **uvozovku, `blank`, `empty` ani operátor porovnání**, tedy nic ze čtyř věcí, které jsou v subsetu zakázané nebo v Go knihovně neexistují. Podmínku „pole není prázdné" jinak nešlo zapsat vůbec. Navíc to zavírá past, kdy je prázdný řetězec v Liquidu pravdivý, takže naivní `{% if contact.city %}` by blok zobrazilo i lidem bez města.
 
 **`contact.attr.<key>` je závazný tvar pro vlastní pole**, ne `contact.custom.<key>` ani `contact.<key>` naplocho. Naplocho by hrozila kolize vlastního pole s polem první třídy (uživatel si založí vlastní pole `email`), `attr` je kratší než `custom` a je to jediný povolený tvar. Katalog klíčů vlastní část 2 a validátor proti němu kontroluje existenci.
 
@@ -3773,7 +3801,7 @@ Nebo, u případů, které mají selhat už ve validátoru:
   "id": "LQ-051",
   "description": "zakázaný filtr",
   "template": "{{ contact.first_name | vocative }}",
-  "expect_validation_error": { "code": "liquid_filter_not_allowed", "hint_contains": "first_name_vocative" }
+  "expect_validation_error": { "code": "liquid_vocative_filter", "hint_contains": "first_name_vocative" }
 }
 ```
 
@@ -3781,7 +3809,7 @@ Nebo, u případů, které mají selhat už ve validátoru:
 
 ```json
 {
-  "id": "LQ-060",
+  "id": "LQ-700",
   "description": "uvozovka v autorské šabloně musí být odmítnuta validátorem",
   "level": "authored",
   "template": "Dobrý den, {{ contact.first_name | default: \"kolego\" }}!",
@@ -3791,7 +3819,7 @@ Nebo, u případů, které mají selhat už ve validátoru:
 
 ```json
 {
-  "id": "LQ-061",
+  "id": "LQ-701",
   "description": "apostrof v podmínce musí být odmítnut stejně jako uvozovka",
   "level": "authored",
   "template": "{% if contact.country == 'CZ' %}ahoj{% endif %}",
@@ -3801,7 +3829,7 @@ Nebo, u případů, které mají selhat už ve validátoru:
 
 ```json
 {
-  "id": "LQ-062",
+  "id": "LQ-702",
   "description": "escapovaná uvozovka v kompilované šabloně je chyba, ne tichý průchod",
   "level": "compiled",
   "template": "{{ contact.first_name | default: &quot;kolego&quot; }}",
@@ -3811,7 +3839,7 @@ Nebo, u případů, které mají selhat už ve validátoru:
 
 ```json
 {
-  "id": "LQ-063",
+  "id": "LQ-703",
   "description": "prosté konstrukce projdou renderem beze změny",
   "level": "authored",
   "context": "html",
@@ -3821,7 +3849,7 @@ Nebo, u případů, které mají selhat už ve validátoru:
 }
 ```
 
-Minimálně **44 fixtures** (základ 40 podle kapitoly 4.5 hlavní specifikace plus 4 k zákazu řetězcových literálů), rozdělených takto:
+**54 fixtures**, což je součet tabulky skupin níž. Dřívější znění uvádělo „minimálně 44“, akceptační kritérium 41 „nejméně 40“ a tabulka dávala 54, tedy tři různá čísla pro jednu věc. Platí součet tabulky. Skupina řetězcových literálů je přečíslovaná z `LQ-06x` na `LQ-7xx`, protože kolidovala s rozsahem skupiny `LQ-0xx`:
 
 | Skupina | Počet | Co pokrývá |
 |---|---|---|
@@ -3832,7 +3860,7 @@ Minimálně **44 fixtures** (základ 40 podle kapitoly 4.5 hlavní specifikace p
 | `LQ-4xx` cykly | 4 | prázdné pole, jeden prvek, limit 200, cyklus přes ne-pole |
 | `LQ-5xx` odmítnutí validátorem | 10 | každá zakázaná konstrukce z tabulky výše |
 | `LQ-6xx` diakritika a Unicode | 4 | `upcase` nad `ěščřžýáíé`, emoji, kombinující znaky, dlouhé UTF-8 |
-| `LQ-06x` řetězcové literály a escapování rendererem | 4 | uvozovka v autorské šabloně odmítnuta, apostrof v podmínce odmítnut, HTML entita uvnitř Liquid konstrukce v kompilované šabloně odmítnuta, prostá konstrukce projde renderem beze změny |
+| `LQ-7xx` řetězcové literály a escapování rendererem | 4 | uvozovka v autorské šabloně odmítnuta, apostrof v podmínce odmítnut, HTML entita uvnitř Liquid konstrukce v kompilované šabloně odmítnuta, prostá konstrukce projde renderem beze změny |
 
 **Jak to pouští CI** (job `contracts-golden`, blokující):
 
@@ -4009,7 +4037,7 @@ key        = HKDF(SHA-256, MASTER, "mailer/v1", "mailer/v1/credential-encryption
 **Dva důsledky, které je nutné mít na paměti:**
 
 1. Přesun projektu mezi instalacemi (export a import) vyžaduje zachovat `workspace_id`. Kdo by ho při importu přegeneroval, znepřístupní si credentials. Je to napsané v dokumentaci k obnově.
-2. `oe rotate-credentials` musí znát `workspace_id` každého řádku. Zná ho, protože prochází tabulky, které ho nesou.
+2. `mlain rotate-credentials` musí znát `workspace_id` každého řádku. Zná ho, protože prochází tabulky, které ho nesou.
 
 **Povolené kontexty (KONTRAKT, rozšiřuje se jen společným rozhodnutím)**
 
@@ -4381,7 +4409,7 @@ Testovatelné věty. Z každé jde napsat test bez doptávání.
 52. Chybějící překladový klíč vyhodí výjimku v `NODE_ENV=test` a vykreslí poslední segment klíče v produkci.
 53. Text s `{count, plural, ...}` se v češtině vykreslí správně pro 0, 1, 3 a 5.
 54. Po rotaci `SECRET_KEY` s ponechaným `SECRET_KEY_PREVIOUS` se starý trackovací token stále ověří a nový se podepíše novým klíčem.
-55. `oe rotate-credentials` přešifruje všechny obálky na aktuální `key_id`; po jeho doběhnutí projde dešifrování i bez `SECRET_KEY_PREVIOUS`.
+55. `mlain rotate-credentials` přešifruje všechny obálky na aktuální `key_id`; po jeho doběhnutí projde dešifrování i bez `SECRET_KEY_PREVIOUS`.
 56. Start s jiným `SECRET_KEY` bez `SECRET_KEY_PREVIOUS` proběhne, ale `/api/health/ready` obsahuje varování `secret_key_fingerprint_mismatch`.
 
 ---

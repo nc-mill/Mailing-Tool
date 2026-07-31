@@ -91,7 +91,7 @@ Navíc: pokud sender vkládá `sent`, překrývá se to s událostí `Send` ze S
 
 **Místo:** část 1, sekce 3.10, postup rotace, ř. 1179 až 1190.
 
-**Problém:** Postup je promyšlený (`key_id` v obálce, `SECRET_KEY_PREVIOUS`, `oe rotate-credentials`) a pro aplikaci sedí. Pro sender je krok 3 „`docker compose up -d` restart" jediné místo, které ho zmiňuje, a to jen implicitně. Když sender z jakéhokoliv důvodu nepřevezme nové prostředí (samostatné škálování, `MODE=sender` v jiném compose souboru, ruční restart jen aplikace), poběží dál se starým `SECRET_KEY`, a **jakmile `oe rotate-credentials` přešifruje `sending_providers` na `key_id = 2`, sender přestane umět dešifrovat konfiguraci uprostřed běžící kampaně**. Chyba bude `crypto_unknown_key` u každé zprávy.
+**Problém:** Postup je promyšlený (`key_id` v obálce, `SECRET_KEY_PREVIOUS`, `mlain rotate-credentials`) a pro aplikaci sedí. Pro sender je krok 3 „`docker compose up -d` restart" jediné místo, které ho zmiňuje, a to jen implicitně. Když sender z jakéhokoliv důvodu nepřevezme nové prostředí (samostatné škálování, `MODE=sender` v jiném compose souboru, ruční restart jen aplikace), poběží dál se starým `SECRET_KEY`, a **jakmile `mlain rotate-credentials` přešifruje `sending_providers` na `key_id = 2`, sender přestane umět dešifrovat konfiguraci uprostřed běžící kampaně**. Chyba bude `crypto_unknown_key` u každé zprávy.
 
 **Jak by to mělo být:** Doplnit do postupu rotace explicitní větu, že krok 3 musí restartovat **i všechny instance senderu**, a doporučit pořadí: nejdřív rozdat `SECRET_KEY_PREVIOUS` všem procesům, teprve potom pustit `rotate-credentials`. Ideálně přidat do sekce test nebo kontrolu, která před `rotate-credentials` ověří, že žádný běžící sender nemá starý otisk klíče.
 
@@ -287,7 +287,7 @@ Revize odhalila stejné množství chyb u mě jako u ostatních. Uvádím je, pr
 | 6 | `revokePendingMessages` neměla `listId`, takže odhlášení z jednoho newsletteru by zrušilo veškerou čekající poštu kontaktu. Tichá ztráta. | Doplněn `listId`, větev přes `contact_id`, zrušeno sedmidenní okno, které míjelo dlouho pozastavené kampaně. |
 | 7 | Kontrola suppression nerespektovala měkké odebrání. Adresa odblokovaná po 30 dnech by zůstala vyloučená navždy. | Doplněno `s.removed_at IS NULL`. |
 | 8 | Retenční job mohl odpojit partition s rozpracovanou kampaní, protože celá kampaň leží v jedné partition podle `audience_built_at`. Pozastavená kampaň by po obnovení vypadala jako doběhlá, přestože neodeslala nic. | Dvě blokující kontroly před odpojením partition. |
-| 9 | `Message-ID` jsem měl ve vlastním tvaru, kontrakt má deterministický `<oe.{base32}@domain>`. | Sladěno odkazem na kontrakt. |
+| 9 | `Message-ID` jsem měl ve vlastním tvaru, kontrakt má deterministický `<ml.{base32}@domain>`. | Sladěno odkazem na kontrakt. |
 | 10 | Seznam polí pro `render_data` byl užší než katalog merge tagů (chyběly tituly, `gender`, `locale`). | Nahrazeno odkazem na `CONTACT_MERGE_FIELDS`. |
 
 Šest z těch deseti chyb má stejnou příčinu: **napsal jsem si hodnotu, kterou vlastní jiná část, místo abych na ni odkázal.** Je to nejčastější zdroj rozporů v celém projektu a doporučuju to jako pravidlo do konsolidace: kdykoliv se v dokumentu objeví konkrétní hodnota z cizí domény (název stavu, prefix, práh, tvar identifikátoru), musí být odkazem, ne kopií.
