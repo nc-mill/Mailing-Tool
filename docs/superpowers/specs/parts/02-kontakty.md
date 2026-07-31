@@ -159,9 +159,10 @@ Tahle část produktu je všechno, co se musí stát mezi tím excelem a okamži
 | Limity requestu | JSON 1 MiB, CSV import 200 MiB, dávka 1 000 položek, timeout importu 120 s (4.1) | Shodné s limity v 4.6.1 a 5.1 |
 | i18n | Katalogy `packages/i18n/messages/{locale}.json`, klíče `camelCase` v plné cestě, `en.json` je zdroj pravdy, ICU plurály (3.9) | Přijato. Klíče v 6.3 jsou `camelCase`, například `contacts.import.detected` |
 | Systémové e-maily | Blokové šablony `system.<name>` per locale, seedované migrací; jazyk `contacts.locale` → `workspaces.locale` → `DEFAULT_LOCALE` → `en` (3.9) | Přijato, potvrzovací a uvítací e-mail jsou systémové šablony, viz požadavek 3.5 v sekci 11 |
-| Sloupec jazyka | Část 1 v požadavku P2-2 mluví o **`contacts.locale`** | **Přejmenováno** z `contacts.locale` na `contacts.locale` v celém dokumentu |
+| Sloupec jazyka | Část 1 v požadavku P2-2 mluví o **`contacts.locale`** | Přijato. Sloupec se v celém dokumentu jmenuje `contacts.locale`, jiný název (`language`, `lang`) se nikde nepoužívá |
 | Audit | Akce `<entita>.<sloveso v minulém čase>`, registrace v `packages/core/contacts/audit.ts`, zápis ve stejné transakci (3.7) | Přijato, seznam v 7.5 |
-| Rotace klíčů | Verzované klíče `<key_id>:<base64url>`, `SECRET_KEY_PREVIOUS` až 5 klíčů, doporučení staré klíče nikdy neodebírat (3.10) | Můj požadavek z 4.9.3 je **splněný**. Zbývá doplnit odhlašovací tokeny do tabulky dopadů rotace, viz požadavek 1.5 |
+| Rotace klíčů | Verzované klíče `<key_id>:<base64url>`, `SECRET_KEY_PREVIOUS` **bez horního počtu položek**, doporučení staré klíče nikdy neodebírat (3.10) | Můj požadavek z 4.9.3 je **splněný**. Zbývá doplnit odhlašovací tokeny do tabulky dopadů rotace, viz požadavek 1.5 |
+| Otisky v suppression listu | Purpose `mailer/v1/suppression-fingerprint` odvozený přes HKDF, **rotovatelný**, otisk se ukládá s `key_id`, kontrola počítá otisk pro všechna známá pokolení (3.10) | **Převzato beze zbytku.** Původní návrh této části (samostatná nerotovatelná `SUPPRESSION_HASH_KEY` a sloupec `email_hash` bez `key_id`) je zrušený, viz 3.1, 3.5, 4.10.3, 4.14.4 a 7.2 |
 
 ### 2.2 Jak plním požadavky části 1 na část 2
 
@@ -229,7 +230,7 @@ Pravidla pro validátor části 3:
 
 - `{{ contact.<X> }}` je platné, právě když `X ∈ CONTACT_MERGE_FIELDS`.
 - Vlastní pole se adresují **výhradně** přes prefix `attr`: `{{ contact.attr.<key> }}`, kde `<key>` musí existovat v `contact_fields` daného projektu a nesmí být archivované. Prefix existuje proto, aby vlastní pole nikdy nemohlo zastínit systémové ani rozbít validátor, když si uživatel založí pole s klíčem `greeting`.
-- `status`, `source`, `attributes`, `vocative_confidence`, `processing_restricted`, `email_hash` a všechny sloupce s `_at` kromě `created_at` jsou **záměrně mimo** seznam. Jsou to interní údaje, které nemají co dělat v těle e-mailu.
+- `status`, `source`, `attributes`, `vocative_confidence`, `processing_restricted`, `email_fingerprints` a všechny sloupce s `_at` kromě `created_at` jsou **záměrně mimo** seznam. Jsou to interní údaje, které nemají co dělat v těle e-mailu.
 - Seznam je zároveň zdrojem pro extrakci polí do `messages.render_data` (kontrakt 4.10.1 části 1).
 
 ### 2.5 Jazyk kontaktu (odpověď na P2-2)
@@ -238,7 +239,7 @@ Sloupec: `contacts.locale text NOT NULL DEFAULT 'cs'`.
 
 | Vlastnost | Hodnota |
 |---|---|
-| Formát | BCP 47 v podmnožině `^[a-z]{2}(-[A-Z]{2})?$`, tedy `cs`, `en`, `sk`, `pl`, `de`, případně `en-GB` |
+| Formát | Podmnožina BCP 47: `^[a-zA-Z]{2,3}(-[A-Za-z]{4})?(-([A-Za-z]{2}\|[0-9]{3}))?$`, tedy jazyk (2 nebo 3 písmena), volitelné písmo, volitelný region jako dvě písmena nebo tři číslice. Projde `cs`, `en`, `sk`, `en-GB`, `fr-CA`, `zh-Hant`, `sr-Latn`, `es-419` i `fil`. Je to **tvarová pojistka, ne seznam povolených jazyků**, viz zdůvodnění pod DDL ve 3.1 |
 | `NOT NULL` | ano, výchozí `workspaces.locale`; nikdy NULL, aby nikdo nemusel řešit fallback na úrovni dotazu |
 | Zdroj hodnoty, v pořadí priority | 1. explicitní sloupec v importu, poli API, poli formuláře nebo mapování webhooku; 2. `Accept-Language` návštěvníka při odeslání formuláře, zúžený na podporované jazyky; 3. `workspaces.locale` |
 | Kde se používá | veřejné stránky (potvrzení, odhlášení, preference), systémové e-maily (potvrzení double opt-in, uvítací), jazyk kampaně, `contact.greeting` |
@@ -251,12 +252,42 @@ Sloupec: `contacts.locale text NOT NULL DEFAULT 'cs'`.
 | # | Otevřená věc | Kdo rozhodne |
 |---|---|---|
 | A | Rozšíření **`pg_trgm`** a **`btree_gin`**. Část 1 v 2.1 povoluje jen `citext`. Bez nich není fulltextové hledání kontaktu. Náhradní řešení a dopad jsou v požadavku 1.1 až 1.3 v sekci 11 | část 1 |
-| B | Proměnná **`SUPPRESSION_HASH_KEY`** jako **nerotovatelná**. Konvence části 1 odvozuje všechny klíče ze `SECRET_KEY` přes HKDF, což u otisků vymazaných adres nefunguje, protože rotace by je zneplatnila. Požadavek 1.4 | část 1 |
+| ~~B~~ | ~~Proměnná **`SUPPRESSION_HASH_KEY`** jako **nerotovatelná**.~~ **UZAVŘENO 2026-07-31.** Část 1 v 3.10 rozhodla jinak, než jsem žádal, a rozhodla líp: purpose `mailer/v1/suppression-fingerprint` je odvozený přes HKDF a **rotovatelný**, otisk se ukládá s `fingerprint_key_id` a kontrola počítá otisk pro všechna známá pokolení klíče. Klíč, který po bezpečnostním incidentu nejde vyměnit, by znamenal navždy kompromitovanou část systému, což je horší než cena za jeden HMAC na pokolení. Samostatná proměnná `SUPPRESSION_HASH_KEY` **neexistuje** a nesmí vzniknout. Přejato v 3.1, 3.5, 4.10.3, 4.10.4, 4.14.4, 5.9 a 7.2 | uzavřeno |
 | C | Role **`mlain_gdpr`** s právem `DELETE ON consents`. Část 1 v 2.1 odebírá aplikační roli `UPDATE` a `DELETE` na `consents`, což je správně, ale výmaz podle čl. 17 je pak neproveditelný. Požadavek 1.8 | část 1 |
 | D | **Read-only pool** s možností nastavit `statement_timeout` per dotaz, pro náhled segmentu. Požadavky 1.6 a 1.7 | část 1 |
-| E | Veřejné cesty **`/s/c/**`, `/p/**`, `/r/**`**. Část 1 v 4.1 vyjmenovává jen `/t/**`, `/e/**`, `/u/**`, `/f/**`. Požadavek 1.13 | část 1 |
+| ~~E~~ | ~~Veřejné cesty **`/s/c/**`, `/p/**`, `/r/**`**.~~ **UZAVŘENO 2026-07-31.** Část 1 je v tabulce povrchů v 4.1 už má: řádek „Trackovací a veřejné endpointy" dnes zní `/t/**`, `/e/**`, `/u/**`, `/f/**`, `/s/c/**`, `/p/**`, `/r/**`, autentizace „podepsaný token nebo veřejný klíč", CSRF „ne". Požadavek 1.13 je splněný, nic dalšího se nežádá | uzavřeno |
 | F | Zařazení **`inbound_deliveries`** mezi partitionované tabulky obsluhované jobem `platform.maintain_partitions`. Požadavek 1.14 | část 1 |
 | G | Kompilátor segmentů generuje **dynamické SQL uvnitř repository vrstvy**. Potřebuje výjimku z pravidla „repository funkce nepřijímá řetězec", protože AST je uživatelský vstup. Zdůvodnění a obrana jsou v 4.11.3 | část 1 |
+
+### 2.7 Revize 2026-07-31: co se opravilo a proč
+
+Tahle tabulka existuje proto, aby za rok šlo u každé změny dohledat důvod, aniž by se musela číst historie gitu. Podrobné zdůvodnění je vždy na uvedeném místě v dokumentu.
+
+| # | Co se změnilo | Proč | Kde |
+|---|---|---|---|
+| 1 | `min(id)` ve frontě vokativu nahrazeno `(array_agg(id ORDER BY created_at DESC))[1]` | PostgreSQL 18 nemá agregát `min()` nad `uuid`, přidává se až ve verzi 20. Dotaz by spadl na `42883` a fronta ke kontrole by nefungovala vůbec | 4.5.2 |
+| 2 | Deduplikace **uvnitř dávky** je povinná, `ON CONFLICT` řeší jen duplicity napříč dávkami | Dvě stejné adresy v jedné dávce `INSERT ... SELECT FROM unnest(...)` vyhodí `21000` a shodí celou transakci. Job má `retryLimit = 0`, takže by se import zasekl natrvalo. Mapa o velikosti dávky stojí desítky kilobajtů | 4.6.7 bod 5, kritérium 13 |
+| 3 | Doplněn sloupec `imports.updated_at` do DDL i do checkpointové transakce | Obnova po pádu ho čte (`IMPORT_STALE_MINUTES`), ale v DDL nebyl. Bez něj zabitý worker zablokuje projektu všechny další importy | 3.6, 4.6.8, kritérium 14 |
+| 4 | `imports.storage_key` smí být `NULL` | `NOT NULL` neumožňoval zaznamenat „soubor už smazán", takže částečný index `WHERE storage_key IS NOT NULL` nefiltroval nic a retenční job nabízel tytéž soubory donekonečna | 3.6, kritérium 15 |
+| 5 | Hodnota `reactivation` doplněna do `CHECK` na `consents.source` | Reaktivační scénář ji zapisuje, `CHECK` ji nepovoloval, takže by první kliknutí spadlo na `23514` | 3.4, 4.12, kritérium 83 |
+| 6 | Cast `::numeric` přesunut z `... AND (...)::numeric > $m` do `CASE WHEN ... THEN ... ELSE false END` | PostgreSQL negarantuje pořadí vyhodnocení operandů `AND`, takže cast může proběhnout i na řádku, kde `jsonb_typeof` není `number`. Chyba `22P02` by byla nedeterministická podle zvoleného plánu | 4.11.3, kritérium 36 |
+| 7 | Otisk suppression převzat z kontraktu 3.10 části 1: `fingerprint` + `fingerprint_key_id`, rotovatelný, kontrola přes všechna pokolení. `SUPPRESSION_HASH_KEY` zrušena | Klíč, který po incidentu nejde vyměnit, znamená navždy kompromitovanou část systému. Část 1 rozhodla jinak, než jsem žádal, a rozhodla líp | 3.1, 3.5, 4.10.3, 4.10.4, 4.14.4, 5.9, 7.2, 12.1 C2, kritérium 78 |
+| 8 | „`SECRET_KEY_PREVIOUS` až 5 klíčů" opraveno na „bez horního počtu položek" | Část 1 strop zrušila a zakazuje jeho návrat i jako validaci: otisky nejdou přepočítat, takže po překročení stropu by se smazaný člověk vrátil bez jediné chyby v logu | 2.1 |
+| 9 | Nový požadavek 1.17: zaregistrovat `contact_deleted`, `contact_anonymized` a `processing_restricted` do `outbox-errors.ts` | `messages.error_code` je uzavřený registr části 1 a hodnota mimo něj je chyba v CI | 11.1, 4.9.4 |
+| 10 | Signatura `revokePendingMessages` sjednocena na tvar části 4a; věta „`listId` v části 4 chybí" smazána | Dvě různé signatury téhož volání ve dvou dokumentech znamenají, že jedna strana nezkompiluje. `listId` v části 4a už je | 4.9.4, 11.3 požadavek 4.5 |
+| 11 | Popisky polí přepsány z `{ cs, en }` na `Record<string, string>` s povinným `en` | Sloupec `contact_fields.label` je záměrně otevřený `jsonb` a produkt slibuje přidání jazyka bez změny kódu. Pevná dvojice by kvůli `zod.strict()` odmítla klíč `de`. Rozhodnutí zadavatele | 4.2.3, 4.13.5, 11.2 požadavek 3.4 |
+| 12 | `CHECK` na `locale` rozvolněn na podmnožinu BCP 47 | Původní `^[a-z]{2}(-[A-Z]{2})?$` odmítal `zh-Hant`, `sr-Latn`, `es-419` i třípísmenné tagy, a to pádem `INSERT`, přestože 2.5 slibuje, že se řádek kvůli jazyku nikdy neodmítá | 3.1, 2.5 |
+| 13 | Limit `attributes` přesunut z `CHECK (pg_column_size(...) <= 65536)` do aplikace, nad serializovanou délku, s proměnnou `CONTACT_ATTRIBUTES_MAX_BYTES` | Sedm plných `long_text` polí legálně překročí 64 kB a `pg_column_size` měří po kompresi, takže stejně dlouhá data jednou projdou a jednou ne. `CHECK` zůstává jako pojistka s velkou rezervou | 3.1, 4.2.1, 5.9 |
+| 14 | Doplněna věta, že `consents.source` a `suppressions.reason` jsou **otevřené** výčty; zvážené zobecnění `ses_suppressed` zapsáno | Aby se rozšíření výčtu neřešilo jako změna kontraktu a aby se za rok nezačalo znovu od nuly řešit, jestli přejmenovat `ses_suppressed` | 3.4, 3.5 |
+| 15 | Snippet `CREATE RULE ... DO INSTEAD NOTHING` smazán, zůstává jen `REVOKE` plus test | Pravidlo tiše rozbije `ON DELETE CASCADE` z kontaktu: smazání proběhne bez chyby a souhlasy zůstanou jako osiřelé řádky s osobními údaji | 3.4, kritérium 64 |
+| 16 | `suppressions.add` povyšuje `reason` a `removable` podle prioritního žebříčku | Adresa blokovaná ručně (`manual`, odebratelná), na kterou přijde stížnost, zůstávala odebratelná, takže padal invariant „stížnost je nevratná" | 4.10.4, kritérium 75 |
+| 17 | Upsert slučuje `attributes` přes `jsonb_strip_nulls(... \|\| ...)` | Samotné `\|\|` ponechá klíč s hodnotou JSON `null` a `is_empty` ho vyhodnotí jako neprázdný, takže „vymazané" pole zůstane v segmentu | 4.1.2, 4.1.3, 4.11.3, kritérium 49 |
+| 18 | Normalizace klíče skupiny fronty vokativu sjednocena a přesunuta do aplikace (`first_name_key`, `last_name_key`) | Definice mluvila o `lower(unaccent(...))`, dotaz o `lower(...)`, rozšíření `unaccent` se nikde nepožadovalo. „Tomáš" a „Tomas" tvořily dvě skupiny a override je netrefil, takže se fronta nikdy nevyprázdnila | 3.1, 4.5.2, kritérium 30 |
+| 19 | Obálka kompilátoru sjednocena na jednu čtyřčlennou verzi včetně `NOT EXISTS` nad `suppressions` | Dokument ji uváděl dvakrát a pokaždé jinak; ta kratší by pustila do publika adresu se stížností na spam | 4.11.3, kritéria 35 a 45 |
+| 20 | Rate limit stránky preferencí sjednocen na 30 za minutu podle tabulky v 7.4; `POST /contacts/imports` vrací `202` | Dvě různá čísla pro týž middleware a dva různé kódy pro týž endpoint | 4.9.5, 5.3 |
+| 21 | Opravena rozbitá věta „Přejmenováno z `contacts.locale` na `contacts.locale`" | Řádek neříkal nic | 2.1 |
+| 22 | Kapitola 9 přečíslovaná průběžně 1 až 93, odkazy v textu přepsané | Čísla 35 až 42 se vyskytovala dvakrát, takže odkaz „kritérium 39" ukazoval na dvě různá tvrzení | 9, 4.11.3 |
+| 23 | Požadavek 1.13 a otevřený bod E označeny jako splněné | Část 1 už veřejné cesty `/s/c/**`, `/p/**` a `/r/**` v tabulce povrchů má | 2.6, 11.1 |
 
 ---
 
@@ -270,7 +301,14 @@ CREATE TABLE contacts (
   workspace_id            uuid        NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
 
   email                   citext      NOT NULL,
-  email_hash              bytea       NOT NULL,          -- HMAC-SHA256(SUPPRESSION_HASH_KEY, lower(email))
+  -- Otisky adresy pro **všechna známá pokolení** klíče, recept a purpose vlastní 3.10 části 1:
+  -- HMAC-SHA256(HKDF(SECRET_KEY, "mailer/v1", "mailer/v1/suppression-fingerprint"), lower(email)).
+  -- Proč pole a ne jedna hodnota s key_id: u kontaktu plaintext adresy máme, takže otisk umíme
+  -- kdykoliv dopočítat, kdežto u suppression řádku po výmazu už ne. Kontakt proto nese otisk pod
+  -- každým pokolením, aby se trefil i se suppression řádkem zapsaným starým klíčem. Kdyby tu byla
+  -- jedna hodnota pod aktuálním klíčem, po rotaci by se přestala shodovat se starými otisky a
+  -- vymazaný člověk by se vrátil prvním importem, aniž by cokoliv selhalo. Viz 4.10.3.
+  email_fingerprints      bytea[]     NOT NULL DEFAULT '{}',
   email_domain            text        GENERATED ALWAYS AS (lower(split_part(email::text, '@', 2))) STORED,
 
   status                  text        NOT NULL DEFAULT 'active'
@@ -282,6 +320,14 @@ CREATE TABLE contacts (
   middle_name             text,
   title_prefix            text,
   title_suffix            text,
+
+  -- Kanonizovaný tvar jména: lower + NFD + odstraněné kombinovací znaky. Plní ho aplikace
+  -- funkcí normalizeNameKey() ze `packages/core/contacts/naming`, tou SAMOU, kterou se hledá
+  -- ve slovníku jmen (4.4.4) a v `name_overrides` (3.7). Slouží ke seskupení fronty ke kontrole
+  -- vokativu (4.5.2). Kdyby se seskupovalo přes lower(first_name), "Tomáš" a "Tomas" by tvořily
+  -- dvě skupiny a ani jednu z nich by netrefil override, který je bez diakritiky.
+  first_name_key          text,
+  last_name_key           text,
 
   gender                  text        NOT NULL DEFAULT 'unknown'
     CHECK (gender IN ('female','male','unknown')),
@@ -324,11 +370,16 @@ CREATE TABLE contacts (
   CONSTRAINT ck_contacts__status CHECK (status IN
     ('active','unconfirmed','unsubscribed','bounced','complained','deleted')),
   CONSTRAINT ck_contacts__gender CHECK (gender IN ('female','male','unknown')),
-  CONSTRAINT ck_contacts__locale CHECK (locale ~ '^[a-z]{2}(-[A-Z]{2})?$'),
+  -- Tvarová pojistka, ne seznam povolených jazyků. Podmnožina BCP 47: 2 až 3 písmena jazyka,
+  -- volitelné čtyřpísmenné písmo a volitelný region (dvě písmena nebo tři číslice).
+  -- Projde tedy i 'zh-Hant', 'sr-Latn', 'es-419', 'fil' a 'cs-CZ'. Viz zdůvodnění pod DDL.
+  CONSTRAINT ck_contacts__locale CHECK (locale ~ '^[a-zA-Z]{2,3}(-[A-Za-z]{4})?(-([A-Za-z]{2}|[0-9]{3}))?$'),
   -- email a search_text jsou v indexu, proto u nich limit hlídá i databáze (konvence 2.1 části 1)
   CONSTRAINT ck_contacts__email_len CHECK (char_length(email::text) BETWEEN 3 AND 254),
   CONSTRAINT ck_contacts__attributes_object CHECK (jsonb_typeof(attributes) = 'object'),
-  CONSTRAINT ck_contacts__attributes_size CHECK (pg_column_size(attributes) <= 65536)
+  -- Pojistka proti nesmyslům, ne vynucení limitu. Skutečný limit hlídá aplikace nad
+  -- serializovanou délkou, viz 4.2.1. Hodnota je záměrně o řád vyšší než aplikační limit.
+  CONSTRAINT ck_contacts__attributes_sane CHECK (pg_column_size(attributes) <= 4194304)
 );
 
 ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
@@ -338,6 +389,10 @@ CREATE POLICY ws_isolation ON contacts
 ```
 
 Inline `CHECK` u `status`, `gender` a `gender_source` v těle sloupce je v ukázce ponechaný kvůli čitelnosti; v migraci se zapisují jako pojmenovaná omezení `ck_contacts__<popis>` podle konvence 2.1 části 1. Politiku `ws_isolation` má **každá** tabulka této části se sloupcem `workspace_id`; u dalších tabulek se už neopakuje.
+
+**Proč se rozvolnil `ck_contacts__locale`** (oprava 2026-07-31). Původní tvar `^[a-z]{2}(-[A-Z]{2})?$` odmítal platné jazykové tagy `zh-Hant`, `sr-Latn`, `es-419` i všechny třípísmenné (`fil`, `haw`) a odmítal je **na úrovni databáze**, tedy pádem celého `INSERT`. To přímo odporovalo slibu v 2.5, že neznámý jazyk se uloží a řádek se kvůli jazyku nikdy neodmítá: import z cizího CRM běžně nese `fr-CA` nebo `zh-Hant` a shodit kvůli tomu řádek je nepřiměřené. Nový tvar je **tvarová pojistka proti zjevnému nesmyslu** (celé jméno v poli pro jazyk), ne seznam povolených hodnot. Sémantickou validaci proti `SUPPORTED_LOCALES` dělá aplikace a její výsledek je varování, ne chyba. Kdyby se ukázalo, že i tenhle tvar někoho odmítne, správná reakce je `CHECK` **zrušit** a nechat validaci jen v aplikaci, ne regex dál pilovat.
+
+**Proč `ck_contacts__attributes_sane` místo tvrdého limitu 64 kB** (oprava 2026-07-31). Původní `CHECK (pg_column_size(attributes) <= 65536)` byl nekonzistentní se dvěma vlastními limity: 100 vlastních polí na projekt a `long_text` do 10 000 znaků znamená, že už **sedm plných `long_text` polí** legálně překročí 64 kB, přestože obojí je podle specifikace v pořádku. Horší je druhá vlastnost: `pg_column_size` měří velikost **po TOAST kompresi**, takže dva kontakty s daty stejné délky mohou skončit jeden pod limitem a druhý nad ním podle toho, jak dobře se text komprimuje. Uživateli by to připadalo jako náhoda a chybová hláška by se nedala vysvětlit. Skutečný limit se proto vynucuje v aplikaci nad **serializovanou délkou** JSON (`Buffer.byteLength(JSON.stringify(attributes), 'utf8')`), což je deterministické, dá se spočítat před zápisem a dá se o něm napsat srozumitelná chyba. Hodnota je v `CONTACT_ATTRIBUTES_MAX_BYTES` (5.9). `CHECK` v databázi zůstává jen jako pojistka proti zjevné havárii a je nastavený s velkou rezervou (4 MiB), takže nikdy nezasáhne dřív než aplikace.
 
 Indexy a proč existují:
 
@@ -371,16 +426,18 @@ CREATE INDEX idx_contacts__attributes_gin ON contacts
   USING gin (attributes jsonb_path_ops);
 
 -- 7. Fronta ke kontrole vokativu. Částečný index, typicky jednotky procent tabulky,
---    takže je malý a dotaz na frontu je index-only.
-CREATE INDEX idx_contacts__ws_vocative_review ON contacts (workspace_id, created_at DESC)
+--    takže je malý a dotaz na frontu je index-only. first_name_key je v něm proto, že se
+--    fronta zobrazuje výhradně seskupená podle něj (4.5.2), nikdy po jednotlivých kontaktech.
+CREATE INDEX idx_contacts__ws_vocative_review ON contacts (workspace_id, first_name_key, created_at DESC)
   WHERE vocative_confidence = 'low' AND vocative_locked = false AND deleted_at IS NULL;
 
 -- 8. Doména e-mailu: operátor matches_domain v segmentech a analýza doručitelnosti.
 CREATE INDEX idx_contacts__ws_email_domain ON contacts (workspace_id, email_domain)
   WHERE deleted_at IS NULL;
 
--- 9. Hledání podle otisku e-mailu při kontrole suppression po výmazu.
-CREATE INDEX idx_contacts__ws_email_hash ON contacts (workspace_id, email_hash);
+-- 9. Hledání podle otisku e-mailu při kontrole suppression po výmazu. GIN nad polem, protože
+--    kontakt nese otisk pod všemi známými pokoleními klíče a hledá se operátorem "obsahuje".
+CREATE INDEX idx_contacts__email_fingerprints ON contacts USING gin (email_fingerprints);
 
 -- 10. Kurzorový průchod celým projektem podle id: materializace publika kampaně po dávkách
 --     (WHERE workspace_id = $1 AND id > $2 ORDER BY id), hromadné mazání, export, přepočty.
@@ -413,6 +470,8 @@ Odhad velikosti při 5 000 000 kontaktech v jednom projektu (průměr 380 B uži
 | Ostatní indexy | ~450 MB |
 | **Celkem** | **~5,8 GB** |
 
+`email_fingerprints` je pole, takže roste s počtem pokolení klíče: 32 bajtů na pokolení a kontakt, tedy při jednom pokolení zhruba 160 MB a při pěti zhruba 800 MB na pět milionů kontaktů, včetně GIN indexu. Je to cena za to, že rotace `SECRET_KEY` nezneplatní ochranu proti vzkříšení vymazaných lidí (4.14.4). Instalace, která nikdy nerotovala, platí jen za jedno pokolení.
+
 ### 3.2 Vlastní pole a štítky
 
 ```sql
@@ -420,7 +479,9 @@ CREATE TABLE contact_fields (
   id            uuid        PRIMARY KEY DEFAULT uuidv7(),
   workspace_id  uuid        NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   key           text        NOT NULL CHECK (key ~ '^[a-z][a-z0-9_]{0,39}$'),
-  label         jsonb       NOT NULL DEFAULT '{}'::jsonb,   -- { "cs": "Město", "en": "City" }
+  -- Otevřená mapa jazyk → text, například { "cs": "Město", "en": "City", "de": "Stadt" }.
+  -- Sada jazyků je záměrně neomezená, přidání jazyka nesmí vyžadovat migraci ani změnu kódu.
+  label         jsonb       NOT NULL DEFAULT '{}'::jsonb,
   description   jsonb       NOT NULL DEFAULT '{}'::jsonb,
   type          text        NOT NULL
     CHECK (type IN ('text','long_text','number','boolean','date','datetime',
@@ -566,7 +627,8 @@ CREATE TABLE consents (
     CHECK (legal_basis IN ('consent','legitimate_interest','contract','soft_opt_in')),
   source        text        NOT NULL
     CHECK (source IN ('form','import','api','double_opt_in','admin','webhook',
-                      'preference_center','one_click','complaint','objection','migration')),
+                      'preference_center','one_click','complaint','objection',
+                      'reactivation','migration')),
   source_ref    text,
   consent_text  text,                                  -- doslovné znění, které subjekt odsouhlasil
   consent_text_hash bytea,                             -- SHA-256 znění, kvůli porovnání verzí
@@ -581,14 +643,17 @@ CREATE INDEX idx_consents__contact_purpose ON consents (contact_id, purpose, occ
 CREATE INDEX idx_consents__ws_purpose ON consents (workspace_id, purpose, occurred_at DESC);
 ```
 
-Tabulka je **append only**. Vynucuje se pravidlem, které povolí jen `INSERT`:
+`source` je **otevřený výčet**, ne zmrazený kontrakt: hodnotu `reactivation` přidal reaktivační scénář ze 4.12 a další kanály ji rozšíří stejně. Rozšíření je čistá migrace `ALTER TABLE ... DROP CONSTRAINT ... ADD CONSTRAINT` a **nevyžaduje synchronizaci s ostatními částmi**, protože hodnotu žádná jiná část nečte jako řídicí údaj, jen ji zobrazuje a exportuje. Totéž platí pro `suppressions.reason` v 3.5.
+
+Tabulka je **append only**. Vynucuje se odebráním práv aplikační roli, ne pravidly:
 
 ```sql
-CREATE RULE consents_no_update AS ON UPDATE TO consents DO INSTEAD NOTHING;
-CREATE RULE consents_no_delete AS ON DELETE TO consents DO INSTEAD NOTHING;
+REVOKE UPDATE, DELETE ON consents FROM mlain_app;
 ```
 
-To ale zablokuje i `ON DELETE CASCADE` z kontaktu. Řešení: pravidla se aplikují na běžnou aplikační roli, zatímco výmaz podle GDPR běží pod rolí `mlain_gdpr`, pro kterou se pravidla obejdou přes `ALTER TABLE consents DISABLE RULE` v jedné transakci. Alternativa, kterou navrhuju jako výchozí, protože je jednodušší a auditovatelná: **pravidla nezavádět a append-only vynutit v repository vrstvě a testem**, který se pokusí o `UPDATE` a musí selhat na chybějícím oprávnění (`REVOKE UPDATE, DELETE ON consents FROM mlain_app`).
+K tomu test, který se pod rolí `mlain_app` pokusí o `UPDATE` i `DELETE` a musí u obou selhat na chybějícím oprávnění.
+
+Zvažovaná varianta s `CREATE RULE consents_no_update ... DO INSTEAD NOTHING` je **zamítnutá a snippet je z dokumentu odstraněný** (oprava 2026-07-31), aby si ji implementátor nemohl vybrat. Pravidlo `DO INSTEAD NOTHING` na `DELETE` totiž **tiše zablokuje i `ON DELETE CASCADE` z `contacts`**: smazání kontaktu proběhne bez chyby, ale jeho souhlasy zůstanou v tabulce jako osiřelé řádky s osobními údaji v `evidence`. Obcházet to přes `ALTER TABLE consents DISABLE RULE` uvnitř transakce znamená DDL uprostřed GDPR výmazu, tedy `ACCESS EXCLUSIVE` zámek nad tabulkou, kterou zároveň čte segmentace. Odebrání práv nic z toho nemá, chová se stejně u `UPDATE` i `DELETE`, dá se otestovat jedním dotazem a `ON DELETE CASCADE` funguje dál, protože kaskádu provádí systém, ne role. Výmaz podle čl. 17 pak běží pod rolí `mlain_gdpr` (požadavek 1.8), která `DELETE ON consents` má.
 
 Rychlý pohled na aktuální stav souhlasu (segmentace nesmí procházet append-only log):
 
@@ -618,7 +683,12 @@ CREATE TABLE suppressions (
   id            uuid        PRIMARY KEY DEFAULT uuidv7(),
   workspace_id  uuid        NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   email         citext      NOT NULL,     -- u reason='gdpr_erasure' placeholder, viz 4.14.4
-  email_hash    bytea       NOT NULL,     -- HMAC-SHA256(SUPPRESSION_HASH_KEY, lower(původní e-mail))
+  -- Otisk původní adresy podle kontraktu 3.10 části 1: purpose 'mailer/v1/suppression-fingerprint',
+  -- klíč odvozený z aktuálního SECRET_KEY přes HKDF. Zapisuje se vždy s pokolením, kterým vznikl.
+  -- Přepočítat ho po rotaci NELZE, protože plaintext je po výmazu pryč, proto se ověřuje svým
+  -- pokolením a proto se SECRET_KEY_PREVIOUS nikdy nevyprazdňuje.
+  fingerprint         bytea    NOT NULL,
+  fingerprint_key_id  smallint NOT NULL,
   reason        text        NOT NULL CHECK (reason IN
     ('hard_bounce','soft_bounce_threshold','complaint','manual','global_unsubscribe',
      'one_click_unsubscribe','invalid','import','gdpr_erasure','ses_suppressed')),
@@ -639,8 +709,13 @@ CREATE TABLE suppressions (
 CREATE UNIQUE INDEX uq_suppressions__workspace_email ON suppressions (workspace_id, email)
   WHERE removed_at IS NULL;
 -- Druhá větev téže kontroly pro adresy, které byly vymazané podle GDPR a plaintext už nemáme.
-CREATE INDEX idx_suppressions__ws_email_hash ON suppressions (workspace_id, email_hash)
+-- Dotaz je `fingerprint = ANY($1)` s tolika hodnotami, kolik je známých pokolení klíče,
+-- takže btree nad (workspace_id, fingerprint) stačí a je to jeden indexovaný průchod.
+CREATE INDEX idx_suppressions__ws_fingerprint ON suppressions (workspace_id, fingerprint)
   WHERE removed_at IS NULL;
+-- Zdraví instalace: `mlain doctor` čte SELECT DISTINCT fingerprint_key_id FROM suppressions
+-- a chybějící pokolení hlásí jako kritickou chybu (3.10 části 1).
+CREATE INDEX idx_suppressions__fingerprint_key_id ON suppressions (fingerprint_key_id);
 -- Přehled a export suppression listu podle důvodu.
 CREATE INDEX idx_suppressions__ws_reason ON suppressions (workspace_id, reason, created_at DESC);
 ```
@@ -670,6 +745,10 @@ Klíče jsou `camelCase`, protože jde o neprůhledný JSON předávaný mezi č
 
 `ses_suppressed` je důvod pro `OnAccountSuppressionList` od SES, tedy adresa, kterou zablokoval sám provider na úrovni účtu. Je to vlastní důvod, ne `hard_bounce`, protože se odebírá jinde (v SES konzoli) a naše odebrání by nic nevyřešilo.
 
+**`reason` je otevřený výčet, ne zmrazený kontrakt.** Rozšíření je čistá migrace omezení a **nevyžaduje synchronizaci s ostatními částmi**; nová hodnota se jen musí objevit v matici 4.10.1 (kdo ji zapisuje a jestli je odebratelná) a v prioritním žebříčku ve 4.10.4, protože obojí je doménové rozhodnutí této části.
+
+**Zvážené zobecnění `ses_suppressed` na `provider_suppressed`.** Hodnota je dnes provider-specifická, přestože jde o obecný jev „adresu zablokoval sám odesílací provider na úrovni účtu" a stejnou věc má Postmark, SendGrid i Mailgun. Pro MVP 0 zůstává `ses_suppressed`, protože SES je jediný podporovaný provider a přejmenování hodnoty v existujících datech je migrace navíc bez okamžitého užitku. **Až přibude druhý provider, správný krok je přidat `provider_suppressed`, mapovat na ni nové zápisy a `ses_suppressed` nechat jako historickou hodnotu**, ne ji přejmenovávat: konkrétní provider se dohledá z `metadata.provider`, které tam už je. Je to zapsané tady, aby se za rok neřešilo znovu od nuly.
+
 ### 3.6 Import a export
 
 ```sql
@@ -677,7 +756,11 @@ CREATE TABLE imports (
   id                uuid        PRIMARY KEY DEFAULT uuidv7(),
   workspace_id      uuid        NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   filename          text        NOT NULL,
-  storage_key       text        NOT NULL,
+  -- NULL znamená "soubor už v úložišti není": retenční job ho smazal, nebo ho smazal uživatel.
+  -- NOT NULL by retenčnímu jobu nedal jak stav zaznamenat a částečný index idx_imports__file_expiry
+  -- s WHERE storage_key IS NOT NULL by nefiltroval nic, takže by job donekonečna nabízel
+  -- ke smazání soubory, které už smazal. Řádek `imports` zůstává kvůli historii a čítačům.
+  storage_key       text,
   byte_size         bigint      NOT NULL CHECK (byte_size > 0),
   content_sha256    bytea       NOT NULL,
   idempotency_key   text        NOT NULL,
@@ -713,6 +796,11 @@ CREATE TABLE imports (
 
   created_by        uuid,
   created_at        timestamptz NOT NULL DEFAULT now(),
+  -- Udržuje aplikace (konvence 2.1 části 1). Zapisuje se v KAŽDÉ checkpointové transakci importu,
+  -- protože je to jediný signál živosti, ze kterého obnova po pádu pozná zaseknutý import:
+  -- 4.6.8 hledá importy ve stavu 'importing' s updated_at starším než IMPORT_STALE_MINUTES.
+  -- Bez tohoto sloupce by ten dotaz nešlo napsat a zabitý worker by import zablokoval navždy.
+  updated_at        timestamptz NOT NULL DEFAULT now(),
   started_at        timestamptz,
   finished_at       timestamptz,
   file_expires_at   timestamptz NOT NULL
@@ -721,8 +809,11 @@ CREATE TABLE imports (
 -- Idempotence: stejný soubor + stejné mapování + stejné volby = tentýž import.
 CREATE UNIQUE INDEX uq_imports__workspace_idempotency ON imports (workspace_id, idempotency_key);
 CREATE INDEX idx_imports__ws_created ON imports (workspace_id, created_at DESC);
--- Retenční job na smazání souborů z úložiště.
+-- Retenční job na smazání souborů z úložiště. Částečnost dává smysl teprve tím, že storage_key
+-- smí být NULL: po smazání souboru řádek z indexu vypadne a job ho podruhé nenabídne.
 CREATE INDEX idx_imports__file_expiry ON imports (file_expires_at) WHERE storage_key IS NOT NULL;
+-- Obnova po pádu workera: zaseknuté importy podle stáří posledního checkpointu, viz 4.6.8.
+CREATE INDEX idx_imports__stale ON imports (updated_at) WHERE status = 'importing';
 ```
 
 ```sql
@@ -858,7 +949,7 @@ CREATE TABLE forms (
   captcha_provider  text        CHECK (captcha_provider IN ('none','turnstile','hcaptcha')),
   captcha_config    jsonb,
   redirect_url      text,
-  success_message   jsonb       NOT NULL DEFAULT '{}'::jsonb,   -- { "cs": "...", "en": "..." }
+  success_message   jsonb       NOT NULL DEFAULT '{}'::jsonb,   -- otevřená mapa jazyk → text, klíč "en" povinný
   active            boolean     NOT NULL DEFAULT true,
   submission_count  bigint      NOT NULL DEFAULT 0,
   created_at        timestamptz NOT NULL DEFAULT now(),
@@ -954,7 +1045,11 @@ CREATE TABLE gdpr_requests (
   id                uuid        PRIMARY KEY DEFAULT uuidv7(),
   workspace_id      uuid        NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   contact_id        uuid        REFERENCES contacts(id) ON DELETE SET NULL,
-  subject_email_hash bytea      NOT NULL,      -- plaintext se v této tabulce nikdy neukládá
+  -- Plaintext se v této tabulce nikdy neukládá. Otisk se počítá stejným receptem jako
+  -- suppressions.fingerprint (purpose 'mailer/v1/suppression-fingerprint', 3.10 části 1)
+  -- a stejně jako tam se ukládá s pokolením klíče, kterým vznikl.
+  subject_email_fingerprint        bytea    NOT NULL,
+  subject_email_fingerprint_key_id smallint NOT NULL,
   type              text        NOT NULL CHECK (type IN
     ('access','portability','erasure','rectification','restriction','objection')),
   mode              text        CHECK (mode IN ('anonymize','purge')),   -- jen u type='erasure'
@@ -978,7 +1073,8 @@ CREATE TABLE gdpr_requests (
 CREATE INDEX idx_gdpr_requests__ws_due ON gdpr_requests (workspace_id, due_at)
   WHERE status IN ('received','verifying','processing');
 CREATE INDEX idx_gdpr_requests__ws_created ON gdpr_requests (workspace_id, created_at DESC);
-CREATE INDEX idx_gdpr_requests__ws_email_hash ON gdpr_requests (workspace_id, subject_email_hash);
+-- Dohledání žádostí téhož subjektu: dotaz je `= ANY($1)` přes všechna známá pokolení klíče.
+CREATE INDEX idx_gdpr_requests__ws_fingerprint ON gdpr_requests (workspace_id, subject_email_fingerprint);
 ```
 
 ```sql
@@ -1088,7 +1184,7 @@ Sémantika režimů:
 Pravidla, která platí ve **všech** režimech a nejdou vypnout:
 
 1. **`email` se nikdy nemění.** Je to klíč. Změna adresy je operace `POST /api/v1/contacts/{id}/change-email`, která má vlastní kontrolu proti kolizi a vlastní záznam v auditu.
-2. **`attributes` se slučují po klíčích**, nikdy se nenahrazují celé. Import s pěti namapovanými poli nesmí smazat sedm polí, která do souboru nepatřila. Vymazání jednoho vlastního pole se v režimu `overwrite` provede nastavením `null`, což klíč z JSONB odstraní.
+2. **`attributes` se slučují po klíčích**, nikdy se nenahrazují celé. Import s pěti namapovanými poli nesmí smazat sedm polí, která do souboru nepatřila. Vymazání jednoho vlastního pole se v režimu `overwrite` provede nastavením `null`, což klíč z JSONB **odstraní**. Odstranění zajišťuje `jsonb_strip_nulls` v upsert dotazu (4.1.3), ne samotný operátor `||`: ten by klíč ponechal s hodnotou JSON `null`, predikát `is_empty` by ho vyhodnotil jako neprázdný (4.11.3) a uživatel by viděl pole, které právě „smazal", pořád v segmentu. Viz zdůvodnění pod dotazem.
 3. **`status` se nikdy nepovyšuje importem, API zápisem, formulářem ani webhookem.** Přechody `unsubscribed → active`, `complained → active` a `bounced → active` jsou možné jen dvěma cestami: potvrzením double opt-in konkrétním člověkem, nebo ručním zásahem správce se záznamem v auditu. Bez tohohle pravidla by stačilo znovu naimportovat starý soubor a všichni odhlášení by byli zpátky. Je to nejdůležitější pravidlo celé kapitoly.
 4. **Kontakt na suppression listu s důvodem `complaint` nebo `gdpr_erasure` se nezapisuje vůbec.** Řádek se počítá jako `suppressed_rows` a končí. U ostatních důvodů suppression se kontakt zapíše, ale nevznikne žádné přihlášení do seznamu a žádný souhlas.
 5. **`skip` se týká jen polí kontaktu.** Přihlášení do seznamů, štítky a záznam souhlasu se aplikují i v režimu `skip`, protože „přidej tyhle lidi do seznamu, ale nesahej mi na jejich data" je běžný a legitimní požadavek. Kdyby `skip` blokoval i to, uživatel by neměl jak přidat existující kontakty do seznamu importem.
@@ -1097,7 +1193,7 @@ Pravidla, která platí ve **všech** režimech a nejdou vypnout:
 #### 4.1.3 Tvar upsert dotazu
 
 ```sql
-INSERT INTO contacts (id, workspace_id, email, email_hash, first_name, last_name, gender,
+INSERT INTO contacts (id, workspace_id, email, email_fingerprints, first_name, last_name, gender,
                       gender_source, first_name_vocative, last_name_vocative,
                       vocative_confidence, greeting, attributes, locale, source, source_ref,
                       created_at, updated_at)
@@ -1106,7 +1202,9 @@ ON CONFLICT (workspace_id, email) WHERE deleted_at IS NULL DO UPDATE SET
   first_name  = CASE WHEN $mode = 'overwrite' THEN excluded.first_name
                      ELSE coalesce(nullif(excluded.first_name, ''), contacts.first_name) END,
   ...
-  attributes  = contacts.attributes || excluded.attributes,
+  -- jsonb_strip_nulls je povinné, ne kosmetika: bez něj `||` klíč s hodnotou null ponechá,
+  -- takže "vymazání pole" v režimu overwrite by pole nevymazalo. Viz odstavec níž.
+  attributes  = jsonb_strip_nulls(contacts.attributes || excluded.attributes),
   updated_at  = now()
 WHERE contacts.deleted_at IS NULL
 RETURNING id, (xmax = 0) AS inserted;
@@ -1117,6 +1215,12 @@ RETURNING id, (xmax = 0) AS inserted;
 Klauzule `WHERE deleted_at IS NULL` za `ON CONFLICT` je **inference částečného indexu**, ne filtr: PostgreSQL podle ní pozná, že arbitrem konfliktu je `uq_contacts__workspace_email`, který je částečný. Bez ní by příkaz skončil chybou 42P10 „no unique or exclusion constraint matching the ON CONFLICT specification". Je to nenápadná past, která stojí půl hodiny ladění, proto je tady napsaná.
 
 Duplicitní `WHERE contacts.deleted_at IS NULL` v `DO UPDATE` část je tam schválně jako pojistka pro případ, že by se index někdy změnil zpět na úplný.
+
+**Proč `jsonb_strip_nulls`** (oprava 2026-07-31). Pravidlo 2 ve 4.1.2 slibuje, že nastavení hodnoty na `null` v režimu `overwrite` klíč z `attributes` odstraní. Samotný operátor `||` to nedělá: `'{"a":1}'::jsonb || '{"a":null}'::jsonb` vrátí `{"a": null}`, tedy klíč zůstane s hodnotou JSON `null`. Důsledky by byly tři a všechny tiché. Predikát `is_empty` v naivním tvaru (`(attributes -> $n) IS NULL OR attributes ->> $n = ''`) vrátí u JSON `null` **false**: `attributes -> 'a'` je JSON hodnota `null`, ne SQL `NULL`, takže první větev neplatí, a `attributes ->> 'a'` je SQL `NULL`, takže druhá větev není pravdivá a `coalesce(..., false)` ji srazí na `false`. „Vymazané" pole by tedy v segmentu vypadalo jako vyplněné. Export by do buňky napsal prázdno, ale segment by kontakt nenašel. A velikost `attributes` by dál rostla o klíče, které už nic neznamenají.
+
+`jsonb_strip_nulls` odstraní všechny klíče s hodnotou `null` z celého objektu, což je přesně požadovaná sémantika, protože **hodnota JSON `null` nemá ve `attributes` žádný jiný legitimní význam**: „pole není vyplněné" se vyjadřuje nepřítomností klíče. Alternativa (ošetřit JSON `null` jen v `is_empty` a nechat klíče v datech) byla zamítnutá, protože by stejné ošetření muselo být v exportu, v merge tazích, v katalogu polí i v každém dalším konzumentovi, a stačilo by na jedno zapomenout. Predikát `is_empty` ve 4.11.3 přesto větev `jsonb_typeof(...) = 'null'` má, jako opasek k šlím pro data vzniklá dřív nebo přímým zápisem při migraci; správné místo opravy je ale při zápisu, ne při čtení.
+
+Pozor na jednu vlastnost, která z toho plyne: `jsonb_strip_nulls` je **rekurzivní** a odstraní `null` i uvnitř vnořených objektů. Pro tuhle část je to bez dopadu, protože hodnota vlastního pole je vždy skalár nebo pole stringů (4.2.2), nikdy vnořený objekt. Kdyby někdo v budoucnu zavedl typ „objekt", musí tohle rozhodnutí přehodnotit; proto je to napsané tady, a ne jen v kódu.
 
 #### 4.1.4 Souběh
 
@@ -1181,7 +1285,14 @@ Všechna vlastní pole jsou v `contacts.attributes jsonb`. Alternativa (skutečn
 
 Cena je pomalejší filtrování. Kompenzuje ji dvojí indexace, viz 4.2.6.
 
-Limity: **100 vlastních polí na projekt**, **8 označených jako `indexed`**, klíč max 40 znaků, `text` max 1 000 znaků, `long_text` max 10 000 znaků, celý objekt `attributes` max 64 kB na kontakt (`CHECK (pg_column_size(attributes) <= 65536)`).
+Limity: **100 vlastních polí na projekt**, **8 označených jako `indexed`**, klíč max 40 znaků, `text` max 1 000 znaků, `long_text` max 10 000 znaků, celý objekt `attributes` max **256 kB na kontakt** (`CONTACT_ATTRIBUTES_MAX_BYTES`, výchozí `262144`).
+
+**Limit `attributes` vynucuje aplikace, ne `CHECK`** (oprava 2026-07-31). Měří se **serializovaná délka v bajtech** (`Buffer.byteLength(JSON.stringify(attributes), 'utf8')`) a kontrola běží před zápisem, takže chyba je `422 validation_failed` s `attributes_too_large` a s uvedením skutečné a povolené velikosti. Původní `CHECK (pg_column_size(attributes) <= 65536)` byl zrušený ze dvou nezávislých důvodů:
+
+1. **Byl v rozporu s vlastními limity polí.** Sto polí a `long_text` do 10 000 znaků znamená, že sedm plných `long_text` polí přeteče 64 kB, přestože každé z nich je samo o sobě povolené. Uživatel by narazil na limit, který mu nikde nebyl slíbený, a jediné vysvětlení by bylo „je toho moc".
+2. **`pg_column_size` měří po kompresi.** Vrací velikost hodnoty v uloženém tvaru, tedy po TOAST kompresi. Dva kontakty se stejně dlouhými daty tak mohou dopadnout různě podle toho, jak dobře se jejich text komprimuje: opakující se text projde, náhodný identifikátor stejné délky ne. Chyba, která u jednoho řádku nastane a u druhého ne, se nedá vysvětlit ani reprodukovat.
+
+Nová hodnota 256 kB je zvolená tak, aby na ni sto polí v běžném použití nedosáhlo a zároveň nešlo do `attributes` uložit přílohu. `CHECK` v databázi zůstává jako pojistka s velkou rezervou (4 MiB, `ck_contacts__attributes_sane`), takže se aplikační limit uplatní vždycky dřív a databázová chyba znamená chybu v kódu, ne chybu uživatele.
 
 Rezervované klíče, které nelze použít pro vlastní pole: `email`, `first_name`, `last_name`, `middle_name`, `title_prefix`, `title_suffix`, `gender`, `greeting`, `locale`, `status`, `id`, `created_at`, `updated_at`, `tags`, `lists`, `unsubscribe_url`, `webview_url`, `first_name_vocative`, `last_name_vocative`.
 
@@ -1218,10 +1329,13 @@ export type FieldCatalog = {
   version: string;          // hash katalogu, kvůli invalidaci cache v části 3
 };
 
+/** Popisek v libovolném počtu jazyků. Klíč je jazykový tag, `en` je povinný jako záchytná hodnota. */
+export type LocalizedText = Record<string, string> & { en: string };
+
 export type FieldCatalogEntry = {
   path: string;             // 'first_name' | 'attr.city' | 'greeting'
   type: FieldCatalogType;
-  label: { cs: string; en: string };
+  label: LocalizedText;
   group: 'identity' | 'name' | 'salutation' | 'custom' | 'meta';
   itemType?: FieldCatalogType;   // jen u 'list', typ položky
   deleted: boolean;              // true u archivovaného pole; šablona ho smí mít, ale UI ho nenabízí
@@ -1245,6 +1359,8 @@ Mapování typů z `contact_fields.type` na `FieldCatalogType`, aby část 3 nem
 Katalog obsahuje **i prvotřídní pole** ze seznamu `CONTACT_MERGE_FIELDS` (viz 2.4), ne jen vlastní. Bez toho by část 3 musela mít druhý, ručně udržovaný seznam, který by se rozešel.
 
 `label` je lokalizovaný, proto je i sloupec `contact_fields.label` typu `jsonb` a ne `text`. U prvotřídních polí se popisky berou z katalogu i18n (`contacts.field.firstName` a podobně), u vlastních polí z databáze; když v `label` chybí jazyk uživatele, použije se `en`, a když chybí i ten, `key`.
+
+**Proč `Record<string, string>` a ne `{ cs: string; en: string }`** (rozhodnutí zadavatele, 2026-07-31). Sloupec `contact_fields.label` je záměrně otevřený `jsonb` a produkt slibuje, že **přidání jazyka nevyžaduje změnu kódu ani migraci**. Pevný dvoujazyčný objekt v typu ten slib porušoval na nejhorším možném místě: `zod.strict()` podle konvence 4.1 části 1 by odmítl tělo, které nese `de`, takže by projekt v němčině nemohl popisek vůbec uložit, a část 3 by musela svůj validátor přepisovat pokaždé, když přibude jazyk. Klíč `en` zůstává **povinný v typu**, protože fallback popsaný o odstavec výš na něm stojí: bez záruky, že `en` existuje, by se muselo padat až na `key`, což uživateli ukáže `order_total` místo popisku. Stejná úvaha a stejný typ platí pro `FormField.label`, `FormField.placeholder` a `FormField.options[].label` ve 4.13.5 a pro `forms.success_message`.
 
 `deleted: true` znamená archivované pole. Šablona, která na něj odkazuje, se **nerozbije**, jen validátor vydá varování a editor pole nenabízí. Skutečné smazání pole je jiná operace, viz 4.2.5.
 
@@ -1656,25 +1772,31 @@ Pokrývá to částečný index 7 z 3.1.
 
 #### 4.5.2 Seskupení
 
-Fronta se **nikdy nezobrazuje po kontaktech**, vždy po skupinách. Klíč skupiny:
+Fronta se **nikdy nezobrazuje po kontaktech**, vždy po skupinách. Klíč skupiny je `(name_key, gender, first_name_vocative, kind = 'first')`, kde `name_key` je jméno v **kanonizovaném tvaru**: malá písmena, NFD a odstraněné kombinovací znaky, tedy přesně stejná funkce `normalizeNameKey()`, jakou používá slovník křestních jmen ve 4.4.4 a jakou je definovaný `name_overrides.name_key` ve 3.7.
 
-```
-(lower(unaccent(first_name)), gender, first_name_vocative, kind='first')
-```
+**Normalizace se počítá v aplikaci a ukládá se do sloupce**, ne v dotazu. `contacts.first_name_key text` a `contacts.last_name_key text` jsou obyčejné sloupce, které při každém zápisu jména plní modul `packages/core/contacts/naming` toutéž funkcí `normalizeNameKey()`, jakou hledá v `name_overrides`. Index 7 z 3.1 se rozšiřuje na `(workspace_id, first_name_key)` uvnitř téže částečné podmínky.
 
 Dotaz:
 
 ```sql
-SELECT lower(first_name) AS name_key, gender, first_name_vocative,
-       count(*) AS contact_count, min(id) AS sample_contact_id,
+SELECT first_name_key AS name_key, gender, first_name_vocative,
+       count(*) AS contact_count,
+       -- Ne min(id): PostgreSQL 18 nemá agregát min() nad uuid (přidává se až ve 20),
+       -- dotaz by spadl na 42883 "function min(uuid) does not exist". array_agg s řazením
+       -- vrátí libovolný, ale deterministický vzorek a funguje na každé podporované verzi.
+       (array_agg(id ORDER BY created_at DESC))[1] AS sample_contact_id,
        array_agg(DISTINCT last_name ORDER BY last_name) FILTER (WHERE last_name IS NOT NULL) AS sample_surnames
 FROM contacts
 WHERE workspace_id = $1 AND vocative_confidence = 'low'
-  AND vocative_locked = false AND deleted_at IS NULL AND first_name IS NOT NULL
+  AND vocative_locked = false AND deleted_at IS NULL AND first_name_key IS NOT NULL
 GROUP BY 1, 2, 3
 ORDER BY contact_count DESC
 LIMIT 50;
 ```
+
+**Proč se sjednotila normalizace** (oprava 2026-07-31). Definice klíče skupiny dřív mluvila o `lower(unaccent(first_name))`, dotaz o pár řádků níž seskupoval přes `lower(first_name)` a rozšíření `unaccent` se přitom nikde nepožadovalo, takže by dotaz na čisté instalaci ani neproběhl. Následek toho rozporu byl vidět až v datech: „Tomáš" a „Tomas" by skončily ve dvou různých skupinách, marketérka by tutéž otázku dostala dvakrát, a hlavně by je **netrefil override**, protože `name_overrides.name_key` je definovaný bez diakritiky (3.7). Uživatel by tedy klikl „zapamatovat pro budoucí kontakty", příští import by stejné jméno vyhodil znovu a jediný mechanismus, kterým se fronta vyprazdňuje, by přestal fungovat.
+
+Normalizace se počítá **v aplikaci**, ne rozšířením `unaccent`, ze tří důvodů: nepřidává závislost na dalším rozšíření v době, kdy část 1 povoluje jen `citext` (a `pg_trgm` s `btree_gin` jsou teprve žádost, viz 2.6 A); je to bajt za bajt tatáž funkce, jakou se hledá ve slovníku jmen a v `name_overrides`, takže tři místa nemohou dát tři různé odpovědi; a seskupení nad uloženým sloupcem je index-friendly, kdežto `GROUP BY lower(unaccent(first_name))` by znamenalo výrazový index nebo seq scan. Cena je jeden `text` sloupec navíc na kontakt.
 
 Import 3 000 kontaktů s 143 nejistými typicky vyrobí 30 až 60 skupin, ne 143 řádků. To je rozdíl mezi „proklikám to za dvě minuty" a „na to nemám čas".
 
@@ -1861,7 +1983,15 @@ Pořadí operací je závazné, protože určuje, která chyba se nahlásí prvn
 2. Parsování na pole. Neshoda počtu polí proti hlavičce → `row_field_count_mismatch`. Výjimka: řádek s menším počtem polí, kde chybí jen koncové sloupce, se doplní prázdnými hodnotami a dostane varování.
 3. Ořez bílých znaků (`trim_whitespace`).
 4. Extrakce a normalizace e-mailu podle 4.1.1. Prázdný → `email_missing`, neplatný → `email_invalid`, delší než 254 → `email_too_long`.
-5. Kontrola duplicity uvnitř souboru. Podle `duplicate_in_file`: `last` znamená, že pozdější řádek přepíše dřívější a dřívější dostane varování `duplicate_in_file`; `first` znamená, že pozdější se zahodí; `error` znamená chybu na druhém výskytu. Detekce je přes hash-set e-mailů v paměti; při 5 milionech řádků a průměrné adrese 25 znaků jde o zhruba 400 MB, což je moc. Proto se od 1 000 000 řádků přepne na **detekci až v databázi** (`ON CONFLICT` sám vyřeší, pozdější vyhraje) a varování `duplicate_in_file` se nevydává; místo něj se do souhrnu importu zapíše poznámka. Práh je `IMPORT_INMEMORY_DEDUP_MAX_ROWS`.
+5. Kontrola duplicity uvnitř souboru, ve **dvou úrovních**. Podle `duplicate_in_file`: `last` znamená, že pozdější řádek přepíše dřívější a dřívější dostane varování `duplicate_in_file`; `first` znamená, že pozdější se zahodí; `error` znamená chybu na druhém výskytu.
+
+   **Úroveň A, deduplikace uvnitř dávky, je povinná a nejde vypnout.** Před sestavením dávky se z ní odstraní opakované adresy mapou o velikosti dávky (1 000 položek, tedy jednotky desítek kilobajtů, cena zanedbatelná). Bez ní by dvě stejné adresy v jedné dávce znamenaly, že `INSERT ... SELECT FROM unnest(...) ON CONFLICT ...` sáhne na tentýž řádek dvakrát v jednom příkazu, což PostgreSQL odmítá chybou **21000 `ON CONFLICT DO UPDATE command cannot affect row a second time`**. Ta chyba shodí **celou transakci dávky**, a protože job importu má `retryLimit = 0` (4.6.8), import se v tom místě zasekne a bez ručního zásahu se nerozjede. Je to nejhorší možná kombinace: chyba nastane jen u souborů s duplicitami, tedy skoro u každého reálného exportu z e-shopu, a projeví se až v produkci nad velkým souborem.
+
+   **Úroveň B, deduplikace napříč dávkami, je paměťová a má práh.** Hash-set e-mailů celého souboru stojí při 5 milionech řádků a průměrné adrese 25 znaků zhruba 400 MB, což je moc. Proto se od `IMPORT_INMEMORY_DEDUP_MAX_ROWS` (výchozí 1 000 000) vypne a duplicity **napříč dávkami** dořeší `ON CONFLICT` v databázi, kde jsou naprosto v pořádku, protože každá dávka je samostatný příkaz. Vypne se tím jen vydávání varování `duplicate_in_file`; místo něj se do souhrnu importu zapíše poznámka, že se duplicity uvnitř souboru nesledovaly.
+
+   Rozdělení je podstatné a nesmí se sloučit zpět: `ON CONFLICT` **řeší duplicity mezi příkazy, ne uvnitř jednoho příkazu**. Práh se týká výhradně úrovně B.
+
+   Volba `duplicate_in_file: 'error'` je nad prahem nedostupná a UI ji zašedne s vysvětlením, protože bez paměťové mapy nejde druhý výskyt spolehlivě rozeznat od aktualizace existujícího kontaktu.
 6. Kontrola suppression listu. `complaint` a `gdpr_erasure` → řádek se zahodí (`suppressed_rows++`), kontakt nevznikne. Ostatní důvody → kontakt vznikne, ale bez přihlášení a bez souhlasu.
 7. Rozdělení jména, určení rodu, výpočet vokativu a oslovení podle 4.4.
 8. Koerce a validace vlastních polí podle 4.2.4. Chyba v jednom poli je chyba **celého řádku**, ne tichý zápis neúplného kontaktu.
@@ -1876,7 +2006,9 @@ Dávka 1 000 řádků se zapisuje **v jedné transakci**, která obsahuje:
 3. `INSERT ... ON CONFLICT DO UPDATE` do `list_subscriptions`,
 4. `INSERT` do `consents` a `contact_consent_state`,
 5. `INSERT` do `import_errors` pro chybné řádky dávky,
-6. `UPDATE imports SET checkpoint_row = $1, checkpoint_byte = $2, processed_rows = ..., created_rows = ..., ...`.
+6. `UPDATE imports SET checkpoint_row = $1, checkpoint_byte = $2, processed_rows = ..., created_rows = ..., updated_at = now()`.
+
+`updated_at` v bodu 6 je **povinná součást checkpointu**, ne kosmetika (oprava 2026-07-31). Je to jediný signál živosti importu a stojí na něm celá obnova po pádu popsaná o odstavec níž: bez něj by dotaz „importy ve stavu `importing` s `updated_at` starším než `IMPORT_STALE_MINUTES`" neměl nad čím běžet, zabitý worker by nechal import navždy ve stavu `importing` a `singletonKey = workspace_id` by projektu zablokoval i všechny další importy. Sloupec je doplněný do DDL ve 3.6 a má nad sebou částečný index `idx_imports__stale`.
 
 Protože je bod 6 ve stejné transakci jako body 1 až 5, platí **exactly-once na úrovni dávky**: pád workera kdykoliv uprostřed znamená rollback celé dávky, a po restartu se čte od `checkpoint_row + 1`, respektive se soubor přeskočí na `checkpoint_byte`. Žádný řádek nemůže být zpracovaný dvakrát ani vynechaný. Navíc je celý zápis idempotentní sám o sobě (upsert), takže i případné opakování dávky je neškodné.
 
@@ -2161,20 +2293,27 @@ Publikum se materializuje v okamžiku odeslání (část 4), takže odhlášení
 Tabulku `messages` **nevlastní tato část** a nesmí do ní zapisovat napřímo (viz Rozsah v sekci 1). Odhlašovací handler proto ve **stejné transakci** jako změnu stavu volá funkci části 4:
 
 ```ts
-// vlastní část 4, konzumuje tato část
-export function revokePendingMessages(ctx: WorkspaceContext, input: {
-  contactId: string;
-  listId: string | null;        // null = všechny kampaně, jinak jen kampaně mířené na tento seznam
-  reason: 'unsubscribed' | 'suppressed' | 'contact_deleted' | 'contact_anonymized'
-        | 'processing_restricted';
+// packages/core/campaigns, vlastní část 4a, konzumuje tato část.
+// Signatura je PŘEVZATÁ z 3.4.1 části 4a beze změny tvaru, viz poznámka pod tabulkou.
+export async function revokePendingMessages(input: {
+  workspaceId: string;
+  contactIds?: string[];   // preferovaná větev, tahle část ji používá vždy
+  emails?: string[];       // pro případy, kdy známe jen adresu (SES event), volá část 4
+  listId?: string | null;  // null nebo vynechané = všechny čekající zprávy kontaktu
+  reason: 'unsubscribed' | 'suppressed' | 'contact_deleted' | 'contact_status_changed'
+        | 'contact_anonymized' | 'processing_restricted';
 }): Promise<{ revoked: number }>;
 ```
 
-**Parametr `listId` je nutný a dnes v části 4 chybí.** Bez něj by odhlášení z jednoho newsletteru zrušilo **veškerou** čekající poštu toho člověka, včetně kampaní na jiné seznamy a transakčních zpráv. To je tichá ztráta pošty, kterou by nikdo nedohledal, protože zpráva prostě neodejde a nikde nevznikne chyba.
+**Signatura je sladěná s částí 4a** (oprava 2026-07-31). Tahle část dřív předepisovala `(ctx, { contactId, listId, reason })`, tedy jiný tvar, než jaký část 4a v 3.4.1 skutečně vystavuje: projekt jde v `workspaceId` uvnitř vstupu, ne v `WorkspaceContext`, kontakty jdou jako **pole**, a existuje druhá větev přes `emails`. Dva různé zápisy téhož volání ve dvou dokumentech znamenají, že jedna ze stran nezkompiluje, a je jedno která. Platí tvar části 4a, protože ta funkci vlastní.
+
+**Věta, že `listId` v části 4 chybí, byla smazaná, protože už neplatí.** Část 4a parametr má, dokumentuje ho v 3.4.1 tabulkou rozsahů a sama píše, že bez něj vzniká tichá ztráta pošty. Zbývá jediné: `listId` je v části 4a **volitelný v typu**, takže ho jde omylem vynechat. Volající z této části ho proto předává **vždy explicitně**, i když je `null`, a je na to lint pravidlo. Rozsah je stejný jako dřív: konkrétní UUID zruší jen zprávy kampaní mířených na ten seznam, `null` zruší všechny čekající zprávy kontaktu v projektu.
 
 Funkce smí provést **výhradně přechod `pending → skipped`** a zapsat do `error_code` (kontraktní sloupec, ne `error`) hodnotu odpovídající `reason`. Řádky ve stavu `claimed` nechává být, protože je právě zpracovává sender a přepis stavu pod ním by způsobil buď duplicitu, nebo ztracenou zprávu.
 
-Tato část ji volá na **pěti místech**:
+Hodnoty `reason` padají přímo do `messages.error_code`, což je **uzavřený registr části 1** (`packages/contracts/src/outbox-errors.ts`, 4.10.1 části 1). Tři z nich v něm dnes nejsou: `contact_deleted`, `contact_anonymized` a `processing_restricted`. Bez registrace je zápis chyba v CI, takže jsou předmětem požadavku 1.17 na část 1 a požadavku 4.5 na část 4a.
+
+Tato část ji volá na **šesti místech**:
 
 | Místo | `listId` | `reason` |
 |---|---|---|
@@ -2184,6 +2323,8 @@ Tato část ji volá na **pěti místech**:
 | Měkké i tvrdé smazání kontaktu (4.1.5) | `null` | `contact_deleted` |
 | Anonymizace podle čl. 17 (4.14.4) | `null` | `contact_anonymized` |
 | Nastavení `processing_restricted = true` (čl. 18) | `null` | `processing_restricted` |
+
+`contact_anonymized` a `processing_restricted` se vědomě **neslučují** do `contact_status_changed`, které část 4a nabízí. Jsou to dva různé právní důvody podle dvou různých článků GDPR (čl. 17 a čl. 18) a v reportu kampaně se musí dát odlišit: u anonymizace kontakt neexistuje, u omezení zpracování existuje a jeho zprávy se mohou po zrušení omezení znovu rozjet. Sloučit je do jedné hodnoty by znamenalo zahodit informaci, kterou už nikdo nedohledá.
 
 Praktický důsledek, který je potřeba říct nahlas: **v nejhorším případě může jednomu odhlášenému člověku ještě odejít jedna zpráva**, a to v okně mezi vyzvednutím dávky senderem a jejím odesláním. Při dávce 500 a běžné propustnosti je to okno v řádu sekund až desítek sekund. Zkrátit ho na nulu by znamenalo, že sender čte tabulku kontaktů, což hlavní specifikace zakazuje, a bylo by to výrazně horší.
 
@@ -2205,7 +2346,7 @@ Obsah:
 | Odhlásit ze všeho | výrazné tlačítko, potvrzovací dialog |
 | Moje data | „Stáhnout kopii mých údajů" (čl. 15 a 20) a „Smazat mé údaje" (čl. 17), obojí založí `gdpr_requests` |
 
-Vše funguje bez JavaScriptu, formuláře jsou `POST` se `303` přesměrováním. Rate limit 20 požadavků za minutu na IP a 60 za hodinu na token.
+Vše funguje bez JavaScriptu, formuláře jsou `POST` se `303` přesměrováním. Rate limit **30 požadavků za minutu na IP a 60 za hodinu na token**, shodně se souhrnnou tabulkou v 7.4, která je pro limity zdroj pravdy. (Dřív tu stálo 20 za minutu, což si s tabulkou odporovalo; sjednoceno 2026-07-31 na hodnotu z tabulky, protože stránku preferencí a potvrzovací stránku obsluhuje týž middleware a dva různé limity by znamenaly dvě konfigurace téhož.)
 
 Neplatný token vede na stejnou generickou stránku s hláškou „Tenhle odkaz neplatí. Odkaz najdete v patičce kteréhokoliv našeho e-mailu." Nikdy se neprozradí, jestli kontakt existuje.
 
@@ -2237,6 +2378,8 @@ Neplatný token vede na stejnou generickou stránku s hláškou „Tenhle odkaz 
 
 Odebrání je měkké: `removed_at`, `removed_by`, `removal_note`. Řádek zůstává jako důkaz.
 
+Matice platí vůči **aktuálnímu** `reason`, ne vůči tomu, se kterým řádek vznikl. Adresa zablokovaná ručně (`manual`, odebratelná), na kterou později přijde stížnost, se podle 4.10.4 povýší na `complaint` a od té chvíle ji nejde odebrat vůbec. Kdyby se povýšení nedělalo, editor by stížnost odblokoval jedním kliknutím a nikde by nebylo vidět, že odblokovává stížnost.
+
 #### 4.10.3 Kde se kontroluje
 
 Kontrola je jeden dotaz, který musí být rychlý, protože běží u každého importovaného řádku, každého přihlášení a při materializaci publika:
@@ -2245,27 +2388,32 @@ Kontrola je jeden dotaz, který musí být rychlý, protože běží u každého
 SELECT reason FROM suppressions
  WHERE workspace_id = $1
    AND removed_at IS NULL
-   AND (email = $2 OR email_hash = $3)
+   AND (email = $2 OR fingerprint = ANY($3::bytea[]))
  LIMIT 1;
 ```
 
+`$3` je pole otisků adresy spočítaných pro **všechna známá pokolení klíče, bez horního omezení** (kontrakt 3.10 části 1). Otisky počítá aplikace před dotazem, jeden HMAC na pokolení a adresu; pokolení je jednotky, takže je to jeden indexovaný dotaz s krátkým polem, **ne dotaz na pokolení**.
+
 Dvě větve `OR` pokrývají dva indexy z 3.5. Druhá větev existuje kvůli adresám vymazaným podle GDPR, u kterých už plaintext nemáme.
 
-**Obě podmínky jsou povinné v každé kontrole, bez výjimky:**
+**Všechny tři podmínky jsou povinné v každé kontrole, bez výjimky:**
 
 1. **`removed_at IS NULL`.** Bez ní by adresa legitimně odblokovaná po 30 dnech podle matice 4.10.2 zůstala vyloučená navždy, protože měkce odebraný řádek v tabulce zůstává. Odblokování by tím bylo tiše bez efektu a nikdo by nepoznal proč.
-2. **Větev přes `email_hash`.** Bez ní by šlo znovu naimportovat člověka, který uplatnil právo na výmaz, protože jeho plaintextovou adresu už neznáme.
+2. **Větev přes `fingerprint`.** Bez ní by šlo znovu naimportovat člověka, který uplatnil právo na výmaz, protože jeho plaintextovou adresu už neznáme.
+3. **Všechna pokolení klíče v `$3`, ne jen aktuální.** Otisk v suppression řádku **nejde nikdy přepočítat**, protože plaintext je po výmazu pryč. Kdyby se hledalo jen otiskem pod aktuálním klíčem, první rotace `SECRET_KEY` by starší záznamy odřízla a vymazaný člověk by se vrátil prvním dalším importem, **aniž by cokoliv selhalo nebo se zalogovalo**. Je to nejtišší možná porucha a je to důvod, proč část 1 zrušila strop na počet pokolení a proč `SECRET_KEY_PREVIOUS` nemá horní počet položek.
 
-Kontrola s jednou z nich chybějící je chyba, ne optimalizace. Platí to pro materializaci publika (část 4), import, přihlášení do seznamu, odeslání formuláře i příchozí webhook. Jediné povolené místo, kde se kontrola píše, je repository funkce `suppressions.check(ctx, emails)`, aby nešlo napsat sedmou variantu.
+Kontrola s kteroukoliv z nich chybějící je chyba, ne optimalizace. Platí to pro materializaci publika (část 4), import, přihlášení do seznamu, odeslání formuláře i příchozí webhook. Jediné povolené místo, kde se kontrola píše, je repository funkce `suppressions.check(ctx, emails)`, aby nešlo napsat sedmou variantu; ta si sama zjistí keyring a otisky spočítá, volající je nikdy nepředává.
 
 Při importu se kontrola dělá dávkově, ne po řádcích:
 
 ```sql
-SELECT s.email, s.email_hash, s.reason
+SELECT s.email, s.fingerprint, s.reason
   FROM suppressions s
  WHERE s.workspace_id = $1 AND s.removed_at IS NULL
-   AND (s.email = ANY($2::citext[]) OR s.email_hash = ANY($3::bytea[]));
+   AND (s.email = ANY($2::citext[]) OR s.fingerprint = ANY($3::bytea[]));
 ```
+
+`$3` je zploštělé pole otisků: pro dávku 1 000 adres a tři pokolení klíče má 3 000 položek. Otisky se počítají jednou na dávku a jsou to tytéž hodnoty, které se ukládají do `contacts.email_fingerprints`, takže se nepočítají dvakrát.
 
 #### 4.10.4 `suppressions.add`: jediná cesta, jak něco zablokovat
 
@@ -2288,23 +2436,36 @@ export function add(ctx: WorkspaceContext, input: {
 
 **Co funkce udělá, celé v jedné transakci:**
 
-1. Normalizuje e-mail podle 4.1.1 a **spočítá `email_hash` sama** (HMAC-SHA256 se `SUPPRESSION_HASH_KEY`). Volající hash nikdy nepočítá ani nepředává, jinak by se dvě implementace rozešly.
-2. Vloží řádek idempotentně:
+1. Normalizuje e-mail podle 4.1.1 a **spočítá otisk sama**: `fingerprint` pod **aktuálním** klíčem plus `fingerprint_key_id` jeho pokolení, receptem z 3.10 části 1 (purpose `mailer/v1/suppression-fingerprint`). Volající otisk nikdy nepočítá ani nepředává, jinak by se dvě implementace rozešly. Nové záznamy se zapisují vždy aktuálním pokolením; staré se nepřepočítávají a nemusí, protože se ověřují svým pokolením (4.10.3).
+2. Vloží řádek idempotentně a **povýší důvod, když je nový přísnější**:
 
    ```sql
-   INSERT INTO suppressions (id, workspace_id, email, email_hash, reason, source,
-                             source_ref, detail, metadata, removable, created_at, created_by)
+   INSERT INTO suppressions (id, workspace_id, email, fingerprint, fingerprint_key_id, reason,
+                             source, source_ref, detail, metadata, removable, created_at, created_by)
    VALUES (...)
    ON CONFLICT (workspace_id, email) WHERE removed_at IS NULL
-   DO UPDATE SET metadata = suppressions.metadata || excluded.metadata,
-                 detail   = coalesce(excluded.detail, suppressions.detail)
-   RETURNING id, (xmax = 0) AS created;
+   DO UPDATE SET
+     -- Povýšení: nižší číslo v žebříčku je přísnější důvod. Vyhrává přísnější z obou,
+     -- takže povýšení je jednosměrné a opakované volání s mírnějším důvodem nic nezhorší.
+     reason    = CASE WHEN $new_rank < $existing_rank THEN excluded.reason
+                      ELSE suppressions.reason END,
+     removable = CASE WHEN $new_rank < $existing_rank THEN excluded.removable
+                      ELSE suppressions.removable END,
+     source    = CASE WHEN $new_rank < $existing_rank THEN excluded.source
+                      ELSE suppressions.source END,
+     metadata  = suppressions.metadata || excluded.metadata,
+     detail    = coalesce(excluded.detail, suppressions.detail)
+   RETURNING id, (xmax = 0) AS created, reason, removable;
    ```
 
    Klauzule `WHERE removed_at IS NULL` za `ON CONFLICT` je **inference částečného indexu** `uq_suppressions__workspace_email`. Bez ní příkaz skončí chybou 42P10. Je to přesně ta past, kterou popisuju u kontaktů ve 4.1.7, a platí i tady.
 
-   Existující řádek se **nepřepisuje jiným důvodem**. Když je adresa už blokovaná kvůli `complaint` a přijde `hard_bounce`, důvod zůstane `complaint`, protože je přísnější, a nový podnět se přidá do `metadata.occurrences`. Priorita důvodů odshora: `gdpr_erasure`, `complaint`, `hard_bounce`, `ses_suppressed`, `global_unsubscribe`, `one_click_unsubscribe`, `soft_bounce_threshold`, `invalid`, `import`, `manual`.
-3. Nastaví `removable` podle matice v 4.10.1. Volající ho nepředává.
+   **Prioritní žebříček důvodů, odshora nejpřísnější:** `gdpr_erasure`, `complaint`, `hard_bounce`, `ses_suppressed`, `global_unsubscribe`, `one_click_unsubscribe`, `soft_bounce_threshold`, `invalid`, `import`, `manual`. Pořadí je jediný zdroj pravdy a žije jako konstanta v `packages/core/contacts/suppression-rank.ts`; hodnota mimo žebříček je chyba v CI, aby přidání důvodu nešlo zapomenout doplnit sem.
+
+   **Povýšení směrem nahoru je povinné, degradace zakázaná** (oprava 2026-07-31). Dřív se při konfliktu měnily jen `metadata` a `detail`, nikdy `reason` ani `removable`, a to rozbíjelo invariant „stížnost je nevratná" ze 4.10.2. Konkrétně: adresa ručně zablokovaná jako `manual` je podle matice **odebratelná**; když na ni později přijde stížnost na spam, dřívější chování by nechalo `reason = 'manual'` i `removable = true`, takže by editor stížnost odblokoval jedním kliknutím, aniž by kdokoliv poznal, že odblokovává stížnost. Tichá ztráta té nejpřísnější ochrany, navíc přesně u signálu, kvůli kterému SES pozastavuje účty. Opačný směr zůstává zakázaný: `complaint`, na kterou přijde `hard_bounce`, si `complaint` ponechá, protože je přísnější, a nový podnět se přidá jen do `metadata.occurrences`.
+
+   Když povýšení nastane, funkce navíc **znovu provede doménové efekty podle kroku 5 pro nový důvod** a zapíše do auditu `suppression.reason_promoted` s původní a novou hodnotou. Bez toho by `contacts.status` zůstal na hodnotě odpovídající mírnějšímu důvodu a odporoval by tvrzení ze 4.1.6, že status je odvozený údaj udržovaný v téže transakci.
+3. Nastaví `removable` podle matice v 4.10.1, a to i při povýšení. Volající ho nepředává.
 4. Dohledá kontakt podle e-mailu v tomtéž projektu (může být `null`, suppression může existovat i bez kontaktu, typicky u importu blokovaných adres).
 5. **Provede doménové efekty podle matice 4.8.1**, pokud kontakt existuje:
 
@@ -2319,7 +2480,7 @@ export function add(ctx: WorkspaceContext, input: {
    | `manual`, `import` | beze změny | beze změny | beze změny |
 
    Tohle je ta část, kvůli které funkce existuje. Bez ní zůstane `contacts.status` na `active` a odporuje to tvrzení ze 4.1.6, že status je odvozený údaj udržovaný v téže transakci.
-6. Zavolá `revokePendingMessages(ctx, { contactId, listId: null, reason: 'suppressed' })` z části 4 (viz 4.9.4), aby se zrušily čekající zprávy.
+6. Zavolá `revokePendingMessages({ workspaceId, contactIds: [contactId], listId: null, reason: 'suppressed' })` z části 4a (viz 4.9.4), aby se zrušily čekající zprávy.
 7. Zapíše `audit_log` akci `suppression.added` a vyvolá odchozí událost `contact.suppressed`.
 
 **Idempotence.** Opakované volání se stejnými vstupy nic nezmění a vrátí `created: false` s původním `suppressionId`. Je to nutnost, protože SNS doručuje události nejméně jednou (část 4) a tentýž bounce může dorazit třikrát.
@@ -2502,9 +2663,12 @@ SELECT a.id AS contact_id
          SELECT 1 FROM suppressions su
           WHERE su.workspace_id = a.workspace_id
             AND su.removed_at IS NULL
-            AND (su.email = a.email OR su.email_hash = a.email_hash))
+            AND (su.email = a.email
+                 OR su.fingerprint = ANY(a.email_fingerprints)))
    AND (<zkompilované publikum>)
 ```
+
+Otisková větev porovnává proti **poli** `a.email_fingerprints`, tedy proti otiskům kontaktu pod všemi známými pokoleními klíče (3.1). Suppression řádek nese jedno pokolení, které mu nejde přepočítat; kontakt nese všechna, protože jeho plaintext máme. Tím se trefí i suppression zapsaná před rotací `SECRET_KEY`, aniž by kompilátor musel odvozovat klíče v SQL.
 
 Členství v seznamu se kompiluje takto, včetně pozastavení odběru:
 
@@ -2516,7 +2680,11 @@ EXISTS (SELECT 1 FROM list_subscriptions ls
            AND (ls.snooze_until IS NULL OR ls.snooze_until <= $2))   -- $2 = asOf
 ```
 
-Tři podmínky v obálce (`deleted_at`, `processing_restricted`, suppression) a dvě u seznamu (`confirmed`, `snooze_until`) jsou **doménové požadavky části 2**, ne optimalizace. Kdyby chyběly, odešla by pošta člověku s omezeným zpracováním podle čl. 18, člověku, který si dal pauzu, a člověku, který ještě nepotvrdil přihlášení. Právě proto je kompilace uvnitř této části a ne v ručně psaném SQL části 4.
+**Obálka má právě tyhle čtyři podmínky a jinou verzi nemá.** `workspace_id`, `deleted_at IS NULL`, `processing_restricted = false` a `NOT EXISTS` nad `suppressions`. Platí to **pro všechny vstupní body kompilátoru bez rozdílu**: pro `compileAudienceToSql`, pro `countSegment` i pro `listSegmentContacts`. Náhled segmentu a materializace publika tedy vidí tutéž množinu kontaktů.
+
+Tři podmínky obálky (`deleted_at`, `processing_restricted`, suppression) a dvě u seznamu (`confirmed`, `snooze_until`) jsou **doménové požadavky části 2**, ne optimalizace. Kdyby chyběly, odešla by pošta člověku s omezeným zpracováním podle čl. 18, člověku, který si dal pauzu, a člověku, který ještě nepotvrdil přihlášení. Právě proto je kompilace uvnitř této části a ne v ručně psaném SQL části 4.
+
+**Proč se to zdůrazňuje** (oprava 2026-07-31). Dokument dřív obsahoval obálku **dvakrát a pokaždé jinak**: tady se čtyřmi podmínkami včetně suppression, o kus níž ve vrstvě 3 jen se třemi, bez suppression. Dvě verze téhož závazného tvaru znamenají, že implementátor sáhne po té bližší, a ta bez suppression by pustila do náhledu segmentu i do publika adresu se stížností na spam. Akceptační kritéria to hlídají v obou směrech, viz 35 a 45 v 9.3.
 
 Modul se registruje do `isolation.matrix.test.ts` části 1, takže generický test cizího kontextu ho pokrývá automaticky.
 
@@ -2555,18 +2723,9 @@ Stejně tak `list_id`, `tag_id`, `campaign_id` a `segment_id` jsou vždy paramet
 
 **Vrstva 3: kontrola příslušnosti k projektu.** Před kompilací se pro daný projekt ověří, že každé `attribute.key` existuje v `contact_fields`, každé `list_id` v `lists`, každé `tag_id` v `tags` a každé `segment_id` v `segments`. Neexistující nebo cizí ID vede na `404 not_found` s `segment_reference_not_found`. **Tohle je ta skutečná bezpečnostní hranice**, protože reálné riziko není podstrčené SQL, ale odkaz na cizí projekt. Jsou na to samostatné testy.
 
-Kompilátor navíc **vždy** připojí obálku, kterou volající nemůže vynechat:
+Kompilátor navíc **vždy** připojí obálku, kterou volající nemůže vynechat. Je to **tatáž čtyřčlenná obálka, která je uvedená výš** u kontraktu `compileAudienceToSql`, včetně `NOT EXISTS` nad `suppressions`, jen s aliasem `c` místo `a`. Druhá, tříčlenná verze bez suppression, která tu dřív stála, byla chyba a je zrušená.
 
-```sql
-SELECT c.id
-  FROM contacts c
- WHERE c.workspace_id = $1
-   AND c.deleted_at IS NULL
-   AND c.processing_restricted = false
-   AND (<zkompilovaný predikát>)
-```
-
-`processing_restricted = false` je tam kvůli čl. 18 GDPR: kontakt s omezeným zpracováním nesmí spadnout do žádného segmentu, aniž by ho musel autor segmentu vylučovat ručně.
+`processing_restricted = false` je v ní kvůli čl. 18 GDPR: kontakt s omezeným zpracováním nesmí spadnout do žádného segmentu, aniž by ho musel autor segmentu vylučovat ručně. Suppression je v ní proto, aby náhled segmentu ukazoval **stejný počet**, jaký pak dostane kampaň; kdyby ji náhled vynechal, uživatel by viděl 12 000 a odeslalo by se 11 300, a rozdíl by nikdo nedokázal vysvětlit.
 
 **Vrstva 4: row-level security.** Podle 3.6 části 1 má `contacts` zapnuté RLS s politikou `ws_isolation` a repository vrstva na začátku transakce volá `set_config('mlain.workspace_id', ...)`. Pro kompilátor segmentů je to nejcennější pojistka v celém dokumentu: i kdyby v něm byla chyba, která `workspace_id = $1` z obálky vynechá, RLS vrátí **nula řádků**, ne cizí data. Proto se dynamické SQL nikdy nespouští mimo transakci s nastaveným kontextem, a je na to samostatný test „surové SQL bez `set_config` vrátí 0 řádků" (převzatý ze sady části 1).
 
@@ -2578,13 +2737,13 @@ Ukázky kompilace jednotlivých uzlů:
 | `contact.created_at in_last_days 30` | `c.created_at >= $2 - make_interval(days => $n)` (`$2` je `asOf`, **nikdy `now()`**) |
 | `attribute.city eq 'Praha'` | `c.attributes @> jsonb_build_object($n, $m)` (index-friendly containment) |
 | `attribute.city contains 'Pra'` | `(c.attributes ->> $n) ILIKE '%' \|\| $m \|\| '%'` |
-| `attribute.order_total gt 1000` | `jsonb_typeof(c.attributes -> $n) = 'number' AND (c.attributes ->> $n)::numeric > $m` |
-| `attribute.x is_empty` | `(c.attributes -> $n) IS NULL OR c.attributes ->> $n = ''` |
+| `attribute.order_total gt 1000` | `CASE WHEN jsonb_typeof(c.attributes -> $n) = 'number' THEN (c.attributes ->> $n)::numeric > $m ELSE false END` |
+| `attribute.x is_empty` | `(c.attributes -> $n) IS NULL OR jsonb_typeof(c.attributes -> $n) = 'null' OR c.attributes ->> $n = ''` |
 | `tag has_any [a,b]` | `EXISTS (SELECT 1 FROM contact_tags ct WHERE ct.contact_id = c.id AND ct.tag_id = ANY($n::uuid[]))` |
 | `tag has_all [a,b]` | `(SELECT count(*) FROM contact_tags ct WHERE ct.contact_id = c.id AND ct.tag_id = ANY($n::uuid[])) = cardinality($n::uuid[])` |
 | `list is_confirmed` | `EXISTS (SELECT 1 FROM list_subscriptions ls WHERE ls.contact_id = c.id AND ls.list_id = $n AND ls.status = 'confirmed')` |
 | `consent is_granted` | `EXISTS (SELECT 1 FROM contact_consent_state s WHERE s.contact_id = c.id AND s.purpose = $n AND s.status = 'granted')` |
-| `suppression is_not_suppressed` | `NOT EXISTS (SELECT 1 FROM suppressions su WHERE su.workspace_id = c.workspace_id AND su.removed_at IS NULL AND (su.email = c.email OR su.email_hash = c.email_hash))` |
+| `suppression is_not_suppressed` | `NOT EXISTS (SELECT 1 FROM suppressions su WHERE su.workspace_id = c.workspace_id AND su.removed_at IS NULL AND (su.email = c.email OR su.fingerprint = ANY(c.email_fingerprints)))` |
 | `engagement opened since_days 90 did` | `ce.last_open_at >= $2 - make_interval(days => $n)` (přes rollup, viz níže) |
 | `segment in` | `EXISTS (SELECT 1 FROM segment_members sm WHERE sm.segment_id = $n AND sm.contact_id = c.id)` u statického, u dynamického se vloží zkompilovaný podvýraz |
 
@@ -2607,9 +2766,13 @@ Pravidla:
 
 `asOf` je vždy druhý parametr (`$2`), i když ho daný výraz nepoužije. Díky tomu je číslování stabilní a `paramOffset` se počítá jednoduše.
 
-Testem se hlídá, že vygenerovaný SQL text neobsahuje `now(`, `current_timestamp`, `localtimestamp` ani `current_date`. Je to stejný druh testu jako ten na injection z akceptačního kritéria 27: netestuje se chování, testuje se **text dotazu**, protože chování by se muselo trefit do závodu.
+Testem se hlídá, že vygenerovaný SQL text neobsahuje `now(`, `current_timestamp`, `localtimestamp` ani `current_date`. Je to stejný druh testu jako ten na injection z akceptačního kritéria 33: netestuje se chování, testuje se **text dotazu**, protože chování by se muselo trefit do závodu.
 
-Přetypování `::numeric` je vždy chráněné testem `jsonb_typeof(...) = 'number'`. Bez toho by jediná hodnota `"nevím"` v poli typu number shodila celý dotaz chybou 22P02 a segment by přestal fungovat, aniž by bylo jasné proč.
+**Přetypování `::numeric` je vždy uvnitř `CASE WHEN`, nikdy za `AND`** (oprava 2026-07-31). Dřívější tvar `jsonb_typeof(c.attributes -> $n) = 'number' AND (c.attributes ->> $n)::numeric > $m` vypadá, že cast chrání, ale nechrání. **PostgreSQL negarantuje pořadí vyhodnocení operandů `AND`** a plánovač je běžně přehazuje podle odhadované ceny, takže cast může proběhnout i na řádku, kde `jsonb_typeof` není `'number'`. Jediná hodnota `"nevím"` v poli typu number pak shodí celý dotaz chybou **22P02 `invalid input syntax for type numeric`**, a to **nedeterministicky**: podle plánu, podle statistik, podle toho, jestli se plán změnil po `ANALYZE`. Segment tak měsíc funguje a jednou v noci přestane, s chybou, která na vstupních datech nezávisí. Přesně ten druh chyby, který se ladí týden.
+
+`CASE WHEN ... THEN ... ELSE false END` je jediná konstrukce, u které SQL standard i PostgreSQL **garantují**, že se větev `THEN` nevyhodnotí, když podmínka neplatí. Cena je nulová, chování je deterministické. Totéž platí pro `lt`, `gte`, `lte` a `between` nad `number` a pro každý budoucí operátor, který přetypovává hodnotu z `jsonb`; test na to je akceptační kritérium 36 v 9.3.
+
+Ve stejném duchu má `is_empty` navíc větev `jsonb_typeof(...) = 'null'`. `attributes -> $n` u klíče s hodnotou JSON `null` totiž nevrátí SQL `NULL`, ale JSON hodnotu `null`, takže by první podmínka minula. Zápis přes `jsonb_strip_nulls` ze 4.1.3 zajišťuje, že takové klíče vůbec nevznikají, ale predikát je proti nim odolný i tak, protože data mohla vzniknout dřív nebo přímým zápisem při migraci.
 
 **Tříhodnotová logika.** Každý listový predikát se obalí `coalesce(<pred>, false)`. Důsledek, který musí být v UI napsaný: `NOT (city = 'Praha')` **nevrátí** kontakty, které město vůbec nemají. Pro ty je operátor `is_empty`. Bez tohohle pravidla by uživatel nikdy nepochopil, proč mu součet dvou doplňkových segmentů nedává celek.
 
@@ -2696,7 +2859,7 @@ Podmínka „poslali jsme mu aspoň N zpráv" u prvních dvou presetů je podsta
 
 1. Založí se segment podle presetu, uživatel vidí počet a vzorek.
 2. Segment se **zmrazí** do statického, aby se během kampaně neměnil.
-3. Vytvoří se kampaň z připravené šablony „Chceme vědět, jestli vás to ještě zajímá" s jedním tlačítkem „Ano, posílejte dál", které vede na `POST /r/{token}`. Kliknutí zapíše `contacts.last_activity_at = now()`, nový záznam souhlasu se zdrojem `reactivation` a přidá štítek `reaktivovan`.
+3. Vytvoří se kampaň z připravené šablony „Chceme vědět, jestli vás to ještě zajímá" s jedním tlačítkem „Ano, posílejte dál", které vede na `POST /r/{token}`. Kliknutí zapíše `contacts.last_activity_at = now()`, nový záznam souhlasu se zdrojem `reactivation` a přidá štítek `reaktivovan`. Hodnota `reactivation` je od 2026-07-31 v `CHECK` omezení `consents.source` ve 3.4; dřív tam nebyla, takže by tenhle krok spadl na `23514 check constraint violation` a reaktivační kampaň by po prvním kliknutí přestala fungovat. Kryje to akceptační kritérium 83.
 4. Naplánuje se úklidový job `contacts.cleanup_after_reactivation` na `now() + N dní` (výchozí 14, volitelně 7 až 60), který u kontaktů zmrazeného segmentu **bez** štítku `reaktivovan` provede zvolenou akci.
 5. Akce na výběr: `unsubscribe_all` (výchozí), `tag_only` (jen označit, nic nemazat), `delete` (měkké smazání, jen owner).
 6. Před spuštěním úklidu přijde uživateli v aplikaci a e-mailem přehled: „Za 3 dny odhlásíme 1 842 kontaktů. Zkontrolovat · Odložit · Zrušit."
@@ -2751,14 +2914,16 @@ Anglicky: „Without a confirmation email, anyone can subscribe someone else's a
 type FormField = {
   target: 'email' | 'first_name' | 'last_name' | 'full_name' | 'locale'
         | { attribute: string };            // musí existovat v contact_fields
-  label: { cs: string; en: string };
-  placeholder?: { cs: string; en: string };
+  label: LocalizedText;                     // Record<string, string> s povinným 'en', viz 4.2.3
+  placeholder?: LocalizedText;
   required: boolean;
   type: 'text' | 'email' | 'select' | 'checkbox' | 'date' | 'number' | 'hidden';
-  options?: { value: string; label: { cs: string; en: string } }[];
+  options?: { value: string; label: LocalizedText }[];
   defaultValue?: string;
 };
 ```
+
+`LocalizedText` je `Record<string, string>` s povinným klíčem `en`, definovaný ve 4.2.3. Formulář v němčině nebo polštině tedy nevyžaduje změnu typu ani migraci: přidá se klíč. Výběr jazyka při vykreslení jde `contacts.locale` (u známého kontaktu) nebo `Accept-Language` (u nového), a když jazyk v mapě chybí, použije se `en`. Pevná dvojice `{ cs, en }`, která tu byla dřív, by se `zod.strict()` z konvence 4.1 části 1 postarala o to, že klíč `de` skončí `422 validation_failed` už při ukládání formuláře.
 
 Formulář smí zapisovat **jen** do polí, která existují v `contact_fields`, plus do pevných polí kontaktu. Neznámý klíč vede na `422 validation_failed` s `unknown_field_key` už při ukládání formuláře, ne až při odeslání. Bez tohohle pravidla by se formulář stal libovolným úložištěm dat bez schématu.
 
@@ -2843,7 +3008,7 @@ Dva režimy.
 | Objekt | Akce |
 |---|---|
 | `contacts.email` | `erased+{contact_id}@erased.invalid` |
-| `contacts.email_hash` | ponechá se původní HMAC, viz níže |
+| `contacts.email_fingerprints` | **vyprázdní se na `'{}'`**, viz níže |
 | `contacts.first_name`, `last_name`, `middle_name`, `title_*`, vokativy, `greeting` | `NULL` / prázdný řetězec |
 | `contacts.gender` | `unknown` |
 | `contacts.attributes` | `{}` |
@@ -2858,7 +3023,7 @@ Dva režimy.
 | `form_submissions.payload`, `ip`, `user_agent`, `page_url` | vyprázdněno |
 | `import_errors.raw_line` obsahující adresu | nahrazeno `[erased]` |
 | `subscription_confirmations` | smazáno |
-| `suppressions` | vloží se řádek `reason = 'gdpr_erasure'`, `email` = placeholder, `email_hash` = HMAC původní adresy |
+| `suppressions` | vloží se řádek `reason = 'gdpr_erasure'`, `email` = placeholder, `fingerprint` = otisk původní adresy pod **aktuálním** klíčem, `fingerprint_key_id` = jeho pokolení |
 
 Následně asynchronně (job `gdpr.sever_links`, s vlastním sledováním dokončení):
 
@@ -2873,9 +3038,17 @@ Následně asynchronně (job `gdpr.sever_links`, s vlastním sledováním dokon�
 
 Je to vědomé rozhodnutí. Alternativa (smazat i události) by znamenala, že se čísla v uzavřených reportech zpětně mění, a report, jehož čísla se mění, je k ničemu. Zároveň událost bez vazby na osobu je statistický údaj, ne osobní údaj.
 
-**Proč se drží otisk adresy.** `suppressions.email_hash` je jediná stopa, která po výmazu zbývá, a existuje proto, aby příští import stejného souboru smazaného člověka nevzkřísil. Bez ní by výmaz vydržel do dalšího importu, což by bylo horší porušení než samotný otisk.
+**Proč se drží otisk adresy.** `suppressions.fingerprint` je jediná stopa, která po výmazu zbývá, a existuje proto, aby příští import stejného souboru smazaného člověka nevzkřísil. Bez ní by výmaz vydržel do dalšího importu, což by bylo horší porušení než samotný otisk.
 
-Otisk je **HMAC-SHA256 s vyhrazeným klíčem `SUPPRESSION_HASH_KEY`**, ne prostý SHA-256. Prostý hash e-mailu je slovníkovým útokem prolomitelný v řádu minut, takže by to nebyl anonymizovaný údaj. HMAC s tajným klíčem, který neopouští instalaci, tenhle útok znemožňuje. Klíč se **nesmí rotovat**, jinak přestanou fungovat všechny existující otisky; to je požadavek na část 1.
+Otisk je **HMAC-SHA256 s klíčem odvozeným ze `SECRET_KEY` přes HKDF** pod purpose `mailer/v1/suppression-fingerprint`, ne prostý SHA-256. Prostý hash e-mailu je slovníkovým útokem prolomitelný v řádu minut, takže by to nebyl anonymizovaný údaj. HMAC s tajným klíčem, který neopouští instalaci, tenhle útok znemožňuje. Recept, purpose i pravidla rotace vlastní **3.10 části 1** a tahle část je jen používá.
+
+**Klíč je rotovatelný a otisk nese pokolení** (změna 2026-07-31). Dřív jsem tu žádal samostatnou, výslovně nerotovatelnou proměnnou `SUPPRESSION_HASH_KEY`. Část 1 rozhodla jinak a rozhodla líp: klíč, který po podezření na únik nejde vyměnit, znamená navždy kompromitovanou část systému, a rotace `SECRET_KEY` je právě reakcí na takové podezření. Řešení je proto `fingerprint_key_id` u každého záznamu a kontrola, která počítá otisk **pro všechna známá pokolení** (4.10.3). Cena je jeden HMAC na pokolení a adresu, tedy při deseti pokoleních a importu sta tisíc kontaktů zhruba sekunda navíc. Za to je klíč vyměnitelný.
+
+Z toho plynou dvě provozní povinnosti, které patří do dokumentace k záloze a k rotaci: **`SECRET_KEY_PREVIOUS` se nikdy nevyprazdňuje**, dokud existuje jediný suppression záznam, a **recovery bundle musí nést celý keyring**, ne jen aktuální klíč. Obojí hlídá `mlain doctor` a chybějící pokolení hlásí jako kritickou chybu, protože je to už nastalá tichá ztráta ochrany.
+
+**Proč se `contacts.email_fingerprints` při anonymizaci vyprazdňuje.** Kontakt po anonymizaci nesmí nést otisk původní adresy: byl by to druhý, zbytečný záznam téhož údaje, tentokrát v tabulce, kterou nechráníme jako důkazní. Ochranu proti vzkříšení nese výhradně suppression řádek. Nový kontakt založený příštím importem téže adresy dostane otisky čerstvě spočítané ze svého plaintextu a s tím suppression řádkem se potká v kontrole ze 4.10.3.
+
+**Rotace klíče a živé kontakty.** Po rotaci `SECRET_KEY` doplní job `contacts.refingerprint` do `email_fingerprints` otisk pod novým pokolením, po dávkách 10 000. U kontaktů to jde, protože plaintext adresy máme; u suppression řádků to nejde nikdy. Job je pojistka pro rychlost, ne pro správnost: dokud nedoběhne, kontrola pořád funguje, protože pole nese starší pokolení a suppression řádky zapsané před rotací mají také starší pokolení. Nové suppression řádky vznikají s novým pokolením, takže kontakt bez doplněného otisku by je minul; proto se job zařazuje **automaticky při startu po detekci nového `key_id`**, ne ručně.
 
 **`purge`.** `DELETE FROM contacts WHERE id = $1`, kaskády smažou všechno navázané. Zůstává jen řádek v `suppressions` a záznam v `gdpr_requests` s otiskem a počty. Dostupné jen vlastníkovi projektu. Riziko: kontakt se může vrátit dalším importem, protože v `contacts` po něm nezbude nic. Tomu brání jen suppression řádek, proto se zakládá i v tomhle režimu.
 
@@ -3137,7 +3310,7 @@ Chyby: `409 already_exists` (klíč pole obsazený), `422 validation_failed` s `
 
 | Metoda | Cesta | Popis |
 |---|---|---|
-| `POST` | `/api/v1/contacts/imports` | multipart upload souboru, vrací `201` s `{ id, status: 'pending' }` |
+| `POST` | `/api/v1/contacts/imports` | multipart upload souboru, vrací **`202`** s `{ id, status: 'pending' }` |
 | `GET` | `/api/v1/contacts/imports` | seznam |
 | `GET` | `/api/v1/contacts/imports/{id}` | stav a čítače |
 | `GET` | `/api/v1/contacts/imports/{id}/preview` | detekce, mapování, 20 řádků |
@@ -3155,7 +3328,9 @@ Chyby: `409 already_exists` (klíč pole obsazený), `422 validation_failed` s `
 
 Chyby: `409 conflict` s `import_duplicate`, `423 resource_locked` s `import_already_running`, `413 payload_too_large`, `422 validation_failed` s `no_email_column_mapped`, `409 invalid_state_transition` u operace mimo povolený stav.
 
-`POST /api/v1/contacts/imports` vyžaduje `Idempotency-Key`. Timeout requestu je 120 s podle 4.1 části 1; samotný import běží asynchronně, request jen nahraje soubor a vrátí `202`.
+`POST /api/v1/contacts/imports` vyžaduje `Idempotency-Key`. Timeout requestu je 120 s podle 4.1 části 1; samotný import běží asynchronně, request jen nahraje soubor a vrátí **`202 Accepted`**.
+
+Kód je `202`, ne `201` (sjednoceno 2026-07-31, dokument dřív uváděl obojí). `201 Created` slibuje, že zdroj na `Location` je hotový a v koncovém stavu, což tady neplatí: vrácený import je ve stavu `pending` a projde ještě `validating` a `previewing`, než vůbec něco naimportuje. `202` je přesně pro „přijato ke zpracování, výsledek zjistíš jinde", a tím jinde je `GET /api/v1/contacts/imports/{id}` plus SSE stream. Hlavička `Location` se posílá u obou, takže klient o nic nepřichází.
 
 ### 5.4 Seznamy a přihlášení
 
@@ -3270,7 +3445,6 @@ Zapisují se do katalogu konfigurace v 4.9 části 1 se stejnou strukturou (náz
 
 | Proměnná | Typ | Povinná | Výchozí | Validace |
 |---|---|---|---|---|
-| `SUPPRESSION_HASH_KEY` | string | ano | žádná | min. 32 bajtů; **nesmí se měnit**, start selže, když se změní proti uloženému otisku v DB |
 | `IMPORT_MAX_FILE_BYTES` | int | ne | `209715200` | 1 MB až 2 GB |
 | `IMPORT_MAX_ROWS` | int | ne | `5000000` | 1 až 50 000 000 |
 | `IMPORT_MAX_COLUMNS` | int | ne | `200` | 1 až 1 000 |
@@ -3288,6 +3462,7 @@ Zapisují se do katalogu konfigurace v 4.9 části 1 se stejnou strukturou (náz
 | `SEGMENT_MAX_CONDITIONS` | int | ne | `100` | |
 | `CONTACT_FIELD_LIMIT` | int | ne | `100` | |
 | `CONTACT_INDEXED_FIELD_LIMIT` | int | ne | `8` | |
+| `CONTACT_ATTRIBUTES_MAX_BYTES` | int | ne | `262144` | 4 kB až 4 MiB; měří se **serializovaná délka** JSON v UTF-8, ne `pg_column_size`, viz 4.2.1 |
 | `CONTACT_SEARCH_INDEX_ENABLED` | bool | ne | `true` | při `false` se trigramový index nezakládá, ušetří zhruba 900 MB při 5 M kontaktech a zrychlí import o 15 procent, ale hledání umí jen prefix |
 | `RETENTION_MIN_DAYS` | int | ne | `1` | |
 | `DISPOSABLE_DOMAINS_FILE` | cesta | ne | prázdné | soubor musí existovat, jinak start selže |
@@ -3296,7 +3471,7 @@ Zapisují se do katalogu konfigurace v 4.9 části 1 se stejnou strukturou (náz
 | `EXPORT_TTL_HOURS` | int | ne | `24` | |
 | `GDPR_EXPORT_TTL_DAYS` | int | ne | `7` | |
 
-Chybějící `SUPPRESSION_HASH_KEY` znamená, že aplikace nenastartuje a vypíše návod k jejímu vygenerování. Je to jediná povinná proměnná této části.
+**Tahle část nemá žádnou povinnou konfigurační proměnnou** (změna 2026-07-31). Dřív tu byla `SUPPRESSION_HASH_KEY` jako jediná povinná, s pádem při startu a s vlastním otiskem v `system_settings`. Zrušena bez náhrady: klíč pro otisky suppression listu se odvozuje ze `SECRET_KEY` přes HKDF pod purpose `mailer/v1/suppression-fingerprint` (3.10 části 1), takže žádná samostatná proměnná neexistuje a nesmí vzniknout. `SECRET_KEY` a `SECRET_KEY_PREVIOUS` vlastní část 1 a jsou v jejím katalogu; `SECRET_KEY_PREVIOUS` je **bez horního počtu položek** a nikdy se nevyprazdňuje, viz 4.14.4.
 
 ---
 
@@ -3399,7 +3574,7 @@ Repository moduly této části registrované do `isolation.matrix.test.ts` čá
 | Odhlašovací a preferenční token | neukládá se vůbec, je podepsaný a bezstavový |
 | Token ke stažení exportu | jen SHA-256 |
 | Tajemství příchozího webhooku | AES-256-GCM, klíč z `SECRET_KEY` přes HKDF |
-| Otisk e-mailu pro suppression | HMAC-SHA256 s `SUPPRESSION_HASH_KEY` |
+| Otisk e-mailu pro suppression | HMAC-SHA256, klíč z `SECRET_KEY` přes HKDF pod purpose `mailer/v1/suppression-fingerprint` (3.10 části 1). Ukládá se s `fingerprint_key_id`, ověřuje se svým pokolením, přepočítat ho po výmazu nejde |
 | Nonce formuláře | HMAC, neukládá se |
 
 Všechna porovnání tajemství jsou v konstantním čase (`crypto.timingSafeEqual`).
@@ -3428,7 +3603,7 @@ Všechna porovnání tajemství jsou v konstantním čase (`crypto.timingSafeEqu
 
 ### 7.5 Audit log
 
-Zapisují se: `contact.created`, `contact.updated`, `contact.deleted`, `contact.anonymized`, `contact.purged`, `contact.email_changed`, `contact.bulk_deleted`, `contact.vocative_lock_released`, `contact.vocative_bulk_confirmed`, `field.created`, `field.deleted`, `field.indexed`, `list.created`, `list.opt_in_changed`, `subscription.forced_confirmed`, `suppression.added`, `suppression.removed`, `segment.created`, `segment.deleted`, `segment.frozen`, `import.confirmed`, `import.cancelled`, `export.created`, `export.downloaded`, `form.double_opt_in_disabled`, `inbound.mapping_changed`, `gdpr.request_created`, `gdpr.request_completed`, `gdpr.request_rejected`, `retention.policy_changed`, `retention.run_completed`, `name_override.created`.
+Zapisují se: `contact.created`, `contact.updated`, `contact.deleted`, `contact.anonymized`, `contact.purged`, `contact.email_changed`, `contact.bulk_deleted`, `contact.vocative_lock_released`, `contact.vocative_bulk_confirmed`, `field.created`, `field.deleted`, `field.indexed`, `list.created`, `list.opt_in_changed`, `subscription.forced_confirmed`, `suppression.added`, `suppression.reason_promoted`, `suppression.removed`, `segment.created`, `segment.deleted`, `segment.frozen`, `import.confirmed`, `import.cancelled`, `export.created`, `export.downloaded`, `form.double_opt_in_disabled`, `inbound.mapping_changed`, `gdpr.request_created`, `gdpr.request_completed`, `gdpr.request_rejected`, `retention.policy_changed`, `retention.run_completed`, `name_override.created`.
 
 U `contact.anonymized` a `contact.purged` se do metadat **neukládá e-mail**, jen otisk.
 
@@ -3508,6 +3683,8 @@ Co propustnost snižuje, v pořadí podle dopadu: počet indexovaných vlastníc
 
 ## 9. Akceptační kritéria
 
+Číslování je **průběžné napříč celou kapitolou**, od 1 do 93, bez děr a bez písmenných přípon. Bylo přečíslované 2026-07-31: čísla 35 až 42 se v dokumentu vyskytovala **dvakrát**, jednou v 9.3 (segmenty) a podruhé od začátku 9.4 (double opt-in), takže odkaz „kritérium 39" ukazoval na dvě různá tvrzení a v testovacím plánu nešlo rozlišit, které je které. Odkazy v textu jsou přepsané na nová čísla.
+
 ### 9.1 Import
 
 1. Soubor z českého Excelu v CP1250 se středníkem a diakritikou se naimportuje bez poškození znaků. Kontrola: kontakt s příjmením `Šťastná` má v databázi přesně `Šťastná`.
@@ -3522,95 +3699,102 @@ Co propustnost snižuje, v pořadí podle dopadu: počet indexovaných vlastníc
 10. Import nikdy nezmění stav kontaktu z `unsubscribed` na `active`.
 11. Náhled ukáže u řádku „Ing. Pavel Novák" titul `Ing.`, jméno `Pavel`, příjmení `Novák` a oslovení `Dobrý den, Pavle` ještě před potvrzením.
 12. Zrušení importu uprostřed nechá zapsané kontakty a stav bude `cancelled` s uvedením řádku, na kterém se skončilo.
+13. Soubor, který má **dvě stejné adresy uvnitř jedné dávky** 1 000 řádků, doběhne. Regresní test proti chybě `21000 ON CONFLICT DO UPDATE command cannot affect row a second time`: bez povinné deduplikace uvnitř dávky (4.6.7 bod 5) spadne transakce, job má `retryLimit = 0` a import se zasekne natrvalo. Test běží i pro adresy lišící se jen velikostí písmen a pro dvojici na první a poslední pozici dávky.
+14. Zabitý worker uprostřed importu se **sám vrátí do hry**. Test: nastav `imports.updated_at` do minulosti o víc než `IMPORT_STALE_MINUTES`, spusť worker a ověř, že import ve stavu `importing` se znovu zařadí a doběhne od `checkpoint_row + 1`. Regrese proti chybějícímu sloupci `updated_at`, bez kterého ten dotaz nejde napsat.
+15. Retenční job na soubory importů je idempotentní: po smazání souboru nastaví `imports.storage_key = NULL`, řádek vypadne z `idx_imports__file_expiry` a druhý běh ho už nenabídne. Regrese proti `storage_key NOT NULL`, se kterým by částečný index nefiltroval nic.
 
 ### 9.2 Jména, rod a vokativ
 
-13. Sloupec `Jméno a příjmení` s hodnotou `Jana Nováková` vyrobí `first_name = 'Jana'`, `last_name = 'Nováková'`, `gender = 'female'`, `first_name_vocative = 'Jano'`, `greeting = 'Dobrý den, Jano'`.
-14. Hodnota `Nováková Jana` vyrobí totéž, protože příjmení na `-ová` v první pozici a známé křestní jméno v druhé znamenají obrácené pořadí.
-15. Hodnota `Nováková, Jana` vyrobí totéž díky čárce.
-16. Hodnota `Petr Novák` vyrobí `Dobrý den, Petře`.
-17. Hodnota `Nikola Krátký` skončí s `gender = 'unknown'`, `vocative_confidence = 'low'` a objeví se ve frontě ke kontrole.
-18. Hodnota `Иван Петров` neprodukuje žádný vokativ a `greeting` je `Dobrý den`.
-19. Prázdné jméno produkuje `greeting = 'Dobrý den'`, **nikdy** `Dobrý den, ` s visící čárkou. Test projde všech 8 kombinací prázdnosti `first_name`, `last_name`, `gender`.
-20. Vokativ se **nikdy** nepočítá s vynuceným mužským rodem u příjmení končícího na `-ová`. Regresní test: `Nováková` nesmí nikdy vyprodukovat `Novákováe`.
-21. Potvrzení skupiny ve frontě ke kontrole nastaví u všech kontaktů skupiny `vocative_locked = true` a `vocative_confidence = 'high'` a při zaškrtnutém „uložit pro budoucí" vznikne řádek v `name_overrides`.
-22. Po vytvoření přepisu pro jméno `Nikola` (žena) další import s tímtéž jménem už do fronty nepadne.
-23. Změna `first_name` u kontaktu se zamknutým vokativem zámek uvolní, přepočítá vokativ a vrátí kontakt do fronty. Změna jen `gender` zámek nechá.
-24. Změna `workspaces.address_form` z `formal` na `informal` přepočítá `greeting` i `greeting_neutral` u všech kontaktů projektu.
-24b. `greeting_neutral` nikdy neobsahuje jméno ani příjmení kontaktu. Test projde všech 143 kontaktů z fixture a hledá v `greeting_neutral` podřetězec `first_name` a `last_name`.
-24c. Počet kontaktů, u kterých se `greeting` a `greeting_neutral` liší, se rovná počtu, který dialog ve 4.5.4 ukazuje jako „u N kontaktů si nejsme jistí oslovením".
+16. Sloupec `Jméno a příjmení` s hodnotou `Jana Nováková` vyrobí `first_name = 'Jana'`, `last_name = 'Nováková'`, `gender = 'female'`, `first_name_vocative = 'Jano'`, `greeting = 'Dobrý den, Jano'`.
+17. Hodnota `Nováková Jana` vyrobí totéž, protože příjmení na `-ová` v první pozici a známé křestní jméno v druhé znamenají obrácené pořadí.
+18. Hodnota `Nováková, Jana` vyrobí totéž díky čárce.
+19. Hodnota `Petr Novák` vyrobí `Dobrý den, Petře`.
+20. Hodnota `Nikola Krátký` skončí s `gender = 'unknown'`, `vocative_confidence = 'low'` a objeví se ve frontě ke kontrole.
+21. Hodnota `Иван Петров` neprodukuje žádný vokativ a `greeting` je `Dobrý den`.
+22. Prázdné jméno produkuje `greeting = 'Dobrý den'`, **nikdy** `Dobrý den, ` s visící čárkou. Test projde všech 8 kombinací prázdnosti `first_name`, `last_name`, `gender`.
+23. Vokativ se **nikdy** nepočítá s vynuceným mužským rodem u příjmení končícího na `-ová`. Regresní test: `Nováková` nesmí nikdy vyprodukovat `Novákováe`.
+24. Potvrzení skupiny ve frontě ke kontrole nastaví u všech kontaktů skupiny `vocative_locked = true` a `vocative_confidence = 'high'` a při zaškrtnutém „uložit pro budoucí" vznikne řádek v `name_overrides`.
+25. Po vytvoření přepisu pro jméno `Nikola` (žena) další import s tímtéž jménem už do fronty nepadne.
+26. Změna `first_name` u kontaktu se zamknutým vokativem zámek uvolní, přepočítá vokativ a vrátí kontakt do fronty. Změna jen `gender` zámek nechá.
+27. Změna `workspaces.address_form` z `formal` na `informal` přepočítá `greeting` i `greeting_neutral` u všech kontaktů projektu.
+28. `greeting_neutral` nikdy neobsahuje jméno ani příjmení kontaktu. Test projde všech 143 kontaktů z fixture a hledá v `greeting_neutral` podřetězec `first_name` a `last_name`.
+29. Počet kontaktů, u kterých se `greeting` a `greeting_neutral` liší, se rovná počtu, který dialog ve 4.5.4 ukazuje jako „u N kontaktů si nejsme jistí oslovením".
+30. **Kontakty `Tomáš` a `Tomas` skončí v jedné skupině fronty ke kontrole a jeden override pokryje obě.** Test: naimportuj obě podoby, ověř, že seskupený dotaz vrátí jeden řádek s `contact_count = 2`, ulož override pro `tomas` a ověř, že další import ani jedné podoby už do fronty nepadne. Regrese proti rozporu mezi `lower(unaccent(...))` v definici klíče a `lower(...)` v dotazu, kvůli kterému override jméno s diakritikou netrefil a fronta se nikdy nevyprázdnila.
 
 ### 9.3 Segmenty
 
-25. AST s operátorem, který k typu pole nepatří, skončí `422 validation_failed` s `segment_operator_not_allowed` a nikdy nedojde ke spuštění SQL.
-26. AST odkazující na `list_id` z cizího projektu skončí `404 not_found` s `segment_reference_not_found`, ne prázdným výsledkem. Zkompilované SQL spuštěné bez `set_config('mlain.workspace_id')` vrátí nula řádků.
-27. Hodnota `'; DROP TABLE contacts; --` v poli `value` neovlivní strukturu dotazu. Test kontroluje, že vygenerovaný SQL text obsahuje `$n` a neobsahuje uživatelský řetězec.
-28. Klíč vlastního pole se ve vygenerovaném SQL objeví jako parametr, nikdy jako literál.
-29. Zkompilovaný dotaz vždy obsahuje `workspace_id = $1`, `deleted_at IS NULL` a `processing_restricted = false`, i když je AST prázdný.
-30. Vlastní pole typu `number`, ve kterém má jeden kontakt textovou hodnotu, nezpůsobí selhání dotazu s operátorem `gt`.
-31. Náhled, který překročí 3 sekundy, vrátí `exact: false` s odhadem, ne chybu.
-32. Cyklus `A → B → A` v odkazech na segmenty nejde uložit.
-33. AST se 101 podmínkami skončí `segment_too_complex`.
-34. Segment `NOT (city = 'Praha')` nevrátí kontakty, které pole `city` vůbec nemají.
-35. **Vygenerované SQL neobsahuje `now(`, `current_timestamp`, `localtimestamp` ani `current_date`.** Test kontroluje text dotazu, ne chování, pro všech 60 kombinací pole a operátoru.
-36. Dvě volání `compileAudienceToSql` se stejným `asOf` a stejným AST vrátí bajtově shodné `sql` i `params`.
-37. `compileAudienceToSql` s `paramOffset: 5` vrátí SQL, jehož nejnižší parametr je `$6`, a `params` odpovídající délky.
-38. `compileAudienceToSql` s `alias: 'x'` vrátí SQL, které nikde neobsahuje samostatné `c.`.
-39. Vygenerovaná obálka **vždy** obsahuje `deleted_at IS NULL`, `processing_restricted = false` a `NOT EXISTS` nad `suppressions` s `removed_at IS NULL`, i když je AST prázdný a i když se skládá jen ze `listIds`.
-40. Publikum ze seznamu neobsahuje kontakt se `status = 'pending'` na tom seznamu ani kontakt se `snooze_until` v budoucnosti vůči `asOf`.
-41. `compileAudienceToSql` s prázdným `audience` skončí `422 validation_failed` s `audience_empty`, nikdy nevrátí SQL bez podmínky publika.
-42. Kontakt se `contacts.status = 'active'`, který nemá na cílovém seznamu `confirmed`, se do publika nedostane.
+31. AST s operátorem, který k typu pole nepatří, skončí `422 validation_failed` s `segment_operator_not_allowed` a nikdy nedojde ke spuštění SQL.
+32. AST odkazující na `list_id` z cizího projektu skončí `404 not_found` s `segment_reference_not_found`, ne prázdným výsledkem. Zkompilované SQL spuštěné bez `set_config('mlain.workspace_id')` vrátí nula řádků.
+33. Hodnota `'; DROP TABLE contacts; --` v poli `value` neovlivní strukturu dotazu. Test kontroluje, že vygenerovaný SQL text obsahuje `$n` a neobsahuje uživatelský řetězec.
+34. Klíč vlastního pole se ve vygenerovaném SQL objeví jako parametr, nikdy jako literál.
+35. Zkompilovaný dotaz vždy obsahuje `workspace_id = $1`, `deleted_at IS NULL` a `processing_restricted = false`, i když je AST prázdný.
+36. Vlastní pole typu `number`, ve kterém má jeden kontakt textovou hodnotu, nezpůsobí selhání dotazu s operátorem `gt`. **Test kontroluje i text dotazu**: přetypování `::numeric` musí být uvnitř `CASE WHEN ... THEN ... ELSE false END`, nikdy za `AND`. Bez toho je chyba `22P02` nedeterministická podle zvoleného plánu a testem chování by prošla. Platí pro všechny rozsahové operátory nad `number`.
+37. Náhled, který překročí 3 sekundy, vrátí `exact: false` s odhadem, ne chybu.
+38. Cyklus `A → B → A` v odkazech na segmenty nejde uložit.
+39. AST se 101 podmínkami skončí `segment_too_complex`.
+40. Segment `NOT (city = 'Praha')` nevrátí kontakty, které pole `city` vůbec nemají.
+41. **Vygenerované SQL neobsahuje `now(`, `current_timestamp`, `localtimestamp` ani `current_date`.** Test kontroluje text dotazu, ne chování, pro všech 60 kombinací pole a operátoru.
+42. Dvě volání `compileAudienceToSql` se stejným `asOf` a stejným AST vrátí bajtově shodné `sql` i `params`.
+43. `compileAudienceToSql` s `paramOffset: 5` vrátí SQL, jehož nejnižší parametr je `$6`, a `params` odpovídající délky.
+44. `compileAudienceToSql` s `alias: 'x'` vrátí SQL, které nikde neobsahuje samostatné `c.`.
+45. Vygenerovaná obálka **vždy** obsahuje `deleted_at IS NULL`, `processing_restricted = false` a `NOT EXISTS` nad `suppressions` s `removed_at IS NULL`, i když je AST prázdný a i když se skládá jen ze `listIds`. Test běží pro **všechny tři vstupní body** (`compileAudienceToSql`, `countSegment`, `listSegmentContacts`), protože dokument dřív popisoval obálku ve dvou různých verzích a ta kratší suppression neobsahovala.
+46. Publikum ze seznamu neobsahuje kontakt se `status = 'pending'` na tom seznamu ani kontakt se `snooze_until` v budoucnosti vůči `asOf`.
+47. `compileAudienceToSql` s prázdným `audience` skončí `422 validation_failed` s `audience_empty`, nikdy nevrátí SQL bez podmínky publika.
+48. Kontakt se `contacts.status = 'active'`, který nemá na cílovém seznamu `confirmed`, se do publika nedostane.
+49. **Vlastní pole vymazané v režimu `overwrite` je pro segment prázdné.** Test: nastav `attributes.city`, pak ho importem v režimu `overwrite` nastav na `null`, a ověř, že klíč v `attributes` **není** a že podmínka `city is_empty` kontakt vrátí. Regrese proti slučování přes samotné `||`, které klíč ponechá s hodnotou JSON `null` a predikát `is_empty` ho vyhodnotí jako neprázdný.
 
 ### 9.4 Double opt-in a odhlášení
 
-35. Přihlášení na seznam s `opt_in = 'double'` vytvoří `pending` a odešle potvrzovací e-mail. Kontakt se **neobjeví** v publiku kampaně mířené na tento seznam.
-36. Kliknutí na potvrzovací odkaz v dvoukrokovém režimu jen zobrazí stránku; teprve odeslání formuláře změní stav na `confirmed`.
-37. Opakované kliknutí na už použitý odkaz zobrazí „už jste přihlášeni" a vrátí 200, nikdy chybu.
-38. Prošlý odkaz nabídne odeslání nového a odešle ho, pokud nebyl vyčerpán limit tří pokusů za 24 hodin.
-39. Přihlášení dříve odhlášeného kontaktu na seznam se `single` opt-in vytvoří **`pending`**, ne `confirmed`.
-40. Přihlášení kontaktu na suppression listu s důvodem `complaint` skončí `409 conflict` s `subscribe_blocked_complaint`.
-41. `POST /u/{token}` s tělem `List-Unsubscribe=One-Click` vrátí `200`, **ne** přesměrování, a odhlásí kontakt.
-42. `GET /u/{token}` nikoho neodhlásí a zobrazí stránku s preferencemi.
-43. Odhlašovací token bez `list_id` vytvoří `suppressions(global_unsubscribe)`, s `list_id` nikoliv.
-44. Odhlášení během běžící kampaně nastaví všechny `messages` daného kontaktu ve stavu `pending` na `skipped` a nedotkne se řádků ve stavu `claimed`.
-45. Odhlašovací odkaz z e-mailu odeslaného před rotací `SECRET_KEY` funguje i po rotaci.
+50. Přihlášení na seznam s `opt_in = 'double'` vytvoří `pending` a odešle potvrzovací e-mail. Kontakt se **neobjeví** v publiku kampaně mířené na tento seznam.
+51. Kliknutí na potvrzovací odkaz v dvoukrokovém režimu jen zobrazí stránku; teprve odeslání formuláře změní stav na `confirmed`.
+52. Opakované kliknutí na už použitý odkaz zobrazí „už jste přihlášeni" a vrátí 200, nikdy chybu.
+53. Prošlý odkaz nabídne odeslání nového a odešle ho, pokud nebyl vyčerpán limit tří pokusů za 24 hodin.
+54. Přihlášení dříve odhlášeného kontaktu na seznam se `single` opt-in vytvoří **`pending`**, ne `confirmed`.
+55. Přihlášení kontaktu na suppression listu s důvodem `complaint` skončí `409 conflict` s `subscribe_blocked_complaint`.
+56. `POST /u/{token}` s tělem `List-Unsubscribe=One-Click` vrátí `200`, **ne** přesměrování, a odhlásí kontakt.
+57. `GET /u/{token}` nikoho neodhlásí a zobrazí stránku s preferencemi.
+58. Odhlašovací token bez `list_id` vytvoří `suppressions(global_unsubscribe)`, s `list_id` nikoliv.
+59. Odhlášení během běžící kampaně nastaví všechny `messages` daného kontaktu ve stavu `pending` na `skipped` a nedotkne se řádků ve stavu `claimed`.
+60. Odhlašovací odkaz z e-mailu odeslaného před rotací `SECRET_KEY` funguje i po rotaci.
 
 ### 9.5 Suppression, souhlasy, GDPR
 
-46. Suppression s důvodem `complaint` nejde odebrat žádným endpointem, ani vlastníkem projektu.
-47. Suppression s důvodem `hard_bounce` mladší 30 dní vrátí `409 conflict` s `suppression_too_recent`.
-48. Odhlášený kontakt, který znovu projde double opt-in, má suppression s důvodem `global_unsubscribe` automaticky odebranou.
-49. Každý zápis souhlasu vytvoří nový řádek v `consents`; žádný endpoint existující řádek nemění ani nemaže.
-50. Export dat subjektu obsahuje všech deset souborů a je stažitelný jednorázovým odkazem s platností 7 dní.
-51. `due_at` u nové žádosti je přesně jeden měsíc od `requested_at`; prodloužení přidá dva měsíce a vyžaduje důvod.
-52. Anonymizace kontaktu vyprázdní jméno, e-mail i `attributes`, smaže souhlasy a přihlášení, a **nezmění** počet otevření u žádné kampaně, které se kontakt účastnil.
-53. Po anonymizaci vznikne suppression s důvodem `gdpr_erasure` a otiskem původní adresy.
-54. Import souboru obsahujícího adresu dříve vymazanou podle GDPR kontakt nevytvoří.
-55. Kontakt s `processing_restricted = true` nespadne do žádného segmentu.
-56. Retenční běh nikdy nesmaže řádek z `consents` ani ze `suppressions`.
-57. `suppressions.add` volaná dvakrát se stejným e-mailem a důvodem vytvoří jeden řádek, podruhé vrátí `created: false` a stejné `suppressionId`.
-58. `suppressions.add` s `reason = 'complaint'` nastaví **všechny** řádky `list_subscriptions` daného kontaktu na `complained`, `contacts.status` na `complained` a zapíše `consents` se `status = 'withdrawn'`, to vše v jedné transakci.
-59. `suppressions.add` s `reason = 'hard_bounce'` na adresu, která je už blokovaná kvůli `complaint`, důvod **nepřepíše** a přidá záznam do `metadata`.
-60. `suppressions.add` s `reason = 'ses_suppressed'` projde CHECK omezením a nastaví `contacts.status = 'bounced'`.
-61. Odblokovaná adresa (`removed_at` vyplněné) se znovu dostane do publika kampaně. Regresní test proti chybějícímu `removed_at IS NULL`.
-62. Adresa vymazaná podle čl. 17 se do publika nedostane ani tehdy, když v `suppressions.email` je placeholder. Test jde přes větev `email_hash`.
-63. Odhlášení ze seznamu A zavolá `revokePendingMessages` s `listId = A` a **nezruší** čekající zprávu kampaně mířené na seznam B.
-64. Smazání vlastního pole, které používá naplánovaná kampaň, skončí `409 conflict` s `field_used_by_scheduled_campaign`.
-65. Smazání vlastního pole zařadí job `content.revalidate_templates` části 3, ne jen `segments.mark_invalid`.
-66. `POST /u/{token}` volaný 200krát za minutu z jedné IP s různými tokeny **nevrátí ani jednou `429`**.
+61. Suppression s důvodem `complaint` nejde odebrat žádným endpointem, ani vlastníkem projektu.
+62. Suppression s důvodem `hard_bounce` mladší 30 dní vrátí `409 conflict` s `suppression_too_recent`.
+63. Odhlášený kontakt, který znovu projde double opt-in, má suppression s důvodem `global_unsubscribe` automaticky odebranou.
+64. Každý zápis souhlasu vytvoří nový řádek v `consents`; žádný endpoint existující řádek nemění ani nemaže. Test běží pod aplikační rolí a `UPDATE` i `DELETE` musí selhat na chybějícím oprávnění.
+65. Export dat subjektu obsahuje všech deset souborů a je stažitelný jednorázovým odkazem s platností 7 dní.
+66. `due_at` u nové žádosti je přesně jeden měsíc od `requested_at`; prodloužení přidá dva měsíce a vyžaduje důvod.
+67. Anonymizace kontaktu vyprázdní jméno, e-mail i `attributes`, smaže souhlasy a přihlášení, a **nezmění** počet otevření u žádné kampaně, které se kontakt účastnil.
+68. Po anonymizaci vznikne suppression s důvodem `gdpr_erasure` a otiskem původní adresy. `contacts.email_fingerprints` je po anonymizaci prázdné pole.
+69. Import souboru obsahujícího adresu dříve vymazanou podle GDPR kontakt nevytvoří.
+70. Kontakt s `processing_restricted = true` nespadne do žádného segmentu.
+71. Retenční běh nikdy nesmaže řádek z `consents` ani ze `suppressions`.
+72. `suppressions.add` volaná dvakrát se stejným e-mailem a důvodem vytvoří jeden řádek, podruhé vrátí `created: false` a stejné `suppressionId`.
+73. `suppressions.add` s `reason = 'complaint'` nastaví **všechny** řádky `list_subscriptions` daného kontaktu na `complained`, `contacts.status` na `complained` a zapíše `consents` se `status = 'withdrawn'`, to vše v jedné transakci.
+74. `suppressions.add` s `reason = 'hard_bounce'` na adresu, která je už blokovaná kvůli `complaint`, důvod **nepřepíše** a přidá záznam do `metadata`.
+75. **Povýšení důvodu směrem nahoru: `manual` na `complaint`.** Test: zablokuj adresu ručně (`reason = 'manual'`, `removable = true`), pak na ni pošli `suppressions.add` s `reason = 'complaint'`. Řádek musí mít `reason = 'complaint'` a `removable = false`, `contacts.status` musí být `complained`, všechny řádky `list_subscriptions` na `complained`, souhlas `withdrawn`, a v auditu musí být `suppression.reason_promoted`. Pokus o odebrání pak musí skončit `403 forbidden` s `suppression_not_removable`. Regrese proti dřívějšímu `ON CONFLICT DO UPDATE`, které měnilo jen `metadata` a `detail`: adresa se stížností by zůstala odebratelná a editor by ji jedním kliknutím odblokoval, aniž by poznal, že odblokovává stížnost.
+76. Odblokovaná adresa (`removed_at` vyplněné) se znovu dostane do publika kampaně. Regresní test proti chybějícímu `removed_at IS NULL`.
+77. Adresa vymazaná podle čl. 17 se do publika nedostane ani tehdy, když v `suppressions.email` je placeholder. Test jde přes větev `fingerprint`.
+78. Adresa vymazaná podle čl. 17 **před rotací `SECRET_KEY`** se do publika nedostane ani po rotaci. Test: zapiš suppression s `fingerprint_key_id = 1`, přidej klíč s `key_id = 2` jako aktuální a ponech pokolení 1 v `SECRET_KEY_PREVIOUS`, naimportuj tutéž adresu a ověř, že kontakt nevznikne. Regrese proti hledání jen pod aktuálním pokolením, což je tichá porucha bez chyby v logu.
+79. Odhlášení ze seznamu A zavolá `revokePendingMessages` s `listId = A` a **nezruší** čekající zprávu kampaně mířené na seznam B.
+80. Smazání vlastního pole, které používá naplánovaná kampaň, skončí `409 conflict` s `field_used_by_scheduled_campaign`.
+81. Smazání vlastního pole zařadí job `content.revalidate_templates` části 3, ne jen `segments.mark_invalid`.
+82. `POST /u/{token}` volaný 200krát za minutu z jedné IP s různými tokeny **nevrátí ani jednou `429`**.
+83. Reaktivační kliknutí na `POST /r/{token}` zapíše řádek do `consents` se `source = 'reactivation'` a projde `CHECK` omezením. Regrese proti dřívějšímu stavu, kdy scénář ve 4.12 tuhle hodnotu zapisoval, ale `CHECK` ji nepovoloval, takže by celý reaktivační krok spadl na `23514`.
 
 ### 9.6 Formuláře a příchozí webhooky
 
-67. Formulář vložený čistým HTML funguje s vypnutým JavaScriptem a po odeslání přesměruje na děkovací stránku.
-68. Odeslání s vyplněným honeypotem vrátí stejnou úspěšnou odpověď jako platné odeslání a nezaloží kontakt.
-69. Odeslání dřív než 2 sekundy po vydání nonce se tiše zahodí.
-70. Odeslání z domény mimo `allowed_origins` skončí `403`.
-71. Formulář nemůže zapsat do klíče, který neexistuje v `contact_fields`.
-72. Odeslání adresy na suppression listu vrátí úspěch a nic nezapíše.
-73. Příchozí webhook s neplatným podpisem vrátí `401` a nic nezapíše.
-74. Dvojí doručení téhož `external_id` vytvoří jen jeden kontakt a druhá odpověď obsahuje `duplicate: true`.
-75. Doručení s neznámým tvarem payloadu se uloží jako `unmapped` a je vidět v průvodci mapováním.
-76. `POST /inbound-endpoints/{id}/test` nezmění žádná data a vrátí náhled výsledného kontaktu.
+84. Formulář vložený čistým HTML funguje s vypnutým JavaScriptem a po odeslání přesměruje na děkovací stránku.
+85. Odeslání s vyplněným honeypotem vrátí stejnou úspěšnou odpověď jako platné odeslání a nezaloží kontakt.
+86. Odeslání dřív než 2 sekundy po vydání nonce se tiše zahodí.
+87. Odeslání z domény mimo `allowed_origins` skončí `403`.
+88. Formulář nemůže zapsat do klíče, který neexistuje v `contact_fields`.
+89. Odeslání adresy na suppression listu vrátí úspěch a nic nezapíše.
+90. Příchozí webhook s neplatným podpisem vrátí `401` a nic nezapíše.
+91. Dvojí doručení téhož `external_id` vytvoří jen jeden kontakt a druhá odpověď obsahuje `duplicate: true`.
+92. Doručení s neznámým tvarem payloadu se uloží jako `unmapped` a je vidět v průvodci mapováním.
+93. `POST /inbound-endpoints/{id}/test` nezmění žádná data a vrátí náhled výsledného kontaktu.
 
 ---
 
@@ -3667,7 +3851,7 @@ Všechny ověřené 2026-07-31 příkazy `npm view <balíček> license version t
 | 1.1 | Rozšíření **`pg_trgm`** v migraci jádra | Fulltextové hledání kontaktu podle části jména nebo adresy. Bez něj by hledání „nov" nad 5 miliony řádků znamenalo seq scan | `CREATE EXTENSION IF NOT EXISTS pg_trgm;` |
 | 1.2 | Rozšíření **`btree_gin`** | Aby šlo `workspace_id` (uuid) do stejného GIN indexu jako trigramy a hledání nikdy neprocházelo cizí projekty. `btree_gin` podporuje `uuid` od PostgreSQL 13 | `CREATE EXTENSION IF NOT EXISTS btree_gin;` |
 | 1.3 | Náhradní řešení, pokud 1.1 nebo 1.2 neprojde | Hledání se omezí na prefix (`email LIKE 'nov%'`) nad běžným btree indexem `(workspace_id, email text_pattern_ops)`. Ztratí se hledání uprostřed řetězce, což je citelné zhoršení UX | rozhodnutí části 1 |
-| 1.4 | Proměnná **`SUPPRESSION_HASH_KEY`** v katalogu konfigurace, označená jako **nerotovatelná** | Otisk vymazané adresy musí přežít rotaci `SECRET_KEY`, jinak se smazaní lidé vrátí prvním importem. Odvození z `SECRET_KEY` přes HKDF **nestačí**, protože rotace by otisky zneplatnila | povinná, min. 32 bajtů, validace při startu, uložení otisku klíče do `system_settings` jako u `secret_key_fingerprint` |
+| ~~1.4~~ | ~~Proměnná **`SUPPRESSION_HASH_KEY`** v katalogu konfigurace, označená jako **nerotovatelná**~~ | **VYŘEŠENO 2026-07-31, ale jinak, než jsem žádal.** Část 1 v 3.10 zavedla purpose `mailer/v1/suppression-fingerprint` odvozený přes HKDF a **rotovatelný**, s `key_id` u každého záznamu a kontrolou přes všechna známá pokolení. Je to lepší řešení: můj návrh by po bezpečnostním incidentu nechal část systému navždy kompromitovanou. **Samostatná proměnná `SUPPRESSION_HASH_KEY` neexistuje, nesmí vzniknout a je z této části odstraněná.** Nic dalšího od části 1 nežádám | žádný zbývající požadavek; přejato v 3.1, 3.5, 4.10.3, 4.10.4, 4.14.4, 5.9 a 7.2 |
 | 1.5 | Potvrzení, že `SECRET_KEY_PREVIOUS` se u odhlašovacích tokenů **nikdy neodebírá** | Odhlašovací odkaz nesmí přestat fungovat. Nefunkční odkaz je porušení čl. 7 odst. 3 GDPR a přímá cesta ke stížnosti na spam | doplnit do tabulky dopadů rotace v 3.10 části 1 řádek pro odhlašovací tokeny, se stejným pravidlem jako u trackovacích |
 | 1.6 | **Read-only connection pool** (`default_transaction_read_only = on`) | Náhled segmentu spouští dynamicky sestavené SQL. Chyba v kompilátoru nesmí mít možnost zapsat | pojmenovaný pool, například `dbReadOnly` |
 | 1.7 | Možnost nastavit **`statement_timeout` per dotaz** | Náhled segmentu má tvrdý strop 3 s a spoléhá na `57014 query_canceled` | `SET LOCAL statement_timeout` uvnitř transakce |
@@ -3676,10 +3860,11 @@ Všechny ověřené 2026-07-31 příkazy `npm view <balíček> license version t
 | 1.10 | Role a oprávnění: **vlastník** pro hromadné mazání kontaktů, nastavení retence a režim `purge`; **admin** pro odebrání tvrdého odrazu ze suppression listu | Nevratné operace nad daty, která uživatel roky sbíral | doplnit do matice oprávnění |
 | 1.11 | SSE kanál pro průběh dlouhých jobů | Průběh importu a hromadných operací | `GET /api/v1/.../events` |
 | 1.12 | Potvrzení mapování `workspaces.address_form` na oslovení podle 3.12 | Aby nevznikla dvě konkurenční nastavení téhož | tabulka kombinací v 3.12 |
-| 1.13 | Doplnit **`/s/c/**`, `/p/**`, `/r/**`** mezi veřejné cesty v 4.1 | Konvence 4.1 části 1 vyjmenovává jen `/t/**`, `/e/**`, `/u/**`, `/f/**`. Bez doplnění by potvrzení přihlášení, stránka preferencí a reaktivační odkaz spadly pod CSRF a session middleware, což je zablokuje | tři řádky v tabulce povrchů; autentizace „podepsaný token", CSRF „ne" |
+| ~~1.13~~ | ~~Doplnit **`/s/c/**`, `/p/**`, `/r/**`** mezi veřejné cesty v 4.1~~ | **SPLNĚNO 2026-07-31.** Tvrzení, že část 1 vyjmenovává jen `/t/**`, `/e/**`, `/u/**`, `/f/**`, je zastaralé. Řádek „Trackovací a veřejné endpointy" v tabulce povrchů 4.1 části 1 dnes obsahuje `/t/**`, `/e/**`, `/u/**`, `/f/**`, `/s/c/**`, `/p/**`, `/r/**`, autentizace „podepsaný token nebo veřejný klíč", CSRF „ne" | hotovo, nic se nežádá |
 | 1.14 | Doplnit **`inbound_deliveries`** do seznamu partitionovaných tabulek obsluhovaných jobem `platform.maintain_partitions` | Jinak se pro ni nezaloží partition a zápis selže, protože `DEFAULT` partition se podle konvence nezakládá | jeden řádek v 2.1 |
 | 1.15 | Výjimka z pravidla „repository funkce nepřijímá řetězec" pro kompilátor segmentů | AST je uživatelský vstup, který se musí dostat do repository vrstvy. Obrana je popsaná ve 4.11.3 a stojí na uzavřených výčtech, konstantní mapě sloupců a parametrech, ne na typu argumentu | povolit `packages/db/src/repo/segments.ts` jako jediné místo s dynamickým SQL, plus ESLint výjimka |
 | 1.16 | Potvrdit, že limit těla JSON 1 MiB se **nevztahuje** na `PATCH /contacts/imports/{id}` s velkým mapováním | Mapování 200 sloupců plus volby se do 1 MiB vejde s rezervou, jde jen o potvrzení, že se limit počítá per endpoint a ne globálně | |
+| **1.17** | Zaregistrovat do uzavřeného registru `messages.error_code` tři hodnoty: **`contact_deleted`**, **`contact_anonymized`** a **`processing_restricted`** | Tahle část je zapisuje přes `revokePendingMessages` na čtyřech ze šesti volacích míst ve 4.9.4 (smazání kontaktu, anonymizace podle čl. 17, omezení zpracování podle čl. 18). Jmenný prostor `messages.error_code` je podle 4.10.1 části 1 **oddělený uzavřený výčet** a hodnota mimo něj je chyba v CI, takže bez registrace ta volání neprojdou buildem. Slučovat je do `contact_status_changed` nejde: čl. 17 a čl. 18 jsou dva různé právní důvody s různou vratností a report kampaně je musí odlišit | tři řádky v tabulce jmenného prostoru v 4.10.1 části 1 a tři hodnoty v `packages/contracts/src/outbox-errors.ts`, sloupec „kdo zapisuje" = aplikace (část 2) |
 
 ### 11.2 Na část 3 (obsah a šablony)
 
@@ -3688,7 +3873,7 @@ Všechny ověřené 2026-07-31 příkazy `npm view <balíček> license version t
 | 3.1 | Merge tagy odpovídající polím kontaktu | `{{ contact.email }}`, `{{ contact.first_name }}`, `{{ contact.last_name }}`, `{{ contact.first_name_vocative }}`, `{{ contact.last_name_vocative }}`, `{{ contact.greeting }}`, `{{ contact.title_prefix }}`, `{{ contact.locale }}`, `{{ contact.attr.<key> }}` pro vlastní pole |
 | 3.2 | `{{ contact.greeting }}` je **hotový řetězec**, ne funkce. Šablona ho nesmí nijak upravovat ani skládat s dalším textem před čárkou | |
 | 3.3 | Filtr `\| vocative` **neexistuje**. Validátor na `{{ contact.first_name \| vocative }}` vrátí chybu s nápovědou „použijte `{{ contact.first_name_vocative }}`" | dohodnuto v kapitole 6.3 hlavní specifikace |
-| 3.4 | Validátor konzumuje **`getFieldCatalog(ctx)`** z 4.2.3, ne REST endpoint. Vrací `{ fields: [{ path, type, label: {cs,en}, group, itemType?, deleted }], version }` | signatura a mapování typů ve 4.2.3 |
+| 3.4 | Validátor konzumuje **`getFieldCatalog(ctx)`** z 4.2.3, ne REST endpoint. Vrací `{ fields: [{ path, type, label, group, itemType?, deleted }], version }`, kde `label` je **`Record<string, string>` s povinným klíčem `en`**, ne pevná dvojice `{cs,en}`. Část 3 tedy nesmí popisek typovat na dva jazyky ani na neznámý klíč reagovat chybou; při chybějícím jazyku uživatele padá na `en` a pak na `path` | signatura, typ `LocalizedText` a mapování typů ve 4.2.3 |
 | 3.7 | **`findTemplatesUsingField(ctx, path)`** a job **`content.revalidate_templates`**. Volám je při kontrole dopadu a při smazání vlastního pole, viz 4.2.5 | `findTemplatesUsingField` vrací `{ id, name, usages }[]` |
 | 3.5 | Šablony potvrzovacího e-mailu, uvítacího e-mailu a reaktivační kampaně jako součást produktu, ne jako příklad | tři systémové šablony, `kind = 'system'` |
 | 3.6 | Tokeny `{{ unsubscribe_url }}`, `{{ preferences_url }}` a `{{ confirmation_url }}` musí být v katalogu merge tagů | hodnoty dodává část 4 při interpolaci |
@@ -3697,18 +3882,18 @@ Všechny ověřené 2026-07-31 příkazy `npm view <balíček> license version t
 
 | # | Požadavek | Proč |
 |---|---|---|
-| 4.1 | Materializace publika **musí** kontrolovat suppression list přes dotaz z 4.10.3 (obě větve, `email` i `email_hash`), ne přes `contacts.status` | `contacts.status` je odvozený údaj pro zobrazení, autoritativní je `suppressions` |
+| 4.1 | Materializace publika **musí** kontrolovat suppression list přes dotaz z 4.10.3 (obě větve, `email` i `fingerprint`, a v otiskové větvi **všechna známá pokolení klíče**), ne přes `contacts.status` | `contacts.status` je odvozený údaj pro zobrazení, autoritativní je `suppressions`. Hledání jen pod aktuálním pokolením je tichá porucha: po rotaci `SECRET_KEY` by se vymazaný člověk vrátil, aniž by cokoliv selhalo |
 | 4.2 | Materializace **musí** vyloučit `contacts.processing_restricted = true` a `contacts.deleted_at IS NOT NULL` | čl. 18 GDPR |
 | 4.3 | Materializace **musí** vyloučit `list_subscriptions.snooze_until > now()` | pozastavení odběru ze stránky preferencí |
 | 4.4 | Materializace **musí** brát jen `list_subscriptions.status = 'confirmed'`, nikdy `pending` | jádro double opt-in |
-| 4.5 | **Funkce `revokePendingMessages(ctx, { contactId, listId, reason })`** s povinným parametrem `listId`. Dnes v části 4a chybí. Bez `listId` by odhlášení z jednoho newsletteru zrušilo veškerou čekající poštu toho člověka včetně kampaní na jiné seznamy, což je tichá ztráta pošty | signatura ve 4.9.4; přechod jen `pending → skipped`, z `claimed` zakázaný; zápis do kontraktního `error_code`, ne do neexistujícího `error` |
+| 4.5 | **Rozšířit výčet `reason` u `revokePendingMessages`** o `contact_anonymized` a `processing_restricted`. Tvar funkce jinak přebírám z vaší 3.4.1 beze změny a svou starší, odlišnou signaturu jsem zahodil; `listId` v části 4a **je** a starší věta, že chybí, je z tohoto dokumentu smazaná | Anonymizace podle čl. 17 a omezení zpracování podle čl. 18 nejsou totéž co `contact_status_changed`: jsou to dva různé právní důvody s různou vratností a v reportu kampaně se musí dát odlišit. Hodnoty padají do `messages.error_code`, takže je souběžně registruje část 1, viz požadavek 1.17. Zbytek kontraktu beze změny: přechod jen `pending → skipped`, z `claimed` zakázaný, zápis do kontraktního `error_code`, ne do neexistujícího `error`. Volací místa jsou ve 4.9.4 |
 | 4.5b | Materializace publika **musí** volat `compileAudienceToSql` z 4.11.3 a nesmí psát vlastní SQL nad `contacts`, `list_subscriptions` ani `suppressions` | důvod je v 4.11.3: obálka nese pět doménových podmínek části 2, jejichž vynechání pošle poštu člověku s omezeným zpracováním nebo na pauze |
 | 4.5c | `asOf` se ukládá na kampaň a předává do každé dávky materializace beze změny | jinak se publikum mění pod rukama, viz 4.11.3 |
 | 4.5d | Filtr publika používá `contacts.status = 'active'`, nikoliv `'subscribed'`. Hodnota `subscribed` v této části neexistuje a dotaz s ní vrátí nula řádků | výčet je ve 4.1.6 |
 | 4.5e | Volání `suppressions.add` z 4.10.4 při bounci, stížnosti a `OnAccountSuppressionList`. Přímý `INSERT` do `suppressions` je zakázaný, protože kolem něj visí pět doménových efektů | signatura ve 4.10.4; `metadata` s diagnostikou bouncu |
 | 4.6 | Hlavičky `List-Unsubscribe` a `List-Unsubscribe-Post` podle 4.9.1, a **DKIM podpis musí obě hlavičky pokrývat** | bez toho není one-click podle RFC 8058 platný |
 | 4.7 | Odhlašovací token se generuje s payloadem z 4.9.3, včetně `l` (list_id) tam, kde kampaň míří na seznam | rozlišení odhlášení ze seznamu a globálního |
-| 4.8 | Zápis do suppression listu při tvrdém odrazu a stížnosti podle matice v 4.10.1, včetně `email_hash` | |
+| 4.8 | Zápis do suppression listu při tvrdém odrazu a stížnosti **výhradně přes `suppressions.add`** ze 4.10.4, která si otisk (`fingerprint` a `fingerprint_key_id`) spočítá sama. Volající otisk nepočítá ani nepředává | Dvě implementace otisku by se rozešly a rozdíl by se projevil až tím, že vymazaný člověk dostane mail |
 | 4.9 | Práh měkkých odrazů vlastní část 4a. Tato část ho **nedefinuje** a jen konzumuje volání `suppressions.add` s `reason = 'soft_bounce_threshold'` | hodnota je na části 4a |
 | 4.14 | Placeholder anonymizované adresy je **`erased+{contact_id}@erased.invalid`**, jednotně napříč částmi | část 4a používá jiný tvar, sjednotit na tento |
 | 4.10 | Při výmazu podle čl. 17: `messages.contact_id = NULL`, `messages.email` na placeholder, `render_data = '{}'` pro daný kontakt | job `gdpr.sever_links` |
@@ -3769,7 +3954,7 @@ Sekce 6 tohoto dokumentu popisuje obrazovky a texty z pohledu domény. Vizuáln�
 
 Hlavní specifikace se neupravuje. Následující body se při rozpisu ukázaly jako nepřesné nebo nedostatečné.
 
-**R1. `suppressions` bez primárního klíče.** Kapitola 5 uvádí `suppressions(workspace_id, email, reason, source, created_at)`. Bez `id` nejde na položku odkazovat z auditu ani ji adresovat v API při odebírání. Návrh: přidat `id uuid PRIMARY KEY`, `email_hash`, `removable`, `removed_at`, `removed_by`, `removal_note`. Dopad: žádný na ostatní části.
+**R1. `suppressions` bez primárního klíče.** Kapitola 5 uvádí `suppressions(workspace_id, email, reason, source, created_at)`. Bez `id` nejde na položku odkazovat z auditu ani ji adresovat v API při odebírání. Návrh: přidat `id uuid PRIMARY KEY`, `fingerprint`, `fingerprint_key_id`, `removable`, `removed_at`, `removed_by`, `removal_note`. Dopad: žádný na ostatní části.
 
 **R2. Chybí model odvození `contacts.status` versus `suppressions`.** Kapitola 5 uvádí obojí, ale neříká, co je zdroj pravdy. Dva zdroje pravdy pro „smí se poslat" jsou spolehlivý zdroj chyb. Návrh: **`suppressions` je autoritativní**, `contacts.status` je odvozený údaj pro zobrazení a levné filtrování, udržovaný v téže transakci. Materializace publika (část 4) musí kontrolovat `suppressions`, ne `status`. Dopad: požadavek 4.1 v sekci 11.3.
 
@@ -3797,15 +3982,19 @@ Hlavní specifikace se neupravuje. Následující body se při rozpisu ukázaly 
 
 ### 12.1 Rozpory s částí 1
 
-Části 1 nic neměním. Následující tři body považuju za místa, kde její konvence nesedí na potřeby kontaktů, a nechávám je na rozhodnutí orchestrátora.
+Části 1 nic neměním. Následující body považuju za místa, kde její konvence nesedí na potřeby kontaktů, a nechávám je na rozhodnutí orchestrátora. Z původních tří je jeden (C2) mezitím uzavřený.
 
 **C1. Rozšíření omezená na `citext`.** Konvence 2.1 části 1 uvádí „Rozšíření: `citext` (jen pro e-maily)". Kontakty potřebují navíc `pg_trgm` a `btree_gin`, jinak není hledání kontaktu podle části jména nebo adresy. Hledání „nov" nad pěti miliony řádků bez trigramového indexu je seq scan v řádu sekund, a hledání kontaktu je nejčastější operace v celém nástroji.
 
 Alternativa bez rozšíření: `email LIKE 'nov%'` nad btree indexem `(workspace_id, email text_pattern_ops)`. Funguje jen na prefix, takže „najdi Nováka" podle příjmení uprostřed adresy přestane fungovat úplně. Považuju to za citelné zhoršení, ale je to schůdné, pokud část 1 chce držet seznam rozšíření co nejkratší kvůli kompatibilitě s externím Postgresem u self-hosterů. **Poznámka k tomu argumentu:** `pg_trgm` i `btree_gin` jsou `contrib` moduly dodávané s oficiální image `postgres:18-alpine` i s většinou spravovaných služeb, takže cena za ně je nižší než u exotických rozšíření.
 
-**C2. Odvození všech klíčů ze `SECRET_KEY` přes HKDF.** Konvence 3.10 části 1 popisuje rotaci `SECRET_KEY` jako běžnou operaci a všechny klíče z něj odvozuje. Pro **otisk vymazané adresy** to nefunguje: otisk musí být porovnatelný roky dopředu, protože je to jediná zábrana proti tomu, aby import vzkřísil člověka, který uplatnil právo na výmaz. Rotace klíče by všechny existující otisky zneplatnila a udělala z nich mrtvá data.
+**~~C2. Odvození všech klíčů ze `SECRET_KEY` přes HKDF.~~ UZAVŘENO 2026-07-31.** Namítal jsem, že pro otisk vymazané adresy odvození přes HKDF nefunguje, protože rotace klíče by existující otisky zneplatnila, a žádal jsem samostatnou nerotovatelnou `SUPPRESSION_HASH_KEY` mimo hierarchii HKDF.
 
-Řešení, které navrhuju, je vyhradit `SUPPRESSION_HASH_KEY` jako samostatnou, výslovně **nerotovatelnou** proměnnou mimo hierarchii HKDF, s otiskem uloženým v `system_settings` a s tvrdým pádem při startu, pokud se změní. Je to výjimka z konvence a patří sem, protože „všechno se odvozuje ze `SECRET_KEY`" je jinak dobré a jednoduché pravidlo.
+**Část 1 v 3.10 rozhodla jinak a rozhodla líp.** Moje námitka mířila na správný problém, ale navrhovala špatnou odpověď: rotace `SECRET_KEY` je reakce na podezření na únik a klíč, který po incidentu nejde vyměnit, znamená **navždy kompromitovanou část systému**. Přijaté řešení používá mechanismus, který v kontraktu už byl pro trackovací tokeny: purpose `mailer/v1/suppression-fingerprint` odvozený přes HKDF, otisk uložený spolu s `fingerprint_key_id`, a kontrola, která spočítá otisk **pro všechna známá pokolení klíče bez horního omezení** a hledá `fingerprint = ANY($1)`. Otisk se nikdy nepřepočítává, ověřuje se svým pokolením. Cena je jeden HMAC na pokolení a adresu.
+
+Ta samá úvaha z druhé strany je důvod, proč část 1 zrušila strop na počet pokolení a zakázala jeho návrat i jako validaci `SECRET_KEY_PREVIOUS`: po překročení stropu by se nejstarší otisky přestaly dát ověřit a smazaný člověk by se vrátil prvním importem, aniž by cokoliv selhalo nebo se zalogovalo.
+
+**Tahle část model přejala beze zbytku a `SUPPRESSION_HASH_KEY` z ní zmizela.** Viz 3.1, 3.5, 4.10.3, 4.10.4, 4.14.4, 5.9 a 7.2. Otevřený bod B ve 2.6 a požadavek 1.4 v 11.1 jsou uzavřené.
 
 **C3. `REVOKE UPDATE, DELETE ON consents` bez protistrany pro GDPR.** Konvence 2.1 části 1 správně dělá `consents` append-only tím, že aplikační roli odebere `UPDATE` a `DELETE`. Výmaz podle čl. 17 ale musí souhlasy smazat, jinak po „smazaném" člověku zůstane jeho e-mail v `consents.evidence`. Část 1 tuhle protistranu nedefinuje.
 
