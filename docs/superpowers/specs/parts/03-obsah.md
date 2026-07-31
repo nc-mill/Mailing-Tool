@@ -38,6 +38,12 @@ Pro uživatele: nástroj neposílá nic do našeho cloudu a my za AI neplatíme.
 **Šablony jsou konzervativní schválně.**
 Pro uživatele: e-mail bude vypadat "jako normální newsletter", ne jako moderní webová stránka. To je záměr. Outlook s firemním nastavením zobrazí jen zlomek toho, co umí prohlížeč, a e-mail, který vypadá skvěle v Gmailu a rozsype se ve firemním Outlooku, je pro B2B zákazníka nepoužitelný.
 
+**„Zobrazit, jen když je pole vyplněné" se nastavuje zaškrtnutím, ne psaním podmínky.**
+Pro uživatele: u každého bloku jde říct „ukaž ho jen lidem, kteří mají vyplněné město". Vybere se pole ze seznamu a z druhého seznamu se vybere, co má platit. Žádný kód. Uvnitř je to důležitější, než to zní: nejčastější chyba mailingových nástrojů je, že se podmínka „má vyplněné jméno" vyhodnotí jako pravda i u prázdné hodnoty a lidem dorazí „Dobrý den, ." Tenhle nástroj tu past zavírá tím, že pravdivost počítá dopředu a ne až v šabloně. Cena: podmínky jsou jednoduché (vyplněné, prázdné, ano, ne), složitější porovnání zatím nejsou.
+
+**Opakující se seznamy (položky objednávky) v první verzi nejsou, ale formát na ně čeká.**
+Pro uživatele: potvrzení objednávky s výpisem položek přijde v pozdější verzi. Šablony vytvořené dnes se kvůli tomu nebudou muset předělávat, protože to má formát uložení už teď připravené.
+
 **Náhled ukazuje přesně to, co se odešle.**
 Pro uživatele: nikdy se nestane, že v náhledu je "Dobrý den, Jano" a v odeslaném mailu "Dobrý den, {{ contact.first_name_vocative }}". Tohle je nejtrapnější možná chyba mailingového nástroje a máme kvůli ní zvláštní opatření (viz 3.7 a 3.11).
 
@@ -138,7 +144,7 @@ Marketér, který vyrobí 20 kampaní měsíčně, se dostane pod 200 Kč měsí
 
 1. **Escapování dělá interpolátor, ne kompilátor.** Původně jsem chtěl, aby kompilátor doplňoval `| escape` do každého výrazu. Část 1 to řeší lépe: v HTML části se escapuje automaticky a nevypnutelně, filtr `escape` je no-op. `compiled_html` tedy obsahuje výrazy beze změny.
 2. **Filtr `date` má whitelist celých formátů, ne direktiv**, a povoluje `%-d.%-m.%Y`. Tím padá moje otevřená otázka o českém datu bez nul.
-3. **`contains` je zakázaný**, zato jsou povolené literály `blank` a `empty`. To je lepší řešení pasti prázdného řetězce, než jaké jsem navrhoval.
+3. **`contains` je zakázaný**, zato jsou v gramatice povolené literály `blank` a `empty`. Vypadalo to jako lepší řešení pasti prázdného řetězce, než jaké jsem navrhoval, ale **neplatí to**: `osteele/liquid` obojí nezná (nález K4, 3.7.2a), takže je validátor odmítá. Past se od 2026-07-31 řeší jinak a lépe, totiž **vlastností bloku `visibleWhen` a pravdivostní mapou `_present` počítanou mimo Liquid** (3.1.10).
 
 ## 2. Datový model
 
@@ -152,11 +158,12 @@ CREATE TABLE templates (
   workspace_id        uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   name                text NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
   kind                text NOT NULL DEFAULT 'campaign'
-                        CHECK (kind IN ('campaign','transactional','system','snippet')),
+                        CHECK (kind IN ('campaign','transactional','system')),
   schema_version      int  NOT NULL DEFAULT 1,
   design              jsonb NOT NULL,            -- pracovní verze, Mlain Mailer Document
   design_hash         bytea NOT NULL,            -- sha256 kanonického JSON, detekce "nic se nezměnilo"
-  current_version_id  uuid REFERENCES template_versions(id) ON DELETE SET NULL,
+  current_version_id  uuid,                      -- FK se doplňuje níž, viz poznámka o cyklu
+  used_fields         text[] NOT NULL DEFAULT '{}',  -- denormalizace merge tagů, viz 3.8.4
   thumbnail_asset_id  uuid REFERENCES assets(id) ON DELETE SET NULL,
   starter             boolean NOT NULL DEFAULT false,   -- dodáváme s produktem, nejde smazat
   validation_state    text NOT NULL DEFAULT 'unknown'
@@ -179,7 +186,22 @@ CREATE UNIQUE INDEX uq_templates__workspace_name
 -- Fronta "šablony, které je potřeba znovu ověřit" po smazání kontaktního pole.
 CREATE INDEX idx_templates__invalid
   ON templates (workspace_id) WHERE validation_state = 'invalid' AND deleted_at IS NULL;
+
+-- Vyhledání šablon podle merge tagu (3.8.4 B). Bez indexu by to byl sekvenční
+-- průchod s deserializací JSON u každé šablony.
+CREATE INDEX idx_templates__used_fields ON templates USING gin (used_fields);
 ```
+
+**Cizí klíče mezi `templates` a `template_versions` tvoří cyklus a zakládají se ve dvou fázích.** `templates.current_version_id` míří na `template_versions`, `template_versions.template_id` míří zpátky na `templates`. Kdyby byly oba deklarované uvnitř `CREATE TABLE`, migrace spuštěná v pořadí, v jakém je tenhle dokument psaný, spadne na neexistující tabulku. Fáze 1 zakládá obě tabulky bez cyklického klíče, fáze 2 ho doplní:
+
+```sql
+-- Fáze 2, až po CREATE TABLE template_versions níž.
+ALTER TABLE templates
+  ADD CONSTRAINT fk_templates__current_version
+  FOREIGN KEY (current_version_id) REFERENCES template_versions(id) ON DELETE SET NULL;
+```
+
+Pojmenovaný constraint je tu schválně: bez `ADD CONSTRAINT <jméno>` by si ho Postgres pojmenoval sám a při další migraci by ho nešlo spolehlivě adresovat.
 
 `design_hash` je SHA-256 nad **kanonickou** serializací JSON (klíče lexikograficky, bez mezer, UTF-8). Slouží ke třem věcem: autosave neukládá, když se nic nezměnilo; "vytvořit verzi" nevytvoří duplicitní verzi; a náhled se cachuje podle hashe.
 
@@ -257,7 +279,7 @@ CREATE INDEX idx_assets__workspace_created
 
 CREATE TABLE asset_variants (
   asset_id     uuid NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-  variant      text NOT NULL CHECK (variant IN ('orig','w1200','w600','w300','thumb')),
+  variant      text NOT NULL CHECK (variant ~ '^[a-z][a-z0-9_]{0,15}$'),
   width        int NOT NULL,
   height       int NOT NULL,
   byte_size    bigint NOT NULL,
@@ -268,7 +290,7 @@ CREATE TABLE asset_variants (
 
 CREATE TABLE asset_references (
   asset_id  uuid NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-  ref_type  text NOT NULL CHECK (ref_type IN ('template','template_version','campaign','brand_profile')),
+  ref_type  text NOT NULL CHECK (ref_type ~ '^[a-z][a-z0-9_]{0,31}$'),
   ref_id    uuid NOT NULL,
   PRIMARY KEY (asset_id, ref_type, ref_id)
 );
@@ -276,6 +298,17 @@ CREATE TABLE asset_references (
 -- "Co všechno používá tenhle obrázek" a "co používá tahle kampaň" jsou oba časté dotazy.
 CREATE INDEX idx_asset_references__ref ON asset_references (ref_type, ref_id);
 ```
+
+**Výčty `asset_variants.variant` a `asset_references.ref_type` nejsou v databázi uzavřené schválně.** Obojí je aditivně rozšiřitelná množina, kterou vynucuje aplikace proti registru v `packages/core/assets/registry.ts`; databáze hlídá jen tvar identifikátoru. Uzavřený `CHECK` by z přidání varianty (například `w900`) nebo nového druhu odkazu udělal migraci s `ALTER TABLE ... DROP CONSTRAINT`, a to je u self-hosted instalací nejrizikovější operace, jakou máme. Registr dnes obsahuje:
+
+| Registr | Hodnoty v MVP 0 | Poznámka |
+|---|---|---|
+| `variant` | `orig`, `w1200`, `w600`, `w300`, `thumb` | Viz 3.14.2 |
+| `ref_type` | `template`, `template_version`, `campaign`, `brand_profile`, `content_snippet` | `content_snippet` viz níž |
+
+**`content_snippet` je v seznamu už v MVP 0**, i když UI sdílené bloky nepoužívá. Tabulka `content_snippets` se v MVP 0 zakládá právě kvůli dopředné kompatibilitě (2.5) a obrázek v uloženém sdíleném bloku musí umět držet referenci ve stejném okamžiku, kdy vznikne, ne o vydání později; jinak by první snippet s obrázkem prošel mazáním jako nereferencovaný.
+
+**Druh šablony `snippet` je tímto zrušen** (oprava 2026-07-31). Sdílené bloky mají jedno místo, a to je tabulka `content_snippets`. Kdyby existovaly dvě cesty (šablona s `kind = 'snippet'` a řádek v `content_snippets`), měl by produkt dvě neslučitelná úložiště pro tutéž věc a `asset_references` by pro jednu z nich muselo mít dvě hodnoty. `templates.kind` má proto tři hodnoty: `campaign`, `transactional`, `system`.
 
 `reference_count` je denormalizace `asset_references`. Aktualizuje ji **repository vrstva ve stejné transakci** jako zápis do `asset_references`, ne databázový trigger; konvence části 1 (2.1) triggery zakazuje jako neviditelnou magii, kterou Go strana nezná. Existuje proto, že "smím tenhle obrázek smazat" se ptáme v seznamu obrázků u každé položky a `COUNT(*)` na 5 000 obrázků v knihovně by byl zbytečný. Konzistence se ověřuje noční kontrolou (`content.verify_asset_refcounts`).
 
@@ -332,8 +365,7 @@ CREATE INDEX idx_brand_extractions__workspace_created
 CREATE TABLE ai_provider_credentials (
   id                uuid PRIMARY KEY DEFAULT uuidv7(),
   workspace_id      uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  provider          text NOT NULL
-                      CHECK (provider IN ('anthropic','openai','google','openrouter','openai_compatible')),
+  provider          text NOT NULL CHECK (provider ~ '^[a-z][a-z0-9_]{0,31}$'),
   label             text NOT NULL CHECK (length(label) BETWEEN 1 AND 60),
   api_key_encrypted bytea NOT NULL,        -- obálka části 1 (4.10.4), context = "ai_provider"
   key_fingerprint   text NOT NULL,         -- sha256(api_key) prvních 16 hex znaků, jen pro detekci duplicit
@@ -353,6 +385,7 @@ CREATE UNIQUE INDEX uq_ai_provider_credentials__workspace_label
   ON ai_provider_credentials (workspace_id, lower(label));
 CREATE UNIQUE INDEX uq_ai_provider_credentials__workspace_default
   ON ai_provider_credentials (workspace_id) WHERE default_credential;
+
 
 CREATE TABLE ai_conversations (
   id            uuid PRIMARY KEY DEFAULT uuidv7(),
@@ -400,6 +433,8 @@ CREATE TABLE ai_usage_daily (
 ```
 
 `ai_usage_daily` je agregát zapisovaný přes `INSERT ... ON CONFLICT DO UPDATE`. Existuje proto, aby "kolik mě to stálo za posledních 30 dní" byl dotaz na 30 řádků, ne na 30 000 zpráv.
+
+**Výčet `provider` také není v databázi uzavřený a je to podstatné.** Uzavřený `CHECK` by neuměl vyjádřit dva providery, se kterými se jinde v dokumentu už počítá: Azure OpenAI a AWS Bedrock mají vlastní proměnné prostředí v požadavku R9 a část 1 je do mazání proměnných zařadila. Přidání providera by tedy bylo `ALTER TABLE ... DROP CONSTRAINT` u každé instalace. Platný výčet vlastní aplikace v `packages/core/ai/providers.ts`, kde je u každého providera tovární funkce, tvar `baseURL` a pravidla klíče; hodnota mimo registr je `422 validation_failed`. Registr v MVP 0 obsahuje `anthropic`, `openai`, `google`, `openrouter` a `openai_compatible`; `azure` a `bedrock` jsou připravené hodnoty bez implementace a přidat je znamená doplnit tovární funkci, ne migraci.
 
 ### 2.5 Sdílené bloky obsahu (MVP 2, DDL kvůli dopředné kompatibilitě)
 
@@ -449,7 +484,7 @@ Dokument je **strom**, ne plochá mapa s odkazy přes ID. Strom je proto, že:
   "meta": {
     "name": "Letní výprodej",
     "previewText": "Slevy až 50 % končí v neděli",
-    "language": "cs"
+    "language": "cs"            // BCP 47, libovolný platný jazykový tag, viz 3.1.9
   },
   "theme": { /* Theme, viz 3.1.4 */ },
   "blocks": [ /* SectionBlock[] */ ]
@@ -460,16 +495,26 @@ Hierarchická pravidla, která validátor vynucuje:
 
 ```
 Document.blocks   := SectionBlock[]                        (1 až 60)
-SectionBlock      := { children: (ColumnsBlock | ContentBlock)[] }   (0 až 40)
+SectionBlock      := { children: (ColumnsBlock | RepeatBlock | ContentBlock)[] }   (0 až 40)
 ColumnsBlock      := { children: ColumnBlock[] }           (přesně 2 nebo 3)
 ColumnBlock       := { children: ContentBlock[] }          (0 až 20)
+RepeatBlock       := { children: ContentBlock[] }          (0 až 20)   [MVP 1, viz níž]
 ContentBlock      := heading | text | image | button | divider
                    | spacer | html | social | footer
 ```
 
 Sloupce se **nevnořují**. Jednosloupcový obsah se nedělá blokem `columns`, ale přímo v sekci. Maximální hloubka stromu je tedy 4 a je to pevná mez, ne konfigurace. Důvod je čistě praktický: vnořené tabulky v Outlooku jsou nejčastější zdroj rozsypaného layoutu a hloubka 4 je bezpečná hranice.
 
-Celkový limit: **300 bloků na dokument** a **512 kB serializovaného JSON**. Při překročení vrací API `content_document_too_large`.
+**`repeat` je uzel cyklu (`{% for %}`) a je v gramatice od verze schématu 1, přestože ho MVP 0 nevydává.** Kontrakt části 1 s cykly počítá (limit pět cyklů v šabloně, 200 iterací, zákaz vnořeného `for`), ale cyklus potřebuje opakující se tělo, tedy vlastní uzel stromu, a je to funkce transakčních e-mailů (položky objednávky), tedy MVP 1 a dál. Zapisuju ho do gramatiky teď, protože **přidání typu bloku později by sice podle tabulky v 3.1.7 nezvyšovalo `schemaVersion`, ale přidání nové úrovně stromu ano**: mění hierarchická pravidla, která validátor vynucuje, a tedy význam existujícího omezení "hloubka 4". Levnější je to zapsat jednou správně.
+
+Co pro MVP 0 platí:
+
+- Editor blok `repeat` **nenabízí** a v paletě bloků není.
+- Renderer ho **neemituje**; když ho v dokumentu potká (import cizího souboru, ruční úprava JSON), chová se k němu jako k neznámému bloku podle 3.1.7: přeskočí ho a do `CompileMeta.warnings` zapíše `repeat_block_not_supported`.
+- JSON Schema ho **přijímá**, aby dokument s ním prošel API beze ztráty dat a dal se uložit zpátky bajtově shodný.
+- `repeat.props.path` musí být cesta na pole (`itemType` z katalogu polí) a uvnitř `repeat` nesmí být další `repeat` (`content_nested_repeat`), což je totéž pravidlo, jaké kontrakt vyžaduje pro `{% for %}`.
+
+Celkový limit: **300 bloků na dokument** a **512 kB serializovaného JSON**. Překročení velikosti vrací obecný `payload_too_large` (413), překročení počtu bloků vlastní `content_too_many_blocks` (413), protože to není chyba o velikosti těla požadavku. Obojí je závazné znění, jiný kód pro tenhle stav v dokumentu není.
 
 #### 3.1.3 Identita bloku
 
@@ -491,11 +536,13 @@ type ColorRef =
   | "surface.canvas" | "surface.content" | "surface.subtle"
   | "link.default";
 
+type ThemeColorRole = Exclude<ColorRef, `#${string}`>;
+
 type Theme = {
   contentWidth: 600 | 640;              // default 600
   canvasBackground: ColorRef;           // default "surface.canvas"
   contentBackground: ColorRef;          // default "surface.content"
-  colors: Record<Exclude<ColorRef, `#${string}`>, `#${string}`>;
+  colors: Partial<Record<ThemeColorRole, `#${string}`>>;   // chybějící role bere výchozí hodnotu
   fonts: {
     heading: FontStackId;               // default "system"
     body: FontStackId;                  // default "system"
@@ -508,7 +555,7 @@ type Theme = {
   radius: 0 | 4 | 6 | 8 | 12;           // default 6
   darkMode: {
     strategy: "auto" | "off";           // default "auto"
-    colors: Partial<Record<Exclude<ColorRef, `#${string}`>, `#${string}`>>;
+    colors: Partial<Record<ThemeColorRole, `#${string}`>>;
   };
 };
 
@@ -516,6 +563,25 @@ type FontStackId =
   | "system" | "arial" | "helvetica" | "verdana" | "tahoma"
   | "trebuchet" | "georgia" | "times" | "courier";
 ```
+
+**`colors` je částečná mapa, ne úplná** (oprava 2026-07-31). Původní `Record<ThemeColorRole, hex>` vyžadoval všech deset rolí, takže přidání jedenácté by bylo přidání **povinného** klíče, a to podle vlastní tabulky v 3.1.7 znamená změnu vyžadující migraci všech uložených šablon. Tatáž tabulka přitom slibuje, že přidání hodnoty do výčtu je zadarmo. Rozpor mizí tím, že se `colors` chová stejně jako `darkMode.colors`, které částečné bylo od začátku: uvedená role přebíjí, neuvedená bere výchozí hodnotu z rendereru.
+
+Výchozí hodnoty rolí (světlý režim, `packages/emails/theme/defaults.ts`):
+
+| Role | Výchozí | Výchozí v tmavém režimu |
+|---|---|---|
+| `brand.primary` | `#2563eb` | `#60a5fa` |
+| `brand.secondary` | `#3b82f6` | `#93c5fd` |
+| `brand.accent` | `#2563eb` | `#60a5fa` |
+| `text.default` | `#111827` | `#e5e7eb` |
+| `text.muted` | `#6b7280` | `#9ca3af` |
+| `text.inverted` | `#ffffff` | `#0b0f19` |
+| `surface.canvas` | `#f4f5f7` | `#0b0f19` |
+| `surface.content` | `#ffffff` | `#111827` |
+| `surface.subtle` | `#e5e7eb` | `#1f2937` |
+| `link.default` | `#1d4ed8` | `#93c5fd` |
+
+Normalizace v rendereru (3.4.1) mapu doplní na úplnou dřív, než se cokoliv emituje, takže emitter s neúplnou mapou nikdy nepracuje. Přidání jedenácté role je pak řádek v téhle tabulce plus hodnota ve výčtu `ColorRef`, tedy dvě aditivní změny bez migrace. Odebrání role `schemaVersion` zvyšuje dál, protože to je odebrání hodnoty z výčtu.
 
 Font stacky jsou **uzavřený seznam**. Webfonty v e-mailu nepodporuje Outlook na Windows ani Gmail, takže vlastní písmo je vždy jen kosmetika pro Apple Mail a fallback stejně musí být systémový. Uzavřený seznam brání tomu, aby AI nebo uživatel nastavil `"Futura"` a v 80 % schránek dostal Times New Roman.
 
@@ -621,6 +687,27 @@ Strojově čitelné schéma je zdrojem pravdy pro tři konzumenty: validace na A
         "left":   { "type": "integer", "minimum": 0, "maximum": 100, "default": 0 }
       }
     },
+    "visibleWhen": {
+      "type": "object", "additionalProperties": false,
+      "required": ["field", "op"],
+      "properties": {
+        "field": { "type": "string", "maxLength": 120 },
+        "op": { "enum": ["present", "blank", "true", "false"] }
+      }
+    },
+    "knownBlockType": {
+      "enum": ["section","columns","column","repeat","heading","text","image",
+               "button","divider","spacer","html","social","footer"]
+    },
+    "unknownBlock": {
+      "$comment": "Úniková definice, viz odstavec o neznámých blocích pod schématem.",
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "type": "string", "not": { "$ref": "#/$defs/knownBlockType" } }
+      }
+    },
     "sectionBlock": {
       "type": "object", "additionalProperties": false,
       "required": ["id", "type", "props", "children"],
@@ -628,12 +715,15 @@ Strojově čitelné schéma je zdrojem pravdy pro tři konzumenty: validace na A
         "id": { "$ref": "#/$defs/blockId" },
         "type": { "const": "section" },
         "props": { "$ref": "#/$defs/sectionProps" },
+        "visibleWhen": { "$ref": "#/$defs/visibleWhen" },
         "children": {
           "type": "array", "maxItems": 40,
           "items": {
-            "oneOf": [
+            "anyOf": [
               { "$ref": "#/$defs/columnsBlock" },
-              { "$ref": "#/$defs/contentBlock" }
+              { "$ref": "#/$defs/repeatBlock" },
+              { "$ref": "#/$defs/contentBlock" },
+              { "$ref": "#/$defs/unknownBlock" }
             ]
           }
         }
@@ -645,6 +735,14 @@ Strojově čitelné schéma je zdrojem pravdy pro tři konzumenty: validace na A
 ```
 
 Validace na serveru běží přes `ajv` (8.20.0, MIT) se zapnutým `strict: true`, `allErrors: true` a `removeAdditional: false`. Chybové cesty se překládají do JSON Pointer, takže editor umí skočit na vadný blok.
+
+**Schéma neznámý typ bloku pouští, tvrdá je až sémantická vrstva** (oprava 2026-07-31). Dřívější znění mělo v seznamu potomků `oneOf` bez úniku, takže dokument s neznámým typem bloku spadl na API s `422` **dřív**, než se dostal k převodu na zamčený placeholder, který 3.1.7 slibuje a na kterém trvá akceptační kritérium 5 („po načtení a opětovném uložení je JSON toho bloku bajtově shodný s původním"). Slib a schéma si přímo odporovaly a vyhrálo by schéma.
+
+Tři důsledky, které je potřeba mít napsané, aby se z úniku nestala díra:
+
+1. **`anyOf` místo `oneOf`.** S `oneOf` by permisivní větev matchovala i známé bloky, dokument by vyhověl dvěma větvím a validace by spadla. Větev `unknownBlock` je proto navíc omezená přes `type.not`, takže na známý typ nepasuje nikdy a chybová hláška u vadného známého bloku zůstává konkrétní, ne „nevyhovuje žádné z devíti variant".
+2. **`additionalProperties` v `unknownBlock` chybí schválně**, tedy je povolené cokoliv. Právě to zaručuje bajtovou shodu při uložení zpět: neznámý blok se nese jako neprůhledný objekt.
+3. **Tvrdé odmítnutí dělá sémantický validátor (3.1.8), ne schéma.** U `kind = system` je neznámý blok chyba, jinde je to `unknown_block_skipped` ve `warnings` a v editoru zamčený placeholder. Sémantická vrstva má na rozdíl od schématu kontext, ve kterém se to dá rozhodnout.
 
 Kromě JSON Schema existuje ještě **sémantický validátor** (3.1.8), protože JSON Schema neumí vyjádřit "sloupce nesmí být vnořené v jiných sloupcích, pokud jsou v sekci s `fullWidth: true`" a podobná pravidla.
 
@@ -694,8 +792,112 @@ function loadDocument(raw: unknown): Document;   // vyhodí DocumentMigrationErr
 | S10 | Blok `html` se nevyskytuje v šabloně s `kind = system` | `content_raw_html_forbidden` | chyba |
 | S11 | Všechny `var.expr` projdou Liquid validátorem (3.7) | kódy rodiny `liquid_*` | chyba |
 | S12 | Všechny merge tagy odkazují na existující pole (3.8) | `content_unknown_merge_tag` | chyba |
+| S13 | `visibleWhen.field` odkazuje na existující pole a operátor sedí na jeho typ (3.1.10) | `content_condition_field_unknown`, `content_condition_operator_invalid` | chyba |
+| S14 | Blok `footer` ani blok nesoucí jediný odkaz na odhlášení nemá `visibleWhen` | `content_condition_on_unsubscribe` | chyba |
+| S15 | `repeat` se nevyskytuje uvnitř `repeat` | `content_nested_repeat` | chyba |
 
 Varování odesílání neblokují, ale zobrazí se v předodesílací kontrole a musí se odklepnout.
+
+#### 3.1.9 Jazyk dokumentu a lokalizované popisky
+
+`meta.language` je **řetězec s jazykovým tagem podle BCP 47** (`cs`, `en`, `de`, `pt-BR`), ne dvojice `"cs" | "en"`. Totéž platí pro `CompileContext.language` (4.1.1), `BaseTemplateParams.language` (3.9.1) a pro parametr `language` ve schématech AI nástrojů (3.12.4).
+
+**Proč se to otevírá teď, a ne až s prvním překladem** (rozhodnutí zadavatele, 2026-07-31). Produkt na třech místech slibuje, že přidání jazyka nevyžaduje změnu kódu: katalog polí části 2 má popisky jako otevřenou mapu, `users.locale` řídí jazyk UI a dodávané šablony vznikají ve dvou jazycích. Zabetonovaná dvojice `"cs" | "en"` uvnitř **kontraktu 5** by ten slib porušila na nejtvrdším možném místě, protože kontrakt se po odsouhlasení nemění, jen verzuje: první překlad od komunity, tedy typicky úplně první příspěvek u open-source projektu, by si vyžádal verzi kontraktu. Otevřít to teď stojí jeden řetězec, otevřít to potom stojí verzi kontraktu.
+
+| Věc | Tvar | Poznámka |
+|---|---|---|
+| Validace hodnoty | `^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$`, nejvýše 35 znaků | Syntaktická kontrola tvaru, ne existence jazyka. Neznámý tag je platný vstup. |
+| Podporováno v MVP 0 | `cs` a `en` | Znamená to, že v těchhle dvou jazycích dodáváme texty produktu, šablony a hlášky. |
+| Neznámý tag při kompilaci | Kompilace **nespadne**. Použije se `en` jako záchytná hodnota a do `CompileMeta.warnings` jde `language_not_supported` s uvedeným tagem. | Jazyk ovlivňuje jen dodávané texty (popisky v patičce, oddělovače v prostém textu) a atribut `lang` na `<html>`. Obsah e-mailu píše uživatel. |
+| Atribut `lang` na `<html>` | vždy hodnota z `meta.language`, i když ji neumíme | Čtečka obrazovky ji použít umí, i když ji neumíme my. |
+
+**Lokalizované popisky jsou mapy, ne dvojice.** Kdekoliv tenhle dokument potřebuje text ve víc jazycích (`FieldCatalogEntry.label` v 3.8.2, popisky v `BlockDescriptor` a `PropDescriptor`), má typ `LocalizedText`, tedy přesně ten, který dodává část 2:
+
+```ts
+/** Popisek v libovolném počtu jazyků. Klíč je jazykový tag, `en` je povinný jako záchytná hodnota. */
+type LocalizedText = Record<string, string> & { en: string };
+```
+
+Pořadí výběru: jazyk uživatele → základní jazyk bez oblasti (`pt-BR` → `pt`) → `en`. Klíč `en` je povinný v typu právě proto, aby poslední krok nemohl selhat.
+
+#### 3.1.10 Podmíněné zobrazení bloku
+
+**Podmínka je vlastnost bloku, ne text v šabloně. ROZHODNUTO 2026-07-31 (zadavatel).**
+
+Do tohoto rozhodnutí měl model díru, na kterou nezávisle upozornily všechny tři optiky revize: editor sliboval podmínky jako obálky bloků (3.7.5), validátor pro ně měl limity a kontrakt s nimi počítal, ale **v blokovém modelu neexistoval uzel ani vlastnost, kam podmínku zapsat**. Napsat ji šlo jedině do syrového bloku `html`. A protože jsou zakázané řetězcové literály (3.3.5), blokované operátory porovnání a `blank` a `empty` neexistují v Go knihovně (3.7.2a), **neexistoval žádný platný způsob, jak zapsat podmínku „pole není prázdné"**, přestože validátor uživateli nabízel opravu jedním kliknutím, která přesně takovou konstrukci vyráběla.
+
+**Tvar vlastnosti**
+
+```ts
+type VisibilityCondition = {
+  field: string;                                  // cesta z katalogu polí, například "contact.city"
+  op: "present" | "blank" | "true" | "false";
+};
+
+// nepovinná vlastnost bloku
+visibleWhen?: VisibilityCondition;
+```
+
+Uživatel v panelu vlastností vybere pole ze seznamu (tentýž seznam, ze kterého se vkládají merge tagy) a operátor ze zavřeného seznamu. **Žádný Liquid nepíše a žádný nevidí.** Popisek v editoru zní „Zobrazit, jen když je Město vyplněné".
+
+| `op` | Význam | Použitelné na typ pole |
+|---|---|---|
+| `present` | pole je vyplněné | `string`, `list`, `date`, `datetime`, `number` |
+| `blank` | pole je prázdné | totéž |
+| `true` | boolean pole je pravdivé | `boolean` |
+| `false` | boolean pole není pravdivé | `boolean` |
+
+Operátor mimo typ pole je chyba `content_condition_operator_invalid`. Rovnost s hodnotou (`equals` nad výčtem) v MVP 0 **není**, protože by potřebovala druhou pomocnou mapu; je to připravené rozšíření pro MVP 1 a přidání hodnoty do výčtu `op` nezvyšuje `schemaVersion`.
+
+**Kde smí `visibleWhen` být**
+
+| Blok | Smí? | Proč |
+|---|---|---|
+| `section` | ano | Skrytí celého řádku obsahu je bezpečné. |
+| Obsahové bloky (`heading`, `text`, `image`, `button`, `divider`, `spacer`, `html`, `social`) | ano | |
+| `columns`, `column` | **ne** | Skrytí sloupce rozbije šířkový výpočet v Outlooku, ze stejného důvodu, z jakého `column` nemá `hideOnMobile` (3.2.3). Kdo potřebuje podmíněný sloupec, dá podmínku na obsah uvnitř. |
+| `footer` | **ne** | Patička nese právní minimum a nesmí zmizet nikomu (pravidlo S14). |
+| `repeat` | ano, od MVP 1 | |
+
+Z téhle tabulky plyne, že na jedné cestě stromem mohou být nejvýše dvě podmínky (sekce plus obsahový blok), takže emitovaná vnořenost `{% if %}` je **strukturálně** pod kontraktním limitem 3, a to bez dalšího pravidla. S `repeat` v MVP 1 vyroste na tři, tedy přesně na limit; čtvrtá úroveň v modelu neexistuje.
+
+**Jak se pravdivost počítá: mimo Liquid**
+
+Tohle je jádro rozhodnutí. Naivní `{% if contact.city %}` je **špatně**, protože podle normativní sémantiky kontraktu (část 1, 4.10.2, pravidlo 2) je prázdný řetězec pravdivý; blok by se zobrazil i lidem bez města. A obejít to zápisem `{% if contact.city != blank %}` nejde, protože `blank` v Go knihovně neexistuje (nález K4, 3.7.2a) a rovnost s `""` nejde napsat, protože řetězcový literál je zakázaný. Všechny tři cesty jsou slepé.
+
+Pravdivost se proto **nepočítá v Liquidu vůbec**:
+
+1. Kompilace zapíše každou použitou podmínku do `renderSchema.presence` jako cestu pole.
+2. Materializace publika (část 4a) a příprava dat pro náhled (3.7.2b) naplní kořen **`_present`**, mapu z klíče na boolean. Klíč vznikne z cesty pole záměnou tečky za dvě podtržítka: `contact.city` → `contact__city`, `contact.attr.mesto` → `contact__attr__mesto`.
+3. Hodnota je `true`, když pole není `nil`, není prázdný řetězec, není řetězec ze samých bílých znaků a není prázdné pole. Je to přesně sémantika, kterou kontrakt popisuje u literálu `blank`, jen spočítaná v aplikaci, kde ji obě strany mají shodnou.
+4. Renderer emituje podmínku nad touhle mapou:
+
+| `op` | Emitovaná konstrukce |
+|---|---|
+| `present` | `{% if _present.contact__city %}` … `{% endif %}` |
+| `blank` | `{% unless _present.contact__city %}` … `{% endunless %}` |
+| `true` | `{% if contact.attr.is_vip %}` … `{% endif %}` |
+| `false` | `{% unless contact.attr.is_vip %}` … `{% endunless %}` |
+
+Boolean pole pomocnou mapu nepotřebují: `false` a `nil` jsou jediné nepravdivé hodnoty a v tom se obě knihovny shodují normativně.
+
+**Čím se to vyplácí.** V emitované konstrukci není jediná uvozovka, jediný literál `blank` ani `empty` a jediný operátor porovnání. Není v ní tedy **nic ze zakázaných konstrukcí**, nález K4 se obchází úplně a past prázdného řetězce se zavírá tam, kde se dá zavřít: v datech, ne v šabloně. `_present.contact__attr__mesto` má navíc dva segmenty cesty, takže i u vlastního pole zůstává pod kontraktním limitem tří segmentů.
+
+**Co to vyžaduje jinde**
+
+- Kořen `_present` musí být v seznamu kořenů kontraktu (část 1, 4.10.2). Je to aditivní změna, vyžádaná v kapitole 10 jako R21.
+- Validátor autorské šablony `_present` **zakáže** stejně jako `_context` (`liquid_unknown_root`): je interní a vyrábí ho výhradně kompilace.
+- Materializace ho musí naplnit podle `renderSchema.presence`, jinak by chybějící klíč byl `nil`, tedy nepravda, a podmíněný blok by zmizel všem. Požadavek R22.
+- Náhled ho plní toutéž funkcí `prepareRenderData` (3.7.2b), takže se náhled a odeslání nemohou rozejít.
+
+**Chybové kódy**
+
+| Kód | cs | en |
+|---|---|---|
+| `content_condition_field_unknown` | Pole `{path}` v podmínce zobrazení neexistuje. | The field `{path}` used in the visibility condition does not exist. |
+| `content_condition_operator_invalid` | Podmínku `{op}` nejde použít na pole typu `{type}`. | The `{op}` condition cannot be used on a `{type}` field. |
+| `content_condition_on_unsubscribe` | Patičku ani odkaz na odhlášení nejde podmínit. Musí je dostat každý příjemce. | The footer and the unsubscribe link cannot be made conditional. Every recipient must receive them. |
+| `content_nested_repeat` | Cyklus uvnitř cyklu není podporovaný. | Nested loops are not supported. |
 
 ### 3.2 Katalog bloků
 
@@ -706,6 +908,9 @@ Společné vlastnosti všech bloků kromě `section`, `columns` a `column`:
 | `padding` | `Padding` | `{top:0,right:24,bottom:16,left:24}` | 0 až 100 px každá strana |
 | `backgroundColor` | `ColorRef \| null` | `null` (průhledné) | |
 | `hideOnMobile` | `boolean` | `false` | Realizováno media query, v Outlooku neúčinné (3.4.3) |
+| `visibleWhen` | `VisibilityCondition \| null` | `null` (zobrazí se vždy) | Podmíněné zobrazení podle hodnoty pole, viz 3.1.10. Zadává se v panelu vlastností výběrem pole a operátoru, nikdy psaním Liquidu. U bloku `footer` je zakázané (pravidlo S14). |
+
+`visibleWhen` má i blok `section` (3.2.1), přestože ostatní společné vlastnosti nemá. Nemají ho `columns` ani `column`, viz tabulka v 3.1.10.
 
 #### 3.2.1 `section`
 
@@ -720,6 +925,7 @@ Společné vlastnosti všech bloků kromě `section`, `columns` a `column`:
 | `padding` | `Padding` | `{24,24,24,24}` | |
 | `fullWidth` | `boolean` | `false` | Když `true`, obsah není omezený na `contentWidth` |
 | `roundedTop` / `roundedBottom` | `boolean` | `false` | V Outlooku se ignoruje, hrany zůstanou ostré |
+| `visibleWhen` | `VisibilityCondition \| null` | `null` | Podmíněné zobrazení celé sekce, viz 3.1.10 |
 
 #### 3.2.2 `columns`
 
@@ -839,7 +1045,8 @@ Renderuje se jako `<div style="height:Npx;line-height:Npx;font-size:0">&nbsp;</d
 - Obsah se **sanitizuje** přes `sanitize-html` (2.17.6, MIT) s allowlistem tagů a atributů (3.6.6), ne blocklistem.
 - Zakázané tagy: `script`, `iframe`, `object`, `embed`, `form`, `input`, `button`, `link`, `meta`, `base`, `svg`, `math`. Zakázané atributy: všechny `on*`, `srcdoc`, `formaction`.
 - Blok se **nezapočítává** do dark mode ani responzivní strategie. Uživatel si ho musí ošetřit sám a UI to říká.
-- Liquid uvnitř `code` **je povolen** a prochází stejným validátorem. Automatické escapování v HTML kontextu podle kontraktu části 1 (4.10.2) platí i tady a **nejde vypnout**. Vložit přes merge tag kus HTML tedy nelze nikde, ani v tomto bloku. Kdo potřebuje podmíněné HTML, napíše ho do `code` a obalí `{% if %}`.
+- Liquid uvnitř `code` **je povolen** a prochází stejným validátorem. Automatické escapování v HTML kontextu podle kontraktu části 1 (4.10.2) platí i tady a **nejde vypnout**. Vložit přes merge tag kus HTML tedy nelze nikde, ani v tomto bloku.
+- **Podmíněné HTML se dělá vlastností bloku `visibleWhen` (3.1.10), ne psaním `{% if %}` do `code`.** Ručně napsaná podmínka projde validátorem jen nad boolean polem; podmínka „pole není prázdné" v ní zapsat nejde, protože řetězcový literál je zakázaný, `blank` neexistuje v Go knihovně a operátory porovnání jsou blokované (3.7.2a). Editor to u bloku říká přímo, aby to uživatel nezjišťoval pokusem.
 - Editor a viewer role smí blok `html` editovat jen s oprávněním `templates:write_html` (požadavek na část 1).
 
 #### 3.2.11 `social`
@@ -854,11 +1061,14 @@ Renderuje se jako `<div style="height:Npx;line-height:Npx;font-size:0">&nbsp;</d
 
 ```ts
 type SocialItem = {
-  network: "facebook"|"instagram"|"x"|"linkedin"|"youtube"|"tiktok"|"threads"|"pinterest"|"web"|"email";
+  network: "facebook"|"instagram"|"x"|"linkedin"|"youtube"|"tiktok"|"threads"
+         | "pinterest"|"bluesky"|"mastodon"|"web"|"email";
   href: string;
   label?: string;      // pro čtečky a plain text, default = název sítě
 };
 ```
+
+**Výčet sítí je aditivně rozšiřitelný bez zvýšení `schemaVersion`.** Plyne to z tabulky v 3.1.7 („přidání hodnoty do výčtu: ne") a píšu to sem výslovně, protože sociální sítě se mění rychleji než tenhle dokument: `bluesky` a `mastodon` jsou doplněné 2026-07-31 a stejným způsobem přibude cokoliv dalšího. Cena přidání je jedna hodnota ve výčtu, jedna hodnota v JSON Schema a tři soubory PNG (`color`, `mono_dark`, `mono_light`). Dokument, který nese neznámou síť, se **uloží beze ztráty** a renderer takovou položku vynechá s varováním `social_network_unknown`, aby starší instalace nespadla na novějším dokumentu.
 
 Ikony jsou **PNG dodané v produktu** (`packages/emails/assets/social/<network>-<style>@2x.png`), nikoliv SVG a nikoliv externí. SVG v e-mailu nefunguje prakticky nikde a externí ikona z cizí CDN je závislost, kterou nemáme pod kontrolou. Ikony se servírují ze stejného endpointu jako assety projektu, aby se nemíchaly domény.
 
@@ -868,7 +1078,7 @@ Blok, který zajišťuje právní minimum. Existuje samostatně, aby validátor 
 
 | Vlastnost | Typ | Výchozí | Meze |
 |---|---|---|---|
-| `senderInfo` | `RichText` | text z `workspaces.settings.sender_address` | Max 500 znaků |
+| `senderInfo` | `RichText` | jediný uzel `{ t: "var", expr: "workspace.sender_address" }` | Max 500 znaků. Merge tag, ne konstanta, viz níž |
 | `showUnsubscribe` | `boolean` | `true` | Když `false`, validátor vyžaduje `unsubscribe_url` jinde |
 | `unsubscribeLabel` | `string` | `"Odhlásit se z odběru"` / `"Unsubscribe"` | Max 60 znaků |
 | `showPreferences` | `boolean` | `true` | Odkaz na `{{ preferences_url }}` |
@@ -879,6 +1089,10 @@ Blok, který zajišťuje právní minimum. Existuje samostatně, aby validátor 
 | `color` | `ColorRef` | `"text.muted"` | |
 
 `showUnsubscribe` nejde v UI vypnout u šablon `kind = campaign`. Přepínač je v datovém modelu jen kvůli transakčním šablonám.
+
+**Poštovní adresa odesílatele se čte z dat zprávy, ne zapéká při kompilaci** (opraveno 2026-07-31 po ověření části 1). Kořen `workspace.sender_address` **v kontraktu je** (část 1, 4.10.2, jmenný prostor proměnných) a část 1 u něj sama píše, proč: bez něj by se adresa vkládala jako konstanta a po přestěhování firmy by byly všechny uložené šablony špatně. Výchozí `senderInfo` je proto merge tag, který sender interpoluje u každé zprávy z aktuálního nastavení projektu. Uživatel ho může přepsat vlastním textem, ale výchozí stav je ten správný a UI u něj vysvětluje, že se adresa aktualizuje sama.
+
+Blok `footer` proto **nemá `visibleWhen`** (pravidlo S14) a `senderInfo` nesmí být prázdné u `kind = campaign`.
 
 ### 3.3 Editor: co použijeme a proč
 
@@ -1046,6 +1260,34 @@ Sahá to na **zmrazený kontrakt Liquid subsetu**, závazné znění je v část
 | Kompilace | jediné místo, které smí argument filtru vyrobit; hodnota pochází výhradně z atributu bloku a validuje se proti témuž whitelistu formátů |
 | Descriptory panelu vlastností | doplnit `PropDescriptor` pro obě hodnoty (viz 3.3.3), aby se panel dál generoval a nepsal ručně |
 
+#### 3.3.5a Jak kompilace pozná, který argument patří kterému výskytu: sloty
+
+Dosavadní znění říkalo „kompilace argument doplní po renderu" a nechávalo otevřené, **jak** se výskyt v hotovém HTML řetězci spáruje s atributem bloku. To není detail: naivní záměna podle výrazu tichým způsobem selže hned ve třech běžných situacích a výsledek je pokaždé syntakticky platný, takže ho nechytí ani invariant I1, ani validátor.
+
+| Situace | Co udělá naivní záměna |
+|---|---|
+| Dva bloky mají `{{ contact.first_name \| default }}` s různou náhradní hodnotou (`kolego` a `zákazníku`) | Do obou vloží tutéž hodnotu, tu první nalezenou. |
+| Tlačítko emituje popisek **dvakrát**, jednou ve VML variantě a jednou v tabulkové (3.4.2) | Buď opraví jen první výskyt, nebo počítá výskyty a rozejde se s počtem atributů. |
+| Blok je uvnitř podmínky (3.1.10) a druhý blok se stejným výrazem není | Pořadí výskytů ve výstupu neodpovídá pořadí bloků v dokumentu. |
+
+**Řešení: jednoznačný slot ve výstupu uzlu.** Slot je dočasná značka, kterou emituje renderer a která se při vkládání nahradí, takže se páruje podle identity, ne podle podobnosti textu.
+
+1. **Normalizace přidělí sloty.** Průchod stromem shora dolů očísluje každý uzel `var`, který nese `fallback` nebo `dateFormat`, v pořadí prvního výskytu v dokumentu. Vznikne tabulka slotů `slot → { blockId, filter: "default" | "date", value }`. Slot je vlastnost **uzlu dokumentu**, ne výskytu ve výstupu.
+2. **Renderer emituje značku místo argumentu.** Uzel se slotem 7 se vykreslí jako `{{ contact.first_name | default:ML_ARG_0007 }}`. Značka je `ML_ARG_` plus čtyři číslice, tedy jen znaky, které **žádný React renderer neescapuje** (escapují se `&`, `<`, `>`, `"`, `'`, nic z toho ve značce není). Do výstupu se tak dostane bajtově tak, jak byla emitovaná.
+3. **Kompilace nahradí slot hodnotou.** Jeden lineární průchod přes `html` i `text` hledá prefix `ML_ARG_`, přečte čtyři číslice, dohledá slot v tabulce a vloží `"<hodnota>"` včetně uvozovek. Hodnota se předtím validuje: formát `date` proti whitelistu pěti formátů (`liquid_date_format_not_allowed`), náhradní hodnota `default` proti zákazu znaků `"`, `'`, `{`, `}`, `<`, `>` (`liquid_default_value_invalid`).
+
+**Čím to řeší všechny tři situace naráz.** Dva bloky se stejným výrazem mají různé sloty, protože slot je přidělený uzlu, ne výrazu. Tlačítko se svým VML dvojčetem vykreslí **týž** uzel dvakrát, takže obě místa nesou **týž** slot a jedna tabulková záměna je opraví shodně, přesně jako u značky odkazu (4.1.2). Podmíněný blok pořadí nerozhodí, protože se nepočítají výskyty, ale čtou se čísla.
+
+**Invarianty, které to hlídají** (běží spolu s ostatními v 3.4.6):
+
+| # | Invariant | Kód |
+|---|---|---|
+| I9 | Ve výstupu po vložení nezůstal žádný výskyt `ML_ARG_`. | `render_filter_slot_unresolved` |
+| I10 | Každý slot z tabulky se ve výstupu vyskytl aspoň jednou, s výjimkou uzlů uvnitř bloku s `visibleWhen`, kde se sloty nekontrolují. | `render_filter_slot_missing` |
+| I11 | Vložená hodnota prošla validací proti témuž whitelistu, jaký hlídá validátor u atributu bloku. | `render_filter_slot_invalid_value` |
+
+`ML_ARG_` je **vyhrazený řetězec** stejně jako `mlain.invalid` a `ML_OPEN_PIXEL`: validátor ho odmítne v jakémkoliv uživatelském textu, v `href` i uvnitř bloku `html`, kódem `content_reserved_marker` (4.1.5). Bez toho by uživatel mohl do textu napsat `ML_ARG_0007` a odklonit si cizí náhradní hodnotu.
+
 ### 3.4 Renderer fáze 1: dokument na HTML a text
 
 Odpověď na kontrolní otázku 3.
@@ -1054,10 +1296,11 @@ Odpověď na kontrolní otázku 3.
 
 ```
 Document
-  → normalizace (doplnění výchozích hodnot, rozklad ColorRef na hex, výpočet šířek sloupců)
+  → normalizace (doplnění výchozích hodnot z tabulky v 3.1.4, rozklad ColorRef na hex,
+                 výpočet šířek sloupců, přidělení slotů argumentům filtrů)
   → mapování blok → React komponenta z @react-email/components
   → render (@react-email/render): HTML včetně <head>, preheaderu a MSO konstrukcí
-  → doplnění argumentů filtrů default a date z atributů bloku (AŽ TADY, viz 3.3.5)
+  → nahrazení slotů ML_ARG_nnnn hodnotami z atributů bloku (AŽ TADY, viz 3.3.5 a 3.3.5a)
   → kontrola invariantů
   → { html, text, meta }
 ```
@@ -1119,6 +1362,18 @@ Strategie: **fluidní tabulka plus media query**, ne "mobile first".
 }
 ```
 
+**Konkrétní čísla v ukázce jsou výchozí hodnoty, ne norma.** Norma je pravidlo, jak se odvozují z motivu, protože motiv dovoluje měnit základní velikost písma i řádkování a natvrdo napsaných 26 px by u `baseFontSize = 20` vyrobilo nadpis menší než okolní text:
+
+| Pravidlo | Vzorec | Výchozí hodnota (`baseFontSize = 16`, `headingScale = 1.25`) |
+|---|---|---|
+| Bod zlomu | `theme.contentWidth` | `600px`, u `contentWidth: 640` je to `640px` |
+| Mobilní odsazení `.ml-pad` | `min(24, max(12, round(baseFontSize)))` | `16px` |
+| `.ml-h1` velikost | `round(desktopová velikost × 0,84)`, nejméně `baseFontSize + 4` | `26px` |
+| `.ml-h1` řádkování | `max(1,15, baseLineHeight − 0,3)` | `1.2` |
+| `.ml-h2`, `.ml-h3` | totéž pravidlo nad jejich desktopovou velikostí | `21px`, `18px` |
+
+Golden snapshoty (3.6.4, vrstva 1) hlídají **výstup pro konkrétní motiv**, takže výchozí hodnoty jsou v nich zafixované jako každé jiné číslo. Sada fixtur proto musí obsahovat aspoň jeden dokument s nevýchozím `baseFontSize`, jinak by se pravidlo dalo porušit natvrdo napsanou konstantou a testy by zůstaly zelené.
+
 4. **Sloupce se pro mobilní skládání renderují jako `<td>` s `class="ml-col"` uvnitř tabulky, u které je v podmíněném komentáři pro Outlook zachovaná tabulková struktura.** Konkrétně vzor "ghost tables": mimo Outlook je jedna tabulka se dvěma `<td class="ml-col">`, uvnitř `<!--[if mso]>` je tabulka s pevnými šířkami. Outlook media query ignoruje, ale ghost table mu dá správné šířky bez ohledu na to.
 5. `hideOnMobile` v Outlooku nefunguje a UI to říká. V Gmailu na Androidu funguje, v Gmailu na webu také.
 
@@ -1156,6 +1411,18 @@ Emitované značky:
   [data-ogsb] .ml-content { background-color: #111827 !important; }
 </style>
 ```
+
+**Hexy v ukázce jsou výchozí tmavá paleta, ne norma.** Každá hodnota se bere z `theme.darkMode.colors[<role>]`, a když ji motiv neurčí, z tabulky výchozích hodnot v 3.1.4 (sloupec „Výchozí v tmavém režimu"). Mapování tříd na role je pevné a to je ta normativní část:
+
+| Třída | Role motivu |
+|---|---|
+| `.ml-canvas` | `surface.canvas` |
+| `.ml-content` | `surface.content` |
+| `.ml-text` | `text.default` |
+| `.ml-muted` | `text.muted` |
+| `.ml-link` | `link.default` |
+
+Vlastní tmavá paleta je funkce, kterou motiv slibuje (`darkMode.colors` je částečná mapa od začátku), takže natvrdo napsané `#0b0f19` by ten slib rušilo. Golden snapshoty zafixují výchozí hodnoty a stejně jako u media query musí sada obsahovat aspoň jeden dokument s vlastní tmavou paletou.
 
 Přepínání variant loga (skupina A) se dělá vzorem "skrytý blok s nulovou výškou":
 
@@ -1206,8 +1473,13 @@ Renderer si po vygenerování HTML sám zkontroluje pravidla a při porušení *
 | I6 | Výstup neobsahuje `<script`, `javascript:`, `onerror=`, `onload=`. | `render_forbidden_content` |
 | I7 | Každý `<img>` má `src`, `width`, `height` a `alt` (i prázdný). | `render_image_incomplete` |
 | I8 | Velikost výstupu je pod `102400` bajtů, jinak varování v `meta.warnings`. | `render_too_large` |
+| I9 | Ve výstupu nezůstal žádný výskyt `ML_ARG_` (3.3.5a). | `render_filter_slot_unresolved` |
+| I10 | Každý přidělený slot argumentu filtru se ve výstupu vyskytl aspoň jednou. | `render_filter_slot_missing` |
+| I11 | Vložená hodnota argumentu filtru prošla whitelistem. | `render_filter_slot_invalid_value` |
 
 Invariant I1 je ten nejdůležitější. Přesně on by zachytil chybu, kterou jsem ukázal u EmailBuilder.js v 3.3.1, a to při každém renderu, ne až u zákazníka.
+
+**I8 je jediná nefatální výjimka a je to vědomé.** Úvod téhle sekce říká, že renderer při porušení invariantu selže, a u I1 až I7 a I9 až I11 to platí bez výjimky: každý z nich znamená, že je výstup vadný a odeslat se nesmí. I8 je jiného druhu, protože **velikost HTML není vada výstupu, ale vlastnost obsahu**, kterou napsal uživatel, a hranice 102 kB navíc není ostrá (je to komunitní pozorování Gmailu, ne publikovaný limit, viz 3.6.2). Selhat na ní by znamenalo, že si uživatel nemůže vygenerovat ani náhled dokumentu, který chce zkrátit. Blokující je proto až předodesílací kontrola (`precheck_html_too_large`, 3.11.4), kde se to dá říct člověku a kde má co dělat. Jiná nefatální výjimka v tabulce není a přidání další je změna, kterou musí někdo obhájit.
 
 #### 3.4.7 `CompileMeta`
 
@@ -1243,7 +1515,7 @@ Pravidla, blok po bloku:
 | `spacer` | Jeden prázdný řádek bez ohledu na výšku |
 | `columns` | Sloupce **pod sebou** v pořadí, mezi nimi prázdný řádek. Sloupcová sazba v prostém textu nefunguje. |
 | `social` | `<název sítě>:` a značka na dalším řádku, pro každou položku |
-| `footer` | Adresa odesílatele, prázdný řádek, `Odhlásit se z odběru: {{ unsubscribe_url }}`, `Zobrazit v prohlížeči: {{ webview_url }}` |
+| `footer` | `{{ workspace.sender_address }}` jako merge tag (ne zapečený text), prázdný řádek, `Odhlásit se z odběru: {{ unsubscribe_url }}`, `Zobrazit v prohlížeči: {{ webview_url }}` |
 | `html` | Převede se přes `html-to-text` (10.0.0, MIT) s vypnutými odkazovými referencemi. Je to jediné místo, kde se převádí z HTML, protože jiná informace tam není. |
 
 Další pravidla:
@@ -1419,12 +1691,18 @@ Shrnutí, ne redefinice. Zdroj pravdy je 4.10.2 v části 1.
 | Literály | číslo, `true`, `false`, `nil`, `blank`, `empty`. **Řetězcový literál je zakázaný**, `"..."` ani `'...'` v šabloně být nesmí | Editor uvozovku do šablony nikdy nevloží a validátor ji odmítne. Důvod: React renderer ji escapuje na `&quot;` a Liquid přestane být platný (3.3.5, závazně část 1 kapitola 4.10.2) |
 | `>`, `<`, `>=`, `<=` v podmínce | escapují se rendererem stejně jako uvozovka, viz otevřená podotázka v části 1, 4.10.2 | Editor je v nabídce operátorů **neukazuje**; do rozhodnutí jsou blokující chyba |
 | Závorky v podmínkách | zakázané, ale uživatel je zkusí | Vlastní hláška, ne obecná syntaktická chyba |
+| Podmínky `{% if %}` a `{% unless %}` | povolené | **Uživatel je nepíše.** Vyrábí je kompilace z vlastnosti bloku `visibleWhen` (3.1.10), nad pomocnou mapou `_present`. Editor nabízí výběr pole a operátoru, ne syntaxi. |
 | Vnořený `for` | zakázaný | Editor vnořený cyklus nenabídne |
+| `for` v MVP 0 | povolený kontraktem, **nevydávaný produktem** | Uzel `repeat` je v gramatice dokumentu (3.1.2), editor ho nenabízí a renderer ho neemituje. Zapnutí v MVP 1 nezvyšuje `schemaVersion`. |
 | `for` s `limit`, `offset`, `reversed`, `forloop.*` | zakázané | |
 | Whitespace control `{{-`, `-}}` | zakázaný | |
 | Limity | if/unless hloubka 3, cyklů 5, iterací 200, segmentů cesty 3, šablona 512 kB, 500 výstupů, render 50 ms | Editor počítá výstupy průběžně a nad 450 varuje |
 
-**Past prázdného řetězce a jak ji kontrakt řeší.** Falešné jsou jen `false` a `nil`, takže `{% if contact.first_name %}` je pravda i pro prázdné jméno. Kontrakt naštěstí povoluje literál `blank`, takže správný zápis je `{% if contact.first_name != blank %}`. Validátor proto vydá **varování** `liquid_truthy_string_warning`, kdykoliv je jediným operandem podmínky cesta na textové pole, a nabídne přesně tuhle opravu jedním kliknutím. Ve svém dřívějším znění jsem navrhoval `!= ""`, což je horší, protože `blank` pokrývá i řetězec ze samých mezer.
+**Past prázdného řetězce a jak se řeší.** Falešné jsou jen `false` a `nil`, takže `{% if contact.first_name %}` je pravda i pro prázdné jméno a blok by se zobrazil i lidem bez vyplněné hodnoty.
+
+Kontrakt sice literál `blank` povoluje, ale **oprava `!= blank` se nenabízí a nabízet nesmí**, protože ji nejde zapsat: `blank` v Go knihovně neexistuje (nález K4, 3.7.2a), rovnost s `""` je zakázaná spolu s řetězcovými literály (3.3.5) a operátory `>` a `<` jsou blokované. Všechny tři cesty jsou slepé a validátor by uživateli jedním kliknutím vyrobil konstrukci, kterou sám odmítne.
+
+Správná odpověď je **vlastnost bloku, ne text v šabloně**: `visibleWhen: { field: "contact.first_name", op: "present" }` podle 3.1.10. Pravdivost se počítá mimo Liquid, nad pomocnou mapou `_present`, takže v šabloně nevznikne ani uvozovka, ani `blank`, ani operátor porovnání. Varování `liquid_truthy_string_warning` proto zůstává, ale jeho `suggestion` **není náhradní text**, nýbrž akce „Nastavit podmínku v panelu vlastností", která otevře panel na příslušném bloku s předvyplněným polem a operátorem `present`.
 
 #### 3.7.2a Tři odchylky od kontraktu, které si vynutila implementace v Go
 
@@ -1436,9 +1714,18 @@ Křížová revize části 4b (`revize/03-recenze-02-a-04b.md`) našla tři mís
 | Filtr `safe` | neexistuje | `SetAutoEscapeReplacer` ho v Go registruje automaticky a nejde odregistrovat, takže by obešel escapování | odmítá ho jako každý filtr mimo pětici; navíc ho zachytí invariant I1 nad hotovým HTML |
 | `upcase` nad `ß` | simple mapping | Go `strings.ToUpper("ß")` vrací `ß`, JavaScript `toUpperCase()` vrací `SS` | implementace filtru v TypeScriptu **nesmí** být prosté `toUpperCase()`, musí to být simple mapping s výjimkou pro `ß`, `ﬁ`, `ŉ`, `ǰ` a `ΐ` |
 
-První řádek je jediný, který vyžaduje změnu zmrazeného kontraktu. Doporučoval jsem `blank` a `empty` z gramatiky vyřadit a nic nepřidávat: `!= ""` funguje v obou knihovnách a řetězec ze samých mezer se lépe řeší ořezáním při zápisu kontaktu (část 2) než šestým filtrem.
+První řádek byl jediný, který vypadal, že vyžaduje změnu zmrazeného kontraktu. Doporučoval jsem tehdy `blank` a `empty` z gramatiky vyřadit a nic nepřidávat: `!= ""` funguje v obou knihovnách a řetězec ze samých mezer se lépe řeší ořezáním při zápisu kontaktu (část 2) než šestým filtrem. **Tenhle odstavec je historie, ne platný návrh**, jak vysvětlují dva rámečky pod ním.
 
-> **Tohle náhradní řešení přestalo platit rozhodnutím z 2026-07-31.** Řetězcové literály jsou z autorské šablony vyřazené (3.3.5), takže `!= ""` už nejde zapsat a hláška validátoru ho nesmí navrhovat. Nález sám nezaniká, jen se nedá obejít takhle. **K rozhodnutí spolu s otevřenou podotázkou o operátorech `>` a `<`** v části 1, kapitola 4.10.2. Do rozhodnutí platí, že validátor `blank` a `empty` **odmítá** a past prázdného řetězce se v editoru řeší nabídkou "zobrazit, jen když je pole vyplněné" jako vlastností bloku, ne psaním podmínky.
+> **Tohle náhradní řešení přestalo platit rozhodnutím z 2026-07-31.** Řetězcové literály jsou z autorské šablony vyřazené (3.3.5), takže `!= ""` už nejde zapsat a hláška validátoru ho nesmí navrhovat. Nález sám nezaniká, jen se nedá obejít takhle.
+
+**Nález K4 je od 2026-07-31 obejitý, ne jen odložený.** Rozhodnutím zadavatele se podmínka stala **vlastností bloku** a pravdivost se počítá **mimo Liquid**, nad pomocnou mapou `_present`, kterou naplní materializace (3.1.10). Emitovaná konstrukce je `{% if _present.contact__city %}`, tedy podmínka nad boolean hodnotou, ve které není uvozovka, není `blank`, není `empty` a není operátor porovnání. Z toho plyne:
+
+| Věc | Stav po rozhodnutí |
+|---|---|
+| `blank` a `empty` v autorské šabloně | validátor je dál **odmítá** ("zatím nepodporováno"), ale už to nikoho neblokuje, protože je nikdo nepotřebuje |
+| Podmínka „pole není prázdné" | `visibleWhen` s operátorem `present`, žádný text v šabloně |
+| Otevřená podotázka o `>` a `<` v části 1 | **nezaniká**, ale přestává být blokující pro tuhle část: číselné porovnání je připravené rozšíření výčtu `op` v MVP 1, řešené stejným mechanismem (hodnota se spočítá v aplikaci, ne v šabloně) |
+| Návrh vyřadit `blank` a `empty` z kontraktu | **stažen**. Kontrakt je zmrazený a měnit ho kvůli konstrukcím, které produkt nevydává, je horší než je nechat být. |
 
 #### 3.7.2b Data pro náhled se musí připravit stejně jako pro odeslání
 
@@ -1453,6 +1740,7 @@ function prepareRenderData(raw: RenderData, schema: RenderSchema): RenderData;
 | Pole se zkrátí na **prvních 200 prvků** | Kontraktní limit iterací. Ani jedna knihovna neumí přerušit `for` uprostřed, takže se ořezává vstup. Kdyby to náhled nedělal, kontakt s 250 položkami by se v editoru zobrazil celý a odeslal zkrácený. |
 | Čísla nad 2^53 se serializují jako **řetězec** | Go `encoding/json` mapuje čísla na `float64` a variabilní symbol nebo číslo faktury by ztratily přesnost jinak než v prohlížeči. |
 | `_context.timezone` a `_context.locale` se doplní vždy | Filtr `date` je bez zóny nedeterministický. |
+| `_present` se naplní pro každou cestu z `renderSchema.presence` | Pravdivostní hodnoty podmíněných bloků (3.1.10). Kdyby je doplňoval jen sender, náhled by podmíněné bloky vyhodnotil jinak než odeslání, což je přesně ten rozchod, kterému celá tahle funkce brání. Chybějící klíč je `nil`, tedy nepravda, takže by podmíněný blok zmizel všem. |
 
 #### 3.7.3 Rozhraní validátoru
 
@@ -1465,7 +1753,11 @@ type LiquidIssue = {
   span: SourceSpan;
   pointer?: string;             // "/blocks/3/children/1/props/content/0/children/2"
   params?: Record<string, string | number>;
-  suggestion?: { replace_with: string; label: string };
+  suggestion?:
+    | { kind: "replace"; replace_with: string; label: string }
+    // Akce v UI místo náhradního textu. Používá ji liquid_truthy_string_warning,
+    // protože správná oprava je vlastnost bloku, ne jiný text v šabloně (3.1.10).
+    | { kind: "set_visibility"; block_id: string; field: string; op: "present" | "blank"; label: string };
 };
 
 type LiquidValidationResult =
@@ -1478,7 +1770,7 @@ function validateDocument(doc: Document, ctx: LiquidContext): LiquidIssue[];
 type LiquidContext = {
   fields: FieldCatalog;                 // z části 2, viz 3.8
   roots: string[];                      // povolené kořeny z kontraktu, viz 3.8.1
-  template_kind: "campaign" | "transactional" | "system" | "snippet";
+  template_kind: "campaign" | "transactional" | "system";
 };
 ```
 
@@ -1515,16 +1807,18 @@ Kódy odpovídají konvenci části 1 (`<doména>_<problém>`) a registrují se 
 | `liquid_template_too_large` | Šablona je větší než 512 kB. | The template is larger than 512 kB. |
 | `liquid_identifier_case` | Názvy polí se píšou malými písmeny. Nejspíš chcete `{suggestion}`. | Field names are lowercase. You probably want `{suggestion}`. |
 | `liquid_escape_not_needed` (info) | Filtr `escape` není potřeba, hodnoty se v e-mailu escapují automaticky. | The `escape` filter is not needed, values are escaped automatically. |
-| `liquid_truthy_string_warning` (warning) | Podmínka je pravdivá i pro prázdnou hodnotu. Nejspíš chcete `{suggestion}`. | This condition is true even for an empty value. You probably want `{suggestion}`. |
+| `liquid_truthy_string_warning` (warning) | Podmínka je pravdivá i pro prázdnou hodnotu. Nastavte místo ní podmínku zobrazení v panelu vlastností bloku. | This condition is true even for an empty value. Set a visibility condition in the block properties panel instead. |
 | `liquid_type_mismatch_warning` (warning) | Porovnáváte text s číslem, výsledek bude vždy nepravdivý. | You are comparing text with a number, the result will always be false. |
 
 `liquid_vocative_filter` je zvláštní kód schválně: hlavní specifikace 6.3 filtr `| vocative` vědomě nezavádí a **výslovně požaduje**, aby validátor tenhle pokus zachytil s nápovědou na správný tag. Obecné `liquid_filter_not_allowed` by uživateli nepomohlo.
+
+> **Kolize kódu uvnitř zmrazeného kontraktu, rozhodnutá ve prospěch vlastního kódu.** Golden fixture `LQ-051` v části 1 (4.10.5) očekává pro tentýž vstup `{{ contact.first_name | vocative }}` kód **`liquid_filter_not_allowed`** s nápovědou obsahující `first_name_vocative`. Validátor vrací jeden kód, takže se buď rozbije fixture, nebo akceptační kritérium 25. Rozhoduju **ve prospěch `liquid_vocative_filter`**, protože katalog hlášek vlastní část 3, hlavní specifikace 6.3 vlastní kód výslovně chce a fixture je proti němu jen dobově zapsaná; nápověda `first_name_vocative` v obou zněních zůstává, mění se jen `code`. Opravu fixtury si vyžaduju v kapitole 10 jako R20 a do fixtury nesahám sám, protože ji vlastní část 1.
 
 #### 3.7.5 Chování editoru kolem personalizace
 
 - Merge tag je v dokumentu **vlastní uzel** `{ t: "var", expr }` (3.1.5), ne text se závorkami. Editor ho kreslí jako neodstranitelný žeton s tooltipem `liquid.tokenTooltip` a uživatel ho nemůže rozbít smazáním jedné závorky.
 - Vkládání je přes nabídku, ne psaním. Nabídka se plní z katalogu polí (3.8.2) a je hledatelná.
-- `{% if %}` a `{% for %}` se v editoru zobrazují jako **obálky bloků** s barevným rámečkem a popiskem "Zobrazí se, jen když…". Uživatel nikde nevidí syrovou syntaxi kromě bloku `html` a pole pro předmět.
+- **Podmínka je vlastnost bloku, ne text.** Blok s vyplněným `visibleWhen` (3.1.10) se v plátně kreslí s barevným rámečkem a popiskem „Zobrazí se, jen když je Město vyplněné". Uživatel podmínku nastavuje v panelu vlastností dvěma výběry (pole, operátor) a **syrovou syntaxi nevidí nikde** kromě bloku `html` a pole pro předmět. Cyklus (`repeat`) se v MVP 0 nenabízí vůbec.
 - Validace běží v prohlížeči nad stejným balíčkem `packages/contracts/src/liquid` jako na serveru. Server ji opakuje při uložení, protože klientovi se nevěří.
 
 #### 3.7.6 Golden fixtures
@@ -1536,7 +1830,11 @@ Co k tomu dodává část 3, protože to část 1 nemůže vědět:
 1. **Fixtura na každou hlášku validátoru.** Ke každému kódu z tabulky 3.7.4 existuje fixtura s `expect_validation_error`. Test `coverage` z části 1 (bod 5) tím pokryje i moje kódy, ne jen zakázané konstrukce z kontraktu.
 2. **Fixtura na český text.** `LQ-6xx` musí obsahovat `upcase` nad `ěščřžýáíéůúňťď` a nad `Ch`, protože české `ch` je jedno písmeno a naivní implementace ho rozdělí.
 3. **Fixtura na hotové oslovení.** `{{ contact.greeting }}` s hodnotami "Dobrý den, Jano", prázdnou hodnotou a hodnotou obsahující `&`, protože je to nejpoužívanější tag v produktu a projde jím každá kampaň.
-4. **Fixtura na patičku.** Celý textový obsah bloku `footer` jako jedna šablona, včetně `unsubscribe_url` a `webview_url`. Je to jediná část e-mailu, která je právně povinná.
+4. **Fixtura na patičku.** Celý textový obsah bloku `footer` jako jedna šablona, včetně `workspace.sender_address`, `unsubscribe_url` a `webview_url`. Je to jediná část e-mailu, která je právně povinná.
+5. **Fixtura na podmínku nad `_present`.** `{% if _present.contact__city %}…{% endif %}` s daty `{ "_present": { "contact__city": false } }` a `{ ... true }`, v obou knihovnách. Je to konstrukce, kterou od 2026-07-31 emituje každý podmíněný blok (3.1.10), a zároveň jediná, kde kompilace používá kořen mimo dosavadní kontrakt. Fixtura je závislá na R21.
+6. **Fixtura na vestavěné filtry.** Pro každý vestavěný název filtru LiquidJS render selže (3.11.1). Souvisí s R19.
+
+**Jedna existující fixtura si žádá opravu, a nesahám do ní sám.** `LQ-051` očekává pro `{{ contact.first_name | vocative }}` kód `liquid_filter_not_allowed`, katalog v 3.7.4 pro tentýž vstup vrací `liquid_vocative_filter`. Vyžádáno jako R20.
 
 #### 3.7.7 Chování za běhu, když šablona projde validací a přesto selže
 
@@ -1548,7 +1846,7 @@ Odpověď na kontrolní otázku 7. **Politiku vlastní část 1 (4.10.2, tabulka
 | Cyklus přes ne-pole, nebo přes 200 iterací | cyklus se neprovede nebo ukončí, `render_warning`, zpráva se odešle |
 | Syntaktická chyba za běhu | zpráva na `failed` s `render_failed`, kampaň **se nezastaví** |
 | Render nad 50 ms | zpráva na `failed` s `render_timeout` |
-| Podíl `failed` z důvodu renderu přes 5 % z prvních 1 000 zpráv | kampaň se automaticky pozastaví |
+| Podíl `failed` z důvodu renderu přes 5 % z prvních 1 000 zpráv | kampaň se automaticky pozastaví, `pause_reason.code = "render_failure_rate"` (registr části 1) |
 
 Odpověď na otázku "odeslat s prázdnou hodnotou, přeskočit příjemce, nebo zastavit kampaň" je tedy: **všechny tři, podle závažnosti.** Prázdná hodnota se odešle, chyba interpolace přeskočí příjemce, systematická chyba zastaví kampaň.
 
@@ -1572,16 +1870,19 @@ Kořeny, které smí šablona použít, **vlastní kontrakt v části 1, 4.10.2*
 | `webview_url` | url | sender | Zobrazení v prohlížeči |
 | `campaign.name`, `campaign.subject` | string | materializace do `render_data` | |
 | `workspace.name` | string | materializace do `render_data` | |
+| `workspace.sender_address` | string | materializace do `render_data` | Poštovní adresa odesílatele, může být víceřádková. Používá ji blok `footer` (3.2.12) |
 | `contact.*` | podle katalogu polí | materializace do `render_data` | Výčet vlastní část 2 |
 | `_context.timezone`, `_context.locale` | string | materializace | **Validátor je v šabloně zakáže**, jsou interní |
+| `_present.*` | boolean | materializace podle `renderSchema.presence` | Pravdivostní mapa podmíněných bloků (3.1.10). **Validátor ji v autorské šabloně zakáže**, vyrábí ji výhradně kompilace |
 
 **Co v kontraktu není a část 3 to potřebuje:**
 
 | Tag | Jak to řeším teď | Trvalé řešení |
 |---|---|---|
-| `workspace.sender_address` | Generátor základní šablony vloží adresu jako **konstantní text při kompilaci** | Doplnit do kontraktu, viz rozpor 11.4 |
+| ~~`workspace.sender_address`~~ | **VYŘEŠENO 2026-07-31.** Kořen v kontraktu **je** (část 1, 4.10.2) a patička ho čte jako merge tag z dat zprávy. Zapékání adresy jako konstanty při kompilaci je tímto zrušené, včetně toho, že před ním kontrakt sám varuje. | Hotovo, viz 3.2.12 a rozpor 11.4 |
 | `campaign.preheader` | Vyhodnotí se **při kompilaci** z pole kampaně | Nic, kompilace běží jednou na kampaň a hodnotu zná |
 | `current_year` | Vyhodnotí se **při kompilaci** | Nic |
+| `_present.*` | Kořen v kontraktu zatím **není** | Aditivní doplnění seznamu kořenů, vyžádané jako R21. Do jeho zanesení je to jediné místo, kde kompilace emituje kořen mimo kontrakt, a validátor senderu by ho odmítl. |
 | Trackovací pixel | Není merge tag. Renderer emituje komentář `<!--ML_OPEN_PIXEL-->`, sender ho nahradí (4.1) | Nic |
 
 Vyhodnocení při kompilaci znamená, že tyhle hodnoty v `compiled_html` nejsou jako `{{ ... }}`, ale už jako text. Sender o nich neví a kontrakt se kvůli nim nemusí rozšiřovat. Jediná cena je u `current_year`: kampaň naplánovaná na 1. ledna a zkompilovaná 31. prosince by měla loňský rok. Protože ale kompilace běží až v okamžiku spuštění odeslání (část 4), je to nanejvýš pár minut nepřesnosti.
@@ -1615,25 +1916,45 @@ Dva důsledky, které musí znát autor editoru:
 - `contact.attr.<key>` spotřebuje **celý limit tří segmentů cesty** z kontraktu. Vlastní pole proto nikdy nemůže mít vnořenou hodnotu. `{% for x in contact.attr.polozky %}` nad polem skalárů funguje, ale `{{ x.nazev }}` uvnitř už ne, protože iterovat pole objektů by vyžadovalo čtvrtý segment. Editor to musí říct dřív, než to uživatel zkusí.
 - Nabídka merge tagů odděluje systémová a vlastní pole do dvou skupin s nadpisem, jinak prefix `attr` působí jako překlep.
 
-Typy vlastních polí podle části 2: `text`, `long_text`, `number`, `boolean`, `date`, `datetime`, `enum`, `multi_enum`, `url`, `email`, `phone`. Pro editor z toho plynou dvě varování:
+Typy vlastních polí podle části 2 (`contact_fields.type`): `text`, `long_text`, `number`, `boolean`, `date`, `datetime`, `enum`, `multi_enum`, `url`, `email`, `phone`. Pro editor z toho plynou dvě varování:
 
 - **`long_text`**: odřádkování se v HTML e-mailu nezobrazí, protože se hodnota automaticky escapuje a subset nemá filtr `newline_to_br`. Editor u takového tagu zobrazí "Odřádkování se v e-mailu neprojeví".
 - **`url`**: nedá se použít jako cíl odkazu, viz pravidlo o Liquidu v `href` níže. Použitelný je jako viditelný text.
 
+**Katalog polí ale těch jedenáct typů nenese.** Část 2 je před předáním mapuje na šest kanonických typů, aby část 3 nemusela znát její typovou soustavu. Převodní tabulka je normativní a **musí ji shodně implementovat obě části**, jinak validátor odmítne pole, které existuje, nebo pustí operátor, který na typ nesedí (pravidlo S13):
+
+| `contact_fields.type` (část 2) | `FieldCatalogType` (co vidí část 3) | `itemType` | Použitelné operátory `visibleWhen` |
+|---|---|---|---|
+| `text`, `long_text`, `url`, `email`, `phone`, `enum` | `string` | | `present`, `blank` |
+| `number` | `number` | | `present`, `blank` |
+| `boolean` | `boolean` | | `true`, `false` |
+| `date` | `date` | | `present`, `blank` |
+| `datetime` | `datetime` | | `present`, `blank` |
+| `multi_enum` | `list` | `string` | `present`, `blank` |
+
+Ověřeno proti `02-kontakty.md`, sekce 4.2.2 a 4.2.3, k 2026-07-31. Dřívější znění téhle kapitoly deklarovalo sedm typů (`enum` a `array`), které katalog nikdy nedodával; `enum` přichází jako `string` a pole se jmenuje `list`, ne `array`.
+
 ```ts
+// Zdroj pravdy je packages/core/contacts/fields.ts (část 2). Tady je jen výtah,
+// aby šlo číst tenhle dokument samostatně.
+type FieldCatalogType = "string" | "number" | "boolean" | "date" | "datetime" | "list";
+
 type FieldCatalog = {
   fields: Array<{
-    path: string;                 // "contact.first_name" nebo "contact.city"
-    type: "string" | "number" | "boolean" | "date" | "datetime" | "enum" | "array";
-    label: { cs: string; en: string };
-    group: "identity" | "consent" | "activity" | "custom";
-    itemType?: "string" | "number";   // jen pro array, kvůli pravidlu L9
-    deleted: boolean;
+    path: string;                 // "first_name", "greeting", "attr.city" - BEZ prefixu contact.
+    type: FieldCatalogType;
+    label: LocalizedText;         // mapa jazyk → text, `en` povinné, viz 3.1.9
+    group: "identity" | "name" | "salutation" | "custom" | "meta";
+    itemType?: FieldCatalogType;  // jen u "list", kvůli cyklům a operátorům
+    deleted: boolean;             // archivované pole: šablona ho smí mít, UI ho nenabízí
   }>;
+  version: string;                // hash katalogu, klíč pro cache v části 3
 };
 ```
 
-Katalog dodává část 2 přes funkci `getFieldCatalog(workspaceId): Promise<FieldCatalog>` (požadavek R1). Část 3 ho **cachuje v paměti procesu na 60 sekund** klíčované `workspace_id` a verzí katalogu, protože validace běží při každém stisknutí klávesy v editoru.
+**Pozor na prefix, je to snadná záměna.** `FieldCatalogEntry.path` je **bez** `contact.` (`first_name`, `attr.city`), protože katalog vlastní část 2 a ta ho tak deklaruje. Merge tag vznikne přidáním prefixu (`contact.first_name`, `contact.attr.city`) a **s prefixem** se pracuje všude dál: v `renderSchema.fields[].path`, v `templates.used_fields`, ve `visibleWhen.field` i v `_present` klíčích. Převod je jednořádkový, ale musí být na jednom místě (`toMergePath` a `toCatalogPath` v `packages/contracts`), ne rozsypaný po validátoru.
+
+Katalog dodává část 2 přes funkci `getFieldCatalog(ctx): Promise<FieldCatalog>` (požadavek R1). Část 3 ho **cachuje v paměti procesu na 60 sekund** klíčované `workspace_id` a polem `version`, protože validace běží při každém stisknutí klávesy v editoru.
 
 #### 3.8.3 Extrakce merge tagů a `renderSchema`
 
@@ -1642,26 +1963,29 @@ Kompilátor prochází AST **vlastního** Liquid parseru (ne LiquidJS `analyzeSy
 ```ts
 type RenderSchema = {
   version: 1;
-  // usedPaths z CompileMeta je zploštěním fields[].path + systemTags.
-  // Obojí vrací jedno volání, aby se nemohly rozejít.
+  // usedPaths z CompileMeta je zploštěním fields[].path + systemTags + presence.
+  // Všechno vrací jedno volání, aby se to nemohlo rozejít.
   // Klíče, které musí část 4 naplnit do messages.render_data:
   fields: Array<{
-    path: string;                    // "contact.first_name"
-    type: FieldCatalog["fields"][number]["type"];
+    path: string;                    // "contact.first_name", VČETNĚ prefixu contact.
+    type: FieldCatalogType;
     required: boolean;               // false = smí být null, tehdy se renderuje prázdno
   }>;
   systemTags: string[];              // ["unsubscribe_url", "webview_url"]
+  presence: string[];                // cesty polí, pro které se plní _present, viz 3.1.10
   loops: Array<{ path: string; itemFields: string[] }>;  // pole a použité vlastnosti jeho prvků
 };
 ```
 
-Příklad. Šablona:
+Příklad. Dokument má textový blok s vlastností `visibleWhen: { field: "contact.city", op: "present" }`, jehož obsah zní `Jsme i ve městě {{ contact.city | upcase }}.` Zkompilovaná šablona:
 
 ```
 Dobrý den, {{ contact.greeting }}.
-{% if contact.city != "" %}Jsme i ve městě {{ contact.city | upcase }}.{% endif %}
+{% if _present.contact__city %}Jsme i ve městě {{ contact.city | upcase }}.{% endif %}
 {{ unsubscribe_url }}
 ```
+
+Dřívější znění mělo v tomhle příkladu `{% if contact.city != "" %}`, tedy konstrukci, kterou tentýž dokument zakazuje třemi způsoby naráz (řetězcový literál z 3.3.5, past prázdného řetězce z 3.7.2 a nemožnost `blank` z 3.7.2a). Opraveno 2026-07-31 spolu s rozhodnutím o podmínkách.
 
 `renderSchema`:
 
@@ -1673,11 +1997,23 @@ Dobrý den, {{ contact.greeting }}.
     { "path": "contact.city",     "type": "string", "required": false }
   ],
   "systemTags": ["unsubscribe_url"],
+  "presence": ["contact.city"],
   "loops": []
 }
 ```
 
-Část 4 z toho udělá `render_data = { "contact": { "greeting": "Dobrý den, Jano", "city": "Brno" } }`. Typicky 2 až 5 hodnot na příjemce, přesně jak předpokládá hlavní specifikace v kapitole 5.
+Část 4 z toho udělá:
+
+```json
+{
+  "contact":  { "greeting": "Dobrý den, Jano", "city": "Brno" },
+  "_present": { "contact__city": true }
+}
+```
+
+Pole `contact.city` je ve `fields` **i** v `presence`, protože se používá obojím způsobem: jako vypsaná hodnota a jako podmínka. Kdyby bylo použité jen v podmínce, bylo by jen v `presence` a jeho hodnota by se do `render_data` vůbec nedostala, což je vedlejší přínos: podmínka nad polem, které se nikde nevypisuje, nezvětšuje personalizační data o obsah pole, jen o jeden boolean.
+
+Typicky 2 až 5 hodnot na příjemce, přesně jak předpokládá hlavní specifikace v kapitole 5.
 
 **Datové a časové typy** (`date`, `datetime`) se do `render_data` ukládají jako RFC 3339 řetězec v UTC. Sender je podle `renderSchema` musí před vazbou převést na `time.Time` v zóně workspace, jinak filtr `date` v Go selže. Je to požadavek R4.
 
@@ -1691,14 +2027,11 @@ Odpověď na kontrolní otázku 8. Tři okamžiky, kdy se to může projevit, a 
 
 Po smazání pole se pustí job `content.revalidate_templates` s `workspace_id` a `field_path`. Ten projde šablony, které pole používají (dotaz přes GIN index nad `design`, viz níže), znovu je zvaliduje a nastaví `validation_state = 'invalid'` plus `validation_errors`. Šablony se **nemění**, jen se označí.
 
-```sql
--- Vyhledání šablon podle merge tagu. Bez indexu by to byl sekvenční průchod
--- s deserializací JSON u každé šablony.
-ALTER TABLE templates ADD COLUMN used_fields text[] NOT NULL DEFAULT '{}';
-CREATE INDEX templates_used_fields_gin ON templates USING gin (used_fields);
-```
+Sloupec `templates.used_fields` a index `idx_templates__used_fields` nad ním jsou součástí DDL v 2.1, ne pozdější migrace. Bez indexu by to byl sekvenční průchod s deserializací JSON u každé šablony.
 
-`used_fields` se plní při každém uložení šablony z `renderSchema.fields[].path`. Je to denormalizace, ale je levná a dělá z "kdo používá tohle pole" jeden indexovaný dotaz.
+`used_fields` se plní při každém uložení šablony ze **sjednocení** `renderSchema.fields[].path` a `renderSchema.presence`, aby pole použité jen v podmínce zobrazení nezmizelo z dopadové analýzy. Je to denormalizace, ale je levná a dělá z "kdo používá tohle pole" jeden indexovaný dotaz.
+
+Index se dřív jmenoval `templates_used_fields_gin`, což byl jediný index v celém dokumentu mimo konvenci části 1 (`idx_` a `uq_` s dvojitým podtržítkem mezi tabulkou a sloupci). Přejmenováno 2026-07-31.
 
 **C) Při spuštění kampaně.** Tohle je tvrdá brána. Kompilace před materializací publika **znovu** validuje proti aktuálnímu katalogu polí. Když najde `liquid_unknown_field`, odeslání se **nespustí** a API vrátí `409` s `campaign_template_invalid` a seznamem chyb. Nezkoušíme se z toho vzpamatovat automaticky, protože "pošli to bez toho pole" je rozhodnutí, které patří člověku.
 
@@ -1718,15 +2051,16 @@ type BaseTemplateVariant = "newsletter" | "announcement" | "transactional" | "re
 type BaseTemplateParams = {
   variant: BaseTemplateVariant;
   brand: BrandProfile;            // paleta, logo, písmo, viz 3.13.6
-  language: "cs" | "en";
+  language: string;               // BCP 47, viz 3.1.9. MVP 0 dodává texty pro "cs" a "en"
   sections: BaseSectionSpec[];    // co má šablona obsahovat, viz 3.9.3
-  senderAddress: string;
   websiteUrl?: string;
   darkMode: boolean;              // default true
 };
 
 function buildBaseTemplate(params: BaseTemplateParams): Document;
 ```
+
+**Parametr `senderAddress` je odstraněný** (2026-07-31). Generátor adresu nezná a znát nemá: blok `footer` ji nese jako merge tag `{{ workspace.sender_address }}` (3.2.12) a hodnotu doplní sender z aktuálního nastavení projektu. Kdyby ji generátor dostával jako řetězec, zapekl by ji do dokumentu a po přestěhování firmy by byly všechny vygenerované šablony špatně, přesně před tím kontrakt v části 1 varuje.
 
 Generátor žije v `packages/emails/base/`, je čistá funkce a je pokrytý snapshot testy. Díky tomu:
 
@@ -1744,7 +2078,7 @@ section  header           logo, volitelně navigační odkazy
 section  hero             nadpis + podnadpis + volitelně obrázek + volitelně tlačítko
 [  střední část podle varianty  ]
 section  cta              závěrečné tlačítko (volitelné)
-section  footer           blok footer + sociální ikony + adresa odesílatele
+section  footer           blok footer + sociální ikony + {{ workspace.sender_address }}
 ```
 
 **Preheader** je první sekce s textem `{{ campaign.preheader }}` ve stylu, který ho skryje v těle e-mailu, ale schránka ho ukáže v seznamu vedle předmětu:
@@ -1810,7 +2144,7 @@ Výpočet kontrastu a úprav používá `culori` (4.0.2, MIT, 1,6 milionu staže
 
 #### 3.9.5 Dodávané šablony
 
-Produkt obsahuje pět předgenerovaných šablon s neutrální značkou (`starter = true`), aby uživatel po instalaci nezačínal na prázdné stránce. Vznikají migrací při prvním vytvoření projektu, ne za běhu. Jsou v češtině i angličtině podle `users.locale` zakladatele projektu.
+Produkt obsahuje pět předgenerovaných šablon s neutrální značkou (`starter = true`), aby uživatel po instalaci nezačínal na prázdné stránce. Vznikají migrací při prvním vytvoření projektu, ne za běhu. Jazyk se bere z `users.locale` zakladatele projektu; MVP 0 dodává jejich texty v češtině a angličtině a u jiného jazyka se použije záchytná `en` (3.1.9). Doplnění dalšího jazyka je přidání souboru s texty do `packages/emails/base/i18n/`, ne změna generátoru.
 
 Uživatel je nemůže smazat, jen skrýt. Jde z nich vytvořit kopii. Změna produktu (novější `renderer_version`) je nepřepíše, protože jsou už uložené jako dokumenty.
 
@@ -1851,7 +2185,7 @@ Důsledky, které je potřeba znát:
 |---|---|
 | Šablona se změní po přiřazení do kampaně | Kampaň se nezmění. |
 | Šablona se smaže (archivuje) | Kampaň funguje dál. |
-| Kampaň běží (`sending`) a někdo edituje `campaigns.design` | API to odmítne, `409 campaign.content_locked`. |
+| Kampaň běží (`sending`) a někdo edituje `campaigns.design` | API to odmítne, `409 campaign_content_locked`. |
 | Kampaň je `paused` a někdo chce opravit překlep | Povolené jen u zpráv, které ještě nebyly odeslané: `campaigns.design` jde změnit, ale je nutná **rekompilace**, která nastaví novou verzi `compiled_html`. Už odeslané zprávy zůstanou se starým obsahem a UI to výslovně řekne. Alternativa (zakázat editaci úplně) je horší, protože nutí uživatele zrušit kampaň a začít znovu. |
 | A/B varianty (MVP 2) | Každá varianta má vlastní `design` a vlastní `compiled_html`. Model to už umožňuje. |
 
@@ -1891,7 +2225,17 @@ new Liquid({
 });
 ```
 
-Vestavěné filtry se **neregistrují**. Náhled používá tutéž pětici vlastních filtrů z `packages/contracts/src/liquid`, jakou registruje sender. Test v CI ověří, že instance náhledu nemá zaregistrovaný ani jeden filtr navíc; jinak by šablona v náhledu fungovala a při odeslání spadla.
+**Vestavěné filtry se přepisují, protože je nejde neregistrovat** (oprava 2026-07-31). Dřívější znění tvrdilo, že se vestavěné filtry „neregistrují" a že to CI ověří introspekcí instance. To je technicky neproveditelné: **konstruktor LiquidJS vestavěné filtry registruje vždy**, nemá volbu, která by to vypnula, a `registerFilter` je jediná cesta, jak s nimi hnout. Tvrzení, které nejde implementovat, je v tomhle dokumentu horší než chybějící tvrzení, protože se na něj někdo spolehne.
+
+Skutečný postup má tři kroky a všechny tři jsou povinné:
+
+1. Instance náhledu **přepíše každý vestavěný název filtru** funkcí, která okamžitě vyhodí `LiquidSubsetViolation`. Seznam názvů se bere z LiquidJS za běhu (`Object.keys` nad registrem filtrů čerstvé instance), ne z ručně udržovaného výčtu, který by se s novou verzí knihovny rozešel.
+2. Pak se registruje **pětice vlastních filtrů** z `packages/contracts/src/liquid`, tatáž, jakou registruje sender. Přepíše tím pět názvů z kroku 1 vlastní implementací.
+3. Nastavením `strictFilters: true` je neznámý filtr chyba, takže třetí cesta (filtr, který v LiquidJS není a v Go ano) je zavřená taky.
+
+**Test v CI je behaviorální, ne introspektivní.** Pro každý vestavěný název filtru z kroku 1 se pustí render `{{ x | <název> }}` a test tvrdí, že **selže**; pro pětici našich filtrů tvrdí, že projde a dá očekávanou hodnotu. Behaviorální forma je jediná, která má smysl, protože testuje to, na čem záleží (šablona s cizím filtrem neprojde v náhledu), a ne implementační detail knihovny. Zároveň přežije upgrade LiquidJS: nový vestavěný filtr se v kroku 1 objeví sám a test ho sám pokryje.
+
+Bez tohohle by šablona v náhledu fungovala a při odeslání spadla, což je právě ta třída chyby, kterou celý kontrakt Liquid subsetu řeší. **Totéž znění má i část 1 (4.10.2, „žádná strana neregistruje nic navíc"), takže si opravu vyžaduju v kapitole 10 jako R19.**
 
 `<iframe>` má `sandbox="allow-same-origin"` (bez `allow-scripts`), `srcdoc` s vygenerovaným HTML, a `referrerpolicy="no-referrer"`. Obrázky se načítají z našeho assetového endpointu, takže se nic neposílá ven.
 
@@ -2012,9 +2356,25 @@ Konkrétně, ať se to neplete: **AI klíče nemají vlastní odvozený klíč.*
 - Klíč se **nikdy neloguje**, ani v chybové cestě. Vlastní `fetch` wrapper (3.12.3) maže hlavičky `authorization`, `x-api-key` a `x-goog-api-key` z čehokoliv, co jde do logu.
 - Rotace `SECRET_KEY`: klíče se přešifrují stejným postupem jako credentials providerů (vlastní část 1). Když se přešifrovat nedají, `ai_provider_credentials` se označí jako neplatné a uživatel klíč zadá znovu. Neplatný AI klíč nikoho nepoškodí, na rozdíl od SES credentials.
 
+#### 3.12.2a Co je v téhle kapitole závazné a co je dobový snímek
+
+Kapitola míchá dvě věci s velmi různou životností a bez tohohle rozlišení by se z ní stala norma na verzi balíčku. Ekosystém AI SDK rotuje rychleji než tenhle dokument, což dokument sám přiznává u modelů a u ceníku, a přesně tak je potřeba číst i signatury funkcí.
+
+| Závazné (mění se rozhodnutím, ne upgradem) | Dobový snímek k 2026-07-31 (mění se s balíčkem) |
+|---|---|
+| AI **nikdy negeneruje HTML**, jen `BaseSectionSpec[]` validovaný schématem (3.12.1, 3.12.5) | Že se strukturovaný výstup dělá `generateText` s `Output.object`, a ne `generateObject` |
+| Do promptu **nikdy nejdou data kontaktů**, jen názvy polí | Přesné názvy `inputSchema`, `stopWhen`, `isStepCount`, `repairToolCall` |
+| Klíč je v databázi, **nikdy** se nebere z proměnné prostředí (3.12.3) | Které tovární funkce se jmenují `createAnthropic`, `createOpenAI` a tak dál |
+| `extractBrand` se provede jen s URL, kterou napsal uživatel (3.12.4) | Čísla verzí balíčků a týdenní stažení v 9.1 |
+| Limity: `AI_REQUEST_TIMEOUT_MS`, `AI_MAX_TOKENS_PER_REQUEST`, `AI_RATE_PER_HOUR`, strop kroků smyčky | Název třídy chyby `NoObjectGeneratedError` a způsob její detekce |
+| Chybové kódy a jejich mapování na stavy providerů (3.12.8) | Názvy modelů v `models.json` a ceny v `pricing.json` |
+| Že se odpověď **vždy** znovu validuje naším validátorem (3.12.5) | Tvar streamovací odpovědi `toUIMessageStreamResponse()` |
+
+**Pravidlo pro implementátora:** když se levý sloupec a knihovna neshodnou, mění se knihovna nebo se přidá vlastní vrstva. Když se neshodne pravý sloupec a knihovna, mění se tenhle dokument a nikdo se neptá. Kód proto sahá na AI SDK **výhradně přes adaptér** v `packages/core/ai/`, aby změna v pravém sloupci byla změna jednoho souboru, ne rozsypaná po celé aplikaci. Ověřovací poznámky u konkrétních signatur (3.12.5) zůstávají jako doklad, že to k danému datu takhle opravdu bylo, ne jako norma.
+
 #### 3.12.3 Providery, modely a běhová konfigurace
 
-Ověřeno 2026-07-31 z npm a z dokumentace AI SDK.
+Ověřeno 2026-07-31 z npm a z dokumentace AI SDK. Verze a signatury v téhle sekci jsou **informativní snímek** podle 3.12.2a; závazné je, že klíč pochází z databáze a nikdy z prostředí.
 
 | Provider | Balíček | Verze | Licence | Týdenní stažení |
 |---|---|---|---|---|
@@ -2056,11 +2416,15 @@ function buildModel(cred: DecryptedCredential, modelId: string): ProviderHandle;
 
 #### 3.12.4 Nástroje asistenta
 
-Definované přes helper `tool()` z `ai` v7, který používá **`inputSchema`** (dřívější název `parameters` se v v7 nepoužívá). Ověřeno z dokumentace AI SDK 2026-07-31.
+Definované přes helper `tool()` z `ai` v7, který používá **`inputSchema`** (dřívější název `parameters` se v v7 nepoužívá). Ověřeno z dokumentace AI SDK 2026-07-31. Závazná je **množina nástrojů a tvar jejich vstupů**, ne to, jak se helper jmenuje (3.12.2a).
 
 ```ts
 import { tool } from "ai";
 import { z } from "zod";
+
+// Jazykový tag podle 3.1.9. Ne z.enum(["cs","en"]): dvojice jazyků zabetonovaná
+// ve schématu nástroje by znamenala, že přidání jazyka je změna kódu AI vrstvy.
+const languageTag = z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/).max(35);
 
 const listMergeTags = tool({
   description: "Vrátí seznam dostupných personalizačních polí projektu. Zavolej vždy, než použiješ jakékoliv pole.",
@@ -2081,7 +2445,7 @@ const composeTemplate = tool({
   inputSchema: z.object({
     kind: z.enum(["newsletter", "announcement", "transactional", "reengagement"]),
     brief: z.string().min(10).max(2000),
-    language: z.enum(["cs", "en"]),
+    language: languageTag,
     tone: z.enum(["formal", "friendly", "playful", "urgent"]).default("friendly"),
     brandProfileId: z.string().uuid().optional(),
     sectionCount: z.number().int().min(1).max(8).optional(),
@@ -2095,7 +2459,7 @@ const writeCopy = tool({
     blockId: z.string().regex(/^b_[0-9a-z]{12}$/).optional(),
     kind: z.enum(["headline", "subhead", "paragraph", "bullets", "cta_label", "preheader"]),
     instruction: z.string().min(3).max(1000),
-    language: z.enum(["cs", "en"]),
+    language: languageTag,
     tone: z.enum(["formal", "friendly", "playful", "urgent"]),
     maxLength: z.number().int().min(10).max(2000).optional(),
   }),
@@ -2106,7 +2470,7 @@ const suggestSubject = tool({
   description: "Navrhne varianty předmětu a preheaderu.",
   inputSchema: z.object({
     summary: z.string().min(10).max(2000).describe("O čem e-mail je"),
-    language: z.enum(["cs", "en"]),
+    language: languageTag,
     count: z.number().int().min(1).max(8).default(5),
     includeEmoji: z.boolean().default(false),
   }),
@@ -2147,7 +2511,7 @@ const result = await generateText({
 // výsledek se čte přes result.output
 ```
 
-**Ověřovací poznámka k API.** Ověřeno empiricky instalací `ai@7.0.44` a čtením `dist/index.d.ts`:
+**Ověřovací poznámka k API. Informativní, ne normativní** (viz 3.12.2a). Ověřeno empiricky instalací `ai@7.0.44` a čtením `dist/index.d.ts`. Až tohle někdo bude číst s jinou verzí balíčku, platí závazné pravidlo („strukturovaný výstup validovaný schématem, nikdy volný text"), ne konkrétní jména níž:
 
 - `generateObject` a `streamObject` **existují, ale jsou označené `@deprecated`** s doporučením "Use `generateText` with an `output` setting instead". Proto používáme `generateText` s `Output.object({ schema, name, description })` a čteme `result.output`. Pojmenování je `name` a `description`, ne `schemaName` a `schemaDescription`.
 - Pomocná funkce pro zastavení smyčky se v typech jmenuje **`isStepCount(n)`**. `stepCountIs` sice na běhu existuje, ale v deklaracích typů není, takže jde o pozůstatek a nepoužíváme ho.
@@ -2560,7 +2924,7 @@ pending ──> running ──> succeeded
 | `running` | `blocked` | robots.txt zakazuje, nebo adresa neprošla kontrolou | |
 | kterýkoliv koncový | cokoliv | **nikdy**, extrakce se neopakuje na stejném řádku | Opakování zakládá nový řádek |
 
-**Idempotence:** job `content.brand_extract` má `retryLimit: 0`. Kdyby worker spadl uprostřed, záznam zůstane v `running` a úklidový job ho po 5 minutách převede na `failed` s `error_code = brand.timeout`. Opakovaný pokus je nový řádek, protože obsah cizího webu se mezitím mohl změnit a "stejný vstup, stejný výstup" tady neplatí.
+**Idempotence:** job `content.brand_extract` má `retryLimit: 0`. Kdyby worker spadl uprostřed, záznam zůstane v `running` a úklidový job ho po 5 minutách převede na `failed` s `error_code = 'brand_timeout'`. Opakovaný pokus je nový řádek, protože obsah cizího webu se mezitím mohl změnit a "stejný vstup, stejný výstup" tady neplatí.
 
 #### 3.13.11b Stav validace šablony
 
@@ -2600,6 +2964,8 @@ unknown ──> valid ──> invalid ──> valid
 | `brand_robots_unavailable` | 422 | Nepodařilo se ověřit, jestli web stahování povoluje. | It was not possible to verify whether the site allows fetching. |
 | `rate_limited` (obecný, s `retry_after`) | 429 | Stahování značky je omezené na 10 pokusů za hodinu. | Brand extraction is limited to 10 attempts per hour. |
 
+**Rate limit extrakce má jediný kód, a to obecný `rate_limited`.** Dřívější znění ho na třech místech uvádělo ve třech tvarech (`rate_limited`, `brand_rate_limited`, `brand.rate_limited`), sjednoceno 2026-07-31. Důvod je pravidlo, které si tenhle dokument sám ukládá v 4.6: obecné kódy z katalogu části 1 se nepřepisují vlastními a vlastní se zavádí jen tam, kde nesou informaci navíc. Vyčerpaný limit ji nenese, protože počet a `retry_after` jsou v odpovědi jako parametry, ne v kódu.
+
 Všimni si, že `brand_host_not_allowed` a `brand_blocked_address` mají **stejnou hlášku**. Je to schválně: uživatel nemá poznat, jestli byla adresa odmítnuta kvůli názvu, nebo kvůli výsledku DNS.
 
 #### 3.13.13 Testy, které musí existovat
@@ -2627,7 +2993,7 @@ Bez nich je celá kapitola jen text. Všechny jsou jednotkové, bez sítě, se z
 | T17 | Stránka s `<script>` obsahujícím instrukce pro model | text se do promptu nedostane |
 | T18 | SVG logo s `<script>` a s `<!ENTITY>` | odmítnuto nebo sanitizováno, rasterizace bez načtení externího zdroje |
 | T19 | Web bez jakékoliv barvy a bez loga | extrakce uspěje, paleta má `source: fallback`, `warnings` obsahuje `logo_not_found` |
-| T20 | 11. požadavek v hodině | `brand_rate_limited` |
+| T20 | 11. požadavek v hodině | obecný `rate_limited` s `retry_after` |
 
 ### 3.14 Obrázky a assety
 
@@ -2662,6 +3028,8 @@ Ověření typu se dělá **magickým číslem** (`file-type`), ne příponou an
 | `thumb` | 160 px, čtverec, `cover` | vždy, pro knihovnu v editoru |
 
 Animovaný GIF má jen `orig` a `thumb` (první snímek).
+
+Tenhle seznam je obsahem registru `packages/core/assets/registry.ts` (viz 2.2), ne uzavřeného `CHECK` v databázi. Přidání varianty je proto řádek v registru plus jednorázový job, který ji dogeneruje ke stávajícím assetům, ne migrace s `DROP CONSTRAINT`.
 
 **Které variantě odpovídá odkaz v e-mailu.** Renderer zná cílovou šířku bloku v pixelech (`W`). Vybere nejmenší variantu, jejíž šířka je aspoň `2 × W` (retina), a do HTML dá `width="W"`. Když taková varianta neexistuje, vezme `orig`. Pro blok široký 600 px se tedy použije `w1200` s `width="600"`. `srcset` se **nepoužívá**, protože ho Outlook ani Gmail nepodporují a v e-mailu je to jen zbytečná složitost.
 
@@ -2719,7 +3087,7 @@ Cross-Origin-Resource-Policy: cross-origin
 
 **Hotlinking se vědomě neřeší.** V e-mailu je hotlinking jediný možný způsob doručení obrázku, takže kontrola `Referer` by rozbila produkt. Zneužití instalace jako cizí obrázkové CDN se brání kvótou na projekt (`ASSET_QUOTA_MB`) a volitelným rate limitem na IP (`ASSET_RATE_LIMIT_PER_IP`, výchozí vypnuto, protože Gmail proxy chodí z omezené sady adres a limit by ji zasáhl).
 
-Pro citlivá nasazení existuje `ASSET_REQUIRE_SIGNED_URL = true`, které přidá HMAC podpis bez expirace (klíč z purpose `mailer/v1/asset-url`, který si od části 1 vyžaduju v R11, a který zatím čeká na odsouhlasení orchestrátorem). Chrání proti enumeraci, ne proti sdílení odkazu.
+Pro citlivá nasazení existuje `ASSET_REQUIRE_SIGNED_URL = true`, které přidá HMAC podpis bez expirace. Klíč se odvozuje z purpose **`mailer/v1/asset-url`**, který **v tabulce purposes části 1 (3.10) je** (ověřeno 2026-07-31); požadavek R11 je tím vyřízený a purpose má i napsané, proč nemá expiraci. Chrání proti enumeraci, ne proti sdílení odkazu.
 
 **Co musí být v UI u toho přepínače napsané:** podepsaná adresa je **trvale platný odkaz na soubor**. Kdo ji jednou dostane, má ji navždy, protože ji nejde zneplatnit jinak než rotací `SECRET_KEY`, což zneplatní všechny naráz. Pro obrázky v newsletteru je to v pořádku a je to záměr, protože e-mail leží ve schránce roky. Pro cokoliv citlivého to v pořádku není a obrázková knihovna e-mailingu není místo pro citlivé soubory.
 
@@ -2799,9 +3167,10 @@ Tohle je pátý kontrakt TS ↔ Go, doplněný ke čtyřem z části 1 poté, co
 ```ts
 type CompileContext = {
   workspaceId: string;
-  templateKind: "campaign" | "transactional" | "system" | "snippet";
+  campaignId?: string;                  // POVINNÉ při purpose = "send", viz níž
+  templateKind: "campaign" | "transactional" | "system";
   fields: FieldCatalog;                 // z části 2
-  language: "cs" | "en";
+  language: string;                     // BCP 47, viz 3.1.9
   assetBaseUrl: string;
   brand?: BrandProfile;
   purpose: "send" | "preview" | "test";
@@ -2863,6 +3232,19 @@ link_id = uuidv5(namespace = uuid("6f9619ff-8b86-d011-b42d-00c04fc964ff"),
 ```
 
 Odvození je **deterministické**: stejná kampaň a stejné pořadí odkazu dají vždy stejné UUID. Rekompilace, která nezměnila odkazy, nezmění ani jeden bajt `compiled_html`.
+
+**`campaignId` je proto součástí `CompileContext`** (doplněno 2026-07-31). Dřívější znění ho v deklarovaném typu nemělo, přestože odvození `link_id` ho vyžaduje a golden fixture `CT-007` ho v kontextu opravdu nese. Podle deklarovaného typu tedy kontrakt nešel implementovat: buď by si ho kompilace musela vzít odjinud (a kontrakt by lhal o tom, co potřebuje), nebo by generovala UUID náhodně (a rozpadly by se fixtures i reporty).
+
+**Co je `link_id` při kompilaci bez kampaně.** Náhled a testovací odeslání kampaň nemají a mít nemusí:
+
+| `purpose` | `campaignId` | Chování |
+|---|---|---|
+| `"send"` | **povinné** | Chybějící hodnota je chyba `compile_campaign_id_required` (422). Je to jediné místo, kde na tom záleží, protože jen tady vzniká řádek v `campaign_links` a klik, který se někam započítá. |
+| `"preview"`, `"test"` | nepovinné | Když chybí, dosadí se **nulové UUID** `00000000-0000-0000-0000-000000000000` a odvození běží beze změny. |
+
+Nulové UUID je zvolené schválně místo náhodného: odvození zůstane deterministické, takže dva náhledy téhož dokumentu dají bajtově shodný výstup a dá se na ně pustit snapshot test. Zároveň je to hodnota, která v `campaign_links` nikdy nevznikne, takže případný klik na takový odkaz (nemůže nastat, tracking je v náhledu i v testu vypnutý podle 3.11.5) nemá kam se přiřadit a spadne jako neznámý, ne jako klik cizí kampaně.
+
+Když `campaignId` chybí u `purpose = "preview"` nebo `"test"`, kompilace to zapíše do `CompileMeta.warnings` jako `link_ids_not_campaign_scoped`, aby se nikdo nepokusil taková ID uložit.
 
 **Odchylka od konvence, kterou musí odsouhlasit část 1:** `campaign_links.id` tím není UUIDv7, ale UUIDv5. Konvence v 2.1 části 1 předepisuje v7 kvůli fragmentaci B-tree při zápisu. U `campaign_links` je to bez dopadu, protože tabulka má nejvýš 999 řádků na kampaň a zapisuje se jednorázově. Kdyby část 1 na v7 trvala, náhradní řešení je minting UUIDv7 při kompilaci s **vstřikovaným generátorem** v testovacím prostředí, aby fixtures zůstaly deterministické; ztratí se tím stabilita `link_id` mezi rekompilacemi, což je horší, ale ne blokující.
 
@@ -2951,7 +3333,7 @@ Editor to říká přímo u bloku: **"Odkazy v tomto bloku se nesledují."** Kdo
 
 Tři vrstvy, protože jedna nestačí.
 
-1. **Validátor** odmítne v jakémkoliv uživatelském textu, v `href` i uvnitř bloku `html` výskyt řetězců `mlain.invalid` a `ML_OPEN_PIXEL`, bez ohledu na velikost písmen. Kód `content_reserved_marker`, hláška cs: "Tento text je vyhrazený pro vnitřní použití a nejde vložit do šablony." / en: "This text is reserved for internal use and cannot be inserted into a template."
+1. **Validátor** odmítne v jakémkoliv uživatelském textu, v `href` i uvnitř bloku `html` výskyt řetězců `mlain.invalid`, `ML_OPEN_PIXEL` a `ML_ARG_`, bez ohledu na velikost písmen. Kód `content_reserved_marker`, hláška cs: "Tento text je vyhrazený pro vnitřní použití a nejde vložit do šablony." / en: "This text is reserved for internal use and cannot be inserted into a template." (`ML_ARG_` je slot argumentu filtru z 3.3.5a; bez zákazu by si uživatel textem odklonil cizí náhradní hodnotu.)
 2. **Pořadí operací** (4.1.3) znemožňuje vyrobit značku z dat kontaktu.
 3. **Invariant I3** po renderu ověří, že počet výskytů `track.mlain.invalid/c/` v `html` plus `text` se rovná `clickMarkerCount` a že každé nalezené UUID je v `CompileMeta.links`. Nesouhlas je chyba kompilace, ne varování.
 
@@ -2994,7 +3376,7 @@ Umístění `packages/contracts/fixtures/compiled/`, formát:
 }
 ```
 
-Minimální sada, 16 fixtur:
+Minimální sada, 18 fixtur:
 
 | ID | Co pokrývá |
 |---|---|
@@ -3014,6 +3396,8 @@ Minimální sada, 16 fixtur:
 | CT-014 | Dokument se všemi typy bloků, bajtový snapshot `html` i `text` |
 | CT-015 | `trackClicks = false` a cílová URL s `?a=1&b=2`: v `html` je `&amp;`, v `text` je `&` |
 | CT-016 | Kontakt, jehož pole obsahuje řetězec značky: po náhradě a interpolaci **nevznikne** trackovací odkaz navíc |
+| CT-017 | **Sloty argumentů filtrů (3.3.5a).** Dokument obsahuje dva textové bloky se **stejným výrazem** `{{ contact.first_name \| default }}` a **různou** náhradní hodnotou (`kolego` a `zákazníku`) plus tlačítko, jehož popisek nese třetí náhradní hodnotu a emituje se dvakrát (VML dvojče). Očekávání: v `html` jsou tři různé argumenty na správných místech, popisek tlačítka má na obou místech **týž** argument, a nikde nezůstal řetězec `ML_ARG_`. Tohle je fixture, která by chytila naivní záměnu podle výrazu. |
+| CT-018 | Slot filtru `date`: dva bloky s `{{ contact.created_at \| date }}` a různým formátem z whitelistu, v `text` i v `html` |
 
 Go strana čte tytéž soubory a ověřuje **druhou půlku kontraktu**: že na `expect.htmlContains` po náhradě nezbude žádný `mlain.invalid`, že počet náhrad odpovídá `clickMarkerCount` a že náhrada nezměnila nic jiného (bajtový diff mimo nahrazené úseky).
 
@@ -3083,7 +3467,8 @@ Chybové stavy specifické pro šablony:
 | `template_starter_immutable` | 409 | Pokus změnit nebo smazat dodávanou šablonu |
 | `template_schema_too_new` | 422 | `schemaVersion` je vyšší, než umí tato instalace (3.1.7) |
 | `template_document_invalid` | 422 | JSON Schema nebo sémantická pravidla, `details` obsahuje `Issue[]` |
-| `payload_too_large` (obecný) | 413 | Nad 512 kB. Nad 300 bloků je to `content_too_many_blocks`, protože to není o velikosti těla. |
+| `payload_too_large` (obecný) | 413 | Nad 512 kB serializovaného dokumentu. Jediný kód pro tenhle stav, `content_document_too_large` je od 2026-07-31 zrušený. |
+| `content_too_many_blocks` | 413 | Nad 300 bloků. Vlastní kód schválně: není to o velikosti těla požadavku a uživatel s tím dělá něco jiného. |
 | `not_found` (obecný) | 404 | Verze neexistuje |
 | `precondition_failed` (obecný) | 412 | Optimistický zámek přes `if_design_hash`, viz níže |
 
@@ -3389,13 +3774,16 @@ Každá věta je napsaná tak, aby z ní šel napsat test bez doptávání.
 ### 8.1 Blokový model
 
 1. Dokument s duplicitním `id` bloku vrátí při `POST /templates` `422` s kódem `content_duplicate_block_id` a JSON Pointerem na druhý výskyt.
-2. Dokument s `columns` uvnitř `column` vrátí `422 content.nested_columns`.
-3. Dokument s `schemaVersion: 2` na instalaci, která umí `1`, vrátí `422 template.schema_too_new` a v editoru se neotevře.
+2. Dokument s `columns` uvnitř `column` vrátí `422 content_nested_columns`.
+3. Dokument s `schemaVersion: 2` na instalaci, která umí `1`, vrátí `422 template_schema_too_new` a v editoru se neotevře.
 4. Dokument uložený se `schemaVersion: 1` se po zavedení verze 2 načte do editoru migrovaný, ale dokud uživatel neuloží, zůstane v databázi `schema_version = 1`.
-5. Dokument s neznámým typem bloku se uloží beze ztráty dat: po načtení a opětovném uložení je JSON toho bloku bajtově shodný s původním.
+5. Dokument s neznámým typem bloku **projde JSON Schema validací** (3.1.6) a uloží se beze ztráty dat: po načtení a opětovném uložení je JSON toho bloku bajtově shodný s původním. Renderer ho vynechá a do `CompileMeta.warnings` zapíše `unknown_block_skipped`.
 6. Dokument bez odkazu na odhlášení vrátí u `kind = campaign` chybu `content_missing_unsubscribe`, u `kind = transactional` jen varování.
-7. Dokument o 301 blocích vrátí `413 content.document_too_large`.
+7. Dokument o 301 blocích vrátí `413 content_too_many_blocks`. Dokument nad 512 kB vrátí `413 payload_too_large`. Kód `content_document_too_large` neexistuje.
 8. Kanonická serializace stejného dokumentu se stejným obsahem v jiném pořadí klíčů dá stejný `design_hash`.
+8b. Blok s `visibleWhen: { field: "contact.city", op: "present" }` se zkompiluje do šablony obsahující přesně `{% if _present.contact__city %}` a `{% endif %}`, a `renderSchema.presence` obsahuje `contact.city`. Ve výstupu není uvozovka, literál `blank` ani `empty` a žádný z operátorů `>`, `<`, `>=`, `<=`, `==`, `!=`.
+8c. `visibleWhen` na bloku `footer` vrátí `422 content_condition_on_unsubscribe`. `visibleWhen` s operátorem `true` nad polem typu `string` vrátí `422 content_condition_operator_invalid`.
+8d. Dokument s blokem `repeat` se v MVP 0 uloží beze ztráty dat, renderer ho vynechá a zapíše `repeat_block_not_supported` do `CompileMeta.warnings`. Editor blok `repeat` v paletě nenabízí.
 
 ### 8.2 Renderer
 
@@ -3409,7 +3797,9 @@ Každá věta je napsaná tak, aby z ní šel napsat test bez doptávání.
 15. Blok `spacer` o výšce 40 px vygeneruje HTML obsahující `mso-line-height-rule:exactly` a `height:40px`.
 16. Blok `button` vygeneruje uvnitř `<!--[if mso]>` konstrukci VML a mimo ni tabulkovou variantu, a v obou je stejná cílová URL.
 17. Dokument s tmavým režimem `auto` vygeneruje `<meta name="color-scheme" content="light dark">` a blok `@media (prefers-color-scheme: dark)`.
-18. Golden fixtures rendereru: sada 15 dokumentů má uložený očekávaný HTML výstup a jakákoliv jeho změna shodí test. Aktualizace snapshotu je vědomý krok s vysvětlením v commitu.
+17b. Dokument s `theme.typography.baseFontSize = 20` vygeneruje v media query jinou hodnotu `.ml-h1 { font-size }` než dokument s výchozími 16, a obě odpovídají vzorci z 3.4.3. Dokument s vlastní `theme.darkMode.colors["surface.content"]` vygeneruje v bloku `@media (prefers-color-scheme: dark)` právě tuhle barvu, ne výchozí `#111827`. Bez těchhle dvou dokumentů by šlo pravidlo porušit natvrdo napsanou konstantou a snapshoty by zůstaly zelené.
+17c. Motiv s neúplnou mapou `colors` (například jen `brand.primary`) se zkompiluje a chybějící role se doplní z tabulky výchozích hodnot v 3.1.4. Kompilace nespadne a nevynechá barvu.
+18. Golden fixtures rendereru: sada nejméně 15 dokumentů má uložený očekávaný HTML výstup a jakákoliv jeho změna shodí test. Sada musí obsahovat dokumenty z kritérií 17b a 17c. Aktualizace snapshotu je vědomý krok s vysvětlením v commitu.
 
 ### 8.3 Plain text
 
@@ -3432,14 +3822,19 @@ Každá věta je napsaná tak, aby z ní šel napsat test bez doptávání.
 28c. `{% if contact.country == 'CZ' %}` vrátí `liquid_string_literal_not_allowed`. Apostrof se posuzuje stejně jako uvozovka.
 28d. Zkompilovaná šablona, ve které je uvnitř `{{ }}` nebo `{% %}` HTML entita (`&quot;`, `&#39;`, `&lt;`, `&gt;`, `&amp;`), vrátí `liquid_escaped_entity_in_construct` a neodešle se. Tohle je záchytná síť proti escapování rendererem.
 28e. Dokument s blokem, jehož text obsahuje `{{ contact.first_name | default }}` a jehož atribut nese hodnotu `kolego`, se zkompiluje do šablony obsahující přesně `{{ contact.first_name | default: "kolego" }}`, a to znak po znaku, bez jediné entity.
+28f. **Dva bloky se stejným výrazem a různou náhradní hodnotou dostanou každý tu svou.** Dokument se dvěma texty `{{ contact.first_name | default }}`, kde první blok nese `kolego` a druhý `zákazníku`, se zkompiluje tak, že první výskyt má `default: "kolego"` a druhý `default: "zákazníku"`. Tlačítko, jehož popisek nese náhradní hodnotu a emituje se dvakrát kvůli VML variantě, má na obou místech **tutéž** hodnotu. Ve výstupu nezůstane žádný `ML_ARG_` (3.3.5a, fixtura CT-017).
+28g. Uživatelský text obsahující `ML_ARG_0001` vrátí `content_reserved_marker`.
 29. `{{ contact.neexistuje }}` vrátí `liquid_unknown_field` a nabídne nejbližší existující pole.
-30. Všech 45 golden fixtur dá v LiquidJS i v `osteele/liquid` bajtově shodný výstup. Fixtura, která projde jen na jedné straně, shodí CI job `contracts-liquid`.
+30. **Každá** golden fixtura `LQ-*` dá v LiquidJS i v `osteele/liquid` bajtově shodný výstup. Fixtura, která projde jen na jedné straně, shodí CI job **`contracts-golden`**. Počet a rozdělení fixtur do skupin vlastní část 1 (4.10.5) a tohle kritérium ho vědomě neopakuje; pevné číslo tady by se rozešlo při prvním doplnění fixtury na druhé straně.
+30b. Pro každý vestavěný filtr LiquidJS platí, že render `{{ x | <název> }}` v instanci náhledu **selže**, kromě pětice vlastních filtrů z kontraktu, které projdou a dají očekávanou hodnotu. Seznam vestavěných názvů se bere za běhu z čerstvé instance knihovny, ne z ručně udržovaného výčtu (3.11.1).
 31. Kontakt se jménem `<script>alert(1)</script>` se v odeslaném HTML objeví jako `&lt;script&gt;alert(1)&lt;/script&gt;` a v plain textu bez escapování.
 32. Šablona validní pro projekt A je neplatná pro projekt B, když B nemá stejné vlastní pole. Kompilace v projektu B vrátí `liquid_unknown_field`.
 
 ### 8.5 Merge tagy a `renderSchema`
 
 33. Šablona používající `contact.greeting` a `contact.city` vygeneruje `renderSchema.fields` přesně s těmito dvěma cestami, nic víc.
+33b. Blok, který má `visibleWhen` nad polem, jež se nikde nevypisuje, přidá cestu do `renderSchema.presence` a **ne** do `renderSchema.fields`. Materializace pak pošle jen boolean, ne hodnotu pole.
+33c. Kontakt s prázdným `city` nedostane obsah bloku s `visibleWhen: { field: "contact.city", op: "present" }`, a to ani když je hodnota prázdný řetězec nebo řetězec ze samých mezer. Tohle je test pasti prázdného řetězce a naivní `{% if contact.city %}` by ho neprošel.
 34. Smazání kontaktního pole `city` označí všechny šablony, které ho používají, jako `validation_state = 'invalid'` do 30 sekund.
 35. Pokus spustit kampaň se šablonou, která odkazuje na smazané pole, vrátí `409` a kampaň se nepřepne do `sending`.
 36. Před smazáním pole ukáže UI (část 2) počet šablon a kampaní, které ho používají, a to číslo odpovídá skutečnosti.
@@ -3448,7 +3843,7 @@ Každá věta je napsaná tak, aby z ní šel napsat test bez doptávání.
 
 37. Kontakt s prázdným `first_name` a blokem, který má v textu `{{ contact.first_name | default }}` a v atributu náhradní hodnotu `kolego`, dostane e-mail s "kolego".
 38. Kontakt bez klíče v `render_data` vůbec: renderuje se prázdno a zpráva se odešle.
-39. 25 zpráv s `render_error`, které zároveň tvoří přes 1 % odbavených, přepne kampaň do `paused` s důvodem `render_error_threshold`.
+39. Když podíl zpráv s `messages.error_code` `render_failed` nebo `render_timeout` přesáhne **5 % z prvních 1 000 odbavených zpráv**, kampaň se přepne do `paused` s `pause_reason.code = "render_failure_rate"`. Práh i kód vlastní část 1 (4.10.2 a registr důvodů pauzy); dřívější znění tohohle kritéria uvádělo 1 % a kód `render_error_threshold`, který v žádném registru není. Opraveno 2026-07-31.
 40. Žádný příjemce nikdy nedostane e-mail s viditelným řetězcem `{{` nebo `{%`.
 
 ### 8.7 Náhled a test
@@ -3464,7 +3859,7 @@ Každá věta je napsaná tak, aby z ní šel napsat test bez doptávání.
 46. Dvě po sobě jdoucí uložení beze změny obsahu vytvoří nejvýše jednu verzi.
 47. Obnovení verze 3 vytvoří verzi N+1 a verze 3 zůstane v historii beze změny.
 48. Přiřazení šablony do kampaně a následná změna šablony nezmění obsah kampaně.
-49. Pokus změnit `campaigns.design` u kampaně ve stavu `sending` vrátí `409 campaign.content_locked`.
+49. Pokus změnit `campaigns.design` u kampaně ve stavu `sending` vrátí `409 campaign_content_locked`.
 50. Verze označená `pinned` se nesmaže ani po uplynutí retenční doby.
 
 ### 8.9 Extrakce značky
@@ -3472,7 +3867,7 @@ Každá věta je napsaná tak, aby z ní šel napsat test bez doptávání.
 51. Všech 20 scénářů z tabulky 3.13.13 projde.
 52. Extrakce z webu bez loga a bez barev skončí jako `succeeded` s výchozí paletou a varováním `logo_not_found`.
 53. Extrakce nikdy nevrátí uživateli HTTP kód ani IP adresu cílového serveru. Test kontroluje tělo odpovědi API i obsah `hop_summary`.
-54. Jedenáctý pokus v hodině vrátí `429 brand.rate_limited`.
+54. Jedenáctý pokus v hodině vrátí `429 rate_limited` s hlavičkou a polem `retry_after`. Vlastní kód pro tenhle stav neexistuje (3.13.12).
 55. Odvozená paleta má u každé dvojice text a pozadí kontrast aspoň 4,5:1. Testuje se na 20 reálných palet, včetně žluté a světle zelené primární barvy.
 56. Statická kontrola v CI selže, když se v `packages/core/brand` objeví přímé volání `fetch` nebo `undici.request`.
 
@@ -3482,7 +3877,7 @@ Každá věta je napsaná tak, aby z ní šel napsat test bez doptávání.
 58. Nahrání WebP vytvoří asset s `mime_type = image/png` nebo `image/jpeg`.
 59. Nahrání animovaného GIFu zachová animaci a nevytvoří varianty `w1200`, `w600`, `w300`.
 60. Nahrání SVG s `<script>` uloží PNG, které skript neobsahuje, a původní SVG se v úložišti nenajde.
-61. Smazání obrázku použitého v odeslané kampani vrátí `409 asset.referenced_by_sent_campaign`.
+61. Smazání obrázku použitého v odeslané kampani vrátí `409 asset_referenced_by_sent_campaign`.
 62. Obrázek v bloku širokém 600 px se v HTML odkazuje na variantu `w1200` a má `width="600"`.
 63. Odpověď na veřejnou adresu assetu má `Cache-Control: public, max-age=31536000, immutable` a `X-Content-Type-Options: nosniff`.
 64. Uživatel projektu A nedostane přes API metadata assetu projektu B (odpověď `404`, ne `403`).
@@ -3583,20 +3978,26 @@ Vše ověřeno **2026-07-31** přes `npm view <balíček> license version time.m
 | R3 | část 4 | Sestavení dat pro náhled konkrétního kontaktu | `buildRenderData(contactId, renderSchema): Promise<RenderData>`, stejný kód jako při materializaci publika | Náhled musí ukazat přesně to, co se odešle (3.11.3) |
 | R4 | část 4 | Sender musí hodnoty typu `date` a `datetime` z `render_data` (RFC 3339 v UTC) převést na `time.Time` **před** vazbou do Liquidu | Podle `renderSchema.fields[].type` | `osteele/liquid` má filtr `date` se signaturou `func(t time.Time, ...)`, na řetězci selže (3.7.4) |
 | R5 | část 4 | Materializace naplní `render_data._context.timezone` z nastavení projektu, náhled v části 3 udělá totéž | IANA identifikátor podle kontraktu části 1, 4.10.2 | Jinak `date` v náhledu a v odeslaném mailu ukáže jiný čas |
-| R6 | část 4 | Automatická pauza kampaně podle prahu z části 1 (nad 5 % `failed` z důvodu renderu z prvních 1 000 zpráv) plus vysvětlující obrazovka s příkladem chyby a odkazem na šablonu | Přechod do `paused`, důvod `render_error_threshold` | 3.7.7 |
+| R6 | část 4 | Automatická pauza kampaně podle prahu z části 1 (nad 5 % `failed` z důvodu renderu z prvních 1 000 zpráv) plus vysvětlující obrazovka s příkladem chyby a odkazem na šablonu | Přechod do `paused`, `pause_reason.code = "render_failure_rate"` z registru části 1 | 3.7.7 |
 | R7 | část 4 | Testovací odeslání podle sémantiky v 3.11.5 | Obchází suppression, mimo statistiky, bez trackingu, bez řádku v outboxu kampaně | Jinak si uživatel nemůže poslat test |
 | R8 | část 4b | Implementovat kontrakt 5 (4.1) beze zbytku: prostá záměna řetězců, žádné parsování HTML, **náhrada před Liquid interpolací**, kontrola zbylého `mlain.invalid` po náhradě | Kontrakt 4.1 včetně fixtur `CT-*` | Bez toho tracking nefunguje nebo jde manipulovat statistikou kampaně |
 | R9 | část 1 | **Vyřízeno**, část 1 to zapracovává do entrypointu a rozšířila seznam o `GOOGLE_API_KEY`, `AZURE_OPENAI_API_KEY` a `AWS_BEARER_TOKEN_BEDROCK`, plus mazání podle vzoru místo výčtu | Žádná další akce | Část 3 se na to **nespoléhá** a kontroluje prázdný klíč i sama v `buildModel` (3.12.3). Dvě vrstvy jsou tady na místě, protože cena selhání je cizí faktura. |
 | R10 | část 4a | `campaign_links` plnit **z `CompileMeta.links`**, ne vlastním průchodem dokumentem, a převzít `position` beze změny | Pole `position`, `url`, `label` | Vlastní číslování by započítalo kliknutí špatnému odkazu a nikde by to nespadlo. Viz nález S5 revize. |
-| R11 | část 1 | Doplnit do tabulky purposes jediný chybějící: **`mailer/v1/asset-url`** pro volitelné podepisování adres obrázků. AI klíče purpose nepotřebují, ty jedou přes `credential-encryption` s `context = "ai_provider"`. | Řádek v tabulce purposes v 3.10, seznam je kontrakt a neberu si ho sám | 3.14.4 |
+| R11 | část 1 | **Vyřízeno**, ověřeno 2026-07-31: purpose `mailer/v1/asset-url` v tabulce purposes části 1 (3.10) **je**, včetně zdůvodnění, proč nemá expiraci. AI klíče purpose nepotřebují, ty jedou přes `credential-encryption` s `context = "ai_provider"`. | Žádná další akce | 3.14.4 |
 | R12 | část 1 | Oprávnění `templates:read`, `templates:write`, `templates:write_html`, `assets:read`, `assets:write` v matici rolí | `write_html` jen pro owner a admin | Blok `html` je únikový poklop, editor by k němu neměl mít přístup automaticky |
-| R13 | část 1 | Do job `contracts-golden` doplnit fixtury na hlášky validátoru, české `upcase`, `contact.greeting` a patičku (3.7.6) | Stejný formát `LQ-*` jako zbytek | Bez nich se pokrytí týká jen kontraktu, ne validátoru |
+| R13 | část 1 | Do job `contracts-golden` doplnit fixtury na hlášky validátoru, české `upcase`, `contact.greeting`, patičku, podmínku nad `_present` a vestavěné filtry (3.7.6) | Stejný formát `LQ-*` jako zbytek | Bez nich se pokrytí týká jen kontraktu, ne validátoru |
 | R14 | část 1 | **Vyřízeno:** úložiště je moje území. Používám `UPLOADS_DIR` (výchozí `${DATA_DIR}/uploads`), tedy adresář, který část 1 balí do zálohy jako `uploads.tar.gz`. | Žádná akce, jen potvrzení | 3.14.3 |
 | R14b | část 1 | Manifest zálohy musí u `STORAGE_DRIVER=s3` výslovně uvést, že **obrázky v záloze nejsou** | Řádek v manifestu plus varování v `restore` | Jinak vzniká falešný pocit úplné zálohy a chyba se projeví až při obnově |
 | R15 | část 2 | Sémantika `contact.greeting` včetně fallbacku a nastavení tónu na úrovni projektu | Hodnota v `render_data`, ne výpočet v senderu | Základní šablona ji používá bezpodmínečně (3.9) |
 | R16 | část 5 | Stránka webview (`{{ webview_url }}`) renderuje **`campaigns.compiled_html`** po interpolaci, ne nový render z `design` | Jinak by se webview lišilo od doručeného e-mailu | Uživatel klikne "Zobrazit v prohlížeči" právě tehdy, když mu něco nesedí |
 | R17 | část 1 | Konfigurační proměnné z 4.7 zařadit do společného katalogu a validace při startu | | Jednotné chování při chybné hodnotě |
 | R18 | část 4 | Předodesílací kontrola (3.11.4) je součástí toku odeslání kampaně a blokující nález odeslání zastaví | API `409` s `campaign_precheck_failed` a seznamem nálezů | Jinak je kontrola dekorace |
+| R19 | část 1 | **Opravit znění o vestavěných filtrech ve 4.10.2.** Věta „obě strany registrují pětici filtrů před prvním renderem a žádná strana neregistruje nic navíc" **nejde implementovat**: konstruktor LiquidJS vestavěné filtry registruje vždy a nemá volbu, která by to vypnula. Jediná cesta je každý vestavěný název **přepsat** funkcí, která vyhodí chybu. | Přeformulovat na behaviorální požadavek: „render s jakýmkoliv vestavěným názvem filtru musí selhat na obou stranách", plus fixture ve skupině `LQ-1xx`. Znění vlastní část 1, sám do něj nesahám. | 3.11.1. Dnešní znění je nesplnitelné tvrzení v zmrazeném kontraktu, tedy něco, na co se implementátor spolehne a co neexistuje. |
+| R20 | část 1 | **Opravit golden fixture `LQ-051`.** Očekává pro `{{ contact.first_name \| vocative }}` kód `liquid_filter_not_allowed`, ale katalog hlášek části 3 pro tentýž vstup vrací **`liquid_vocative_filter`** a hlavní specifikace 6.3 ten vlastní kód výslovně požaduje. Validátor vrací jeden kód, takže dnes buď spadne fixture, nebo akceptační kritérium 25. | Změnit `expect_validation_error.code` na `liquid_vocative_filter`. `hint_contains: "first_name_vocative"` zůstává beze změny. | 3.7.4. Kolize je uvnitř zmrazeného kontraktu, proto o ni žádám a neopravuju ji sám. |
+| R21 | část 1 | **Doplnit kořen `_present` do jmenného prostoru proměnných ve 4.10.2.** Je to mapa boolean hodnot, kterou plní materializace podle `renderSchema.presence` a nad kterou kompilace emituje podmínky podmíněných bloků. Validátor autorské šablony ji zakazuje stejně jako `_context`. | Aditivní řádek v seznamu kořenů, žádná změna gramatiky ani sémantiky. Tvar klíče: cesta pole s tečkami nahrazenými dvěma podtržítky (`contact__city`, `contact__attr__mesto`), tedy dva segmenty cesty. | 3.1.10. Bez toho by validátor senderu zkompilovanou šablonu odmítl a podmíněné bloky by nešly odeslat. Zároveň to je jediná cesta, jak zavřít past prázdného řetězce, protože `blank` v Go knihovně neexistuje (K4). |
+| R22 | část 4a | **Materializace publika plní `_present`** pro každou cestu z `renderSchema.presence`. Hodnota je `true`, když pole není `nil`, není prázdný řetězec, není řetězec ze samých bílých znaků a není prázdné pole. | Klíč podle R21, výpočet toutéž sdílenou funkcí `prepareRenderData` z `packages/contracts` (3.7.2b) | Chybějící klíč je `nil`, tedy nepravda, takže by podmíněný blok zmizel **všem** příjemcům a nikde by to nespadlo. |
+| R23 | část 1 | **Ohlášení, ne žádost: `CompileContext.language` je od 2026-07-31 řetězec s BCP 47 tagem, ne dvojice `"cs" \| "en"`.** Kontrakt 5 vlastní část 3, takže změnu dělám sám, ale mění se tvar pole, které si část 1 může držet v přehledu kontraktů. Totéž se týká lokalizovaných popisků, které jsou napříč částmi mapa s povinným `en` (`LocalizedText`), stejně jako to už má část 2 u `FieldCatalogEntry.label`. | Vzít na vědomí, případně srovnat formulaci v přehledu kontraktů | 3.1.9. Produkt na třech místech slibuje přidání jazyka bez změny kódu; zabetonovaná dvojice uvnitř zmrazeného kontraktu by ten slib porušila a první překlad od komunity by si vyžádal verzi kontraktu. |
+| R24 | část 2 | **Potvrdit prefix cest v katalogu polí.** `FieldCatalogEntry.path` je podle 4.2.3 části 2 **bez** prefixu `contact.` (`first_name`, `attr.city`), zatímco merge tagy, `renderSchema.fields[].path`, `templates.used_fields` i `visibleWhen.field` nesou plnou cestu **s** prefixem. Převod má být na jednom místě v `packages/contracts` (`toMergePath`, `toCatalogPath`), ne v každém volajícím. | Potvrzení, že prefix opravdu chybí schválně, plus dvě sdílené funkce | 3.8.2. Kdyby si to každá strana převáděla sama, první rozchod se projeví jako „pole neexistuje" u validní šablony. |
 
 Funkce, které naopak **část 3 dodává** ostatním:
 
@@ -3655,15 +4056,22 @@ Původně jsem tu měl dva rozpory s hlavní specifikací: že filtr `date` mus�
 
 Zůstává jen důsledek pro část 4: escapování musí být v senderu, ne v kompilaci, takže `compiled_html` obsahuje výrazy **bez** jakéhokoliv escape filtru. Je to zapracované v kontraktu 4.1 a v požadavku R8.
 
-### 11.4 Chybějící adresa odesílatele v jmenném prostoru kontraktu
+### 11.4 ~~Chybějící adresa odesílatele v jmenném prostoru kontraktu~~ VYŘEŠENO 2026-07-31
 
-**Část 1, 4.10.2**, vyjmenovává kořeny, které sender zaručeně najde v `render_data`: `contact.*`, `campaign.name`, `campaign.subject`, `workspace.name`, `unsubscribe_url`, `one_click_unsubscribe_url`, `preferences_url`, `webview_url`, `_context.*`.
+**Rozpor už neexistuje. `workspace.sender_address` v kontraktu je** (ověřeno čtením `01-platforma.md`, kapitola 4.10.2, jmenný prostor proměnných a odstavec pod ním). Část 1 ho navíc zdůvodňuje přesně tím, čím jsem ho žádal: bez něj by autoři šablon vkládali adresu jako konstantu při kompilaci a po přestěhování firmy by se změna nepromítla do už uložených šablon.
 
-**Chybí poštovní adresa odesílatele.** Blok `footer` (3.2.12) ji potřebuje, protože identifikace odesílatele včetně fyzické adresy je v komerčním e-mailu právní požadavek, ne kosmetika, a je to jediný blok, jehož obsah nesmí být na uživateli. Bez tagu by ji musel každý uživatel vypsat ručně do textu, a když se firma přestěhuje, budou všechny šablony špatně.
+Co se tím v téhle části mění:
 
-**Návrh:** doplnit do kontraktu `workspace.sender_address` (text, může být víceřádkový) a volitelně `workspace.website_url`. Je to čistě aditivní změna seznamu kořenů, žádná změna gramatiky ani sémantiky.
+| Místo | Bylo | Je |
+|---|---|---|
+| 3.2.12, výchozí `senderInfo` | text z `workspaces.settings.sender_address` zapečený při kompilaci | merge tag `{{ workspace.sender_address }}` |
+| 3.5, patička v prostém textu | „adresa odesílatele" | týž merge tag |
+| 3.8.1, tabulka „co v kontraktu není" | řádek `workspace.sender_address` s náhradním řešením | řádek je v tabulce systémových tagů, náhradní řešení zrušené |
+| 3.9.1, `BaseTemplateParams` | parametr `senderAddress: string` | parametr odstraněn, generátor adresu nezná |
 
-**Náhradní řešení, kdyby část 1 nechtěla kontrakt rozšiřovat:** generátor základní šablony (3.9) vloží adresu **jako konstantní text při kompilaci**, protože v tu chvíli ji zná z nastavení projektu. Funguje to, ale znamená to, že změna adresy se nepromítne do už uložených šablon a je nutné je překompilovat. Proto to není moje první volba.
+**Náhradní řešení „zapéct adresu jako konstantu" je tímto zrušené**, ne jen odsunuté. Byl to postup, před kterým kontrakt sám varuje, a dokument ho na třech místech předepisoval jako pracovní stav.
+
+`workspace.website_url` jsem žádal jako volitelný a **v kontraktu není**. Nežádám ho znovu: adresa webu není právní požadavek a šablona ji unese jako běžný odkaz zadaný uživatelem.
 
 Totéž se **netýká** `campaign.preheader` a `current_year`, které jsem měl původně v katalogu. Obojí se vyhodnotí při kompilaci (kompilace běží jednou na kampaň a obě hodnoty v tu chvíli známe), takže se do `render_data` vůbec nedostanou a kontrakt kvůli nim rozšiřovat netřeba.
 
@@ -3689,7 +4097,8 @@ Totéž se **netýká** `campaign.preheader` a `current_year`, které jsem měl 
 |---|---|---|---|
 | O1 | ~~Editor: vlastní, nebo přesto EmailBuilder.js? (11.1)~~ | **UZAVŘENO 2026-07-31 zadavatelem** | **Editor vlastní a tenký, s omezeným rozsahem podle 3.3.3 (změřeno na zhruba 3 000 řádků). Renderer `@react-email/components` a `@react-email/render`, ne vlastní a ne EmailBuilder.js.** Zamítnuty: `@usewaypoint/email-builder` věcně (3.3.1), Maily licenčně (9.3), GrapesJS jako druhá volba a dokumentovaná náhradní cesta (3.3.3). |
 | O1d | ~~Jak zabránit tomu, aby React renderer rozbil Liquid escapováním uvozovek?~~ | **UZAVŘENO 2026-07-31 zadavatelem** | **Řetězcové literály se ze šablony ruší.** Náhradní hodnota filtru `default` a formát filtru `date` se zadávají v atributech bloku a kompilace je doplní až po renderu. Závazné znění v části 1, kapitola 4.10.2, dopad na tuto část v 3.3.5. |
-| O1b | Doplnit `workspace.sender_address` do kontraktu Liquid subsetu? (11.4) | Autor části 1 | Ano, je to aditivní změna a bez ní se poštovní adresa v patičce zamrazí do šablony |
+| ~~O1b~~ | ~~Doplnit `workspace.sender_address` do kontraktu Liquid subsetu? (11.4)~~ | **UZAVŘENO**, ověřeno 2026-07-31 | **Kořen v kontraktu už je** (část 1, 4.10.2). Patička ho čte jako merge tag, zapékání adresy při kompilaci je zrušené. Nic k rozhodnutí. |
+| O1e | ~~Kam se v blokovém modelu zapisuje podmínka a jak se zapíše „pole není prázdné"?~~ | **UZAVŘENO 2026-07-31 zadavatelem** | **Podmínka je vlastnost bloku `visibleWhen`, pravdivost se počítá mimo Liquid nad mapou `_present`** (3.1.10). Uzel cyklu `repeat` je v gramatice dokumentu, ale MVP 0 ho needituje ani neemituje. Zbývá aditivní doplnění kořene `_present` do kontraktu, vyžádané jako R21. |
 | O1c | Práh automatické pauzy "5 % z prvních 1 000 zpráv" u kampaně menší než 1 000 příjemců | Autoři částí 1 a 4 | Upřesnit na "5 % z prvních min(1 000, velikost publika) zpráv, nejméně však 10 selhání", jinak se u kampaně na 200 lidí pojistka nikdy nespustí |
 | O2 | Kolik dodávaných šablon musí být ke dni vydání? | Vlastník produktu | Jedna univerzální plus čtyři varianty |
 | O3 | ~~Smí se do whitelistu `date` doplnit české datum bez nul?~~ | **Vyřešeno částí 1**, formát `%-d.%-m.%Y` je v kontraktu | Nic k rozhodnutí |
@@ -3708,7 +4117,7 @@ Totéž se **netýká** `campaign.preheader` a `current_year`, které jsem měl 
 
 | # | Otázka | Kde je odpověď |
 |---|---|---|
-| 1 | Úplné JSON schéma blokového modelu, verzování, starší verze schématu | 3.1.2, 3.1.6, 3.1.7 |
+| 1 | Úplné JSON schéma blokového modelu, verzování, starší verze schématu | 3.1.2, 3.1.6, 3.1.7, plus 3.1.9 (jazyk) a 3.1.10 (podmíněné zobrazení) |
 | 2 | Seznam bloků, vlastnosti, typy, výchozí hodnoty, meze | 3.2 (celá) |
 | 3 | Renderer: Outlook, tmavý režim, responzivita, inlining CSS | 3.4.2, 3.4.4, 3.4.3, 3.4.5 |
 | 4 | Matice klientů a testování bez Litmusu a Email on Acid | 3.6 (celá), hlavně 3.6.1, 3.6.4, 3.6.6 |
@@ -3735,7 +4144,7 @@ Všech 17 otázek je zodpovězeno.
 | Artefakt | Kde |
 |---|---|
 | JSON schéma blokového modelu | 3.1.6, plné schéma v `packages/emails/schema/document.v1.schema.json` |
-| Katalog bloků | 3.2 |
+| Katalog bloků | 3.2, společné vlastnosti včetně `visibleWhen` v úvodu kapitoly |
 | Gramatika Liquid subsetu | Vlastní část 1, 4.10.2. Část 3 dodává validátor a hlášky (3.7.3, 3.7.4). |
 | Katalog merge tagů | 3.8.1, 3.8.2 |
 | Schémata AI nástrojů | 3.12.4 |
