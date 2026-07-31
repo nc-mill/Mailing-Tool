@@ -277,14 +277,18 @@ Sender nikdy nečte: `contacts`, `lists`, `list_subscriptions`, `suppressions`, 
 
 | `type` | Zapisuje |
 |---|---|
-| `sent`, `failed`, `render_warning`, `circuit_breaker_open` | **sender (4b)** |
+| ~~`sent`, `failed`~~ | **nikdo, zrušeno.** Odvozuje se z `messages` jobem `tracking.refresh_campaign_progress` |
+| `circuit_breaker_open` | sender (4b), a i to je k zrušení, viz P5.18 |
+| `render_warning` | sender (4b), ale do samostatné `campaign_render_warnings` (P5.17) |
 | `delivered`, `bounce`, `complaint` | 4a |
 | `open`, `click` | 5 |
 | `unsubscribe` | 2 |
 
 Sender do `message_events` **nikdy nezapisuje `open` ani `click`**, přestože na to podle grantů právo má. Kdyby je psal, rozešly by se unikátní počty v reportech.
 
-**Dvě věci ze schématu části 5 potřebují dořešit, viz P5.15 a P5.16.** První je, že `sent` a `failed` znamenají jeden `INSERT` navíc na každou odeslanou zprávu, tedy zdvojnásobení zápisů v horké cestě. Druhá je, že schéma má `contact_id uuid NOT NULL`, ale u testovacího odeslání na volnou adresu žádný kontakt neexistuje.
+**V běžném provozu sender do `message_events` nezapisuje nic.** Typy `sent` a `failed` byly zrušené (P5.15): jsou odvoditelné z `messages` a znamenaly by jeden `INSERT` navíc na každou odeslanou zprávu, tedy milion řádků navíc na milionovou kampaň za data, která už na řádku jsou. Část 5 je nahradila přírůstkovým jobem podle vodoznaku.
+
+**Návrh: zrušit senderu grant `INSERT ON message_events` úplně (P5.18).** Po zrušení `sent` a `failed` a po přesunu `render_warning` do vlastní tabulky zbývá jediný typ `circuit_breaker_open`, řádově jednotky řádků na kampaň. Ten je ale **plně redundantní s `campaigns.pause_reason`**, kam sender zapisuje tentýž kód, detail, `sender_id` i čas a na co grant má. Zrušením se bezpečnostní hranice zúží o celou jednu zapisovatelnou tabulku a sender neztratí nic.
 
 Zápis do `message_events` je novinka oproti mému konceptu; grant na něj dává kontrakt 4.10.1. Schéma tabulky vlastní část 5, potřebuji od ní sloupce a povolené hodnoty `type`, viz požadavek P5.10.
 
@@ -496,7 +500,7 @@ RETURNING m.id, m.created_at, m.workspace_id, m.campaign_id, m.contact_id,
 | `$3` TTL claimu v sekundách | `SENDER_CLAIM_TTL_SECONDS` | 300 |
 | `$4` kampaň | z rotace campaignPolleru | |
 
-**Oprava pořadí klauzulí.** Kontrakt uvádí `FOR UPDATE OF m SKIP LOCKED` **před** `LIMIT $2`. Tak to PostgreSQL nepřijme, gramatika `SELECT` má zamykací klauzuli až za `LIMIT`, `OFFSET` a `FETCH`. Podrobně v rozporu K1. Uvádím tady opravené znění, protože jinak by se z dokumentu nedalo stavět.
+**Poznámka k pořadí klauzulí.** Uvádím `LIMIT $2` před `FOR UPDATE OF m SKIP LOCKED`, tedy v kanonickém pořadí podle synopse v dokumentaci. **Opačné pořadí je ale také platné**, gramatika parseru (`gram.y`, pravidlo `select_no_parens`) má obě produkce. Dříve jsem tvrdil, že opačné pořadí je syntaktická chyba; nebyla to pravda, rozbor v K1. Volba je tedy čitelnost, ne správnost.
 
 Poznámky, které nejsou samozřejmé:
 
@@ -1165,6 +1169,8 @@ Kontrakt vyjmenovává šest vlastností, na které se sender může spolehnout.
 | `trackOpens = true` | | nahradí se `<img>` o rozměru 1 × 1 |
 | `trackOpens = false` | | **kompilace komentář negeneruje**, `hasOpenPixelSlot = false` |
 | `is_test = true` a `SENDER_TEST_TRACKING = false` | kompilace proběhne s `trackClicks = false` | totéž s `trackOpens = false` |
+
+**U testovacího odeslání sender navíc negeneruje trackovací token vůbec**, ani kdyby značka v šabloně omylem zůstala. Důvod přišel od části 5 a je lepší než ten můj: platný token, ke kterému nevede žádná dohledatelná zpráva, by při každém otevření zvyšoval jejich čítač `tracking_message_lookup_miss_total`, který mají alertovaný jako porušení invariantu. Byl by to trvalý falešný poplach na jejich nejcitlivější metrice a hledal by se špatně.
 
 Poslední řádek je změna proti mému dřívějšímu návrhu, kde sender u testovacího odeslání nahrazoval značky původními URL. To by po něm chtělo znát původní URL, tedy číst `campaign_links`. Správně je zkompilovat testovací odeslání rovnou s vypnutým sledováním, což je práce části 4a při materializaci.
 
@@ -1937,7 +1943,7 @@ Každá věta musí jít převést na test.
 - **AK-4.4** Řádek ve stavu `claimed` s vyplněným `dispatch_started_at` a `claim_expires_at` starším než dvojnásobek TTL dostane `error_code = 'ambiguous_dispatch'`. Při politice `retry` a `ambiguous_count = 0` skončí na `pending`, jinak na `failed`.
 - **AK-4.5** Běžící dávka trvající déle než `SENDER_CLAIM_TTL_SECONDS` není reaperem sebrána, protože heartbeat obnovuje `claim_expires_at`.
 - **AK-4.6 (regrese na K2)** Zpráva s běžícím heartbeatem a vyplněným `dispatch_started_at` **není reaperem nikdy uvolněna**, ani po deseti tikách reaperu. Tenhle test odhalí obrácené znaménko v podmínce a musí být v sadě `fixtures/outbox/scenarios.json` jako `OB-12`.
-- **AK-4.7 (regrese na K1 a K23)** Oba kroky claim dotazu se proti reálnému PostgreSQL 18 **spustí bez syntaktické chyby**. Test nic netvrdí o výsledku, jen dotaz provede. Navrhuji ho zařadit jako `OB-00`, aby běžel první ze všech scénářů: obě dnešní syntaktické chyby v kontraktu by odhalil dřív, než na nich kdokoliv začne stavět.
+- **AK-4.7 (regrese na K23), zařazeno jako `OB-00`** Oba kroky claim dotazu se proti reálnému PostgreSQL 18 **spustí bez chyby**. Test nic netvrdí o výsledku, jen dotaz provede, a běží první ze všech scénářů. Chytil by K23 dřív, než na něm kdokoliv začne stavět, a chytil by i moje mylné tvrzení u K1: spustit oba tvary je levnější a spolehlivější než usuzovat z dokumentace, co parser přijme.
 - **AK-4.8** Kampaň přepnutá na `paused` uprostřed rozesílky přestane vracet řádky do 2 sekund; měkce smazaný workspace okamžitě.
 - **AK-4.9** Testovací odeslání se claimne i u kampaně ve stavu `draft` a má přednost před běžnou dávkou.
 - **AK-4.10** Sender pokoušející se o `DELETE FROM messages` nebo `INSERT INTO messages` dostane chybu oprávnění z PostgreSQL.
@@ -2083,7 +2089,7 @@ Alternativy pro případ, že by projekt usnul, jsou v otevřené otázce O13.
 | P1.13 | Po rozhodnutí o čistém `SECRET_KEY` bez prefixu **opravit dokument části 1 na dvou místech** (sekce 3.10 a tabulka 4.9), které dnes uvádějí `[<key_id>:]<base64url>`, a určit, jaké `key_id` se razítkuje na nové obálky. | Jinak budou Go a TypeScript parsovat tutéž proměnnou různě a spadne `config-parity`. |
 | P1.10 | **Vyřešit K21:** `GRANT UPDATE (status, pause_reason) ON campaigns` pro roli senderu a nový sloupec `campaigns.pause_reason jsonb` | Bez toho nemůže sender pozastavit kampaň, což vyžaduje jak circuit breaker (3.13), tak kontraktní pravidlo o 5 % selhání renderu z 4.10.2. |
 | P1.11 | Doplnit `SENDER_REPLICAS`, `SENDER_RATE_SAFETY`, `SENDER_MAX_ATTEMPTS` a další z tabulky v 4.1 do seznamu konfiguračních proměnných | Všechny mají výchozí hodnotu, takže nic neblokují, ale patří do jednoho seznamu s ostatními, aby fungoval test `config-parity`. |
-| P1.9 | Opravy K1 (pořadí `LIMIT` a `FOR UPDATE`), K2 (znaménko v reaperu) a K8 (čítač nejednoznačných) v kontraktu 4.10.1 | Bez K1 se dotaz nespustí, bez K2 se kampaň rozsype během první minuty. Podrobně v 11.1. |
+| ~~P1.9~~ | **VYŘEŠENO.** K23 a K2 opraveny, K8 opraven čítačem `ambiguous_count`. K1 stažen jako můj omyl, viz 11.1. |
 
 ### 10.2 Na část 4a (kampaně a outbox)
 
@@ -2184,8 +2190,9 @@ Zbývající požadavky:
 |---|---|---|
 | ~~P5.10~~ | **VYŘEŠENO**, schéma je v 12.2.1 části 5. `message_created_at` je povinné a mám ho z claimnutého řádku, takže ho při zápisu znám bez dohledávání. |
 | ~~P5.11~~ | **VYŘEŠENO**, agregovat ano, tvar jeden řádek na trojici (kampaň, kód, cesta) s počítadlem. Podporuji i návrh dát to do samostatné `campaign_render_warnings` místo do `message_events`, viz P5.16. |
-| **P5.15** | **Je jeden `INSERT` do `message_events` na každou odeslanou zprávu opravdu potřeba?** Typy `sent` a `failed` znamenají zdvojnásobení zápisů v horké cestě: u milionové kampaně dva miliony řádků místo jednoho milionu. Stav přitom už je na řádku `messages` a `idx_messages__campaign_status` ho umí spočítat. | Kdyby to šlo odvodit z `messages`, ušetří se celá jedna tabulka zápisů. Když to potřebné je, budu `INSERT` provádět **v téže transakci** jako `UPDATE` stavu (D3a a D3c), aby nemohlo vzniknout jedno bez druhého. Napiš prosím, jestli to tak stačí. |
-| **P5.16** | **`contact_id uuid NOT NULL` ve schématu `message_events` blokuje testovací odeslání.** Test na volně zadanou adresu žádný kontakt nemá a `messages.contact_id` je u něj `NULL` (K9). | Buď povolit `NULL` i tady, nebo z testovacích odeslání události nezapisovat vůbec. Druhá varianta je z mého pohledu lepší: test se stejně nezapočítává do statistik. |
+| ~~P5.15~~ | **VYŘEŠENO, `sent` a `failed` zrušeny.** Část 5 ověřila, že z těch událostí četla jen `campaign_stats.sent`, `campaign_stats.failed` a časovou řadu do grafu, a všechno tři je odvoditelné z `messages`. Nahrazeno přírůstkovým jobem podle vodoznaku, který přepisuje poslední dva bloky celou hodnotou místo přičítání, takže je idempotentní po pádu. Moje nabídka zapisovat událost v téže transakci je tím bezpředmětná. |
+| ~~P5.16~~ | **VYŘEŠENO, testovací odeslání se netrackuje vůbec.** Nejen že se nezapisují události, ale ani se negeneruje token, nevkládá pixel a nepřepisují odkazy. `contact_id` může zůstat `NOT NULL` v celém schématu části 5. |
+| **P5.18** | **Zrušit senderu grant `INSERT ON message_events` úplně.** Po P5.15 a P5.17 zbývá jediný typ `circuit_breaker_open`, který je plně redundantní s `campaigns.pause_reason`. | Zúží bezpečnostní hranici o celou zapisovatelnou tabulku a sender neztratí nic. Rozhodnutí je části 1, tvoje stanovisko „užší je lepší" sdílím. |
 | **P5.17** | Podporuji **samostatnou tabulku `campaign_render_warnings`** místo agregovaných řádků v `message_events` | Tvůj argument sedí: agregace potřebuje `INSERT ... ON CONFLICT DO UPDATE`, tedy `UPDATE` právo, a rozšiřovat ho na celou `message_events` je horší než založit tabulku. Navíc je `message_events` jinak append-only a řádek s počítadlem tam koncepčně nepatří. |
 | P5.13 | **Podporuji tvůj požadavek na `payload_hex` u každého vektoru** a na doplnění hraničních případů (implicitní versus explicitní `key_id = 1`, `issued_at = 4294967295`, UUID samých `ff`, `key_id = 0`, nadbytečné bajty na konci) | Pořadí bajtů UUID je dnes popsané jen slovně. `payload_hex` je jediná věc, která zabrání tomu, aby se dvě implementace rozešly na endianitě, aniž by to kterýkoliv vektor odhalil. |
 | P5.14 | Potvrzení, do kterých typů `message_events` sender **smí** zapisovat | Tvůj zákaz `open` a `click` beru a mám ho v 2.3. Potřebuji ale uzavřený výčet toho, co psát smím, ne jen výčet zákazů. Dnes zapisuji `render_warning` a `circuit_breaker_open`. |
@@ -2204,14 +2211,14 @@ Prošel jsem kontrakt znovu po zmrazení (3 977 řádků). **Kontrakty 3 a 4 jso
 
 | Nález | Stav ve zmrazeném kontraktu | Řádek |
 |---|---|---|
-| **K1** zamykací klauzule před `LIMIT` | **NEOPRAVENO**, dotaz se nespustí | 2807 až 2809 |
+| ~~**K1**~~ zamykací klauzule před `LIMIT` | **STAŽENO, byl to můj omyl.** Gramatika parseru přijímá obě pořadí. | |
 | **K23** join na cíl `UPDATE` uvnitř `FROM` | **NOVÝ**, dotaz se nespustí | 2818 |
 | **K2** znaménko v reaperu | **NEOPRAVENO**, krade zprávy živému senderu | 2905 |
 | **K8** druhý nejednoznačný průchod | **NEOPRAVENO**, próza a SQL si odporují | 2899 a 2913 |
 | **K12** heartbeat bez `created_at` | **NEOPRAVENO** | 2854 |
 | **K3** `Message-ID` jako pojistka u SES | **NEOPRAVENO**, zdůvodnění výchozí politiky na SES neplatí | 2887 až 2893, 2912 |
 
-K1, K23 a K2 jsou blokující: první dva znamenají, že se claim dotaz vůbec nespustí, třetí by rozsypal kampaň během první minuty. K3 není chyba kódu, ale chybné zdůvodnění, na kterém stojí volba výchozí politiky.
+**Z pěti nálezů tohohle průchodu byl jeden planý.** K23 a K2 jsou skutečné a blokující: první znamená, že se claim dotaz nespustí, druhý by rozsypal kampaň během první minuty. K8 a K12 jsou skutečné a neblokující. **K1 jsem stáhl**, bylo to mylné tvrzení opřené o synopsi v dokumentaci místo o gramatiku parseru. K3 není chyba kódu, ale chybné zdůvodnění, na kterém stála volba výchozí politiky.
 
 ---
 
@@ -2270,7 +2277,7 @@ Společné je, že ověřování hledalo **přítomnost** ochrany, ne její **ú
 
 Praktický důsledek pro tuhle část: kritéria AK-4.6, AK-4.7, AK-20.5 a AK-20.6 nejsou testy funkcí, ale **testy toho, že ochrana funguje**. Každé z nich musí při odstranění příslušné ochrany spadnout, jinak samo nic negarantuje.
 
-**Poznámka k dohledatelnosti obou chyb.** K1 i K23 jsou syntaktické, takže je odhalí **první spuštění proti reálné databázi**. To je dobrá zpráva a zároveň argument pro akceptační kritérium AK-4.7: test, který claim dotaz jen spustí a nic netvrdí o výsledku, by obojí chytil dřív, než na tom kdokoliv začne stavět. Doporučuji ho zařadit do scénářů `OB-*` jako `OB-00`, aby běžel první.
+**Poznámka k dohledatelnosti.** K23 je syntaktický, takže ho odhalí **první spuštění proti reálné databázi**. To je argument pro `OB-00`, tedy test, který claim dotaz jen spustí a nic netvrdí o výsledku. Stojí za zmínku, že tentýž test by odhalil i to, že můj nález K1 byl planý: spustit oba tvary je levnější a spolehlivější než přečíst si synopsi a usoudit z ní, co parser přijme.
 
 ---
 
@@ -2295,35 +2302,26 @@ Jediná závada je tedy heartbeat. Ve svých Go typech nesu identitu zprávy jak
 
 ---
 
-#### K1. BLOKUJÍCÍ: normativní claim dotaz je syntakticky neplatný
+#### K1. STAŽENO, BYL TO MŮJ OMYL: pořadí `FOR UPDATE` a `LIMIT`
 
-Kontrakt 4.10.1, "Claim dotaz (normativní, bajt za bajtem takto)":
+**Tenhle nález byl chybný a hlásil jsem ho dvakrát po sobě jako ověřený fakt. Není to syntaktická chyba.**
 
-```sql
-  ORDER BY m.next_attempt_at, m.id
-  FOR UPDATE OF m SKIP LOCKED
-  LIMIT $2
-```
+Tvrdil jsem, že `ORDER BY ... FOR UPDATE OF m SKIP LOCKED LIMIT $2` PostgreSQL nepřijme. Opřel jsem to o synopsi příkazu `SELECT` v oficiální dokumentaci, která uvádí pořadí `ORDER BY`, `LIMIT`, `OFFSET`, `FETCH`, `FOR UPDATE`.
 
-V PostgreSQL musí zamykací klauzule stát **za** `LIMIT`. Gramatika `SELECT` v oficiální dokumentaci PostgreSQL 18 má pořadí:
+**Synopse v dokumentaci ale ukazuje kanonické pořadí, ne úplnou přijímanou gramatiku.** Ověřeno ve zdrojovém kódu parseru, `src/backend/parser/gram.y`, větev `REL_18_STABLE`, pravidlo `select_no_parens` na řádcích 12852 a 12860:
 
 ```
-[ ORDER BY ... ]
-[ LIMIT { count | ALL } ]
-[ OFFSET start [ ROW | ROWS ] ]
-[ FETCH { FIRST | NEXT } [ count ] { ROW | ROWS } { ONLY | WITH TIES } ]
-[ FOR { UPDATE | NO KEY UPDATE | SHARE | KEY SHARE } [ OF from_reference [, ...] ] [ NOWAIT | SKIP LOCKED ] [...] ]
+| select_clause opt_sort_clause for_locking_clause opt_select_limit
+| select_clause opt_sort_clause select_limit opt_for_locking_clause
 ```
 
-Dotaz v uvedeném pořadí skončí chybou `syntax error at or near "LIMIT"`. Protože je označený jako závazný bajt za bajtem, opravit ho musí část 1, ne já potichu.
+První produkce je přesně `ORDER BY ... FOR UPDATE ... LIMIT`. **Obě pořadí tedy parsují a k chybě `syntax error at or near "LIMIT"` by nedošlo.**
 
-**Návrh opravy:** prohodit poslední dva řádky.
+Pořadí se v kontraktu nakonec prohodilo, protože kanonický tvar je čitelnější a nestojí to nic. To je ale kosmetika, ne oprava chyby, a v kontraktu **nesmí být napsáno, že by jinak šlo o syntaktickou chybu**, protože to není pravda.
 
-```sql
-  ORDER BY m.next_attempt_at, m.id
-  LIMIT $2
-  FOR UPDATE OF m SKIP LOCKED
-```
+**Poučení, které je obecnější než tenhle případ.** Ověřoval jsem proti dokumentaci a považoval to za ověření proti zdroji. U syntaxe je zdrojem gramatika parseru, ne synopse v dokumentaci; synopse je zjednodušení pro čtenáře. Rozdíl mezi „ověřeno v dokumentaci" a „ověřeno v gramatice" jsem měl napsat už poprvé, protože pak by bylo vidět, jak silné to tvrzení je.
+
+Poznámka pro srovnání: nálezy K23 a K2 byly ověřené jinak. K23 dohledala část 1 v `parse_relation.c` včetně přesného znění chyby a nápovědy, K2 je vlastnost aritmetiky, kterou jde ověřit dosazením čísel. Obojí obstálo, tenhle nález ne.
 
 ---
 

@@ -2207,13 +2207,13 @@ Rozhodnutí **nepoužívat `pg_partman`** je společné a část 1 ho zdůvodňu
 |---|---|---|---|
 | `web_events` | `received_at` (náš čas přijetí) | měsíc | `TRACKING_RETENTION_MONTHS`, výchozí 26 |
 | `message_engagement` | `created_at` (= `messages.created_at`) | měsíc | totéž |
-| `message_events` (vlastní část 4a) | `created_at` | měsíc | totéž, viz požadavek 12.2.11 |
+| `message_events` (vlastní část 4a) | `received_at` | měsíc | totéž, viz požadavek 12.2.13 |
 
 Měsíční granularita, ne denní. Denní by při retenci 26 měsíců znamenalo 790 partition, což už měřitelně zpomaluje plánování dotazů. Měsíční dává 26 partition, tedy bezpečně v pásmu, kde je režie zanedbatelná.
 
 **Odpovědi na P5-4 z části 1:** výchozí retence je **26 měsíců** pro `web_events` i `message_events`, konfigurační proměnná je `TRACKING_RETENTION_MONTHS`, povolený rozsah 3 až 120. Odůvodnění čísla je v 3.15.1.
 
-`message_engagement` a `message_events` musí mít **stejnou** retenci jako `messages` (část 4a), jinak zůstanou statistiky bez zpráv nebo naopak. Viz požadavek 12.2.11.
+`message_engagement` a `message_events` musí mít **stejnou** retenci jako `messages` (část 4a), jinak zůstanou statistiky bez zpráv nebo naopak. Viz požadavek 12.2.13.
 
 ### 3.15 Retence a GDPR operace
 
@@ -2305,6 +2305,16 @@ Export **neobsahuje** interní identifikátory zpráv ani tokeny.
 | Obojí vypnuté | Zpráva se odešle beze změn v HTML | Report ukazuje jen doručení, odmítnutí, stížnosti a odhlášení |
 | Workspace nemá `tracking_domains` | SDK se nespustí, `oe_token` se nepřidává | Timeline obsahuje jen e-mailové položky |
 | Souhlas `analytics` odvolaný | Žádné webové události | Timeline má mezeru, u kontaktu je poznámka „od 14. 5. 2026 nesouhlasí se sledováním" |
+| **Testovací odeslání na volně zadanou adresu** | Pixel se nevloží, odkazy se nepřepíšou, token nevznikne | Nic. Test se nikde neobjeví a do statistik se nezapočítá |
+| **Testovací odeslání „jako konkrétní kontakt"** | Nic, měří se normálně | Objeví se v timeline toho kontaktu a v reportu kampaně |
+
+**Testovací odeslání se netrackuje.** Rozhodnutí vzniklo z nálezu části 4b (P5.16): testovací zpráva na volně zadanou adresu nemá kontakt, takže by neměla co zapsat do `contact_id`. Ze dvou nabízených variant (povolit `NULL`, nebo netrackovat) volím **netrackovat**, a to i pro pixel, ne jen pro události:
+
+1. Test se z definice nezapočítává do statistik, takže řádek v timeline nemá komu pomoct.
+2. Kdyby se token vygeneroval a událost jen zahodila, existovala by platná trackovací adresa, ke které nevede žádná zpráva. Každé její otevření by skončilo neúspěšným dohledáním a rostl by čítač `tracking_message_lookup_miss_total`, který je alertovaný jako porušení invariantu I1. Byl by to falešný poplach na nejcitlivější metrice, kterou mám.
+3. `message_engagement.contact_id` i `message_events.contact_id` tím můžou zůstat `NOT NULL` a nikde se neřeší anonymní zpráva.
+
+Cena: tester neuvidí, že měření funguje. Řeším to druhou variantou testu, **„odeslat test jako konkrétní kontakt"**, kde jde o skutečnou zprávu skutečnému kontaktu a měří se normálně. Kdo chce ověřit tracking, použije ji; kdo chce zkontrolovat vzhled na své adrese, použije obyčejný test. Obojí patří do UI části 4a a je to požadavek 12.2.16.
 
 Zásada pro UI: **vypnutý tracking nikdy nesmí vypadat jako nula.** Nula znamená „nikdo neotevřel", což je úplně jiná informace. Rozdíl mezi „nezměřeno" a „nula" je jeden z nejčastějších zdrojů špatných rozhodnutí v marketingových nástrojích.
 
@@ -2930,29 +2940,36 @@ Vektory vlastní část 1 (`fixtures/token/vectors.json`), tato část je jen ko
 77. `oe rebuild-engagement` přepočítá tabulku od nuly a výsledek se rovná stavu udržovanému přírůstkově.
 78. Segmentační dotaz nad `contact_engagement` z jiného workspace vrátí nula řádků i při obejití repository vrstvy (RLS).
 
+79. Testovací odeslání na volně zadanou adresu nemá v HTML žádný `img` na `/t/o/` ani žádný odkaz na `/t/c/`.
+80. Testovací odeslání nezvýší v `campaign_stats` žádnou hodnotu.
+81. Průběh odesílání se během kampaně obnovuje bez jediného řádku typu `sent` v `message_events`.
+82. Dvojí spuštění `tracking.refresh_campaign_progress` se stejným vodoznakem nezmění `campaign_stats_buckets`.
+83. Kampaň pozastavená na týden a obnovená dorovná průběh do 10 sekund od obnovení.
+84. Timeline kontaktu obsahuje položku „dostal kampaň X" i pro kampaň, ke které neexistuje žádná událost v `message_events`.
+
 ### 10.8 Partitioning, retence a GDPR
 
-79. Job `platform.maintain_partitions` vytvoří partition `web_events` pro aktuální měsíc a tři následující.
-80. Při retenci 3 měsíce se čtvrtá nejstarší partition odpojí a smaže, a operace trvá pod 5 sekund pro 4 miliony řádků.
-81. Zápis události s časem mimo existující partition selže hlasitě, ne tiše.
-82. `erase_contact(id, 'anonymize')` odstraní `contact_id` ze všech událostí kontaktu, nastaví `erased_at` a nezmění `campaign_stats`.
-83. `erase_contact(id, 'purge')` udělá v trackingu přesně totéž co `anonymize` a `campaign_stats` se nezmění ani v jednom režimu.
-84. Výmaz serverové události, která má vyplněné jen `contact_id`, proběhne bez chyby `23514`.
-85. Po výmazu se týž `anonymous_id` naváže na jiný kontakt: vymazané události se k němu **nepřipojí**.
-86. Export dat subjektu obsahuje všechny webové i e-mailové události kontaktu a neobsahuje žádný token.
+85. Job `platform.maintain_partitions` vytvoří partition `web_events` pro aktuální měsíc a tři následující.
+86. Při retenci 3 měsíce se čtvrtá nejstarší partition odpojí a smaže, a operace trvá pod 5 sekund pro 4 miliony řádků.
+87. Zápis události s časem mimo existující partition selže hlasitě, ne tiše.
+88. `erase_contact(id, 'anonymize')` odstraní `contact_id` ze všech událostí kontaktu, nastaví `erased_at` a nezmění `campaign_stats`.
+89. `erase_contact(id, 'purge')` udělá v trackingu přesně totéž co `anonymize` a `campaign_stats` se nezmění ani v jednom režimu.
+90. Výmaz serverové události, která má vyplněné jen `contact_id`, proběhne bez chyby `23514`.
+91. Po výmazu se týž `anonymous_id` naváže na jiný kontakt: vymazané události se k němu **nepřipojí**.
+92. Export dat subjektu obsahuje všechny webové i e-mailové události kontaktu a neobsahuje žádný token.
 
 ### 10.9 Realtime
 
-87. Při odesílání kampaně dorazí do UI aktualizace do 2,5 sekundy (SSE) nebo do 3,5 sekundy (polling) od změny v databázi.
-88. **Nad HTTP/1.1 se neotevře žádné SSE spojení.** Test: server bez TLS a bez HTTP/2, otevřít šest karet reportu, sedmý požadavek na API musí projít bez čekání.
-89. Nad HTTP/2 se otevře nejvýše jedno SSE spojení na prohlížeč bez ohledu na počet karet (volba vůdce přes `BroadcastChannel`).
-90. Prohlížeč bez `BroadcastChannel` funguje dál, jen si každá karta otevře vlastní spojení.
-91. Sto souběžných SSE spojení na tutéž kampaň generuje jeden dotaz do databáze za 2 sekundy, ne sto.
-92. Odpojení a připojení `EventSource` obnoví aktuální stav bez duplicit v UI.
-93. Po překročení `TRACKING_SSE_MAX_CONNECTIONS` vrátí server 503 a klient přejde na polling.
-94. V režimu polling vrátí druhý požadavek bez změny dat `304` bez těla.
-95. Po třech neúspěšných pokusech o SSE klient přejde na polling a už se do konce života stránky nepokouší připojit.
-96. Když živé aktualizace nefungují vůbec, report se dá načíst a obnovit tlačítkem, tedy obrazovka není na spojení závislá.
+93. Při odesílání kampaně dorazí do UI aktualizace do 2,5 sekundy (SSE) nebo do 3,5 sekundy (polling) od změny v databázi.
+94. **Nad HTTP/1.1 se neotevře žádné SSE spojení.** Test: server bez TLS a bez HTTP/2, otevřít šest karet reportu, sedmý požadavek na API musí projít bez čekání.
+95. Nad HTTP/2 se otevře nejvýše jedno SSE spojení na prohlížeč bez ohledu na počet karet (volba vůdce přes `BroadcastChannel`).
+96. Prohlížeč bez `BroadcastChannel` funguje dál, jen si každá karta otevře vlastní spojení.
+97. Sto souběžných SSE spojení na tutéž kampaň generuje jeden dotaz do databáze za 2 sekundy, ne sto.
+98. Odpojení a připojení `EventSource` obnoví aktuální stav bez duplicit v UI.
+99. Po překročení `TRACKING_SSE_MAX_CONNECTIONS` vrátí server 503 a klient přejde na polling.
+100. V režimu polling vrátí druhý požadavek bez změny dat `304` bez těla.
+101. Po třech neúspěšných pokusech o SSE klient přejde na polling a už se do konce života stránky nepokouší připojit.
+102. Když živé aktualizace nefungují vůbec, report se dá načíst a obnovit tlačítkem, tedy obrazovka není na spojení závislá.
 
 ---
 
@@ -3018,7 +3035,9 @@ Tvoje předpoklady, které **platí**: token neobsahuje čitelný e-mail; HMAC s
 10. **Základ URL je `TRACKING_DOMAIN`**, ne `APP_URL`. Je to už v tabulce 4.9 části 1 ve tvém sloupci. Odkazy jsou `{TRACKING_DOMAIN}/t/o/{token}` a `{TRACKING_DOMAIN}/t/c/{token}`.
 11. Sender **nesmí** logovat vyrobené tokeny v plné podobě. Do logu nejvýš prvních 8 znaků a typ.
 12. K tvému návrhu **generovat tokeny v aplikaci a předávat je senderu**: zamítám, ale s vysvětlením. Znamenalo by to uložit dva tokeny ke každé zprávě v outboxu (open plus jeden na každý odkaz), tedy u kampaně s deseti odkazy asi 900 bajtů navíc na řádek a při milionu zpráv skoro gigabajt v `messages`. Token je funkce dat, která už v řádku jsou, takže ho stačí spočítat. Tvoje obava o čas v tokenu je oprávněná a mezitím ji kontrakt vyřešil úplně: pole je `message_created_at`, tedy hodnota z řádku, a je stejná při každém pokusu o odeslání.
-13. Sender má podle grantů v 4.10.1 části 1 `INSERT` do `message_events`. **Tuhle možnost pro open a click nepoužívej.** Události typu `open` a `click` zapisuje výhradně aplikace z trackovacích endpointů. Kdyby je zapisoval i sender, vznikly by duplicity v unikátních počtech.
+13. **Testovací odeslání: negeneruj token a nevkládej pixel.** Zpráva bez `contact_id` nedostane ani `/t/o/`, ani přepsané odkazy. Důvod je v 3.16 a je jiný, než jsi čekal: nejde jen o to, že událost nemá kam zapsat, ale o to, že platná trackovací adresa bez zprávy za sebou by mi rozsvítila alert na porušení invariantu I1.
+14. **Do `message_events` nezapisuj `sent` ani `failed`.** Tvůj nález P5.15 je správný a přijímám ho: stav je na řádku `messages` a průběh odesílání si čtu odtamtud (3.9.5). Ušetří to jeden `INSERT` na každou odeslanou zprávu. K tvé nabídce zapisovat událost v téže transakci jako `UPDATE` stavu: byla by správná, ale teď je zbytečná, protože ta událost vůbec nevznikne.
+15. Sender má podle grantů v 4.10.1 části 1 `INSERT` do `message_events`. **Tuhle možnost pro open a click nepoužívej.** Události typu `open` a `click` zapisuje výhradně aplikace z trackovacích endpointů. Kdyby je zapisoval i sender, vznikly by duplicity v unikátních počtech.
 
 ### 12.2 Část 4a (kampaně, aplikační strana)
 
@@ -3133,7 +3152,7 @@ Kontrakt 4.10.3 přebírám beze změny, jak žádá P5-1. Odpovědi na tvoje po
 | P5-1 | Formát tokenů převzat beze změny. Sémantiku a expiraci `identity` tokenu vlastním já a je v 3.1.5 a 3.10.2: 15 minut, jednorázově, konfigurovatelné `TRACKING_IDENTITY_TOKEN_TTL_SECONDS` v rozsahu 60 až 3600. Dvě výhrady k obsahu payloadu jsou v 13.8, nejsou blokující. |
 | P5-2 | Mechanismus jednorázovosti `nonce`: tabulka `identity_token_uses` (2.4), unikátní primární klíč nad `nonce`, úklidový job `tracking.cleanup_token_uses` hodinově, retence = TTL tokenu. Popis v 3.1.6 a 3.10.3. |
 | P5-3 | SSE infrastruktura je v 3.13 a **rozhodnutí se změnilo**: SSE se použije jen nad HTTP/2 a HTTP/3, jinak polling. Důvod je limit šesti spojení v HTTP/1.1, podrobně v 3.13.1 a v rozporu 13.11. Indikátor stavu z 5.4 části 1 používám a v režimu polling ho držím ve stavu „připojeno". |
-| P5-4 | Retence `web_events` i `message_events` je **26 měsíců**, proměnná `TRACKING_RETENTION_MONTHS`, rozsah 3 až 120. Odůvodnění v 3.15.1. Retence `messages` musí být stejná, viz 12.2.11. |
+| P5-4 | Retence `web_events` i `message_events` je **26 měsíců**, proměnná `TRACKING_RETENTION_MONTHS`, rozsah 3 až 120. Odůvodnění v 3.15.1. Retence `messages` musí být stejná, viz 12.2.13. |
 
 **Co potřebuju od části 1**
 
