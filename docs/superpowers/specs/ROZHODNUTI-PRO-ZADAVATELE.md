@@ -84,7 +84,11 @@ Bez nich pošta buď nedorazí, nebo skončí ve spamu. Vyžaduje to přístup k
 
 **Zjištění:** hlavní specifikace měla varovné prahy nastavené na hodnoty, **při kterých už Amazon jedná**. Varovat až tam je pozdě.
 
-**Doporučení:** vícestupňově. Varování od 2 %, automatické pozastavení kampaně při 8 %. Uživatel dostane vysvětlení a kampaň může sám obnovit.
+**Rozhodnuto:** vícestupňově. **Informace v dashboardu od 2 %, žluté varování od 4 %, automatické pozastavení kampaně při 8 %.** Uživatel dostane vysvětlení a kampaň může sám obnovit.
+
+Práh varování se během rozhodování posunul z původních 5 % na 4 %. Varování od 2 % by se ozývalo prakticky pořád a nikdo by ho po pár týdnech nečetl, varování až od 5 % by přišlo ve chvíli, kdy Amazon už sám jedná. Čtyři procenta jsou poslední místo, kde se to dá ještě v klidu vyřešit. Obojí se vyhodnocuje až po pěti stech předaných zprávách, aby kampaň na 25 lidí s jedním odrazem nespustila poplach.
+
+**Prahy jde nově nastavit na úrovni projektu, ale jen směrem k přísnosti.** Hodnota z konfigurace instalace je zároveň výchozí i strop, takže opatrná agentura smí u nového klienta zabrzdit na 5 %, ale nikdo nesmí povolit 12 %. Důvod: čísla jsou odvozená z hranic Amazonu, takže volnější práh nemá legitimní důvod, zatímco přísnější je normální opatrnost. A hlavně, brzda chrání odesílací účet a ten je per projekt.
 
 ### 2.3 Co dělat, když nevíme, jestli zpráva odešla
 
@@ -244,9 +248,9 @@ Nastavitelnost patří na **úroveň instalace**, ne jako ovládací prvek v roz
 
 Cena je o něco víc dotazů do databáze, při těchto objemech zanedbatelná.
 
-**K zastavení rozesílky uprostřed.** Zadavatel se ptal, jestli jde rozesílku zastavit a zbytek neposlat. **Ano, a je to funkce, kterou konkurence buď nemá vůbec, nebo ji dává jen v nejdražším tarifu.** Vyplývá z toho, že publikum se vypíše do fronty a odesílací komponenta si z ní bere dávky po pěti stech:
+**K zastavení rozesílky uprostřed.** Zadavatel se ptal, jestli jde rozesílku zastavit a zbytek neposlat. **Ano, a je to funkce, kterou konkurence buď nemá vůbec, nebo ji dává jen v nejdražším tarifu.** Vyplývá z toho, že publikum se vypíše do fronty a odesílací komponenta si z ní bere dávky po stovkách:
 
-- **Pozastavit:** do pěti sekund přestane brát nové dávky, rozpracovanou dokončí (může odejít ještě až 500 zpráv), zbytek čeká ve frontě.
+- **Pozastavit:** do pěti sekund přestane brát nové dávky, rozpracovanou dokončí (může odejít ještě až 100 zpráv, tedy velikost dávky), zbytek čeká ve frontě.
 - **Zrušit zbytek rozesílky:** co ve frontě zbylo, se označí jako neodeslané a **už nikdy neodejde**.
 - Co fyzicky odešlo, vzít zpět nejde.
 
@@ -356,6 +360,58 @@ Totéž platí pro adresu na suppression listu ze stížnosti nebo tvrdého odra
 | Obrázek použitý v odeslané kampani nejde smazat | **Ano**, jen skrýt z knihovny |
 | Kolik verzí šablony pamatovat | **50 pojmenovaných** plus neomezená historie u verzí použitých v kampani |
 | Historie konverzace s AI v záloze | **Ano**, s mazáním po 90 dnech |
+
+---
+
+## 3d. Rozhodnutí z revize kódu ve specifikaci (2026-07-31)
+
+Proběhla revize, která se ptala jedinou otázkou: **dělají kusy kódu ve specifikaci přesně to, co o nich tvrdí text vedle nich, a nebrání nám v tom, co slibujeme?** Na každou ze sedmi částí se pustily tři nezávislé optiky. Podrobný katalog je v `parts/revize/05-revize-kodu-vsech-casti.md`.
+
+**Hlavní zjištění:** kód nás v rozvoji svazuje méně, než se čekalo, ale rozešel se s textem víc, než je zdrávo. Osm věcí ale bylo rozhodnutí, ne chyba. Tady jsou i s odůvodněním.
+
+### 1. Podmínky v šabloně jsou vlastnost bloku, ne text
+
+Editor slibuje „tenhle blok se zobrazí, jen když má zákazník slevový kód", ale v datovém modelu nebylo kam to zapsat. Horší: kvůli třem nezávislým omezením **neexistoval žádný platný způsob, jak napsat podmínku „pole není prázdné"**, přestože nástroj uživateli takovou opravu sám nabízel.
+
+**Rozhodnuto:** uživatel v panelu vlastností vybere pole a operátor, žádný kód nepíše. Pravdivost se počítá mimo šablonovací jazyk. Tím se to omezení obchází místo řešení a zavírá se past, kdy se blok zobrazí i lidem s prázdným polem. Cykly (výpis položek objednávky) se zapisují do gramatiky teď, ale zapnou se až s transakčními maily.
+
+### 2. Rezerva pro A/B varianty obsahu
+
+Obsah kampaně byl uložený tak, že se do něj druhá varianta nevejde, přestože A/B test je slíbený v MVP 1.
+
+**Rozhodnuto: založit rezervu teď a nechat ji prázdnou.** Stejně už jednou projekt rozhodl u sdílených bloků. Důvod: pozdější přidání by znamenalo novou verzi kontraktu a souběžnou podporu obou verzí na obou stranách, zatímco prázdný sloupec dnes nestojí nic a specifikace sama píše, že migrace u self-hosted instalací je nejrizikovější operace.
+
+### 3. Otevřená cesta pro transakční maily
+
+Fronta zpráv vyžadovala, aby každá zpráva patřila kampani. Potvrzení objednávky kampani nepatří.
+
+**Rozhodnuto: otevřít to teď.** Je to jediný bod, kde je odklad opravdu drahý: visí na tom nejvíc optimalizovaná a nejvíc testovaná část celého systému. **Důležitý detail:** takové zprávy se dnes vylučují výslovně, ne mlčky, aby první z nich neležela navěky ve frontě bez vysvětlení.
+
+### 4. Sedmá položka menu je rezervovaná
+
+Rozhraní tvrdilo „šest hlavních míst a nic víc, to je vědomé". Automatizace z MVP 2 tím neměly kde bydlet.
+
+**Rozhodnuto: rezervovat sedmé místo.** Původní úvaha byla správná, jen se špatně zapsala: smysl nikdy nebyl v čísle šest, ale v tom, že každá položka je rozhodnutí, které musí udělat uživatel. Ten argument platí i u sedmé.
+
+### 5. Nahrání historie objednávek při nástupu
+
+Systém měl tvrdé omezení, že událost nesmí být starší než sedm dní, a zároveň deklaroval hodnotu „import". Protiřečil si.
+
+**Rozhodnuto: okno zůstává pro živý provoz, import dostane oddělenou cestu.** Historii chování na webu nikdo neexportuje, ale **historii objednávek ano**, a segment „kdo u nás nakoupil za posledních dvanáct měsíců" chce zákazník první den, ne za rok. Bez něj je čerstvá instalace prázdná a první kampaň nemá komu jít.
+
+### 6. Třetí jazyk bez změny kontraktu
+
+Dvojice čeština a angličtina byla zabetonovaná až v kontraktu, přestože produkt na třech jiných místech slibuje přidání jazyka pouhým souborem s překlady.
+
+**Rozhodnuto: otevřít to teď.** Nebyla to volba, ale nedopatření v rozporu s už daným slibem. Navíc: u open-source projektu bude první příspěvek od komunity skoro jistě překlad, a kdyby vyžadoval změnu zmrazeného kontraktu, tak nedorazí.
+
+### 7. Prahy brzd per projekt, ale jen přísnější
+
+Viz 2.2 výše. Stojí za zopakování, že dosavadní návrh umožňoval tu nebezpečnou volbu (vypnout ochranu úplně) a neumožňoval tu bezpečnou (zabrzdit dřív).
+
+### 8. Jméno produktu a tři koše
+
+Viz 1.4 výše. Nejdůležitější zjištění celé revize: doporučení „udělejte z jména jednu konstantu" bylo nebezpečné a bylo nahrazeno.
 
 ---
 
