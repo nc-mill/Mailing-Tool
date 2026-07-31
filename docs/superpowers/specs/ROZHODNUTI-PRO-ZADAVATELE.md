@@ -134,6 +134,35 @@ Marketér uvidí kampaň s nulovou otevřeností a bude hledat příčinu v obsa
 
 ---
 
+## 3c. Rozhodnuto zadavatelem 2026-07-31
+
+### Ukládání IP adres je volba provozovatele, ne naše
+
+**Rozhodnuto: ukládání IP adres a země odvozené z IP bude nastavitelné na úrovni projektu.** Ve výchozím stavu vypnuté, zapínatelné.
+
+Zdůvodnění zadavatele: provozovatel instalace je správcem osobních údajů. Existují provozovatelé, kteří mají GDPR vyřešené a IP adresy potřebují. **Je to jejich zodpovědnost a jejich rozhodnutí, ne naše.**
+
+Původní návrh části 5 (IP se použije jen průběžně pro odvození země a pak se zahodí) zůstává jako **výchozí chování**, ne jako jediná možnost. Zapnutí musí být v UI doprovázené vysvětlením, co to znamená, aby to nikdo nezapnul omylem.
+
+Otevřená otázka O6 části 5 je tím rozhodnutá.
+
+### Neomezujeme, co si uživatel chce uložit
+
+**Rozhodnuto: vlastní pole kontaktu jsou uživatelovo území.** Když si někdo zavede pole pro telefon, adresu nebo cokoliv jiného, protože to potřebuje, produkt mu do toho nemluví a neomezuje ho.
+
+**Zůstává jedno rozlišení, na které původní zákaz ve specifikaci mířil.** Nejde o totéž a je dobré to nesloučit:
+
+| Co | Chování |
+|---|---|
+| **Vlastní pole kontaktu** (telefon, adresa, cokoliv), naplněná importem, přes API nebo z formuláře | Bez omezení. Uživatel to vědomě zvolil a nese za to zodpovědnost. |
+| **Automatický sběr obsahu formulářů** trackovacím skriptem na webu zákazníka | Zakázáno. Skript nesmí sám odesílat, co návštěvník napsal do políček, protože to nikdo nezvolil a návštěvník o tom neví. |
+
+Princip: **co uživatel chce uložit, se neblokuje. Co by se sebralo samo, aniž to kdo zvolil, se neukládá.** Když zákazník chce z formuláře na webu poslat telefonní číslo, udělá to výslovným voláním s pojmenovanou hodnotou, a tím tu zodpovědnost přebírá.
+
+Totéž platí pro hesla a přihlašovací tokeny: ty zůstávají zakázané bez výjimky, protože je nikdo do trackingu poslat nechce ani omylem.
+
+---
+
 ## 4. Co potřebuje právníka
 
 Autoři to sami označili, není to jejich odbornost:
