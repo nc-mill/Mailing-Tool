@@ -367,8 +367,8 @@ CREATE TABLE users (
   password_hash       text NOT NULL,              -- PHC řetězec argon2id, viz 3.1
   password_changed_at timestamptz NOT NULL DEFAULT now(),
   name                text NOT NULL DEFAULT '',
-  locale              text NOT NULL DEFAULT 'cs',
-  timezone            text NOT NULL DEFAULT 'Europe/Prague',
+  locale              text NOT NULL DEFAULT 'cs',        -- jen pojistka, viz poznámka pod DDL
+  timezone            text NOT NULL DEFAULT 'Europe/Prague',  -- jen pojistka, viz poznámka pod DDL
   status              text NOT NULL DEFAULT 'active',
   failed_login_count  integer NOT NULL DEFAULT 0,
   locked_until        timestamptz,
@@ -377,7 +377,10 @@ CREATE TABLE users (
   updated_at          timestamptz NOT NULL DEFAULT now(),
   deleted_at          timestamptz,
   CONSTRAINT ck_users__status CHECK (status IN ('active','suspended')),
-  CONSTRAINT ck_users__locale CHECK (locale ~ '^[a-z]{2}(-[A-Z]{2})?$')
+  -- Podmnožina BCP 47, viz poznámka pod DDL. Původní '^[a-z]{2}(-[A-Z]{2})?$'
+  -- nepustilo zh-Hant, sr-Latn ani třípísmenné kódy.
+  CONSTRAINT ck_users__locale
+    CHECK (locale ~ '^[a-z]{2,3}(-[A-Z][a-z]{3})?(-([A-Z]{2}|[0-9]{3}))?$')
 );
 -- Přihlášení hledá podle e-mailu. Částečný, aby šlo znovu založit účet po smazání.
 CREATE UNIQUE INDEX uq_users__email ON users (email) WHERE deleted_at IS NULL;
@@ -412,8 +415,8 @@ CREATE TABLE workspaces (
   id            uuid PRIMARY KEY DEFAULT uuidv7(),
   name          text NOT NULL,
   slug          text NOT NULL,
-  locale        text NOT NULL DEFAULT 'cs',
-  timezone      text NOT NULL DEFAULT 'Europe/Prague',
+  locale        text NOT NULL DEFAULT 'cs',        -- jen pojistka, viz poznámka pod DDL
+  timezone      text NOT NULL DEFAULT 'Europe/Prague',  -- jen pojistka, viz poznámka pod DDL
   address_form  text NOT NULL DEFAULT 'formal',   -- formal | informal, viz 6.3 hlavní spec
   settings      jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_by    uuid REFERENCES users(id) ON DELETE SET NULL,
@@ -421,6 +424,10 @@ CREATE TABLE workspaces (
   updated_at    timestamptz NOT NULL DEFAULT now(),
   deleted_at    timestamptz,
   CONSTRAINT ck_workspaces__slug CHECK (slug ~ '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$'),
+  -- Tentýž CHECK jako u users.locale. Dřív ho workspaces neměly vůbec, což
+  -- znamenalo dvě různá pravidla pro tutéž hodnotu.
+  CONSTRAINT ck_workspaces__locale
+    CHECK (locale ~ '^[a-z]{2,3}(-[A-Z][a-z]{3})?(-([A-Z]{2}|[0-9]{3}))?$'),
   CONSTRAINT ck_workspaces__address_form CHECK (address_form IN ('formal','informal'))
 );
 -- Slug je v URL, musí být unikátní mezi živými workspaces.
@@ -473,7 +480,8 @@ CREATE TABLE api_keys (
   workspace_id  uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   name          text NOT NULL,
   kind          text NOT NULL DEFAULT 'secret',   -- secret | public
-  prefix        text NOT NULL,                    -- 8 znaků base32, viz 3.5
+  prefix        text NOT NULL,                    -- base32: 8 znaků u kind='secret',
+                                                  -- 16 znaků u kind='public', viz 3.5
   secret_hash   bytea,                            -- SHA-256, NULL pro kind='public'
   scopes        text[] NOT NULL DEFAULT '{}',
   created_by    uuid REFERENCES users(id) ON DELETE SET NULL,
@@ -486,6 +494,12 @@ CREATE TABLE api_keys (
   CONSTRAINT ck_api_keys__secret_hash CHECK (
     (kind = 'secret' AND secret_hash IS NOT NULL) OR
     (kind = 'public' AND secret_hash IS NULL)
+  ),
+  -- Délka prefixu je vázaná na druh klíče, jinak by šlo založit veřejný klíč
+  -- s osmiznakovým prefixem a ověřovací algoritmus 3.5 by ho nerozpoznal.
+  CONSTRAINT ck_api_keys__prefix CHECK (
+    (kind = 'secret' AND prefix ~ '^[a-z2-7]{8}$') OR
+    (kind = 'public' AND prefix ~ '^[a-z2-7]{16}$')
   )
 );
 -- Ověření klíče: jediný lookup podle prefixu, pak časově konstantní porovnání hashe.
@@ -625,6 +639,26 @@ CREATE TABLE system_settings (
 
 Poznámka k `system_settings.id boolean PRIMARY KEY CHECK (id = true)`: je to standardní trik na tabulku s právě jedním řádkem. Bez něj se dřív nebo později objeví dva řádky konfigurace a nikdo nebude vědět, který platí.
 
+**Formát `locale`: podmnožina BCP 47, ne dvě písmena (ROZHODNUTO).**
+
+Původní `CHECK (locale ~ '^[a-z]{2}(-[A-Z]{2})?$')` pouštěl jen dvoupísmenný jazyk s volitelným regionem. Tím by neprošlo `zh-Hant`, `sr-Latn` ani žádný třípísmenný kód, přestože 3.9 slibuje **přidání jazyka pouhým souborem s překlady bez zásahu do kódu**. Slib a constraint si odporovaly a constraint by vyhrál.
+
+Povolený tvar je `jazyk[-Písmo][-Region]`:
+
+| Složka | Pravidlo | Příklady |
+|---|---|---|
+| jazyk | 2 nebo 3 malá písmena | `cs`, `en`, `fil`, `haw` |
+| písmo (nepovinné) | velké písmeno a tři malá | `Hant`, `Latn`, `Cyrl` |
+| region (nepovinné) | dvě velká písmena nebo tři číslice | `CZ`, `BR`, `419` |
+
+Tedy `cs`, `en-GB`, `zh-Hant`, `sr-Latn-RS` i `es-419` projdou. Rozšířené tagy (varianty, `-u-` a `-x-` rozšíření) constraint **nepouští schválně**: v katalogu zpráv nemají co dělat a jméno souboru `messages/<locale>.json` je zároveň součástí cesty. Constraint je hrubá pojistka proti překlepu, přesnou validaci proti `SUPPORTED_LOCALES` dělá aplikace (zod), protože jen ta zná seznam existujících katalogů. Tentýž CHECK mají `users.locale` i `workspaces.locale`; dřív ho `workspaces` neměly vůbec.
+
+**Výchozí hodnoty `cs` a `Europe/Prague` v DDL jsou jen pojistka, ne konfigurace (KONVENCE).**
+
+`DEFAULT 'cs'` a `DEFAULT 'Europe/Prague'` u `users` a `workspaces` **nesmí být jediným zdrojem hodnoty**. Zdrojem jsou konfigurační proměnné `DEFAULT_LOCALE` a `DEFAULT_TIMEZONE` (4.9) a **aplikace obě hodnoty vždy vyplňuje explicitně** při každém `INSERT`, i když se rovnají výchozí hodnotě. Platí to pro registraci, pozvánku, `POST /api/v1/setup`, seed i pro řádky zakládané kdekoliv mimo hlavní cestu.
+
+Důvod: bez toho by instalace nastavená na `DEFAULT_LOCALE=de` dostávala u řádků vložených mimo hlavní cestu české výchozí hodnoty a projevilo by se to až e-mailem v cizím jazyce. Defaulty v DDL zůstávají proto, aby ruční `INSERT` v migraci nebo při ladění neskončil na `NOT NULL`, ne proto, aby rozhodovaly. Hlídá to test repository vrstvy, který kontroluje, že žádná funkce zakládající `users` ani `workspaces` nenechává `locale` a `timezone` na databázi.
+
 ### 2.4 Kompilované SQL nesmí volat `now()` (KONVENCE)
 
 Platí pro každý dotaz generovaný z uživatelské definice, tedy pro kompilaci segmentů (část 2) i pro sestavení publika kampaně (část 4a).
@@ -648,7 +682,7 @@ Když jiná část potřebuje sloupec v tabulce, kterou vlastní část 1 (typic
 
 **Hashování: Argon2id.** Knihovna `@node-rs/argon2` 2.0.2 (MIT), prebuilt binárky včetně `linux-x64-musl` a `linux-arm64-musl`, takže Alpine image funguje bez kompilátoru.
 
-Parametry podle OWASP Password Storage Cheat Sheet (ověřeno 2026-07-31, varianta s nejvyšší pamětí z uvedeného seznamu):
+Parametry podle OWASP Password Storage Cheat Sheet (ověřeno 2026-07-31). Cheat sheet uvádí několik rovnocenných variant lišících se poměrem paměti a času; **volím z nich tu s nejnižší pamětí**, protože cílíme na self-hosted instalaci se 2 GB RAM. Zdůvodnění je hned pod tabulkou.
 
 | Parametr | Hodnota |
 |---|---|
@@ -902,11 +936,36 @@ Veřejný klíč se ukládá **v otevřené podobě** (`secret_hash IS NULL`), p
 
 **Ověření (časově konstantní)**
 
-1. Parsuj klíč regulárním výrazem `^ml_(live|test)_([a-z2-7]{8})_([A-Za-z0-9_-]{43})$`. Neshoda → `unauthenticated` (401), bez dotazu do databáze.
-2. `SELECT ... FROM api_keys WHERE prefix = $1` (unikátní index). Nenalezeno → provede se **dummy porovnání** proti konstantnímu hashi, aby doba odpovědi nezávisela na existenci klíče, pak `unauthenticated`.
-3. `crypto.timingSafeEqual(sha256(secret), row.secret_hash)`. `timingSafeEqual` vyhodí výjimku při rozdílné délce, proto se délka kontroluje předem regulárním výrazem.
-4. Kontroly: `revoked_at IS NULL`, `expires_at IS NULL OR expires_at > now()`, `workspaces.deleted_at IS NULL`.
-5. `last_used_at` se zapisuje **nejvýš jednou za 60 sekund** na klíč, mimo hlavní transakci (fire and forget). Bez toho by každý request na API znamenal zápis a `api_keys` by se stala nejzatíženější tabulkou v systému.
+Algoritmus má **dvě větve podle tvaru klíče**, protože veřejný klíč žádné tajemství nenese a nedá se ověřit porovnáním hashů. Větev se vybírá z prefixu řetězce, ještě před jakýmkoliv dotazem do databáze:
+
+| Tvar | Větev |
+|---|---|
+| začíná `ml_pub_` | veřejný klíč, kroky P1 až P3 |
+| cokoliv jiného | tajný klíč, kroky S1 až S5 |
+
+**Tajný klíč**
+
+- **S1.** Parsuj klíč regulárním výrazem `^ml_(live|test)_([a-z2-7]{8})_([A-Za-z0-9_-]{43})$`. Neshoda → `unauthenticated` (401), bez dotazu do databáze.
+- **S2.** `SELECT ..., secret_hash, previous_secret_hash, previous_expires_at FROM api_keys WHERE prefix = $1 AND kind = 'secret'` (unikátní index). Nenalezeno → provede se **dummy porovnání** podle pravidla níž, pak `unauthenticated`.
+- **S3.** `crypto.timingSafeEqual(sha256(secret), row.secret_hash)`.  `timingSafeEqual` vyhodí výjimku při rozdílné délce, proto se délka kontroluje předem regulárním výrazem.
+- **S4. Neshoda v S3 ještě není odmítnutí, zkus grace hash z rotace.** Když `previous_secret_hash IS NOT NULL` **a** `previous_expires_at > now()`, porovnej `crypto.timingSafeEqual(sha256(secret), row.previous_secret_hash)`, opět v konstantním čase. Shoda je platné ověření a odpověď navíc nese hlavičku `ML-Key-Rotated: true`, aby integrátor poznal, že jede na dožívajícím sekretu. Neshoda v obou porovnáních → `unauthenticated`.
+- **S5.** Kontroly: `revoked_at IS NULL`, `expires_at IS NULL OR expires_at > now()`, `workspaces.deleted_at IS NULL`.
+
+Bez kroku S4 by parametr `grace_seconds` z rotace (viz níž) **nefungoval vůbec**: sloupce `previous_secret_hash` a `previous_expires_at` by se plnily, ale nikdo by je nečetl, takže starý sekret by přestal platit okamžitě navzdory tomu, co slibuje UI. Je to přesně ten druh chyby, který se v provozu projeví až rozbitou integrací zákazníka.
+
+**Veřejný klíč**
+
+- **P1.** Parsuj `^ml_pub_([a-z2-7]{16})$`. Neshoda → `unauthenticated` (401), bez dotazu do databáze.
+- **P2.** `SELECT ... FROM api_keys WHERE prefix = $1 AND kind = 'public'`. Nenalezeno → `unauthenticated` (401).
+- **P3.** Kontroly jako v S5. Aktér je **ověřený** a jeho scopes jsou přesně ty z řádku, tedy vždy jen `['events:write']`.
+
+Ve větvi veřejného klíče se nedělá žádné porovnávání hashů ani dummy porovnání: `secret_hash IS NULL` a hodnota klíče je z definice veřejná, takže tu časově konstantní porovnání nemá co chránit.
+
+> **Důsledek pro stavové kódy, který je snadné splést.** Veřejný klíč poslaný na `/api/v1/**` je **ověřený aktér bez potřebného scope**, ne neověřený požadavek. Odpověď je proto **403 `insufficient_scope`**, ne 401. Kdyby veřejný klíč propadl do větve tajného klíče, zastavil by ho regulární výraz v S1 a vrátilo by se 401, které by neodpovídalo akceptačnímu kritériu 26 v kapitole 8. Větev P je jediné, co ten rozdíl zavírá, a proto musí existovat.
+
+**Dummy porovnání se dělá vždy proti oběma hashům (normativní).** Když se klíč v S2 nenajde, provedou se **dvě** dummy porovnání proti konstantním hashům, ne jedno. Jedno dummy porovnání proti dvěma reálným u klíče v grace období je měřitelný rozdíl a prozradilo by, že klíč existuje a právě se rotuje. Totéž platí opačně: když klíč existuje, ale `previous_secret_hash IS NULL`, druhé porovnání se stejně provede proti konstantnímu hashi a jeho výsledek se zahodí.
+
+**Zápis `last_used_at`** se provádí **nejvýš jednou za 60 sekund** na klíč, mimo hlavní transakci (fire and forget). Bez toho by každý request na API znamenal zápis a `api_keys` by se stala nejzatíženější tabulkou v systému.
 
 **Proč SHA-256 a ne Argon2:** sekret má 256 bitů entropie z CSPRNG. Slovníkový ani hrubý útok na takový vstup nedává smysl ani s nekonečným výpočetním výkonem, takže pomalý hash by jen přidal desítky milisekund na každý API request. U hesel je to naopak, protože entropie je nízká.
 
@@ -922,7 +981,7 @@ Veřejný klíč se ukládá **v otevřené podobě** (`secret_hash IS NULL`), p
 
 **Rotace a revokace**
 
-- `POST /api/v1/api-keys/{id}/rotate` vytvoří nový sekret a vrátí ho jednou. Starý přestane platit okamžitě. Volitelný parametr `grace_seconds` (0 až 86400, výchozí 0) nechá starý hash platit ještě uvedenou dobu; k tomu slouží sloupec `previous_secret_hash bytea` a `previous_expires_at timestamptz` (doplněk k DDL v 2.3).
+- `POST /api/v1/api-keys/{id}/rotate` vytvoří nový sekret a vrátí ho jednou. Při výchozím `grace_seconds = 0` starý sekret přestává platit okamžitě. Volitelný parametr `grace_seconds` (0 až 86400) nechá starý hash platit ještě uvedenou dobu; k tomu slouží sloupce `previous_secret_hash bytea` a `previous_expires_at timestamptz` (doplněk k DDL v 2.3). **Čte je krok S4 ověřovacího algoritmu výše**; bez něj jsou to mrtvé sloupce a grace období je jen slib v UI.
 - Revokace je okamžitá, `revoked_at = now()`. Revokovaný klíč se nemaže, aby audit dával smysl.
 
 ### 3.6 Izolace workspace (otázka 1)
@@ -971,8 +1030,65 @@ CREATE POLICY ws_isolation ON contacts
 ```
 
 - `current_setting(..., true)` vrací NULL, když proměnná není nastavená; porovnání s NULL je NULL, tedy nepravda, tedy **žádné řádky**. Zapomenuté nastavení kontextu tedy vede k prázdnému výsledku, ne k úniku.
-- Tabulky bez `workspace_id` (`users`, `sessions`, `system_settings`, `password_reset_tokens`, `pgboss.*`, `drizzle.__drizzle_migrations`) RLS nemají. Seznam je explicitní whitelist v `packages/db/src/rls.ts`.
 - Role `mlain_sender` je popsaná v 4.10.1.
+
+**Registr politik, ne jeden pevný název (KONVENCE).** Tabulek jsou tři druhy a každý má jiné izolační pravidlo. Mapování „tabulka → očekávaná politika a izolační sloupec" žije v `packages/db/src/rls.ts` a testy se řídí **jím**, ne pevným řetězcem `ws_isolation`. Bez registru by test na názvu politiky spadl na první tabulce, která potřebuje výjimku, a výjimku by někdo vyřešil vypnutím testu.
+
+| Druh tabulky | Politika | Izolace přes |
+|---|---|---|
+| běžná tabulka se sloupcem `workspace_id` | `ws_isolation` | `workspace_id` |
+| `audit_log` (nullable `workspace_id`) | `ws_isolation_audit` | `workspace_id`, NULL povolený při zápisu |
+| `workspaces` (je předmětem izolace i jejím nositelem) | `ws_isolation_self` a dvě globální politiky | `id` |
+| tabulka bez `workspace_id` na whitelistu | žádná | RLS se nezapíná |
+
+**Whitelist tabulek bez sloupce `workspace_id`:** `users`, `sessions`, `system_settings`, `password_reset_tokens`, `workspaces`, `pgboss.*`, `drizzle.__drizzle_migrations`. Test „každá tabulka mimo whitelist má sloupec `workspace_id`" se řídí tímhle seznamem. **`workspaces` je na whitelistu, ale RLS na ní přesto běží**, jen se izoluje přes `id`; whitelist říká „nemá sloupec `workspace_id`", ne „nemá RLS". Dřív na seznamu chyběla úplně, takže test na sloupec na ní padal, přestože 4.10.1 zároveň předpokládá, že na `workspaces` RLS platí (politika `sender_bypass`).
+
+**`audit_log`: NULL ve `WITH CHECK` je povinný, jinak spadne změna hesla (normativní).**
+
+`audit_log.workspace_id` je nullable, protože globální akce (`user.login`, `user.password_changed`, `user.login_failed`) k žádnému projektu nepatří. S obyčejnou politikou `ws_isolation` je `NULL = current_setting(...)::uuid` vyhodnocené jako NULL, tedy nepravda, takže `INSERT` globálního auditního záznamu **selže na `WITH CHECK` a vezme s sebou celou transakci**. Protože se audit podle 3.7 zapisuje ve stejné transakci jako auditovaná změna, znamenalo by to, že **změna hesla se neuloží**. Přihlašovací flow navíc žádný workspace kontext nenastavuje, takže by tam padalo úplně všechno.
+
+```sql
+ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ws_isolation_audit ON audit_log
+  -- Čtení: jen řádky aktuálního projektu. Globální řádky se přes workspace
+  -- kontext ZÁMĚRNĚ nečtou, patří uživateli, ne projektu; kdyby je USING pustilo,
+  -- viděl by admin projektu A přihlášení uživatelů projektu B.
+  USING      (workspace_id = current_setting('mlain.workspace_id', true)::uuid)
+  -- Zápis: NULL musí projít, jinak spadne INSERT globální akce i s transakcí.
+  WITH CHECK (workspace_id IS NULL
+              OR workspace_id = current_setting('mlain.workspace_id', true)::uuid);
+```
+
+Globální auditní záznamy se čtou jedinou cestou: `packages/db/src/repo/audit-global.ts` pod nastaveným `mlain.user_id` (viz níž), a vrací jen řádky, jejichž `actor_id` je ten uživatel. `GET /api/v1/audit-log` je projektový a globální řádky nevrací vůbec.
+
+**`workspaces`: izolace přes `id` plus dvě cesty, které kontext nemají.**
+
+```sql
+ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ws_isolation_self ON workspaces
+  USING      (id = current_setting('mlain.workspace_id', true)::uuid)
+  WITH CHECK (id = current_setting('mlain.workspace_id', true)::uuid);
+```
+
+Dvě operace nad `workspaces` z principu běží **mimo** workspace kontext a `ws_isolation_self` by je zablokovala: **výpis projektů aktéra** (`GET /api/v1/workspaces`, kontextů je víc než jeden) a **založení projektu** (`POST /api/v1/workspaces`, kontext ještě neexistuje). Obě jdou přes `packages/db/src/repo/workspaces-global.ts`, který v transakci místo `mlain.workspace_id` nastaví `mlain.user_id`. Politiky se v PostgreSQL OR-ují, takže `ws_isolation_self` zůstává pro běžnou cestu nedotčená:
+
+```sql
+CREATE POLICY ws_member_visibility ON workspaces FOR SELECT
+  USING (EXISTS (SELECT 1 FROM memberships m
+                  WHERE m.workspace_id = workspaces.id
+                    AND m.user_id = current_setting('mlain.user_id', true)::uuid));
+
+CREATE POLICY ws_insert_bootstrap ON workspaces FOR INSERT
+  WITH CHECK (current_setting('mlain.user_id', true) IS NOT NULL);
+
+-- Poddotaz výše se vyhodnocuje s politikami tabulky memberships, takže by pod
+-- ws_isolation vracel prázdno. Členství vlastního uživatele proto musí být
+-- viditelné i bez workspace kontextu.
+CREATE POLICY user_own_memberships ON memberships FOR SELECT
+  USING (user_id = current_setting('mlain.user_id', true)::uuid);
+```
+
+Bezpečnostní rozvaha: `mlain.user_id` nastavuje výhradně `createWorkspaceContext` z už ověřené session, nikdy z requestu. Kdo ho nenastaví, nevidí nic, protože `current_setting(..., true)` vrátí NULL. Rozšíření je tedy stejně přísné jako původní politika, jen umožňuje operace, které dosud fyzicky nešly provést.
 
 **Testy izolace (povinné, blokující v CI)**
 
@@ -980,8 +1096,27 @@ CREATE POLICY ws_isolation ON contacts
 // packages/db/test/isolation.test.ts
 describe('workspace isolation', () => {
   it('každá tabulka mimo whitelist má sloupec workspace_id', ...);
-  it('každá tabulka se sloupcem workspace_id má zapnuté RLS a politiku ws_isolation', ...);
+  // Registr z packages/db/src/rls.ts, ne pevný název politiky.
+  it('každá tabulka má zapnuté RLS a přesně tu politiku, kterou pro ni říká registr', ...);
+  it('žádná tabulka nemá politiku, která v registru není', ...);
   it('žádná exportovaná repo funkce nepřijímá workspaceId jako string', ...); // typový test přes tsd
+});
+
+describe('audit_log a globální akce', () => {
+  // Přesně ten případ, který dřív shodil změnu hesla i s transakcí.
+  it('INSERT s workspace_id = NULL projde i BEZ nastaveného workspace kontextu', ...);
+  it('INSERT s workspace_id = NULL projde i pod nastaveným kontextem', ...);
+  it('INSERT s cizím workspace_id pod kontextem B selže na WITH CHECK', ...);
+  it('změna hesla se commitne i s auditním záznamem, transakce se nerollbackne', ...);
+  it('pod kontextem B nevrátí čtení ani řádek workspace A, ani globální řádek', ...);
+});
+
+describe('workspaces jako předmět i nositel izolace', () => {
+  it('workspaces má RLS a politiku ws_isolation_self nad sloupcem id', ...);
+  it('SELECT workspace A pod kontextem B vrátí 0 řádků', ...);
+  it('výpis projektů pod nastaveným mlain.user_id vrátí jen projekty s členstvím', ...);
+  it('výpis projektů bez mlain.user_id i bez workspace kontextu vrátí 0 řádků', ...);
+  it('založení projektu bez mlain.user_id selže na WITH CHECK', ...);
 });
 
 describe('cross-workspace access', () => {
@@ -1064,14 +1199,18 @@ secret         = "whsec_" + base64url_nopad(32 náhodných bajtů)
 secret_bytes   = base64url_decode(secret bez prefixu "whsec_")
 ```
 
-Testovací vektor (závazný pro test a pro dokumentaci pro integrátory):
+Testovací vektor (závazný pro test a pro dokumentaci pro integrátory). **Tělo je platná obálka podle KONVENCE výše, tedy včetně `api_version`**, jinak by si vektor a obálka protiřečily a implementace podle obálky by na podpisovém testu spadla:
 
 ```
 secret = whsec_AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK-2vcTL0tk
 t      = 1785000000
-body   = {"id":"0192f3a0-1c2d-7e50-9a1b-2c3d4e5f6071","type":"contact.created","occurred_at":"2026-08-01T12:40:00.000Z","workspace_id":"0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071","data":{"contact_id":"0192f3a0-1c2d-7e43-8d4e-5f60718293a4"}}
-ML-Signature: t=1785000000,v1=0fcffb78d4c57dc7112263cf00aaeadb56569562be16ced54e74d11eba996e2b
+body   = {"id":"0192f3a0-1c2d-7e50-9a1b-2c3d4e5f6071","type":"contact.created","api_version":"v1","occurred_at":"2026-08-01T12:40:00.000Z","workspace_id":"0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071","data":{"contact_id":"0192f3a0-1c2d-7e43-8d4e-5f60718293a4"}}
+ML-Signature: t=1785000000,v1=70a890fe48498351df6249763e7c2fb36f2220fc7af3501281501963b23ddeeb
 ```
+
+Vektor je přepočítaný 2026-07-31 skriptem, ne odhadem: `secret_bytes = base64url_decode("AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK-2vcTL0tk")` (32 B, hex `00070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9`), `signed_payload = "1785000000" + "." + body`, `v1 = hex(HMAC-SHA256(secret_bytes, signed_payload))`. Předchozí hodnota `0fcff…6e2b` platila pro tělo **bez** `api_version` a je neplatná.
+
+**Pořadí klíčů v těle je součástí vektoru, ne kosmetika.** HMAC se počítá nad syrovými bajty, takže přeházení klíčů dá jiný podpis. Serializace obálky proto vydává klíče vždy v pořadí `id`, `type`, `api_version`, `occurred_at`, `workspace_id`, `data`, a tohle pořadí je závazné stejně jako množina polí.
 
 Formát `t=...,v1=...` je zvolený proto, že jde přidat `v2=` vedle `v1=` a rotovat algoritmus bez rozbití příjemců, kteří umí jen v1.
 
@@ -1090,7 +1229,9 @@ Formát `t=...,v1=...` je zvolený proto, že jde přidat `v2=` vedle `v1=` a ro
 | 7 | 6 h | ~8,6 h |
 | 8 | 12 h | ~20,6 h |
 
-Po osmém neúspěchu je doručení `abandoned`. Ke každému zpoždění se přičítá jitter `±20 %`, aby se po výpadku endpointu nevracely všechny retry naráz.
+Ke každému zpoždění se přičítá jitter `±20 %`, aby se po výpadku endpointu nevracely všechny retry naráz.
+
+**Tabulka je zároveň horní mezí pro `WEBHOOK_MAX_ATTEMPTS`.** Po pokusu číslo `WEBHOOK_MAX_ATTEMPTS` (výchozí 8, rozsah **1 až 8**) je doručení `abandoned`. Rozsah **není 1 až 12**: tabulka definuje osm řádků a pro pokusy 9 až 12 by neexistovalo žádné definované zpoždění, takže by si ho každá implementace domyslela jinak. Kdo potřebuje delší doručovací okno, prodlouží poslední řádek tabulky novou verzí kontraktu, ne nastavením hodnoty, pro kterou tabulka nemá řádek. Validace při startu odmítne hodnotu vyšší než počet řádků tabulky; test `webhook-backoff` porovnává mez v zod schématu s délkou tabulky, takže přidání devátého řádku automaticky povolí i vyšší hodnotu.
 
 **Klasifikace odpovědi**
 
@@ -1433,8 +1574,17 @@ apps/sender → nic z Node světa, jen packages/contracts/fixtures jako testovac
 ```dockerfile
 # syntax=docker/dockerfile:1.9
 
+# Verze image. Deklaruje se PŘED prvním FROM (globální ARG) a znovu v každé fázi,
+# která ji používá: ARG před FROM je ve fázích neviditelný, dokud ho fáze
+# nezopakuje, a nedeklarovaná ${...} se v Dockerfile rozvine na PRÁZDNÝ ŘETĚZEC,
+# tiše a bez varování. Binárka by pak neměla verzi a /api/health by ji neměl
+# odkud vzít. Název je shodný s konfigurační proměnnou IMAGE_VERSION z 4.9;
+# dřívější ${APP_VERSION} byl navíc nedeklarovaný I rozejitý s konfigurací.
+ARG IMAGE_VERSION=0.0.0-dev
+
 # --- 1) Go builder: staticky slinkovaný sender -------------------------------
 FROM golang:1.26-alpine AS sender-builder
+ARG IMAGE_VERSION
 WORKDIR /src
 # Nejdřív jen manifesty, aby se cache modulů neinvalidovala každou změnou kódu.
 COPY apps/sender/go.mod apps/sender/go.sum ./
@@ -1445,29 +1595,43 @@ COPY packages/contracts/fixtures/ /src/testdata/fixtures/
 # -trimpath a -ldflags "-s -w" zmenší binárku a odstraní absolutní cesty.
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build -trimpath \
-      -ldflags="-s -w -X main.version=${APP_VERSION}" \
+      -ldflags="-s -w -X main.version=${IMAGE_VERSION}" \
       -o /out/ml-sender ./cmd/sender
 
-# --- 2) Node deps: jen instalace, sdílená vrstva ------------------------------
+# --- 2) Pruner: minimální podstrom monorepa pro instalaci --------------------
+# turbo prune --docker vyrobí out/json (JEN manifesty, se ZACHOVANOU strukturou
+# adresářů, včetně lockfilu) a out/full (zdrojáky). Musí to udělat turbo, ne glob:
+# `COPY packages/*/package.json ./packages/` Docker vyhodnotí jako "zkopíruj
+# nalezené soubory do cílového adresáře BEZ mezilehlých adresářů", takže se
+# všech devět manifestů přepíše přes sebe do jediného souboru ./packages/package.json.
+# pnpm pak workspace nenajde, `pnpm install --frozen-lockfile` spadne a povinný
+# artefakt (job build-image) neprojde.
+FROM node:24.18.1-alpine AS pruner
+RUN corepack enable && corepack prepare pnpm@11.18.0 --activate
+WORKDIR /app
+COPY . .
+RUN pnpm dlx turbo@2.10.7 prune @mlain/web @mlain/worker --docker
+
+# --- 3) Node deps: jen instalace, sdílená vrstva ------------------------------
 FROM node:24.18.1-alpine AS node-deps
 RUN corepack enable && corepack prepare pnpm@11.18.0 --activate
 WORKDIR /app
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
-COPY apps/web/package.json apps/web/
-COPY apps/worker/package.json apps/worker/
-COPY packages/*/package.json ./packages/
+COPY --from=pruner /app/out/json/ ./
 RUN --mount=type=cache,target=/pnpm-store \
     pnpm config set store-dir /pnpm-store && pnpm install --frozen-lockfile
 
-# --- 3) Node builder: build Next.js standalone a workeru ---------------------
+# --- 4) Node builder: build Next.js standalone a workeru ---------------------
 FROM node-deps AS node-builder
-COPY . .
+ARG IMAGE_VERSION
+ENV IMAGE_VERSION=${IMAGE_VERSION}
+COPY --from=pruner /app/out/full/ ./
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm turbo run build --filter=@mlain/web --filter=@mlain/worker
 # Next standalone vyrobí .next/standalone se zabaleným node_modules podmnožinou.
 
-# --- 4) Runtime --------------------------------------------------------------
+# --- 5) Runtime --------------------------------------------------------------
 FROM node:24.18.1-alpine AS runtime
+ARG IMAGE_VERSION
 # tini se stará o reaping zombie procesů a o předání signálů, když MODE=all
 # spouští tři potomky. Bez něj SIGTERM nedojde k dětem a shutdown není graceful.
 RUN apk add --no-cache tini postgresql18-client ca-certificates tzdata \
@@ -1489,11 +1653,17 @@ COPY --chown=root:root docker/oe /usr/local/bin/mlain
 RUN mkdir -p /data/uploads /data/backups && chown -R 10001:10001 /data
 VOLUME ["/data"]
 
+# Health porty jsou rozdělené per proces SCHVÁLNĚ. Při MODE=all běží worker
+# i sender jako potomci v jednom kontejneru se SDÍLENÝM prostředím, takže jedna
+# společná proměnná HEALTH_PORT znamená, že druhý z nich spadne na obsazeném
+# portu, a to hned ve výchozí konfiguraci MVP 0.
 ENV NODE_ENV=production \
     MODE=all \
     PORT=3000 \
-    HEALTH_PORT=3001 \
-    DATA_DIR=/data
+    WORKER_HEALTH_PORT=3001 \
+    SENDER_HEALTH_PORT=3002 \
+    DATA_DIR=/data \
+    IMAGE_VERSION=${IMAGE_VERSION}
 EXPOSE 3000
 USER 10001:10001
 
@@ -1503,6 +1673,11 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=3 \
 
 ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/entrypoint.sh"]
 ```
+
+**Dvě věci v Dockerfile, na kterých build stojí nebo padá:**
+
+1. **Manifesty se kopírují přes `turbo prune --docker`, nikdy globem.** Vysvětlení je v komentáři u fáze 2. Přijatelná alternativa, když by `turbo prune` z jakéhokoliv důvodu nešlo použít, je **výčet `COPY` per balíček** (`COPY packages/db/package.json packages/db/`, devětkrát). Je delší a při přidání balíčku se na něj zapomene, ale strukturu adresářů zachovává. Co povolené **není**, je glob s jedním cílovým adresářem.
+2. **`ARG IMAGE_VERSION` musí být v každé fázi, která ho čte.** Nedeklarovaná proměnná se v Dockerfile rozvine na prázdný řetězec bez varování, takže by `-X main.version=` prošlo a sender by hlásil prázdnou verzi. Test image v jobu `build-image` proto kontroluje, že `docker run --rm <image> ml-sender --version` i `GET /api/health` vrací neprázdnou hodnotu shodnou s tagem image.
 
 **Očekávaná velikost**
 
@@ -1515,7 +1690,7 @@ ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/entrypoint.sh"]
 | `ml-sender` (Go, staticky, `-s -w`) | 18 MB |
 | **celkem, nekomprimovaně** | **~220 MB** |
 
-Cíl: pod 250 MB. Když se překročí, CI job `image-size` spadne. Bez `postgresql18-client` (potřebného pro `pg_dump` a `pg_restore`) by to bylo o 22 MB méně, ale zálohování ze samotné image je slib z kapitoly 9 hlavní specifikace a stojí za to.
+Cíl: pod 250 MB. Kontrolu dělá **job `build-image`** (samostatný job `image-size` neexistuje a nezavádí se, viz tabulka jobů v 3.15); když se limit překročí, job spadne. Bez `postgresql18-client` (potřebného pro `pg_dump` a `pg_restore`) by to bylo o 22 MB méně, ale zálohování ze samotné image je slib z kapitoly 9 hlavní specifikace a stojí za to.
 
 **Entrypoint a režimy**
 
@@ -1525,13 +1700,17 @@ set -eu
 # 1) validace konfigurace (zod), při chybě exit 78 a výpis všech problémů naráz
 # 2) vymazání klíčů AI providerů z prostředí, viz "Klíče AI providerů" níž
 # 3) MIGRATE_ON_START=true a MODE in (web,all)  ->  mlain migrate  (advisory lock, 3.13)
+#    Runner se připojuje přes DATABASE_URL_MIGRATOR, NE přes DATABASE_URL:
+#    DATABASE_URL je role mlain_app, která schéma nevlastní a migrovat nemůže.
 # 4) podle MODE spustit:
 #    web    -> node apps/web/server.js
-#    worker -> node apps/worker/dist/main.js
-#    sender -> /usr/local/bin/ml-sender
+#    worker -> node apps/worker/dist/main.js        (naslouchá na WORKER_HEALTH_PORT)
+#    sender -> /usr/local/bin/ml-sender             (naslouchá na SENDER_HEALTH_PORT)
 #    all    -> všechny tři jako potomky, sdílené PID 1 přes tini,
 #              pád kteréhokoliv potomka ukončí celý kontejner (exit code potomka)
 ```
+
+**Migrační runner má vlastní připojení (ROZHODNUTO).** Krok 1 běhu migrací v 3.13 říká „připoj se jako `mlain_migrator`", ale dokud existovala jen proměnná `DATABASE_URL` s poznámkou „role `mlain_app`", **neměl se runner čím připojit**. Doplňuje se proto `DATABASE_URL_MIGRATOR` (4.9): povinná vždy, když se migrace mají spustit, tedy při `MIGRATE_ON_START=true` a při ručním `mlain migrate` nebo `mlain restore`. Chybí-li v okamžiku, kdy je potřeba, končí start s exit code 78 a hláškou, která říká, že aplikační role migrovat nesmí. Při `MIGRATE_ON_START=false` je nepovinná, protože se jen porovnává `schema_version`, což zvládne aplikační role.
 
 **Klíče AI providerů se před spuštěním z prostředí vymažou (KONVENCE)**
 
@@ -1563,12 +1742,23 @@ Akceptační kritérium: kontejner spuštěný s `ANTHROPIC_API_KEY=sk-test` v p
 |---|---|---|---|
 | `GET /api/health` | web | nic, jen že proces žije | 200 `{"status":"ok","mode":"web","version":"1.0.0"}` |
 | `GET /api/health/ready` | web | `SELECT 1` s timeoutem 2 s, shoda `schema_version`, dostupnost `DATA_DIR` pro zápis | 200 nebo 503 s `{"checks":[...]}` |
-| `GET :HEALTH_PORT/healthz` | sender | proces žije | 200 `ok` |
-| `GET :HEALTH_PORT/readyz` | sender | připojení k DB, poslední úspěšný claim mladší než 60 s nebo prázdný outbox | 200 nebo 503 |
-| `GET :HEALTH_PORT/healthz` | worker | proces žije | 200 `ok` |
-| `GET :HEALTH_PORT/readyz` | worker | pg-boss `started`, poslední tik maintenance mladší než 5 min | 200 nebo 503 |
+| `GET :SENDER_HEALTH_PORT/healthz` | sender | proces žije | 200 `ok` |
+| `GET :SENDER_HEALTH_PORT/readyz` | sender | připojení k DB, poslední úspěšný claim mladší než 60 s nebo prázdný outbox | 200 nebo 503 |
+| `GET :WORKER_HEALTH_PORT/healthz` | worker | proces žije | 200 `ok` |
+| `GET :WORKER_HEALTH_PORT/readyz` | worker | pg-boss `started`, poslední tik maintenance mladší než 5 min | 200 nebo 503 |
 
-Příkaz `mlain healthcheck` v HEALTHCHECK direktivě zavolá readiness endpoint podle `MODE` (u `all` všechny tři a spadne, když spadne kterýkoliv).
+**Proč dvě proměnné místo jedné `HEALTH_PORT` (ROZHODNUTO).** Worker i sender jsou v `MODE=all` potomci jednoho kontejneru a **dědí totéž prostředí**. Jedna společná proměnná by tedy znamenala, že se oba pokusí naslouchat na témž portu a druhý z nich spadne na `EADDRINUSE`, a to ve **výchozí konfiguraci MVP 0**, tedy u každé první instalace. Rozdělení je jediné řešení, které nevyžaduje, aby entrypoint proměnnou přepisoval za běhu.
+
+Kdo škáluje přes `compose.scale.yml`, kde má každý proces vlastní kontejner, může obě proměnné nastavit na stejnou hodnotu; kolize tam nevzniká. Výchozí hodnoty jsou přesto různé, aby se `MODE=all` a rozdělený režim chovaly stejně.
+
+**Co volá `mlain healthcheck`** v HEALTHCHECK direktivě, podle `MODE`:
+
+| `MODE` | Volá |
+|---|---|
+| `web` | `GET localhost:${PORT}/api/health/ready` |
+| `worker` | `GET localhost:${WORKER_HEALTH_PORT}/readyz` |
+| `sender` | `GET localhost:${SENDER_HEALTH_PORT}/readyz` |
+| `all` | všechny tři výše; spadne, když spadne kterýkoliv |
 
 **Graceful shutdown**
 
@@ -1599,10 +1789,15 @@ services:
       MODE: all
       APP_URL: ${APP_URL:?APP_URL je povinná}
       DATABASE_URL: ${DATABASE_URL:-postgres://mlain_app:mlain@postgres:5432/mlain}
+      # Migrace běží pod migrátorem, ne pod aplikační rolí. Bez téhle proměnné
+      # nemá runner z 3.13 čím se připojit.
+      DATABASE_URL_MIGRATOR: ${DATABASE_URL_MIGRATOR:-postgres://mlain_migrator:${POSTGRES_PASSWORD:-mlain}@postgres:5432/mlain}
       DATABASE_URL_SENDER: ${DATABASE_URL_SENDER:-postgres://mlain_sender:mlain@postgres:5432/mlain}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY je povinná, vygenerujte ji příkazem oe genkey}
       DEFAULT_LOCALE: ${DEFAULT_LOCALE:-cs}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT:-3001}
+      SENDER_HEALTH_PORT: ${SENDER_HEALTH_PORT:-3002}
     ports:
       - "${APP_PORT:-3000}:3000"
     volumes:
@@ -1634,7 +1829,10 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlain}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=icu --icu-locale=cs-CZ"
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      # POZOR: /var/lib/postgresql, NE /var/lib/postgresql/data.
+      # Oficiální image řady 18 přesunul PGDATA a deklarovaný VOLUME, viz
+      # poznámka "Mount databáze" hned pod tímhle compose souborem.
+      - ./data/postgres:/var/lib/postgresql
       - ./docker/initdb:/docker-entrypoint-initdb.d:ro   # zakládá role app a sender
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mlain_migrator -d mlain"]
@@ -1643,6 +1841,22 @@ services:
       retries: 5
     stop_grace_period: 30s
 ```
+
+**Mount databáze: `/var/lib/postgresql`, ne `/var/lib/postgresql/data` (ověřeno 2026-07-31).**
+
+Oficiální image `postgres` **od řady 18 přesunul `PGDATA` do cesty specifické pro major verzi**, konkrétně `/var/lib/postgresql/18/docker`, a deklarovaný `VOLUME` posunul o úroveň výš na `/var/lib/postgresql`. Důvod té změny je na straně upstreamu praktický: umožňuje při přechodu mezi major verzemi použít rychlý `pg_upgrade --link` nad jedním mountem. Ověřeno proti README oficiálního image na Docker Hubu a proti vláknu `docker-library/postgres#1370`.
+
+Pro nás z toho plyne konkrétní past, kterou má tenhle odstavec zavřít. Bind mount na starou cestu `./data/postgres:/var/lib/postgresql/data` **není chyba, na kterou by kontejner spadl**. Skončí prostě vedle skutečného datového adresáře, databáze se založí do anonymního svazku uvnitř kontejneru, všechno vypadá, že běží, a po prvním `docker compose down` jsou data pryč. V `./data/postgres` zůstane prázdný adresář. Je to **tichá ztráta dat u povinného artefaktu**, tedy přesně ten druh chyby, kterou tenhle dokument jinde označuje za nejhorší možnou.
+
+Tři důsledky, které patří do dokumentace k instalaci:
+
+| Situace | Co udělat |
+|---|---|
+| Nová instalace | nic, compose výše už je správně |
+| Instalace, která běžela na starém mountu s Postgresem 17 nebo starším | data v `./data/postgres` přesunout do podadresáře `./data/postgres/17/docker`, teprve pak přepnout na image 18; nebo klasicky `pg_dump` a `pg_restore` |
+| Externí Postgres (bez profilu `bundled`) | netýká se, cestu k datům si řídí provozovatel |
+
+`mlain doctor` kontroluje, že adresář nastavený jako datový svazek po startu **není prázdný**, a prázdný svazek u běžící databáze hlásí jako kritický nález s odkazem na tuhle sekci. Bez té kontroly by se na záměnu cest přišlo až prvním restartem.
 
 Rozdělení na `MODE=web`, `MODE=worker` a `MODE=sender` je v `compose.scale.yml` jako dokumentovaná varianta pro větší nasazení. Do MVP 0 stačí `MODE=all`.
 
@@ -1680,7 +1894,9 @@ První řádek souboru smí nést direktivy runneru:
 **Běh při startu s víc replikami (otázka 11)**
 
 ```
-1. Připoj se jako mlain_migrator.
+1. Připoj se jako mlain_migrator, a to přes DATABASE_URL_MIGRATOR (4.9).
+   NE přes DATABASE_URL: to je role mlain_app, která schéma nevlastní.
+   Proměnná chybí => exit 78 s hláškou "migrace vyžadují DATABASE_URL_MIGRATOR".
 2. SELECT pg_try_advisory_lock(7264150401) v cyklu s odstupem 1 s,
    nejvýš MIGRATE_LOCK_TIMEOUT_SECONDS (výchozí 300).
    - Konstanta 7264150401 je pevná, zapsaná v packages/db/src/migrate.ts.
@@ -1873,8 +2089,9 @@ docker compose pull && docker compose up -d
 | `test-db` | `turbo run test:db` (testcontainers) | 15 min |
 | `test-go` | `go vet`, `go test ./...` v `apps/sender` | 8 min |
 | `test-go-integration` | `go test -tags=integration ./...` proti Postgresu ze `services:` | 12 min |
-| `contracts-golden` | fixtures proti TS i Go implementaci, viz 4.10.5 | 6 min |
-| `contracts-schema` | Go strana ověří, že kontraktní sloupce existují a mají očekávaný typ | 5 min |
+| `contracts-golden` | fixtures proti TS i Go implementaci, viz 4.10.5. **Bez databáze** | 6 min |
+| `contracts-fixtures-schema` | validace všech fixtures proti JSON schématům v `packages/contracts/schema/` | 2 min |
+| `contracts-schema` | proti Postgresu ze `services:`: aplikuje migrace a ověří, že kontraktní sloupce existují a mají očekávaný typ | 5 min |
 | `openapi-drift` | vygeneruje OpenAPI a porovná s commitnutým souborem | 3 min |
 | `i18n-check` | shoda klíčů `cs.json` a `en.json`, validita ICU výrazů | 2 min |
 | `licenses-node` | `license-checker` s whitelistem | 4 min |
@@ -1884,6 +2101,17 @@ docker compose pull && docker compose up -d
 | `e2e` | Playwright proti compose z čerstvé image | 20 min |
 
 Celkový limit workflow: **35 minut** při plné paralelizaci. Joby `e2e` a `build-image` běží až po zelených rychlých jobech, aby se neplýtvalo runnery.
+
+**Tahle tabulka je jediný autoritativní seznam jobů (KONVENCE).** Kdo se v textu odvolá na job, který v ní není, popisuje CI, které neexistuje. Dva takové odkazy dokument obsahoval a tady se uzavírají:
+
+| Odkaz v textu | Platí |
+|---|---|
+| „job `image-size`" u kontroly velikosti image (3.12) | kontrolu dělá **`build-image`**, samostatný job se nezavádí |
+| „job `contracts-fixtures-schema`" u validace fixtures (4.10.5) | job **existuje** a je doplněný do tabulky výše |
+
+**Kde běží kroky parity, které potřebují databázi (normativní).** `contracts-golden` **žádnou databázi nemá** a mít nemá: pouští jazykové implementace nad JSON fixtures a přidání služby by mu ztrojnásobilo dobu běhu. Kontrola „kontraktní sloupce existují po migracích a mají očekávaný typ", kterou 4.10.5 vyjmenovává jako čtvrtý bod `test:parity`, proto **neběží v `contracts-golden`, ale v `contracts-schema`**, který Postgres ze `services:` má a migrace před kontrolou aplikuje. `test:parity` v `contracts-golden` pokrývá jen první tři body, tedy počty fixtures, pokrytí kódů a nepřeskočené fixtures; ty databázi nepotřebují.
+
+Bez tohohle rozdělení by čtvrtý bod buď spadl na chybějící připojení, nebo, hůř, byl potichu přeskočen jako „nedostupná databáze" a kontraktní sloupce by nehlídalo nic.
 
 **Jak běží testy senderu vedle testů aplikace:** jsou to samostatné joby s vlastním setupem (`actions/setup-go` versus `pnpm`), spouštěné paralelně. Jediné, co sdílejí, je adresář `packages/contracts/fixtures`, který Go čte přes `testdata` symlink. Job `contracts-golden` je jediný, který potřebuje obojí naráz, a proto v něm běží obě sady setupu.
 
@@ -2016,7 +2244,7 @@ Každý request dostane `request_id`. Hodnota z hlavičky `X-Request-Id`, pokud 
 | `errors` | rozšíření | Jen u `validation_failed`. `path` je JSON Pointer bez úvodního lomítka, tedy tečková notace. |
 | `findings` | rozšíření | Seznam nálezů s vlastní závažností. Pro kontroly, které vracejí víc zjištění najednou a nejsou to validační chyby. |
 | `params` | rozšíření | Strojově čitelné parametry chyby. Vše, co by jinak skončilo jen v lokalizovaném textu. |
-| `retry_after` | rozšíření | Jen u `rate_limited` a `service_unavailable`, sekundy, duplikuje hlavičku `Retry-After`. |
+| `retry_after` | rozšíření | Sekundy, duplikuje hlavičku `Retry-After`. Smí ho nést **jakýkoliv kód, který má v katalogu příznak opakovatelnosti**, ne jen `rate_limited` a `service_unavailable`. Význam je „dřív to nezkoušej". U `domain_*` se plní hodnotou 300, viz poznámky pod katalogem části 4a. |
 
 **Proč `findings` a `params` musí existovat.** Původní obálka měla jen `errors` s pevným tvarem `{path, code, message}` a byla vázaná na `validation_failed`. Do ní se nevejdou tři reálné případy: preflight kampaně vrací čtrnáct nálezů s různou závažností (chyba versus varování), kvóta potřebuje předat `remaining` a `reset_at`, a zakázaný přechod stavu potřebuje sdělit aktuální stav a povolené akce. Bez rozšíření by to všichni nacpali do `detail`, což vlastní konvence zakazuje, protože podle textu se nedá rozhodovat. Obojí je rozšiřující člen povolený RFC 9457.
 
@@ -2138,7 +2366,7 @@ Rozšiřující názvy začínají písmenem, obsahují alfanumerické znaky a p
 Tři poznámky k téhle skupině:
 
 - **`campaign_not_compiled` je opakovatelné, i když to vypadá divně.** UI na něj reaguje spuštěním kompilace šablony a zopakováním požadavku. Je to jediný kód v katalogu, kde je opakování akcí klienta, ne čekáním.
-- **`domain_*` jsou opakovatelné, ale s odstupem.** DNS propagace trvá minuty až hodiny. `retry_after` proto **rozšiřuju i mimo `rate_limited` a `service_unavailable`**: smí ho nést jakýkoliv kód označený jako opakovatelný a znamená „dřív to nezkoušej". U `domain_*` se plní hodnotou 300.
+- **`domain_*` jsou opakovatelné, ale s odstupem.** DNS propagace trvá minuty až hodiny. Proto platí rozšířené pravidlo pro `retry_after` už z tabulky polí v 4.2: nese ho jakýkoliv kód označený jako opakovatelný, ne jen `rate_limited` a `service_unavailable`. U `domain_*` se plní hodnotou 300.
 - **`sns_*` kódy se nezavádějí**, viz `signature_invalid` v katalogu výše.
 
 Sedm kódů `provider_smtp_*` (`host_unknown`, `connection_refused`, `tls_invalid`, `auth_failed`, `timeout` a dva další) doplní část 4a, všechny budou 422 a opakovatelné.
@@ -2154,7 +2382,13 @@ Sedm kódů `provider_smtp_*` (`host_unknown`, `connection_refused`, `tls_invali
 **Požadavek**
 
 ```
-GET /api/v1/contacts?limit=50&cursor=eyJrIjpbIjAxOTJmM2EwLTFjMmQtN2U0MyJdLCJkIjoibiJ9&order=created_at.desc
+GET /api/v1/contacts?limit=50&order=created_at.desc&cursor=eyJrIjpbIjIwMjYtMDctMzFUMTQ6MjI6MDMuMDAwWiIsIjAxOTJmM2EwLTFjMmQtN2U0My04ZDRlLTVmNjA3MTgyOTNhNCJdLCJkIjoibiIsIm8iOiJjcmVhdGVkX2F0LmRlc2MifQ
+```
+
+Ten kurzor po dekódování, aby šel příklad ověřit:
+
+```json
+{"k":["2026-07-31T14:22:03.000Z","0192f3a0-1c2d-7e43-8d4e-5f60718293a4"],"d":"n","o":"created_at.desc"}
 ```
 
 | Parametr | Výchozí | Meze |
@@ -2178,6 +2412,8 @@ GET /api/v1/contacts?limit=50&cursor=eyJrIjpbIjAxOTJmM2EwLTFjMmQtN2U0MyJdLCJkIjo
 ```
 
 **Kurzor** je `base64url(JSON)` s tvarem `{"k": [<hodnoty řadicích klíčů posledního řádku>], "d": "n" | "p", "o": "<order>"}`. Když se `o` v kurzoru neshoduje s parametrem `order`, request skončí 422 `validation_failed`, protože jinak by výsledek nedával smysl. Kurzor **není** podepsaný; neobsahuje nic tajného a workspace se stejně bere z autentizace.
+
+Pole `o` je **povinné a musí být i v každém příkladu**. Kurzor bez něj je podle pravidla o řádek výš sám případem, který má skončit 422, takže příklad, který ho nemá, je návodem na chybu. Dřívější podoba příkladu ho neobsahovala a `k` navíc nesla jedinou zkrácenou hodnotu, přestože `order=created_at.desc` končí implicitně `, id desc`, tedy klíč má **dvě** složky. Hodnota výše je vygenerovaná skriptem z uvedeného JSONu, ne psaná ručně.
 
 **Stabilita řazení:** každé `order` končí implicitně `, id desc`, aby byl klíč jednoznačný. Podmínka je pak keyset porovnání n-tice: `(created_at, id) < ($1, $2)`. Index musí odpovídat pořadí sloupců, jinak stránkování zpomalí lineárně, a to je právě důvod, proč každý zdroj vyjmenovává povolené `order` hodnoty.
 
@@ -2268,26 +2504,35 @@ Redis se v MVP 0 nezavádí, jak určuje hlavní specifikace. `postgres` backend
 
 **Algoritmus:** posuvné okno s pevnými sloty (`rate-limiter-flexible` výchozí). Ne token bucket, protože ten dovoluje jednorázový výbuch, a u ingestion endpointu je právě výbuch to, před čím se chráníme.
 
-**Limity**
+**Limity: čísla v tabulce jsou VÝCHOZÍ HODNOTY, ne konstanty (ROZHODNUTO)**
 
-| Klíč | Endpointy | Limit | Okno |
-|---|---|---|---|
-| IP | `POST /api/v1/auth/login` | 20 | 5 min |
-| IP + e-mail | `POST /api/v1/auth/login` | 5 | 5 min |
-| IP | `POST /api/v1/auth/password-reset` | 5 | 60 min |
-| IP | `POST /api/v1/setup` | 10 | 60 min |
-| session (user_id) | interní API a Server Actions | 600 | 1 min |
-| API klíč | `GET /api/v1/**` | 1000 | 1 min |
-| API klíč | zápisové `/api/v1/**` | 300 | 1 min |
-| API klíč | `POST /api/v1/contacts/import` | 10 | 60 min |
-| API klíč | `POST /api/v1/campaigns/{id}/send` | 30 | 60 min |
-| veřejný klíč (`ml_pub_`) | `POST /e/track` | 6000 | 1 min |
-| veřejný klíč + IP | `POST /e/track` | 120 | 1 min |
-| IP | `/t/o/**`, `/t/c/**` | 600 | 1 min |
-| IP | veřejné formuláře `/f/**` | 20 | 10 min |
-| workspace | odchozí webhooky (souběžnost) | 5 souběžně | průběžně |
+Dosud existovalo jen zapnout a vypnout (`RATE_LIMIT_ENABLED`). Self-hosted provozovatel, kterému limit nestačil, tedy neměl jinou možnost než vypnout celý limiter, tedy vyměnit „moc přísné" za „žádné". U produktu, který si každý provozuje sám a nemá koho požádat o zvýšení, je to špatná nabídka. Pět limitů proto dostává vlastní konfigurační proměnnou (4.9), zbytek zůstává pevný.
+
+| Klíč | Endpointy | Výchozí limit | Okno | Proměnná |
+|---|---|---|---|---|
+| IP | `POST /api/v1/auth/login` | 20 | 5 min | pevné |
+| IP + e-mail | `POST /api/v1/auth/login` | 5 | 5 min | pevné |
+| IP | `POST /api/v1/auth/password-reset` | 5 | 60 min | pevné |
+| IP | `POST /api/v1/setup` | 10 | 60 min | pevné |
+| session (user_id) | interní API a Server Actions | 600 | 1 min | pevné |
+| API klíč | `GET /api/v1/**` | 1000 | 1 min | `RATE_LIMIT_API_READ` |
+| API klíč | zápisové `/api/v1/**` | 300 | 1 min | `RATE_LIMIT_API_WRITE` |
+| API klíč | `POST /api/v1/contacts/import` | 10 | 60 min | pevné |
+| API klíč | `POST /api/v1/campaigns/{id}/send` | 30 | 60 min | pevné |
+| veřejný klíč (`ml_pub_`) | `POST /e/track` | 6000 | 1 min | `RATE_LIMIT_TRACK_KEY` |
+| veřejný klíč + IP | `POST /e/track` | 120 | 1 min | `RATE_LIMIT_TRACK_KEY_IP` |
+| IP | `/t/o/**`, `/t/c/**` | 600 | 1 min | `RATE_LIMIT_TRACK_PIXEL_IP` |
+| IP | veřejné formuláře `/f/**` | 20 | 10 min | pevné |
+| workspace | odchozí webhooky (souběžnost) | 5 souběžně | průběžně | pevné |
 
 Limity per veřejný klíč a per IP existují vedle sebe schválně. Sám klíč omezuje celkovou zátěž z jednoho webu, sama IP omezuje jednoho útočníka.
+
+**Proč jsou konfigurovatelné zrovna tyhle a zbytek ne.** Konfigurovatelné jsou ty, kde je výchozí hodnota provozním kompromisem, který si každá instalace nastavuje jinak podle objemu. Limity kolem přihlášení, resetu hesla a `setup` jsou naopak bezpečnostní opatření, kde je možnost hodnotu zvednout spíš díra než funkce. Kdo je opravdu potřebuje jinak, má `RATE_LIMIT_ENABLED=false` a vlastní vrstvu před aplikací, a dělá to vědomě.
+
+**Dvě výchozí hodnoty, které vypadají nekonzistentně se zbytkem dokumentu a je potřeba to vysvětlit:**
+
+1. **6000 událostí za minutu na veřejný klíč je 100 za sekundu, zatímco výkonový cíl v kapitole 7 slibuje 500 za sekundu.** Není to překlep. Je to rozdíl mezi tím, co ingestion **unese** (cíl kapitoly 7, měřený na celé instalaci) a tím, co jeden web **smí spotřebovat** ve výchozím stavu. Instalace, která opravdu chce z jednoho webu 500 událostí za sekundu, si nastaví `RATE_LIMIT_TRACK_KEY=30000`. Bez té proměnné by nezbylo než vypnout limiter úplně, a to i pro všechny ostatní endpointy.
+2. **120 událostí za minutu na klíč a IP jsou dvě za sekundu, což je pro celou firmu za jedním NATem málo.** Proti jednomu útočníkovi je to správně přísné, ale u zákazníka s velkou kanceláří nebo za CGNAT operátora to seká legitimní provoz a projeví se to jako „nám se neměří půlka návštěv". `RATE_LIMIT_TRACK_KEY_IP` je proměnná, kterou provozovatel v takové situaci zvedne; dokumentace na ten případ upozorňuje jménem, protože se špatně diagnostikuje.
 
 **Odpověď při překročení**
 
@@ -2360,7 +2605,7 @@ export const ApiKeySchema = z.object({
   id: z.uuid(),
   name: z.string().min(1).max(100),
   kind: z.enum(['secret', 'public']),
-  prefix: z.string().length(8),
+  prefix: z.string().regex(/^[a-z2-7]{8}$|^[a-z2-7]{16}$/), // 8 u secret, 16 u public
   scopes: z.array(PermissionSchema),
   last_used_at: z.iso.datetime().nullable(),
   expires_at: z.iso.datetime().nullable(),
@@ -2457,9 +2702,19 @@ API klíče, webhooky, audit, provoz:
 | `GET /api/health`, `/api/health/ready` | veřejné | viz 3.12 |
 | `GET /metrics` | `METRICS_TOKEN` v `Authorization` | Prometheus, vypnuté ve výchozím stavu |
 
-**Kompletní typ `Problem`** pro `sdk-node` a pro ostatní části:
+**Kompletní typ `Problem`** pro `sdk-node` a pro ostatní části. „Kompletní" znamená, že obsahuje **všechny** rozšiřující členy z tabulky v 4.2, tedy i `findings` a `params`. Dřívější znění je vynechávalo, přestože je 4.2 normativně zavádí a ukazuje na nich preflight kampaně i kvótu; vygenerovaný klient by je podle takového typu zahodil a integrátor by o nálezy přišel, aniž by cokoliv selhalo.
 
 ```ts
+export type Severity = 'error' | 'warning';
+
+export type Finding = {
+  code: string;
+  severity: Severity;
+  message: string;
+  path?: string;
+  params?: Record<string, unknown>;
+};
+
 export type Problem = {
   type: string;
   title: string;
@@ -2468,7 +2723,13 @@ export type Problem = {
   instance: string;
   code: string;
   request_id: string;
+  /** Jen u validation_failed, porušení schématu. Tvar je zmrazený. */
   errors?: Array<{ path: string; code: string; message: string }>;
+  /** Doménové kontroly s víc nálezy naráz, viz 4.2. */
+  findings?: Finding[];
+  /** Strojově čitelné parametry chyby, viz 4.2. */
+  params?: Record<string, unknown>;
+  /** Sekundy. Smí být u každého kódu s příznakem opakovatelnosti, viz 4.2. */
   retry_after?: number;
 };
 
@@ -2495,12 +2756,14 @@ Legenda sloupce "Kdo": W = web, K = worker, S = sender.
 | `SECRET_KEY` | string | **ano** | | W K S | `[<key_id>:]<base64url>`, po dekódování přesně 32 B. Odmítne se známý ukázkový klíč z dokumentace. |
 | `SECRET_KEY_PREVIOUS` | string | ne | prázdné | W K S | čárkou oddělený seznam `<key_id>:<base64url>`, **bez horního počtu položek** (strop by znemožnil ověřit nejstarší otisky, viz 3.10) |
 | `DATABASE_URL` | URL | **ano** | | W K | `postgres://`, role `mlain_app` |
+| `DATABASE_URL_MIGRATOR` | URL | **ano při migracích** | | W | `postgres://`, role `mlain_migrator`. Povinná, když `MIGRATE_ON_START=true`, a vždy pro `mlain migrate` a `mlain restore`. Chybí = exit 78. Aplikační role schéma nevlastní a migrovat nemůže, viz 3.13. Používá se **jen** pro migrace, nikdy pro běžný provoz |
 | `DATABASE_URL_SENDER` | URL | ne | odvozeno z `DATABASE_URL` s uživatelem `mlain_sender` | S | při `MODE=all` se dopočítá, jinak povinná |
 | `DATABASE_POOL_MAX` | int | ne | 10 | W K | 1 až 100 |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | int | ne | 30000 | W K | 1000 až 600000 |
 | `MODE` | enum | ne | `all` | W K S | `web`, `worker`, `sender`, `all` |
 | `PORT` | int | ne | 3000 | W | 1 až 65535 |
-| `HEALTH_PORT` | int | ne | 3001 | K S | |
+| `WORKER_HEALTH_PORT` | int | ne | 3001 | K | 1 až 65535 |
+| `SENDER_HEALTH_PORT` | int | ne | 3002 | S | 1 až 65535. Při `MODE=all` se nesmí rovnat `WORKER_HEALTH_PORT` ani `PORT`; ověřuje se při startu, protože potomci sdílejí prostředí, viz 3.12 |
 | `NODE_ENV` | enum | ne | `production` | W K | `production`, `development`, `test` |
 | `LOG_LEVEL` | enum | ne | `info` | W K S | `trace`,`debug`,`info`,`warn`,`error`,`fatal` |
 | `LOG_FORMAT` | enum | ne | `json` | W K S | `json`, `pretty` (pretty jen mimo produkci) |
@@ -2522,21 +2785,48 @@ Legenda sloupce "Kdo": W = web, K = worker, S = sender.
 | `AUDIT_RETENTION_MONTHS` | int | ne | 24 | K | 1 až 120 |
 | `RATE_LIMIT_BACKEND` | enum | ne | `memory` | W | `memory`, `postgres` |
 | `RATE_LIMIT_ENABLED` | bool | ne | `true` | W | `false` jen pro testy, při `NODE_ENV=production` a `false` se loguje `warn` |
+| `RATE_LIMIT_API_READ` | int | ne | 1000 | W | požadavků za minutu na API klíč pro `GET /api/v1/**`, 1 až 1000000 |
+| `RATE_LIMIT_API_WRITE` | int | ne | 300 | W | požadavků za minutu na API klíč pro zápisové `/api/v1/**`, 1 až 1000000 |
+| `RATE_LIMIT_TRACK_KEY` | int | ne | 6000 | W | událostí za minutu na veřejný klíč pro `POST /e/track`, 1 až 10000000. Výchozích 6000 je 100 za sekundu; kdo chce dojet na výkonový cíl 500 za sekundu z jednoho webu, nastaví 30000 |
+| `RATE_LIMIT_TRACK_KEY_IP` | int | ne | 120 | W | událostí za minutu na dvojici veřejný klíč a IP, 1 až 10000000. Výchozích 120 jsou dvě za sekundu, což je málo pro firmu za jedním NATem nebo za CGNAT; v takovém případě se zvedá |
+| `RATE_LIMIT_TRACK_PIXEL_IP` | int | ne | 600 | W | požadavků za minutu na IP pro `/t/o/**` a `/t/c/**`, 1 až 10000000 |
 | `WORKER_CONCURRENCY` | int | ne | 5 | K | 1 až 50, mapuje se na `localConcurrency` u pg-boss |
 | `PGBOSS_SCHEMA` | string | ne | `pgboss` | K | alfanumerické a podtržítko, do 50 znaků |
 | `SENDER_ID` | string | ne | hostname + PID | S | zapisuje se do `messages.claimed_by`, max 64 znaků |
 | `SENDER_CONCURRENCY` | int | ne | 32 | S | 1 až 1024 |
-| `SENDER_BATCH_SIZE` | int | ne | 500 | S | 1 až 5000 |
+| `SENDER_BATCH_SIZE` | int | ne | **100** | S | 1 až 5000. Zadavatel snížil výchozí hodnotu z 500 na 100, zdůvodnění pod tabulkou |
 | `SENDER_CLAIM_TTL_SECONDS` | int | ne | 300 | S | 30 až 3600, viz 4.10.1 |
 | `SENDER_POLL_INTERVAL_MS` | int | ne | 1000 | S | 100 až 60000 |
 | `SHUTDOWN_GRACE_SECONDS` | int | ne | 25 | W K S | 1 až 300 |
 | `TRACKING_DOMAIN` | string | ne | odvozeno z `APP_URL` | W S | vlastní doména pro `/t/**` a `/e/**` |
 | `WEBHOOK_ALLOW_PRIVATE_TARGETS` | bool | ne | `false` | K | povolí odchozí webhooky do privátních rozsahů |
-| `WEBHOOK_MAX_ATTEMPTS` | int | ne | 8 | K | 1 až 12 |
+| `WEBHOOK_MAX_ATTEMPTS` | int | ne | 8 | K | **1 až 8**, tedy počet řádků tabulky odstupů v 3.8. Vyšší hodnota by neměla definované zpoždění |
 | `METRICS_ENABLED` | bool | ne | `false` | W K S | |
 | `METRICS_TOKEN` | string | ne | prázdné | W K S | povinná, když `METRICS_ENABLED=true`, min. 32 znaků |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | URL | ne | prázdné | W K S | prázdná hodnota = žádná telemetrie, což je výchozí stav |
-| `IMAGE_VERSION` | string | ne | vloženo při buildu | W K S | jen ke čtení, do `/api/health` |
+| `IMAGE_VERSION` | string | ne | vloženo při buildu | W K S | jen ke čtení, do `/api/health`. Vkládá se přes `ARG IMAGE_VERSION` v Dockerfile (3.12); dřívější `${APP_VERSION}` byl nedeklarovaný a název se s touhle proměnnou rozcházel |
+
+**`SENDER_BATCH_SIZE`: výchozí hodnota 100, ne 500 (ROZHODNUTO zadavatelem)**
+
+Původní výchozí hodnota 500 vypadala na papíře dobře (méně dotazů na claim), ale v provozu se ukázaly dvě věci, které ji přebíjejí:
+
+1. **Pauza zabere dřív.** Zprávy ve stavu `claimed` doběhnou bez ohledu na pauzu i zrušení kampaně, protože sender nemá jak vzít zpět zprávu, kterou už předal provideru. Kolik jich odejde po zmáčknutí pauzy, je tedy přesně `SENDER_BATCH_SIZE` na běžící sender: **při 500 to bylo až 500 zpráv, při 100 je to až 100**. Pro uživatele, který zmáčkl pauzu proto, že si všiml chyby v šabloně, je to rozdíl mezi „odešlo to ještě pěti stovkám lidí" a „odešlo to stovce". Menší dávka jediné naivní očekávání uživatele („zrušil jsem to, tak se nic neodešle") sice nesplní, ale poruší ho pětkrát míň.
+2. **Hlídač zaseknuté dávky hlásil planý poplach.** V sandboxu Amazonu, kde je limit **jedna zpráva za sekundu**, trvala dávka pěti set zpráv **přes osm minut**. To je násobně víc než `SENDER_CLAIM_TTL_SECONDS` (výchozí 300 s), takže hlídač považoval každou normálně běžící dávku za zaseknutou a hlásil poplach **na každé dávce**. Sto zpráv při stejném limitu vyjde zhruba na minutu a půl, tedy pohodlně uvnitř TTL i s heartbeatem.
+
+Cena je vyšší počet claim dotazů. Je zanedbatelná: claim je jeden indexovaný dotaz s cílem pod 10 ms (kapitola 7) a pětinásobek z „dvakrát za sekundu" je pořád triviální zátěž proti tomu, co stojí odeslání samotné zprávy. Kdo posílá přes produkční SES s vysokou kvótou a plané poplachy nemá, si hodnotu zvedne.
+
+**Strop na počet pokolení klíče: kontrakt říká „žádný", formát dává 255 (upřesnění)**
+
+3.10 normativně ruší strop na počet pokolení `SECRET_KEY` a zakazuje ho vracet, a je to správné rozhodnutí: otisk v suppression listu po výmazu podle GDPR **nejde nikdy přepočítat**, takže by vyčerpaný strop znamenal, že se smazaný člověk vrátí prvním dalším importem, aniž by cokoliv selhalo.
+
+Zároveň je ale `key_id` v obou binárních formátech **jeden bajt** (trackovací token 4.10.3, šifrová obálka 4.10.4) a `SECRET_KEY_PREVIOUS` ho zapisuje jako celé číslo 1 až 255. **Formát tedy dává praktický strop 255 pokolení**, protože stará pokolení se z keyringu nikdy neodebírají. Kontrakt a formát si v tomhle bodě zdánlivě odporují a je poctivější to napsat než nechat čtenáře, aby na to přišel sám.
+
+Rozpor je akademický a řeší se takto:
+
+- Strop **255 pokolení je vlastnost bajtového formátu, ne politika.** Věta „strop na počet pokolení neexistuje" v 3.10 se týká toho, kolik pokolení smí instalace **držet a ověřovat**, a v mezích formátu platí bez výhrady.
+- Prakticky nevadí. Rotace `SECRET_KEY` je reakce na podezření na únik, tedy jednotky případů za roky provozu. Instalace, která by 255 pokolení vyčerpala, by rotovala každý týden po dobu pěti let.
+- **Vyčerpání stropu řeší budoucí verze formátu**, ne validace. Až by k němu reálně došlo, zavede se `t2` u tokenů a `version = 0x02` u obálky s dvoubajtovým `key_id`; obojí je v obou formátech předvídané (prefix `"t1"` i pole `version` existují právě proto). Do té doby se strop **nevaliduje jako chyba** a `mlain doctor` na blížící se hranici jen upozorní, počínaje pokolením 200.
+- **Do 3.10, 4.10.3 ani 4.10.4 se kvůli tomuhle nesahá.** Jsou to zmrazené kontrakty a tahle poznámka je jejich výklad, ne změna.
 
 **Proměnné vlastněné jinými částmi**
 
@@ -3986,7 +4276,7 @@ X-Frame-Options: DENY
 | Členství uživatele pro přepínač projektů | jednou za načtení stránky | `idx_memberships__user_id` | < 2 ms |
 | Fan-out webhooku: aktivní endpointy pro typ | při každé události | `idx_webhook_endpoints__ws_active` + GIN | < 3 ms |
 | Audit log projektu, první stránka | ruční akce | `idx_audit_log__ws_created` | < 20 ms |
-| Claim dávky senderem | 2× za sekundu na sender | `idx_messages__claimable` | < 10 ms pro 500 řádků |
+| Claim dávky senderem | podle `SENDER_POLL_INTERVAL_MS` | `idx_messages__claimable` | < 10 ms pro dávku `SENDER_BATCH_SIZE` (výchozí 100) |
 
 **Kde to praskne první a co s tím**
 
@@ -4016,7 +4306,13 @@ Testovatelné věty. Z každé jde napsat test bez doptávání.
 7. Image nemá víc než 250 MB a `docker inspect` ukazuje `User` `10001`.
 7b. Kontejner spuštěný s `ANTHROPIC_API_KEY=sk-test` v prostředí a s projektem bez nakonfigurovaného AI klíče neodešle jediný požadavek na `api.anthropic.com`; proměnná není v prostředí web ani worker procesu.
 7c. Žádná proměnná v zod schématu konfigurace nekončí na `_API_KEY`, jinak by ji entrypoint vymazal.
+7d. Build image proběhne z čistého klonu a `pnpm install --frozen-lockfile` uvnitř najde všech devět workspace balíčků. Test kontroluje, že v instalační vrstvě existuje `packages/<jméno>/package.json` pro každý balíček, tedy že se manifesty nezploštily do jednoho souboru.
+7e. `docker run --rm <image> ml-sender --version` i `GET /api/health` vrací neprázdnou verzi shodnou s tagem image. Build bez `--build-arg IMAGE_VERSION=...` použije `0.0.0-dev`, nikdy prázdný řetězec.
 8. Kontejner spuštěný s `read_only: true` funguje; zapisuje jen do `/data` a `/tmp`.
+8b. Po `docker compose --profile bundled up -d`, vytvoření dat, `docker compose down` a opětovném `up` jsou data **stále v databázi** a adresář `./data/postgres` na hostiteli není prázdný. Je to test proti záměně `/var/lib/postgresql` a `/var/lib/postgresql/data` u image řady 18.
+8c. Při `MODE=all` naslouchají worker i sender na **různých** portech a v logu není žádná chyba o obsazeném portu. Konfigurace se `SENDER_HEALTH_PORT` rovným `WORKER_HEALTH_PORT` je při `MODE=all` odmítnutá při startu s exit code 78.
+8d. Start s `MIGRATE_ON_START=true` a bez `DATABASE_URL_MIGRATOR` skončí exit code 78 a hláškou, která obsahuje `DATABASE_URL_MIGRATOR`. Start s `MIGRATE_ON_START=false` a bez ní proběhne.
+8e. Migrace se aplikují pod rolí `mlain_migrator`; pokus spustit `mlain migrate` s `DATABASE_URL_MIGRATOR` ukazujícím na roli `mlain_app` selže na chybějícím vlastnictví schématu, ne tiše.
 9. `mlain backup` vytvoří adresář s `database.dump`, `uploads.tar.gz` a `manifest.json`, jehož `row_counts.contacts` odpovídá skutečnosti.
 10. `mlain backup verify` na právě vytvořené záloze skončí s exit code 0 a nezanechá databázi `ml_verify_*`.
 11. `mlain restore` do neprázdné databáze bez `--force` skončí nenulovým kódem a nic nezmění.
@@ -4033,11 +4329,17 @@ Testovatelné věty. Z každé jde napsat test bez doptávání.
 19. API klíč workspace B na `GET /api/v1/contacts/{id_z_A}` vrátí 404 s `Content-Type: application/problem+json` a `code: "not_found"`.
 20. Přímý SQL `SELECT * FROM contacts` pod rolí `mlain_app` bez `set_config('mlain.workspace_id', ...)` vrátí 0 řádků.
 21. Pokus vložit řádek s cizím `workspace_id` pod nastaveným kontextem selže na `WITH CHECK`.
+21b. `POST /api/v1/auth/change-password` uspěje a v `audit_log` vznikne řádek `user.password_changed` s `workspace_id IS NULL`. Tentýž scénář pod rolí `mlain_app` bez nastaveného workspace kontextu **nesmí** skončit chybou `WITH CHECK` ani rollbackem transakce, takže heslo je po volání opravdu změněné.
+21c. `SELECT * FROM audit_log` pod kontextem workspace B nevrátí ani řádek workspace A, ani globální řádek s `workspace_id IS NULL`.
+21d. `SELECT * FROM workspaces` pod kontextem workspace B vrátí právě jeden řádek, a to workspace B. Výpis přes `workspaces-global` s nastaveným `mlain.user_id` vrátí jen projekty, ve kterých má uživatel členství; bez `mlain.user_id` vrátí 0 řádků.
+21e. Test „každá tabulka mimo whitelist má sloupec `workspace_id`" projde, přestože `workspaces` sloupec `workspace_id` nemá; a zároveň platí, že `workspaces` má zapnuté RLS.
 22. Odebrání posledního ownera vrátí 409 `last_owner_cannot_be_removed` a členství zůstane beze změny.
 23. Uživatel s rolí `viewer` dostane na `POST /api/v1/campaigns` odpověď 403 `forbidden`.
 24. API klíč bez scope `contacts:write` dostane na `POST /api/v1/contacts` odpověď 403 `insufficient_scope`.
 25. Sekret API klíče je v odpovědi právě jednou, při vytvoření; `GET /api/v1/api-keys` ho neobsahuje v žádném poli.
-26. Veřejný klíč `ml_pub_*` na `POST /api/v1/contacts` vrátí 403; na `POST /e/track` projde.
+26. Veřejný klíč `ml_pub_*` na `POST /api/v1/contacts` vrátí **403 `insufficient_scope`** (ne 401, klíč je platný aktér bez scope, viz větev P v 3.5); na `POST /e/track` projde.
+26b. Řetězec `ml_pub_` s vadným tělem (jiná délka než 16 znaků nebo znak mimo base32 abecedu) vrátí 401 `unauthenticated` bez jediného dotazu do databáze.
+26c. Sekret rotovaný s `grace_seconds=60` se ověří i 30 sekund po rotaci a odpověď nese `ML-Key-Rotated: true`; po uplynutí `previous_expires_at` vrátí 401.
 
 **API framework**
 
@@ -4053,7 +4355,8 @@ Testovatelné věty. Z každé jde napsat test bez doptávání.
 
 **Webhooky**
 
-36. Endpoint vracející 500 dostane přesně 8 pokusů rozložených podle tabulky z 3.8 (tolerance jitteru ±20 %), pak je doručení `abandoned`.
+36. Endpoint vracející 500 dostane přesně `WEBHOOK_MAX_ATTEMPTS` pokusů (výchozí 8, mez rozsahu 8) rozložených podle prvních `WEBHOOK_MAX_ATTEMPTS` řádků tabulky z 3.8 (tolerance jitteru ±20 %), pak je doručení `abandoned`. Test běží aspoň pro hodnoty 1, 3 a 8.
+36b. Konfigurace s `WEBHOOK_MAX_ATTEMPTS=9` je odmítnutá při startu s exit code 78; horní mez v zod schématu se rovná počtu řádků tabulky odstupů, ne pevnému číslu.
 37. Endpoint vracející 410 je po prvním pokusu `disabled` s důvodem `endpoint_gone`.
 38. Podpis `ML-Signature` spočítaný z testovacího vektoru v 3.8 odpovídá bajt na bajt.
 39. Webhook na `http://169.254.169.254/` se neuloží; při změně DNS na privátní adresu po uložení skončí doručení s `blocked_target` a bez pokusu o spojení.
@@ -4061,7 +4364,7 @@ Testovatelné věty. Z každé jde napsat test bez doptávání.
 
 **Kontrakty**
 
-41. Všech nejméně 40 Liquid fixtures projde v TypeScriptu i v Go se shodným výstupem bajt po bajtu.
+41. Všech nejméně **54** Liquid fixtures projde v TypeScriptu i v Go se shodným výstupem bajt po bajtu. Číslo je součtem tabulky skupin v 4.10.2 a je jediné závazné; dřívější „nejméně 40" pocházelo ze základu z hlavní specifikace, ne z rozpisu skupin.
 42. Fixture přidaná jen do jedné strany způsobí selhání testu `test:parity`.
 43. Každý ze čtyř typů trackovacích tokenů vygenerovaný v Go je shodný s tokenem vygenerovaným v TypeScriptu pro tatáž vstupní data a odpovídá vektoru z 4.10.3.
 44. Open token poslaný na `/t/c/` je odmítnutý s `token_type_mismatch`.
