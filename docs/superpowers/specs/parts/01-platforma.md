@@ -3201,7 +3201,7 @@ Nový kód přidává vlastník příslušné části a musí ho zaregistrovat, 
 |---|---|---|
 | `default` v Go vždy přepíše `false`, LiquidJS má volbu `allow_false` | `{% if %}` nad boolean polem | filtr je náš, definice v tabulce níž je jediná platná; shodou okolností odpovídá chování Go |
 | `date` bere v Go zónu serveru, v LiquidJS zónu prohlížeče | úplně jiný čas v náhledu a v odeslaném e-mailu | filtr je náš a zóna se bere výhradně z `render_data._context.timezone` |
-| `osteele/liquid` nepodporuje **pojmenované** parametry filtrů | `{{ x \| truncate: length: 10 }}` | gramatika povoluje jen **poziční** argument (`default: "kolego"`, `date: "%d.%m.%Y"`), pojmenované nikde nejsou |
+| `osteele/liquid` nepodporuje **pojmenované** parametry filtrů | `{{ x \| truncate: length: 10 }}` | v autorské šabloně nemá filtr argument vůbec; v kompilované je argument jediný a **poziční** (`default: "kolego"`, `date: "%d.%m.%Y"`), pojmenované nikde nejsou |
 | V Go chybí `where`, `find`, `group_by`, `sum`, `reject`, `date_to_*` | šablona funguje v náhledu a spadne při odeslání | žádný z nich není v povolené pětici; validátor je odmítne už v editoru |
 | `escape` produkuje v obou shodné entity | | přesto ho definujeme sami, viz odstavec o escapování |
 
@@ -3211,17 +3211,32 @@ Nový kód přidává vlastník příslušné části a musí ho zaregistrovat, 
 - LiquidJS se instancuje se `strictFilters: true` a `strictVariables: false`. Neznámý filtr má být chyba (chytí ho validátor), neznámá proměnná má být prázdný řetězec (bod 1 níže).
 - Obě strany registrují pětici filtrů **před** prvním renderem a žádná strana neregistruje nic navíc.
 
-**Povolená gramatika (úplná)**
+**Řetězcové literály nejsou v autorské šabloně povolené. ROZHODNUTO 2026-07-31.**
+
+Důvod je mechanický a ověřený: renderer šablony je React (`@react-email/render`, viz kapitola 6.4 hlavní specifikace) a **každý React renderer escapuje uvozovky a špičaté závorky v textových uzlech**. Z `{{ x | default: "y" }}` se v HTML stane `{{ x | default: &quot;y&quot; }}`, což **přestane být platným Liquidem**: proti liquidjs to selže s `TokenizationError`. Totéž platí pro apostrofy a pro `{% if country == "CZ" %}`.
+
+Podstatné zjištění z ověření: **prosté konstrukce přežijí escapování bez úhony.** `{{ contact.first_name }}`, `{{ x | upcase }}`, `{% if contact.is_vip %}` a `{% for %}` projdou beze změny. Uvozovky potřebují v našem subsetu **jen dvě věci**: náhradní hodnota filtru `default` a formátovací řetězec filtru `date`.
+
+**Obojí se proto stěhuje z textu šablony do strukturovaných atributů bloku.** Autor napíše do textu `{{ contact.first_name }}` a náhradní hodnotu zadá v panelu vlastností bloku. Argument filtru doplní kompilace **až po renderu Reactem**, takže se přes escapování nikdy nedostane. Tím uvozovky z autorské šablony zmizí úplně a problém padá u kteréhokoliv rendereru, i kdyby se react-email někdy vyměnil.
+
+Kontrakt proto rozlišuje dvě úrovně a **obě jsou normativní**:
+
+| Úroveň | Co to je | Gramatika |
+|---|---|---|
+| **autorská šablona** | text, který uživatel píše do bloku a který validuje editor | gramatika níž, **bez řetězcových literálů** |
+| **kompilovaná šablona** | výstup kompilace, vstup senderu | totéž plus argumenty filtrů `default` a `date` doplněné kompilací z atributů bloku |
+
+Kompilace je jediné místo, které smí argument filtru vyrobit, a hodnota pochází výhradně z atributu bloku. Uživatelský text argumentem filtru nikdy neprojde.
+
+**Povolená gramatika autorské šablony (úplná)**
 
 ```
 template     := (text | output | tag)*
 output       := "{{" ws expr ws "}}"
 expr         := path (ws "|" ws filter)*
 path         := ident ("." ident)*                 // nejvýš 3 segmenty
-filter       := "default" ":" ws literal
-              | "upcase" | "downcase"
-              | "date" ":" ws string_literal
-              | "escape"
+filter       := "default" | "upcase" | "downcase" | "date" | "escape"
+                // BEZ argumentu; hodnotu doplní kompilace z atributu bloku
 tag          := if_tag | unless_tag | for_tag
 if_tag       := "{%" ws "if" ws cond ws "%}" template
                 ("{%" ws "elsif" ws cond ws "%}" template)*
@@ -3234,10 +3249,24 @@ for_tag      := "{%" ws "for" ws ident ws "in" ws path ws "%}" template
 cond         := operand (ws op ws operand)? (ws ("and"|"or") ws cond)?
 op           := "==" | "!=" | ">" | "<" | ">=" | "<="
 operand      := path | literal
-literal      := string_literal | number | "true" | "false" | "nil" | "blank" | "empty"
-string_literal := '"' [^"]* '"' | "'" [^']* "'"
+literal      := number | "true" | "false" | "nil" | "blank" | "empty"
+                // string_literal ZRUŠEN, viz rozhodnutí výš
 ident        := [a-z_][a-z0-9_]*
 ```
+
+**Gramatika kompilované šablony** je shodná až na jediný rozdíl, produkovaný výhradně kompilací:
+
+```
+filter       := "default" ":" ws string_literal
+              | "upcase" | "downcase"
+              | "date" ":" ws string_literal
+              | "escape"
+string_literal := '"' [^"]* '"'
+```
+
+Validátor senderu smí kompilovanou šablonu přijmout, validátor editoru ji odmítne. Sender navíc **odmítne kompilovanou šablonu, ve které je uvnitř `{{ }}` nebo `{% %}` jakákoliv HTML entita** (`&quot;`, `&#39;`, `&lt;`, `&gt;`, `&amp;`), a to s kódem `liquid_escaped_entity_in_construct`. Tohle je záchytná síť proti tomu, aby se escapovaná šablona dostala až k odeslání.
+
+> **Otevřená podotázka (zjištěna při zanášení tohoto rozhodnutí, nerozhodnuta).** Escapování Reactu se netýká jen uvozovek, ale i `<` a `>`. Podmínka `{% if contact.score > 5 %}` se v HTML změní na `{% if contact.score &gt; 5 %}` a rozbije se stejným způsobem jako uvozovky. Operátory `>`, `<`, `>=`, `<=` proto v gramatice zatím zůstávají, ale **v autorské šabloně jsou nepoužitelné, dokud se nerozhodne, jak je řešit**. Přirozené řešení je stejné jako u `default`: číselná podmínka se zadá v panelu vlastností bloku jako atribut viditelnosti a kompilace ji doplní. Do rozhodnutí platí, že validátor na `>` a `<` v podmínce dá **blokující chybu** `liquid_comparison_operator_not_supported` s odkazem na tuto sekci. Rovnostní porovnání (`==`, `!=`) je escapováním nedotčené a funguje dál.
 
 **Zakázané a proč**
 
@@ -3256,6 +3285,9 @@ ident        := [a-z_][a-z0-9_]*
 | vnořený `for` | složitost bez užitku, v e-mailu jedna úroveň stačí |
 | `for` s `limit`, `offset`, `reversed`, `forloop.*` | zúžení plochy; iterační proměnná je jen prvek |
 | indexování `pole[0]`, `hash["klíč"]` | dvě notace pro totéž, každá knihovna jinak u chybějícího klíče |
+| **řetězcový literál kdekoliv v šabloně** (`"…"` i `'…'`) | React renderer ho escapuje na `&quot;` a `&#39;` a Liquid přestane být platný; hodnoty se berou z atributů bloku (`liquid_string_literal_not_allowed`) |
+| **argument filtru `default` a `date` psaný do textu** | totéž; argument doplňuje kompilace z atributu bloku (`liquid_filter_argument_not_allowed`) |
+| `>`, `<`, `>=`, `<=` v podmínce | escapuje se na `&gt;` a `&lt;`, viz otevřená podotázka výš (`liquid_comparison_operator_not_supported`) |
 
 **Limity**
 
@@ -3282,13 +3314,17 @@ ident        := [a-z_][a-z0-9_]*
 
 **Pět filtrů (normativní definice)**
 
-| Filtr | Signatura | Chování |
-|---|---|---|
-| `default` | `default: <literal>` | Vrátí argument, když je hodnota `nil`, `false`, `""` nebo prázdné pole. Jinak hodnotu. Argument musí být literál, ne cesta. |
-| `upcase` | bez argumentu | Unicode velká písmena podle "simple uppercase mapping" (bez speciálních pravidel pro turečtinu). `ž` → `Ž`. |
-| `downcase` | bez argumentu | totéž opačně |
-| `date` | `date: "<formát z whitelistu>"` | viz níže |
-| `escape` | bez argumentu | v HTML kontextu **no-op** (viz níže), v textovém kontextu také no-op |
+Signatura má dva sloupce, protože argumenty `default` a `date` se v autorské šabloně nepíší (viz rozhodnutí o řetězcových literálech výš).
+
+| Filtr | V autorské šabloně | V kompilované šabloně | Chování |
+|---|---|---|---|
+| `default` | `\| default` | `\| default: "<hodnota z atributu bloku>"` | Vrátí argument, když je hodnota `nil`, `false`, `""` nebo prázdné pole. Jinak hodnotu. Argument je vždy literál doplněný kompilací, nikdy cesta a nikdy uživatelský text ze šablony. |
+| `upcase` | `\| upcase` | totéž | Unicode velká písmena podle "simple uppercase mapping" (bez speciálních pravidel pro turečtinu). `ž` → `Ž`. |
+| `downcase` | `\| downcase` | totéž | totéž opačně |
+| `date` | `\| date` | `\| date: "<formát z whitelistu>"` | viz níže |
+| `escape` | `\| escape` | totéž | v HTML kontextu **no-op** (viz níže), v textovém kontextu také no-op |
+
+**Kde se berou hodnoty atributů.** Blok, jehož text obsahuje `{{ … | default }}`, nese v blokovém JSON atribut s náhradní hodnotou; blok s `{{ … | date }}` nese atribut s formátem. Zadávají se v panelu vlastností bloku, katalog atributů vlastní část 3. Kompilace je doplní do merge tagu a **validuje je proti témuž whitelistu**, který dřív hlídala u argumentu v textu: formát `date` musí být z whitelistu níž (`liquid_date_format_not_allowed`), náhradní hodnota `default` nesmí obsahovat `{`, `}`, `<`, `>` ani uvozovku (`liquid_default_value_invalid`). Když atribut chybí, `default` se chová jako prázdný řetězec a `date` jako `%d.%m.%Y`, a kompilace na to dá varování.
 
 **Filtr `date`.** Vstup: řetězec RFC 3339 s explicitní zónou, celé číslo (unix sekundy), nebo `"now"`. Cokoliv jiného → prázdný řetězec. Časová zóna výstupu se bere z `render_data._context.timezone`, chybí-li, `UTC`.
 
@@ -3351,13 +3387,16 @@ Formát jednoho souboru (`fixtures/liquid/<id>.json`), validovaný JSON schémat
 ```json
 {
   "id": "LQ-014",
-  "description": "default filtr na prázdném řetězci",
+  "description": "default filtr na prázdném řetězci, argument doplnila kompilace z atributu bloku",
   "context": "html",
+  "level": "compiled",
   "template": "Dobrý den, {{ contact.first_name | default: \"kolego\" }}!",
   "data": { "contact": { "first_name": "" }, "_context": { "timezone": "Europe/Prague" } },
   "expected": "Dobrý den, kolego!"
 }
 ```
+
+Pole `level` je `authored` nebo `compiled` a říká, kterou z obou gramatik má fixture splňovat. Chybí-li, platí `compiled`.
 
 Nebo, u případů, které mají selhat už ve validátoru:
 
@@ -3370,7 +3409,51 @@ Nebo, u případů, které mají selhat už ve validátoru:
 }
 ```
 
-Minimálně **40 fixtures** podle kapitoly 4.5 hlavní specifikace, rozdělených takto:
+**Fixtures k zákazu řetězcových literálů** (nové, povinné):
+
+```json
+{
+  "id": "LQ-060",
+  "description": "uvozovka v autorské šabloně musí být odmítnuta validátorem",
+  "level": "authored",
+  "template": "Dobrý den, {{ contact.first_name | default: \"kolego\" }}!",
+  "expect_validation_error": { "code": "liquid_string_literal_not_allowed", "hint_contains": "panel vlastností" }
+}
+```
+
+```json
+{
+  "id": "LQ-061",
+  "description": "apostrof v podmínce musí být odmítnut stejně jako uvozovka",
+  "level": "authored",
+  "template": "{% if contact.country == 'CZ' %}ahoj{% endif %}",
+  "expect_validation_error": { "code": "liquid_string_literal_not_allowed" }
+}
+```
+
+```json
+{
+  "id": "LQ-062",
+  "description": "escapovaná uvozovka v kompilované šabloně je chyba, ne tichý průchod",
+  "level": "compiled",
+  "template": "{{ contact.first_name | default: &quot;kolego&quot; }}",
+  "expect_validation_error": { "code": "liquid_escaped_entity_in_construct" }
+}
+```
+
+```json
+{
+  "id": "LQ-063",
+  "description": "prosté konstrukce projdou renderem beze změny",
+  "level": "authored",
+  "context": "html",
+  "template": "{% if contact.is_vip %}{{ contact.first_name | upcase }}{% endif %}",
+  "data": { "contact": { "is_vip": true, "first_name": "žofie" } },
+  "expected": "ŽOFIE"
+}
+```
+
+Minimálně **44 fixtures** (základ 40 podle kapitoly 4.5 hlavní specifikace plus 4 k zákazu řetězcových literálů), rozdělených takto:
 
 | Skupina | Počet | Co pokrývá |
 |---|---|---|
@@ -3381,6 +3464,7 @@ Minimálně **40 fixtures** podle kapitoly 4.5 hlavní specifikace, rozdělenýc
 | `LQ-4xx` cykly | 4 | prázdné pole, jeden prvek, limit 200, cyklus přes ne-pole |
 | `LQ-5xx` odmítnutí validátorem | 10 | každá zakázaná konstrukce z tabulky výše |
 | `LQ-6xx` diakritika a Unicode | 4 | `upcase` nad `ěščřžýáíé`, emoji, kombinující znaky, dlouhé UTF-8 |
+| `LQ-06x` řetězcové literály a escapování rendererem | 4 | uvozovka v autorské šabloně odmítnuta, apostrof v podmínce odmítnut, HTML entita uvnitř Liquid konstrukce v kompilované šabloně odmítnuta, prostá konstrukce projde renderem beze změny |
 
 **Jak to pouští CI** (job `contracts-golden`, blokující):
 
@@ -4029,6 +4113,7 @@ Jak se idempotence dosahuje, podle typu jobu:
 | P2-4 | část 2 | Definice payloadů událostí `contact.created`, `contact.subscribed`, `contact.unsubscribed` | JSON schéma v `packages/contracts/webhooks/` | fan-out infrastruktura je moje, obsah váš |
 | P3-1 | část 3 | Systémové e-mailové šablony jako blokový JSON, po jazycích, se seedováním v migraci a s upgradem při nové verzi | soubory `packages/emails/system/<name>.<locale>.json` plus mechanismus seedu | 3.9 slibuje pozvánky a reset hesla v jazyce adresáta |
 | P3-2 | část 3 | Potvrzení, že kompilovaná šablona obsahuje **jen** konstrukce z Liquid subsetu 4.10.2, a že kompilace vrací seznam použitých cest | funkce `compileTemplate` s návratovým typem obsahujícím `usedPaths: string[]` | bez toho neumím naplnit `render_data` a nemám co validovat |
+| P3-4 | část 3 | Atributy bloku, ze kterých kompilace doplňuje argument filtru `default` a `date`, včetně jejich validace | katalog atributů v blokovém schématu plus záruka, že kompilace vkládá argument **až po renderu Reactem** | řetězcové literály jsou z autorské šablony vyřazené (4.10.2); bez atributů nemá `default` odkud vzít hodnotu |
 | P3-3 | část 3 | Kam se ukládají assety a jaká je jejich URL v odeslaném e-mailu | rozhodnutí o `UPLOADS_DIR` versus externí úložiště | ovlivňuje obsah zálohy a Dockerfile |
 | P4-1 | část 4 | Použití DDL a stavů z 4.10.1 beze změny; doplnění vlastních sloupců je vítané | odkaz na 4.10.1, ne vlastní verze | dva různé popisy outboxu jsou horší než jeden |
 | P4-2 | část 4 | Výchozí hodnota `AMBIGUOUS_DISPATCH_POLICY` a text, který uvidí uživatel | rozhodnutí plus UI hláška cs a en | mechanismus mám, politika je vaše |

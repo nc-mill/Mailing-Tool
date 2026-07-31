@@ -110,7 +110,7 @@ Tohle není kompromis kvůli rozdělení jazyků, je to lepší architektura sam
 | API | Route Handlers v Next.js + Hono router pro veřejné API | Jeden proces, sdílené typy |
 | Databáze | PostgreSQL, vždy poslední produkční verze (dnes 18) + Drizzle ORM | Typové migrace, partitioning pro eventy, vestavěná `uuidv7()` |
 | Fronta aplikačních jobů | **pg-boss** nad Postgresem | Nula dalších kontejnerů, viz 3.4 |
-| Šablony a render | Blokový JSON + EmailBuilder.js (MIT) | Hotový editor i renderer, nestavíme rok |
+| Šablony a render | Vlastní blokový JSON + `@react-email/components` a `@react-email/render` (MIT) | Hotový renderer včetně hlavičky dokumentu, Outlook konstrukcí a textové varianty; editor vlastní, tenký nad naším JSON modelem |
 | Personalizace | LiquidJS | Známý marketérům, bezpečná podmnožina |
 | AI | Vercel AI SDK (balíček `ai`) | Jednotné rozhraní pro 4 providery, structured output |
 | Tracking SDK | Vanilla TS, < 5 kB gzip | Musí jít vložit kamkoliv |
@@ -481,13 +481,31 @@ Vokativ má i slovenština a polština. Architektura počítá s modulem pro odv
 ### 6.4 Šablony a editor
 
 - Blokový model: sekce, sloupce (1, 2, 3), text, nadpis, obrázek, tlačítko, oddělovač, mezera, HTML, produktový blok (později), sociální ikony, patička.
-- Editor: **EmailBuilder.js** (MIT) jako základ. Nestavíme editor od nuly, je to samostatný produkt na roky.
+- **Renderer: `@react-email/components` + `@react-email/render` (MIT). Editor: vlastní, tenký, nad naším blokovým JSON modelem. ROZHODNUTO 2026-07-31.**
 
-  Ověřený stav k 2026-07-31: licence MIT, verze 0.0.9, zhruba 58 tisíc stažení týdně, repozitář `usewaypoint/email-builder-js` naposledy commitnutý v únoru 2026, není archivovaný. Použitelné, ale je to projekt jednoho dodavatele s nízkou frekvencí vydávání. **Riziko mitigujeme tím, že blokový JSON je v našem vlastním jmenném prostoru a renderer sedí za rozhraním.** Kdyby projekt usnul, je pod MIT, takže ho můžeme forknout, a dokumentovanou náhradní cestou je vlastní JSON → MJML (MIT, 1,7 milionu stažení týdně, léty prověřený výstup pro poštovní klienty).
+  **`@usewaypoint/email-builder` se nepoužije.** Dřívější znění téhle kapitoly ho uvádělo jako základ editoru, to je tímto zrušeno. Balíček byl nainstalován a spuštěn, nejen přečten, a ověřený stav je tenhle:
+
+  - balíček z npm **neobsahuje editor**, exportuje jen `Reader` a `renderToStaticMarkup`
+  - **negeneruje hlavičku dokumentu**: žádná media query, žádný `viewport`, žádný tmavý režim, ani deklarace kódování, přestože výstup obsahuje česká písmena
+  - **neumí textovou variantu vůbec**, přitom ji specifikace vyžaduje
+  - odsazení řeší `padding` na `<div>`, což Word engine v Outlooku ignoruje
+  - chybí patička s odhlášením a sociální ikony
+  - `peerDependencies` připouštějí jen React 16 až 18, projekt jede na React 19
+
+  Proč react-email: MIT, **3,1 milionu stažení týdně proti 58 tisícům**, oficiální podpora React 19, generuje hlavičku dokumentu, preheader, tabulkový layout, MSO konstrukce pro Outlook **i textovou variantu**. Že ta kombinace funguje v praxi není teorie, přesně na ní stojí knihovna Maily.
+
+  Ověřené verze k 2026-07-31: `react-email` 6.9.1 (MIT), `@react-email/components` 1.0.12 (MIT), `@react-email/render` 2.1.0 (MIT).
+
+  **Zamítnuté alternativy:**
+
+  - **Maily** (`@maily-to/*`): pole `license` v `package.json` je prázdné a **v balíčku není žádný soubor LICENSE**, přestože repozitář je MIT. Autor v roce 2025 licenci vědomě změnil pryč od MIT, protože mu produkt přebalovali a přeprodávali, později napsal, že je to „stoprocentně MIT", ale za patnáct měsíců to do balíčku nedoplnil. Náš projekt je přesně ten scénář, kvůli kterému tehdy licenci měnil.
+  - **GrapesJS** (BSD-3): funkční, newsletterový preset generuje skutečné tabulky a Liquid nepoškozuje. Zamítnuto jako druhá volba kvůli 400 kB v prohlížeči a nutnosti zamykat obecný stavitel webu, aby uživatel nepostavil něco, co se v Outlooku rozpadne. **Zůstává jako dokumentovaná náhradní cesta.**
+
+  **Rozsah vlastního editoru je změřený, ne odhadnutý:** zhruba 3 000 řádků při 6 až 8 typech bloků. Rozpad: blokový model a stav 300 až 500, přetahování 300 až 600, panel vlastností 1 200 až 1 800, náhled 150 až 300. Polovina objemu je panel vlastností, tedy mechanická formulářová práce.
 - Renderer, fáze 1: JSON → HTML (table based, testované v klientech) + automatický plain text. Běží v aplikaci, jednou na kampaň.
 - Součástí kompilace je **extrakce použitých merge tagů**. Z ní plyne, která pole kontaktu se snapshotují do `messages.render_data`, a zároveň validace, že šablona nepoužívá pole, které neexistuje.
 - **Univerzální základní šablona** je součástí produktu, ne jen příklad. Ozkoušená v Outlooku, Gmailu, Apple Mail, Seznam Email. AI do ní vkládá jen data.
-- Personalizace: Liquid, `{{ contact.first_name | default: "kolego" }}`, `{{ unsubscribe_url }}`, `{{ webview_url }}`.
+- Personalizace: Liquid, `{{ contact.first_name }}`, `{{ unsubscribe_url }}`, `{{ webview_url }}`. **Uvozovky v šabloně nejsou povolené**, náhradní hodnota filtru `default` a formátovací řetězec filtru `date` se zadávají v panelu vlastností bloku a kompilace je doplní. Důvod: každý React renderer escapuje uvozovky a špičaté závorky, takže `{{ x | default: "y" }}` by v HTML skončilo jako entity a přestalo být platným Liquidem. Podrobně v části 1, kapitola 4.10.2.
 - Náhled na desktop/mobil, testovací odeslání, kontrola chybějících merge tagů před odesláním.
 
 ### 6.5 AI asistent (bring your own key)
@@ -630,7 +648,7 @@ Hotovo, když: kampaň na 1 000 příjemců doběhne, sender se dá v půlce zab
 
 ### Track C: editor a šablony
 
-- Integrace EmailBuilder.js, blokový JSON model
+- Vlastní blokový JSON model, vlastní tenký editor nad ním, renderer přes `@react-email/components`
 - Univerzální základní šablona
 - Renderer JSON → HTML + plain text
 - Liquid merge tagy včetně `{{ contact.greeting }}`, náhled desktop/mobil, testovací odeslání
@@ -738,7 +756,9 @@ Ověřeno k 2026-07-31 přímo z registru:
 | `pg-boss` | 12.26.3 | MIT |
 | `liquidjs` | 10.27.2 | MIT |
 | `czech-vocative` | 2.1.0 | MIT |
-| `@usewaypoint/email-builder` | 0.0.9 | MIT |
+| `react-email` (nástroje a náhled) | 6.9.1 | MIT |
+| `@react-email/components` | 1.0.12 | MIT |
+| `@react-email/render` | 2.1.0 | MIT |
 | `mjml` (náhradní cesta) | 5.4.0 | MIT |
 | `ai` (Vercel AI SDK) | 7.0.44 | Apache-2.0 |
 | `@xyflow/react` (fáze MVP 2) | 12.11.2 | MIT |
@@ -754,6 +774,8 @@ Všechno permisivní, žádný konflikt. Apache-2.0 je s MIT distribucí slučit
 - **n8n** je fair-code pod Sustainable Use License, není to OSI open source. Nesmí být závislostí.
 - **TinyMCE** a podobné editory jsou duálně GPL nebo komerční. Nepoužívat.
 - **Unlayer** (`react-email-editor`) je klient k proprietární hostované službě. Přímý rozpor se slibem nulové komunikace s cizím cloudem.
+- **Maily** (`@maily-to/*`) má v `package.json` prázdné pole `license` a v balíčku není žádný soubor LICENSE, přestože repozitář je MIT. Bez licence v distribuovaném balíčku ho licenční brána nesmí pustit dovnitř. Podrobně v 6.4.
+- **`@usewaypoint/email-builder`** je zamítnutý z věcných, ne licenčních důvodů (chybí editor, hlavička dokumentu i textová varianta, React 16 až 18). Podrobně v 6.4.
 - **Listmonk** je AGPL. Můžeme se jím inspirovat a psát pro něj importér, ale nesmíme z něj převzít kód.
 
 **CI brána:** kontrola licencí běží v pipeline a build padá na jakékoliv copyleft závislosti. Na straně Node přes `license-checker` s whitelistem (MIT, Apache-2.0, BSD, ISC), na straně Go přes `go-licenses`. Jednou nastavit, pak už to hlídá samo. Zavést v hodině 0 až 2, ne později, protože vyhazovat zabudovanou závislost je mnohem dražší než ji rovnou nepustit dovnitř.
@@ -764,10 +786,11 @@ Všechno permisivní, žádný konflikt. Apache-2.0 je s MIT distribucí slučit
 
 | Riziko | Dopad | Opatření |
 |---|---|---|
-| Editor sežere celý hackathon | Vysoký | Použít EmailBuilder.js, nestavět nic vlastního |
+| Editor sežere celý hackathon | Střední | Renderer je hotový (`@react-email/components`), staví se jen tenký editor nad vlastním blokovým JSON. Rozsah je změřený: zhruba 3 000 řádků při 6 až 8 typech bloků, z toho 1 200 až 1 800 je panel vlastností, tedy mechanická formulářová práce. Náhradní cesta GrapesJS (BSD-3) je dokumentovaná (6.4) |
 | **Rozjetí Liquid dialektů TS a Go** | **Vysoký** | Dokumentovaná podmnožina, golden fixtures v CI proti oběma implementacím (4.5) |
 | **Kontrakty TS ↔ Go se domluví pozdě** | **Vysoký** | Hodina 0 až 2, jinak se B1 a B2 zablokují navzájem |
-| EmailBuilder.js je projekt jednoho dodavatele | Střední | Renderer za rozhraním, blokový JSON v našem schématu, MJML jako dokumentovaná náhrada |
+| Závislost na cizím rendereru | Nízký | react-email má 3,1 milionu stažení týdně a je MIT. Blokový JSON je v našem jmenném prostoru a renderer sedí za rozhraním, náhradní cesty jsou MJML a GrapesJS |
+| **Uvozovky v šabloně rozbijí Liquid po escapování v React rendereru** | **Vysoký, ale vyřešený** | Řetězcové literály jsou z Liquid subsetu vyřazené, náhradní hodnota `default` a formát `date` se berou z atributů bloku (viz část 1, 4.10.2) |
 | Zanesení GPL závislosti do MIT projektu | Vysoký | CI brána na licence hned v hodině 0 až 2 |
 | Doručitelnost a DNS setup | Střední | Průvodce s kontrolou SPF/DKIM/DMARC hned v MVP 0 |
 | Automatizační engine podceněný | Vysoký, ale později | Neverzované workflow nedělat vůbec, verzování od prvního dne |

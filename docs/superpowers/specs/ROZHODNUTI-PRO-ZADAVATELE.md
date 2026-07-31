@@ -383,16 +383,35 @@ Jediná z nich, za kterou visí nezadaná práce, je ta o trackovacím pixelu: k
 
 Nejsou to rozhodnutí, jsou to testy na pár minut. **Dvě z nich mění návrh, když dopadnou špatně:**
 
-| Co ověřit | Co se stane, když dopadne špatně |
-|---|---|
-| Podepisuje SES i hlavičky pro odhlášení? | Gmail nenabídne tlačítko „Odhlásit" a **mění se bezpečnostní model**, protože by musel podepisovat sender a držet privátní klíč |
-| Posílá Apple pořád stejný identifikátor prohlížeče? | **Padá celá klasifikace falešných otevření** |
-| Jak dlouho trvá zpracování šablony? | Výkonový rozpočet senderu stojí na odhadu, ne měření |
-| Je Go knihovna na Liquid bezpečná při souběhu? | Nutná jiná strategie sdílení šablon mezi vlákny |
-| Umí `go-mail` sestavit zprávu do bufferu? | MIME se musí sestavit vlastním kódem |
-| Rozlišuje SES sekundovou a denní kvótu různými chybami? | Sender by denní kvótu považoval za throttling a kampaň by se zasekla |
+| Co ověřit | Stav | Co se stane, když dopadne špatně |
+|---|---|---|
+| Podepisuje SES i hlavičky pro odhlášení? | **prozkoumáno, viz 6.2.1** | Musel by podepisovat sender a držet privátní klíč |
+| Jak Apple pozná falešné otevření? | **prozkoumáno, viz 6.2.2** | Padá klasifikace falešných otevření |
+| Jak dlouho trvá zpracování šablony? | otevřené | Výkonový rozpočet senderu stojí na odhadu, ne měření |
+| Je Go knihovna na Liquid bezpečná při souběhu? | otevřené | Nutná jiná strategie sdílení šablon mezi vlákny |
+| Umí `go-mail` sestavit zprávu do bufferu? | otevřené | MIME se musí sestavit vlastním kódem |
+| Rozlišuje SES sekundovou a denní kvótu různými chybami? | otevřené | Sender by denní kvótu považoval za throttling a kampaň by se zasekla |
 
-**Doporučuju je přidělit jmenovitě před začátkem implementace.** Většina je na pět minut, ale první dvě mění návrh.
+**Přidělit jmenovitě před začátkem implementace.** Většina je na pět minut.
+
+#### 6.2.1 SES a hlavičky pro odhlášení: nic se nemění
+
+**Sender si DKIM podepisovat nebude, bezpečnostní model zůstává.** AWS má vlastní článek, kde ručně vloženou hlavičku popisuje jako uznanou cestu ke splnění požadavků na hromadné odesílatele, a o podepisování tam neřeší nic.
+
+Dvě pravidla, která z toho plynou:
+
+1. Hlavičky vkládáme sami.
+2. **Funkci SES pro správu odběratelů nepoužíváme**, protože když je zapnutá, SES naše hlavičky přepíše.
+
+Potvrdí to jeden testovací mail na Gmail.
+
+#### 6.2.2 Apple: pro MVP to zjednodušujeme
+
+Ověření zjistilo, že **identifikátor prohlížeče nerozliší předstírané otevření od skutečného**, protože Apple posílá tentýž řetězec i s vypnutou ochranou. Řekne jen „tohle je Apple Mail".
+
+**Pro MVP to ale stačí a nic dalšího nestavíme.** Hlavní metrikou je proklik a otevření se ukazuje níž s vysvětlením, že je nepřesné. Otázku „bylo tohle konkrétní otevření skutečné" v MVP nikdo nepokládá. Stačí označit otevření z Apple Mailu jako nespolehlivá, a na to identifikátor bohatě stačí.
+
+**Odloženo na později, až se bude dopočítávat skutečná míra otevření:** rozlišování podle IP proti feedu, který Apple publikuje pro iCloud Private Relay. Že po něm jezdí i pošta, tvrdí SocketLabs, Apple to nepotvrzuje.
 
 ### 6.3 Dvě věci, na které nikdo nezapomněl, ale nikdo je nevlastní
 

@@ -549,7 +549,10 @@ type InlineNode =
   | { t: "s"; v: string; b?: true; i?: true; u?: true; strike?: true }   // text
   | { t: "a"; href: string; children: InlineNode[]; trackable?: boolean } // odkaz
   | { t: "br" }
-  | { t: "var"; expr: string };   // Liquid výraz, viz 3.7
+  | { t: "var";                   // Liquid výraz, viz 3.7
+      expr: string;               // BEZ argumentů filtrů, BEZ uvozovek
+      fallback?: string;          // náhradní hodnota pro filtr `default`, viz 3.3.5
+      dateFormat?: DateFormat };  // formát pro filtr `date`, jeden z pěti povolených
 ```
 
 Klíčové: **Liquid výraz není součástí textového řetězce, je to vlastní uzel.** Díky tomu:
@@ -559,7 +562,9 @@ Klíčové: **Liquid výraz není součástí textového řetězce, je to vlastn
 - renderer ví, který výstup je v HTML kontextu (a tedy se automaticky escapuje) a který v textovém,
 - generátor plain textu má stejnou informaci jako generátor HTML.
 
-Meze: `s.v` nejvýše 5 000 znaků, hloubka `a` nesmí obsahovat další `a`, `var.expr` nejvýše 200 znaků, `RichText` nejvýše 200 uzlů.
+**Pole `fallback` a `dateFormat` jsou tím, čemu rozhodnutí z 3.3.5 říká "atribut bloku".** Zadávají se v panelu vlastností a **kompilace je doplní do merge tagu až po renderu Reactem**, protože React by uvozovku escapoval na `&quot;` a Liquid by přestal být platný. Do `expr` se uvozovka nikdy nepíše a validátor ji odmítne (`liquid_string_literal_not_allowed`). Uzel `var` je pro tuhle informaci správné místo právě proto, že merge tag už je vlastní uzel: hodnota sedí u výrazu, kterého se týká, ne u celého bloku.
+
+Meze: `s.v` nejvýše 5 000 znaků, hloubka `a` nesmí obsahovat další `a`, `var.expr` nejvýše 200 znaků, `var.fallback` nejvýše 100 znaků a nesmí obsahovat `"`, `'`, `{`, `}`, `<`, `>` (`liquid_default_value_invalid`), `RichText` nejvýše 200 uzlů.
 
 `href` musí projít validací. Povolená schémata jsou `https:`, `http:`, `mailto:` a `tel:`; jiné (`javascript:`, `data:`, `vbscript:`, `file:`) je chyba `content_link_scheme_forbidden`.
 
@@ -938,23 +943,39 @@ Bez `markdown: true` se naopak escapuje všechno včetně `<b>`, takže blok `Te
 
 | Kritérium | `@usewaypoint/email-builder` 0.0.9 | `mjml` 5.4.0 | `react-email` | `@maily-to/core` |
 |---|---|---|---|---|
-| Licence | MIT | MIT | MIT | ověřit před použitím, projekt má i placenou nabídku |
-| Týdenní stažení | 57 825 |
-| Repozitář | `usewaypoint/email-builder-js`, 1 722 hvězd, 51 otevřených issues, **není archivovaný**, poslední push 2026-02-09, tedy přes pět měsíců zpět. Režim údržby, ne aktivní vývoj. | 1 739 349 | statisíce | řádově tisíce |
+| Licence | MIT | MIT | **MIT** (ověřeno v balíčku) | **prázdné pole `license`, v balíčku není LICENSE** |
+| Týdenní stažení | 57 825 | 1 739 349 | **3 100 000** | řádově tisíce |
+| Repozitář | `usewaypoint/email-builder-js`, 1 722 hvězd, 51 otevřených issues, **není archivovaný**, poslední push 2026-02-09, tedy přes pět měsíců zpět. Režim údržby, ne aktivní vývoj. | aktivní | aktivní, oficiální podpora React 19 | aktivní |
 | Vizuální editor v balíčku | **ne** (jen v repu, MUI) | ne | ne | **ano**, Tiptap based |
-| Renderer vhodný pro Outlook | částečně, viz 3.3.1 | **ano, prověřený lety** | průměrný, moderní přístup | ne primárně |
+| Renderer vhodný pro Outlook | částečně, viz 3.3.1 | **ano, prověřený lety** | **ano**, tabulkový layout a MSO konstrukce | ne primárně |
 | Vstup | vlastní JSON | XML podobné HTML | React komponenty | Tiptap JSON |
-| Media query a tmavý režim | ne | ano (`mj-style`, `mj-raw`) | ano, ručně | ne |
-| Zachová Liquid nedotčený | **ne** (viz zjištění 4) | ano v textu, u atributů nutná opatrnost | ano | neověřeno |
+| Hlavička dokumentu, media query, tmavý režim | **ne, negeneruje `<head>` vůbec** | ano (`mj-style`, `mj-raw`) | **ano**, včetně preheaderu | ne |
+| Textová varianta | **neumí vůbec** | ne | **ano** (`toPlainText`) | ne |
+| React 19 | **ne**, `peerDependencies` jen 16 až 18 | neřeší | **ano** | ano |
+| Zachová Liquid nedotčený | **ne** (viz zjištění 4) | ano v textu, u atributů nutná opatrnost | ne u uvozovek, viz 3.3.5 | neověřeno |
 | Rozšiřitelnost o vlastní blok | ano, přes `document-core` | ano, vlastní `mj-` komponenta | triviální | ano |
 
-`react-email` a `Maily` jsou zajímavé projekty, ale ani jeden neřeší náš skutečný problém, kterým je **uložený strukturovaný dokument nezávislý na knihovně a renderer, který garantuje Outlook, tmavý režim, responzivitu a neporušený Liquid**.
+Dřívější znění téhle kapitoly uzavíralo, že „ani `react-email`, ani Maily neřeší náš skutečný problém". **To bylo napsáno před praktickým ověřením a je to opravené.** Ověření ukázalo, že `react-email` dodává přesně ty čtyři věci, kvůli kterým jsme chtěli psát vlastní renderer: hlavičku dokumentu, tabulkový layout s MSO konstrukcemi, preheader a textovou variantu. Náš skutečný problém, tedy **uložený strukturovaný dokument nezávislý na knihovně**, tím nezaniká: dokument zůstává náš a react-email je až emitter za rozhraním.
 
 #### 3.3.3 Doporučení
 
-**Nepoužívat `@usewaypoint/email-builder` jako renderer ani jako editor. Postavit tenký vlastní editor nad naším dokumentem a vlastní renderer.**
+**ROZHODNUTO 2026-07-31 (zadavatel). Renderer: `@react-email/components` a `@react-email/render`. Editor: vlastní, tenký, nad naším blokovým dokumentem. `@usewaypoint/email-builder` se nepoužije ani jako renderer, ani jako editor.**
 
-Je to rozpor s hlavní specifikací a je zapsaný v kapitole 11. Odůvodnění stojí na tom, že doporučení v hlavní specifikaci vzniklo z předpokladu, že balíček dodá editor **i** renderer, a ten předpoklad se ověřením nepotvrdil: editor v balíčku není a renderer neplní požadavky z téže kapitoly 6.4 (Outlook, náhled desktop a mobil, univerzální ozkoušená šablona).
+Původní doporučení téhle kapitoly znělo „vlastní editor **a vlastní renderer**". Vlastní editor platí dál, **vlastní renderer je tímto zrušen**: renderer je hotový a je jím react-email.
+
+Odůvodnění zamítnutí `@usewaypoint/email-builder` stojí beze změny na zjištěních z 3.3.1: doporučení v hlavní specifikaci vzniklo z předpokladu, že balíček dodá editor **i** renderer, a ten předpoklad se ověřením nepotvrdil. Editor v balíčku není, renderer negeneruje hlavičku dokumentu, neumí textovou variantu, dělá odsazení `padding`em na `<div>` (Word engine ho ignoruje), nemá patičku s odhlášením ani sociální ikony a `peerDependencies` připouštějí jen React 16 až 18, zatímco projekt jede na React 19.
+
+**Proč react-email a ne vlastní renderer.** MIT, 3,1 milionu stažení týdně proti 58 tisícům, oficiální podpora React 19, generuje hlavičku dokumentu, preheader, tabulkový layout, MSO konstrukce pro Outlook i textovou variantu. Že ta kombinace funguje v praxi není teorie, přesně na ní stojí knihovna Maily. Ověřené verze k 2026-07-31: `react-email` 6.9.1 (MIT), `@react-email/components` 1.0.12 (MIT), `@react-email/render` 2.1.0 (MIT).
+
+**Zamítnuté alternativy, i s důvodem:**
+
+| Alternativa | Proč ne |
+|---|---|
+| **Maily** (`@maily-to/*`) | Pole `license` v `package.json` je prázdné a **v balíčku není žádný soubor LICENSE**, přestože repozitář je MIT. Autor v roce 2025 licenci vědomě změnil pryč od MIT, protože mu produkt přebalovali a přeprodávali. Později napsal, že je to „stoprocentně MIT", ale za patnáct měsíců to do balíčku nedoplnil. Náš projekt je přesně ten scénář, kvůli kterému tehdy licenci měnil. |
+| **GrapesJS** (BSD-3) | Funkční druhá volba: newsletterový preset generuje skutečné tabulky a Liquid nepoškozuje. Zamítnuto kvůli 400 kB v prohlížeči a kvůli nutnosti zamykat obecný stavitel webu, aby uživatel nepostavil něco, co se v Outlooku rozpadne. **Zůstává jako dokumentovaná náhradní cesta.** |
+| **`@usewaypoint/email-builder`** | Viz 3.3.1, ověřeno spuštěním, ne čtením. |
+
+**Rozsah vlastního editoru je změřený, ne odhadnutý:** zhruba 3 000 řádků při 6 až 8 typech bloků. Blokový model a stav 300 až 500, přetahování 300 až 600, panel vlastností 1 200 až 1 800, náhled 150 až 300. Polovina objemu je panel vlastností, tedy mechanická formulářová práce, a ta se navíc generuje z descriptorů (viz níž), takže reálný objem ručně psaného kódu je menší.
 
 **Jak se zároveň nezopakuje riziko "editor sežere celý hackathon".** Rozsah editoru MVP 0 je omezený takto:
 
@@ -993,7 +1014,9 @@ Přidání nového bloku je pak jeden descriptor plus jedna renderovací funkce.
 
 **Degradovaný režim, kdyby čas nestačil.** Když Track C nestihne přetahování, vypne se `@dnd-kit` a bloky se přesouvají šipkami v panelu vrstev. Editor zůstane plně použitelný a demo skript z kapitoly 8 hlavní specifikace projde. Toto je vědomá záložní varianta, ne improvizace.
 
-#### 3.3.4 Adaptér, kdyby se rozhodlo jinak
+#### 3.3.4 Adaptér, kdyby se rozhodlo jinak. BEZPŘEDMĚTNÉ
+
+**Tahle sekce je od rozhodnutí z 2026-07-31 bezpředmětná**, protože `@usewaypoint/email-builder` je zamítnutý. Zůstává nesmazaná jen proto, aby bylo dohledatelné, co se zvažovalo.
 
 Kdyby se na synchronizaci rozhodlo EmailBuilder.js přesto použít, potřebuje to adaptér, který popisuju tady, aby to rozhodnutí šlo udělat bez dalšího průzkumu:
 
@@ -1006,6 +1029,23 @@ Mapování typů: `section` → `Container`, `columns` → `ColumnsContainer`, `
 
 Renderer by se **ani tak nepoužil** kvůli zjištěním 3 a 4. To je hlavní argument: adaptér řeší polovinu problému a druhá polovina zůstává.
 
+#### 3.3.5 Uvozovky se stěhují ze šablony do atributů bloku. ROZHODNUTO
+
+Zjištění 4 z 3.3.1 (escapování rozbije Liquid) **není vlastnost EmailBuilderu, ale vlastnost každého React rendereru**, tedy i react-email. Z `{{ x | default: "y" }}` se v HTML stane `{{ x | default: &quot;y&quot; }}` a proti liquidjs to selže s `TokenizationError`. Netýká se to jen filtru `default`: stejně dopadnou apostrofy, `{% if country == "CZ" %}`, `{% if score > 5 %}` i `{% assign %}` (ten je ovšem zakázaný už dřív).
+
+Podstatné je, **co escapování přežije beze změny**: `{{ contact.first_name }}`, `{{ x | upcase }}`, `{% if contact.is_vip %}` a `{% for %}` projdou bez úhony. Uvozovky potřebují v našem subsetu **jen dvě věci**: náhradní hodnotu filtru `default` a formátovací řetězec filtru `date`.
+
+**Rozhodnutí: obojí se přesouvá z textu šablony do strukturovaných atributů bloku.** Autor napíše do textu `{{ contact.first_name }}` a náhradní hodnotu zadá v panelu vlastností bloku. Argument filtru doplní kompilace až po renderu Reactem, takže se přes escapování nikdy nedostane. Tím uvozovky z šablony zmizí úplně a problém padá u kteréhokoliv rendereru, i kdyby se react-email někdy vyměnil.
+
+Sahá to na **zmrazený kontrakt Liquid subsetu**, závazné znění je v části 1, kapitola 4.10.2 (gramatika autorské a kompilované šablony, chybové kódy, fixtures `LQ-06x`). Co z toho plyne pro tuto část:
+
+| Místo | Změna |
+|---|---|
+| Validátor šablony | odmítá řetězcový literál kdekoliv (`liquid_string_literal_not_allowed`) i argument filtru psaný do textu (`liquid_filter_argument_not_allowed`) |
+| Katalog bloků | blok s `{{ … \| default }}` nese atribut s náhradní hodnotou, blok s `{{ … \| date }}` nese atribut s formátem; oba se zadávají v panelu vlastností |
+| Kompilace | jediné místo, které smí argument filtru vyrobit; hodnota pochází výhradně z atributu bloku a validuje se proti témuž whitelistu formátů |
+| Descriptory panelu vlastností | doplnit `PropDescriptor` pro obě hodnoty (viz 3.3.3), aby se panel dál generoval a nepsal ručně |
+
 ### 3.4 Renderer fáze 1: dokument na HTML a text
 
 Odpověď na kontrolní otázku 3.
@@ -1015,12 +1055,18 @@ Odpověď na kontrolní otázku 3.
 ```
 Document
   → normalizace (doplnění výchozích hodnot, rozklad ColorRef na hex, výpočet šířek sloupců)
-  → emise HTML (čisté funkce blok → řetězec)
-  → emise <head> (reset, media query, tmavý režim, mso podmínky)
-  → inlining CSS (jen pro pravidla, která to potřebují)
+  → mapování blok → React komponenta z @react-email/components
+  → render (@react-email/render): HTML včetně <head>, preheaderu a MSO konstrukcí
+  → doplnění argumentů filtrů default a date z atributů bloku (AŽ TADY, viz 3.3.5)
   → kontrola invariantů
   → { html, text, meta }
 ```
+
+**Emitterem je `@react-email/components` plus `@react-email/render`, ne vlastní generátor řetězců.** Rozhodnutí je v 3.3.3. Pravidla pro Outlook, responzivitu, tmavý režim a inlining CSS v 3.4.2 až 3.4.5 tím **nezanikají, mění se jen jejich role**: z návodu, jak psát emitter, se stávají **akceptační kritéria na výstup rendereru**. Kontrolují je invarianty z 3.4.6 při každém renderu. Kde react-email výchozím chováním pravidlo neplní, doplní se to vlastní komponentou nad jeho primitivy, ne obcházením rendereru.
+
+Krok s doplněním argumentů filtrů je v pořadí schválně poslední. React escapuje textové uzly, takže uvozovka vložená dřív by se změnila v `&quot;` a rozbila Liquid. Podrobně v 3.3.5.
+
+**Textová varianta zůstává generovaná z dokumentu podle 3.5, ne funkcí `toPlainText` z react-email.** Důvod je konkrétní a ověřený: `toPlainText` **u nadpisů převádí text na velká písmena**, takže by tiše změnil `{{ first_name }}` na `{{ FIRST_NAME }}` a rozbil personalizaci v textové části, aniž by cokoliv selhalo. Pravidlo z 3.5 pro `heading` úrovně 3 tuhle past pojmenovává už dřív a platí dál. Kdyby se `toPlainText` někdy použil jako doplněk, platí pro něj akceptační kritérium 19b v 8.3.
 
 Renderer je **čistá funkce bez IO**. Data assetů si vyzvedne volající a předá je v `CompileContext`. Díky tomu je testovatelný, deterministický a rychlý.
 
@@ -1366,10 +1412,12 @@ Shrnutí, ne redefinice. Zdroj pravdy je 4.10.2 v části 1.
 |---|---|---|
 | Filtry | `default`, `upcase`, `downcase`, `date`, `escape`, **vlastní implementace na obou stranách**, ne vestavěné | Výběr filtru v editoru je pevný seznam pěti položek, ne volné pole |
 | `escape` | **no-op**, escapování v HTML části je automatické a nevypnutelné | Validátor dá informační hlášku "není potřeba"; editor filtr `escape` v nabídce **neukazuje** |
-| `date` | jen pět celých formátů: `%d.%m.%Y`, `%-d.%-m.%Y`, `%Y-%m-%d`, `%d.%m.%Y %H:%M`, `%H:%M` | Editor nabízí pět položek s náhledem výsledku, ne textové pole |
+| `date` | jen pět celých formátů: `%d.%m.%Y`, `%-d.%-m.%Y`, `%Y-%m-%d`, `%d.%m.%Y %H:%M`, `%H:%M`, a **zadávají se v atributu bloku, ne v textu** | Editor nabízí pět položek s náhledem výsledku, ne textové pole. Do textu se píše jen `{{ … \| date }}` bez argumentu |
+| `default` | náhradní hodnota se zadává **v atributu bloku, ne v textu** | Panel vlastností má pole "náhradní hodnota"; do textu se píše jen `{{ … \| default }}` |
 | Zóna | z `render_data._context.timezone`, jinak UTC | Náhled musí `_context.timezone` naplnit stejně jako materializace |
 | `contains` | **zakázaný** | Editor ho v nabídce operátorů nemá |
-| Literály | `"..."`, `'...'`, číslo, `true`, `false`, `nil`, `blank`, `empty` | `blank` a `empty` řeší past prázdného řetězce, viz níže |
+| Literály | číslo, `true`, `false`, `nil`, `blank`, `empty`. **Řetězcový literál je zakázaný**, `"..."` ani `'...'` v šabloně být nesmí | Editor uvozovku do šablony nikdy nevloží a validátor ji odmítne. Důvod: React renderer ji escapuje na `&quot;` a Liquid přestane být platný (3.3.5, závazně část 1 kapitola 4.10.2) |
+| `>`, `<`, `>=`, `<=` v podmínce | escapují se rendererem stejně jako uvozovka, viz otevřená podotázka v části 1, 4.10.2 | Editor je v nabídce operátorů **neukazuje**; do rozhodnutí jsou blokující chyba |
 | Závorky v podmínkách | zakázané, ale uživatel je zkusí | Vlastní hláška, ne obecná syntaktická chyba |
 | Vnořený `for` | zakázaný | Editor vnořený cyklus nenabídne |
 | `for` s `limit`, `offset`, `reversed`, `forloop.*` | zakázané | |
@@ -1384,11 +1432,13 @@ Křížová revize části 4b (`revize/03-recenze-02-a-04b.md`) našla tři mís
 
 | Věc | Kontrakt | Realita v Go | Co dělá validátor teď |
 |---|---|---|---|
-| Literály `blank` a `empty` | povolené, pravidlo 4 na nich staví | **lexer je nezná**, prolezou jako proměnná a vyhodnotí se na `nil`. `{% if x == blank %}` s `x = ""` vybere v náhledu jinou větev než při odeslání | **odmítá je** s hláškou "zatím nepodporováno, použijte `!= \"\"`" |
+| Literály `blank` a `empty` | povolené, pravidlo 4 na nich staví | **lexer je nezná**, prolezou jako proměnná a vyhodnotí se na `nil`. `{% if x == blank %}` s `x = ""` vybere v náhledu jinou větev než při odeslání | **odmítá je** s hláškou "zatím nepodporováno". ~~Nabízená oprava `!= \"\"`~~ **od 2026-07-31 neplatí**, uvozovka v šabloně být nesmí, viz rámeček pod tabulkou |
 | Filtr `safe` | neexistuje | `SetAutoEscapeReplacer` ho v Go registruje automaticky a nejde odregistrovat, takže by obešel escapování | odmítá ho jako každý filtr mimo pětici; navíc ho zachytí invariant I1 nad hotovým HTML |
 | `upcase` nad `ß` | simple mapping | Go `strings.ToUpper("ß")` vrací `ß`, JavaScript `toUpperCase()` vrací `SS` | implementace filtru v TypeScriptu **nesmí** být prosté `toUpperCase()`, musí to být simple mapping s výjimkou pro `ß`, `ﬁ`, `ŉ`, `ǰ` a `ΐ` |
 
-První řádek je jediný, který vyžaduje změnu zmrazeného kontraktu. Doporučuju `blank` a `empty` z gramatiky vyřadit a nic nepřidávat: `!= ""` funguje v obou knihovnách a řetězec ze samých mezer se lépe řeší ořezáním při zápisu kontaktu (část 2) než šestým filtrem.
+První řádek je jediný, který vyžaduje změnu zmrazeného kontraktu. Doporučoval jsem `blank` a `empty` z gramatiky vyřadit a nic nepřidávat: `!= ""` funguje v obou knihovnách a řetězec ze samých mezer se lépe řeší ořezáním při zápisu kontaktu (část 2) než šestým filtrem.
+
+> **Tohle náhradní řešení přestalo platit rozhodnutím z 2026-07-31.** Řetězcové literály jsou z autorské šablony vyřazené (3.3.5), takže `!= ""` už nejde zapsat a hláška validátoru ho nesmí navrhovat. Nález sám nezaniká, jen se nedá obejít takhle. **K rozhodnutí spolu s otevřenou podotázkou o operátorech `>` a `<`** v části 1, kapitola 4.10.2. Do rozhodnutí platí, že validátor `blank` a `empty` **odmítá** a past prázdného řetězce se v editoru řeší nabídkou "zobrazit, jen když je pole vyplněné" jako vlastností bloku, ne psaním podmínky.
 
 #### 3.7.2b Data pro náhled se musí připravit stejně jako pro odeslání
 
@@ -1453,6 +1503,11 @@ Kódy odpovídají konvenci části 1 (`<doména>_<problém>`) a registrují se 
 | `liquid_unbalanced_block` | Značka `{% {tag} %}` není uzavřená. Chybí `{% {expected} %}`. | The `{% {tag} %}` tag is not closed. `{% {expected} %}` is missing. |
 | `liquid_whitespace_control_not_allowed` | Zápis `{{-` a `-}}` není podporovaný, protože se chová jinak v náhledu a při odeslání. | The `{{-` and `-}}` syntax is not supported because it behaves differently in preview and when sending. |
 | `liquid_index_not_allowed` | Zápis `pole[0]` není podporovaný. Použijte `{% for %}`. | The `array[0]` syntax is not supported. Use `{% for %}` instead. |
+| `liquid_string_literal_not_allowed` | Text v uvozovkách nejde psát přímo do šablony. Náhradní hodnotu i formát data zadejte v panelu vlastností bloku. | Quoted text cannot be written directly in the template. Set the fallback value and the date format in the block properties panel. |
+| `liquid_filter_argument_not_allowed` | Filtr `{filter}` se v šabloně píše bez argumentu. Hodnotu zadejte v panelu vlastností bloku. | The `{filter}` filter takes no argument in the template. Set the value in the block properties panel. |
+| `liquid_default_value_invalid` | Náhradní hodnota nesmí obsahovat uvozovku ani znaky `{`, `}`, `<`, `>`. | The fallback value must not contain a quote or the characters `{`, `}`, `<`, `>`. |
+| `liquid_comparison_operator_not_supported` | Porovnání `{op}` zatím není podporované. Použijte `==` nebo `!=`. | The `{op}` comparison is not supported yet. Use `==` or `!=`. |
+| `liquid_escaped_entity_in_construct` | Personalizační výraz obsahuje HTML entitu a nedá se odeslat. Je to chyba kompilace, ne vaše, nahlaste ji. | A personalization expression contains an HTML entity and cannot be sent. This is a compilation bug, not yours, please report it. |
 | `liquid_path_too_deep` | Cesta smí mít nejvýš tři části. | A path may have at most three segments. |
 | `liquid_nesting_too_deep` | Podmínky jdou vnořit nejvýš třikrát. | Conditions can be nested at most three levels deep. |
 | `liquid_too_many_loops` | V jedné šabloně smí být nejvýš pět cyklů. | A template may contain at most five loops. |
@@ -3347,7 +3402,8 @@ Každá věta je napsaná tak, aby z ní šel napsat test bez doptávání.
 9. Kompilace stejného dokumentu dvakrát za sebou dá bajtově shodné `html` i `text`.
 10. Vygenerované `html` obsahuje při `trackOpens = true` přesně jeden výskyt `<!--OE_OPEN_PIXEL-->` bezprostředně před `</body>` a při `false` žádný.
 11. Každý trackovatelný odkaz má ve vygenerovaném HTML `href="https://track.openengage.invalid/c/<link_id>"`. Netrackovatelný má původní URL. Tlačítko se svou VML variantou v podmíněném komentáři má **stejné** UUID na obou místech a jedna záměna řetězce opraví obojí.
-12. Liquid výrazy ve vygenerovaném HTML jsou znak po znaku shodné se zdrojem z dokumentu a projdou validátorem subsetu. Renderer do nich nedoplňuje ani neubírá nic.
+12. Liquid výrazy ve vygenerovaném HTML jsou znak po znaku shodné se zdrojem z dokumentu a projdou validátorem subsetu. Renderer do nich nedoplňuje ani neubírá nic. Jedinou povolenou výjimkou je argument filtrů `default` a `date`, který doplňuje kompilace z atributu bloku **až po renderu Reactem** (3.3.5), a i ten musí být ve výstupu bez jediné HTML entity.
+12b. Dokument obsahující merge tagy projde rendererem tak, že ve výstupu není žádná HTML entita uvnitř `{{ }}` ani `{% %}`. Test se pouští proti skutečnému výstupu `@react-email/render`, ne proti ručně sestavenému řetězci.
 13. Vygenerované HTML projde HTML validátorem bez chyb kategorie "error".
 14. Šablona se všemi typy bloků vygeneruje HTML pod 100 kB.
 15. Blok `spacer` o výšce 40 px vygeneruje HTML obsahující `mso-line-height-rule:exactly` a `height:40px`.
@@ -3358,6 +3414,8 @@ Každá věta je napsaná tak, aby z ní šel napsat test bez doptávání.
 ### 8.3 Plain text
 
 19. Nadpis se vygeneruje jako text následovaný řádkem `=` nebo `-` odpovídající délky.
+19b. **Textová varianta obsahuje merge tagy v původní velikosti písmen.** Dokument s nadpisem `Vítejte, {{ contact.first_name }}` vygeneruje textovou variantu obsahující přesně `{{ contact.first_name }}`, nikdy `{{ CONTACT.FIRST_NAME }}`. Test je povinný a musí existovat i pro nadpisy všech tří úrovní, protože `toPlainText` z react-email nadpisy převádí na velká písmena a bez tohoto testu by se personalizace v textové části rozbila tiše, bez jediné chyby. Kritérium platí bez ohledu na to, čím se textová varianta generuje.
+19c. Žádný merge tag nikde v textové variantě neprošel `upcase` ani `downcase` transformací, kterou nezapsal autor šablony. Kontroluje se porovnáním množiny merge tagů v dokumentu a v textovém výstupu, znak po znaku.
 20. Odkaz s textem "Zjistit více" se v prostém textu vygeneruje jako `Zjistit více:` na jednom řádku a holou značkou na dalším, bez závorek a bez doprovodného textu. Řádek se značkou není zalomený.
 21. Obrázek s `alt` se vygeneruje jako `[Popis obrázku]`, obrázek s `decorative: true` se nevygeneruje vůbec.
 22. Řádky plain textu jsou zalomené na 78 znaků a zalomení nerozdělí Liquid výraz.
@@ -3369,7 +3427,11 @@ Každá věta je napsaná tak, aby z ní šel napsat test bez doptávání.
 25. `{{ contact.first_name | vocative }}` vrátí `liquid_vocative_filter` s návrhem `{{ contact.first_name_vocative }}`.
 26. `{{- contact.email -}}` vrátí `liquid_whitespace_control_not_allowed`.
 27. `{% for a in x %}{% for b in y %}{% endfor %}{% endfor %}` vrátí `liquid_nested_for`.
-28. `{{ contact.signup_date | date: "%B %Y" }}` vrátí `liquid_date_directive_not_allowed` s uvedením `%B`.
+28. Atribut bloku s formátem `date` nastavený na `%B %Y` vrátí `liquid_date_format_not_allowed` s uvedením `%B`. Totéž zapsané do textu šablony jako `{{ contact.signup_date | date: "%B %Y" }}` vrátí `liquid_string_literal_not_allowed`, protože argument v textu už není povolený vůbec.
+28b. `{{ contact.first_name | default: "kolego" }}` v autorské šabloně vrátí `liquid_string_literal_not_allowed` a hláška odkáže uživatele na panel vlastností bloku.
+28c. `{% if contact.country == 'CZ' %}` vrátí `liquid_string_literal_not_allowed`. Apostrof se posuzuje stejně jako uvozovka.
+28d. Zkompilovaná šablona, ve které je uvnitř `{{ }}` nebo `{% %}` HTML entita (`&quot;`, `&#39;`, `&lt;`, `&gt;`, `&amp;`), vrátí `liquid_escaped_entity_in_construct` a neodešle se. Tohle je záchytná síť proti escapování rendererem.
+28e. Dokument s blokem, jehož text obsahuje `{{ contact.first_name | default }}` a jehož atribut nese hodnotu `kolego`, se zkompiluje do šablony obsahující přesně `{{ contact.first_name | default: "kolego" }}`, a to znak po znaku, bez jediné entity.
 29. `{{ contact.neexistuje }}` vrátí `liquid_unknown_field` a nabídne nejbližší existující pole.
 30. Všech 45 golden fixtur dá v LiquidJS i v `osteele/liquid` bajtově shodný výstup. Fixtura, která projde jen na jedné straně, shodí CI job `contracts-liquid`.
 31. Kontakt se jménem `<script>alert(1)</script>` se v odeslaném HTML objeví jako `&lt;script&gt;alert(1)&lt;/script&gt;` a v plain textu bez escapování.
@@ -3384,7 +3446,7 @@ Každá věta je napsaná tak, aby z ní šel napsat test bez doptávání.
 
 ### 8.6 Chyby za běhu
 
-37. Kontakt s prázdným `first_name` a výrazem `{{ contact.first_name | default: "kolego" }}` dostane e-mail s "kolego".
+37. Kontakt s prázdným `first_name` a blokem, který má v textu `{{ contact.first_name | default }}` a v atributu náhradní hodnotu `kolego`, dostane e-mail s "kolego".
 38. Kontakt bez klíče v `render_data` vůbec: renderuje se prázdno a zpráva se odešle.
 39. 25 zpráv s `render_error`, které zároveň tvoří přes 1 % odbavených, přepne kampaň do `paused` s důvodem `render_error_threshold`.
 40. Žádný příjemce nikdy nedostane e-mail s viditelným řetězcem `{{` nebo `{%`.
@@ -3480,6 +3542,9 @@ Vše ověřeno **2026-07-31** přes `npm view <balíček> license version time.m
 | `@dnd-kit/core` | 6.3.1 | MIT | 2024-12-05 | 20 300 435 | Přetahování bloků |
 | `@dnd-kit/sortable` | 10.0.0 | MIT | 2024-12-04 | 21 497 012 | |
 | `@dnd-kit/utilities` | 3.2.2 | MIT | 2023-11-06 | 20 208 051 | |
+| `@react-email/components` | 1.0.12 | **MIT** (ověřeno v balíčku) | | 3 100 000 týdně (celá rodina) | **Renderovací primitiva e-mailu: tabulkový layout, MSO konstrukce, hlavička dokumentu, preheader.** Rozhodnutí v 3.3.3 |
+| `@react-email/render` | 2.1.0 | **MIT** | | | Render React stromu na HTML. Oficiální podpora React 19 |
+| `react-email` | 6.9.1 | **MIT** | | | Vývojářské nástroje a náhled. Není běhová závislost produkce |
 | `nanoid` | 6.0.0 | MIT | 2026-07-12 | 227 243 311 | `public_id` assetů, ID bloků |
 | `@aws-sdk/client-s3` | 3.1100.0 | Apache-2.0 | 2026-07-31 | | Volitelný S3 driver úložiště |
 
@@ -3496,11 +3561,12 @@ Vše ověřeno **2026-07-31** přes `npm view <balíček> license version time.m
 
 | Balíček | Proč ne |
 |---|---|
-| `@usewaypoint/email-builder` a jeho bloky | MIT, ale nevyhovuje. Odůvodnění v 3.3.1. |
+| `@usewaypoint/email-builder` a jeho bloky | MIT, ale nevyhovuje. **ZAMÍTNUTO 2026-07-31**, ověřeno spuštěním: chybí editor, chybí hlavička dokumentu, neumí textovou variantu, odsazení `padding`em na `<div>`, chybí patička s odhlášením a sociální ikony, `peerDependencies` jen React 16 až 18. Odůvodnění v 3.3.1 a 3.3.3. |
 | `mjml` (5.4.0, MIT, 1 739 349 stažení) | Vyhovuje licenčně i kvalitou. Nepoužíváme kvůli řízení `<head>` a druhému escapování, viz 3.4.1. **Zůstává dokumentovanou náhradní cestou.** Pozor při jejím použití: v 5.x je `mjml2html` **asynchronní**, ve 4.x byl synchronní, a jádro sahá na `fs`, takže v Edge runtime nepoběží. |
 | `juice` (12.1.1, MIT) | Inliner není potřeba, renderer emituje inline styly rovnou (3.4.5). |
 | `dompurify` | Duálně `MPL-2.0 OR Apache-2.0`. Apache-2.0 by prošla, ale na serveru stačí `sanitize-html` (MIT) bez potřeby DOM. |
-| `@maily-to/core` a `@maily-to/render` (0.3.7 a 0.2.3) | Zajímavý Tiptap editor pro e-maily s vlastním rendererem. **Licence je nejasná:** `package.json` má `"license": null`, takže npm i nástroje na kontrolu licencí hlásí "Proprietary", zatímco README i soubor `license` v repu obsahují plný text MIT. Do MIT projektu s licenční bránou v CI to takhle vzít nemůžeme. README navíc říká "currently under development". Kdyby to autor v `package.json` opravil, stojí za nový průzkum. |
+| `@maily-to/core` a `@maily-to/render` (0.3.7 a 0.2.3) | Zajímavý Tiptap editor pro e-maily nad react-email. **ZAMÍTNUTO 2026-07-31, licence.** Pole `license` v `package.json` je prázdné a **v balíčku není žádný soubor LICENSE**, přestože repozitář je MIT. Nástroje na kontrolu licencí to hlásí jako "Proprietary" a licenční brána v CI to nesmí pustit dovnitř. Není to nedopatření: autor v roce 2025 licenci vědomě změnil pryč od MIT, protože mu produkt přebalovali a přeprodávali. Později napsal, že je to „stoprocentně MIT", ale za patnáct měsíců to do balíčku nedoplnil. Náš projekt je přesně ten scénář, kvůli kterému tehdy licenci měnil, takže na opravu nespoléháme. Že Maily stojí na react-email je zároveň nejlepší doklad, že naše volba rendereru funguje v praxi. |
+| **GrapesJS** (BSD-3) | Funkční druhá volba, zamítnutá vědomě. Newsletterový preset generuje skutečné tabulky a Liquid nepoškozuje. Důvody zamítnutí: 400 kB v prohlížeči a nutnost zamykat obecný stavitel webu, aby uživatel nepostavil něco, co se v Outlooku rozpadne. **Zůstává dokumentovanou náhradní cestou pro editor**, stejně jako MJML pro renderer. |
 | `email-comb` (7.1.3, MIT) | Odstraňuje nepoužité CSS. Nemáme nepoužité CSS, renderer generuje jen to, co používá. |
 | `czech-inflection` | LGPL v2.1. Netýká se části 3, ale je to připomínka licenční brány. |
 | `react-email-editor` (Unlayer) | Klient k proprietární hostované službě, rozpor se železným pravidlem 4. |
@@ -3547,9 +3613,15 @@ Funkce, které naopak **část 3 dodává** ostatním:
 
 ## 11. Rozpory s hlavní specifikací
 
-### 11.1 EmailBuilder.js jako editor a renderer
+### 11.1 ~~EmailBuilder.js jako editor a renderer~~ VYŘEŠENO 2026-07-31
 
-**Hlavní specifikace (6.4 a tabulka rizik v kapitole 10)** doporučuje `@usewaypoint/email-builder` jako základ editoru i rendereru s odůvodněním "nestavíme editor rok" a jako hlavní opatření proti riziku "editor sežere celý hackathon".
+**Rozhodnutí zadavatele: rozpor je uzavřený ve prospěch téhle části, ale jiným řešením, než jsem navrhoval.** Renderer je `@react-email/components` a `@react-email/render` (MIT), editor je vlastní a tenký nad naším blokovým JSON modelem. `@usewaypoint/email-builder` se nepoužije. **Hlavní specifikace byla opravena** v kapitole 3.2 (tabulka stacku), 6.4 a v tabulce rizik v kapitole 10, takže rozpor už fyzicky neexistuje.
+
+Rozdíl proti mému původnímu návrhu: navrhoval jsem vlastní renderer, rozhodnuto je **hotový renderer react-email**. Je to lepší volba, protože dodává právě ty čtyři věci, kvůli kterým jsem chtěl psát vlastní: hlavičku dokumentu, tabulkový layout s MSO konstrukcemi, preheader a textovou variantu. Riziko "editor sežere celý hackathon" tím klesá, ne roste. Podrobnosti a zamítnuté alternativy v 3.3.3.
+
+Původní argumentace zůstává níž pro doložení, jak se k rozhodnutí došlo.
+
+**Hlavní specifikace (6.4 a tabulka rizik v kapitole 10)** doporučovala `@usewaypoint/email-builder` jako základ editoru i rendereru s odůvodněním "nestavíme editor rok" a jako hlavní opatření proti riziku "editor sežere celý hackathon".
 
 **Zjištění, ověřená prakticky 2026-07-31** (staženo, nainstalováno, zavoláno, viz 3.3.1):
 
@@ -3562,7 +3634,7 @@ Funkce, které naopak **část 3 dodává** ostatním:
 
 Body 3, 4 a 5 jsou v přímém rozporu s požadavky **téže kapitoly 6.4** hlavní specifikace (table based, testované v klientech, náhled desktop a mobil, univerzální šablona ozkoušená v Outlooku, Gmailu, Apple Mail a Seznam Email) a s kontraktem 2 z kapitoly 4.5 (Liquid subset shodný v TS i Go).
 
-**Návrh:** vlastní blokový model, vlastní renderer a tenký vlastní editor podle 3.3.3, s omezeným rozsahem a popsanou degradovanou variantou, aby se riziko z tabulky rizik nevrátilo. **K rozhodnutí na synchronizaci.**
+**Původní návrh:** vlastní blokový model, vlastní renderer a tenký vlastní editor podle 3.3.3, s omezeným rozsahem a popsanou degradovanou variantou, aby se riziko z tabulky rizik nevrátilo. ~~K rozhodnutí na synchronizaci.~~ **Rozhodnuto, viz úvod téhle sekce: blokový model a editor vlastní, renderer react-email.**
 
 ### 11.2 `templates.html_cache`, `text_cache` a `version` jako sloupce
 
@@ -3615,7 +3687,8 @@ Totéž se **netýká** `campaign.preheader` a `current_year`, které jsem měl 
 
 | # | Otázka | Kdo rozhodne | Moje doporučení |
 |---|---|---|---|
-| O1 | Editor: vlastní, nebo přesto EmailBuilder.js? (11.1) | Vlastník produktu plus autoři částí 1 a 4 na synchronizaci | Vlastní, s omezeným rozsahem podle 3.3.3 |
+| O1 | ~~Editor: vlastní, nebo přesto EmailBuilder.js? (11.1)~~ | **UZAVŘENO 2026-07-31 zadavatelem** | **Editor vlastní a tenký, s omezeným rozsahem podle 3.3.3 (změřeno na zhruba 3 000 řádků). Renderer `@react-email/components` a `@react-email/render`, ne vlastní a ne EmailBuilder.js.** Zamítnuty: `@usewaypoint/email-builder` věcně (3.3.1), Maily licenčně (9.3), GrapesJS jako druhá volba a dokumentovaná náhradní cesta (3.3.3). |
+| O1d | ~~Jak zabránit tomu, aby React renderer rozbil Liquid escapováním uvozovek?~~ | **UZAVŘENO 2026-07-31 zadavatelem** | **Řetězcové literály se ze šablony ruší.** Náhradní hodnota filtru `default` a formát filtru `date` se zadávají v atributech bloku a kompilace je doplní až po renderu. Závazné znění v části 1, kapitola 4.10.2, dopad na tuto část v 3.3.5. |
 | O1b | Doplnit `workspace.sender_address` do kontraktu Liquid subsetu? (11.4) | Autor části 1 | Ano, je to aditivní změna a bez ní se poštovní adresa v patičce zamrazí do šablony |
 | O1c | Práh automatické pauzy "5 % z prvních 1 000 zpráv" u kampaně menší než 1 000 příjemců | Autoři částí 1 a 4 | Upřesnit na "5 % z prvních min(1 000, velikost publika) zpráv, nejméně však 10 selhání", jinak se u kampaně na 200 lidí pojistka nikdy nespustí |
 | O2 | Kolik dodávaných šablon musí být ke dni vydání? | Vlastník produktu | Jedna univerzální plus čtyři varianty |

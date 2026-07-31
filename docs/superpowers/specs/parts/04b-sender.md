@@ -913,6 +913,17 @@ Tím se **ruší nález K16** z předchozí revize: `list_id` sender má, takže
 
 V Go se to dělá přes `engine.RegisterFilter(name, fn)`. Filtr `date` se implementuje jako **`switch` nad pěti konstantami z whitelistu**, ne jako obecný strftime; balíček `osteele/tuesday`, na který se `osteele/liquid` u vestavěného `date` opírá, tím není potřeba vůbec.
 
+**Změna kontraktu 2026-07-31: argumenty filtrů `default` a `date` doplňuje kompilace, ne autor šablony.** Řetězcové literály jsou z **autorské** šablony vyřazené, protože je React renderer escapuje na `&quot;` a Liquid přestane být platný. Náhradní hodnota a formát data se zadávají v atributech bloku a kompilace je vloží do merge tagu až po renderu. Závazné znění je v části 1, kapitola 4.10.2.
+
+**Pro sender se tím nemění nic v implementaci filtrů.** Sender dostává vždy **kompilovanou** šablonu, a v té argument je, poziční a v uvozovkách, přesně jak `switch` nad whitelistem očekává. Mění se dvě věci:
+
+| Co | Jak |
+|---|---|
+| Sender **nikdy nevidí autorskou šablonu** | Gramatika bez řetězcových literálů je věc validátoru v editoru, ne senderu. Sender validuje podle gramatiky kompilované šablony. |
+| Nová vstupní kontrola | Sender **odmítne kompilovanou šablonu, ve které je uvnitř `{{ }}` nebo `{% %}` HTML entita** (`&quot;`, `&#39;`, `&lt;`, `&gt;`, `&amp;`), s kódem `liquid_escaped_entity_in_construct`. Je to záchytná síť proti tomu, aby se escapovaná šablona dostala k odeslání. Kontrola běží jednou při načtení kampaně do cache, ne per zpráva. |
+
+Chování filtru `default` samotného zůstává beze změny: vrací argument, když je hodnota `nil`, `false`, `""` nebo prázdné pole. Argument je vždy literál, nikdy cesta, a v kompilované šabloně je vždy přítomný.
+
 **Automatické escapování v HTML kontextu** je kontraktní. V Go existuje `engine.SetAutoEscapeReplacer(replacer)`. Předává se **vlastní** `Replacer` s přesně pěti náhradami z kontraktu, ne vestavěný `render.HtmlEscaper`: ten se opírá o Go `html.EscapeString`, který produkuje `&#34;` místo kontraktem předepsaného `&quot;`, a golden fixtures se porovnávají bajt po bajtu. Podrobně v rozporu K11.
 
 Sender proto drží **dva engine**: jeden s replacerem pro HTML, druhý bez pro plain text a pro `subject`. Ne jeden přepínaný za běhu.
@@ -1001,7 +1012,7 @@ Vestavěný filtr v `osteele/liquid` má `func(t time.Time, format func(string) 
 | Skutečný typ v Go | Odkud | Chování filtru |
 |---|---|---|
 | `string` | datum jako řetězec RFC 3339 | parsovat, při chybě prázdný řetězec |
-| `string` s hodnotou `"now"` | literál v šabloně | aktuální čas |
+| `string` s hodnotou `now` | **hodnota v `render_data`**, ne literál v šabloně | aktuální čas |
 | `json.Number` | unix sekundy jako číslo v JSON | převést na `int64`, při chybě prázdný řetězec |
 | `nil` | chybějící hodnota | **prázdný řetězec, nikdy chyba** (kontraktní pravidlo 1) |
 | cokoliv jiného | pole, objekt, `bool` | prázdný řetězec |
@@ -2386,9 +2397,11 @@ Důsledky, které z toho plynou:
 
 #### K4. BLOKUJÍCÍ (zvýšeno): literály `blank` a `empty` v `osteele/liquid` neexistují
 
-**Stav: část 3 nález potvrdila a zvýšila na blokující.** Do rozhodnutí je její validátor **odmítá**, takže je přísnější než kontrakt a přes kompilaci mi nic neprojde. Shodujeme se i na řešení: **vyřadit `blank` a `empty` z gramatiky** a nahradit je prostým `!= ""`, ne přidávat šestý filtr. Řetězec ze samých mezer má řešit část 2 ořezáním při zápisu kontaktu, což je stejně správnější místo.
+**Stav: část 3 nález potvrdila a zvýšila na blokující.** Do rozhodnutí je její validátor **odmítá**, takže je přísnější než kontrakt a přes kompilaci mi nic neprojde. Shodovali jsme se i na řešení: **vyřadit `blank` a `empty` z gramatiky** a nahradit je prostým `!= ""`, ne přidávat šestý filtr. Řetězec ze samých mezer má řešit část 2 ořezáním při zápisu kontaktu, což je stejně správnější místo.
 
-Kontrakt 4.10.2, gramatika:
+> **Náhradní řešení `!= ""` přestalo platit rozhodnutím z 2026-07-31.** Řetězcové literály jsou z autorské šablony vyřazené, takže `!= ""` už není zapsatelné. Samotný nález K4 tím nezaniká, jen ho nelze obejít takhle. Zbývají dvě cesty a **žádná z nich zatím není rozhodnutá**: buď `blank` a `empty` v gramatice **ponechat** a v Go je vyřešit předzpracováním podmínky při kompilaci šablony (lexer je nezná, ale kompilace je umí přepsat na tvar, kterému rozumí), nebo zavést pro „prázdná hodnota" vlastní tvar bez uvozovek. K rozhodnutí spolu s otevřenou podotázkou o operátorech `>` a `<` v části 1, kapitola 4.10.2.
+
+Kontrakt 4.10.2, gramatika (znění před rozhodnutím z 2026-07-31, dnes už bez `string_literal`):
 
 ```
 literal := string_literal | number | "true" | "false" | "nil" | "blank" | "empty"
