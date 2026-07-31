@@ -174,6 +174,7 @@ Rozhodnuto zadavatelem 2026-07-31.
 | Sledovat pozici konkrétního odkazu v mailu | **Ano** |
 | Nabízet prediktivní otevření | **Ano** |
 | Kdo je zodpovědný za souhlasy | **Zákazník.** Má vlastní řešení souhlasů a nese za ně zodpovědnost. |
+| Platnost jednorázového klíče pro propojení prohlížeče s kontaktem | **15 minut** (konfigurovatelné 1 až 60) |
 
 **Tři poznámky, které z toho plynou a patří do návrhu:**
 
