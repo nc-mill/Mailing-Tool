@@ -161,6 +161,30 @@ Princip: **co uživatel chce uložit, se neblokuje. Co by se sebralo samo, aniž
 
 Totéž platí pro hesla a přihlašovací tokeny: ty zůstávají zakázané bez výjimky, protože je nikdo do trackingu poslat nechce ani omylem.
 
+### Odpovědi na otázky části 5 (tracking a reporty)
+
+Rozhodnuto zadavatelem 2026-07-31.
+
+| Otázka | Rozhodnutí |
+|---|---|
+| Hlavní metrika na dashboardu | **Proklik**, ne otevření |
+| Falešná otevření od Apple | **Přepínač**, ne automatické odečítání |
+| Ukládat zemi odvozenou z IP | **Ano** |
+| Retence událostí | **37 měsíců** |
+| Sledovat pozici konkrétního odkazu v mailu | **Ano** |
+| Nabízet prediktivní otevření | **Ano** |
+| Kdo je zodpovědný za souhlasy | **Zákazník.** Má vlastní řešení souhlasů a nese za ně zodpovědnost. |
+
+**Tři poznámky, které z toho plynou a patří do návrhu:**
+
+**Přepínač u Apple otevření potřebuje rozumný výchozí stav.** Autor části 5 přepínač nedoporučoval s odůvodněním, že „přepínač znamená, že si každý vybere číslo, které se mu líbí". Rozhodnutí zadavatele je přepínač (stejně to má Mailchimp i Klaviyo). Aby ta námitka neplatila, musí být **výchozí poloha ta poctivější**, tedy s odečtenými automatickými otevřeními, a přepnutí do druhé polohy musí být viditelně označené v reportu, ne jen v nastavení. Jinak se stane, že si někdo přepne číslo nahoru a za měsíc už neví, že se dívá na jinou metriku.
+
+**Prediktivní otevření je odhad, ne měření, a musí tak vypadat.** Jde o dopočet skutečných otevření z části publika, kterou Apple nezkresluje. Číslo je užitečné, ale je to model. V UI musí být odlišené od naměřených hodnot (jiný tvar, slovo „odhad", rozsah místo jednoho čísla) a nikdy nesmí stát vedle naměřených čísel jako rovnocenné. Jinak porušíme vlastní princip „nelžeme čísly", kvůli kterému jsme hlavní metrikou udělali proklik.
+
+**Zodpovědnost zákazníka za souhlasy je obhajitelná, ale jednu díru nezavírá.** U self-hosted nástroje je správcem údajů provozovatel, takže je to správné rozdělení. Zůstává ale technická mezera pojmenovaná v části 5: kdyby právní posouzení došlo k tomu, že měření otevření vyžaduje souhlas, produkt dnes neumí **souhlas s měřením zvlášť u každého kontaktu** a nedokáže u konkrétního příjemce pixel vynechat. Zákazník tedy nese zodpovědnost, ale nemá jak ji naplnit jinak než vypnutím měření pro celou kampaň. Doplnit to je práce na půl dne a dnes ji nikdo nemá zadanou.
+
+**Retence 37 měsíců** je nad původním návrhem 26 a je v povoleném rozsahu. Pokryje tři roky meziročního srovnání s rezervou. Cena je větší databáze a delší doba, po kterou držíme osobní údaje, což patří do dokumentace ke GDPR.
+
 ---
 
 ## 4. Co potřebuje právníka
