@@ -32,3 +32,6 @@ Thumbs.db
 
 # Testing
 coverage/
+
+# Tool artifacts
+.playwright-mcp/
