@@ -2667,7 +2667,8 @@ Go strana čte `fixtures/` přes `apps/sender/testdata` (symlink) a implementaci
 CREATE TABLE messages (
   id                  uuid        NOT NULL DEFAULT uuidv7(),
   workspace_id        uuid        NOT NULL,
-  campaign_id         uuid        NOT NULL,
+  campaign_id         uuid,       -- NULL = nekampáňová zpráva, viz rezerva níž
+  variant_id          uuid,       -- NULL = obsah ze sloupců kampaně, viz rezerva níž
   contact_id          uuid        NOT NULL,
   email               text        NOT NULL,
   render_data         jsonb       NOT NULL DEFAULT '{}'::jsonb,
@@ -2740,9 +2741,22 @@ ALTER TABLE messages_y2026m08 SET (
 );
 ```
 
-**Invariant I1 (KONTRAKT): jedno `created_at` na celou kampaň.**
+**Dvě rezervy v kontraktu (ROZHODNUTO zadavatelem 2026-07-31).** Oba sloupce jsou v MVP 0 **vždy prázdné** a Go strana se kvůli nim nemění ani o řádek. Jsou tu proto, že pozdější přidání by sáhlo na claim dotaz, na index a na scénáře `OB-00` az `OB-22`, což je nejdražší místo celé specifikace na změnu. Projekt už stejně rozhodl u tabulky `content_snippets` v části 3 a specifikace sama píše, že migrace u self-hosted instalací je nejrizikovější operace.
 
-> Všechny řádky jedné kampaně mají `created_at` rovné `campaigns.audience_built_at`. Materializace tuhle hodnotu nastavuje **explicitně**, nespoléhá na `DEFAULT now()`. `audience_built_at` se ukládá zaokrouhlené na celé sekundy (`date_trunc('second', now())`). **Sender `created_at` nikdy nemění.**
+| Sloupec | Význam prázdné hodnoty | Kdy se zaplní |
+|---|---|---|
+| `campaign_id` | zpráva **nepatří kampani** (transakční mail, zpráva ze scénáře automatizace) | MVP 1 a dál |
+| `variant_id` | obsah se bere **ze sloupců kampaně**, tedy dnešní chování | až přijde A/B test obsahu (MVP 1) |
+
+> **Nekampáňové zprávy se v MVP 0 vylučují VÝSLOVNOU podmínkou, ne mlčky.** Claim dotaz má `AND m.campaign_id IS NOT NULL`, přestože vnitřní spojení na `campaigns` by je zahodilo samo. Je to schválně: kdyby se to nechalo na spojení, první nekampáňová zpráva by navěky ležela ve frontě a nikdo by se nedozvěděl proč. Výslovná podmínka je rozdíl mezi „zatím nepodporováno" a „tiše se ztrácí".
+>
+> Celá dráha pro transakční zprávy se teď nenavrhuje. Až přijde, bude to **aditivní** změna v rámci verze 1 kontraktu: nová větev claimu s vlastním indexem, vzorem je už existující druhá dráha pro testovací odeslání.
+
+**Invariant I1 (KONTRAKT): jedno `created_at` na jeden materializační běh batch kampaně.**
+
+> Všechny řádky **jednoho materializačního běhu** mají `created_at` rovné `campaigns.audience_built_at`. Materializace tuhle hodnotu nastavuje **explicitně**, nespoléhá na `DEFAULT now()`. `audience_built_at` se ukládá zaokrouhlené na celé sekundy (`date_trunc('second', now())`). **Sender `created_at` nikdy nemění.**
+>
+> **Formulace je záměrně úzká (upřesněno 2026-07-31).** Dřívější znění mluvilo o „všech řádcích jedné kampaně", což by z lokálního rozhodnutí části 4a udělalo celoproduktové pravidlo zakazující opakované a průběžné kampaně. Invariant je vlastnost jednoho běhu, ne tabulky `messages` obecně. Série a opakování se v budoucnu řeší novými řádky `campaigns` s odkazem na rodiče, ne druhou materializací téhož řádku.
 
 Bez tohohle invariantu index `uq_messages__campaign_contact` nedává záruku, kterou jeho název slibuje. Dvě dávky materializace by dostaly různý `now()`, klíč by se lišil a duplicitní příjemce by prošel. Dnes to platí jen shodou okolností a netestuje to nic.
 
@@ -2841,6 +2855,7 @@ SET status           = 'claimed',
 FROM claimable cl, campaigns c, workspaces w
 WHERE m.id         = cl.id
   AND m.created_at = cl.created_at
+  AND m.campaign_id IS NOT NULL        -- VÝSLOVNÉ vyloučení, viz rezerva níž
   AND c.id         = m.campaign_id     -- pojistka proti závodu, viz níž
   AND w.id         = m.workspace_id
   AND c.status IN ('queueing','sending')
@@ -2989,12 +3004,14 @@ RETURNING id, created_at, ambiguous_count;
 
 - Rezerva `$2` je **jeden TTL claimu navíc** oproti běžnému reaperu, takže se nejednoznačná zpráva uvolní zhruba po dvojnásobku TTL od claimu. Pomalu odpovídající provider se tím nepoplete s mrtvým senderem.
 
-**Politika `$1` je `AMBIGUOUS_DISPATCH_POLICY` a její výchozí hodnota závisí na typu providera:**
+**Politika `$1` se čte ze dvou konfiguračních proměnných senderu podle typu providera** (obě jsou v 4.9 se sloupcem Kdo = S, tedy je čte sender, ne aplikace):
 
-| Provider | Výchozí | Proč |
-|---|---|---|
-| SES | **`fail`** | SES přepisuje `Message-ID`, takže duplikát nikdo nezachytí |
-| SMTP | **`retry`** | deterministický `Message-ID` projde a přijímající servery duplikát běžně odchytí |
+| Provider | Proměnná | Výchozí | Proč |
+|---|---|---|---|
+| SES | `AMBIGUOUS_DISPATCH_POLICY_SES` | **`fail`** | SES přepisuje `Message-ID`, takže duplikát nikdo nezachytí |
+| SMTP | `AMBIGUOUS_DISPATCH_POLICY_SMTP` | **`retry`** | deterministický `Message-ID` projde a přijímající servery duplikát běžně odchytí |
+
+> **Jedna proměnná, nebo dvě (ujasněno 2026-07-31, nález z revize 5).** Dřívější znění mluvilo o jediné proměnné `AMBIGUOUS_DISPATCH_POLICY`, zatímco konfigurační tabulka 4.9 definovala dvojici se sufixy, část 4a měla jednu s výchozí `retry` a část 4b tvrdila, že proměnnou vlastní část 4a a čte se z konfigurace kampaně. Čtyři různé verze téhož. **Platí dvojice výše**, hodnotu čte sender z prostředí a test `config-parity` na to má dosah.
 
 Zdůvodnění, které za tím stojí a patří i do UI: u nejednoznačného odeslání **nevíme**, jestli zpráva odešla. `retry` riskuje duplicitu, `fail` riskuje nedoručení. **U marketingové kampaně je duplicita horší.** Příjemce ji vidí, štve ho a zvyšuje míru stížností, a právě míra stížností je to, kvůli čemu Amazon ruší odesílací účty. Nedoručená zpráva v padesátitisícové kampani je proti tomu neviditelná a uživatel ji umí doposlat sám.
 
@@ -3047,9 +3064,15 @@ GRANT USAGE ON SCHEMA public TO mlain_sender;
 GRANT SELECT ON messages TO mlain_sender;
 GRANT UPDATE (status, claimed_by, claimed_at, claim_expires_at,
               dispatch_started_at, attempts, next_attempt_at,
-              provider_message_id, sent_at, error_code, error_detail, updated_at)
+              provider_message_id, sent_at, error_code, error_detail,
+              ambiguous_count, updated_at)
   ON messages TO mlain_sender;
 -- created_at ve výčtu SCHVÁLNĚ NENÍ, viz invariant I1.
+-- ambiguous_count ve výčtu BÝT MUSÍ: reaper B běží uvnitř senderu a dělá
+-- SET ambiguous_count = ambiguous_count + 1 (viz dotaz B v 4.10.1). Bez tohohle
+-- sloupce skončil reaper B pod rolí mlain_sender na permission denied a celý
+-- mechanismus ambiguous_dispatch včetně scénářů OB-03 a OB-04 byl neproveditelný.
+-- Opraveno 2026-07-31, nález z revize 5.
 
 GRANT SELECT ON campaigns TO mlain_sender;
 -- Sloupcový GRANT UPDATE na campaigns: sender smí kampaň POUZE pozastavit.
@@ -3080,18 +3103,48 @@ ALTER TABLE campaigns ADD COLUMN pause_reason jsonb;
 
 | Pravidlo | |
 |---|---|
-| Povolený přechod | **výhradně `sending → paused`**. Nic jiného, ani `queueing → paused`, ani cokoliv zpět |
-| Povinný zápis | `pause_reason` musí být neprázdný objekt s klíčem `code` z uzavřeného výčtu (`render_failure_rate`, `credentials_undecryptable`, `provider_quota_exhausted`, `provider_unavailable`) |
+| Povolený přechod pro sender | **výhradně `queueing → paused` a `sending → paused`**. Nic jiného a nic zpět |
+| Povinný zápis | `pause_reason` musí být neprázdný objekt v tvaru níže, s klíčem `code` z registru níže |
 | Odpauzování | **výhradně akce uživatele nebo aplikace.** Sender kampaň nikdy nerozjede zpět, ani když příčina pominula |
 | Audit | každé automatické pozastavení zapisuje aplikace do `audit_log` jako `campaign.auto_paused` s důvodem, jakmile změnu uvidí |
+
+**Závazný tvar objektu (KONTRAKT).** Existuje jeden tvar, ne dva. Dřívější znění části 4b nabízelo dvě různé sady klíčů v jedné kapitole.
+
+```jsonc
+{
+  "code":      "provider_quota_exhausted",  // povinné, z registru níže
+  "source":    "sender",                    // povinné: "sender" | "app" | "user"
+  "detail":    "SES daily quota reached",    // nepovinné, technický text pro log
+  "sender_id": "mlain-ws-7f3a",             // nepovinné, jen když source = "sender"
+  "at":        "2026-07-31T14:22:31Z"       // povinné, ISO 8601 v UTC
+}
+```
+
+**Registr kódů (KONTRAKT, rozšiřuje se společným rozhodnutím).** Rozdělený podle toho, kdo zápis provádí. Sender smí zapsat **jen svoje čtyři**, ostatní jsou aplikační.
+
+| `code` | Kdo zapisuje | Kdy |
+|---|---|---|
+| `render_failure_rate` | sender | podíl selhání renderu překročil práh |
+| `credentials_undecryptable` | sender | credentials providera nejdou dešifrovat |
+| `provider_quota_exhausted` | sender | provider hlásí vyčerpanou kvótu |
+| `provider_unavailable` | sender | provider je nedostupný, circuit breaker sepnul |
+| `user` | aplikace | člověk zmáčkl Pozastavit |
+| `bounce_guard` | aplikace | ochranná brzda na míru odrazů |
+| `complaint_guard` | aplikace | ochranná brzda na míru stížností |
+| `provider_blocked` | aplikace | provider je `blocked` (například `SHUTDOWN` u SES) |
+| `materialize_timeout` | aplikace | materializace publika překročila časový strop |
 
 ```sql
 UPDATE campaigns
 SET status = 'paused', pause_reason = $2
-WHERE id = $1 AND status = 'sending';
+WHERE id = $1 AND status IN ('queueing', 'sending');
 ```
 
-Podmínka `status = 'sending'` ve `WHERE` je součástí kontraktu, ne optimalizace: zabraňuje tomu, aby sender přepsal stav kampaně, kterou mezitím uživatel zrušil nebo dokončil. Nula ovlivněných řádků není chyba, znamená to, že kampaň už není v odesílacím stavu.
+Podmínka na `status` ve `WHERE` je součástí kontraktu, ne optimalizace: zabraňuje tomu, aby sender přepsal stav kampaně, kterou mezitím uživatel zrušil nebo dokončil. Nula ovlivněných řádků není chyba, znamená to, že kampaň už není v odesílacím stavu.
+
+> **Proč je ve výčtu i `queueing` (změna kontraktu 2026-07-31, nález z revize 5).** Claim dotaz bere zprávy kampaní ve stavu `queueing` i `sending`, protože odesílat jde už během materializace publika. Kdyby sender směl pozastavit jen `sending`, kampaň v `queueing` s nedešifrovatelnými credentials by pozastavit nešla: `UPDATE` by zasáhl nula řádků, sender by zprávy donekonečna recykloval po pěti minutách a nikde by se to neprojevilo jako porucha. Rozšíření na dva stavy tu díru zavírá a nic nového senderu nedovoluje, protože cílový stav je pořád jen `paused`.
+>
+> **Pozor na rozsah omezení.** Tenhle řádek omezuje **sender**, ne aplikaci. Aplikace smí pozastavit i z jiných stavů, pokud to její vlastní stavový automat dovoluje; `materialize_timeout` je právě takový případ a je legitimní.
 
 Asymetrie „sender smí zastavit, ale ne rozjet" je záměrná. Zastavení je bezpečná operace, kterou musí umět provést ten, kdo problém vidí. Rozjetí je rozhodnutí, které vyžaduje, aby si člověk příčinu prohlédl.
 
@@ -3123,10 +3176,22 @@ Varianta `ALTER ROLE mlain_sender BYPASSRLS` je hrubší (platí na všechno vč
 | `sending_providers` | část 4a | `id`, `workspace_id`, `type`, `config_encrypted`, `quota_max_send_rate`, `verified_at` |
 | `campaign_links` | část 4a | `id`, `campaign_id`, `url`, `position` |
 | `workspaces` | část 1 | `id`, `deleted_at` |
-| `suppressions` | část 2 | `workspace_id`, `email` (nebo otisk podle 3.10), `created_at` |
+| `suppressions` | část 2 | `workspace_id`, `email`, `fingerprint`, `fingerprint_key_id`, `removed_at`, `created_at` |
 | `message_events` | část 4a | `id`, `message_id`, `message_created_at`, `workspace_id`, `type`, `ts`, `received_at`, `source`, `metadata` |
 
 Vlastník smí tabulku rozšiřovat, nesmí měnit název, typ ani sémantiku vyjmenovaných sloupců. Shodu hlídá CI job `contracts-schema` dotazem do `information_schema.columns`.
+
+> **Jak sender kontroluje suppression (KONTRAKT, upřesněno 2026-07-31, nález z revize 5).** Dřívější znění mělo u `suppressions` disjunkci „`email` (nebo otisk podle 3.10)". To se nedá implementovat: jsou to dva různé algoritmy a Go strana neměla proti čemu psát dotaz. Platí obojí zároveň, protože po výmazu podle GDPR e-mail zmizí a zůstane jen otisk:
+>
+> ```sql
+> SELECT 1 FROM suppressions
+> WHERE workspace_id = $1
+>   AND removed_at IS NULL
+>   AND (email = $2 OR fingerprint = ANY($3))
+> LIMIT 1;
+> ```
+>
+> `$3` je pole otisků adresy spočítané **pro všechna známá pokolení klíče, bez horního omezení** (viz 3.10). Sender tedy potřebuje celý keyring, ne jen aktuální klíč. Kontrola běží těsně před odesláním a vede na přechod `claimed → skipped` s `error_code = 'suppressed'`.
 
 **Testovací scénáře (`fixtures/outbox/scenarios.json`, spouští se proti reálnému Postgresu na obou stranách)**
 
@@ -3154,7 +3219,7 @@ Vlastník smí tabulku rozšiřovat, nesmí měnit název, typ ani sémantiku vy
 | `OB-19` | Sender A drží claim, reaper ho uvolní, claimne sender B, **teprve pak** se A pokusí o D1 | D1 ovlivní 0 řádků, **A neodešle nic** a zprávu z dávky zahodí. Odešle ji jen B. Bez stráže v D1 se odešle dvakrát |
 | `OB-20` | Totéž, ale A se dostane až k D3 (zpráva už u providera) | D3 ovlivní 0 řádků, A nezapisuje nic a loguje `claim_lost_after_dispatch`. O řádku rozhodne nový vlastník, výsledek je `sent` nebo `ambiguous_dispatch`, **nikdy dvojí zápis `sent` s různým `provider_message_id`** |
 | `OB-21` | Zpráva ve stavu `failed` s `error_code = 'ambiguous_dispatch'`, aplikace zpracuje událost od providera a přepne ji na `sent` | přechod **uspěje**, doplní se `provider_message_id` a `sent_at` |
-| `OB-22` | Tentýž přechod `failed → sent` u zprávy s jiným `error_code` (například `render_failure`, `provider_rejected`) i s `error_code IS NULL` | přechod **musí selhat** ve všech případech. Test běží pro každou hodnotu zvlášť, aby neprošel omylem na prázdné množině |
+| `OB-22` | Tentýž přechod `failed → sent` u zprávy s jiným `error_code` (například `render_failed`, `provider_rejected`) i s `error_code IS NULL` | přechod **musí selhat** ve všech případech. Test běží pro každou hodnotu zvlášť, aby neprošel omylem na prázdné množině |
 
 **Všechny scénáře běží pod rolí `mlain_sender`.** Spuštění pod migrátorem je v CI chyba, protože zamaskuje chybějící politiku `sender_bypass`.
 
@@ -3192,8 +3257,15 @@ Společný jmenovatel: **specifikace popisovala žádoucí stav, ale nepojmenova
 | `suppressed` | aplikace nebo sender | příjemce na suppression listu |
 | `unsubscribed` | aplikace | příjemce se mezitím odhlásil |
 | `campaign_cancelled` | aplikace | zrušení kampaně |
+| `contact_deleted` | aplikace | kontakt smazán, zpráva se neodešle |
+| `contact_anonymized` | aplikace | kontakt anonymizován při výmazu podle GDPR |
+| `processing_restricted` | aplikace | kontakt má omezené zpracování |
+| `contact_status_changed` | aplikace | kontakt přestal být způsobilý (změna stavu nebo souhlasu) |
+| `render_data_too_large` | aplikace | personalizační data překročila limit |
 
 Nový kód přidává vlastník příslušné části a musí ho zaregistrovat, stejně jako u HTTP kódů.
+
+> **Pět kódů doplněno 2026-07-31 (nález z revize 5).** Části 2 a 4a je zapisovaly, aniž byly v registru, takže by je CI odmítlo. `render_data_too_large` je navíc náhrada za dosavadní praxi, kdy se překročení limitu personalizačních dat hlásilo kódem `invalid_recipient`. To je sémanticky lživé, protože jde o chybu šablony, ne o vadnou adresu, a report si to vykládal jako neplatný kontakt.
 
 ---
 
