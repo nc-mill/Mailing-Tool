@@ -1,0 +1,909 @@
+ChatGPT Plus
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+This is a copy of a shared ChatGPT conversation
+
+Report conversation
+Pokud trváš na těchto podmínkách:
+
+✅ 100 % open source (bez placených feature gate)
+
+✅ self-hosted kdekoliv (Docker/Kubernetes/VPS)
+
+✅ Amazon SES
+
+✅ moderní UI
+
+✅ API
+
+✅ segmentace
+
+✅ šablony
+
+✅ statistiky (open/click/bounce)
+
+✅ unsubscribe
+
+✅ více uživatelů
+
+✅ žádné "Community vs Enterprise"
+
+...tak je situace trochu nepříjemná.
+
+Bohužel dnes neexistuje plnohodnotný open-source Ecomail.
+Většina projektů spadne do jedné z těchto kategorií:
+
+mají placenou Enterprise edici (Keila)
+
+umí newslettery, ale ne marketing automation (Listmonk)
+
+jsou extrémně složité (Mautic)
+
+jsou zastaralé (phpList, Mailtrain)
+
+Co bych doporučil
+🥇 Listmonk
+Tohle bych dnes vybral.
+
+Co umí
+
+newslettery
+
+seznamy kontaktů
+
+segmenty
+
+custom fields
+
+statistiky
+
+tracking
+
+REST API
+
+webhooky
+
+SMTP
+
+Amazon SES
+
+Docker
+
+PostgreSQL
+
+import/export
+
+template engine
+
+velmi rychlé (Go)
+
+Co neumí oproti Ecomailu
+
+drag & drop builder
+
+vizuální automation (workflow)
+
+lead scoring
+
+CRM
+
+e-commerce automatizace
+
+Je to asi 90 % Sendy a 70 % Ecomail.
+
+🥈 Mautic
+Funkčně je to skoro Ecomail.
+
+Umí:
+
+automation builder
+
+podmínky
+
+tagy
+
+formuláře
+
+landing pages
+
+segmentace
+
+scoring
+
+kampaně
+
+API
+
+SES
+
+Ale...
+
+PHP
+
+těžkopádné UI
+
+pomalejší
+
+náročnější upgrade
+
+Co dnes používá hodně startupů
+Místo jednoho monolitu skládají stack:
+
+Listmonk
+      │
+      ▼
+Amazon SES
+      │
+      ▼
+PostgreSQL
+      │
+      ▼
+N8N
+      │
+      ▼
+Shopify / WooCommerce / vlastní API
+N8N pak řeší:
+
+welcome email
+
+abandoned cart
+
+onboarding
+
+birthday
+
+drip campaign
+
+cokoliv dalšího
+
+Výsledek je často flexibilnější než Ecomail.
+
+Pokud chceš opravdu "Ecomail zdarma"
+Upřímně dnes nic takového není.
+
+Nejblíž jsou:
+
+Projekt	Newsletter	Automation	Moderní UI	Enterprise feature gate
+Listmonk	⭐⭐⭐⭐⭐	⭐⭐	⭐⭐⭐⭐	❌
+Mautic	⭐⭐⭐⭐⭐	⭐⭐⭐⭐⭐	⭐⭐⭐	❌
+Keila	⭐⭐⭐⭐	⭐⭐⭐⭐	⭐⭐⭐⭐⭐	Ano
+Mailtrain	⭐⭐⭐	⭐	⭐⭐	❌
+Kdybych dnes zakládal SaaS
+Šel bych cestou:
+
+Listmonk jako mailing engine,
+
+Amazon SES pro doručování,
+
+n8n pro automatizace,
+
+vlastní admin nad API Listmonku pro funkce, které mi chybí.
+
+Tím získáš plně open-source řešení bez licenčních omezení, které se dá provozovat za velmi nízké náklady a postupně rozšiřovat. Pokud ale hledáš doslova "nainstaluji Docker a mám Ecomail se vším všudy", tak v roce 2026 žádný skutečně open-source projekt tuto úroveň funkcionality nenabízí.
+
+
+Chteli bychom udelat kompletne opensource verzi, ktera by byla presne tohle co popisuju… 
+
+Worked for 19s
+Ano — tohle má reálný smysl jako open-source produkt. Na trhu existují buď výkonné rozesílače typu Listmonk, nebo komplexní, ale těžkopádné platformy typu Mautic. Chybí moderní, snadno instalovatelný nástroj s UX na úrovni Ecomailu.
+
+Ecomail dnes kombinuje drag-and-drop editor, automatizace, segmentaci, formuláře, A/B testování, reporty, API, e-commerce data a více komunikačních kanálů. To už není jen „newsletter app“, ale menší customer-data a marketing-automation platforma. 
+
+Doporučená produktová pozice
+Open-source, self-hosted marketing automation platform pro e-shopy a menší firmy. Jednoduchá jako Ecomail, otevřená jako Listmonk.
+
+Základní principy:
+
+všechny funkce jsou v open-source edici,
+
+žádné Enterprise-only moduly,
+
+žádná povinná registrace ani licenční klíč,
+
+instalace přes jeden docker compose up,
+
+Amazon SES jako prvotřídní poskytovatel,
+
+možnost použít libovolné SMTP,
+
+plné REST API a webhooky,
+
+multi-user a ideálně multi-workspace,
+
+cloudová nabídka může existovat, ale prodává hosting a podporu, ne odemykání funkcí.
+
+To poslední je důležité: můžete vydělávat na hostované verzi, správě infrastruktury, SLA, migracích a podpoře, aniž byste omezovali komunitní software.
+
+Nestavěl bych to jako fork Mauticu
+Mautic má vizuální kampaně, podmínky, akce a prodlevy a je skutečně open source. 
+
+Fork by vám ale přinesl:
+
+velký historický PHP kód,
+
+složitější aktualizace,
+
+UX omezené existující architekturou,
+
+vysoké náklady na přepis frontendové části,
+
+obtížnější onboarding nových vývojářů.
+
+Mautic bych používal jako funkční referenci, nikoliv jako technologický základ.
+
+Listmonk je naopak dobrá reference pro jednoduchost provozu a výkon. Je kompletně pod AGPLv3, používá Go, Vue a PostgreSQL a funguje jako jediná aplikace/binárka. 
+
+Navrhovaná architektura
+Backend
+Doporučil bych:
+
+Go
+
+PostgreSQL
+
+Redis nebo Valkey
+
+objektové úložiště kompatibilní se S3
+
+background workers
+
+REST API
+
+OpenAPI specifikaci
+
+event-driven interní architekturu
+
+Nemusí to být mikroservisy. Pro začátek bych vytvořil modulární monolit:
+
+API server
+├── Identity & workspaces
+├── Contacts & segments
+├── Campaigns
+├── Templates
+├── Automations
+├── Forms
+├── Sending
+├── Tracking
+├── Integrations
+└── Reporting
+
+Worker
+├── Campaign scheduler
+├── Message renderer
+├── SES/SMTP dispatcher
+├── Automation executor
+├── Import/export jobs
+└── Event processor
+Jeden repozitář, jedna databáze, dva hlavní procesy: API a worker. To se bude mnohem lépe instalovat a vyvíjet než soustava deseti služeb.
+
+Frontend
+React nebo Next.js
+
+TypeScript
+
+Tailwind
+
+shadcn/ui nebo vlastní design systém
+
+React Flow pro automation builder
+
+React Flow je MIT licencovaný a je přímo určený pro node-based editory a workflow rozhraní. Je tedy vhodný pro vizuální scénáře bez nutnosti vyvíjet canvas od nuly. 
+
+E-mailový editor
+Nedoporučuji stavět editor od nuly. To je samostatný produkt na několik let.
+
+Možnosti:
+
+GrapesJS + MJML,
+
+EmailBuilder.js,
+
+Maily,
+
+vlastní editor postavený nad blokovým JSON modelem.
+
+GrapesJS je open-source framework určený mimo jiné pro newsletterové šablony. 
+ EmailBuilder.js poskytuje otevřený blokový editor s výstupem do JSON a HTML. 
+ Maily je rovněž otevřený editor zaměřený přímo na tvorbu e-mailů. 
+
+Za mě:
+
+React + vlastní blokový model + EmailBuilder.js nebo Maily jako výchozí základ.
+
+Šablonu ukládejte jako strukturovaný JSON, nikoliv pouze jako HTML. Z JSON pak generujte HTML a plain-text variantu. Díky tomu půjde editor postupně měnit, aniž byste rozbili existující šablony.
+
+Co musí umět první použitelná verze
+MVP 1: skutečná alternativa k Sendy
+kontakty a vlastní atributy,
+
+seznamy a dynamické segmenty,
+
+CSV import/export,
+
+blacklist a suppression list,
+
+kampaně,
+
+plánované odesílání,
+
+šablony,
+
+jednoduchý vizuální editor,
+
+personalizační proměnné,
+
+unsubscribe,
+
+double opt-in,
+
+open/click tracking,
+
+bounce a complaint processing,
+
+Amazon SES,
+
+obecné SMTP,
+
+základní dashboard,
+
+REST API,
+
+Docker Compose instalace,
+
+zálohování a upgrade mechanismus.
+
+Amazon SES může publikovat události o odeslání, doručení, otevření, kliknutí, bounce, complaint, odmítnutí i chybě renderování. Tyto události by měl váš systém přijímat a převádět do jednotného interního event modelu. 
+ AWS zároveň vyžaduje, aby odesílatel řešil bounces a complaints; není to tedy volitelná analytická funkce, ale součást správné SES integrace. 
+
+MVP 2: alternativa k Ecomailu
+visual automation builder,
+
+časové prodlevy,
+
+větvení podle podmínek,
+
+eventové triggery,
+
+formuláře a popupy,
+
+A/B testování,
+
+reusable content blocks,
+
+produktové feedy,
+
+WooCommerce a Shopify integrace,
+
+abandoned cart,
+
+purchase a product-view events,
+
+transakční e-maily,
+
+detailní reporty,
+
+role a oprávnění,
+
+audit log.
+
+MVP 3: platforma
+multi-workspace,
+
+plugin SDK,
+
+vlastní automation nodes,
+
+vlastní sending providers,
+
+landing pages,
+
+web push,
+
+SMS providery,
+
+recommendations,
+
+customer timeline/CDP pohled,
+
+custom domains,
+
+white-labeling,
+
+Terraform/Helm deployment.
+
+Nejtěžší části projektu
+Největší problém nebude samotné odeslání e-mailu.
+
+1. Automatizační engine
+Workflow nesmí být jen obrázek v React Flow. Potřebujete serverový engine, který umí:
+
+čekat několik minut i několik měsíců,
+
+bezpečně pokračovat po restartu,
+
+zabránit duplicitnímu spuštění,
+
+přepočítávat kontakty,
+
+zpracovat stovky tisíc paralelních workflow,
+
+workflow verzovat,
+
+vysvětlit, proč kontakt danou větví prošel.
+
+Každé publikování automatizace by mělo vytvořit neměnnou verzi. Kontakt, který vstoupí do verze 3, nesmí uprostřed scénáře nečekaně přejít na verzi 4.
+
+2. Segmentační engine
+Segmenty typu:
+
+Objednal za posledních 30 dní
+AND celková útrata > 5 000 Kč
+AND neotevřel poslední 3 kampaně
+AND nemá tag VIP
+jsou výrazně složitější než běžný seznam kontaktů. Budete potřebovat:
+
+query builder,
+
+validaci výrazů,
+
+náhled počtu kontaktů,
+
+indexování,
+
+případně předpočítané segmenty,
+
+stabilní chování při odesílání kampaně.
+
+3. Doručitelnost a bezpečnost
+Aplikace by měla uživateli kontrolovat nebo alespoň vysvětlovat:
+
+SPF,
+
+DKIM,
+
+DMARC,
+
+bounce rate,
+
+complaint rate,
+
+SES sandbox,
+
+sending quotas,
+
+zahřívání domény,
+
+list hygiene,
+
+abuse prevention.
+
+SES účty začínají v sandboxu s limitem 200 příjemců za 24 hodin a jedním e-mailem za sekundu, než uživatel získá production access. 
+
+Licence
+Máte dvě rozumné možnosti.
+
+AGPLv3
+Doporučil bych ji, pokud chcete zabránit tomu, aby někdo vzal celý systém, upravil ho, nabízel jako uzavřený SaaS a změny nepublikoval.
+
+Výhody:
+
+skutečná open-source licence,
+
+ochrana proti uzavřeným SaaS forkům,
+
+stejný model používá Listmonk. 
+
+Nevýhody:
+
+některé firmy ji nechtějí integrovat do vlastního produktu,
+
+vyžaduje pečlivé oddělení pluginů a klientských knihoven.
+
+Praktická kombinace:
+
+Server a webová aplikace: AGPLv3
+SDK a API klienti: Apache-2.0 nebo MIT
+Integrace/plugin šablony: Apache-2.0
+Dokumentace: CC BY 4.0
+Apache-2.0
+Lepší pro maximální adopci a integrace, ale dovolí komukoliv vytvořit proprietární fork.
+
+Pro produkt s vaším cílem bych zvolil AGPLv3.
+
+Pozor na doporučení použít n8n jako hlavní automatizační engine. n8n se označuje jako fair-code a používá Sustainable Use License; nejde o standardní OSI open-source model. Pro projekt deklarovaný jako kompletně open source bych na něm základní funkčnost nestavěl. 
+
+Realistický první release
+První veřejná verze by neměla slibovat kompletní Ecomail. Měla by excelovat v jednom toku:
+
+Instalace
+→ připojení SES
+→ import kontaktů
+→ vytvoření šablony
+→ vytvoření segmentu
+→ odeslání kampaně
+→ kvalitní report
+Když tento proces bude výborný, získáte uživatele už před dokončením automatizací.
+
+Doporučené pořadí:
+
+Fáze	Výsledek
+1	Kontakty, SES, kampaně, tracking
+2	Vizuální editor a šablony
+3	Segmentace a formuláře
+4	Automation builder
+5	E-commerce eventy a integrace
+6	A/B testování, pokročilé reporty
+7	Plugin systém a další kanály
+Produktový diferenciátor
+Nestačí být „open-source Ecomail“. Silnější sdělení by bylo:
+
+The self-hosted customer engagement platform you can actually operate.
+
+Vaše hlavní výhody mohou být:
+
+instalace do pěti minut,
+
+žádný feature gate,
+
+krásné a jednoduché UI,
+
+skvělá dokumentace,
+
+API-first přístup,
+
+plná kontrola nad daty,
+
+SES bez složité konfigurace,
+
+e-commerce automatizace připravené jako šablony,
+
+bezpečné aktualizace,
+
+transparentní event log každé kampaně a automatizace.
+
+Technicky bych tedy začal jako Go + PostgreSQL + React + React Flow, modulární monolit, AGPLv3, SES jako první provider a kvalitní blokový editor. Ne jako fork Listmonku nebo Mauticu, ale s možností později nabídnout importer z obou systémů.
+
+
+
+
+Sources
+
+Yesterday 11:21 PM
+Počkej. Kromě klasického trackování klikání na mail, tak ještě skrze vás nějaký JavaScriptový kód na webu, aby to trackovalo uživatele, na jakých stránkách na tom webu byl, a na základě toho by se pak daly spouštět automatizace s kampaněmi lépe cílené na to, co ten člověk dělal.
+
+Worked for 12s
+Přesně. To, co popisuješ, je web behavior tracking propojený s kontaktem v mailingové databázi. Je to zásadní funkce, protože automatizace pak nereagují jen na otevření e-mailu, ale na skutečný zájem návštěvníka.
+
+Například:
+
+Kontakt klikl na e-mail → navštívil třikrát kategorii „běžecké boty“ → prohlédl konkrétní produkt → nepřidal ho do košíku → za dvě hodiny mu odešla cílená kampaň.
+
+Jak by to fungovalo
+Zákazník si na svůj web vloží váš JavaScript:
+
+<script
+  async
+  src="https://marketing.example.com/sdk.js"
+  data-workspace="public_workspace_key">
+</script>
+SDK automaticky zaznamenává například:
+
+page_view
+session_started
+product_viewed
+category_viewed
+search_performed
+product_added_to_cart
+checkout_started
+purchase_completed
+form_submitted
+A pro vlastní události poskytne jednoduché API:
+
+OpenEngage.track("product_viewed", {
+  product_id: "SKU-123",
+  name: "Běžecké boty",
+  category: "Sport",
+  price: 2490,
+  currency: "CZK"
+});
+Identifikace přihlášeného uživatele:
+
+OpenEngage.identify("customer_8472", {
+  email: "zakaznik@example.cz",
+  first_name: "Jan"
+});
+V produkčním návrhu bych však nedovolil posílat libovolný e-mail bez ochrany. Bezpečnější je identifikovat uživatele serverově podepsaným tokenem, aby někdo nemohl podvrhnout jinou adresu.
+
+Anonymní a známý návštěvník
+Každý nový návštěvník dostane náhodné anonymní ID, například:
+
+anonymous_id = 0198dd32-96b1-7a2d-...
+Dokud neznáte jeho identitu, ukládáte události pouze pod tímto ID:
+
+anonymous visitor
+├── page_view: /boty
+├── category_viewed: beh
+├── product_viewed: SKU-123
+└── product_viewed: SKU-456
+Jakmile se návštěvník:
+
+přihlásí,
+
+zaregistruje,
+
+odešle formulář,
+
+nakoupí,
+
+nebo přijde z personalizovaného odkazu v e-mailu,
+
+propojíte anonymní profil s existujícím kontaktem:
+
+anonymous_id → contact_id
+Předchozí anonymní historie se následně stane součástí jeho zákaznické timeline. Tento princip používají také analytické systémy rozlišující anonymní a identifikované události; správné zavolání identify je klíčové pro propojení předchozího chování s konkrétní osobou. 
+
+Propojení přes e-mail
+Do odkazu v e-mailu nedávejte e-mailovou adresu ani obyčejné contact_id.
+
+Odkaz může projít tracking redirectem:
+
+https://click.customer-domain.cz/r/<signed-click-token>
+Ten:
+
+zaznamená kliknutí,
+
+ověří podepsaný token,
+
+přesměruje uživatele na cílovou stránku,
+
+předá krátkodobý identifikační token,
+
+webové SDK token ověří a spojí prohlížeč s kontaktem.
+
+Například cílová adresa interně může vypadat takto:
+
+https://shop.cz/behani?oe_token=eyJ...
+SDK token převezme, odešle jej na identifikační endpoint a následně ho z adresního řádku odstraní pomocí history.replaceState().
+
+Token by měl být:
+
+krátkodobý,
+
+podepsaný,
+
+jednorázový nebo omezeně použitelný,
+
+bez čitelného e-mailu,
+
+svázaný s workspace a kampaní.
+
+Tracking doména sama nemůže spolehlivě nastavit first-party cookie pro cizí doménu e-shopu. Identifikaci proto musí dokončit JavaScript běžící přímo na cílovém webu.
+
+Customer timeline
+U každého kontaktu pak v administraci uvidíte jednotnou časovou osu:
+
+23:41  Otevřel kampaň „Letní výprodej“
+23:42  Klikl na produktový blok „Běžecké boty“
+23:42  Navštívil /behani
+23:44  Zobrazil produkt SKU-123
+23:47  Přidal SKU-123 do košíku
+23:51  Zahájil objednávku
+00:20  Opustil košík
+02:20  Vstoupil do automatizace „Opuštěný košík“
+To je podle mě jeden z hlavních produktových diferenciátorů. Uživatel musí být schopen jednoduše pochopit nejen co se stalo, ale také proč byla automatizace spuštěna.
+
+Jaké automatizace to umožní
+Zájem o kategorii
+Když kontakt během 7 dní
+navštíví alespoň 3 stránky v kategorii „Běh“
+
+A nemá objednávku z této kategorie
+
+→ přidej tag „Zájem: běh“
+→ počkej 2 hodiny
+→ odešli doporučení běžeckých produktů
+Opuštěný košík
+product_added_to_cart
+→ počkej 60 minut
+→ pokud nenastal purchase_completed
+→ odešli obsah konkrétního košíku
+Sledování ceny
+product_viewed alespoň 3×
+→ produkt zlevnil
+→ kontakt jej dosud nekoupil
+→ odešli upozornění na snížení ceny
+Aktivní nákupní záměr
+Více než 5 product_viewed během 30 minut
+A checkout_started nenastal
+
+→ zařaď kontakt do segmentu „Vysoký nákupní záměr“
+Reaktivace
+Kontakt 90 dní nenakoupil
+ALE během posledních 24 hodin navštívil web
+
+→ spusť reaktivační scénář
+Datový model
+Události bych ukládal jako neměnné záznamy:
+
+{
+  "event_id": "evt_0198...",
+  "workspace_id": "ws_123",
+  "event": "product_viewed",
+  "anonymous_id": "anon_456",
+  "contact_id": "contact_789",
+  "session_id": "session_321",
+  "timestamp": "2026-07-30T21:42:18Z",
+  "page": {
+    "url": "https://shop.cz/produkt/bezecke-boty",
+    "path": "/produkt/bezecke-boty",
+    "referrer": "https://shop.cz/behani"
+  },
+  "properties": {
+    "product_id": "SKU-123",
+    "category": "Beh",
+    "price": 2490,
+    "currency": "CZK"
+  },
+  "context": {
+    "campaign_id": "campaign_18",
+    "automation_id": null
+  }
+}
+Důležité je mít otevřené eventové schéma. Systém musí podporovat předdefinované e-commerce události, ale nesmí být omezen jen na ně.
+
+Technická architektura
+Web SDK
+   │
+   ▼
+Event ingestion API
+   │
+   ├── validace workspace klíče
+   ├── rate limiting
+   ├── normalizace události
+   ├── privacy filtry
+   └── bot detection
+   │
+   ▼
+Event queue
+   │
+   ├── identity resolution
+   ├── customer timeline
+   ├── segment updates
+   ├── automation triggers
+   └── analytics aggregation
+   │
+   ▼
+PostgreSQL + eventové úložiště
+Pro první verzi nemusíte okamžitě nasazovat Kafka a ClickHouse.
+
+Rozumný začátek:
+
+PostgreSQL pro kontakty, konfiguraci a automatizace,
+
+partitioned PostgreSQL tabulky pro eventy,
+
+Redis nebo Valkey pro krátkodobé fronty a deduplikaci,
+
+Go worker pro zpracování,
+
+pozdější možnost přidat ClickHouse pro velmi vysoké objemy analytiky.
+
+Event ingestion endpoint musí odpovědět velmi rychle. Zpracování segmentů a automatizací má probíhat asynchronně.
+
+SDK by mělo být first-party friendly
+Zákazník by měl mít možnost provozovat ingestion přes vlastní subdoménu:
+
+https://events.shop.cz
+místo:
+
+https://events.vase-platforma.com
+To pomáhá:
+
+omezit blokování běžnými adblockery,
+
+udržet data pod zákazníkovou doménou,
+
+zjednodušit self-hosted provoz,
+
+snížit závislost na vašich centrálních službách.
+
+Protože chcete plně self-hosted produkt, JavaScript, ingestion API i veškeré eventy musí být možné provozovat přímo na infrastruktuře zákazníka. Neměla by existovat povinná komunikace s vaším cloudem.
+
+Souhlasy a ochrana soukromí
+Tady je potřeba být velmi opatrný. Historie konkrétního návštěvníka propojená s e-mailem je osobní údaj a behaviorální profilování. Ukládání identifikátoru do zařízení nebo čtení informací ze zařízení typicky spadá také pod pravidla ePrivacy; EDPB výslovně uvádí, že souhlas může být vyžadován pro trackingové techniky včetně cookies a přístupu k informacím v zařízení. 
+
+Platforma proto musí mít souhlasy jako základní datový objekt:
+
+analytics_storage: granted / denied / unknown
+personalization: granted / denied / unknown
+email_marketing: granted / denied / unknown
+SDK se nesmí spustit dříve, než dostane odpovídající souhlas:
+
+OpenEngage.consent({
+  analytics: true,
+  personalization: true,
+  emailMarketing: true
+});
+Souhlas musí být svobodný, konkrétní, informovaný a jednoznačný. 
+ Přímý marketing navíc podléhá jak GDPR, tak pravidlům ePrivacy, včetně možnosti vznést námitku proti zpracování pro přímý marketing. 
+
+Produkt by měl zahrnovat:
+
+integraci s consent management platformami,
+
+log historie souhlasů,
+
+možnost souhlas kdykoliv odvolat,
+
+vypnutí trackingu po odvolání,
+
+vymazání nebo anonymizaci historie,
+
+export dat subjektu,
+
+retention policy,
+
+automatické odstraňování citlivých URL parametrů,
+
+zákaz ukládání hesel, tokenů a obsahu formulářů,
+
+maskování nebo filtrování vlastností událostí.
+
+To není právní posouzení konkrétní implementace; pro české a evropské nasazení bude potřeba zkontrolovat návrh s odborníkem na GDPR/ePrivacy.
+
+Co bych nedával do první verze
+Nedělal bych hned:
+
+session replay,
+
+heatmapy,
+
+kompletní DOM autocapture,
+
+fingerprinting,
+
+cross-device probabilistické spojování,
+
+reklamní atribuci přes více webů.
+
+Začněte explicitními událostmi a page views. Je to průhlednější, levnější, bezpečnější a kvalita dat bývá výrazně vyšší.
+
+Upravená definice produktu
+Už to tedy není pouze:
+
+Open-source alternativa k Ecomailu.
+
+Přesnější definice je:
+
+Plně open-source a self-hosted customer engagement platform propojující e-mail, webové chování, e-commerce data, segmentaci a automatizace.
+
+Jádro produktu by mělo mít čtyři rovnocenné části:
+
+Messaging
++ Customer profiles
++ Behavioral event tracking
++ Automation engine
+Bez webového event trackingu byste vytvořili modernější Sendy. S ním můžete vytvořit skutečnou otevřenou alternativu k Ecomailu, Klaviyo nebo Customer.io.
+
+
+
+
+
+Sources
+
