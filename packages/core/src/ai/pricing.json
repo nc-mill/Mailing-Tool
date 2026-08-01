@@ -1,0 +1,11 @@
+{
+  "updatedAt": "2026-07-31",
+  "currency": "USD",
+  "note": "Ceny za milion tokenů. Uvádíme jen ceny, které umíme doložit. Model, který tu není, se v UI zobrazí jen se spotřebou tokenů, nikdy s vymyšlenou částkou.",
+  "prices": {
+    "anthropic/claude-opus-5": { "inputPerMTokUsd": 5, "outputPerMTokUsd": 25 },
+    "anthropic/claude-sonnet-5": { "inputPerMTokUsd": 3, "outputPerMTokUsd": 15 },
+    "anthropic/claude-fable-5": { "inputPerMTokUsd": 10, "outputPerMTokUsd": 50 },
+    "anthropic/claude-haiku-4-5-20251001": { "inputPerMTokUsd": 1, "outputPerMTokUsd": 5 }
+  }
+}

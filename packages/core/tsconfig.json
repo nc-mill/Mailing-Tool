@@ -1,6 +1,21 @@
 {
   "extends": "@mlain/config/tsconfig/lib.json",
-  "compilerOptions": { "rootDir": "." },
+  "compilerOptions": {
+    "rootDir": ".",
+    // `@mlain/emails` se vystavuje jako ZDROJOVÉ .ts a .tsx bez buildu, takže
+    // jeho soubory vstupují do programu tsc každého konzumenta. Od chvíle, kdy
+    // `src/templates/compile.ts` hodnotově importuje `compileDocument`, se do
+    // programu dostane celý emitter, a ten je v .tsx. Bez těchhle dvou voleb
+    // spadne typecheck na TS6142 („--jsx is not set") u každého souboru
+    // emitteru, přestože v `packages/core` žádné JSX není.
+    "jsx": "react-jsx",
+    "lib": ["ES2024", "DOM"]
+  },
   "files": [],
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  // `../emails/src/external/*.d.ts` je tu ze stejného důvodu jako `jsx` výš.
+  // `@mlain/emails` deklaruje `html-to-text` (od verze 9 bez vlastních typů)
+  // ambientním souborem, který se do programu dostane jen přes `include`.
+  // Bez něj spadne typecheck na TS7016 v `packages/emails/src/text/emit.ts`,
+  // přestože `packages/core` `html-to-text` nikdy nezmíní.
+  "include": ["src/**/*.ts", "test/**/*.ts", "../emails/src/external/*.d.ts"]
 }

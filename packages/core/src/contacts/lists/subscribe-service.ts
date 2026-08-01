@@ -72,6 +72,15 @@ export function areSubscriptionEmailsAvailable(): boolean {
 }
 
 /**
+ * Zaregistrovaný port, nebo null. Čte ho `confirm-service.ts`, které posílá tytéž dva
+ * e-maily z druhé strany potvrzovacího odkazu. Bez tohohle přístupu by měl vlastní
+ * registraci, a to by znamenalo dva porty, ze kterých by P08 zaregistroval jeden.
+ */
+export function subscriptionEmailPort(): SubscriptionEmailPort | null {
+  return emails;
+}
+
+/**
  * Porty nad skutečnou databází. Každý z nich je jediné volání existující funkce
  * repozitáře, žádná logika navíc: rozhodování patří do `subscribe()`.
  */

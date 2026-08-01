@@ -14,6 +14,9 @@ export default defineConfig({
     // Vitest jinak přepíše MODE na "test" a loadConfig() spadne. Zdůvodnění
     // je v packages/config/vitest/node.ts, kde je tentýž řádek.
     env: { MODE: process.env['MODE'] ?? 'web' },
+    // Strop souběžnosti, zdůvodnění je v `packages/core/vitest.config.ts`.
+    // Tady je navíc jsdom, které je samo o sobě drahé na paměť.
+    maxWorkers: 3,
     // src/ MUSÍ být ve vzoru. Testy vedle zdroje jsou tvar, na kterém se shodly
     // P05, P06 i P12; bez tohohle řádku se ani jeden z nich nespustí a série
     // přesto skončí nulou.

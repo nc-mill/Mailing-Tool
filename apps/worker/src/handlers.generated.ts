@@ -3,7 +3,9 @@
 // Při konfliktu v gitu zahoď obě verze a spusť: pnpm --filter @mlain/worker run codegen
 import type { QueueHandler } from '@mlain/core/queues';
 import { handlers as h0 } from '@mlain/core/platform/jobs';
+import { handlers as h1 } from '@mlain/core/segments/jobs';
 
 export const HANDLERS: Record<string, QueueHandler> = {
   ...h0,
+  ...h1,
 };

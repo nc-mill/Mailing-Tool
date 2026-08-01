@@ -1,0 +1,20 @@
+{
+  "DedicatedIpAutoWarmupEnabled": false,
+  "EnforcementStatus": "SHUTDOWN",
+  "ProductionAccessEnabled": true,
+  "SendQuota": {
+    "Max24HourSend": 50000,
+    "MaxSendRate": 14,
+    "SentLast24Hours": 49812
+  },
+  "SendingEnabled": false,
+  "Details": {
+    "MailType": "MARKETING",
+    "WebsiteURL": "https://example.cz",
+    "ContactLanguage": "EN",
+    "ReviewDetails": {
+      "Status": "DENIED",
+      "CaseId": "case-01HZX111111111111111111111"
+    }
+  }
+}

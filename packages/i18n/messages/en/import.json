@@ -1,0 +1,280 @@
+{
+  "wizard": {
+    "title": "Import contacts",
+    "steps": {
+      "upload": "Upload",
+      "fileCheck": "File check",
+      "mapping": "Mapping",
+      "preview": "Preview",
+      "options": "Options",
+      "progress": "Import"
+    },
+    "stepAnnouncement": "Step {current} of {total}",
+    "back": "Back",
+    "next": "Continue",
+    "resumeBanner": "You have an unfinished import of {filename}. Continue, or start over?",
+    "resumeContinue": "Continue",
+    "resumeRestart": "Start over",
+    "resumeExpiry": "We keep an unfinished import for 24 hours. After that the file has to be uploaded again.",
+    "backFromPreview": "Changing the mapping starts the import over. Nothing is lost, we still have the file.",
+    "destructiveBackTitle": "Change the mapping?",
+    "destructiveBackConfirm": "Change the mapping",
+    "destructiveBackRetreat": "Stay in the preview"
+  },
+  "upload": {
+    "field": "Contacts file",
+    "dropzone": "Drop the contacts file here",
+    "browse": "pick one from a folder",
+    "limits": "We accept CSV and Excel (.xlsx). Up to 200 MB.",
+    "guide": "How to get contacts out of Excel, Ecomail or Mailchimp",
+    "progress": "{percent} % uploaded",
+    "progressText": "{percent} percent uploaded",
+    "cancel": "Cancel upload",
+    "unsupportedFormat": "We cannot read {filename}. We accept CSV and Excel (.xlsx).",
+    "tooLarge": "The file {filename} is {actual}, we handle {limit}.",
+    "selectedFile": "Selected file {name}",
+    "wrongType": "We cannot read this format. We accept CSV and Excel (.xlsx).",
+    "tooLargeShort": "The file is larger than {limit}."
+  },
+  "detected": "We detected {encoding} encoding and {delimiter} as the separator.",
+  "fileCheck": {
+    "title": "Check that we are reading the file correctly",
+    "encoding": "Encoding",
+    "delimiter": "Separator",
+    "rowCount": "{total, plural, =0 {No rows} one {# row} few {# rows} many {# rows} other {# rows}}, one of them a header, so {data, plural, =0 {no contacts} one {# contact} few {# contacts} many {# contacts} other {# contacts}}",
+    "question": "Do the names and towns look right?",
+    "questionHint": "Do you see „Nováková\" and „Břeclav\", or something like „NovĂˇkovĂˇ\"?",
+    "yes": "Yes, this is right",
+    "no": "No, it is garbled",
+    "alternatives": "Try one of these encodings",
+    "continue": "Continue",
+    "delimiterOptions": {
+      "comma": "Comma",
+      "semicolon": "Semicolon",
+      "tab": "Tab",
+      "pipe": "Pipe"
+    }
+  },
+  "mapping": {
+    "title": "What is in each column?",
+    "columnInFile": "Column in the file",
+    "sample": "Sample",
+    "saveAs": "Save as",
+    "ignore": "Do not use",
+    "createField": "Create the field „{name}\"",
+    "willSplit": "We will split this into first and last name",
+    "noEmail": "You have not picked the column with the email address. Without it a contact has nowhere to arrive.",
+    "duplicateTarget": "Two columns point at {field}: {columns}. Pick one.",
+    "unknownDateFormat": "In column {column} we did not recognise the format in {count, plural, =0 {no rows} one {# row} few {# rows} many {# rows} other {# rows}}, for example {example}.",
+    "next": "Show preview",
+    "targets": {
+      "email": "Email",
+      "first_name": "First name",
+      "last_name": "Last name",
+      "full_name": "Full name",
+      "title_prefix": "Title before the name",
+      "title_suffix": "Title after the name",
+      "gender": "Gender",
+      "locale": "Language",
+      "phone": "Phone",
+      "list": "List",
+      "tag": "Tag"
+    }
+  },
+  "preview": {
+    "title": "This is how it will look",
+    "columns": {
+      "email": "Email",
+      "titlePrefix": "Title",
+      "firstName": "First name",
+      "gender": "Gender",
+      "lastName": "Last name",
+      "greeting": "Greeting"
+    },
+    "showing": "First {shown} of {total} rows.",
+    "showMore": "Show 20 more",
+    "vocativeNotice": "We are not sure how to address {count, plural, =0 {any contact} one {# contact} few {# contacts} many {# contacts} other {# contacts}}. After the import we will show them to you and let you decide. Until then we greet them neutrally with „Hello\" and no name, never wrongly.",
+    "noEmailRows": "{count, plural, =0 {No row has} one {# row has} few {# rows have} many {# rows have} other {# rows have}} no email, so we will skip them.",
+    "duplicateRows": "{count, plural, =0 {No email is} one {# email is} few {# emails are} many {# emails are} other {# emails are}} repeated in the file. We keep the last occurrence.",
+    "splitHelp": "Is the name split wrong?",
+    "nameOrder": "Order in the source",
+    "nameOrderFirstLast": "First name Last name",
+    "nameOrderLastFirst": "Last name First name",
+    "splitTitlesPrefix": "Separate titles before the name (Ing., Mgr., MUDr.)",
+    "splitTitlesSuffix": "Separate titles after the name (Ph.D., CSc., DiS.)",
+    "keepDoubleSurnames": "Keep the whole double surname",
+    "approximate": "Approximately",
+    "next": "Continue"
+  },
+  "estimate": "{new} new, {updated} updated, {skipped} skipped, {errors} with errors.",
+  "options": {
+    "title": "Two last questions",
+    "list": "Add to a list",
+    "createList": "Create a new list",
+    "noList": "To no list",
+    "subscriptionStatus": "Subscription state",
+    "subscriptionConfirmed": "Confirmed",
+    "subscriptionPending": "Waiting for confirmation",
+    "tag": "Add a tag (optional)",
+    "tagHint": "Tip: a tag comes in handy when you want to find this group later.",
+    "conflict": "What if we already have the contact?",
+    "conflictSkip": "Skip",
+    "conflictSkipHint": "We keep what we have, nothing from the file.",
+    "conflictUpdate": "Fill in",
+    "conflictUpdateHint": "We add what is missing. What we already have stays.",
+    "conflictOverwrite": "Overwrite",
+    "conflictOverwriteHint": "The file wins.",
+    "conflictError": "Report as an error",
+    "conflictErrorHint": "A second occurrence of the same address ends up among the failed rows.",
+    "declaration": "I confirm that these people agreed to receive commercial messages, or that I have another legal ground for it.",
+    "declarationLink": "What this means",
+    "declarationEvidence": "It is stored as evidence, including the date and my name.",
+    "duplicateErrorUnavailable": "For a file this size we cannot reliably spot a second occurrence of the same address, so we do not offer this option.",
+    "submit": "Import {count, plural, =0 {no contacts} one {# contact} few {# contacts} many {# contacts} other {# contacts}}"
+  },
+  "progress": {
+    "title": "Importing contacts",
+    "counter": "{processed} of {total}",
+    "eta": "About {seconds, plural, one {# second} few {# seconds} other {# seconds}} left",
+    "runsOnServer": "The import runs on the server. You can close the window, the result will be here when you come back. We will email you.",
+    "liveUpdatesFailed": "Live updates are not getting through, we refresh the number every five seconds.",
+    "cancel": "Cancel import",
+    "cancelConfirmTitle": "Cancel the import?",
+    "cancelConfirmBody": "The {done} contacts already processed stay in the database. The remaining {rest} will not be imported. You will be able to continue where we stopped.",
+    "cancelConfirm": "Cancel import",
+    "cancelDismiss": "Keep it running"
+  },
+  "result": {
+    "completed": "Imported {count, plural, =0 {no contacts} one {# contact} few {# contacts} many {# contacts} other {# contacts}}",
+    "withErrors": "Imported {done} of {total}",
+    "cancelled": "You cancelled the import at row {row}",
+    "failed": "The import could not be finished",
+    "failedNothingWritten": "No contact was written to the database.",
+    "breakdown": {
+      "created": "New contacts",
+      "updated": "Filled in on existing ones",
+      "suppressed": "Skipped because they are blocked addresses",
+      "failed": "Failed"
+    },
+    "guessedSection": "What we had to guess",
+    "guessedIntro": "In {count} rows we were not sure and decided for you.",
+    "guessedShow": "Show",
+    "failedSection": "What did not work",
+    "failedTable": {
+      "row": "Row",
+      "content": "Content",
+      "why": "Why"
+    },
+    "downloadErrors": "Download {count, plural, one {# failed row} few {# failed rows} other {# failed rows}} as CSV",
+    "showImported": "Show the imported contacts",
+    "reviewVocative": "Review",
+    "resume": "Continue from row {row}",
+    "uploadAnother": "Upload another file",
+    "supportDetails": "Details for technical support"
+  },
+  "doneWithErrors": "Imported {count} contacts. {errors} rows failed. Download, fix and upload them again.",
+  "warnings": {
+    "excel_serial_date_assumed": "{n} dates looked like an Excel number, we read them as dates (for example 45 231 as 30 November 2023).",
+    "number_format_ambiguous": "{n} numbers could be read two ways: 1,234 can be 1.234 as well as 1234. We read them as {interpretation}.",
+    "value_truncated": "{n} values were longer than the field allows, we shortened them.",
+    "name_split_low_confidence": "{n} names could not be split reliably into a first and a last name.",
+    "vietnamese_order_assumed": "For {n} names we used the Vietnamese order (surname first).",
+    "gender_unknown": "{n} contacts have no gender, we will greet them neutrally.",
+    "gender_conflict": "In {n} contacts the first and the last name disagree on gender.",
+    "vocative_low_confidence": "We are not sure how to address {n} contacts.",
+    "non_latin_script": "{n} names are not in the Latin script, we did not compute a greeting.",
+    "suppressed_skipped": "We did not add {n} addresses, because they unsubscribed in the past or their emails kept failing.",
+    "trailing_fields_padded": "{n} rows had fewer columns than the header, we left the missing ones empty."
+  },
+  "rowErrors": {
+    "row_field_count_mismatch": "A different number of columns than in the header",
+    "email_missing": "Empty email",
+    "email_invalid": "Invalid email address",
+    "email_too_long": "The email is longer than 254 characters",
+    "email_domain_invalid": "The domain after the at sign is not valid",
+    "email_disposable": "Disposable email address",
+    "duplicate_in_file": "The same address is in the file more than once",
+    "invalid_number": "Not a number",
+    "invalid_boolean": "Neither yes nor no",
+    "invalid_date": "Not a date",
+    "invalid_datetime": "Not a date and time",
+    "invalid_enum_value": "The value is not among the allowed ones",
+    "invalid_url": "Not a web address",
+    "invalid_phone": "Not a phone number",
+    "value_too_long": "The value is longer than the field allows",
+    "required_field_missing": "A required field is empty",
+    "unknown_field_key": "The mapping points at a field that does not exist",
+    "encoding_error": "The characters make no sense in this encoding",
+    "name_empty": "The name is empty",
+    "list_not_found": "The list from the mapping does not exist"
+  },
+  "fileErrors": {
+    "file_too_large": {
+      "title": "The file is too large",
+      "nextStep": "The file is {actual}, we handle {limit}. Split it into parts, or remove columns you do not need."
+    },
+    "too_many_rows": {
+      "title": "The file has too many rows",
+      "nextStep": "The file has more than 5 million rows. Split it into parts."
+    },
+    "too_many_columns": {
+      "title": "The file has too many columns",
+      "nextStep": "The file has more than 200 columns. Remove the ones you do not need."
+    },
+    "empty_file": {
+      "title": "The file is empty",
+      "nextStep": "The file is empty, we found no rows in it."
+    },
+    "unsupported_encoding": {
+      "title": "We cannot read the encoding of the file",
+      "nextStep": "Save it in Excel through File, Save as, CSV UTF-8 and try again."
+    },
+    "delimiter_not_detected": {
+      "title": "We could not recognise the separator",
+      "nextStep": "Pick the separator by hand in the File check step."
+    },
+    "malformed_csv": {
+      "title": "The file is damaged",
+      "nextStep": "A closing quote is missing. Open the file in Excel and save it again."
+    },
+    "no_email_column_mapped": {
+      "title": "The email column is missing",
+      "nextStep": "Go back to the Mapping step and pick the column with the email address."
+    },
+    "storage_unavailable": {
+      "title": "We could not store the file",
+      "nextStep": "Try again in a moment. If it keeps happening, check the free disk space on the server."
+    },
+    "contact_limit_reached": {
+      "title": "You reached the contact limit",
+      "nextStep": "Delete unused contacts, or raise the limit in the project settings."
+    }
+  },
+  "duplicateImport": {
+    "title": "You have uploaded this file already",
+    "body": "You uploaded this file with these settings on {date}. Do you want to open the original import, or run it again?",
+    "openOriginal": "Open the original import",
+    "runAgain": "Run again"
+  },
+  "vocative": {
+    "title": "Check the greetings",
+    "reviewBanner": "We are not sure how to address {count, plural, =0 {any contact} one {# contact} few {# contacts} many {# contacts} other {# contacts}}.",
+    "intro": "We split them into {groups, plural, =0 {no groups} one {# group} few {# groups} many {# groups} other {# groups}} by name. Until you decide, we greet them with „Hello\" and no name.",
+    "groupHint": "The name {name} can be either male or female. How should we address them?",
+    "savedOverride": "We will remember this for future contacts named {name}.",
+    "gender": "Gender",
+    "genderMale": "male",
+    "genderFemale": "female",
+    "genderUnknown": "not sure",
+    "vocativeField": "Greeting",
+    "remember": "Remember this for future contacts named {name}",
+    "confirm": "Confirm for {count, plural, one {# contact} few {# contacts} other {# contacts}}",
+    "noName": "Do not use the name",
+    "defer": "Postpone",
+    "remaining": "{count, plural, one {# group} few {# groups} other {# groups}} left",
+    "confirmAll": "Confirm all suggestions ({count, plural, one {# group} few {# groups} other {# groups}})",
+    "noNameAll": "Do not use the name anywhere",
+    "lockNote": "Once you confirm or correct something, we never change it on our own again.",
+    "empty": "The queue is empty. Every greeting is either confirmed or certain."
+  }
+}

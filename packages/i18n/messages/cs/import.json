@@ -1,0 +1,280 @@
+{
+  "wizard": {
+    "title": "Import kontaktů",
+    "steps": {
+      "upload": "Nahrání",
+      "fileCheck": "Kontrola souboru",
+      "mapping": "Mapování",
+      "preview": "Náhled",
+      "options": "Volby",
+      "progress": "Import"
+    },
+    "stepAnnouncement": "Krok {current} z {total}",
+    "back": "Zpět",
+    "next": "Pokračovat",
+    "resumeBanner": "Máte rozdělaný import souboru {filename}. Pokračovat, nebo začít znovu?",
+    "resumeContinue": "Pokračovat",
+    "resumeRestart": "Začít znovu",
+    "resumeExpiry": "Rozpracovaný import si pamatujeme 24 hodin. Potom bude potřeba soubor nahrát znovu.",
+    "backFromPreview": "Změnou mapování začneme import znovu. Nic se neztratí, soubor máme nahraný.",
+    "destructiveBackTitle": "Změnit mapování?",
+    "destructiveBackConfirm": "Změnit mapování",
+    "destructiveBackRetreat": "Zůstat v náhledu"
+  },
+  "upload": {
+    "field": "Soubor s kontakty",
+    "dropzone": "Přetáhněte sem soubor s kontakty",
+    "browse": "vyberte ze složky",
+    "limits": "Přijímáme CSV a Excel (.xlsx). Nejvýš 200 MB.",
+    "guide": "Jak dostat kontakty z Excelu, Ecomailu nebo Mailchimpu",
+    "progress": "Nahráno {percent} %",
+    "progressText": "Nahráno {percent} procent",
+    "cancel": "Zrušit nahrávání",
+    "unsupportedFormat": "Soubor {filename} neumíme přečíst. Přijímáme CSV a Excel (.xlsx).",
+    "tooLarge": "Soubor {filename} má {actual}, zvládneme {limit}.",
+    "selectedFile": "Vybraný soubor {name}",
+    "wrongType": "Tenhle formát neumíme přečíst. Přijímáme CSV a Excel (.xlsx).",
+    "tooLargeShort": "Soubor je větší než {limit}."
+  },
+  "detected": "Rozpoznali jsme kódování {encoding} a oddělovač {delimiter}.",
+  "fileCheck": {
+    "title": "Zkontrolujte, jestli soubor čteme správně",
+    "encoding": "Kódování",
+    "delimiter": "Oddělovač",
+    "rowCount": "{total, plural, =0 {Žádný řádek} one {# řádek} few {# řádky} many {# řádku} other {# řádků}}, z toho 1 hlavička, tedy {data, plural, =0 {žádný kontakt} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}",
+    "question": "Vypadají jména a města správně?",
+    "questionHint": "Máte tam „Nováková\" a „Břeclav\", nebo něco jako „NovĂˇkovĂˇ\"?",
+    "yes": "Ano, je to správně",
+    "no": "Ne, je to rozsypané",
+    "alternatives": "Zkuste jedno z těchhle kódování",
+    "continue": "Pokračovat",
+    "delimiterOptions": {
+      "comma": "Čárka",
+      "semicolon": "Středník",
+      "tab": "Tabulátor",
+      "pipe": "Svislítko"
+    }
+  },
+  "mapping": {
+    "title": "Co je v jednotlivých sloupcích?",
+    "columnInFile": "Sloupec ze souboru",
+    "sample": "Ukázka",
+    "saveAs": "Uložit jako",
+    "ignore": "Nepoužívat",
+    "createField": "Vytvořit pole „{name}\"",
+    "willSplit": "Rozdělíme na jméno a příjmení",
+    "noEmail": "Nevybrali jste, ve kterém sloupci je e-mailová adresa. Bez ní kontakt nemá kam přijít.",
+    "duplicateTarget": "Do pole {field} míří dva sloupce: {columns}. Vyberte jeden.",
+    "unknownDateFormat": "V sloupci {column} jsme nerozpoznali formát u {count, plural, =0 {žádného řádku} one {# řádku} few {# řádků} many {# řádku} other {# řádků}}, například {example}.",
+    "next": "Zobrazit náhled",
+    "targets": {
+      "email": "E-mail",
+      "first_name": "Jméno",
+      "last_name": "Příjmení",
+      "full_name": "Celé jméno",
+      "title_prefix": "Titul před jménem",
+      "title_suffix": "Titul za jménem",
+      "gender": "Pohlaví",
+      "locale": "Jazyk komunikace",
+      "phone": "Telefon",
+      "list": "Seznam",
+      "tag": "Štítek"
+    }
+  },
+  "preview": {
+    "title": "Takhle to bude vypadat",
+    "columns": {
+      "email": "E-mail",
+      "titlePrefix": "Titul",
+      "firstName": "Jméno",
+      "gender": "Rod",
+      "lastName": "Příjmení",
+      "greeting": "Oslovení"
+    },
+    "showing": "Prvních {shown} z {total} řádků.",
+    "showMore": "Zobrazit dalších 20",
+    "vocativeNotice": "U {count, plural, =0 {žádného kontaktu} one {# kontaktu} few {# kontaktů} many {# kontaktu} other {# kontaktů}} si nejsme jistí oslovením. Po importu vám je ukážeme a necháme rozhodnout. Do té doby je oslovíme neutrálně „Dobrý den\" bez jména, nikdy ne špatně.",
+    "noEmailRows": "{count, plural, =0 {Žádný řádek nemá} one {# řádek nemá} few {# řádky nemají} many {# řádku nemá} other {# řádků nemá}} e-mail a přeskočíme je.",
+    "duplicateRows": "{count, plural, =0 {Žádný e-mail se} one {# e-mail se} few {# e-maily se} many {# e-mailu se} other {# e-mailů se}} v souboru opakuje. Necháme poslední výskyt.",
+    "splitHelp": "Jméno se dělí špatně?",
+    "nameOrder": "Pořadí ve zdroji",
+    "nameOrderFirstLast": "Jméno Příjmení",
+    "nameOrderLastFirst": "Příjmení Jméno",
+    "splitTitlesPrefix": "Oddělit tituly před jménem (Ing., Mgr., MUDr.)",
+    "splitTitlesSuffix": "Oddělit tituly za jménem (Ph.D., CSc., DiS.)",
+    "keepDoubleSurnames": "Zachovat celé dvojité příjmení",
+    "approximate": "Přibližně",
+    "next": "Pokračovat"
+  },
+  "estimate": "{new} nových, {updated} aktualizovaných, {skipped} přeskočených, {errors} chybných.",
+  "options": {
+    "title": "Poslední dvě otázky",
+    "list": "Zařadit do seznamu",
+    "createList": "Vytvořit nový seznam",
+    "noList": "Do žádného seznamu",
+    "subscriptionStatus": "Stav přihlášení",
+    "subscriptionConfirmed": "Potvrzené",
+    "subscriptionPending": "Čeká na potvrzení",
+    "tag": "Přidat štítek (nepovinné)",
+    "tagHint": "Tip: štítek se hodí, kdybyste chtěli tuhle skupinu později najít.",
+    "conflict": "Co když už kontakt v databázi máme?",
+    "conflictSkip": "Přeskočit",
+    "conflictSkipHint": "Necháme, co máme, ze souboru nic.",
+    "conflictUpdate": "Doplnit",
+    "conflictUpdateHint": "Přidáme, co chybí. Co už máme vyplněné, nepřepíšeme.",
+    "conflictOverwrite": "Přepsat",
+    "conflictOverwriteHint": "Data ze souboru vyhrají.",
+    "conflictError": "Nahlásit jako chybu",
+    "conflictErrorHint": "Druhý výskyt téže adresy skončí mezi chybnými řádky.",
+    "declaration": "Potvrzuji, že tito lidé souhlasili se zasíláním obchodních sdělení, nebo že k tomu mám jiný právní důvod.",
+    "declarationLink": "Co to znamená",
+    "declarationEvidence": "Uloží se jako důkaz včetně data a mého jména.",
+    "duplicateErrorUnavailable": "U souboru téhle velikosti neumíme spolehlivě poznat druhý výskyt téže adresy, takže tuhle volbu nenabízíme.",
+    "submit": "Naimportovat {count, plural, =0 {žádný kontakt} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}"
+  },
+  "progress": {
+    "title": "Importujeme kontakty",
+    "counter": "{processed} z {total}",
+    "eta": "Zbývá asi {seconds, plural, one {# sekunda} few {# sekundy} other {# sekund}}",
+    "runsOnServer": "Import běží na serveru. Okno můžete zavřít, po návratu uvidíte výsledek. Dáme vám vědět e-mailem.",
+    "liveUpdatesFailed": "Živé aktualizace se nedaří, počet obnovujeme každých pět sekund.",
+    "cancel": "Zrušit import",
+    "cancelConfirmTitle": "Zrušit import?",
+    "cancelConfirmBody": "Zpracovaných {done} kontaktů v databázi zůstane. Zbylých {rest} se nenaimportuje. Půjde pokračovat od místa, kde jsme skončili.",
+    "cancelConfirm": "Zrušit import",
+    "cancelDismiss": "Nechat běžet"
+  },
+  "result": {
+    "completed": "Naimportováno {count, plural, =0 {žádný kontakt} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}",
+    "withErrors": "Naimportováno {done} z {total}",
+    "cancelled": "Import jste zrušili na řádku {row}",
+    "failed": "Import se nepodařilo dokončit",
+    "failedNothingWritten": "Do databáze se nezapsal žádný kontakt.",
+    "breakdown": {
+      "created": "Nových kontaktů",
+      "updated": "Doplněných u existujících",
+      "suppressed": "Přeskočeno, protože jsou na blokovaných adresách",
+      "failed": "Nepodařilo se"
+    },
+    "guessedSection": "Co jsme museli odhadnout",
+    "guessedIntro": "U {count} řádků jsme si nebyli jistí a rozhodli jsme za vás.",
+    "guessedShow": "Zobrazit",
+    "failedSection": "Co se nepodařilo",
+    "failedTable": {
+      "row": "Řádek",
+      "content": "Obsah",
+      "why": "Proč"
+    },
+    "downloadErrors": "Stáhnout {count, plural, one {# chybný řádek} few {# chybné řádky} other {# chybných řádků}} jako CSV",
+    "showImported": "Zobrazit naimportované kontakty",
+    "reviewVocative": "Zkontrolovat",
+    "resume": "Pokračovat od řádku {row}",
+    "uploadAnother": "Nahrát jiný soubor",
+    "supportDetails": "Podrobnosti pro technickou podporu"
+  },
+  "doneWithErrors": "Naimportováno {count} kontaktů. {errors} řádků se nepovedlo, stáhněte si je, opravte a nahrajte znovu.",
+  "warnings": {
+    "excel_serial_date_assumed": "{n} dat vypadalo jako číslo z Excelu, brali jsme je jako datum (například 45 231 na 30. 11. 2023).",
+    "number_format_ambiguous": "{n} čísel šlo přečíst dvěma způsoby: 1,234 může být 1,234 i 1234. Brali jsme je jako {interpretation}.",
+    "value_truncated": "{n} hodnot bylo delších, než pole dovoluje, zkrátili jsme je.",
+    "name_split_low_confidence": "{n} jmen se nepodařilo spolehlivě rozdělit na jméno a příjmení.",
+    "vietnamese_order_assumed": "U {n} jmen jsme použili vietnamské pořadí (příjmení první).",
+    "gender_unknown": "{n} kontaktů nemá určený rod, oslovíme je neutrálně.",
+    "gender_conflict": "U {n} kontaktů si jméno a příjmení odporují v rodu.",
+    "vocative_low_confidence": "U {n} kontaktů si nejsme jistí oslovením.",
+    "non_latin_script": "{n} jmen není v latince, oslovení jsme nepočítali.",
+    "suppressed_skipped": "{n} adres jsme nepřidali, protože se v minulosti odhlásily nebo se jim e-maily nedoručovaly.",
+    "trailing_fields_padded": "{n} řádků mělo míň sloupců než hlavička, chybějící jsme nechali prázdné."
+  },
+  "rowErrors": {
+    "row_field_count_mismatch": "Jiný počet sloupců než v hlavičce",
+    "email_missing": "Prázdný e-mail",
+    "email_invalid": "Neplatná e-mailová adresa",
+    "email_too_long": "E-mail je delší než 254 znaků",
+    "email_domain_invalid": "Doména za zavináčem není platná",
+    "email_disposable": "Jednorázová e-mailová adresa",
+    "duplicate_in_file": "Stejná adresa je v souboru víckrát",
+    "invalid_number": "Není to číslo",
+    "invalid_boolean": "Není to ano ani ne",
+    "invalid_date": "Není to datum",
+    "invalid_datetime": "Není to datum a čas",
+    "invalid_enum_value": "Hodnota není mezi povolenými",
+    "invalid_url": "Není to webová adresa",
+    "invalid_phone": "Není to telefonní číslo",
+    "value_too_long": "Hodnota je delší, než pole dovoluje",
+    "required_field_missing": "Povinné pole je prázdné",
+    "unknown_field_key": "Mapování ukazuje na pole, které neexistuje",
+    "encoding_error": "Znaky nedávají v tomhle kódování smysl",
+    "name_empty": "Jméno je prázdné",
+    "list_not_found": "Seznam z mapování neexistuje"
+  },
+  "fileErrors": {
+    "file_too_large": {
+      "title": "Soubor je moc velký",
+      "nextStep": "Soubor má {actual}, zvládneme {limit}. Rozdělte ho na díly, nebo z něj odeberte sloupce, které nepotřebujete."
+    },
+    "too_many_rows": {
+      "title": "Soubor má moc řádků",
+      "nextStep": "Soubor má víc než 5 milionů řádků. Rozdělte ho na díly."
+    },
+    "too_many_columns": {
+      "title": "Soubor má moc sloupců",
+      "nextStep": "Soubor má víc než 200 sloupců. Odeberte ty, které nepotřebujete."
+    },
+    "empty_file": {
+      "title": "Soubor je prázdný",
+      "nextStep": "Soubor je prázdný, nenašli jsme v něm žádné řádky."
+    },
+    "unsupported_encoding": {
+      "title": "Kódování souboru neumíme přečíst",
+      "nextStep": "Uložte ho v Excelu přes Soubor, Uložit jako, CSV UTF-8 a zkuste to znovu."
+    },
+    "delimiter_not_detected": {
+      "title": "Nepodařilo se rozpoznat oddělovač",
+      "nextStep": "Vyberte oddělovač ručně v kroku Kontrola souboru."
+    },
+    "malformed_csv": {
+      "title": "Soubor je poškozený",
+      "nextStep": "Chybí uzavírací uvozovka. Otevřete soubor v Excelu a uložte ho znovu."
+    },
+    "no_email_column_mapped": {
+      "title": "Chybí sloupec s e-mailem",
+      "nextStep": "Vraťte se do kroku Mapování a vyberte, ve kterém sloupci je e-mailová adresa."
+    },
+    "storage_unavailable": {
+      "title": "Nepodařilo se uložit soubor",
+      "nextStep": "Zkuste to za chvíli znovu. Když to bude trvat, zkontrolujte místo na disku serveru."
+    },
+    "contact_limit_reached": {
+      "title": "Dosáhli jste limitu počtu kontaktů",
+      "nextStep": "Smažte nepoužívané kontakty, nebo zvyšte limit v nastavení projektu."
+    }
+  },
+  "duplicateImport": {
+    "title": "Tenhle soubor už jste nahráli",
+    "body": "Tenhle soubor jste s tímhle nastavením nahráli {date}. Chcete otevřít původní import, nebo ho spustit znovu?",
+    "openOriginal": "Otevřít původní import",
+    "runAgain": "Spustit znovu"
+  },
+  "vocative": {
+    "title": "Zkontrolujte oslovení",
+    "reviewBanner": "U {count, plural, =0 {žádného kontaktu} one {# kontaktu} few {# kontaktů} many {# kontaktu} other {# kontaktů}} si nejsme jistí oslovením.",
+    "intro": "Rozdělili jsme je do {groups, plural, =0 {žádné skupiny} one {# skupiny} few {# skupin} many {# skupiny} other {# skupin}} podle jména. Do doby, než rozhodnete, jim píšeme „Dobrý den\" bez jména.",
+    "groupHint": "Jméno {name} může patřit muži i ženě. Jak ho máme oslovovat?",
+    "savedOverride": "Zapamatujeme si to i pro budoucí kontakty se jménem {name}.",
+    "gender": "Pohlaví",
+    "genderMale": "muž",
+    "genderFemale": "žena",
+    "genderUnknown": "nevím",
+    "vocativeField": "Oslovení",
+    "remember": "Zapamatovat i pro budoucí kontakty se jménem {name}",
+    "confirm": "Potvrdit pro {count, plural, one {# kontakt} few {# kontakty} other {# kontaktů}}",
+    "noName": "Neoslovovat jménem",
+    "defer": "Odložit",
+    "remaining": "Zbývá {count, plural, one {# skupina} few {# skupiny} other {# skupin}}",
+    "confirmAll": "Potvrdit všechny návrhy ({count, plural, one {# skupina} few {# skupiny} other {# skupin}})",
+    "noNameAll": "Neoslovovat jménem u všech",
+    "lockNote": "Co jednou potvrdíte nebo opravíte, už nikdy sami nezměníme.",
+    "empty": "Ve frontě nic není. Všechna oslovení jsou potvrzená nebo jistá."
+  }
+}

@@ -537,10 +537,66 @@
       "listScope": "You are unsubscribing from {list}. You will still receive our other emails.",
       "global": "Unsubscribe from everything",
       "done": "Done, we will not email you again.",
-      "inFlightNotice": "The unsubscribe applies from now. If one more email arrives, it was sent moments ago and it will be the last one."
+      "inFlightNotice": "The unsubscribe applies from now. If one more email arrives, it was sent moments ago and it will be the last one.",
+      "confirmTitle": "Unsubscribe from emails by {sender}",
+      "globalScope": "You are unsubscribing from everything. We will not email you again.",
+      "submit": "Unsubscribe",
+      "doneList": "Done, you are unsubscribed from {list}.",
+      "preferencesLink": "I just want to change my settings"
     },
     "preferences": {
-      "masked": "Preferences for {maskedEmail}"
+      "masked": "Preferences for {maskedEmail}",
+      "lists": "Subscriptions",
+      "since": "since {date}",
+      "save": "Save",
+      "snoozeTitle": "Send less often",
+      "snoozeBody": "You do not have to unsubscribe. We can take a break and start again later.",
+      "snoozeDays": "Pause for {days} days",
+      "language": "Language",
+      "locale": {
+        "cs": "Czech",
+        "en": "English"
+      },
+      "firstName": "First name",
+      "lastName": "Last name",
+      "unsubscribeAll": "Unsubscribe from everything",
+      "exportData": "Download a copy of my data",
+      "eraseData": "Delete my data",
+      "export_dataDoneTitle": "We received your request",
+      "export_dataDoneBody": "We will prepare a copy of your data and send it to your address.",
+      "erase_dataDoneTitle": "We received your erasure request",
+      "erase_dataDoneBody": "We will delete your data and send confirmation to your address."
+    },
+    "invalidLink": {
+      "title": "This link is not valid",
+      "body": "The link from the email expired or was damaged. Try opening the original message again."
+    },
+    "confirm": {
+      "title": "Confirm your subscription to {list}",
+      "body": "One more click and you will start receiving {list} from {sender}.",
+      "button": "Confirm subscription",
+      "twoStepExplainer": "Nothing is confirmed until you press the button. We do it this way so that an automated link checker cannot subscribe anyone.",
+      "expiredTitle": "This link has expired",
+      "expiredBody": "The confirmation link is valid for a limited time. We will send you a new one.",
+      "resendButton": "Send a new link",
+      "doneTitle": "Done, your subscription is confirmed",
+      "doneBody": "From now on we will send you {list}.",
+      "already_usedTitle": "You are on the list already",
+      "already_usedBody": "This link has already been used. There is nothing else to do.",
+      "expired_resentTitle": "We sent you a new link",
+      "expired_resentBody": "Check your inbox, the confirmation email is on its way."
+    },
+    "reactivation": {
+      "promptTitle": "Do you still want our emails?",
+      "promptBody": "You have not opened anything for a while. One click confirms that you still want to hear from us.",
+      "button": "Yes, keep sending",
+      "title": "Thanks, we will keep going",
+      "body": "We noted that you still want our emails."
+    },
+    "form": {
+      "submit": "Subscribe",
+      "thanksTitle": "We sent you an email with a link",
+      "thanksBody": "Click the link in the email we just sent to finish subscribing."
     }
   },
   "import": {

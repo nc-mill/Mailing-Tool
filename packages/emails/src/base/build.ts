@@ -10,6 +10,7 @@ import type {
 import { SUPPORTED_LANGUAGES } from '../normalize/index';
 import { brandToTheme, type BrandInput } from './brand';
 import { plainToRichText } from './rich';
+import type { BaseSectionSpec } from './sections';
 import cs from './i18n/cs.json' with { type: 'json' };
 import en from './i18n/en.json' with { type: 'json' };
 
@@ -17,33 +18,13 @@ const CATALOGS: Record<string, Record<string, string>> = { cs, en };
 
 export type BaseTemplateVariant = 'newsletter' | 'announcement' | 'transactional' | 'reengagement';
 
-export type BaseSectionSpec =
-  | {
-      kind: 'hero';
-      headline: string;
-      subhead?: string;
-      imageAssetId?: string;
-      cta?: { label: string; href: string };
-    }
-  | {
-      kind: 'article';
-      heading: string;
-      body: string;
-      imageAssetId?: string;
-      link?: { label: string; href: string };
-    }
-  | {
-      kind: 'feature';
-      imageAssetId?: string;
-      headline: string;
-      body: string;
-      cta: { label: string; href: string };
-    }
-  | { kind: 'bullets'; heading?: string; items: string[] }
-  | { kind: 'keyValue'; rows: Array<{ label: string; value: string }> }
-  | { kind: 'quote'; text: string; author?: string }
-  | { kind: 'cta'; label: string; href: string; note?: string }
-  | { kind: 'spacer' };
+/**
+ * Tvar sekcí je jediný, a bydlí v `./sections`. Dřív byl zapsaný tady jako
+ * ručně psaná unie a v runtime neexistoval, což zastavilo P15 na strukturovaném
+ * výstupu (nález N62). Teď se odvozuje ze Zod schématu přes `z.infer`, takže
+ * schéma a typ se nemůžou rozejít.
+ */
+export type { BaseSectionSpec };
 
 export type BaseTemplateParams = {
   variant: BaseTemplateVariant;

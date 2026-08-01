@@ -17,7 +17,6 @@ describe('WorkspaceSwitcher', () => {
       <WorkspaceSwitcher
         workspaces={workspaces}
         currentId={current.id}
-        theme="light"
         onSwitch={vi.fn()}
         labels={{ switcher: 'Přepnout projekt', current: (name) => `Projekt: ${name}` }}
       />,
@@ -30,7 +29,6 @@ describe('WorkspaceSwitcher', () => {
       <WorkspaceSwitcher
         workspaces={workspaces}
         currentId={current.id}
-        theme="light"
         onSwitch={vi.fn()}
         labels={{ switcher: 'Přepnout projekt', current: (name) => `Projekt: ${name}` }}
       />,
@@ -47,7 +45,6 @@ describe('WorkspaceSwitcher', () => {
       <WorkspaceSwitcher
         workspaces={workspaces}
         currentId={current.id}
-        theme="light"
         onSwitch={onSwitch}
         labels={{ switcher: 'Přepnout projekt', current: (name) => `Projekt: ${name}` }}
       />,

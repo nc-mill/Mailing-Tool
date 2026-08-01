@@ -59,10 +59,18 @@ export type UpsertResult = { id: string; inserted: boolean };
  * stačilo by zavolat dávkovou cestu (což dělá import) a člověk, který podal stížnost nebo
  * uplatnil právo na výmaz, by se do databáze vrátil. Vrácené pole proto obsahuje jen
  * SKUTEČNĚ zapsané řádky; potlačené v něm nejsou a volající je pozná podle počtu.
+ *
+ * TŘETÍ ARGUMENT `tx` je požadavek 7.7 plánu P11 a bez něj nejde napsat import.
+ * Dávka importu musí zapsat kontakty A SVŮJ CHECKPOINT V JEDNÉ TRANSAKCI: kdyby si
+ * tahle funkce vždycky otvírala vlastní, byly by to dvě nezávislé transakce, pád
+ * workera mezi nimi by nechal kontakty zapsané a checkpoint neposunutý, a po restartu
+ * by se tytéž řádky naimportovaly podruhé. Když se `tx` nepředá, chová se funkce
+ * přesně jako dřív, takže žádný stávající volající se nemění.
  */
 export async function upsertContacts(
   ctx: WorkspaceContext,
   input: { mode: UpsertMode; rows: readonly ContactUpsertRow[] },
+  tx?: Tx,
 ): Promise<UpsertResult[]> {
   if (input.rows.length === 0) return [];
 
@@ -81,7 +89,10 @@ export async function upsertContacts(
         });
   if (allowed.length === 0) return [];
 
-  return withWorkspace(ctx, (tx) => upsertRows(tx, ctx, { mode: input.mode, rows: allowed }));
+  if (tx !== undefined) return upsertRows(tx, ctx, { mode: input.mode, rows: allowed });
+  return withWorkspace(ctx, (openTx) =>
+    upsertRows(openTx, ctx, { mode: input.mode, rows: allowed }),
+  );
 }
 
 /**

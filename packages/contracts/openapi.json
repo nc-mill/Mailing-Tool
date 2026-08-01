@@ -93,10 +93,17 @@
                 "type": "string"
               }
             },
-            "required": ["id", "name", "slug"]
+            "required": [
+              "id",
+              "name",
+              "slug"
+            ]
           }
         },
-        "required": ["user", "workspace"]
+        "required": [
+          "user",
+          "workspace"
+        ]
       },
       "User": {
         "type": "object",
@@ -119,7 +126,10 @@
             "type": "string"
           },
           "email_verified_at": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "created_at": {
@@ -127,7 +137,15 @@
             "format": "date-time"
           }
         },
-        "required": ["id", "email", "name", "locale", "timezone", "email_verified_at", "created_at"]
+        "required": [
+          "id",
+          "email",
+          "name",
+          "locale",
+          "timezone",
+          "email_verified_at",
+          "created_at"
+        ]
       },
       "Problem": {
         "type": "object",
@@ -168,7 +186,11 @@
                   "type": "string"
                 }
               },
-              "required": ["path", "code", "message"]
+              "required": [
+                "path",
+                "code",
+                "message"
+              ]
             }
           },
           "findings": {
@@ -185,7 +207,15 @@
             "type": "integer"
           }
         },
-        "required": ["type", "title", "status", "detail", "instance", "code", "request_id"]
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "code",
+          "request_id"
+        ]
       },
       "Finding": {
         "type": "object",
@@ -195,7 +225,10 @@
           },
           "severity": {
             "type": "string",
-            "enum": ["error", "warning"]
+            "enum": [
+              "error",
+              "warning"
+            ]
           },
           "message": {
             "type": "string"
@@ -208,7 +241,11 @@
             "additionalProperties": {}
           }
         },
-        "required": ["code", "severity", "message"]
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ]
       },
       "SetupInput": {
         "type": "object",
@@ -236,7 +273,11 @@
             "maxLength": 20
           }
         },
-        "required": ["email", "password", "workspace_name"],
+        "required": [
+          "email",
+          "password",
+          "workspace_name"
+        ],
         "additionalProperties": false
       },
       "LoginOutput": {
@@ -252,7 +293,10 @@
             }
           }
         },
-        "required": ["user", "workspaces"]
+        "required": [
+          "user",
+          "workspaces"
+        ]
       },
       "WorkspaceSummary": {
         "type": "object",
@@ -271,11 +315,21 @@
             "$ref": "#/components/schemas/Role"
           }
         },
-        "required": ["id", "name", "slug", "role"]
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "role"
+        ]
       },
       "Role": {
         "type": "string",
-        "enum": ["owner", "admin", "editor", "viewer"]
+        "enum": [
+          "owner",
+          "admin",
+          "editor",
+          "viewer"
+        ]
       },
       "LoginInput": {
         "type": "object",
@@ -290,7 +344,10 @@
             "maxLength": 256
           }
         },
-        "required": ["email", "password"],
+        "required": [
+          "email",
+          "password"
+        ],
         "additionalProperties": false
       },
       "Session": {
@@ -301,7 +358,10 @@
             "format": "uuid"
           },
           "ip": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "user_agent": {
             "type": "string"
@@ -318,7 +378,14 @@
             "type": "boolean"
           }
         },
-        "required": ["id", "ip", "user_agent", "created_at", "last_used_at", "current"]
+        "required": [
+          "id",
+          "ip",
+          "user_agent",
+          "created_at",
+          "last_used_at",
+          "current"
+        ]
       },
       "Membership": {
         "type": "object",
@@ -337,7 +404,12 @@
             "$ref": "#/components/schemas/Role"
           }
         },
-        "required": ["workspace_id", "name", "slug", "role"]
+        "required": [
+          "workspace_id",
+          "name",
+          "slug",
+          "role"
+        ]
       },
       "UpdateMeInput": {
         "type": "object",
@@ -370,7 +442,10 @@
             "maxLength": 256
           }
         },
-        "required": ["current_password", "new_password"],
+        "required": [
+          "current_password",
+          "new_password"
+        ],
         "additionalProperties": false
       },
       "PasswordResetInput": {
@@ -381,7 +456,9 @@
             "format": "email"
           }
         },
-        "required": ["email"],
+        "required": [
+          "email"
+        ],
         "additionalProperties": false
       },
       "PasswordResetConfirmInput": {
@@ -398,7 +475,10 @@
             "maxLength": 256
           }
         },
-        "required": ["token", "new_password"],
+        "required": [
+          "token",
+          "new_password"
+        ],
         "additionalProperties": false
       },
       "Workspace": {
@@ -424,14 +504,20 @@
           },
           "address_form": {
             "type": "string",
-            "enum": ["formal", "informal"]
+            "enum": [
+              "formal",
+              "informal"
+            ]
           },
           "created_at": {
             "type": "string",
             "format": "date-time"
           },
           "deleted_at": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           }
         },
@@ -468,7 +554,9 @@
             "maxLength": 64
           }
         },
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "additionalProperties": false
       },
       "UpdateWorkspaceInput": {
@@ -494,7 +582,10 @@
           },
           "address_form": {
             "type": "string",
-            "enum": ["formal", "informal"]
+            "enum": [
+              "formal",
+              "informal"
+            ]
           }
         },
         "additionalProperties": false
@@ -508,7 +599,9 @@
             "maxLength": 200
           }
         },
-        "required": ["confirm_name"],
+        "required": [
+          "confirm_name"
+        ],
         "additionalProperties": false
       },
       "TransferOwnershipInput": {
@@ -519,7 +612,9 @@
             "format": "uuid"
           }
         },
-        "required": ["user_id"],
+        "required": [
+          "user_id"
+        ],
         "additionalProperties": false
       },
       "Member": {
@@ -544,7 +639,13 @@
             "format": "date-time"
           }
         },
-        "required": ["user_id", "email", "name", "role", "created_at"]
+        "required": [
+          "user_id",
+          "email",
+          "name",
+          "role",
+          "created_at"
+        ]
       },
       "UpdateMemberInput": {
         "type": "object",
@@ -553,7 +654,9 @@
             "$ref": "#/components/schemas/Role"
           }
         },
-        "required": ["role"],
+        "required": [
+          "role"
+        ],
         "additionalProperties": false
       },
       "Invitation": {
@@ -579,7 +682,13 @@
             "format": "date-time"
           }
         },
-        "required": ["id", "email", "role", "expires_at", "created_at"]
+        "required": [
+          "id",
+          "email",
+          "role",
+          "expires_at",
+          "created_at"
+        ]
       },
       "CreateInvitationInput": {
         "type": "object",
@@ -592,7 +701,10 @@
             "$ref": "#/components/schemas/Role"
           }
         },
-        "required": ["email", "role"],
+        "required": [
+          "email",
+          "role"
+        ],
         "additionalProperties": false
       },
       "AcceptInvitationInput": {
@@ -604,7 +716,9 @@
             "maxLength": 200
           }
         },
-        "required": ["token"],
+        "required": [
+          "token"
+        ],
         "additionalProperties": false
       },
       "ApiKey": {
@@ -621,7 +735,10 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["secret", "public"]
+            "enum": [
+              "secret",
+              "public"
+            ]
           },
           "prefix": {
             "type": "string",
@@ -684,15 +801,24 @@
             }
           },
           "last_used_at": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "expires_at": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "revoked_at": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "created_at": {
@@ -722,7 +848,10 @@
             "type": "string"
           }
         },
-        "required": ["key", "secret"]
+        "required": [
+          "key",
+          "secret"
+        ]
       },
       "CreateApiKeyInput": {
         "type": "object",
@@ -734,7 +863,10 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["secret", "public"],
+            "enum": [
+              "secret",
+              "public"
+            ],
             "default": "secret"
           },
           "scopes": {
@@ -745,11 +877,17 @@
             "maxItems": 48
           },
           "expires_at": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           }
         },
-        "required": ["name", "scopes"],
+        "required": [
+          "name",
+          "scopes"
+        ],
         "additionalProperties": false
       },
       "RotateApiKeyInput": {
@@ -788,20 +926,32 @@
           },
           "status": {
             "type": "string",
-            "enum": ["active", "disabled"]
+            "enum": [
+              "active",
+              "disabled"
+            ]
           },
           "disabled_reason": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "consecutive_failures": {
             "type": "integer"
           },
           "last_success_at": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "last_failure_at": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "created_at": {
@@ -844,7 +994,10 @@
             "maxItems": 50
           }
         },
-        "required": ["url", "event_types"],
+        "required": [
+          "url",
+          "event_types"
+        ],
         "additionalProperties": false
       },
       "UpdateWebhookEndpointInput": {
@@ -883,27 +1036,46 @@
           },
           "actor_type": {
             "type": "string",
-            "enum": ["user", "api_key", "system"]
+            "enum": [
+              "user",
+              "api_key",
+              "system"
+            ]
           },
           "actor_id": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           },
           "actor_label": {
             "type": "string"
           },
           "target_type": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "target_id": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           },
           "ip": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "request_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "metadata": {
             "type": "object",
@@ -932,10 +1104,16 @@
         "type": "object",
         "properties": {
           "next_cursor": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "prev_cursor": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "has_more": {
             "type": "boolean"
@@ -944,7 +1122,12 @@
             "type": "integer"
           }
         },
-        "required": ["next_cursor", "prev_cursor", "has_more", "limit"]
+        "required": [
+          "next_cursor",
+          "prev_cursor",
+          "has_more",
+          "limit"
+        ]
       },
       "Count": {
         "type": "object",
@@ -954,7 +1137,10 @@
           },
           "precision": {
             "type": "string",
-            "enum": ["exact", "estimated"]
+            "enum": [
+              "exact",
+              "estimated"
+            ]
           },
           "computed_at": {
             "type": "string",
@@ -964,7 +1150,12 @@
             "type": "boolean"
           }
         },
-        "required": ["count", "precision", "computed_at", "stale"]
+        "required": [
+          "count",
+          "precision",
+          "computed_at",
+          "stale"
+        ]
       },
       "Job": {
         "type": "object",
@@ -980,7 +1171,14 @@
           },
           "status": {
             "type": "string",
-            "enum": ["running", "paused", "completed", "completedWithErrors", "failed", "cancelled"]
+            "enum": [
+              "running",
+              "paused",
+              "completed",
+              "completedWithErrors",
+              "failed",
+              "cancelled"
+            ]
           },
           "done": {
             "type": "integer",
@@ -991,7 +1189,10 @@
             "minimum": 0
           },
           "started_by": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "started_at": {
             "type": "string"
@@ -1000,10 +1201,16 @@
             "type": "string"
           },
           "finished_at": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "note": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -1036,7 +1243,9 @@
                 "maxItems": 10000
               }
             },
-            "required": ["contact_ids"],
+            "required": [
+              "contact_ids"
+            ],
             "additionalProperties": false
           },
           "add": {
@@ -1058,7 +1267,9 @@
             "default": []
           }
         },
-        "required": ["filter"],
+        "required": [
+          "filter"
+        ],
         "additionalProperties": false
       },
       "TagPage": {
@@ -1074,7 +1285,10 @@
             "$ref": "#/components/schemas/Pagination"
           }
         },
-        "required": ["data", "pagination"]
+        "required": [
+          "data",
+          "pagination"
+        ]
       },
       "Tag": {
         "type": "object",
@@ -1087,7 +1301,10 @@
             "type": "string"
           },
           "color": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "contact_count": {
             "type": "integer",
@@ -1097,7 +1314,13 @@
             "$ref": "#/components/schemas/IsoDateTime"
           }
         },
-        "required": ["id", "name", "color", "contact_count", "created_at"]
+        "required": [
+          "id",
+          "name",
+          "color",
+          "contact_count",
+          "created_at"
+        ]
       },
       "IsoDateTime": {
         "type": "string",
@@ -1113,15 +1336,23 @@
             "maxLength": 60
           },
           "color": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "pattern": "^#[0-9a-f]{6}$/i"
           }
         },
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "additionalProperties": false
       },
       "Contact": {
-        "type": ["object", "null"],
+        "type": [
+          "object",
+          "null"
+        ],
         "properties": {
           "id": {
             "type": "string",
@@ -1132,39 +1363,75 @@
           },
           "status": {
             "type": "string",
-            "enum": ["active", "unconfirmed", "unsubscribed", "bounced", "complained", "deleted"]
+            "enum": [
+              "active",
+              "unconfirmed",
+              "unsubscribed",
+              "bounced",
+              "complained",
+              "deleted"
+            ]
           },
           "first_name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "last_name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "middle_name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "title_prefix": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "title_suffix": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "gender": {
             "type": "string",
-            "enum": ["female", "male", "unknown"]
+            "enum": [
+              "female",
+              "male",
+              "unknown"
+            ]
           },
           "gender_source": {
             "type": "string"
           },
           "first_name_vocative": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "last_name_vocative": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "vocative_confidence": {
             "type": "string",
-            "enum": ["high", "low", "none"]
+            "enum": [
+              "high",
+              "low",
+              "none"
+            ]
           },
           "vocative_locked": {
             "type": "boolean"
@@ -1192,7 +1459,10 @@
                   "type": "string"
                 }
               },
-              "required": ["id", "name"]
+              "required": [
+                "id",
+                "name"
+              ]
             }
           },
           "lists": {
@@ -1219,7 +1489,10 @@
                       "$ref": "#/components/schemas/IsoDateTime"
                     },
                     {
-                      "type": ["string", "null"]
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     }
                   ]
                 },
@@ -1229,7 +1502,10 @@
                       "$ref": "#/components/schemas/IsoDateTime"
                     },
                     {
-                      "type": ["string", "null"]
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     }
                   ]
                 }
@@ -1262,11 +1538,19 @@
                   "$ref": "#/components/schemas/IsoDateTime"
                 }
               },
-              "required": ["purpose", "status", "legal_basis", "since"]
+              "required": [
+                "purpose",
+                "status",
+                "legal_basis",
+                "since"
+              ]
             }
           },
           "suppression": {
-            "type": ["object", "null"],
+            "type": [
+              "object",
+              "null"
+            ],
             "properties": {
               "reason": {
                 "type": "string"
@@ -1275,7 +1559,10 @@
                 "$ref": "#/components/schemas/IsoDateTime"
               }
             },
-            "required": ["reason", "created_at"]
+            "required": [
+              "reason",
+              "created_at"
+            ]
           },
           "processing_restricted": {
             "type": "boolean"
@@ -1295,7 +1582,10 @@
                 "$ref": "#/components/schemas/IsoDateTime"
               },
               {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             ]
           }
@@ -1338,35 +1628,60 @@
             "example": "jan@example.cz"
           },
           "first_name": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "maxLength": 100
           },
           "last_name": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "maxLength": 100
           },
           "full_name": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "maxLength": 200
           },
           "title_prefix": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "maxLength": 50
           },
           "title_suffix": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "maxLength": 50
           },
           "gender": {
             "type": "string",
-            "enum": ["female", "male", "unknown"]
+            "enum": [
+              "female",
+              "male",
+              "unknown"
+            ]
           },
           "first_name_vocative": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "maxLength": 100
           },
           "last_name_vocative": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "maxLength": 100
           },
           "locale": {
@@ -1374,7 +1689,10 @@
             "maxLength": 35
           },
           "external_id": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "maxLength": 255
           },
           "attributes": {
@@ -1421,10 +1739,15 @@
                 },
                 "status": {
                   "type": "string",
-                  "enum": ["pending", "confirmed"]
+                  "enum": [
+                    "pending",
+                    "confirmed"
+                  ]
                 }
               },
-              "required": ["list_id"],
+              "required": [
+                "list_id"
+              ],
               "additionalProperties": false
             },
             "maxItems": 50
@@ -1438,7 +1761,12 @@
           },
           "on_conflict": {
             "type": "string",
-            "enum": ["create", "skip", "update", "overwrite"],
+            "enum": [
+              "create",
+              "skip",
+              "update",
+              "overwrite"
+            ],
             "default": "update"
           },
           "source": {
@@ -1446,7 +1774,9 @@
             "maxLength": 80
           }
         },
-        "required": ["email"],
+        "required": [
+          "email"
+        ],
         "additionalProperties": false
       },
       "ConsentInput": {
@@ -1454,15 +1784,29 @@
         "properties": {
           "purpose": {
             "type": "string",
-            "enum": ["email_marketing", "analytics", "personalization", "profiling", "third_party"]
+            "enum": [
+              "email_marketing",
+              "analytics",
+              "personalization",
+              "profiling",
+              "third_party"
+            ]
           },
           "status": {
             "type": "string",
-            "enum": ["granted", "withdrawn"]
+            "enum": [
+              "granted",
+              "withdrawn"
+            ]
           },
           "legal_basis": {
             "type": "string",
-            "enum": ["consent", "legitimate_interest", "contract", "soft_opt_in"]
+            "enum": [
+              "consent",
+              "legitimate_interest",
+              "contract",
+              "soft_opt_in"
+            ]
           },
           "consent_text": {
             "type": "string",
@@ -1476,7 +1820,11 @@
             "additionalProperties": {}
           }
         },
-        "required": ["purpose", "status", "legal_basis"],
+        "required": [
+          "purpose",
+          "status",
+          "legal_basis"
+        ],
         "additionalProperties": false
       },
       "ContactPage": {
@@ -1492,7 +1840,10 @@
             "$ref": "#/components/schemas/Pagination"
           }
         },
-        "required": ["data", "pagination"]
+        "required": [
+          "data",
+          "pagination"
+        ]
       },
       "ConsentRecord": {
         "type": "object",
@@ -1509,12 +1860,18 @@
             "type": "string"
           },
           "scope_list_id": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           },
           "status": {
             "type": "string",
-            "enum": ["granted", "withdrawn"]
+            "enum": [
+              "granted",
+              "withdrawn"
+            ]
           },
           "legal_basis": {
             "type": "string"
@@ -1523,7 +1880,10 @@
             "type": "string"
           },
           "consent_text": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "evidence": {
             "type": "object",
@@ -1601,7 +1961,10 @@
                 "$ref": "#/components/schemas/IsoDateTime"
               },
               {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             ]
           },
@@ -1610,7 +1973,12 @@
           },
           "index_state": {
             "type": "string",
-            "enum": ["none", "building", "ready", "failed"]
+            "enum": [
+              "none",
+              "building",
+              "ready",
+              "failed"
+            ]
           },
           "subject_editable": {
             "type": "boolean"
@@ -1687,7 +2055,11 @@
             "default": false
           }
         },
-        "required": ["key", "label", "type"],
+        "required": [
+          "key",
+          "label",
+          "type"
+        ],
         "additionalProperties": false
       },
       "LocalizedText": {
@@ -1730,15 +2102,24 @@
             "type": "string"
           },
           "description": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "opt_in": {
             "type": "string",
-            "enum": ["single", "double"]
+            "enum": [
+              "single",
+              "double"
+            ]
           },
           "confirmation_mode": {
             "type": "string",
-            "enum": ["one_step", "two_step"]
+            "enum": [
+              "one_step",
+              "two_step"
+            ]
           },
           "confirmation_ttl_hours": {
             "type": "integer"
@@ -1758,7 +2139,10 @@
                 "$ref": "#/components/schemas/IsoDateTime"
               },
               {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             ]
           },
@@ -1789,17 +2173,26 @@
             "maxLength": 120
           },
           "description": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "maxLength": 2000
           },
           "opt_in": {
             "type": "string",
-            "enum": ["single", "double"],
+            "enum": [
+              "single",
+              "double"
+            ],
             "default": "double"
           },
           "confirmation_mode": {
             "type": "string",
-            "enum": ["one_step", "two_step"],
+            "enum": [
+              "one_step",
+              "two_step"
+            ],
             "default": "one_step"
           },
           "confirmation_ttl_hours": {
@@ -1822,7 +2215,9 @@
             "default": false
           }
         },
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "additionalProperties": false
       },
       "Subscribe": {
@@ -1862,7 +2257,9 @@
             "maxLength": 4000
           }
         },
-        "required": ["email"],
+        "required": [
+          "email"
+        ],
         "additionalProperties": false
       },
       "SuppressionPage": {
@@ -1878,7 +2275,10 @@
             "$ref": "#/components/schemas/Pagination"
           }
         },
-        "required": ["data", "pagination"]
+        "required": [
+          "data",
+          "pagination"
+        ]
       },
       "Suppression": {
         "type": "object",
@@ -1912,10 +2312,16 @@
             "type": "boolean"
           },
           "removable_in_days": {
-            "type": ["integer", "null"]
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "detail": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "metadata": {
             "type": "object",
@@ -1945,11 +2351,17 @@
             "format": "uuid"
           },
           "contact_id": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           },
           "masked_email": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "type": {
             "type": "string",
@@ -1963,8 +2375,15 @@
             ]
           },
           "mode": {
-            "type": ["string", "null"],
-            "enum": ["anonymize", "purge", null]
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "anonymize",
+              "purge",
+              null
+            ]
           },
           "status": {
             "type": "string"
@@ -1984,7 +2403,10 @@
                 "$ref": "#/components/schemas/IsoDateTime"
               },
               {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             ]
           },
@@ -1997,12 +2419,18 @@
                 "$ref": "#/components/schemas/IsoDateTime"
               },
               {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             ]
           },
           "rejection_reason": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2043,13 +2471,21 @@
           },
           "action": {
             "type": "string",
-            "enum": ["delete", "anonymize"]
+            "enum": [
+              "delete",
+              "anonymize"
+            ]
           },
           "enabled": {
             "type": "boolean"
           }
         },
-        "required": ["target", "retain_days", "action", "enabled"],
+        "required": [
+          "target",
+          "retain_days",
+          "action",
+          "enabled"
+        ],
         "additionalProperties": false
       },
       "VocativeReviewGroup": {
@@ -2060,17 +2496,27 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["first", "last"]
+            "enum": [
+              "first",
+              "last"
+            ]
           },
           "gender": {
             "type": "string",
-            "enum": ["female", "male", "unknown"]
+            "enum": [
+              "female",
+              "male",
+              "unknown"
+            ]
           },
           "gender_source": {
             "type": "string"
           },
           "suggested_vocative": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "contact_count": {
             "type": "integer"
@@ -2113,26 +2559,729 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["first", "last"]
+            "enum": [
+              "first",
+              "last"
+            ]
           },
           "name_key": {
             "type": "string"
           },
           "gender": {
-            "type": ["string", "null"],
-            "enum": ["female", "male", "unknown", null]
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "female",
+              "male",
+              "unknown",
+              null
+            ]
           },
           "vocative": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "note": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "created_at": {
             "$ref": "#/components/schemas/IsoDateTime"
           }
         },
-        "required": ["id", "kind", "name_key", "gender", "vocative", "note", "created_at"]
+        "required": [
+          "id",
+          "kind",
+          "name_key",
+          "gender",
+          "vocative",
+          "note",
+          "created_at"
+        ]
+      },
+      "SegmentPreset": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label_key": {
+            "type": "string"
+          },
+          "explanation_key": {
+            "type": "string"
+          },
+          "definition": {}
+        },
+        "required": [
+          "key",
+          "label_key",
+          "explanation_key"
+        ]
+      },
+      "Segment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "dynamic",
+              "static"
+            ]
+          },
+          "preset_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "definition": {},
+          "cached_count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "cached_is_exact": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "cached_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cached_duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "recompute_state": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "queued",
+              "running",
+              "error"
+            ]
+          },
+          "last_error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "freshness": {
+            "type": "string",
+            "enum": [
+              "never",
+              "fresh",
+              "recent",
+              "stale"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "kind",
+          "preset_key",
+          "cached_count",
+          "cached_is_exact",
+          "cached_at",
+          "cached_duration_ms",
+          "recompute_state",
+          "last_error_code",
+          "freshness"
+        ]
+      },
+      "SegmentPreview": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "exact": {
+            "type": "boolean"
+          },
+          "duration_ms": {
+            "type": "integer"
+          },
+          "sample": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SegmentContactSample"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "diagnostics": {}
+        },
+        "required": [
+          "count",
+          "exact",
+          "duration_ms",
+          "sample",
+          "warnings"
+        ]
+      },
+      "SegmentContactSample": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string"
+          },
+          "first_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "first_name",
+          "last_name"
+        ]
+      },
+      "SegmentPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/SegmentDefinition"
+          },
+          "segment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sample_limit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20
+          }
+        },
+        "additionalProperties": false
+      },
+      "SegmentDefinition": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "root": {}
+        },
+        "required": [
+          "version"
+        ],
+        "description": "Strom podmínek. Úplné schéma vrací GET /api/v1/segments/schema."
+      },
+      "AudienceBreakdown": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "integer"
+          },
+          "gates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "key",
+                "count"
+              ]
+            }
+          },
+          "will_send": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input",
+          "gates",
+          "will_send"
+        ]
+      },
+      "AudienceBreakdownRequest": {
+        "type": "object",
+        "properties": {
+          "segment_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "list_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "definition": {
+            "$ref": "#/components/schemas/SegmentDefinition"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateSegment": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "definition": {
+            "$ref": "#/components/schemas/SegmentDefinition"
+          },
+          "preset_key": {
+            "type": "string",
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "name",
+          "definition"
+        ],
+        "additionalProperties": false
+      },
+      "PatchSegment": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "definition": {
+            "$ref": "#/components/schemas/SegmentDefinition"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Import": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "encoding_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "delimiter": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_header": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "options": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "byte_size": {
+            "type": "integer"
+          },
+          "total_rows": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "checkpoint_row": {
+            "type": "integer"
+          },
+          "error_rows": {
+            "type": "integer"
+          },
+          "failure_detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "status",
+          "encoding",
+          "encoding_source",
+          "delimiter",
+          "has_header",
+          "mapping",
+          "options",
+          "byte_size",
+          "total_rows",
+          "checkpoint_row",
+          "error_rows",
+          "failure_detail"
+        ]
+      },
+      "ImportPreview": {
+        "type": "object",
+        "properties": {
+          "encoding": {
+            "type": "string"
+          },
+          "encoding_source": {
+            "type": "string"
+          },
+          "delimiter": {
+            "type": "string"
+          },
+          "has_header": {
+            "type": "boolean"
+          },
+          "header": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mapping": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportPreviewRow"
+            }
+          },
+          "mapping_warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "encoding",
+          "encoding_source",
+          "delimiter",
+          "has_header",
+          "header",
+          "mapping",
+          "rows",
+          "mapping_warnings"
+        ]
+      },
+      "ImportPreviewRow": {
+        "type": "object",
+        "properties": {
+          "row_number": {
+            "type": "integer"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title_prefix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "gender": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "greeting": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "error",
+              "suppressed",
+              "duplicate"
+            ]
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "row_number",
+          "email",
+          "title_prefix",
+          "first_name",
+          "last_name",
+          "gender",
+          "greeting"
+        ]
+      },
+      "PatchImport": {
+        "type": "object",
+        "properties": {
+          "mapping": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "options": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "encoding": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "delimiter": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "ImportErrors": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "row_number": {
+                  "type": "integer"
+                },
+                "error_code": {
+                  "type": "string"
+                },
+                "column_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "raw_row": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "row_number",
+                "error_code",
+                "column_name",
+                "raw_row"
+              ]
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ]
+      },
+      "Export": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "ndjson"
+            ]
+          },
+          "encoding": {
+            "type": "string"
+          },
+          "delimiter": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "download_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "format",
+          "encoding",
+          "delimiter",
+          "status",
+          "download_url"
+        ]
+      },
+      "CreateExport": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "contacts",
+              "import_errors",
+              "suppressions",
+              "gdpr_subject"
+            ],
+            "default": "contacts"
+          },
+          "filter": {
+            "type": "object",
+            "additionalProperties": {},
+            "default": {}
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "minItems": 1
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "ndjson"
+            ]
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "utf-8-bom",
+              "utf-8",
+              "windows-1250"
+            ]
+          },
+          "delimiter": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1
+          },
+          "locale": {
+            "type": "string",
+            "maxLength": 35
+          }
+        },
+        "required": [
+          "columns"
+        ],
+        "additionalProperties": false
       }
     },
     "parameters": {}
@@ -2140,7 +3289,9 @@
   "paths": {
     "/api/v1/setup": {
       "post": {
-        "tags": ["Setup"],
+        "tags": [
+          "Setup"
+        ],
         "summary": "První spuštění instalace",
         "description": "Dostupné jen dokud instalace nemá jediného uživatele. Pak vrací 409.",
         "requestBody": {
@@ -2198,7 +3349,9 @@
     },
     "/api/v1/auth/login": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Přihlášení e-mailem a heslem",
         "requestBody": {
           "content": {
@@ -2265,7 +3418,9 @@
     },
     "/api/v1/auth/logout": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Odhlášení aktuální relace",
         "responses": {
           "204": {
@@ -2286,7 +3441,9 @@
     },
     "/api/v1/auth/logout-all": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Odhlášení ze všech zařízení včetně aktuálního",
         "responses": {
           "204": {
@@ -2307,7 +3464,9 @@
     },
     "/api/v1/auth/sessions": {
       "get": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Výpis aktivních relací uživatele",
         "responses": {
           "200": {
@@ -2324,7 +3483,9 @@
                       }
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -2344,7 +3505,9 @@
     },
     "/api/v1/auth/sessions/{id}": {
       "delete": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Zrušení jedné vlastní relace",
         "parameters": [
           {
@@ -2396,7 +3559,9 @@
     },
     "/api/v1/auth/me": {
       "get": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Aktuální uživatel, jeho členství a token CSRF",
         "responses": {
           "200": {
@@ -2419,7 +3584,11 @@
                       "type": "string"
                     }
                   },
-                  "required": ["user", "memberships", "csrf_token"]
+                  "required": [
+                    "user",
+                    "memberships",
+                    "csrf_token"
+                  ]
                 }
               }
             }
@@ -2437,7 +3606,9 @@
         }
       },
       "patch": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Změna vlastního profilu",
         "requestBody": {
           "content": {
@@ -2460,7 +3631,9 @@
                       "$ref": "#/components/schemas/User"
                     }
                   },
-                  "required": ["user"]
+                  "required": [
+                    "user"
+                  ]
                 }
               }
             }
@@ -2490,7 +3663,9 @@
     },
     "/api/v1/auth/change-password": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Změna vlastního hesla",
         "requestBody": {
           "content": {
@@ -2530,7 +3705,9 @@
     },
     "/api/v1/auth/password-reset": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Vyžádání odkazu na obnovu hesla",
         "description": "Vrací vždy 202 bez ohledu na existenci účtu. Odpověď ani její latence neprozrazují, jestli účet existuje.",
         "requestBody": {
@@ -2571,7 +3748,9 @@
     },
     "/api/v1/auth/password-reset/confirm": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Nastavení nového hesla podle tokenu z e-mailu",
         "requestBody": {
           "content": {
@@ -2611,7 +3790,9 @@
     },
     "/api/v1/workspaces": {
       "get": {
-        "tags": ["Workspaces"],
+        "tags": [
+          "Workspaces"
+        ],
         "summary": "Projekty, ve kterých má aktér členství",
         "responses": {
           "200": {
@@ -2635,13 +3816,17 @@
                                 "$ref": "#/components/schemas/Role"
                               }
                             },
-                            "required": ["role"]
+                            "required": [
+                              "role"
+                            ]
                           }
                         ]
                       }
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -2659,7 +3844,9 @@
         }
       },
       "post": {
-        "tags": ["Workspaces"],
+        "tags": [
+          "Workspaces"
+        ],
         "summary": "Založení projektu, zakladatel se stává ownerem",
         "parameters": [
           {
@@ -2695,7 +3882,10 @@
                       "$ref": "#/components/schemas/Role"
                     }
                   },
-                  "required": ["workspace", "role"]
+                  "required": [
+                    "workspace",
+                    "role"
+                  ]
                 }
               }
             }
@@ -2725,11 +3915,15 @@
     },
     "/api/v1/workspaces/{id}": {
       "get": {
-        "tags": ["Workspaces"],
+        "tags": [
+          "Workspaces"
+        ],
         "summary": "Detail projektu",
         "security": [
           {
-            "bearerAuth": ["workspace:read"]
+            "bearerAuth": [
+              "workspace:read"
+            ]
           }
         ],
         "parameters": [
@@ -2755,7 +3949,9 @@
                       "$ref": "#/components/schemas/Workspace"
                     }
                   },
-                  "required": ["workspace"]
+                  "required": [
+                    "workspace"
+                  ]
                 }
               }
             }
@@ -2793,11 +3989,15 @@
         }
       },
       "patch": {
-        "tags": ["Workspaces"],
+        "tags": [
+          "Workspaces"
+        ],
         "summary": "Změna nastavení projektu",
         "security": [
           {
-            "bearerAuth": ["workspace:update"]
+            "bearerAuth": [
+              "workspace:update"
+            ]
           }
         ],
         "parameters": [
@@ -2832,7 +4032,9 @@
                       "$ref": "#/components/schemas/Workspace"
                     }
                   },
-                  "required": ["workspace"]
+                  "required": [
+                    "workspace"
+                  ]
                 }
               }
             }
@@ -2880,11 +4082,15 @@
         }
       },
       "delete": {
-        "tags": ["Workspaces"],
+        "tags": [
+          "Workspaces"
+        ],
         "summary": "Měkké smazání projektu, obnovitelné 30 dní",
         "security": [
           {
-            "bearerAuth": ["workspace:delete"]
+            "bearerAuth": [
+              "workspace:delete"
+            ]
           }
         ],
         "parameters": [
@@ -2956,7 +4162,9 @@
     },
     "/api/v1/workspaces/{id}/restore": {
       "post": {
-        "tags": ["Workspaces"],
+        "tags": [
+          "Workspaces"
+        ],
         "summary": "Obnova smazaného projektu do 30 dnů",
         "parameters": [
           {
@@ -3000,7 +4208,9 @@
                       "$ref": "#/components/schemas/Workspace"
                     }
                   },
-                  "required": ["workspace"]
+                  "required": [
+                    "workspace"
+                  ]
                 }
               }
             }
@@ -3030,11 +4240,15 @@
     },
     "/api/v1/workspaces/{id}/transfer-ownership": {
       "post": {
-        "tags": ["Workspaces"],
+        "tags": [
+          "Workspaces"
+        ],
         "summary": "Předání vlastnictví, vyžaduje hlavičku X-Reauth-Password",
         "security": [
           {
-            "bearerAuth": ["workspace:transfer"]
+            "bearerAuth": [
+              "workspace:transfer"
+            ]
           }
         ],
         "parameters": [
@@ -3084,10 +4298,14 @@
                   "properties": {
                     "ok": {
                       "type": "boolean",
-                      "enum": [true]
+                      "enum": [
+                        true
+                      ]
                     }
                   },
-                  "required": ["ok"]
+                  "required": [
+                    "ok"
+                  ]
                 }
               }
             }
@@ -3137,11 +4355,15 @@
     },
     "/api/v1/members": {
       "get": {
-        "tags": ["Members"],
+        "tags": [
+          "Members"
+        ],
         "summary": "Členové projektu",
         "security": [
           {
-            "bearerAuth": ["members:read"]
+            "bearerAuth": [
+              "members:read"
+            ]
           }
         ],
         "responses": {
@@ -3159,7 +4381,9 @@
                       }
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -3199,11 +4423,15 @@
     },
     "/api/v1/members/{user_id}": {
       "patch": {
-        "tags": ["Members"],
+        "tags": [
+          "Members"
+        ],
         "summary": "Změna role člena",
         "security": [
           {
-            "bearerAuth": ["members:update_role"]
+            "bearerAuth": [
+              "members:update_role"
+            ]
           }
         ],
         "parameters": [
@@ -3238,7 +4466,9 @@
                       "$ref": "#/components/schemas/Member"
                     }
                   },
-                  "required": ["member"]
+                  "required": [
+                    "member"
+                  ]
                 }
               }
             }
@@ -3296,11 +4526,15 @@
         }
       },
       "delete": {
-        "tags": ["Members"],
+        "tags": [
+          "Members"
+        ],
         "summary": "Odebrání člena z projektu",
         "security": [
           {
-            "bearerAuth": ["members:remove"]
+            "bearerAuth": [
+              "members:remove"
+            ]
           }
         ],
         "parameters": [
@@ -3363,11 +4597,15 @@
     },
     "/api/v1/invitations": {
       "get": {
-        "tags": ["Invitations"],
+        "tags": [
+          "Invitations"
+        ],
         "summary": "Čekající pozvánky projektu",
         "security": [
           {
-            "bearerAuth": ["members:read"]
+            "bearerAuth": [
+              "members:read"
+            ]
           }
         ],
         "responses": {
@@ -3385,7 +4623,9 @@
                       }
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -3423,11 +4663,15 @@
         }
       },
       "post": {
-        "tags": ["Invitations"],
+        "tags": [
+          "Invitations"
+        ],
         "summary": "Pozvání do projektu",
         "security": [
           {
-            "bearerAuth": ["members:invite"]
+            "bearerAuth": [
+              "members:invite"
+            ]
           }
         ],
         "parameters": [
@@ -3461,7 +4705,9 @@
                       "$ref": "#/components/schemas/Invitation"
                     }
                   },
-                  "required": ["invitation"]
+                  "required": [
+                    "invitation"
+                  ]
                 }
               }
             }
@@ -3521,11 +4767,15 @@
     },
     "/api/v1/invitations/{id}": {
       "delete": {
-        "tags": ["Invitations"],
+        "tags": [
+          "Invitations"
+        ],
         "summary": "Revokace čekající pozvánky",
         "security": [
           {
-            "bearerAuth": ["members:invite"]
+            "bearerAuth": [
+              "members:invite"
+            ]
           }
         ],
         "parameters": [
@@ -3578,7 +4828,9 @@
     },
     "/api/v1/invitations/accept": {
       "post": {
-        "tags": ["Invitations"],
+        "tags": [
+          "Invitations"
+        ],
         "summary": "Přijetí pozvánky přihlášeným uživatelem",
         "description": "Neplatný, prošlý i použitý token vrací shodně 404, aby nešlo zjistit, jestli pozvánka existuje.",
         "requestBody": {
@@ -3612,13 +4864,20 @@
                           "type": "string"
                         }
                       },
-                      "required": ["id", "name", "slug"]
+                      "required": [
+                        "id",
+                        "name",
+                        "slug"
+                      ]
                     },
                     "role": {
                       "$ref": "#/components/schemas/Role"
                     }
                   },
-                  "required": ["workspace", "role"]
+                  "required": [
+                    "workspace",
+                    "role"
+                  ]
                 }
               }
             }
@@ -3658,11 +4917,15 @@
     },
     "/api/v1/api-keys": {
       "get": {
-        "tags": ["API keys"],
+        "tags": [
+          "API keys"
+        ],
         "summary": "Seznam klíčů projektu, nikdy se sekretem",
         "security": [
           {
-            "bearerAuth": ["api_keys:read"]
+            "bearerAuth": [
+              "api_keys:read"
+            ]
           }
         ],
         "responses": {
@@ -3680,7 +4943,9 @@
                       }
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -3718,11 +4983,15 @@
         }
       },
       "post": {
-        "tags": ["API keys"],
+        "tags": [
+          "API keys"
+        ],
         "summary": "Vytvoření klíče",
         "security": [
           {
-            "bearerAuth": ["api_keys:write"]
+            "bearerAuth": [
+              "api_keys:write"
+            ]
           }
         ],
         "parameters": [
@@ -3810,11 +5079,15 @@
     },
     "/api/v1/api-keys/{id}/rotate": {
       "post": {
-        "tags": ["API keys"],
+        "tags": [
+          "API keys"
+        ],
         "summary": "Rotace sekretu s volitelným grace obdobím",
         "security": [
           {
-            "bearerAuth": ["api_keys:write"]
+            "bearerAuth": [
+              "api_keys:write"
+            ]
           }
         ],
         "parameters": [
@@ -3911,11 +5184,15 @@
     },
     "/api/v1/api-keys/{id}": {
       "delete": {
-        "tags": ["API keys"],
+        "tags": [
+          "API keys"
+        ],
         "summary": "Revokace klíče, okamžitá a nevratná",
         "security": [
           {
-            "bearerAuth": ["api_keys:write"]
+            "bearerAuth": [
+              "api_keys:write"
+            ]
           }
         ],
         "parameters": [
@@ -3968,11 +5245,15 @@
     },
     "/api/v1/webhook-endpoints": {
       "get": {
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "Seznam odchozích webhooků",
         "security": [
           {
-            "bearerAuth": ["webhooks:read"]
+            "bearerAuth": [
+              "webhooks:read"
+            ]
           }
         ],
         "responses": {
@@ -3990,7 +5271,9 @@
                       }
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -4028,11 +5311,15 @@
         }
       },
       "post": {
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "Vytvoření webhooku, secret je v odpovědi jednou",
         "security": [
           {
-            "bearerAuth": ["webhooks:write"]
+            "bearerAuth": [
+              "webhooks:write"
+            ]
           }
         ],
         "parameters": [
@@ -4069,7 +5356,10 @@
                       "type": "string"
                     }
                   },
-                  "required": ["endpoint", "secret"]
+                  "required": [
+                    "endpoint",
+                    "secret"
+                  ]
                 }
               }
             }
@@ -4129,11 +5419,15 @@
     },
     "/api/v1/webhook-endpoints/{id}": {
       "get": {
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "Detail webhooku",
         "security": [
           {
-            "bearerAuth": ["webhooks:read"]
+            "bearerAuth": [
+              "webhooks:read"
+            ]
           }
         ],
         "parameters": [
@@ -4159,7 +5453,9 @@
                       "$ref": "#/components/schemas/WebhookEndpoint"
                     }
                   },
-                  "required": ["endpoint"]
+                  "required": [
+                    "endpoint"
+                  ]
                 }
               }
             }
@@ -4197,11 +5493,15 @@
         }
       },
       "patch": {
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "Změna webhooku",
         "security": [
           {
-            "bearerAuth": ["webhooks:write"]
+            "bearerAuth": [
+              "webhooks:write"
+            ]
           }
         ],
         "parameters": [
@@ -4236,7 +5536,9 @@
                       "$ref": "#/components/schemas/WebhookEndpoint"
                     }
                   },
-                  "required": ["endpoint"]
+                  "required": [
+                    "endpoint"
+                  ]
                 }
               }
             }
@@ -4284,11 +5586,15 @@
         }
       },
       "delete": {
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "Smazání webhooku",
         "security": [
           {
-            "bearerAuth": ["webhooks:write"]
+            "bearerAuth": [
+              "webhooks:write"
+            ]
           }
         ],
         "parameters": [
@@ -4341,11 +5647,15 @@
     },
     "/api/v1/webhook-endpoints/{id}/enable": {
       "post": {
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "Znovuaktivace deaktivovaného webhooku",
         "security": [
           {
-            "bearerAuth": ["webhooks:write"]
+            "bearerAuth": [
+              "webhooks:write"
+            ]
           }
         ],
         "parameters": [
@@ -4388,10 +5698,14 @@
                   "properties": {
                     "ok": {
                       "type": "boolean",
-                      "enum": [true]
+                      "enum": [
+                        true
+                      ]
                     }
                   },
-                  "required": ["ok"]
+                  "required": [
+                    "ok"
+                  ]
                 }
               }
             }
@@ -4431,11 +5745,15 @@
     },
     "/api/v1/webhook-endpoints/{id}/test": {
       "post": {
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "Odeslání testovací události ping",
         "security": [
           {
-            "bearerAuth": ["webhooks:write"]
+            "bearerAuth": [
+              "webhooks:write"
+            ]
           }
         ],
         "parameters": [
@@ -4481,7 +5799,9 @@
                       "format": "uuid"
                     }
                   },
-                  "required": ["event_id"]
+                  "required": [
+                    "event_id"
+                  ]
                 }
               }
             }
@@ -4521,11 +5841,15 @@
     },
     "/api/v1/webhook-deliveries/{id}/retry": {
       "post": {
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "Ruční opakování doručení",
         "security": [
           {
-            "bearerAuth": ["webhooks:write"]
+            "bearerAuth": [
+              "webhooks:write"
+            ]
           }
         ],
         "parameters": [
@@ -4597,12 +5921,16 @@
     },
     "/api/v1/audit-log": {
       "get": {
-        "tags": ["Audit"],
+        "tags": [
+          "Audit"
+        ],
         "summary": "Auditní log projektu",
         "description": "Globální akce uživatele (přihlášení, změna hesla) tenhle endpoint nevrací, patří uživateli, ne projektu.",
         "security": [
           {
-            "bearerAuth": ["audit:read"]
+            "bearerAuth": [
+              "audit:read"
+            ]
           }
         ],
         "parameters": [
@@ -4693,7 +6021,10 @@
                       "$ref": "#/components/schemas/Pagination"
                     }
                   },
-                  "required": ["data", "pagination"]
+                  "required": [
+                    "data",
+                    "pagination"
+                  ]
                 }
               }
             }
@@ -4743,11 +6074,15 @@
     },
     "/api/v1/audit-log/count": {
       "get": {
-        "tags": ["Audit"],
+        "tags": [
+          "Audit"
+        ],
         "summary": "Počet záznamů auditního logu se stejnými filtry",
         "security": [
           {
-            "bearerAuth": ["audit:read"]
+            "bearerAuth": [
+              "audit:read"
+            ]
           }
         ],
         "parameters": [
@@ -4852,11 +6187,15 @@
     },
     "/api/v1/webhook-deliveries": {
       "get": {
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "Log doručení webhooků",
         "security": [
           {
-            "bearerAuth": ["webhooks:read"]
+            "bearerAuth": [
+              "webhooks:read"
+            ]
           }
         ],
         "parameters": [
@@ -4904,7 +6243,13 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["pending", "delivering", "succeeded", "failed", "abandoned"]
+              "enum": [
+                "pending",
+                "delivering",
+                "succeeded",
+                "failed",
+                "abandoned"
+              ]
             },
             "required": false,
             "name": "status",
@@ -4930,7 +6275,10 @@
                       "$ref": "#/components/schemas/Pagination"
                     }
                   },
-                  "required": ["data", "pagination"]
+                  "required": [
+                    "data",
+                    "pagination"
+                  ]
                 }
               }
             }
@@ -4980,11 +6328,15 @@
     },
     "/api/v1/webhook-deliveries/count": {
       "get": {
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "Počet doručení se stejnými filtry",
         "security": [
           {
-            "bearerAuth": ["webhooks:read"]
+            "bearerAuth": [
+              "webhooks:read"
+            ]
           }
         ],
         "parameters": [
@@ -5008,7 +6360,13 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["pending", "delivering", "succeeded", "failed", "abandoned"]
+              "enum": [
+                "pending",
+                "delivering",
+                "succeeded",
+                "failed",
+                "abandoned"
+              ]
             },
             "required": false,
             "name": "status",
@@ -5061,11 +6419,15 @@
     },
     "/api/v1/jobs": {
       "get": {
-        "tags": ["Jobs"],
+        "tags": [
+          "Jobs"
+        ],
         "summary": "Úlohy projektu pro Centrum úloh",
         "security": [
           {
-            "bearerAuth": ["timeline:read"]
+            "bearerAuth": [
+              "timeline:read"
+            ]
           }
         ],
         "parameters": [
@@ -5083,7 +6445,10 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["true", "false"]
+              "enum": [
+                "true",
+                "false"
+              ]
             },
             "required": false,
             "name": "running",
@@ -5108,7 +6473,10 @@
                       "type": "integer"
                     }
                   },
-                  "required": ["data", "running_count"]
+                  "required": [
+                    "data",
+                    "running_count"
+                  ]
                 }
               }
             }
@@ -5148,11 +6516,15 @@
     },
     "/api/v1/jobs/{kind}/{id}": {
       "get": {
-        "tags": ["Jobs"],
+        "tags": [
+          "Jobs"
+        ],
         "summary": "Detail jedné úlohy",
         "security": [
           {
-            "bearerAuth": ["timeline:read"]
+            "bearerAuth": [
+              "timeline:read"
+            ]
           }
         ],
         "parameters": [
@@ -5187,7 +6559,9 @@
                       "$ref": "#/components/schemas/Job"
                     }
                   },
-                  "required": ["job"]
+                  "required": [
+                    "job"
+                  ]
                 }
               }
             }
@@ -5227,11 +6601,15 @@
     },
     "/api/v1/contacts/tags:bulk": {
       "post": {
-        "tags": ["Tags"],
+        "tags": [
+          "Tags"
+        ],
         "summary": "Hromadné přiřazení a odebrání štítků",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -5263,7 +6641,9 @@
                   "properties": {
                     "mode": {
                       "type": "string",
-                      "enum": ["sync"]
+                      "enum": [
+                        "sync"
+                      ]
                     },
                     "tagged": {
                       "type": "integer"
@@ -5272,7 +6652,11 @@
                       "type": "integer"
                     }
                   },
-                  "required": ["mode", "tagged", "untagged"]
+                  "required": [
+                    "mode",
+                    "tagged",
+                    "untagged"
+                  ]
                 }
               }
             }
@@ -5286,10 +6670,14 @@
                   "properties": {
                     "mode": {
                       "type": "string",
-                      "enum": ["queued"]
+                      "enum": [
+                        "queued"
+                      ]
                     }
                   },
-                  "required": ["mode"]
+                  "required": [
+                    "mode"
+                  ]
                 }
               }
             }
@@ -5359,11 +6747,15 @@
     },
     "/api/v1/tags": {
       "get": {
-        "tags": ["Tags"],
+        "tags": [
+          "Tags"
+        ],
         "summary": "Stránka štítků i s počtem kontaktů",
         "security": [
           {
-            "bearerAuth": ["contacts:read"]
+            "bearerAuth": [
+              "contacts:read"
+            ]
           }
         ],
         "parameters": [
@@ -5391,7 +6783,10 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["name.asc", "created_at.desc"],
+              "enum": [
+                "name.asc",
+                "created_at.desc"
+              ],
               "default": "name.asc"
             },
             "required": false,
@@ -5462,11 +6857,15 @@
         }
       },
       "post": {
-        "tags": ["Tags"],
+        "tags": [
+          "Tags"
+        ],
         "summary": "Založení štítku",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "requestBody": {
@@ -5490,7 +6889,9 @@
                       "$ref": "#/components/schemas/Tag"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -5550,11 +6951,15 @@
     },
     "/api/v1/tags/{id}": {
       "patch": {
-        "tags": ["Tags"],
+        "tags": [
+          "Tags"
+        ],
         "summary": "Přejmenování štítku nebo změna barvy",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -5580,7 +6985,10 @@
                     "maxLength": 60
                   },
                   "color": {
-                    "type": ["string", "null"],
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "pattern": "^#[0-9a-f]{6}$/i"
                   }
                 },
@@ -5601,7 +7009,9 @@
                       "$ref": "#/components/schemas/Tag"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -5659,11 +7069,15 @@
         }
       },
       "delete": {
-        "tags": ["Tags"],
+        "tags": [
+          "Tags"
+        ],
         "summary": "Smazání štítku, kontakty zůstávají",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -5726,11 +7140,15 @@
     },
     "/api/v1/tags/{id}/merge": {
       "post": {
-        "tags": ["Tags"],
+        "tags": [
+          "Tags"
+        ],
         "summary": "Sloučení štítku do cílového",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -5755,7 +7173,9 @@
                     "format": "uuid"
                   }
                 },
-                "required": ["into_tag_id"],
+                "required": [
+                  "into_tag_id"
+                ],
                 "additionalProperties": false
               }
             }
@@ -5773,7 +7193,9 @@
                       "type": "integer"
                     }
                   },
-                  "required": ["moved"]
+                  "required": [
+                    "moved"
+                  ]
                 }
               }
             }
@@ -5833,11 +7255,15 @@
     },
     "/api/v1/contacts/count": {
       "get": {
-        "tags": ["Contacts"],
+        "tags": [
+          "Contacts"
+        ],
         "summary": "Počet kontaktů pro tytéž filtry jako seznam",
         "security": [
           {
-            "bearerAuth": ["contacts:read"]
+            "bearerAuth": [
+              "contacts:read"
+            ]
           }
         ],
         "parameters": [
@@ -5853,7 +7279,14 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["active", "unconfirmed", "unsubscribed", "bounced", "complained", "deleted"]
+              "enum": [
+                "active",
+                "unconfirmed",
+                "unsubscribed",
+                "bounced",
+                "complained",
+                "deleted"
+              ]
             },
             "required": false,
             "name": "status",
@@ -5905,7 +7338,11 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["high", "low", "none"]
+              "enum": [
+                "high",
+                "low",
+                "none"
+              ]
             },
             "required": false,
             "name": "vocative_confidence",
@@ -5968,11 +7405,15 @@
     },
     "/api/v1/contacts/lookup": {
       "post": {
-        "tags": ["Contacts"],
+        "tags": [
+          "Contacts"
+        ],
         "summary": "Vyhledání podle adresy, adresa nikdy není v URL",
         "security": [
           {
-            "bearerAuth": ["contacts:read"]
+            "bearerAuth": [
+              "contacts:read"
+            ]
           }
         ],
         "requestBody": {
@@ -5987,7 +7428,9 @@
                     "example": "jan@example.cz"
                   }
                 },
-                "required": ["email"],
+                "required": [
+                  "email"
+                ],
                 "additionalProperties": false
               }
             }
@@ -6005,7 +7448,9 @@
                       "$ref": "#/components/schemas/Contact"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -6055,11 +7500,15 @@
     },
     "/api/v1/contacts/batch": {
       "post": {
-        "tags": ["Contacts"],
+        "tags": [
+          "Contacts"
+        ],
         "summary": "Dávkový zápis s výsledkem po položkách",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -6087,7 +7536,9 @@
                     "maxItems": 1000
                   }
                 },
-                "required": ["items"],
+                "required": [
+                  "items"
+                ],
                 "additionalProperties": false
               }
             }
@@ -6111,7 +7562,12 @@
                           },
                           "status": {
                             "type": "string",
-                            "enum": ["created", "updated", "skipped", "error"]
+                            "enum": [
+                              "created",
+                              "updated",
+                              "skipped",
+                              "error"
+                            ]
                           },
                           "id": {
                             "type": "string",
@@ -6124,14 +7580,21 @@
                                 "type": "string"
                               }
                             },
-                            "required": ["code"]
+                            "required": [
+                              "code"
+                            ]
                           }
                         },
-                        "required": ["index", "status"]
+                        "required": [
+                          "index",
+                          "status"
+                        ]
                       }
                     }
                   },
-                  "required": ["results"]
+                  "required": [
+                    "results"
+                  ]
                 }
               }
             }
@@ -6211,11 +7674,15 @@
     },
     "/api/v1/contacts": {
       "get": {
-        "tags": ["Contacts"],
+        "tags": [
+          "Contacts"
+        ],
         "summary": "Stránka kontaktů, nikdy s celkovým počtem",
         "security": [
           {
-            "bearerAuth": ["contacts:read"]
+            "bearerAuth": [
+              "contacts:read"
+            ]
           }
         ],
         "parameters": [
@@ -6267,7 +7734,14 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["active", "unconfirmed", "unsubscribed", "bounced", "complained", "deleted"]
+              "enum": [
+                "active",
+                "unconfirmed",
+                "unsubscribed",
+                "bounced",
+                "complained",
+                "deleted"
+              ]
             },
             "required": false,
             "name": "status",
@@ -6319,7 +7793,11 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["high", "low", "none"]
+              "enum": [
+                "high",
+                "low",
+                "none"
+              ]
             },
             "required": false,
             "name": "vocative_confidence",
@@ -6390,11 +7868,15 @@
         }
       },
       "post": {
-        "tags": ["Contacts"],
+        "tags": [
+          "Contacts"
+        ],
         "summary": "Vytvoření nebo aktualizace kontaktu",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -6428,7 +7910,9 @@
                       "$ref": "#/components/schemas/Contact"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -6444,7 +7928,9 @@
                       "$ref": "#/components/schemas/Contact"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -6514,11 +8000,15 @@
     },
     "/api/v1/contacts/{id}": {
       "get": {
-        "tags": ["Contacts"],
+        "tags": [
+          "Contacts"
+        ],
         "summary": "Detail kontaktu",
         "security": [
           {
-            "bearerAuth": ["contacts:read"]
+            "bearerAuth": [
+              "contacts:read"
+            ]
           }
         ],
         "parameters": [
@@ -6544,7 +8034,9 @@
                       "$ref": "#/components/schemas/Contact"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -6592,11 +8084,15 @@
         }
       },
       "patch": {
-        "tags": ["Contacts"],
+        "tags": [
+          "Contacts"
+        ],
         "summary": "Částečná úprava kontaktu",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -6617,35 +8113,60 @@
                 "type": "object",
                 "properties": {
                   "first_name": {
-                    "type": ["string", "null"],
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "maxLength": 100
                   },
                   "last_name": {
-                    "type": ["string", "null"],
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "maxLength": 100
                   },
                   "full_name": {
-                    "type": ["string", "null"],
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "maxLength": 200
                   },
                   "title_prefix": {
-                    "type": ["string", "null"],
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "maxLength": 50
                   },
                   "title_suffix": {
-                    "type": ["string", "null"],
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "maxLength": 50
                   },
                   "gender": {
                     "type": "string",
-                    "enum": ["female", "male", "unknown"]
+                    "enum": [
+                      "female",
+                      "male",
+                      "unknown"
+                    ]
                   },
                   "first_name_vocative": {
-                    "type": ["string", "null"],
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "maxLength": 100
                   },
                   "last_name_vocative": {
-                    "type": ["string", "null"],
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "maxLength": 100
                   },
                   "locale": {
@@ -6653,7 +8174,10 @@
                     "maxLength": 35
                   },
                   "external_id": {
-                    "type": ["string", "null"],
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "maxLength": 255
                   },
                   "attributes": {
@@ -6700,10 +8224,15 @@
                         },
                         "status": {
                           "type": "string",
-                          "enum": ["pending", "confirmed"]
+                          "enum": [
+                            "pending",
+                            "confirmed"
+                          ]
                         }
                       },
-                      "required": ["list_id"],
+                      "required": [
+                        "list_id"
+                      ],
                       "additionalProperties": false
                     },
                     "maxItems": 50
@@ -6737,7 +8266,9 @@
                       "$ref": "#/components/schemas/Contact"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -6795,11 +8326,15 @@
         }
       },
       "delete": {
-        "tags": ["Contacts"],
+        "tags": [
+          "Contacts"
+        ],
         "summary": "Měkké smazání, anonymizace nebo fyzické smazání",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -6815,7 +8350,11 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["soft", "anonymize", "purge"],
+              "enum": [
+                "soft",
+                "anonymize",
+                "purge"
+              ],
               "default": "soft"
             },
             "required": false,
@@ -6836,7 +8375,9 @@
                       "format": "uuid"
                     }
                   },
-                  "required": ["request_id"]
+                  "required": [
+                    "request_id"
+                  ]
                 }
               }
             }
@@ -6899,11 +8440,15 @@
     },
     "/api/v1/contacts/{id}/restore": {
       "post": {
-        "tags": ["Contacts"],
+        "tags": [
+          "Contacts"
+        ],
         "summary": "Obnovení měkce smazaného kontaktu",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -6937,7 +8482,9 @@
                       "$ref": "#/components/schemas/Contact"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -6997,11 +8544,15 @@
     },
     "/api/v1/contacts/{id}/change-email": {
       "post": {
-        "tags": ["Contacts"],
+        "tags": [
+          "Contacts"
+        ],
         "summary": "Změna adresy s přepočtem otisků",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -7035,7 +8586,9 @@
                     "example": "jan@example.cz"
                   }
                 },
-                "required": ["email"],
+                "required": [
+                  "email"
+                ],
                 "additionalProperties": false
               }
             }
@@ -7053,7 +8606,9 @@
                       "$ref": "#/components/schemas/Contact"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -7113,11 +8668,15 @@
     },
     "/api/v1/contacts/{contact_id}/consents": {
       "get": {
-        "tags": ["Consents"],
+        "tags": [
+          "Consents"
+        ],
         "summary": "Historie souhlasů kontaktu, od nejnovějšího",
         "security": [
           {
-            "bearerAuth": ["contacts:read"]
+            "bearerAuth": [
+              "contacts:read"
+            ]
           }
         ],
         "parameters": [
@@ -7146,7 +8705,9 @@
                       }
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -7194,11 +8755,15 @@
         }
       },
       "post": {
-        "tags": ["Consents"],
+        "tags": [
+          "Consents"
+        ],
         "summary": "Zápis souhlasu nebo jeho odvolání",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -7234,7 +8799,9 @@
                       "format": "uuid"
                     }
                   },
-                  "required": ["id"]
+                  "required": [
+                    "id"
+                  ]
                 }
               }
             }
@@ -7284,18 +8851,25 @@
     },
     "/api/v1/contact-fields": {
       "get": {
-        "tags": ["Contact fields"],
+        "tags": [
+          "Contact fields"
+        ],
         "summary": "Vlastní pole projektu i s využitím limitů",
         "security": [
           {
-            "bearerAuth": ["contacts:read"]
+            "bearerAuth": [
+              "contacts:read"
+            ]
           }
         ],
         "parameters": [
           {
             "schema": {
               "type": "string",
-              "enum": ["true", "false"],
+              "enum": [
+                "true",
+                "false"
+              ],
               "default": "false"
             },
             "required": false,
@@ -7333,10 +8907,18 @@
                           "type": "integer"
                         }
                       },
-                      "required": ["used", "limit", "indexed_used", "indexed_limit"]
+                      "required": [
+                        "used",
+                        "limit",
+                        "indexed_used",
+                        "indexed_limit"
+                      ]
                     }
                   },
-                  "required": ["data", "limits"]
+                  "required": [
+                    "data",
+                    "limits"
+                  ]
                 }
               }
             }
@@ -7384,11 +8966,15 @@
         }
       },
       "post": {
-        "tags": ["Contact fields"],
+        "tags": [
+          "Contact fields"
+        ],
         "summary": "Založení vlastního pole",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "requestBody": {
@@ -7412,7 +8998,9 @@
                       "$ref": "#/components/schemas/ContactField"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -7472,11 +9060,15 @@
     },
     "/api/v1/contact-fields/{id}": {
       "patch": {
-        "tags": ["Contact fields"],
+        "tags": [
+          "Contact fields"
+        ],
         "summary": "Úprava popisku a povinnosti, nikdy typu",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -7511,7 +9103,9 @@
                       "$ref": "#/components/schemas/ContactField"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -7569,11 +9163,15 @@
         }
       },
       "delete": {
-        "tags": ["Contact fields"],
+        "tags": [
+          "Contact fields"
+        ],
         "summary": "Smazání pole i hodnot u kontaktů",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -7646,11 +9244,15 @@
     },
     "/api/v1/contact-fields/{id}/impact": {
       "get": {
-        "tags": ["Contact fields"],
+        "tags": [
+          "Contact fields"
+        ],
         "summary": "Dopad smazání pole před tím, než se smaže",
         "security": [
           {
-            "bearerAuth": ["contacts:read"]
+            "bearerAuth": [
+              "contacts:read"
+            ]
           }
         ],
         "parameters": [
@@ -7711,11 +9313,15 @@
     },
     "/api/v1/contact-fields/{id}/archive": {
       "post": {
-        "tags": ["Contact fields"],
+        "tags": [
+          "Contact fields"
+        ],
         "summary": "Archivace pole, hodnoty zůstávají",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -7741,7 +9347,9 @@
                       "$ref": "#/components/schemas/ContactField"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -7801,11 +9409,15 @@
     },
     "/api/v1/contact-fields/{id}/index": {
       "post": {
-        "tags": ["Contact fields"],
+        "tags": [
+          "Contact fields"
+        ],
         "summary": "Žádost o prověrku dotazovatelnosti pole",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -7829,10 +9441,17 @@
                   "properties": {
                     "index_state": {
                       "type": "string",
-                      "enum": ["none", "building", "ready", "failed"]
+                      "enum": [
+                        "none",
+                        "building",
+                        "ready",
+                        "failed"
+                      ]
                     }
                   },
-                  "required": ["index_state"]
+                  "required": [
+                    "index_state"
+                  ]
                 }
               }
             }
@@ -7892,18 +9511,25 @@
     },
     "/api/v1/lists": {
       "get": {
-        "tags": ["Lists"],
+        "tags": [
+          "Lists"
+        ],
         "summary": "Seznamy projektu",
         "security": [
           {
-            "bearerAuth": ["lists:read"]
+            "bearerAuth": [
+              "lists:read"
+            ]
           }
         ],
         "parameters": [
           {
             "schema": {
               "type": "string",
-              "enum": ["true", "false"]
+              "enum": [
+                "true",
+                "false"
+              ]
             },
             "required": false,
             "name": "include_archived",
@@ -7925,7 +9551,9 @@
                       }
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -7963,11 +9591,15 @@
         }
       },
       "post": {
-        "tags": ["Lists"],
+        "tags": [
+          "Lists"
+        ],
         "summary": "Založení seznamu",
         "security": [
           {
-            "bearerAuth": ["lists:write"]
+            "bearerAuth": [
+              "lists:write"
+            ]
           }
         ],
         "requestBody": {
@@ -7991,7 +9623,9 @@
                       "$ref": "#/components/schemas/List"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -8041,11 +9675,15 @@
     },
     "/api/v1/lists/{id}": {
       "get": {
-        "tags": ["Lists"],
+        "tags": [
+          "Lists"
+        ],
         "summary": "Detail seznamu",
         "security": [
           {
-            "bearerAuth": ["lists:read"]
+            "bearerAuth": [
+              "lists:read"
+            ]
           }
         ],
         "parameters": [
@@ -8071,7 +9709,9 @@
                       "$ref": "#/components/schemas/List"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -8119,11 +9759,15 @@
         }
       },
       "patch": {
-        "tags": ["Lists"],
+        "tags": [
+          "Lists"
+        ],
         "summary": "Úprava seznamu",
         "security": [
           {
-            "bearerAuth": ["lists:write"]
+            "bearerAuth": [
+              "lists:write"
+            ]
           }
         ],
         "parameters": [
@@ -8149,17 +9793,26 @@
                     "maxLength": 120
                   },
                   "description": {
-                    "type": ["string", "null"],
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "maxLength": 2000
                   },
                   "opt_in": {
                     "type": "string",
-                    "enum": ["single", "double"],
+                    "enum": [
+                      "single",
+                      "double"
+                    ],
                     "default": "double"
                   },
                   "confirmation_mode": {
                     "type": "string",
-                    "enum": ["one_step", "two_step"],
+                    "enum": [
+                      "one_step",
+                      "two_step"
+                    ],
                     "default": "one_step"
                   },
                   "confirmation_ttl_hours": {
@@ -8195,7 +9848,9 @@
                       "$ref": "#/components/schemas/List"
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -8253,11 +9908,15 @@
         }
       },
       "delete": {
-        "tags": ["Lists"],
+        "tags": [
+          "Lists"
+        ],
         "summary": "Archivace seznamu, přihlášení zůstávají",
         "security": [
           {
-            "bearerAuth": ["lists:write"]
+            "bearerAuth": [
+              "lists:write"
+            ]
           }
         ],
         "parameters": [
@@ -8320,11 +9979,15 @@
     },
     "/api/v1/lists/{id}/default": {
       "post": {
-        "tags": ["Lists"],
+        "tags": [
+          "Lists"
+        ],
         "summary": "Nastavení výchozího seznamu projektu",
         "security": [
           {
-            "bearerAuth": ["lists:write"]
+            "bearerAuth": [
+              "lists:write"
+            ]
           }
         ],
         "parameters": [
@@ -8387,11 +10050,15 @@
     },
     "/api/v1/lists/{id}/subscribe": {
       "post": {
-        "tags": ["Lists"],
+        "tags": [
+          "Lists"
+        ],
         "summary": "Přihlášení do seznamu",
         "security": [
           {
-            "bearerAuth": ["lists:write"]
+            "bearerAuth": [
+              "lists:write"
+            ]
           }
         ],
         "parameters": [
@@ -8423,11 +10090,17 @@
                   "type": "object",
                   "properties": {
                     "contact_id": {
-                      "type": ["string", "null"],
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "uuid"
                     },
                     "status": {
-                      "type": ["string", "null"],
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "enum": [
                         "pending",
                         "confirmed",
@@ -8441,7 +10114,11 @@
                       "type": "string"
                     }
                   },
-                  "required": ["contact_id", "status", "outcome"]
+                  "required": [
+                    "contact_id",
+                    "status",
+                    "outcome"
+                  ]
                 }
               }
             }
@@ -8509,11 +10186,15 @@
         }
       },
       "delete": {
-        "tags": ["Lists"],
+        "tags": [
+          "Lists"
+        ],
         "summary": "Odhlášení ze seznamu",
         "security": [
           {
-            "bearerAuth": ["lists:write"]
+            "bearerAuth": [
+              "lists:write"
+            ]
           }
         ],
         "parameters": [
@@ -8539,7 +10220,9 @@
                     "example": "jan@example.cz"
                   }
                 },
-                "required": ["email"],
+                "required": [
+                  "email"
+                ],
                 "additionalProperties": false
               }
             }
@@ -8594,11 +10277,15 @@
     },
     "/api/v1/lists/{id}/subscribe:bulk": {
       "post": {
-        "tags": ["Lists"],
+        "tags": [
+          "Lists"
+        ],
         "summary": "Hromadné přihlášení, nejvýš tisíc adres",
         "security": [
           {
-            "bearerAuth": ["lists:write"]
+            "bearerAuth": [
+              "lists:write"
+            ]
           }
         ],
         "parameters": [
@@ -8635,7 +10322,9 @@
                     "maxItems": 1000
                   }
                 },
-                "required": ["subscribers"],
+                "required": [
+                  "subscribers"
+                ],
                 "additionalProperties": false
               }
             }
@@ -8661,15 +10350,24 @@
                             "type": "string"
                           },
                           "contact_id": {
-                            "type": ["string", "null"],
+                            "type": [
+                              "string",
+                              "null"
+                            ],
                             "format": "uuid"
                           }
                         },
-                        "required": ["index", "outcome", "contact_id"]
+                        "required": [
+                          "index",
+                          "outcome",
+                          "contact_id"
+                        ]
                       }
                     }
                   },
-                  "required": ["results"]
+                  "required": [
+                    "results"
+                  ]
                 }
               }
             }
@@ -8729,11 +10427,15 @@
     },
     "/api/v1/lists/{id}/resend-confirmation": {
       "post": {
-        "tags": ["Lists"],
+        "tags": [
+          "Lists"
+        ],
         "summary": "Opakované odeslání potvrzovacího e-mailu",
         "security": [
           {
-            "bearerAuth": ["lists:write"]
+            "bearerAuth": [
+              "lists:write"
+            ]
           }
         ],
         "parameters": [
@@ -8758,7 +10460,9 @@
                     "format": "uuid"
                   }
                 },
-                "required": ["contact_id"],
+                "required": [
+                  "contact_id"
+                ],
                 "additionalProperties": false
               }
             }
@@ -8776,7 +10480,9 @@
                       "type": "string"
                     }
                   },
-                  "required": ["outcome"]
+                  "required": [
+                    "outcome"
+                  ]
                 }
               }
             }
@@ -8836,11 +10542,15 @@
     },
     "/api/v1/lists/{id}/stats": {
       "get": {
-        "tags": ["Lists"],
+        "tags": [
+          "Lists"
+        ],
         "summary": "Počty přihlášení podle stavu",
         "security": [
           {
-            "bearerAuth": ["lists:read"]
+            "bearerAuth": [
+              "lists:read"
+            ]
           }
         ],
         "parameters": [
@@ -8938,11 +10648,15 @@
     },
     "/api/v1/suppressions": {
       "get": {
-        "tags": ["Suppressions"],
+        "tags": [
+          "Suppressions"
+        ],
         "summary": "Blokované adresy, vždy maskované",
         "security": [
           {
-            "bearerAuth": ["suppressions:read"]
+            "bearerAuth": [
+              "suppressions:read"
+            ]
           }
         ],
         "parameters": [
@@ -8970,7 +10684,9 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["created_at.desc"],
+              "enum": [
+                "created_at.desc"
+              ],
               "default": "created_at.desc"
             },
             "required": false,
@@ -9051,11 +10767,15 @@
         }
       },
       "post": {
-        "tags": ["Suppressions"],
+        "tags": [
+          "Suppressions"
+        ],
         "summary": "Ruční zablokování adresy",
         "security": [
           {
-            "bearerAuth": ["suppressions:write"]
+            "bearerAuth": [
+              "suppressions:write"
+            ]
           }
         ],
         "requestBody": {
@@ -9086,11 +10806,16 @@
                     "default": "manual"
                   },
                   "detail": {
-                    "type": ["string", "null"],
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "maxLength": 500
                   }
                 },
-                "required": ["email"],
+                "required": [
+                  "email"
+                ],
                 "additionalProperties": false
               }
             }
@@ -9112,7 +10837,10 @@
                       "type": "boolean"
                     }
                   },
-                  "required": ["id", "created"]
+                  "required": [
+                    "id",
+                    "created"
+                  ]
                 }
               }
             }
@@ -9152,11 +10880,15 @@
     },
     "/api/v1/suppressions/{id}": {
       "delete": {
-        "tags": ["Suppressions"],
+        "tags": [
+          "Suppressions"
+        ],
         "summary": "Odebrání blokace, jen podle matice a s poznámkou",
         "security": [
           {
-            "bearerAuth": ["suppressions:write"]
+            "bearerAuth": [
+              "suppressions:write"
+            ]
           }
         ],
         "parameters": [
@@ -9182,7 +10914,9 @@
                     "maxLength": 500
                   }
                 },
-                "required": ["note"],
+                "required": [
+                  "note"
+                ],
                 "additionalProperties": false
               }
             }
@@ -9247,11 +10981,15 @@
     },
     "/api/v1/gdpr-requests": {
       "get": {
-        "tags": ["GDPR"],
+        "tags": [
+          "GDPR"
+        ],
         "summary": "Žádosti subjektů, řazené podle lhůty",
         "security": [
           {
-            "bearerAuth": ["gdpr:export"]
+            "bearerAuth": [
+              "gdpr:export"
+            ]
           }
         ],
         "parameters": [
@@ -9269,7 +11007,14 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["received", "verifying", "processing", "completed", "rejected", "failed"]
+              "enum": [
+                "received",
+                "verifying",
+                "processing",
+                "completed",
+                "rejected",
+                "failed"
+              ]
             },
             "required": false,
             "name": "status",
@@ -9307,7 +11052,9 @@
                       }
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -9345,14 +11092,20 @@
         }
       },
       "post": {
-        "tags": ["GDPR"],
+        "tags": [
+          "GDPR"
+        ],
         "summary": "Založení žádosti subjektu údajů",
         "security": [
           {
-            "bearerAuth": ["gdpr:export"]
+            "bearerAuth": [
+              "gdpr:export"
+            ]
           },
           {
-            "bearerAuth": ["gdpr:erase"]
+            "bearerAuth": [
+              "gdpr:erase"
+            ]
           }
         ],
         "requestBody": {
@@ -9379,10 +11132,16 @@
                   },
                   "mode": {
                     "type": "string",
-                    "enum": ["anonymize", "purge"]
+                    "enum": [
+                      "anonymize",
+                      "purge"
+                    ]
                   }
                 },
-                "required": ["email", "type"],
+                "required": [
+                  "email",
+                  "type"
+                ],
                 "additionalProperties": false
               }
             }
@@ -9434,11 +11193,15 @@
     },
     "/api/v1/gdpr-requests/{id}": {
       "get": {
-        "tags": ["GDPR"],
+        "tags": [
+          "GDPR"
+        ],
         "summary": "Detail žádosti",
         "security": [
           {
-            "bearerAuth": ["gdpr:export"]
+            "bearerAuth": [
+              "gdpr:export"
+            ]
           }
         ],
         "parameters": [
@@ -9508,11 +11271,15 @@
     },
     "/api/v1/gdpr-requests/{id}/verify": {
       "post": {
-        "tags": ["GDPR"],
+        "tags": [
+          "GDPR"
+        ],
         "summary": "Ověření totožnosti subjektu a spuštění zpracování",
         "security": [
           {
-            "bearerAuth": ["gdpr:export"]
+            "bearerAuth": [
+              "gdpr:export"
+            ]
           }
         ],
         "parameters": [
@@ -9592,11 +11359,15 @@
     },
     "/api/v1/gdpr-requests/{id}/extend": {
       "post": {
-        "tags": ["GDPR"],
+        "tags": [
+          "GDPR"
+        ],
         "summary": "Prodloužení lhůty o dva měsíce, jen s důvodem",
         "security": [
           {
-            "bearerAuth": ["gdpr:export"]
+            "bearerAuth": [
+              "gdpr:export"
+            ]
           }
         ],
         "parameters": [
@@ -9622,7 +11393,9 @@
                     "maxLength": 1000
                   }
                 },
-                "required": ["reason"],
+                "required": [
+                  "reason"
+                ],
                 "additionalProperties": false
               }
             }
@@ -9694,11 +11467,15 @@
     },
     "/api/v1/gdpr-requests/{id}/reject": {
       "post": {
-        "tags": ["GDPR"],
+        "tags": [
+          "GDPR"
+        ],
         "summary": "Zamítnutí žádosti, jen s důvodem",
         "security": [
           {
-            "bearerAuth": ["gdpr:export"]
+            "bearerAuth": [
+              "gdpr:export"
+            ]
           }
         ],
         "parameters": [
@@ -9724,7 +11501,9 @@
                     "maxLength": 1000
                   }
                 },
-                "required": ["reason"],
+                "required": [
+                  "reason"
+                ],
                 "additionalProperties": false
               }
             }
@@ -9796,11 +11575,15 @@
     },
     "/api/v1/retention-policies": {
       "get": {
-        "tags": ["Retention"],
+        "tags": [
+          "Retention"
+        ],
         "summary": "Politiky retence i s výchozími hodnotami",
         "security": [
           {
-            "bearerAuth": ["contacts:read"]
+            "bearerAuth": [
+              "contacts:read"
+            ]
           }
         ],
         "responses": {
@@ -9827,19 +11610,26 @@
                                     "$ref": "#/components/schemas/IsoDateTime"
                                   },
                                   {
-                                    "type": ["string", "null"]
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
                                   }
                                 ]
                               }
                             },
-                            "required": ["last_run_at"],
+                            "required": [
+                              "last_run_at"
+                            ],
                             "additionalProperties": false
                           }
                         ]
                       }
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -9867,11 +11657,15 @@
         }
       },
       "put": {
-        "tags": ["Retention"],
+        "tags": [
+          "Retention"
+        ],
         "summary": "Uložení politik retence, jen vlastník projektu",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "requestBody": {
@@ -9892,7 +11686,9 @@
                     "default": false
                   }
                 },
-                "required": ["policies"],
+                "required": [
+                  "policies"
+                ],
                 "additionalProperties": false
               }
             }
@@ -9922,19 +11718,26 @@
                                     "$ref": "#/components/schemas/IsoDateTime"
                                   },
                                   {
-                                    "type": ["string", "null"]
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
                                   }
                                 ]
                               }
                             },
-                            "required": ["last_run_at"],
+                            "required": [
+                              "last_run_at"
+                            ],
                             "additionalProperties": false
                           }
                         ]
                       }
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -9984,11 +11787,15 @@
     },
     "/api/v1/vocative-review/count": {
       "get": {
-        "tags": ["Vocative review"],
+        "tags": [
+          "Vocative review"
+        ],
         "summary": "Počty pro odznak v navigaci",
         "security": [
           {
-            "bearerAuth": ["contacts:read"]
+            "bearerAuth": [
+              "contacts:read"
+            ]
           }
         ],
         "parameters": [
@@ -10023,7 +11830,12 @@
                       "type": "boolean"
                     }
                   },
-                  "required": ["groups", "contacts", "ratio", "soft_limit_exceeded"]
+                  "required": [
+                    "groups",
+                    "contacts",
+                    "ratio",
+                    "soft_limit_exceeded"
+                  ]
                 }
               }
             }
@@ -10063,11 +11875,15 @@
     },
     "/api/v1/vocative-review": {
       "get": {
-        "tags": ["Vocative review"],
+        "tags": [
+          "Vocative review"
+        ],
         "summary": "Skupiny ke kontrole oslovení",
         "security": [
           {
-            "bearerAuth": ["contacts:read"]
+            "bearerAuth": [
+              "contacts:read"
+            ]
           }
         ],
         "parameters": [
@@ -10083,7 +11899,10 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["first", "last"]
+              "enum": [
+                "first",
+                "last"
+              ]
             },
             "required": false,
             "name": "kind",
@@ -10125,7 +11944,12 @@
                       "type": "integer"
                     }
                   },
-                  "required": ["data", "soft_limit_exceeded", "total_groups", "total_contacts"]
+                  "required": [
+                    "data",
+                    "soft_limit_exceeded",
+                    "total_groups",
+                    "total_contacts"
+                  ]
                 }
               }
             }
@@ -10165,11 +11989,15 @@
     },
     "/api/v1/vocative-review/confirm": {
       "post": {
-        "tags": ["Vocative review"],
+        "tags": [
+          "Vocative review"
+        ],
         "summary": "Operace nad skupinami fronty",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "requestBody": {
@@ -10190,12 +12018,20 @@
                         },
                         "kind": {
                           "type": "string",
-                          "enum": ["first", "last"],
+                          "enum": [
+                            "first",
+                            "last"
+                          ],
                           "default": "first"
                         },
                         "action": {
                           "type": "string",
-                          "enum": ["confirm", "set_vocative", "set_gender", "no_name"]
+                          "enum": [
+                            "confirm",
+                            "set_vocative",
+                            "set_gender",
+                            "no_name"
+                          ]
                         },
                         "vocative": {
                           "type": "string",
@@ -10203,21 +12039,30 @@
                         },
                         "gender": {
                           "type": "string",
-                          "enum": ["female", "male", "unknown"]
+                          "enum": [
+                            "female",
+                            "male",
+                            "unknown"
+                          ]
                         },
                         "save_override": {
                           "type": "boolean",
                           "default": true
                         }
                       },
-                      "required": ["name_key", "action"],
+                      "required": [
+                        "name_key",
+                        "action"
+                      ],
                       "additionalProperties": false
                     },
                     "minItems": 1,
                     "maxItems": 100
                   }
                 },
-                "required": ["groups"],
+                "required": [
+                  "groups"
+                ],
                 "additionalProperties": false
               }
             }
@@ -10241,17 +12086,26 @@
                           },
                           "mode": {
                             "type": "string",
-                            "enum": ["sync", "queued"]
+                            "enum": [
+                              "sync",
+                              "queued"
+                            ]
                           },
                           "affected": {
                             "type": "integer"
                           }
                         },
-                        "required": ["name_key", "mode", "affected"]
+                        "required": [
+                          "name_key",
+                          "mode",
+                          "affected"
+                        ]
                       }
                     }
                   },
-                  "required": ["results"]
+                  "required": [
+                    "results"
+                  ]
                 }
               }
             }
@@ -10291,18 +12145,25 @@
     },
     "/api/v1/name-overrides": {
       "get": {
-        "tags": ["Name overrides"],
+        "tags": [
+          "Name overrides"
+        ],
         "summary": "Přepisy jmen projektu",
         "security": [
           {
-            "bearerAuth": ["contacts:read"]
+            "bearerAuth": [
+              "contacts:read"
+            ]
           }
         ],
         "parameters": [
           {
             "schema": {
               "type": "string",
-              "enum": ["first", "last"]
+              "enum": [
+                "first",
+                "last"
+              ]
             },
             "required": false,
             "name": "kind",
@@ -10344,7 +12205,9 @@
                       }
                     }
                   },
-                  "required": ["data"]
+                  "required": [
+                    "data"
+                  ]
                 }
               }
             }
@@ -10382,11 +12245,15 @@
         }
       },
       "post": {
-        "tags": ["Name overrides"],
+        "tags": [
+          "Name overrides"
+        ],
         "summary": "Založení nebo úprava přepisu jména",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "requestBody": {
@@ -10397,7 +12264,10 @@
                 "properties": {
                   "kind": {
                     "type": "string",
-                    "enum": ["first", "last"],
+                    "enum": [
+                      "first",
+                      "last"
+                    ],
                     "default": "first"
                   },
                   "name": {
@@ -10406,19 +12276,35 @@
                     "maxLength": 100
                   },
                   "gender": {
-                    "type": ["string", "null"],
-                    "enum": ["female", "male", "unknown", null]
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "female",
+                      "male",
+                      "unknown",
+                      null
+                    ]
                   },
                   "vocative": {
-                    "type": ["string", "null"],
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "maxLength": 100
                   },
                   "note": {
-                    "type": ["string", "null"],
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "maxLength": 500
                   }
                 },
-                "required": ["name"],
+                "required": [
+                  "name"
+                ],
                 "additionalProperties": false
               }
             }
@@ -10437,7 +12323,9 @@
                       "format": "uuid"
                     }
                   },
-                  "required": ["id"]
+                  "required": [
+                    "id"
+                  ]
                 }
               }
             }
@@ -10477,11 +12365,15 @@
     },
     "/api/v1/name-overrides/{id}": {
       "delete": {
-        "tags": ["Name overrides"],
+        "tags": [
+          "Name overrides"
+        ],
         "summary": "Smazání přepisu",
         "security": [
           {
-            "bearerAuth": ["contacts:write"]
+            "bearerAuth": [
+              "contacts:write"
+            ]
           }
         ],
         "parameters": [
@@ -10531,6 +12423,2163 @@
           },
           "422": {
             "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/segments/schema": {
+      "get": {
+        "tags": [
+          "Segments"
+        ],
+        "summary": "JSON Schema definice segmentu, verze 1",
+        "security": [
+          {
+            "bearerAuth": [
+              "segments:read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JSON Schema AST verze 1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/segments/presets": {
+      "get": {
+        "tags": [
+          "Segments"
+        ],
+        "summary": "Hotové segmenty čištění",
+        "security": [
+          {
+            "bearerAuth": [
+              "segments:read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Šest presetů",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SegmentPreset"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/segments/presets/{key}": {
+      "post": {
+        "tags": [
+          "Segments"
+        ],
+        "summary": "Založení segmentu z presetu",
+        "security": [
+          {
+            "bearerAuth": [
+              "segments:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "required": true,
+            "name": "key",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "list_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Vlastní kopie presetu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Segment"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/segments/preview": {
+      "post": {
+        "tags": [
+          "Segments"
+        ],
+        "summary": "Počet, vzorek a varování bez uložení",
+        "security": [
+          {
+            "bearerAuth": [
+              "segments:read"
+            ]
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Počet, vzorek a varování",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/segments/audience-breakdown": {
+      "post": {
+        "tags": [
+          "Segments"
+        ],
+        "summary": "Rozpad publika po branách",
+        "security": [
+          {
+            "bearerAuth": [
+              "segments:read"
+            ]
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AudienceBreakdownRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rozpad publika po branách",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudienceBreakdown"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/segments": {
+      "get": {
+        "tags": [
+          "Segments"
+        ],
+        "summary": "Segmenty projektu",
+        "security": [
+          {
+            "bearerAuth": [
+              "segments:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Segmenty",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Segment"
+                      }
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "has_more"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Segments"
+        ],
+        "summary": "Nový segment",
+        "security": [
+          {
+            "bearerAuth": [
+              "segments:write"
+            ]
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSegment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Založeno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Segment"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "already_exists (Already exists)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/segments/{id}": {
+      "get": {
+        "tags": [
+          "Segments"
+        ],
+        "summary": "Jeden segment",
+        "security": [
+          {
+            "bearerAuth": [
+              "segments:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Segment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Segment"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Segments"
+        ],
+        "summary": "Úprava segmentu",
+        "security": [
+          {
+            "bearerAuth": [
+              "segments:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchSegment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upraveno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Segment"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "already_exists (Already exists)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Segments"
+        ],
+        "summary": "Smazání segmentu",
+        "security": [
+          {
+            "bearerAuth": [
+              "segments:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Smazáno"
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/segments/{id}/preview": {
+      "get": {
+        "tags": [
+          "Segments"
+        ],
+        "summary": "Náhled uloženého segmentu",
+        "security": [
+          {
+            "bearerAuth": [
+              "segments:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Náhled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/segments/{id}/contacts": {
+      "get": {
+        "tags": [
+          "Segments"
+        ],
+        "summary": "Kontakty segmentu",
+        "security": [
+          {
+            "bearerAuth": [
+              "segments:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Kontakty",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SegmentContactSample"
+                      }
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "has_more"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/segments/{id}/recount": {
+      "post": {
+        "tags": [
+          "Segments"
+        ],
+        "summary": "Přepočet segmentu",
+        "security": [
+          {
+            "bearerAuth": [
+              "segments:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Přepočet zařazen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Segment"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/segments/{id}/freeze": {
+      "post": {
+        "tags": [
+          "Segments"
+        ],
+        "summary": "Zmrazení segmentu do statické kopie",
+        "security": [
+          {
+            "bearerAuth": [
+              "segments:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Statický segment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Segment"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/imports": {
+      "post": {
+        "tags": [
+          "Imports"
+        ],
+        "summary": "Nahrání souboru s kontakty",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:import"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Přijato ke zpracování",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Import"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict (Conflict)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "payload_too_large (Payload too large)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Imports"
+        ],
+        "summary": "Importy projektu",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Importy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Import"
+                      }
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "has_more"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/imports/{id}": {
+      "get": {
+        "tags": [
+          "Imports"
+        ],
+        "summary": "Jeden import",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Import",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Import"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Imports"
+        ],
+        "summary": "Úprava mapování, kódování a voleb",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:import"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchImport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upravený import",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Import"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict (Conflict)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/imports/{id}/preview": {
+      "get": {
+        "tags": [
+          "Imports"
+        ],
+        "summary": "Náhled prvních řádků včetně oslovení",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "default": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Náhled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict (Conflict)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/imports/{id}/confirm": {
+      "post": {
+        "tags": [
+          "Imports"
+        ],
+        "summary": "Spuštění importu",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:import"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Zařazeno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Import"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict (Conflict)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "locked (neregistrovaný kód)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/imports/{id}/cancel": {
+      "post": {
+        "tags": [
+          "Imports"
+        ],
+        "summary": "Zrušení běžícího importu",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:import"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Zrušeno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "cancelled"
+                      ]
+                    },
+                    "failure_detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "failure_detail"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict (Conflict)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/imports/{id}/resume": {
+      "post": {
+        "tags": [
+          "Imports"
+        ],
+        "summary": "Pokračování zrušeného importu od checkpointu",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:import"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Nový import navázaný na předchozí",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "checkpoint_byte": {
+                      "type": "integer"
+                    },
+                    "resume_from_import_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "checkpoint_byte",
+                    "resume_from_import_id"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict (Conflict)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/imports/{id}/errors": {
+      "get": {
+        "tags": [
+          "Imports"
+        ],
+        "summary": "Chybné řádky importu",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chybné řádky",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportErrors"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/imports/{id}/errors.csv": {
+      "get": {
+        "tags": [
+          "Imports"
+        ],
+        "summary": "Chybné řádky ke stažení v původním kódování",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chybné řádky ke stažení"
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/imports/{id}/events": {
+      "get": {
+        "tags": [
+          "Imports"
+        ],
+        "summary": "Průběh importu jako SSE",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Průběh importu jako SSE"
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/exports": {
+      "post": {
+        "tags": [
+          "Exports"
+        ],
+        "summary": "Založení exportu kontaktů",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:export"
+            ]
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Export zařazen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Export"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/exports/{id}": {
+      "get": {
+        "tags": [
+          "Exports"
+        ],
+        "summary": "Stav exportu",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:export"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Export",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Export"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/exports/{id}/download": {
+      "get": {
+        "tags": [
+          "Exports"
+        ],
+        "summary": "Stažení hotového exportu jednorázovým tokenem",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:export"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "maxLength": 200
+            },
+            "required": true,
+            "name": "token",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Soubor"
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
             "content": {
               "application/problem+json": {
                 "schema": {

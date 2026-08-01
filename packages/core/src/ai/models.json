@@ -1,0 +1,39 @@
+{
+  "updatedAt": "2026-07-31",
+  "note": "Kurátorovaný seznam. Uvádíme jen modely, jejichž identifikátor a parametry umíme doložit. U providerů se seznamovým endpointem se nabídka doplňuje živě, viz GET /api/v1/ai/models.",
+  "providers": {
+    "anthropic": {
+      "defaultModel": "claude-opus-5",
+      "models": [
+        {
+          "id": "claude-opus-5",
+          "label": "Claude Opus 5",
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000
+        },
+        {
+          "id": "claude-sonnet-5",
+          "label": "Claude Sonnet 5",
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000
+        },
+        {
+          "id": "claude-fable-5",
+          "label": "Claude Fable 5",
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000
+        },
+        {
+          "id": "claude-haiku-4-5-20251001",
+          "label": "Claude Haiku 4.5",
+          "contextWindow": 200000,
+          "maxOutputTokens": 64000
+        }
+      ]
+    },
+    "openai": { "defaultModel": null, "models": [] },
+    "google": { "defaultModel": null, "models": [] },
+    "openrouter": { "defaultModel": null, "models": [] },
+    "openai_compatible": { "defaultModel": null, "models": [] }
+  }
+}

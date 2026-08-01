@@ -1,0 +1,508 @@
+{
+  "common": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "tryAgain": "Try again",
+    "details": "Details"
+  },
+  "header": {
+    "back": "Back to templates",
+    "saved": "Saved at {time}",
+    "saving": "Saving…",
+    "saveFailed": "Could not save, retrying",
+    "unsaved": "Unsaved changes",
+    "preview": "Preview",
+    "edit": "Back to editing",
+    "testSend": "Send test",
+    "rename": "Template name"
+  },
+  "palette": {
+    "title": "Blocks",
+    "hint": "Add a block with the plus button between blocks, or by dragging.",
+    "group": {
+      "content": "Content",
+      "layout": "Layout"
+    }
+  },
+  "block": {
+    "section": "Section",
+    "columns": "Columns",
+    "columns2": "Two columns",
+    "columns3": "Three columns",
+    "column": "Column",
+    "heading": "Heading",
+    "text": "Text",
+    "image": "Image",
+    "button": "Button",
+    "divider": "Divider",
+    "spacer": "Spacer",
+    "social": "Social networks",
+    "footer": "Footer",
+    "html": "Custom HTML",
+    "unknown": "Unknown block",
+    "columnsWithLayout": "Columns {layout}",
+    "socialCount": "{count, plural, =0 {no networks} one {# network} other {# networks}}",
+    "lockedHint": "This editor version cannot edit a {type} block. It stays in the template unchanged.",
+    "htmlForbidden": "Only a member with the templates:write_html permission can edit custom HTML.",
+    "htmlConditionHint": "Set the visibility condition in the properties panel, not by typing into the code."
+  },
+  "group": {
+    "content": "Content",
+    "style": "Style",
+    "layout": "Layout",
+    "mobile": "Mobile",
+    "visibility": "Visibility",
+    "emailLayout": "Email",
+    "typography": "Type",
+    "darkMode": "Dark mode"
+  },
+  "prop": {
+    "content": "Text",
+    "buttonLabel": "Label",
+    "level": "Level",
+    "color": "Color",
+    "linkColor": "Link color",
+    "align": "Alignment",
+    "fontFamily": "Font",
+    "fontSize": "Font size",
+    "fontWeight": "Font weight",
+    "lineHeight": "Line height",
+    "letterSpacing": "Letter spacing",
+    "padding": "Padding",
+    "backgroundColor": "Background color",
+    "outerBackgroundColor": "Full width background",
+    "backgroundImage": "Background image",
+    "backgroundPosition": "Background position",
+    "fullWidth": "Full width",
+    "roundedTop": "Round the top",
+    "roundedBottom": "Round the bottom",
+    "hideOnMobile": "Hide on mobile",
+    "visibleWhen": "Show only when",
+    "layout": "Column ratio",
+    "gap": "Gap between columns",
+    "verticalAlign": "Vertical alignment",
+    "stackOnMobile": "Stack on mobile",
+    "stackOrder": "Order on mobile",
+    "borderRadius": "Corner radius",
+    "asset": "Image",
+    "alt": "Image description",
+    "decorative": "Decorative only",
+    "href": "Link",
+    "width": "Width",
+    "darkVariant": "Image for dark mode",
+    "buttonStyle": "Style",
+    "textColor": "Text color",
+    "borderColor": "Border color",
+    "borderWidth": "Border width",
+    "paddingX": "Horizontal padding",
+    "paddingY": "Vertical padding",
+    "thickness": "Thickness",
+    "lineStyle": "Line style",
+    "lineWidth": "Line width",
+    "height": "Height",
+    "heightMobile": "Height on mobile",
+    "socialItems": "Networks",
+    "iconStyle": "Icon style",
+    "iconSize": "Icon size",
+    "code": "HTML code",
+    "senderInfo": "Sender details",
+    "showUnsubscribe": "Unsubscribe link",
+    "unsubscribeLabel": "Unsubscribe link text",
+    "showPreferences": "Preferences link",
+    "preferencesLabel": "Preferences link text",
+    "showWebview": "View in browser link",
+    "webviewLabel": "Browser link text",
+    "contentWidth": "Content width",
+    "canvasBackground": "Canvas background",
+    "contentBackground": "Content background",
+    "radius": "Corner radius",
+    "headingFont": "Heading font",
+    "bodyFont": "Body font",
+    "baseFontSize": "Base font size",
+    "baseLineHeight": "Base line height",
+    "headingScale": "Heading size ratio",
+    "darkMode": "Dark mode"
+  },
+  "value": {
+    "inherited": "From the theme",
+    "useDefault": "Use the value from the theme",
+    "align": {
+      "left": "Left",
+      "center": "Center",
+      "right": "Right",
+      "justify": "Justify"
+    },
+    "valign": {
+      "top": "Top",
+      "middle": "Middle",
+      "bottom": "Bottom"
+    },
+    "position": {
+      "top": "Top",
+      "center": "Center",
+      "bottom": "Bottom"
+    },
+    "side": {
+      "top": "Top",
+      "right": "Right",
+      "bottom": "Bottom",
+      "left": "Left"
+    },
+    "level": {
+      "1": "Heading 1",
+      "2": "Heading 2",
+      "3": "Heading 3"
+    },
+    "weight": {
+      "400": "Regular",
+      "600": "Semibold",
+      "700": "Bold"
+    },
+    "layout": {
+      "1-1": "50 and 50",
+      "1-2": "33 and 67",
+      "2-1": "67 and 33",
+      "1-1-1": "Three equal",
+      "2-1-1": "50, 25 and 25",
+      "1-1-2": "25, 25 and 50"
+    },
+    "stackOrder": {
+      "normal": "Left to right",
+      "reverse": "Right to left"
+    },
+    "buttonStyle": {
+      "solid": "Solid",
+      "outline": "Outline"
+    },
+    "borderWidth": {
+      "0": "No border",
+      "1": "1 px",
+      "2": "2 px"
+    },
+    "thickness": {
+      "1": "1 px",
+      "2": "2 px",
+      "3": "3 px",
+      "4": "4 px"
+    },
+    "lineStyle": {
+      "solid": "Solid",
+      "dashed": "Dashed",
+      "dotted": "Dotted"
+    },
+    "iconStyle": {
+      "color": "Color",
+      "monoDark": "Monochrome dark",
+      "monoLight": "Monochrome light"
+    },
+    "width": {
+      "600": "600 px",
+      "640": "640 px"
+    },
+    "radius": {
+      "0": "Square corners",
+      "4": "4 px",
+      "6": "6 px",
+      "8": "8 px",
+      "12": "12 px"
+    },
+    "scale": {
+      "1125": "Subtle",
+      "12": "Moderate",
+      "125": "Default",
+      "1333": "Bold"
+    },
+    "darkMode": {
+      "auto": "Follow the recipient's setting",
+      "off": "Turn off"
+    },
+    "font": {
+      "system": "System",
+      "arial": "Arial",
+      "helvetica": "Helvetica",
+      "verdana": "Verdana",
+      "tahoma": "Tahoma",
+      "trebuchet": "Trebuchet MS",
+      "georgia": "Georgia",
+      "times": "Times New Roman",
+      "courier": "Courier New"
+    },
+    "color": {
+      "none": "Transparent",
+      "custom": "Custom color",
+      "brand": {
+        "primary": "Primary brand color",
+        "secondary": "Secondary brand color",
+        "accent": "Accent color"
+      },
+      "text": {
+        "default": "Text",
+        "muted": "Muted text",
+        "inverted": "Text on color"
+      },
+      "surface": {
+        "canvas": "Canvas",
+        "content": "Content",
+        "subtle": "Subtle background"
+      },
+      "link": {
+        "default": "Link"
+      }
+    }
+  },
+  "hint": {
+    "outlookIgnored": "Outlook on Windows will not show this effect.",
+    "outlookRadius": "Outlook on Windows will not show rounded corners.",
+    "outlookLineStyle": "Dashed and dotted lines look different in Outlook.",
+    "altRequired": "Screen readers read the description and it shows when the image fails to load.",
+    "altMissing": "Image description is missing",
+    "decorative": "Screen readers skip a decorative image and it needs no description.",
+    "darkVariant": "An alternative image for recipients using dark mode.",
+    "unsubscribeRequired": "In campaigns the unsubscribe link has to stay on."
+  },
+  "op": {
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "moveOut": "Move out one level",
+    "moveIn": "Move into the column",
+    "duplicate": "Duplicate",
+    "delete": "Delete",
+    "insertAfter": "Add a block after",
+    "edit": "Edit content",
+    "selectPrev": "Select the previous block",
+    "selectNext": "Select the next block",
+    "selectParent": "Select the parent block",
+    "selectChild": "Select the first nested block",
+    "undo": "Undo",
+    "redo": "Redo",
+    "escape": "Clear the selection"
+  },
+  "insert": {
+    "after": "Add a block after {block}"
+  },
+  "a11y": {
+    "announcements": "Editor announcements",
+    "canvas": "Email content",
+    "propertiesPanel": "Selected block properties",
+    "blockMoved": "{block}, position {position} of {total}",
+    "moveBlocked": "{block} cannot move further in this direction.",
+    "blockDuplicated": "{block} duplicated.",
+    "duplicateBlocked": "{block} cannot be duplicated.",
+    "blockDeleted": "{block} deleted.",
+    "blockInserted": "{block} added.",
+    "undone": "Change undone.",
+    "redone": "Change redone."
+  },
+  "visibility": {
+    "always": "Always",
+    "field": "Field",
+    "operator": "Condition",
+    "badge": "Shows only when {field} {op}",
+    "op": {
+      "present": "is filled in",
+      "blank": "is empty",
+      "true": "is on",
+      "false": "is off"
+    }
+  },
+  "richtext": {
+    "toolbar": "Text formatting",
+    "label": "Block text",
+    "placeholder": "Write your text…",
+    "bold": "Bold",
+    "italic": "Italic",
+    "underline": "Underline",
+    "strike": "Strikethrough",
+    "link": "Link",
+    "linkUrl": "Link address",
+    "linkApply": "Insert link",
+    "linkRemove": "Remove link",
+    "bulletList": "Bullet list",
+    "orderedList": "Numbered list",
+    "insertPersonalization": "Insert merge tag"
+  },
+  "token": {
+    "title": "Merge tag",
+    "tooltip": "Merge tag: {label}. It will be replaced with the recipient's value when sending.",
+    "fallbackLabel": "Fallback value",
+    "fallbackHint": "Used when the recipient has no value filled in.",
+    "fallbackInvalid": "A fallback value cannot contain a quote or curly and angle brackets.",
+    "dateFormatLabel": "Date format",
+    "dateFormatDefault": "Follow the project setting",
+    "dateFormat": {
+      "dayMonthYearPadded": "07/31/2026",
+      "dayMonthYear": "7/31/2026",
+      "isoDate": "2026-07-31",
+      "dayMonthYearTime": "07/31/2026 14:32",
+      "time": "14:32"
+    },
+    "longTextHint": "Line breaks will not show in the email.",
+    "unknownField": "This field does not exist in this project.",
+    "suggestion": "You probably mean {suggestion}."
+  },
+  "personalization": {
+    "search": "Search fields",
+    "empty": "No field matches.",
+    "groupSystem": "System links",
+    "groupContact": "Contact details",
+    "groupCustom": "Custom fields"
+  },
+  "field": {
+    "unsubscribeUrl": "Unsubscribe link",
+    "preferencesUrl": "Preferences link",
+    "webviewUrl": "View in browser",
+    "campaignName": "Campaign name",
+    "campaignSubject": "Campaign subject",
+    "workspaceName": "Project name",
+    "senderAddress": "Sender postal address",
+    "email": "Email",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "firstNameVocative": "First name, vocative",
+    "lastNameVocative": "Last name, vocative",
+    "titlePrefix": "Title before name",
+    "titleSuffix": "Title after name",
+    "greeting": "Greeting",
+    "gender": "Gender",
+    "locale": "Contact language",
+    "createdAt": "Created"
+  },
+  "social": {
+    "network": "Network",
+    "href": "Link",
+    "add": "Add a network",
+    "remove": "Remove network",
+    "max": "You cannot add more than {max} networks.",
+    "facebook": "Facebook",
+    "instagram": "Instagram",
+    "x": "X",
+    "linkedin": "LinkedIn",
+    "youtube": "YouTube",
+    "tiktok": "TikTok",
+    "threads": "Threads",
+    "pinterest": "Pinterest",
+    "bluesky": "Bluesky",
+    "mastodon": "Mastodon",
+    "web": "Web",
+    "email": "Email"
+  },
+  "asset": {
+    "title": "Images",
+    "pick": "Choose an image",
+    "change": "Change the image",
+    "remove": "Remove",
+    "upload": "Upload an image"
+  },
+  "link": {
+    "schemeForbidden": "A link must start with https, http, mailto or tel.",
+    "liquidForbidden": "A merge tag cannot be placed inside a tracked link.",
+    "trackable": "Track clicks"
+  },
+  "theme": {
+    "title": "Theme"
+  },
+  "meta": {
+    "previewText": "Preview line"
+  },
+  "issues": {
+    "title": "Template findings",
+    "errorCount": "{count, plural, =0 {no errors} one {# error} other {# errors}}",
+    "warningCount": "{count, plural, =0 {no warnings} one {# warning} other {# warnings}}",
+    "goToBlock": "Go to block"
+  },
+  "preview": {
+    "desktop": "Desktop",
+    "mobile": "Mobile",
+    "text": "Plain text",
+    "source": "Source",
+    "dark": "Dark mode",
+    "modes": "Preview mode",
+    "frameTitle": "Email preview",
+    "viewAs": "View as",
+    "randomContact": "Random contact",
+    "noNameContact": "Contact without a name",
+    "sampleData": "Sample data",
+    "sizeKb": "Size {size} kB",
+    "failed": "The preview could not be generated."
+  },
+  "testSend": {
+    "title": "Test email",
+    "recipients": "Addresses",
+    "submit": "Send test",
+    "recipientsHint": "At most {max} addresses separated by commas.",
+    "prefix": "Add a TEST marker to the subject",
+    "explain": "A test email does not count towards statistics and tracks neither opens nor clicks.",
+    "noRecipients": "Enter at least one address.",
+    "tooMany": "You can send to at most five addresses at once.",
+    "rateLimited": "The test email limit is used up. Try again in {minutes} minutes.",
+    "failed": "The test could not be sent ({code}).",
+    "success": "The test email is on its way."
+  },
+  "state": {
+    "loading": "Loading the template…",
+    "loadFailed": "The template could not be loaded.",
+    "notFound": "The template does not exist or was deleted.",
+    "forbidden": "Editing templates needs the templates:write permission.",
+    "readOnly": "You can view the template but not edit it.",
+    "schemaTooNew": "The template comes from a newer version of the tool and cannot be opened in this editor.",
+    "tooManyBlocks": "A template can hold at most 300 blocks and that limit is used up.",
+    "tooLarge": "The template is over 512 kB and cannot be saved.",
+    "offline": "You are offline, we will send the changes once the connection is back.",
+    "conflictTitle": "Someone else has changed the template",
+    "conflictBody": "You have an older version open. You can load the new one, or copy your changes out first.",
+    "conflictReload": "Load the new version",
+    "notFoundBody": "Someone else may have deleted it, or the address has a typo.",
+    "backToList": "Back to the template list",
+    "forbiddenBody": "Opening a template needs the templates:read permission and your role does not have it.",
+    "forbiddenWhoCanHelp": "The project owner can change your role."
+  },
+  "list": {
+    "title": "Templates",
+    "empty": "You have no templates yet.",
+    "emptyHint": "A template is the email content you prepare once and use in any campaign.",
+    "create": "Create a template",
+    "open": "Open",
+    "loadFailed": "Templates could not be loaded.",
+    "createFailed": "The template could not be created.",
+    "newName": "New template"
+  },
+  "issue": {
+    "content_asset_not_found": "This image is no longer in the library.",
+    "content_condition_field_unknown": "The condition points to a field that does not exist in this project.",
+    "content_condition_on_unsubscribe": "A block with the unsubscribe link cannot have a visibility condition.",
+    "content_condition_operator_invalid": "This condition does not fit the field type.",
+    "content_duplicate_block_id": "Two blocks share the same id.",
+    "content_duplicate_footer": "A template can only have one footer.",
+    "content_html_too_large": "The email is too large. Gmail clips longer messages and the unsubscribe link disappears.",
+    "content_image_missing_alt": "The image has no description. Screen readers read it and it shows when the image fails to load.",
+    "content_link_anchor_only": "A link to an anchor inside the email does not work.",
+    "content_link_scheme_forbidden": "A link must start with https, http, mailto or tel.",
+    "content_low_contrast": "This text is hard to read on this background.",
+    "content_missing_unsubscribe": "A campaign must contain an unsubscribe link.",
+    "content_nested_columns": "Columns cannot be placed inside columns.",
+    "content_nested_repeat": "A repeat cannot be placed inside a repeat.",
+    "content_padding_overflow": "Padding is wider than the content, the block does not fit.",
+    "content_raw_html_forbidden": "Only a member with the templates:write_html permission can edit custom HTML.",
+    "content_reserved_marker": "The text contains a reserved marker that sending fills in.",
+    "content_too_many_blocks": "A template can hold at most 300 blocks and that limit is used up.",
+    "content_too_many_links": "There are too many links, click tracking would stop making sense.",
+    "liquid_comparison_operator_not_supported": "This operator cannot be used in a condition.",
+    "liquid_contains_not_allowed": "The \"contains\" condition cannot be used here.",
+    "liquid_date_format_not_allowed": "This date format is not allowed.",
+    "liquid_default_value_invalid": "A fallback value cannot contain a quote or curly and angle brackets.",
+    "liquid_escaped_entity_in_construct": "An HTML entity was left in the expression. Please type it again, without formatting.",
+    "liquid_filter_not_allowed": "This value transformation is not allowed.",
+    "liquid_for_parameter_not_allowed": "This repeat parameter is not allowed.",
+    "liquid_in_trackable_href": "A merge tag cannot be placed inside a tracked link.",
+    "liquid_index_not_allowed": "Accessing an item by position is not allowed.",
+    "liquid_literal_not_supported": "This value cannot be used in an expression.",
+    "liquid_nested_for": "A repeat inside a repeat is not allowed.",
+    "liquid_parentheses_not_allowed": "Parentheses are not allowed in an expression.",
+    "liquid_string_literal_not_allowed": "Quoted text cannot be used in an expression.",
+    "liquid_tag_not_allowed": "This tag is not allowed.",
+    "liquid_unknown_field": "This field does not exist in this project.",
+    "liquid_unknown_root": "This data source does not exist.",
+    "liquid_vocative_filter": "The greeting is inflected automatically, a vocative filter does not belong here.",
+    "liquid_whitespace_control_not_allowed": "Whitespace trimming is not allowed in an expression."
+  }
+}

@@ -1,0 +1,126 @@
+import { ALIGN_OPTIONS, COMMON_DEFAULTS, contentGroups } from './common';
+import type { BlockDescriptor } from './types';
+
+export const BUTTON_DESCRIPTOR: BlockDescriptor = {
+  type: 'button',
+  label: 'block.button',
+  icon: 'button',
+  inPalette: true,
+  groups: [
+    {
+      label: 'group.content',
+      props: [
+        {
+          kind: 'richtext',
+          key: 'label',
+          label: 'prop.buttonLabel',
+          allowLists: false,
+          singleParagraph: true,
+        },
+        { kind: 'link', key: 'href', label: 'prop.href', trackableKey: 'trackable' },
+      ],
+    },
+    {
+      label: 'group.style',
+      props: [
+        {
+          kind: 'select',
+          key: 'style',
+          label: 'prop.buttonStyle',
+          options: [
+            { value: 'solid', label: 'value.buttonStyle.solid' },
+            { value: 'outline', label: 'value.buttonStyle.outline' },
+          ],
+        },
+        {
+          kind: 'color',
+          key: 'backgroundColor',
+          label: 'prop.backgroundColor',
+          allowThemeRef: true,
+        },
+        { kind: 'color', key: 'textColor', label: 'prop.textColor', allowThemeRef: true },
+        {
+          kind: 'color',
+          key: 'borderColor',
+          label: 'prop.borderColor',
+          allowThemeRef: true,
+          nullable: true,
+        },
+        {
+          kind: 'select',
+          key: 'borderWidth',
+          label: 'prop.borderWidth',
+          options: [
+            { value: 0, label: 'value.borderWidth.0' },
+            { value: 1, label: 'value.borderWidth.1' },
+            { value: 2, label: 'value.borderWidth.2' },
+          ],
+        },
+        {
+          kind: 'number',
+          key: 'borderRadius',
+          label: 'prop.borderRadius',
+          min: 0,
+          max: 32,
+          step: 1,
+          unit: 'px',
+          nullable: true,
+          hint: 'hint.outlookRadius',
+        },
+        {
+          kind: 'number',
+          key: 'fontSize',
+          label: 'prop.fontSize',
+          min: 12,
+          max: 24,
+          step: 1,
+          unit: 'px',
+        },
+      ],
+    },
+    {
+      label: 'group.layout',
+      props: [
+        { kind: 'toggle', key: 'fullWidth', label: 'prop.fullWidth' },
+        { kind: 'select', key: 'align', label: 'prop.align', options: ALIGN_OPTIONS },
+        {
+          kind: 'number',
+          key: 'paddingX',
+          label: 'prop.paddingX',
+          min: 8,
+          max: 48,
+          step: 2,
+          unit: 'px',
+        },
+        {
+          kind: 'number',
+          key: 'paddingY',
+          label: 'prop.paddingY',
+          min: 8,
+          max: 48,
+          step: 2,
+          unit: 'px',
+        },
+      ],
+    },
+    ...contentGroups(),
+  ],
+  defaults: {
+    ...COMMON_DEFAULTS,
+    label: [{ t: 'p', children: [{ t: 's', v: 'Zjistit více' }] }],
+    href: '',
+    trackable: true,
+    style: 'solid',
+    backgroundColor: 'brand.primary',
+    textColor: 'text.inverted',
+    borderColor: null,
+    borderWidth: 0,
+    borderRadius: null,
+    fullWidth: false,
+    align: 'center',
+    paddingX: 28,
+    paddingY: 14,
+    fontSize: 16,
+  },
+  outlookHints: ['borderRadius'],
+};

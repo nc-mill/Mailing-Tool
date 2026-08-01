@@ -1,0 +1,21 @@
+{
+  "DedicatedIpAutoWarmupEnabled": false,
+  "EnforcementStatus": "HEALTHY",
+  "ProductionAccessEnabled": false,
+  "SendQuota": {
+    "Max24HourSend": 200,
+    "MaxSendRate": 1,
+    "SentLast24Hours": 12
+  },
+  "SendingEnabled": true,
+  "Details": {
+    "MailType": "TRANSACTIONAL",
+    "WebsiteURL": "https://example.cz",
+    "ContactLanguage": "EN",
+    "UseCaseDescription": "Newsletter pro zákazníky e-shopu.",
+    "ReviewDetails": {
+      "Status": "PENDING",
+      "CaseId": "case-01HZX000000000000000000000"
+    }
+  }
+}

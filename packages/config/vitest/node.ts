@@ -18,8 +18,11 @@ export function nodePreset(overrides: ViteUserConfig = {}): ViteUserConfig {
       // `MODE=web vitest run` vidí uvnitř testu MODE === "test".
       // Tenhle řádek vrací hodnotu z prostředí zpátky.
       env: { MODE: process.env['MODE'] ?? 'web', ...overrides.test?.env },
-      // src/ je ve vzoru schválně: testy vedle zdroje jsou běžný tvar a soubor
-      // mimo vzor se v CI nespustí ani v jednom jobu, aniž by cokoliv zčervenalo.
+      // Strop souběžnosti. Výchozí nastavení vitestu bere skoro všechna jádra,
+      // což je správně u jedné série na stroji. Když jich běží několik naráz,
+      // stroj se udusí: naměřeno 24 procesů vitestu a zátěž 60 na deseti
+      // jádrech, testy pak padaly na vypršených spojeních místo na kódu.
+      maxWorkers: 3,
       // src/ je ve vzoru schválně: testy vedle zdroje jsou běžný tvar a soubor
       // mimo vzor se v CI nespustí ani v jednom jobu, aniž by cokoliv zčervenalo.
       include: ['src/**/*.test.ts', 'test/**/*.test.ts'],

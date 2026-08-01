@@ -12,8 +12,13 @@ import { registerWebhookEndpointRoutes } from '@mlain/core/platform/api/webhooks
 import { registerAuditRoutes, setPaginationDeps } from '@mlain/core/platform/api/audit.routes';
 import { registerJobRoutes } from '@mlain/core/platform/api/jobs.routes';
 import { registerContactsRoutes } from '@mlain/core/contacts/api';
+import { registerOnboardingRoutes } from '@mlain/core/onboarding/api';
+import { registerDemoDataRoutes } from '@mlain/core/demo/api';
+import { registerSegmentApiRoutes } from '@mlain/core/segments/api';
+import { registerImportApiRoutes } from '@mlain/core/contacts/import/api';
+import { registerExportApiRoutes } from '@mlain/core/contacts/export/api';
 import type { ApiEnv } from '@mlain/core/identity/api/schemas';
-import { createApiApp } from './app';
+import { createApiApp, CONTENT_TYPE_EXEMPT_PREFIXES } from './app';
 import { renderDocsHtml } from './docs';
 import { buildPage, parsePaginationQuery } from './pagination';
 
@@ -73,6 +78,20 @@ export function buildApp(): OpenAPIHono<ApiEnv> {
   // Doména kontaktů (P07). Router si skládá `packages/core/src/contacts/api/index.ts`
   // a tady se jen mountuje pod /api/v1, protože packages/core nesmí importovat z apps/web.
   registerContactsRoutes(app);
+  // Onboarding a ukázková data (P16). Týž vzor jako u kontaktů: definice cest
+  // leží v packages/core, mount je tady.
+  registerOnboardingRoutes(app);
+  registerDemoDataRoutes(app);
+  // Doména segmentů (P11). Stejný tvar jako u kontaktů: router si skládá
+  // `packages/core/src/segments/api/index.ts`, tady se jen mountuje pod /api/v1.
+  registerSegmentApiRoutes(app);
+  // Import a export kontaktů (P11).
+  registerImportApiRoutes(app);
+  registerExportApiRoutes(app);
+  // Nahrání souboru je JEDINÉ místo v /api/v1, které neposílá application/json:
+  // tělo je surový proud (nebo multipart), aby server nikdy nedržel 200 MB
+  // v paměti. Bez téhle výjimky by výchozí kontrola typu vrátila 415.
+  CONTENT_TYPE_EXEMPT_PREFIXES.add('/api/v1/contacts/imports');
 
   // 4.7: endpoint servíruje TEN SAMÝ commitnutý soubor, ne dokument generovaný
   // za běhu, aby se produkce chovala stejně jako repozitář.

@@ -17,9 +17,30 @@
  * schématu migrátorem a migrace pod `mlain_migrator`. Aplikační spojení jde
  * pod `mlain_app`, tedy pod rolí, na kterou RLS dopadá; pod vlastníkem
  * schématu by testy izolace byly falešně zelené.
+ *
+ * JEDEN KONTEJNER NA CELÝ BĚH (rozhodnutí R31 plánu P03). Dřív startovalo
+ * `startPgHarness()` vlastní kontejner při KAŽDÉM zavolání a volá ho 23
+ * testovacích souborů, takže jeden běh balíčku znamenal 23 databázových
+ * serverů a 23krát přehranou tutéž sadu migrací. Naměřeno: při souběhu víc
+ * balíčků vyskočil počet kontejnerů na 74 a zátěž stroje na 29.
+ *
+ * Dnes má funkce dvě cesty a rozhoduje mezi nimi to, jestli běh má
+ * `globalSetup`, který sdílený server ohlásil:
+ *
+ *  1. SDÍLENÝ SERVER (`packages/core`, viz `global-setup.ts` vedle). Kontejner
+ *     už běží, role existují a šablona `mlain_template` je zmigrovaná. Soubor
+ *     dostane VLASTNÍ databázi příkazem `CREATE DATABASE ... TEMPLATE`, což je
+ *     otázka desítek milisekund. `TEMPLATE` kopíruje tabulky, politiky RLS
+ *     I granty, takže izolace mezi soubory zůstává úplná; ověřeno spuštěním,
+ *     protože bez grantů by testy oprávnění byly falešně zelené.
+ *  2. VLASTNÍ KONTEJNER (`apps/web`, který tenhle modul reexportuje a vlastní
+ *     `globalSetup` nemá; ten soubor leží mimo rozsah téhle změny). Chová se
+ *     přesně jako dřív: čerstvý kontejner, šest rolí, migrace, jedna databáze.
  */
+import { randomUUID } from 'node:crypto';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { Client } from 'pg';
+import { inject } from 'vitest';
 import { runMigrations } from '@mlain/db/migrate';
 
 /** Role z `docker/initdb`. Migrace 0004 a 0005 je potřebují všechny. */
@@ -31,6 +52,12 @@ export const HARNESS_ROLES = [
   'mlain_maintenance',
   'mlain_backup',
 ] as const;
+
+/**
+ * Předmigrovaná šablona na sdíleném serveru. Zakládá ji `global-setup.ts`,
+ * testovací soubory si z ní klonují vlastní databázi.
+ */
+export const TEMPLATE_DB = 'mlain_template';
 
 export type PgHarness = {
   /** URL pod rolí `mlain_app`, tedy to, co dostane `DATABASE_URL`. */
@@ -54,17 +81,111 @@ export type PgHarnessOptions = {
    * aktuální měsíc skončí každý zápis na „no partition of relation audit_log
    * found for row", což je hláška, která na příčinu vůbec neukazuje.
    *
-   * Dřív tu bylo natvrdo `false`, opsané z `packages/db/test/global-setup.ts`.
-   * Tam to dává smysl, protože jde o SDÍLENOU předmigrovanou šablonu, kterou
-   * si každý test klonuje, a oddíly založené v době stavby šablony by na
-   * přelomu měsíce zestárly. Tenhle harness ale startuje čerstvý kontejner na
-   * každý soubor a oddíly se počítají z `new Date()` až při startu, takže
-   * zestarat nemají jak. Nález od P04-B, ověřeno spuštěním.
+   * Na sdíleném serveru nese oddíly rovnou šablona, takže je klon dostane
+   * zadarmo. Zestarat nemají jak: `ensureUpcomingPartitions` zakládá aktuální
+   * měsíc a tři dopředu a šablona žije jen po dobu jednoho běhu.
    */
   partitions?: boolean;
 };
 
 export async function startPgHarness(options: PgHarnessOptions = {}): Promise<PgHarness> {
+  const server = sharedServer();
+  return server === null ? startOwnContainer(options) : startOnSharedServer(server, options);
+}
+
+/**
+ * Host a port sdíleného serveru z `globalSetup`, nebo null, když žádný není.
+ *
+ * `inject()` čte kontext, který dodal `globalSetup` běhu. V `apps/web` žádný
+ * takový `globalSetup` není, takže vrátí `undefined`; mimo běžícího workera
+ * vitestu (což se nemá stát, harness se volá z `beforeAll`) umí i vyhodit
+ * chybu, proto try/catch. Obojí znamená totéž: sdílený server není, postará
+ * se o sebe volající sám.
+ *
+ * Typ `inject` se tu schválně uvolňuje na `(key: string) => unknown`. Klíče
+ * `corePgHost` a `corePgPort` deklaruje `global-setup.ts` rozšířením
+ * `ProvidedContext`, jenže ten soubor je součástí typové kontroly jen
+ * v `packages/core`. `apps/web` tenhle modul reexportuje a jeho `tsc` tu
+ * deklaraci nevidí, takže by na přesně typovaném `inject('corePgHost')`
+ * spadl na neznámý klíč. Hodnoty se stejně kontrolují za běhu.
+ */
+const injectProvided = inject as unknown as (key: string) => unknown;
+
+function sharedServer(): { host: string; port: number } | null {
+  try {
+    const host = injectProvided('corePgHost');
+    const port = injectProvided('corePgPort');
+    if (typeof host !== 'string' || typeof port !== 'number') return null;
+    return { host, port };
+  } catch {
+    return null;
+  }
+}
+
+let databaseCounter = 0;
+
+/** Vlastní databáze na sdíleném serveru, ve výchozím stavu klon šablony. */
+async function startOnSharedServer(
+  server: { host: string; port: number },
+  options: PgHarnessOptions,
+): Promise<PgHarness> {
+  const { host, port } = server;
+  const migrate = options.migrate ?? true;
+  const partitions = options.partitions ?? true;
+  // Šablona je zmigrovaná VČETNĚ oddílů. Kdo si vyžádá jinou kombinaci, musí
+  // dostat databázi stavěnou na míru, jinak by ta volba tiše nic neznamenala.
+  const fromTemplate = migrate && partitions;
+  // Náhodný konec jména je pojistka, ne ozdoba. Vitest pouští soubory v jednom
+  // procesu za sebou a s výchozím `isolate: true` dostane každý soubor čerstvý
+  // modul, takže se čítač vrátí na nulu. Kdyby některý soubor svou databázi
+  // neuklidil, další by narazil na „database already exists" a hlásil by úplně
+  // jinou chybu, než jaká se stala.
+  const database = `mlain_t${process.pid}_${(databaseCounter += 1)}_${randomUUID().replaceAll('-', '').slice(0, 8)}`;
+
+  const su = await superuser(host, port);
+  try {
+    await su.query(
+      fromTemplate
+        ? `CREATE DATABASE ${database} TEMPLATE ${TEMPLATE_DB}`
+        : `CREATE DATABASE ${database}`,
+    );
+    // Bez práva CREATE na DATABÁZI neprojde `CREATE SCHEMA drizzle` v runneru.
+    await su.query(`GRANT CREATE ON DATABASE ${database} TO mlain_migrator`);
+  } finally {
+    await su.end();
+  }
+
+  if (!fromTemplate) await giveSchemaToMigrator(host, port, database);
+
+  const urls = harnessUrls(host, port, database);
+  if (!fromTemplate && migrate) {
+    await runMigrations({ url: urls.migratorUrl, ensurePartitions: partitions });
+  }
+
+  applyHarnessEnv(urls);
+
+  return {
+    ...urls,
+    host,
+    port,
+    stop: async () => {
+      const admin = await superuser(host, port);
+      try {
+        // FORCE ukončí spojení, která test nezavřel. Bez něj by DROP čekal
+        // do vypršení hooku a spadl by na „database is being accessed".
+        await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`);
+      } finally {
+        await admin.end();
+      }
+    },
+  };
+}
+
+/**
+ * Vlastní kontejner pro jeden harness. Cesta pro balíčky bez `globalSetup`.
+ * Je to původní chování, beze změny.
+ */
+async function startOwnContainer(options: PgHarnessOptions): Promise<PgHarness> {
   const container: StartedPostgreSqlContainer = await new PostgreSqlContainer('postgres:18-alpine')
     .withDatabase('mlain')
     .withUsername('postgres')
@@ -86,28 +207,64 @@ export async function startPgHarness(options: PgHarnessOptions = {}): Promise<Pg
   await su.query(`GRANT CREATE ON DATABASE mlain TO mlain_migrator`);
   await su.end();
 
-  const migratorUrl = `postgres://mlain_migrator:mlain_migrator@${host}:${port}/mlain`;
-  const appUrl = `postgres://mlain_app:mlain_app@${host}:${port}/mlain`;
+  const urls = harnessUrls(host, port, 'mlain');
 
   if (options.migrate ?? true) {
     // Oddíly zakládá runner P03 sám (`ensureUpcomingPartitions(new Date(), 4)`),
     // a to pod migrátorem, tedy pod rolí, která smí DDL. Aplikační role schéma
     // nevlastní a `CREATE TABLE ... PARTITION OF` by pod ní skončila na
     // `permission denied` (kapitola 0.9).
-    await runMigrations({ url: migratorUrl, ensurePartitions: options.partitions ?? true });
+    await runMigrations({ url: urls.migratorUrl, ensurePartitions: options.partitions ?? true });
   }
 
-  applyHarnessEnv({ appUrl, migratorUrl });
+  applyHarnessEnv(urls);
 
   return {
-    appUrl,
-    migratorUrl,
+    ...urls,
     host,
     port,
     stop: async () => {
       await container.stop();
     },
   };
+}
+
+function harnessUrls(
+  host: string,
+  port: number,
+  database: string,
+): { appUrl: string; migratorUrl: string } {
+  return {
+    migratorUrl: `postgres://mlain_migrator:mlain_migrator@${host}:${port}/${database}`,
+    appUrl: `postgres://mlain_app:mlain_app@${host}:${port}/${database}`,
+  };
+}
+
+async function superuser(host: string, port: number): Promise<Client> {
+  const client = new Client({
+    host,
+    port,
+    database: 'postgres',
+    user: 'postgres',
+    password: 'postgres',
+  });
+  await client.connect();
+  return client;
+}
+
+/**
+ * Vlastnictví schématu migrátorem v čerstvé, NEklonované databázi. U klonu
+ * šablony to řešit netřeba, `CREATE DATABASE ... TEMPLATE` vlastnictví kopíruje.
+ */
+async function giveSchemaToMigrator(host: string, port: number, database: string): Promise<void> {
+  const fresh = new Client({ host, port, database, user: 'postgres', password: 'postgres' });
+  await fresh.connect();
+  try {
+    await fresh.query(`ALTER SCHEMA public OWNER TO mlain_migrator`);
+    await fresh.query(`GRANT CREATE, USAGE ON SCHEMA public TO mlain_migrator`);
+  } finally {
+    await fresh.end();
+  }
 }
 
 /**

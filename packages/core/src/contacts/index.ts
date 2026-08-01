@@ -104,6 +104,59 @@ export { severContactLinks } from './jobs/gdpr-sever-links';
 // implementaci; do té doby je volání bez efektu, viz campaigns-port.ts.
 export { registerRevokePendingMessages, type RevokePendingMessagesInput } from './campaigns-port';
 
+// Embedovatelný formulář. Definici a generátor vkládacího kódu konzumují obrazovky,
+// `submitForm` veřejný endpoint `/f/{ref}/submit`.
+export {
+  FormDefinitionSchema,
+  formFieldName,
+  localizedText,
+  validateFormFields,
+  type FormDefinition,
+  type FormField,
+} from './forms/definition';
+export { buildEmbedSnippets, type EmbedSnippets } from './forms/embed';
+export { issueNonce, issueFormNonce, verifyNonce, elapsedSinceNonce } from './forms/nonce';
+export { PROTECTION_LAYERS, checkProtection, type ProtectionResult } from './forms/protection';
+export {
+  createFormRateLimiter,
+  sharedFormRateLimiter,
+  resetSharedFormRateLimiter,
+  DEFAULT_FORM_RATE_LIMIT,
+  type FormRateLimiter,
+} from './forms/rate-limit';
+export { submitForm, UNIFORM_RESPONSE, type SubmitInput, type SubmitResult } from './forms/submit';
+export { createForm, loadPublicForm, publicFormRef, type PublicForm } from './repo/forms';
+
+// Příchozí webhooky. Ověření podpisu konzumuje HTTP obsluha, mapování job.
+export { verifySignature, renderTemplate, type SignatureMode } from './inbound/signature';
+export { applyMapping, applyTransform, type InboundMapping } from './inbound/mapping';
+export { processInboundDelivery, type InboundProcessPayload } from './jobs/inbound-process';
+export { recordDelivery, findEndpointBySlug, type InboundEndpointRow } from './repo/inbound';
+
+// Veřejné stránky pro příjemce. Rozhodování je tady, vykreslení v apps/web.
+export { decodePublicRef, encodePublicRef, type PublicRefInput } from './public/ids';
+export { anonymousBranding, publicScope, type PublicBranding } from './public/context';
+export {
+  buildConfirmationRef,
+  confirmByRef,
+  lookupConfirmation,
+  type ConfirmLookup,
+} from './public/confirm';
+export {
+  readVerifiedToken,
+  unsubscribeByToken,
+  type VerifiedPublicToken,
+} from './public/unsubscribe';
+export {
+  applyPreferenceAction,
+  loadPreferencesData,
+  type PreferenceAction,
+  type PreferencesData,
+} from './public/preferences';
+export { applyReactivation, REACTIVATION_TAG } from './public/reactivation';
+export { confirmPublicSubscription } from './lists/confirm-service';
+export { isOneClickBody, oneClickRateLimit, ONE_CLICK_BODY } from './lists/one-click';
+
 // Registry, které si vyzvedávají P01 a P04
 export { CONTACTS_ERROR_CODES, CONTACTS_FIELD_ERROR_CODES, type ContactsErrorCode } from './errors';
 export { CONTACTS_AUDIT_ACTIONS, type ContactsAuditAction } from './audit';

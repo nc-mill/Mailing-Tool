@@ -1,0 +1,508 @@
+{
+  "common": {
+    "cancel": "Zrušit",
+    "close": "Zavřít",
+    "tryAgain": "Zkusit znovu",
+    "details": "Podrobnosti"
+  },
+  "header": {
+    "back": "Zpět na šablony",
+    "saved": "Uloženo v {time}",
+    "saving": "Ukládáme…",
+    "saveFailed": "Nepodařilo se uložit, zkoušíme to znovu",
+    "unsaved": "Neuložené změny",
+    "preview": "Náhled",
+    "edit": "Zpět k úpravám",
+    "testSend": "Poslat test",
+    "rename": "Název šablony"
+  },
+  "palette": {
+    "title": "Bloky",
+    "hint": "Blok přidáte tlačítkem plus mezi bloky nebo přetažením.",
+    "group": {
+      "content": "Obsah",
+      "layout": "Rozvržení"
+    }
+  },
+  "block": {
+    "section": "Sekce",
+    "columns": "Sloupce",
+    "columns2": "Dva sloupce",
+    "columns3": "Tři sloupce",
+    "column": "Sloupec",
+    "heading": "Nadpis",
+    "text": "Text",
+    "image": "Obrázek",
+    "button": "Tlačítko",
+    "divider": "Oddělovač",
+    "spacer": "Mezera",
+    "social": "Sociální sítě",
+    "footer": "Patička",
+    "html": "Vlastní HTML",
+    "unknown": "Neznámý blok",
+    "columnsWithLayout": "Sloupce {layout}",
+    "socialCount": "{count, plural, =0 {žádná síť} one {# síť} few {# sítě} many {# sítě} other {# sítí}}",
+    "lockedHint": "Blok typu {type} tato verze editoru neumí upravit. Zůstane v šabloně beze změny.",
+    "htmlForbidden": "Vlastní HTML smí upravovat jen člen s oprávněním templates:write_html.",
+    "htmlConditionHint": "Podmínku zobrazení nastavte v panelu vlastností, ne psaním do kódu."
+  },
+  "group": {
+    "content": "Obsah",
+    "style": "Vzhled",
+    "layout": "Rozvržení",
+    "mobile": "Mobil",
+    "visibility": "Zobrazení",
+    "emailLayout": "E-mail",
+    "typography": "Písmo",
+    "darkMode": "Tmavý režim"
+  },
+  "prop": {
+    "content": "Text",
+    "buttonLabel": "Popisek",
+    "level": "Úroveň",
+    "color": "Barva",
+    "linkColor": "Barva odkazů",
+    "align": "Zarovnání",
+    "fontFamily": "Písmo",
+    "fontSize": "Velikost písma",
+    "fontWeight": "Tloušťka písma",
+    "lineHeight": "Řádkování",
+    "letterSpacing": "Prostrkání",
+    "padding": "Odsazení",
+    "backgroundColor": "Barva pozadí",
+    "outerBackgroundColor": "Pozadí na celou šířku",
+    "backgroundImage": "Obrázek na pozadí",
+    "backgroundPosition": "Umístění pozadí",
+    "fullWidth": "Na celou šířku",
+    "roundedTop": "Zaoblit nahoře",
+    "roundedBottom": "Zaoblit dole",
+    "hideOnMobile": "Skrýt na mobilu",
+    "visibleWhen": "Zobrazit, jen když",
+    "layout": "Poměr sloupců",
+    "gap": "Mezera mezi sloupci",
+    "verticalAlign": "Svislé zarovnání",
+    "stackOnMobile": "Na mobilu pod sebe",
+    "stackOrder": "Pořadí na mobilu",
+    "borderRadius": "Zaoblení rohů",
+    "asset": "Obrázek",
+    "alt": "Popis obrázku",
+    "decorative": "Jen ozdoba",
+    "href": "Odkaz",
+    "width": "Šířka",
+    "darkVariant": "Obrázek pro tmavý režim",
+    "buttonStyle": "Styl",
+    "textColor": "Barva textu",
+    "borderColor": "Barva rámečku",
+    "borderWidth": "Tloušťka rámečku",
+    "paddingX": "Odsazení na šířku",
+    "paddingY": "Odsazení na výšku",
+    "thickness": "Tloušťka",
+    "lineStyle": "Styl čáry",
+    "lineWidth": "Šířka čáry",
+    "height": "Výška",
+    "heightMobile": "Výška na mobilu",
+    "socialItems": "Sítě",
+    "iconStyle": "Styl ikon",
+    "iconSize": "Velikost ikon",
+    "code": "HTML kód",
+    "senderInfo": "Údaje odesílatele",
+    "showUnsubscribe": "Odkaz na odhlášení",
+    "unsubscribeLabel": "Text odkazu na odhlášení",
+    "showPreferences": "Odkaz na předvolby",
+    "preferencesLabel": "Text odkazu na předvolby",
+    "showWebview": "Odkaz na zobrazení v prohlížeči",
+    "webviewLabel": "Text odkazu na prohlížeč",
+    "contentWidth": "Šířka obsahu",
+    "canvasBackground": "Pozadí plátna",
+    "contentBackground": "Pozadí obsahu",
+    "radius": "Zaoblení",
+    "headingFont": "Písmo nadpisů",
+    "bodyFont": "Písmo textu",
+    "baseFontSize": "Základní velikost písma",
+    "baseLineHeight": "Základní řádkování",
+    "headingScale": "Poměr velikostí nadpisů",
+    "darkMode": "Tmavý režim"
+  },
+  "value": {
+    "inherited": "Podle motivu",
+    "useDefault": "Použít hodnotu z motivu",
+    "align": {
+      "left": "Vlevo",
+      "center": "Na střed",
+      "right": "Vpravo",
+      "justify": "Do bloku"
+    },
+    "valign": {
+      "top": "Nahoru",
+      "middle": "Na střed",
+      "bottom": "Dolů"
+    },
+    "position": {
+      "top": "Nahoře",
+      "center": "Na střed",
+      "bottom": "Dole"
+    },
+    "side": {
+      "top": "Nahoře",
+      "right": "Vpravo",
+      "bottom": "Dole",
+      "left": "Vlevo"
+    },
+    "level": {
+      "1": "Nadpis 1",
+      "2": "Nadpis 2",
+      "3": "Nadpis 3"
+    },
+    "weight": {
+      "400": "Běžné",
+      "600": "Polotučné",
+      "700": "Tučné"
+    },
+    "layout": {
+      "1-1": "50 a 50",
+      "1-2": "33 a 67",
+      "2-1": "67 a 33",
+      "1-1-1": "Tři stejné",
+      "2-1-1": "50, 25 a 25",
+      "1-1-2": "25, 25 a 50"
+    },
+    "stackOrder": {
+      "normal": "Zleva doprava",
+      "reverse": "Zprava doleva"
+    },
+    "buttonStyle": {
+      "solid": "Vyplněné",
+      "outline": "Obrysové"
+    },
+    "borderWidth": {
+      "0": "Bez rámečku",
+      "1": "1 px",
+      "2": "2 px"
+    },
+    "thickness": {
+      "1": "1 px",
+      "2": "2 px",
+      "3": "3 px",
+      "4": "4 px"
+    },
+    "lineStyle": {
+      "solid": "Plná",
+      "dashed": "Čárkovaná",
+      "dotted": "Tečkovaná"
+    },
+    "iconStyle": {
+      "color": "Barevné",
+      "monoDark": "Jednobarevné tmavé",
+      "monoLight": "Jednobarevné světlé"
+    },
+    "width": {
+      "600": "600 px",
+      "640": "640 px"
+    },
+    "radius": {
+      "0": "Ostré rohy",
+      "4": "4 px",
+      "6": "6 px",
+      "8": "8 px",
+      "12": "12 px"
+    },
+    "scale": {
+      "1125": "Jemný",
+      "12": "Mírný",
+      "125": "Výchozí",
+      "1333": "Výrazný"
+    },
+    "darkMode": {
+      "auto": "Podle nastavení příjemce",
+      "off": "Vypnout"
+    },
+    "font": {
+      "system": "Systémové",
+      "arial": "Arial",
+      "helvetica": "Helvetica",
+      "verdana": "Verdana",
+      "tahoma": "Tahoma",
+      "trebuchet": "Trebuchet MS",
+      "georgia": "Georgia",
+      "times": "Times New Roman",
+      "courier": "Courier New"
+    },
+    "color": {
+      "none": "Průhledné",
+      "custom": "Vlastní barva",
+      "brand": {
+        "primary": "Hlavní barva značky",
+        "secondary": "Doplňková barva značky",
+        "accent": "Zvýrazňovací barva"
+      },
+      "text": {
+        "default": "Text",
+        "muted": "Ztlumený text",
+        "inverted": "Text na barvě"
+      },
+      "surface": {
+        "canvas": "Plátno",
+        "content": "Obsah",
+        "subtle": "Jemné pozadí"
+      },
+      "link": {
+        "default": "Odkaz"
+      }
+    }
+  },
+  "hint": {
+    "outlookIgnored": "Tento efekt se v Outlooku na Windows nezobrazí.",
+    "outlookRadius": "Zaoblení se v Outlooku na Windows nezobrazí.",
+    "outlookLineStyle": "Čárkovaná a tečkovaná čára vypadá v Outlooku jinak.",
+    "altRequired": "Popis přečte čtečka obrazovky a zobrazí se, když se obrázek nenačte.",
+    "altMissing": "Chybí popis obrázku",
+    "decorative": "Ozdobný obrázek čtečka přeskočí a popis nepotřebuje.",
+    "darkVariant": "Alternativní obrázek pro příjemce s tmavým režimem.",
+    "unsubscribeRequired": "U kampaní musí odkaz na odhlášení zůstat zapnutý."
+  },
+  "op": {
+    "moveUp": "Posunout nahoru",
+    "moveDown": "Posunout dolů",
+    "moveOut": "Vysunout o úroveň výš",
+    "moveIn": "Zasunout do sloupce",
+    "duplicate": "Duplikovat",
+    "delete": "Smazat",
+    "insertAfter": "Přidat blok za",
+    "edit": "Upravit obsah",
+    "selectPrev": "Vybrat předchozí blok",
+    "selectNext": "Vybrat další blok",
+    "selectParent": "Vybrat nadřazený blok",
+    "selectChild": "Vybrat první vnořený blok",
+    "undo": "Vrátit akci",
+    "redo": "Provést znovu",
+    "escape": "Zrušit výběr"
+  },
+  "insert": {
+    "after": "Přidat blok za {block}"
+  },
+  "a11y": {
+    "announcements": "Oznámení editoru",
+    "canvas": "Obsah e-mailu",
+    "propertiesPanel": "Vlastnosti vybraného bloku",
+    "blockMoved": "{block}, pozice {position} z {total}",
+    "moveBlocked": "{block} už nejde posunout dál tímto směrem.",
+    "blockDuplicated": "{block} zduplikován.",
+    "duplicateBlocked": "{block} nejde duplikovat.",
+    "blockDeleted": "{block} smazán.",
+    "blockInserted": "{block} přidán.",
+    "undone": "Akce vrácena.",
+    "redone": "Akce provedena znovu."
+  },
+  "visibility": {
+    "always": "Vždy",
+    "field": "Pole",
+    "operator": "Podmínka",
+    "badge": "Zobrazí se, jen když {field} {op}",
+    "op": {
+      "present": "je vyplněné",
+      "blank": "je prázdné",
+      "true": "je zapnuté",
+      "false": "je vypnuté"
+    }
+  },
+  "richtext": {
+    "toolbar": "Formátování textu",
+    "label": "Text bloku",
+    "placeholder": "Napište text…",
+    "bold": "Tučně",
+    "italic": "Kurzíva",
+    "underline": "Podtrženo",
+    "strike": "Přeškrtnuto",
+    "link": "Odkaz",
+    "linkUrl": "Adresa odkazu",
+    "linkApply": "Vložit odkaz",
+    "linkRemove": "Odebrat odkaz",
+    "bulletList": "Odrážky",
+    "orderedList": "Číslovaný seznam",
+    "insertPersonalization": "Vložit personalizaci"
+  },
+  "token": {
+    "title": "Personalizace",
+    "tooltip": "Personalizace: {label}. Při odeslání se nahradí hodnotou u konkrétního příjemce.",
+    "fallbackLabel": "Náhradní hodnota",
+    "fallbackHint": "Použije se, když příjemce hodnotu vyplněnou nemá.",
+    "fallbackInvalid": "Náhradní hodnota nesmí obsahovat uvozovku ani znaky složených a špičatých závorek.",
+    "dateFormatLabel": "Formát data",
+    "dateFormatDefault": "Podle nastavení projektu",
+    "dateFormat": {
+      "dayMonthYearPadded": "31.07.2026",
+      "dayMonthYear": "31.7.2026",
+      "isoDate": "2026-07-31",
+      "dayMonthYearTime": "31.07.2026 14:32",
+      "time": "14:32"
+    },
+    "longTextHint": "Odřádkování se v e-mailu neprojeví.",
+    "unknownField": "Pole v tomto projektu neexistuje.",
+    "suggestion": "Nejspíš chcete {suggestion}."
+  },
+  "personalization": {
+    "search": "Hledat pole",
+    "empty": "Žádné pole neodpovídá.",
+    "groupSystem": "Systémové odkazy",
+    "groupContact": "Údaje kontaktu",
+    "groupCustom": "Vlastní pole"
+  },
+  "field": {
+    "unsubscribeUrl": "Odkaz na odhlášení",
+    "preferencesUrl": "Odkaz na předvolby",
+    "webviewUrl": "Zobrazení v prohlížeči",
+    "campaignName": "Název kampaně",
+    "campaignSubject": "Předmět kampaně",
+    "workspaceName": "Název projektu",
+    "senderAddress": "Poštovní adresa odesílatele",
+    "email": "E-mail",
+    "firstName": "Jméno",
+    "lastName": "Příjmení",
+    "firstNameVocative": "Jméno v 5. pádu",
+    "lastNameVocative": "Příjmení v 5. pádu",
+    "titlePrefix": "Titul před jménem",
+    "titleSuffix": "Titul za jménem",
+    "greeting": "Oslovení",
+    "gender": "Rod",
+    "locale": "Jazyk kontaktu",
+    "createdAt": "Datum vzniku"
+  },
+  "social": {
+    "network": "Síť",
+    "href": "Odkaz",
+    "add": "Přidat síť",
+    "remove": "Odebrat síť",
+    "max": "Víc než {max} sítí nejde přidat.",
+    "facebook": "Facebook",
+    "instagram": "Instagram",
+    "x": "X",
+    "linkedin": "LinkedIn",
+    "youtube": "YouTube",
+    "tiktok": "TikTok",
+    "threads": "Threads",
+    "pinterest": "Pinterest",
+    "bluesky": "Bluesky",
+    "mastodon": "Mastodon",
+    "web": "Web",
+    "email": "E-mail"
+  },
+  "asset": {
+    "title": "Obrázky",
+    "pick": "Vybrat obrázek",
+    "change": "Změnit obrázek",
+    "remove": "Odebrat",
+    "upload": "Nahrát obrázek"
+  },
+  "link": {
+    "schemeForbidden": "Odkaz musí začínat https, http, mailto nebo tel.",
+    "liquidForbidden": "Do sledovaného odkazu nejde vložit personalizaci.",
+    "trackable": "Sledovat prokliky"
+  },
+  "theme": {
+    "title": "Motiv"
+  },
+  "meta": {
+    "previewText": "Úvodní řádek"
+  },
+  "issues": {
+    "title": "Nálezy v šabloně",
+    "errorCount": "{count, plural, =0 {žádná chyba} one {# chyba} few {# chyby} many {# chyby} other {# chyb}}",
+    "warningCount": "{count, plural, =0 {žádné varování} one {# varování} few {# varování} many {# varování} other {# varování}}",
+    "goToBlock": "Přejít na blok"
+  },
+  "preview": {
+    "desktop": "Počítač",
+    "mobile": "Mobil",
+    "text": "Textová verze",
+    "source": "Zdroj",
+    "dark": "Tmavý režim",
+    "modes": "Režim náhledu",
+    "frameTitle": "Náhled e-mailu",
+    "viewAs": "Zobrazit jako",
+    "randomContact": "Náhodný kontakt",
+    "noNameContact": "Kontakt bez jména",
+    "sampleData": "Vzorová data",
+    "sizeKb": "Velikost {size} kB",
+    "failed": "Náhled se nepodařilo vytvořit."
+  },
+  "testSend": {
+    "title": "Testovací e-mail",
+    "recipients": "Adresy",
+    "submit": "Poslat test",
+    "recipientsHint": "Nejvýš {max} adres oddělených čárkou.",
+    "prefix": "Přidat do předmětu značku TEST",
+    "explain": "Testovací e-mail se nepočítá do statistik a nesleduje otevření ani prokliky.",
+    "noRecipients": "Zadejte aspoň jednu adresu.",
+    "tooMany": "Najednou jde poslat nejvýš pět adres.",
+    "rateLimited": "Limit testovacích e-mailů je vyčerpaný. Zkuste to za {minutes} minut.",
+    "failed": "Test se nepodařilo odeslat ({code}).",
+    "success": "Testovací e-mail odešel."
+  },
+  "state": {
+    "loading": "Načítáme šablonu…",
+    "loadFailed": "Šablonu se nepodařilo načíst.",
+    "notFound": "Šablona neexistuje nebo byla smazána.",
+    "forbidden": "K úpravám šablon je potřeba oprávnění templates:write.",
+    "readOnly": "Šablonu si můžete prohlédnout, ale ne upravit.",
+    "schemaTooNew": "Šablona pochází z novější verze nástroje a v tomto editoru ji otevřít nejde.",
+    "tooManyBlocks": "Šablona má nejvýš 300 bloků, tenhle limit je vyčerpaný.",
+    "tooLarge": "Šablona přesáhla 512 kB a nejde uložit.",
+    "offline": "Jste offline, změny odešleme po obnovení spojení.",
+    "conflictTitle": "Šablonu mezitím upravil někdo jiný",
+    "conflictBody": "Máte otevřenou starší verzi. Můžete načíst novou, nebo si nejdřív zkopírovat svoje změny.",
+    "conflictReload": "Načíst novou verzi",
+    "notFoundBody": "Mohla ji smazat jiná osoba, nebo je adresa překlepnutá.",
+    "backToList": "Zpět na seznam šablon",
+    "forbiddenBody": "K otevření šablony je potřeba oprávnění templates:read. Vaše role ho nemá.",
+    "forbiddenWhoCanHelp": "Roli vám může změnit vlastník projektu."
+  },
+  "list": {
+    "title": "Šablony",
+    "empty": "Zatím nemáte žádnou šablonu.",
+    "emptyHint": "Šablona je obsah e-mailu, který si připravíte jednou a použijete v libovolné kampani.",
+    "create": "Vytvořit šablonu",
+    "open": "Otevřít",
+    "loadFailed": "Šablony se nepodařilo načíst.",
+    "createFailed": "Šablonu se nepodařilo vytvořit.",
+    "newName": "Nová šablona"
+  },
+  "issue": {
+    "content_asset_not_found": "Obrázek už v knihovně není.",
+    "content_condition_field_unknown": "Podmínka se odkazuje na pole, které v projektu neexistuje.",
+    "content_condition_on_unsubscribe": "Blok s odkazem na odhlášení nesmí mít podmínku zobrazení.",
+    "content_condition_operator_invalid": "Tahle podmínka se k typu pole nehodí.",
+    "content_duplicate_block_id": "Dva bloky mají stejné id.",
+    "content_duplicate_footer": "Patička smí být v šabloně jen jedna.",
+    "content_html_too_large": "E-mail je moc velký. Gmail delší zprávu ořízne a odkaz na odhlášení zmizí.",
+    "content_image_missing_alt": "Obrázek nemá popis. Přečte ho čtečka a zobrazí se, když se obrázek nenačte.",
+    "content_link_anchor_only": "Odkaz jen na kotvu uvnitř e-mailu nefunguje.",
+    "content_link_scheme_forbidden": "Odkaz musí začínat https, http, mailto nebo tel.",
+    "content_low_contrast": "Text na tomhle pozadí je špatně čitelný.",
+    "content_missing_unsubscribe": "Kampaň musí obsahovat odkaz na odhlášení.",
+    "content_nested_columns": "Sloupce nejdou vložit do sloupců.",
+    "content_nested_repeat": "Opakování nejde vložit do opakování.",
+    "content_padding_overflow": "Odsazení je větší než šířka obsahu, blok se nevejde.",
+    "content_raw_html_forbidden": "Vlastní HTML smí upravovat jen člen s oprávněním templates:write_html.",
+    "content_reserved_marker": "Text obsahuje vyhrazenou značku, kterou doplňuje odesílání.",
+    "content_too_many_blocks": "Šablona má nejvýš 300 bloků, tenhle limit je vyčerpaný.",
+    "content_too_many_links": "Odkazů je moc, sledování prokliků by přestalo dávat smysl.",
+    "liquid_comparison_operator_not_supported": "Tenhle operátor v podmínce použít nejde.",
+    "liquid_contains_not_allowed": "Podmínka „obsahuje\" tady použít nejde.",
+    "liquid_date_format_not_allowed": "Tenhle formát data povolený není.",
+    "liquid_default_value_invalid": "Náhradní hodnota nesmí obsahovat uvozovku ani znaky složených a špičatých závorek.",
+    "liquid_escaped_entity_in_construct": "Ve výrazu zůstala HTML entita. Napište ho prosím znovu, bez formátování.",
+    "liquid_filter_not_allowed": "Tahle úprava hodnoty povolená není.",
+    "liquid_for_parameter_not_allowed": "Tenhle parametr opakování povolený není.",
+    "liquid_in_trackable_href": "Do sledovaného odkazu nejde vložit personalizaci.",
+    "liquid_index_not_allowed": "Přístup na položku podle pořadí povolený není.",
+    "liquid_literal_not_supported": "Tahle hodnota se ve výrazu použít nedá.",
+    "liquid_nested_for": "Opakování uvnitř opakování povolené není.",
+    "liquid_parentheses_not_allowed": "Závorky ve výrazu povolené nejsou.",
+    "liquid_string_literal_not_allowed": "Text v uvozovkách se ve výrazu použít nedá.",
+    "liquid_tag_not_allowed": "Tahle značka povolená není.",
+    "liquid_unknown_field": "Pole v tomto projektu neexistuje.",
+    "liquid_unknown_root": "Tenhle zdroj dat neexistuje.",
+    "liquid_vocative_filter": "Oslovení se skloňuje samo, filtr na 5. pád sem nepatří.",
+    "liquid_whitespace_control_not_allowed": "Ořezávání mezer ve výrazu povolené není."
+  }
+}

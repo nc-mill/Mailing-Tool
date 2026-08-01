@@ -15,9 +15,7 @@ describe('workspaceAccent', () => {
   });
 
   it('vrací oklch se stabilní sytostí, takže kontrast nezáleží na náhodě', () => {
-    expect(workspaceAccent(id)).toMatch(
-      /^oklch\(var\(--workspace-accent-l\) 0\.16 \d+(\.\d+)?\)$/,
-    );
+    expect(workspaceAccent(id)).toMatch(/^oklch\(var\(--workspace-accent-l\) 0\.16 \d+(\.\d+)?\)$/);
   });
 
   // Tohle je jádro věci, ne detail. Dokud si světlost vybíral JavaScript podle

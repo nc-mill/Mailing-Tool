@@ -1,0 +1,64 @@
+{
+  "panel": {
+    "title": "Vaše první kampaň",
+    "remaining": "{count, plural, =0 {Máte hotovo všechno} one {Zbývá # krok} few {Zbývají # kroky} many {Zbývá # kroku} other {Zbývá # kroků}}, dohromady asi 10 min.",
+    "collapsed": "{done} z {total} hotovo",
+    "hide": "Skrýt",
+    "show": "Zobrazit",
+    "done": "hotovo",
+    "finished": "Hotovo, první kampaň odeslána. Report najdete u kampaně.",
+    "finishedDismiss": "Zavřít"
+  },
+  "steps": {
+    "sending": {
+      "title": "Připojte odesílání",
+      "description": "Bez připojeného odesílání se e-mail nikam nepošle.",
+      "estimate": "asi 3 min",
+      "action": "Připojit",
+      "secondaryAction": "Ukázková data"
+    },
+    "contacts": {
+      "title": "Přidejte kontakty",
+      "description": "Nahrajte soubor CSV, nebo si nejdřív vyzkoušejte ukázková data.",
+      "estimate": "asi 2 min",
+      "action": "Nahrát soubor",
+      "secondaryAction": "Ukázková data"
+    },
+    "template": {
+      "title": "Vytvořte šablonu",
+      "description": "Šablona drží vzhled e-mailu. Text doladíte v kampani.",
+      "estimate": "asi 3 min",
+      "action": "Vytvořit šablonu",
+      "secondaryAction": "Ukázková data"
+    },
+    "testSend": {
+      "title": "Pošlete si zkušební e-mail",
+      "description": "Podívejte se, jak e-mail vypadá ve vaší schránce.",
+      "estimate": "asi 1 min",
+      "action": "Poslat zkušební",
+      "secondaryAction": "Ukázková data"
+    },
+    "firstCampaign": {
+      "title": "Odešlete první kampaň",
+      "description": "Vyberte příjemce a odešlete. Průběh uvidíte živě.",
+      "estimate": "asi 1 min",
+      "action": "Vytvořit kampaň",
+      "secondaryAction": "Ukázková data"
+    }
+  },
+  "demo": {
+    "bannerTitle": "V projektu jsou ukázková data.",
+    "bannerDetail": "{contacts, plural, =0 {Žádný ukázkový kontakt} one {# ukázkový kontakt} few {# ukázkové kontakty} many {# ukázkových kontaktů} other {# ukázkových kontaktů}} na adresách example.com, na které se nikdy nic neodešle.",
+    "filterHint": "Zobrazit je v kontaktech podle štítku Ukázková data",
+    "remove": "Odstranit",
+    "removed": "Ukázková data jsou pryč.",
+    "removeFailed": "Ukázková data se nepodařilo odstranit. Zkuste to prosím znovu.",
+    "dialogTitle": "Odstranit ukázková data?",
+    "dialogContacts": "{contacts, plural, =0 {žádný kontakt} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}, {lists, plural, =0 {žádný seznam} one {# seznam} few {# seznamy} many {# seznamu} other {# seznamů}} a {tags, plural, =0 {žádný štítek} one {# štítek} few {# štítky} many {# štítku} other {# štítků}}.",
+    "dialogContent": "{segments, plural, =0 {žádný segment} one {# segment} few {# segmenty} many {# segmentu} other {# segmentů}}, {templates, plural, =0 {žádná šablona} one {# šablona} few {# šablony} many {# šablony} other {# šablon}} a {campaigns, plural, =0 {žádná kampaň} one {# kampaň} few {# kampaně} many {# kampaně} other {# kampaní}} i s reportem.",
+    "dialogSafety": "Na nic ostatního v projektu se nesáhne.",
+    "dialogAgain": "Ukázková data si můžete kdykoli nahrát znovu.",
+    "dialogConfirm": "Odstranit ukázková data",
+    "dialogCancel": "Nechat je tu"
+  }
+}

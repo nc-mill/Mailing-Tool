@@ -12,7 +12,18 @@ import { isSupportedLocale, type Locale } from './locales';
  * nefunguje a v samostatném (standalone) balíčku by soubory chyběly úplně.
  * Že se seznam shoduje s obsahem adresáře, hlídá test v `load-messages.test.ts`.
  */
-export const NAMESPACES = ['auth', 'common', 'contacts', 'settings'] as const;
+export const NAMESPACES = [
+  'auth',
+  'campaigns',
+  'common',
+  'contacts',
+  'editor',
+  'import',
+  'onboarding',
+  'reports',
+  'segments',
+  'settings',
+] as const;
 
 export type MessageTree = Record<string, unknown>;
 

@@ -1,0 +1,26 @@
+{
+  "IdentityType": "DOMAIN",
+  "FeedbackForwardingStatus": true,
+  "VerifiedForSendingStatus": false,
+  "VerificationStatus": "PENDING",
+  "DkimAttributes": {
+    "SigningEnabled": true,
+    "Status": "PENDING",
+    "Tokens": [
+      "vv7ceyilnn5mzhbkkpqvgxvbz5vpzc2t",
+      "yqmqnr2ncf6ivkbekvhbwfvfzhbyibpo",
+      "36yqmqnr2ncf6ivkbekvhbwfvfzhbyib"
+    ],
+    "SigningAttributesOrigin": "AWS_SES",
+    "NextSigningKeyLength": "RSA_2048_BIT",
+    "CurrentSigningKeyLength": "RSA_2048_BIT",
+    "SigningHostedZone": "a31d.dkim.us-west-2.amazonses.com"
+  },
+  "MailFromAttributes": {
+    "MailFromDomain": "mail.example.cz",
+    "MailFromDomainStatus": "PENDING",
+    "BehaviorOnMxFailure": "USE_DEFAULT_VALUE"
+  },
+  "Policies": {},
+  "Tags": []
+}

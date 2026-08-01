@@ -3237,3 +3237,54 @@ funkce bere jediný argument a její výstup nesmí obsahovat číselnou světlo
 
 Poučení: cokoli, co závisí na motivu, uživatelově zóně nebo šířce okna, se nesmí
 dopočítávat v JavaScriptu, který běží na obou stranách. Server ty vstupy nemá.
+
+### I27. Druhý testovací harness zavedl znovu problém, který R31 už vyřešil
+
+- **Našel:** zadavatel si všiml, že se nic neděje, hlavní agent to změřil
+- **Uzavřeno:** 2026-08-01, harness sjednocený na jeden kontejner
+
+Naměřeno: **74 běžících kontejnerů s PostgreSQL naráz**, zátěž stroje 29,
+jeden běh série `packages/core` přes deset minut bez dokončení. Zvenčí to
+vypadalo, že se zastavila práce. Agenti přitom běželi, jen čekali na databáze,
+které se navzájem dusily.
+
+Příčina: `startPgHarness()` v `packages/core/src/test-support/pg-harness.ts`
+startuje vlastní kontejner při KAŽDÉM zavolání a volá ho 23 testovacích souborů.
+Vitest je pouští paralelně, takže vznikne 23 databází na jeden běh balíčku,
+a při víc souběžných bězích se to násobí.
+
+Zajímavé je, **odkud se ten harness vzal**. Plán P03 tenhle problém vyřešil
+rozhodnutím R31: jeden kontejner na běh, každý soubor dostane databázi
+z předmigrované šablony. To řešení ale žije v `packages/db`. Když P04 zjistil,
+že `packages/core` nemá skript `test:db` ani rozdělení vitestu na projekty
+(nález I12), obešel to vlastním harnessem, a tím obnovil přesně ten stav,
+proti kterému R31 vzniklo.
+
+Poučení: obcházka, která vypadá jako lokální, umí obnovit už vyřešený problém
+jinde. Když plán něco řeší rozhodnutím, patří to rozhodnutí do zadání každého
+plánu, který na tutéž věc narazí, ne jen do plánu, kde vzniklo.
+
+Praktický důsledek: kdyby to zůstalo, CI by na tomhle padalo a o produkční
+verzi by se nedalo mluvit. Sada testů, kterou nejde dopočítat, nehlídá nic.
+
+### I28. Souběžnost testů se neomezovala a stroj se dusil i po opravě kontejnerů
+
+- **Našel:** hlavní agent po opravě I27
+- **Uzavřeno:** 2026-08-02, strop `maxWorkers` ve sdíleném presetu i v obou vlastních konfiguracích
+
+Po opravě harnessu (nález I27) přestaly kontejnery přetékat, ale zátěž stroje
+znovu vyskočila, tentokrát na **60 na desetijádrovém stroji** při 24 procesech
+vitestu. Samotný Docker žral 165 procent jednoho jádra.
+
+Příčina je jiná než u I27 a je potřeba ji odlišit: vitest ve výchozím nastavení
+bere skoro všechna jádra, což je správně, když na stroji běží **jedna** série.
+Když jich běží deset naráz, každá si nárokuje devět vláken a stroj se rozpadne.
+Testy pak padají na vypršených spojeních, tedy na vyčerpaném stroji, ne na kódu,
+a hledá se chyba tam, kde žádná není.
+
+Oprava je `maxWorkers: 3` ve `packages/config/vitest/node.ts`, `packages/core`
+a `apps/web`. Série doběhne pomaleji, ale doběhne.
+
+Souvislost s I27 je poučná: obě vady vypadaly stejně (nic se neděje, testy
+neběží) a obě měly jinou příčinu. První byla v tom, KOLIK databází se zakládá,
+druhá v tom, KOLIK vláken si každý běh vezme. Oprava první odhalila druhou.

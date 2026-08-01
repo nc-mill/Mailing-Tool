@@ -27,6 +27,17 @@ func Validate(c *Config, errs *Errors) {
 		errs.add("METRICS_TOKEN: při METRICS_ENABLED=true je povinný a musí mít aspoň 32 znaků")
 	}
 
+	// Při MODE=all běží web, worker i sender ve stejném prostředí a sdílejí
+	// proměnné. Kolize portů by znamenala, že jeden z procesů nenastartuje,
+	// a chyba by se projevila až za běhu.
+	if c.Mode == "all" && c.HealthPort == 3001 {
+		errs.add("SENDER_HEALTH_PORT: 3001 patří workeru (WORKER_HEALTH_PORT), " +
+			"při MODE=all se porty nesmí krýt")
+	}
+	if c.Mode == "all" && c.HealthPort == 3000 {
+		errs.add("SENDER_HEALTH_PORT: 3000 patří webu (PORT), při MODE=all se porty nesmí krýt")
+	}
+
 	// POZOR: strop na počet pokolení klíče se tady NEKONTROLUJE a kontrolovat se nesmí.
 	// Kontrakt 3.10 ho výslovně ruší a zakazuje jeho návrat i v podobě validace
 	// konfigurace. Otisk smazané adresy nejde nikdy přepočítat, takže by vyčerpaný

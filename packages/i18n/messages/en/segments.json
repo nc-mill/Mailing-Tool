@@ -1,0 +1,243 @@
+{
+  "title": "Segments",
+  "new": "New segment",
+  "name": "Segment name",
+  "emptyList": "There are no segments yet. Start from a ready made one, or build your own.",
+  "stale": "Updated {time} ago.",
+  "neverCounted": "Not counted yet",
+  "recount": "Recount",
+  "estimated": "Approximately {count} contacts.",
+  "countExactly": "Count exactly",
+  "notNullHint": "Contacts that do not have this field at all are not included. Use the „is empty\" condition.",
+  "addEmptyCondition": "Also add contacts with the field left empty",
+  "builder": {
+    "groupSentence": "Contacts that {polarity} {quantifier}",
+    "polarity": {
+      "match": "match",
+      "notMatch": "do not match"
+    },
+    "quantifier": {
+      "all": "all of these conditions",
+      "any": "at least one of these conditions"
+    },
+    "polarityLabel": "match, or do not match",
+    "quantifierLabel": "all of the conditions, or at least one",
+    "negationHint": {
+      "andNot": "Contacts get in when at least one condition below is false for them.",
+      "orNot": "Contacts get in only when every condition below is false for them."
+    },
+    "addCondition": "Add a condition",
+    "addGroup": "Add a group of conditions",
+    "removeCondition": "Remove condition",
+    "groupNumber": "Group {path}",
+    "noDeeper": "This is as deep as the nesting goes.",
+    "conditionCounter": "{used} of {limit} conditions",
+    "splitSuggestion": "This segment is complex. Would you like to split it in two?",
+    "showJson": "Show the definition as JSON",
+    "hideJson": "Hide the definition",
+    "fieldLabel": "Field",
+    "operatorLabel": "Condition",
+    "valueLabel": "Value",
+    "removeValue": "Remove the value {value}",
+    "listLimit": "A list holds at most {limit} items.",
+    "save": "Save segment",
+    "cancel": "Cancel"
+  },
+  "fieldGroups": {
+    "contact": "About the person",
+    "attribute": "Custom fields",
+    "tag": "Tags",
+    "list": "Lists",
+    "consent": "Consents",
+    "suppression": "Blocked addresses",
+    "engagement": "Campaign activity",
+    "event": "Behaviour on the website",
+    "times": "Times",
+    "segment": "Another segment"
+  },
+  "fields": {
+    "first_name": "First name",
+    "last_name": "Last name",
+    "email": "Email",
+    "email_domain": "Email domain",
+    "gender": "Gender",
+    "locale": "Language",
+    "status": "Contact state",
+    "source": "Where they came from",
+    "vocative_confidence": "Greeting certainty",
+    "processing_restricted": "Restricted processing (GDPR)",
+    "last_activity_at": "Last activity",
+    "created_at": "Created on",
+    "updated_at": "Last changed on",
+    "tag": "Has the tag",
+    "suppression": "Is among blocked addresses",
+    "segment": "Is in the segment",
+    "engagement": {
+      "sent": "Received a campaign",
+      "delivered": "Had it delivered",
+      "opened": "Opened a campaign",
+      "clicked": "Clicked in a campaign",
+      "bounced": "The email did not arrive"
+    },
+    "event": "Did an action",
+    "unindexed": "Searching by this field is slower. On a large database the calculation can take longer.",
+    "unindexedBadge": "field without an index"
+  },
+  "operators": {
+    "eq": "is",
+    "neq": "is not",
+    "contains": "contains",
+    "not_contains": "does not contain",
+    "starts_with": "starts with",
+    "ends_with": "ends with",
+    "in": "is one of",
+    "not_in": "is none of",
+    "is_empty": "is empty",
+    "is_not_empty": "is filled in",
+    "gt": "is greater than",
+    "gte": "is at least",
+    "lt": "is less than",
+    "lte": "is at most",
+    "between": "is between",
+    "is_true": "is ticked",
+    "is_false": "is not ticked",
+    "on": "is exactly",
+    "before": "is before",
+    "after": "is after",
+    "in_last_days": "is within the last",
+    "not_in_last_days": "is not within the last",
+    "in_next_days": "is within the next",
+    "has_any": "has at least one of",
+    "has_all": "has all of",
+    "has_none": "has none of",
+    "is_member": "is in it",
+    "is_not_member": "is not in it",
+    "is_confirmed": "confirmed the subscription",
+    "is_pending": "is waiting for confirmation",
+    "is_unsubscribed": "unsubscribed from it",
+    "is_granted": "granted it",
+    "is_withdrawn": "withdrew it",
+    "is_missing": "never gave it",
+    "is_suppressed": "is among blocked addresses",
+    "is_not_suppressed": "is not among blocked addresses",
+    "did": "yes",
+    "did_not": "no",
+    "count_gte": "at least N times",
+    "count_lte": "at most N times"
+  },
+  "operatorHints": {
+    "is_member": "Including those who have not confirmed the subscription yet.",
+    "is_missing": "People whose consent we have no record of.",
+    "is_withdrawn": "People who actively took their consent back. Legally this is not the same as „never gave it\"."
+  },
+  "count": {
+    "action": "Count",
+    "counting": "Counting…",
+    "exact": "The segment holds {count, plural, =0 {nobody} one {# contact} few {# contacts} many {# contacts} other {# contacts}}",
+    "sampleTitle": "For example:",
+    "showAll": "Show all {count}",
+    "failed": "The count could not be calculated.",
+    "retry": "Try again",
+    "emptyAll": "The segment has no condition yet, so it holds every contact ({count, number})."
+  },
+  "warnings": {
+    "segment_count_estimated": "The number is an estimate, an exact calculation would take too long.",
+    "segment_unindexed_field": "The condition on {field} is slow to calculate, because the database has no index for it. On a large database this can take longer.",
+    "segment_slow_engagement": "Conditions on campaign activity search through the history of every message sent. On a large database expect a few seconds.",
+    "segment_archived_field": "The field {field} is archived and new contacts no longer fill it in."
+  },
+  "traps": {
+    "noCampaignsYet": "You have not sent a campaign yet, so every single contact matches this condition.",
+    "contradiction": "Nobody can match {a} and {b} at the same time. Did you mean to switch the top to „at least one of these conditions\"?",
+    "rarelyFilled": "The field {field} is filled in for only {filled, number} contacts out of {total, number}.",
+    "containsUnsubscribed": "Out of {total} contacts, {count} are unsubscribed and the campaign will not reach them.",
+    "containsRestricted": "Out of {total} contacts, {count} have restricted processing under GDPR and the campaign will not reach them.",
+    "cycle": "Segment {a} points at segment {b} and that one points back at {a}. This cannot be calculated."
+  },
+  "empty": {
+    "title": "The segment holds nobody",
+    "mostRestrictive": "This condition narrows it the most:",
+    "others": "The other conditions on their own:",
+    "fieldStats": "The field {field} is filled in for only {filled, number} contacts out of {total, number}. Most frequent values: {values}",
+    "caseSuggestion": "Did you mean „{value}\"?",
+    "useValue": "Use",
+    "includeEmpty": "Do you want to include contacts with the field left empty?",
+    "include": "Add"
+  },
+  "limits": {
+    "tooComplex": "The segment already has {limit} conditions, which is the maximum. Split it in two and join them with the „is in the segment\" condition.",
+    "tooManyEngagement": "There can be at most {limit} conditions on campaign activity, because each of them searches the history of messages sent.",
+    "tooManyEvent": "There can be at most {limit} conditions on behaviour on the website.",
+    "listTooLong": "A list holds at most {limit} items. We dropped {dropped}.",
+    "nestingTooDeep": "Pointing at a segment that points at another segment works to the second level at most."
+  },
+  "presets": {
+    "sectionTitle": "Start from a ready made one",
+    "orBuild": "Or build your own",
+    "build": "Build your own segment",
+    "use": "Use",
+    "neverOpened": {
+      "title": "Never opened",
+      "explanation": "They received at least 3 emails and opened none."
+    },
+    "neverClicked": {
+      "title": "Never clicked",
+      "explanation": "They received at least 5 emails and clicked in none."
+    },
+    "inactive90d": {
+      "title": "Inactive for 90+ days",
+      "explanation": "They did nothing in the last 3 months and we have had them for longer than 3 months."
+    },
+    "noOpenLastN": {
+      "title": "Opened none of the last 5 campaigns",
+      "explanation": "They received the last 5 campaigns and opened none."
+    },
+    "unconfirmed30d": {
+      "title": "Subscription unconfirmed for over 30 days",
+      "explanation": "They signed up but never confirmed the link in the email."
+    },
+    "repeatedSoftBounces": {
+      "title": "Repeated soft bounces",
+      "explanation": "Their email failed to arrive temporarily at least 3 times."
+    }
+  },
+  "freeze": {
+    "action": "Freeze the list",
+    "explanation": "We freeze the list so it does not change during the campaign. Anyone who gets in touch meanwhile drops out of the cleanup.",
+    "done": "Frozen, the segment holds {count} contacts."
+  },
+  "cleanup": {
+    "title": "What do we do with those who stay silent?",
+    "unsubscribe": "Unsubscribe them",
+    "unsubscribeHint": "They stay in the database, but we stop sending them campaigns.",
+    "tagOnly": "Only tag them",
+    "tagOnlyHint": "Nothing changes, we just put them aside for later.",
+    "delete": "Delete them",
+    "deleteHint": "Irreversibly. Only the project owner can do this.",
+    "delayDays": "In how many days",
+    "countdown": "In {days, plural, =0 {today} one {# day} few {# days} many {# days} other {# days}} we decide about {count} contacts.",
+    "warning": "In {days} days we will unsubscribe {count} contacts.",
+    "confirmTitle": "In {days, plural, =0 {today} one {# day} few {# days} many {# days} other {# days}} we will unsubscribe {count} contacts",
+    "confirmBody": "The reactivation campaign {campaign} went out on {sentAt} to {sent} people. So far {responded} got in touch. We will unsubscribe the remaining {count} on {when}. Unsubscribing cannot be taken back. Anyone who wants to return has to sign up again themselves.",
+    "download": "Download those {count} contacts",
+    "review": "Review",
+    "postpone": "Postpone by 14 days",
+    "abort": "Cancel the cleanup",
+    "typeName": "Type the segment name to confirm"
+  },
+  "audience": {
+    "title": "Campaign audience",
+    "input": "Segment {name}",
+    "gates": {
+      "suppressed": "on blocked addresses",
+      "unsubscribed": "unsubscribed",
+      "unconfirmed": "list subscription not confirmed",
+      "snoozed": "communication paused at their own request",
+      "processing_restricted": "restricted processing under GDPR",
+      "duplicate": "duplicate emails",
+      "sample": "sample contacts"
+    },
+    "gateLink": "Show these people",
+    "willSend": "The campaign will go out to {count, plural, =0 {nobody} one {# person} few {# people} many {# people} other {# people}}"
+  }
+}

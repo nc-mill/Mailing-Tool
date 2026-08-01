@@ -32,6 +32,15 @@ func TestSenderIDLengthIsCapped(t *testing.T) {
 	}
 }
 
+func TestHealthPortMustNotCollideInModeAll(t *testing.T) {
+	c := &Config{Mode: "all", ClaimTTLSeconds: 300, DispatchTimeoutSeconds: 10, SenderID: "a", HealthPort: 3001}
+	errs := &Errors{}
+	Validate(c, errs)
+	if err := errs.orNil(); err == nil || !strings.Contains(err.Error(), "SENDER_HEALTH_PORT") {
+		t.Fatalf("chci chybu o kolizi portů, dostal jsem %v", err)
+	}
+}
+
 func TestValidConfigurationPasses(t *testing.T) {
 	c := &Config{ClaimTTLSeconds: 300, DispatchTimeoutSeconds: 10, SenderID: "sender-1"}
 	errs := &Errors{}

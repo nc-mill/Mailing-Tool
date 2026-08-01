@@ -1,0 +1,243 @@
+{
+  "chart": {
+    "showTable": "Zobrazit tabulku hodnot",
+    "hideTable": "Skrýt tabulku hodnot"
+  },
+  "table": {
+    "selectRow": "Vybrat řádek",
+    "selectAllOnPage": "Vybrat vše na stránce",
+    "previous": "Předchozí",
+    "next": "Další",
+    "showing": "{shown, number} z {total, number}{estimated, select, true { (odhad)} other {}}",
+    "selectedOnPage": "{count, plural, =0 {nic vybráno} one {# vybraný} few {# vybrané} many {# vybraného} other {# vybraných}}",
+    "selectAllMatching": "Vybrat všech {total, number} odpovídajících",
+    "selectedAllMatching": "Vybráno všech {total, number}",
+    "clearSelection": "Zrušit výběr",
+    "cursorInvalid": "Odkaz na stránku už neplatí, ukazujeme první stránku stejného filtru.",
+    "sortNotAvailable": "Podle tohohle sloupce se řadit nedá",
+    "sortedAscending": "Seřazeno vzestupně",
+    "sortedDescending": "Seřazeno sestupně",
+    "columnSettings": "Nastavení sloupců",
+    "columnVisible": "Zobrazit sloupec {column}",
+    "columnWidth": "Šířka sloupce {column}"
+  },
+  "report": {
+    "title": "Report kampaně",
+    "clicked": {
+      "label": "Kliklo",
+      "denominator": "z doručených",
+      "hint": "Podíl doručených zpráv, u kterých někdo klikl na odkaz. Nejspolehlivější číslo v reportu."
+    },
+    "delivered": {
+      "label": "Doručeno",
+      "denominator": "z odeslaných"
+    },
+    "unsubscribed": {
+      "label": "Odhlásilo se",
+      "denominator": "z doručených"
+    },
+    "opens": {
+      "heading": "Otevření",
+      "verified": "ověřených",
+      "machine": "pravděpodobně automatických",
+      "uncertain": "nejistých",
+      "clickedFromVerified": "{count, plural, =0 {Z ověřených nikdo neklikl na odkaz.} one {Z ověřených jeden navíc klikl na odkaz.} few {Z ověřených jich # navíc kliklo na odkaz.} many {Z ověřených jich # navíc kliklo na odkaz.} other {Z ověřených jich # navíc kliklo na odkaz.}}",
+      "warning": "Část otevření vyrábějí poštovní programy samy, bez toho aby e-mail někdo četl. Spolehlivé číslo je kliknutí.",
+      "explainTitle": "Proč jsou otevření nepřesná",
+      "explainBody": "Otevření se pozná podle toho, že si poštovní program stáhne malý neviditelný obrázek. Od roku 2021 si ho Apple Mail a další programy stahují předem, samy od sebe, ještě než si e-mail někdo přečte. Nástroj to nemá jak odlišit.",
+      "explainAdvice": "Dívejte se na kliknutí. Kliknout musí člověk. Otevření se pořád hodí na jednu věc: kdo za rok neotevřel ani jeden e-mail, je téměř jistě neaktivní.",
+      "verifiedRate": {
+        "label": "Ověřená otevření",
+        "denominator": "z doručených bez Apple Mailu",
+        "hint": "Počítá se jen z příjemců, u kterých měření funguje."
+      },
+      "toggle": {
+        "label": "Odečíst pravděpodobně automatická otevření",
+        "onDescription": "Ukazujeme jen ověřená otevření. Jmenovatel je doručeno bez příjemců s Apple Mailem.",
+        "offDescription": "Ukazujeme všechna otevření včetně pravděpodobně automatických. Číslo je tím nadhodnocené.",
+        "badgeOff": "Zobrazena všechna otevření"
+      },
+      "predicted": {
+        "label": "Odhad skutečných otevření",
+        "range": "odhad {low} až {high}",
+        "hint": "Není to měření, ale dopočet z části publika, kterou Apple nezkresluje."
+      }
+    },
+    "problems": {
+      "heading": "Problémy",
+      "bounced": "Nedoručeno",
+      "complained": "Spam",
+      "failed": "Chyby",
+      "withinNorm": "v normě",
+      "high": "vysoké",
+      "showWho": "Zobrazit komu"
+    },
+    "links": {
+      "heading": "Na co lidé klikali",
+      "clicks": "{count, plural, =0 {žádné kliknutí} one {# kliknutí} few {# kliknutí} many {# kliknutí} other {# kliknutí}}",
+      "people": "{count, plural, =0 {nikdo} one {# člověk} few {# lidé} many {# lidí} other {# lidí}}",
+      "share": "podíl",
+      "duplicate": "Stejná adresa jako jiný odkaz v e-mailu",
+      "showWho": "Zobrazit koho",
+      "empty": "V kampani nebyl žádný měřený odkaz."
+    },
+    "chart": {
+      "heading": "V čase",
+      "granularity5m": "Po 5 minutách",
+      "granularityHour": "Po hodinách",
+      "granularityDay": "Po dnech",
+      "tableCaption": "Tabulka hodnot z grafu",
+      "compacted": "Starší než 30 dní se ukládá po hodinách, jemnější rozlišení už není k dispozici.",
+      "columnTime": "Čas",
+      "columnSent": "Odesláno",
+      "columnDelivered": "Doručeno",
+      "columnOpens": "Otevření",
+      "columnClicks": "Prokliky"
+    },
+    "diagnostics": {
+      "heading": "Diagnostika",
+      "scannerClicks": "Odfiltrované strojové prokliky",
+      "scannerClicksHint": "Firemní antispam navštíví každý odkaz, aby ho prověřil. Tyhle prokliky do čísel nepočítáme.",
+      "lastEvent": "Poslední událost",
+      "noEvents": "Zatím nedorazila žádná událost.",
+      "deliveredSourceProvider": "Doručení hlásí odesílací služba.",
+      "deliveredSourceDerived": "Odesílací služba doručení nehlásí, počítá se jako odeslané minus odmítnutá."
+    },
+    "banner": {
+      "sending": "Odesílání probíhá, čísla se průběžně mění",
+      "progress": "Kampaň se ještě odesílá, {sent} z {total}",
+      "settling": "Čísla se ještě dopočítávají. Většina otevření a kliknutí dorazí během první hodiny.",
+      "mayChange": "Čísla se ještě mohou mírně změnit.",
+      "stopped": "Rozesílka byla zastavena po {sent} z {total} e-mailů. Procenta se počítají z odeslaných, ne z původního publika.",
+      "deletedContacts": "Část kontaktů z téhle kampaně byla smazána. Souhrnná čísla platí, ale u jednotlivých lidí se nedostanete dál.",
+      "liveUnavailable": "Živé aktualizace se nedaří, čísla obnovujeme každých 15 sekund."
+    },
+    "states": {
+      "draft": "Report bude dostupný po odeslání kampaně.",
+      "draftAction": "Upravit kampaň",
+      "justSent": "Odesílání právě začalo, první data se objeví během několika sekund.",
+      "trackingOffOpens": "Měření otevření bylo pro tuto kampaň vypnuté",
+      "trackingOffClicks": "Měření prokliků bylo pro tuto kampaň vypnuté",
+      "trackingOffBody": "Sledování bylo pro tuhle kampaň vypnuté, proto tu čísla nejsou.",
+      "error": "Report se nepodařilo načíst.",
+      "retry": "Zkusit znovu",
+      "smallSample": "Malý vzorek, procenta nemusí nic znamenat"
+    },
+    "actions": {
+      "resendToUnopened": "Poslat znovu neotevřevším",
+      "resendWarning": "Otevření jsou nepřesná, takže mezi příjemci budou i lidé, kteří e-mail četli. Zvažte jinou formulaci než „nestihli jste“.",
+      "duplicate": "Duplikovat kampaň",
+      "download": "Stáhnout report",
+      "segmentFromClicked": "Vytvořit segment z těch, kdo klikli",
+      "segmentFromNotOpened": "Vytvořit segment z těch, kdo neotevřeli",
+      "showUndelivered": "Zobrazit, komu se nedoručilo"
+    },
+    "recipients": {
+      "heading": "Příjemci",
+      "filterAll": "Všichni",
+      "filterOpened": "Otevřeli",
+      "filterClicked": "Klikli",
+      "filterNotOpened": "Neotevřeli",
+      "filterNotClicked": "Neklikli",
+      "filterBounced": "Nedoručeno",
+      "filterComplained": "Nahlásili spam",
+      "filterUnsubscribed": "Odhlásili se",
+      "filterMachineOpenOnly": "Jen automatické otevření",
+      "deletedContact": "Smazaný kontakt",
+      "erasedContact": "Údaje byly na žádost smazány",
+      "columnContact": "Kontakt",
+      "columnOpened": "Otevřeno",
+      "columnClicked": "Kliknuto",
+      "machineOpen": "automatické stažení",
+      "empty": "Tomuhle filtru neodpovídá žádný příjemce."
+    }
+  },
+  "timeline": {
+    "heading": "Časová osa",
+    "filterAll": "Vše",
+    "filterEmail": "E-maily",
+    "filterWeb": "Web",
+    "filterContact": "Změny kontaktu",
+    "filterConsent": "Souhlasy",
+    "loadOlder": "Načíst starší",
+    "today": "Dnes",
+    "yesterday": "Včera",
+    "expandCluster": "{count, plural, =0 {Rozbalit} one {Rozbalit # událost} few {Rozbalit # události} many {Rozbalit # události} other {Rozbalit # událostí}}",
+    "collapseCluster": "Sbalit události",
+    "expanded": "Rozbaleno",
+    "collapsed": "Sbaleno",
+    "machineOpen": "Automatické stažení poštovním klientem, nemusí znamenat skutečné otevření",
+    "sessionGroup": "{pages, plural, =0 {Návštěva webu} one {Návštěva webu, # stránka} few {Návštěva webu, # stránky} many {Návštěva webu, # stránky} other {Návštěva webu, # stránek}}",
+    "empty": "U tohoto kontaktu zatím nemáme žádnou aktivitu.",
+    "emptyHint": "Až kontaktu pošlete e-mail nebo až navštíví váš web, uvidíte to tady.",
+    "emptyFiltered": "V tomhle období se nic nestalo.",
+    "emptyFilteredAction": "Zobrazit posledních 90 dní",
+    "webNotMeasured": "Chování na webu se neměří.",
+    "webNotMeasuredAction": "Nastavit",
+    "error": "Historie se nenačetla. Zkuste zúžit období.",
+    "item": {
+      "messageSent": "{gender, select, female {Dostala kampaň {campaign}} male {Dostal kampaň {campaign}} other {Odeslání kampaně {campaign}}}",
+      "messageFailed": "Kampaň {campaign} se nepodařilo odeslat",
+      "messageDelivered": "Kampaň {campaign} byla doručena",
+      "messageOpened": "{gender, select, female {Otevřela kampaň {campaign}} male {Otevřel kampaň {campaign}} other {Otevření kampaně {campaign}}}",
+      "messageClicked": "{gender, select, female {Klikla na {link} v kampani {campaign}} male {Klikl na {link} v kampani {campaign}} other {Kliknutí na {link} v kampani {campaign}}}",
+      "messageBounced": "Kampaň {campaign} se vrátila jako nedoručitelná",
+      "messageComplained": "{gender, select, female {Označila kampaň {campaign} jako spam} male {Označil kampaň {campaign} jako spam} other {Označení kampaně {campaign} jako spam}}",
+      "messageUnsubscribed": "{gender, select, female {Odhlásila se z odběru} male {Odhlásil se z odběru} other {Odhlášení z odběru}}",
+      "pageView": "{gender, select, female {Zobrazila stránku {page}} male {Zobrazil stránku {page}} other {Zobrazení stránky {page}}}",
+      "sessionStarted": "{gender, select, female {Přišla na web} male {Přišel na web} other {Návštěva webu}}",
+      "contactCreated": "{gender, select, female {Byla přidána do kontaktů} male {Byl přidán do kontaktů} other {Vznik kontaktu}}",
+      "listSubscribed": "{gender, select, female {Přihlásila se k odběru seznamu {list}} male {Přihlásil se k odběru seznamu {list}} other {Přihlášení k odběru seznamu {list}}}",
+      "listUnsubscribed": "{gender, select, female {Odhlásila se ze seznamu {list}} male {Odhlásil se ze seznamu {list}} other {Odhlášení ze seznamu {list}}}",
+      "consentGranted": "{gender, select, female {Udělila souhlas} male {Udělil souhlas} other {Udělení souhlasu}}",
+      "consentWithdrawn": "{gender, select, female {Odvolala souhlas} male {Odvolal souhlas} other {Odvolání souhlasu}}",
+      "generic": "Událost {name}"
+    },
+    "purpose": {
+      "email_marketing": "marketingová sdělení",
+      "analytics": "měření chování",
+      "personalization": "personalizace",
+      "profiling": "profilování",
+      "third_party": "předání třetí straně"
+    }
+  },
+  "dashboard": {
+    "heading": "Přehled",
+    "period7": "7 dní",
+    "period30": "30 dní",
+    "period90": "90 dní",
+    "sent": "Odesláno",
+    "clicked": "Kliklo",
+    "clickedHint": "Hlavní číslo. Kliknout musí člověk.",
+    "opened": "Otevřelo",
+    "openedMachine": "z toho {share} automatických",
+    "problems": "Problémy",
+    "problemsOk": "v pořádku",
+    "problemsBad": "vyžaduje pozornost",
+    "bounced": "vráceno",
+    "complaints": "stížnosti",
+    "webActive": "Na webu právě teď",
+    "webActiveValue": "{count, plural, =0 {žádný kontakt za 24 h} one {# kontakt za 24 h} few {# kontakty za 24 h} many {# kontaktu za 24 h} other {# kontaktů za 24 h}}",
+    "recentCampaigns": "Poslední kampaně",
+    "running": "Rozesílka {name}: {sent} z {total}",
+    "runningAction": "Zobrazit",
+    "computedAt": "spočítáno v {time}",
+    "tileError": "Tuhle dlaždici se nepodařilo načíst.",
+    "tileRetry": "Zkusit znovu",
+    "emptyFirstRun": "Až odešlete první kampaň, uvidíte tady, jak dopadla.",
+    "emptyNoCampaigns": "Zatím žádná odeslaná kampaň, proto tu nejsou míry."
+  },
+  "stats": {
+    "campaignsHeading": "Vývoj v čase",
+    "campaignsQuestion": "Zlepšuju se, nebo zhoršuju?",
+    "seriesDelivered": "Doručeno",
+    "seriesClicked": "Kliklo",
+    "seriesOpened": "Otevřelo",
+    "seriesUnsubscribed": "Odhlásilo se",
+    "tableCaption": "Kampaně a jejich míry",
+    "columnCampaign": "Kampaň",
+    "columnSentAt": "Odesláno",
+    "emptyTooFew": "Trend se ukáže od třetí odeslané kampaně.",
+    "openWithMachineNote": "U míry otevření je vždy uvedený podíl automatických."
+  }
+}

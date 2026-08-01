@@ -1,7 +1,17 @@
 {
   "extends": "@mlain/config/tsconfig/next.json",
   "compilerOptions": {
-    "rootDir": ".",
+    // `rootDir` tu SCHVÁLNĚ není a `declaration` se vypíná.
+    //
+    // Aplikace nikdy nic neemituje (`noEmit` ze sdíleného presetu), takže obojí
+    // je tu bez užitku, ale ne bez následku: se zapnutou deklarací hlídá tsc,
+    // že všechny zdroje leží pod `rootDir`, a workspace balíčky se importují
+    // ZE ZDROJE, ne z buildu. Jakmile graf importů povyrostl, začalo to padat
+    // na TS6059 „File packages/core/src/config/index.ts is not under rootDir",
+    // tedy na chybě, která ukazuje na cizí balíček, přestože vada je v tomhle
+    // souboru. Balíčky, které deklarace opravdu vydávají, si je zapínají samy.
+    "declaration": false,
+    "declarationMap": false,
     "paths": { "@/*": ["./src/*"] }
   },
   "include": [

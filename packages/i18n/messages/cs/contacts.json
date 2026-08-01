@@ -537,10 +537,66 @@
       "listScope": "Odhlašujete se ze seznamu {list}. Ostatní e-maily od nás vám budou chodit dál.",
       "global": "Nechci od vás už nic",
       "done": "Hotovo, už vám nic nepošleme.",
-      "inFlightNotice": "Odhlášení platí od teď. Kdyby vám ještě dorazil e-mail, který byl odeslaný před chvílí, už bude poslední."
+      "inFlightNotice": "Odhlášení platí od teď. Kdyby vám ještě dorazil e-mail, který byl odeslaný před chvílí, už bude poslední.",
+      "confirmTitle": "Odhlášení z e-mailů od {sender}",
+      "globalScope": "Odhlašujete se ze všech e-mailů. Už vám nic nepošleme.",
+      "submit": "Odhlásit se",
+      "doneList": "Hotovo, ze seznamu {list} jsme vás odhlásili.",
+      "preferencesLink": "Chci si jen upravit nastavení"
     },
     "preferences": {
-      "masked": "Nastavení pro {maskedEmail}"
+      "masked": "Nastavení pro {maskedEmail}",
+      "lists": "Odběry",
+      "since": "od {date}",
+      "save": "Uložit",
+      "snoozeTitle": "Posílat méně často",
+      "snoozeBody": "Nemusíte se hned odhlašovat. Můžeme si dát na čas pauzu a pak zase začít.",
+      "snoozeDays": "Pauza na {days} dní",
+      "language": "Jazyk",
+      "locale": {
+        "cs": "Čeština",
+        "en": "Angličtina"
+      },
+      "firstName": "Křestní jméno",
+      "lastName": "Příjmení",
+      "unsubscribeAll": "Odhlásit ze všeho",
+      "exportData": "Stáhnout kopii mých údajů",
+      "eraseData": "Smazat mé údaje",
+      "export_dataDoneTitle": "Žádost jsme přijali",
+      "export_dataDoneBody": "Kopii vašich údajů připravíme a pošleme na vaši adresu.",
+      "erase_dataDoneTitle": "Žádost o výmaz jsme přijali",
+      "erase_dataDoneBody": "Vaše údaje smažeme a potvrzení pošleme na vaši adresu."
+    },
+    "invalidLink": {
+      "title": "Tenhle odkaz neplatí",
+      "body": "Odkaz z e-mailu vypršel nebo byl poškozený. Zkuste otevřít původní zprávu znovu."
+    },
+    "confirm": {
+      "title": "Potvrďte přihlášení k odběru {list}",
+      "body": "Ještě jedno kliknutí a budete dostávat {list} od odesílatele {sender}.",
+      "button": "Potvrdit přihlášení",
+      "twoStepExplainer": "Potvrzení proběhne až po kliknutí na tlačítko. Děláme to kvůli tomu, aby nikoho nepřihlásil automat, který jen otevře odkaz.",
+      "expiredTitle": "Odkaz už vypršel",
+      "expiredBody": "Potvrzovací odkaz platí omezenou dobu. Pošleme vám nový.",
+      "resendButton": "Poslat nový odkaz",
+      "doneTitle": "Hotovo, přihlášení je potvrzené",
+      "doneBody": "Od teď vám budeme posílat {list}.",
+      "already_usedTitle": "Už jste přihlášeni",
+      "already_usedBody": "Tenhle odkaz už byl použit. Nemusíte dělat nic dalšího.",
+      "expired_resentTitle": "Poslali jsme vám nový odkaz",
+      "expired_resentBody": "Podívejte se do schránky, potvrzovací e-mail už je na cestě."
+    },
+    "reactivation": {
+      "promptTitle": "Chcete od nás dostávat e-maily dál?",
+      "promptBody": "Dlouho jste nic neotevřeli. Jedním kliknutím potvrdíte, že si e-maily přejete i nadále.",
+      "button": "Ano, posílejte dál",
+      "title": "Díky, pokračujeme",
+      "body": "Poznamenali jsme si, že o naše e-maily stojíte."
+    },
+    "form": {
+      "submit": "Přihlásit se k odběru",
+      "thanksTitle": "Poslali jsme vám e-mail s odkazem",
+      "thanksBody": "Přihlášení dokončíte kliknutím na odkaz v e-mailu, který jsme právě odeslali."
     }
   },
   "import": {

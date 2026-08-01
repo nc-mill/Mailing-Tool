@@ -1,0 +1,243 @@
+{
+  "title": "Segmenty",
+  "new": "Nový segment",
+  "name": "Název segmentu",
+  "emptyList": "Zatím tu nejsou žádné segmenty. Začněte hotovým, nebo si postavte vlastní.",
+  "stale": "Aktualizováno před {time}.",
+  "neverCounted": "Ještě jsme nepočítali",
+  "recount": "Přepočítat",
+  "estimated": "Přibližně {count} kontaktů.",
+  "countExactly": "Spočítat přesně",
+  "notNullHint": "Kontakty, které pole vůbec nemají, sem nespadnou. Použijte podmínku „je prázdné\".",
+  "addEmptyCondition": "Přidat i kontakty bez vyplněného pole",
+  "builder": {
+    "groupSentence": "Kontakty, které {polarity} {quantifier}",
+    "polarity": {
+      "match": "splňují",
+      "notMatch": "nesplňují"
+    },
+    "quantifier": {
+      "all": "všechny podmínky",
+      "any": "alespoň jednu podmínku"
+    },
+    "polarityLabel": "splňují, nebo nesplňují",
+    "quantifierLabel": "všechny podmínky, nebo alespoň jednu",
+    "negationHint": {
+      "andNot": "Do segmentu spadnou kontakty, u kterých neplatí aspoň jedna z podmínek níž.",
+      "orNot": "Do segmentu spadnou jen kontakty, u kterých neplatí ani jedna z podmínek níž."
+    },
+    "addCondition": "Přidat podmínku",
+    "addGroup": "Přidat skupinu podmínek",
+    "removeCondition": "Odebrat podmínku",
+    "groupNumber": "Skupina {path}",
+    "noDeeper": "Hlouběji už zanořovat nejde.",
+    "conditionCounter": "{used} ze {limit} podmínek",
+    "splitSuggestion": "Tenhle segment je složitý. Nechcete ho rozdělit na dva?",
+    "showJson": "Zobrazit definici jako JSON",
+    "hideJson": "Skrýt definici",
+    "fieldLabel": "Pole",
+    "operatorLabel": "Podmínka",
+    "valueLabel": "Hodnota",
+    "removeValue": "Odebrat hodnotu {value}",
+    "listLimit": "Do výčtu se vejde nejvýš {limit} položek.",
+    "save": "Uložit segment",
+    "cancel": "Zrušit"
+  },
+  "fieldGroups": {
+    "contact": "O člověku",
+    "attribute": "Vlastní pole",
+    "tag": "Štítky",
+    "list": "Seznamy",
+    "consent": "Souhlasy",
+    "suppression": "Blokované adresy",
+    "engagement": "Aktivita v kampaních",
+    "event": "Chování na webu",
+    "times": "Časy",
+    "segment": "Jiný segment"
+  },
+  "fields": {
+    "first_name": "Jméno",
+    "last_name": "Příjmení",
+    "email": "E-mail",
+    "email_domain": "Doména e-mailu",
+    "gender": "Pohlaví",
+    "locale": "Jazyk komunikace",
+    "status": "Stav kontaktu",
+    "source": "Odkud přišel",
+    "vocative_confidence": "Jistota oslovení",
+    "processing_restricted": "Omezené zpracování (GDPR)",
+    "last_activity_at": "Poslední aktivita",
+    "created_at": "Datum vytvoření",
+    "updated_at": "Datum poslední změny",
+    "tag": "Má štítek",
+    "suppression": "Je mezi blokovanými",
+    "segment": "Je v segmentu",
+    "engagement": {
+      "sent": "Dostal kampaň",
+      "delivered": "Doručilo se mu",
+      "opened": "Otevřel kampaň",
+      "clicked": "Klikl v kampani",
+      "bounced": "E-mail se nedoručil"
+    },
+    "event": "Provedl akci",
+    "unindexed": "Podle tohohle pole se hledá pomaleji. U velké databáze může výpočet trvat déle.",
+    "unindexedBadge": "neindexované pole"
+  },
+  "operators": {
+    "eq": "je",
+    "neq": "není",
+    "contains": "obsahuje",
+    "not_contains": "neobsahuje",
+    "starts_with": "začíná na",
+    "ends_with": "končí na",
+    "in": "je jedno z",
+    "not_in": "není žádné z",
+    "is_empty": "je prázdné",
+    "is_not_empty": "je vyplněné",
+    "gt": "je větší než",
+    "gte": "je aspoň",
+    "lt": "je menší než",
+    "lte": "je nejvýš",
+    "between": "je mezi",
+    "is_true": "je zaškrtnuté",
+    "is_false": "není zaškrtnuté",
+    "on": "je přesně",
+    "before": "je před",
+    "after": "je po",
+    "in_last_days": "je za posledních",
+    "not_in_last_days": "není za posledních",
+    "in_next_days": "je v příštích",
+    "has_any": "má aspoň jeden z",
+    "has_all": "má všechny z",
+    "has_none": "nemá žádný z",
+    "is_member": "je v něm",
+    "is_not_member": "není v něm",
+    "is_confirmed": "má potvrzené přihlášení",
+    "is_pending": "čeká na potvrzení",
+    "is_unsubscribed": "odhlásil se z něj",
+    "is_granted": "má udělený",
+    "is_withdrawn": "odvolal",
+    "is_missing": "nikdy nedal",
+    "is_suppressed": "je mezi blokovanými",
+    "is_not_suppressed": "není mezi blokovanými",
+    "did": "ano",
+    "did_not": "ne",
+    "count_gte": "aspoň Nkrát",
+    "count_lte": "nejvýš Nkrát"
+  },
+  "operatorHints": {
+    "is_member": "Včetně těch, kdo přihlášení zatím nepotvrdili.",
+    "is_missing": "Lidé, u kterých souhlas nemáme zaznamenaný.",
+    "is_withdrawn": "Lidé, kteří souhlas aktivně vzali zpět. Právně to není totéž jako „nikdy nedal\"."
+  },
+  "count": {
+    "action": "Spočítat",
+    "counting": "Počítáme…",
+    "exact": "Do segmentu patří {count, plural, =0 {nikdo} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}",
+    "sampleTitle": "Například:",
+    "showAll": "Zobrazit všech {count}",
+    "failed": "Počet se nepodařilo spočítat.",
+    "retry": "Zkusit znovu",
+    "emptyAll": "Segment zatím nemá žádnou podmínku, obsahuje tedy všechny kontakty ({count, number})."
+  },
+  "warnings": {
+    "segment_count_estimated": "Číslo je odhad, přesný výpočet by trval příliš dlouho.",
+    "segment_unindexed_field": "Podmínka na pole {field} se počítá pomalu, protože podle něj databáze nemá rejstřík. U velké databáze to může trvat déle.",
+    "segment_slow_engagement": "Podmínky na aktivitu v kampaních prohledávají historii všech odeslaných zpráv. U velké databáze počítejte s několika sekundami.",
+    "segment_archived_field": "Pole {field} je archivované a nové kontakty ho už neplní."
+  },
+  "traps": {
+    "noCampaignsYet": "Zatím jste neposlali žádnou kampaň, takže tuhle podmínku splňuje úplně každý kontakt.",
+    "contradiction": "Podmínky {a} a {b} nemůže splnit nikdo najednou. Nechtěli jste nahoře přepnout na „alespoň jednu podmínku\"?",
+    "rarelyFilled": "Pole {field} má vyplněných jen {filled, number} kontaktů z {total, number}.",
+    "containsUnsubscribed": "Z {total} kontaktů je {count} odhlášených, těm se kampaň neodešle.",
+    "containsRestricted": "Z {total} kontaktů má {count} omezené zpracování podle GDPR, těm se kampaň neodešle.",
+    "cycle": "Segment {a} se odkazuje na segment {b} a ten zpátky na {a}. To nejde spočítat."
+  },
+  "empty": {
+    "title": "Do segmentu nepatří nikdo",
+    "mostRestrictive": "Nejvíc omezuje tahle podmínka:",
+    "others": "Ostatní podmínky samostatně:",
+    "fieldStats": "Pole {field} má vyplněné jen {filled, number} kontaktů z {total, number}. Nejčastější hodnoty: {values}",
+    "caseSuggestion": "Nechtěli jste „{value}\"?",
+    "useValue": "Použít",
+    "includeEmpty": "Chcete zahrnout i kontakty bez vyplněného pole?",
+    "include": "Přidat"
+  },
+  "limits": {
+    "tooComplex": "Segment už má {limit} podmínek, což je maximum. Rozdělte ho na dva a spojte je podmínkou „je v segmentu\".",
+    "tooManyEngagement": "Podmínek na aktivitu v kampaních může být nejvýš {limit}, protože každá z nich prohledává historii odeslaných zpráv.",
+    "tooManyEvent": "Podmínek na chování na webu může být nejvýš {limit}.",
+    "listTooLong": "Do výčtu se vejde nejvýš {limit} položek. {dropped} jsme zahodili.",
+    "nestingTooDeep": "Odkazovat se na segment, který se odkazuje na další segment, jde nejvýš do druhé úrovně."
+  },
+  "presets": {
+    "sectionTitle": "Začněte hotovým",
+    "orBuild": "Nebo si postavte vlastní",
+    "build": "Postavit vlastní segment",
+    "use": "Použít",
+    "neverOpened": {
+      "title": "Nikdy neotevřel",
+      "explanation": "Dostali aspoň 3 e-maily a žádný neotevřeli."
+    },
+    "neverClicked": {
+      "title": "Nikdy neklikl",
+      "explanation": "Dostali aspoň 5 e-mailů a v žádném neklikli."
+    },
+    "inactive90d": {
+      "title": "Neaktivní 90+ dní",
+      "explanation": "Za poslední 3 měsíce nic neudělali a máme je déle než 3 měsíce."
+    },
+    "noOpenLastN": {
+      "title": "Neotevřel posledních 5 kampaní",
+      "explanation": "Dostali posledních 5 kampaní a žádnou neotevřeli."
+    },
+    "unconfirmed30d": {
+      "title": "Nepotvrzené přihlášení starší 30 dní",
+      "explanation": "Přihlásili se, ale nikdy nepotvrdili odkaz v e-mailu."
+    },
+    "repeatedSoftBounces": {
+      "title": "Opakované měkké odrazy",
+      "explanation": "Aspoň 3× se jim e-mail dočasně nedoručil."
+    }
+  },
+  "freeze": {
+    "action": "Zmrazit seznam",
+    "explanation": "Seznam zmrazíme, aby se během kampaně neměnil. Kdo se mezitím sám ozve, z úklidu vypadne.",
+    "done": "Zmrazeno, segment má {count} kontaktů."
+  },
+  "cleanup": {
+    "title": "Co uděláme s těmi, kdo se neozvou?",
+    "unsubscribe": "Odhlásit je z odběru",
+    "unsubscribeHint": "Zůstanou v databázi, ale kampaně jim už neposíláme.",
+    "tagOnly": "Jen je označit štítkem",
+    "tagOnlyHint": "Nic se nezmění, jen si je odložíme na později.",
+    "delete": "Smazat je",
+    "deleteHint": "Nenávratně. Může jen vlastník projektu.",
+    "delayDays": "Za kolik dní",
+    "countdown": "Za {days, plural, =0 {dnešek} one {# den} few {# dny} many {# dne} other {# dní}} se rozhodne o {count} kontaktech.",
+    "warning": "Za {days} dní odhlásíme {count} kontaktů.",
+    "confirmTitle": "Za {days, plural, =0 {dnešek} one {# den} few {# dny} many {# dne} other {# dní}} odhlásíme {count} kontaktů",
+    "confirmBody": "Reaktivační kampaň {campaign} odešla {sentAt} na {sent} lidí. Do dneška se ozvalo {responded}. Zbývajících {count} odhlásíme {when}. Odhlášení nejde vzít zpět. Kdo se bude chtít vrátit, musí se přihlásit znovu sám.",
+    "download": "Stáhnout těch {count} kontaktů",
+    "review": "Zkontrolovat",
+    "postpone": "Odložit o 14 dní",
+    "abort": "Zrušit úklid",
+    "typeName": "Pro potvrzení opište název segmentu"
+  },
+  "audience": {
+    "title": "Publikum kampaně",
+    "input": "Segment {name}",
+    "gates": {
+      "suppressed": "na blokovaných adresách",
+      "unsubscribed": "odhlášení",
+      "unconfirmed": "nepotvrzené přihlášení k seznamu",
+      "snoozed": "pozastavená komunikace na vlastní žádost",
+      "processing_restricted": "omezené zpracování podle GDPR",
+      "duplicate": "duplicitní e-maily",
+      "sample": "ukázkové kontakty"
+    },
+    "gateLink": "Zobrazit tyhle lidi",
+    "willSend": "Kampaň se odešle {count, plural, =0 {nikomu} one {# člověku} few {# lidem} many {# člověku} other {# lidem}}"
+  }
+}

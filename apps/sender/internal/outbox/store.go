@@ -46,6 +46,8 @@ type ActiveCampaign struct {
 type Store struct {
 	pool     *pgxpool.Pool
 	senderID string
+	// hasCompileMeta se zjistí jednou při startu, viz DetectCompileMeta.
+	hasCompileMeta bool
 }
 
 // NewStore vytvoří store nad poolem připojeným rolí mlain_sender.

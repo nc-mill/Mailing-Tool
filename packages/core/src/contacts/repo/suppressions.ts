@@ -406,6 +406,48 @@ export async function removeSuppression(
   });
 }
 
+/**
+ * KRITÉRIUM 63: potvrzené přihlášení sundá blokaci z DŘÍVĚJŠÍHO ODHLÁŠENÍ.
+ *
+ * Sundávají se JEN důvody, které vznikly rozhodnutím téhož člověka, tedy odhlášení.
+ * Stížnost, tvrdý odraz ani výmaz podle článku 17 se nesundají nikdy: návrat po
+ * stížnosti není rozhodnutí příjemce vůči nám, ale rozhodnutí, které už udělal
+ * jeho poštovní provider.
+ *
+ * PROČ TENHLE DOTAZ LEŽÍ TADY. `UPDATE suppressions` smí být podle
+ * `test/repo/suppressions.query-shape.test.ts` jedině v tomhle souboru. Kdyby si ho
+ * napsala potvrzovací cesta sama, vznikla by druhá brána do suppression listu a nikdo
+ * by ji nehlídal. Volá to `lists/confirm-service.ts` a nic jiného.
+ *
+ * Otisk se počítá přes VŠECHNA pokolení klíče: blokace mohla vzniknout před rotací
+ * a její řádek se nedá přepočítat.
+ */
+export async function removeUnsubscribeSuppressionForContact(
+  ctx: WorkspaceContext,
+  contactId: string,
+): Promise<void> {
+  await withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<{ email: string }>(sql`
+      SELECT email::text AS email FROM contacts
+       WHERE id = ${contactId}::uuid AND workspace_id = ${ctx.workspaceId}::uuid
+    `);
+    const email = rows[0]?.email;
+    if (email === undefined) return;
+
+    const fingerprints = computeAllFingerprintsBatch(keyringFromEnv(), [email]);
+    if (fingerprints.length === 0) return;
+
+    await tx.execute(sql`
+      UPDATE suppressions
+         SET removed_at = now(), removal_note = 'confirmed_opt_in'
+       WHERE workspace_id = ${ctx.workspaceId}::uuid
+         AND removed_at IS NULL
+         AND reason IN ('global_unsubscribe','one_click_unsubscribe')
+         AND fingerprint = ANY(${byteaArrayLiteral(fingerprints)}::bytea[])
+    `);
+  });
+}
+
 /* ------------------------------------------------------------------------- *
  * Čtení pro REST API a obrazovku blokovaných adres (úkol 53).
  *

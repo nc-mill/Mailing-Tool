@@ -5,6 +5,7 @@
   "type": "module",
   "license": "MIT",
   "exports": {
+    "./base": "./src/base/index.ts",
     "./*": "./src/*.ts",
     "./*.tsx": "./src/*.tsx",
     "./schema/document.v1.schema.json": "./schema/document.v1.schema.json",
@@ -26,7 +27,8 @@
     "nanoid": "6.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "sanitize-html": "2.17.6"
+    "sanitize-html": "2.17.6",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@mlain/config": "workspace:*",

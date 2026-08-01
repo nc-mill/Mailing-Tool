@@ -21,13 +21,16 @@ export type WorkspaceSummary = { id: string; slug: string; name: string };
 export function WorkspaceSwitcher({
   workspaces,
   currentId,
-  theme,
   onSwitch,
   labels,
 }: {
   workspaces: WorkspaceSummary[];
   currentId: string;
-  theme: 'light' | 'dark';
+  // `theme` tu bývalo, protože si barva projektu vybírala světlost podle motivu
+  // v JavaScriptu. Server ale motiv prohlížeče nezná, takže vykreslil jinou
+  // barvu než klient a React hlásil nesoulad hydratace, který sám neopraví.
+  // Dnes vrací `workspaceAccent()` CSS proměnnou a světlost dopočítá motiv,
+  // takže komponenta o motivu vědět nepotřebuje.
   onSwitch: (slug: string) => void;
   labels: { switcher: string; current: (name: string) => string };
 }) {

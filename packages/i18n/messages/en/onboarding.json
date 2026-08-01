@@ -1,0 +1,64 @@
+{
+  "panel": {
+    "title": "Your first campaign",
+    "remaining": "{count, plural, =0 {Everything is done} one {# step left} other {# steps left}}, about 10 min in total.",
+    "collapsed": "{done} of {total} done",
+    "hide": "Hide",
+    "show": "Show",
+    "done": "done",
+    "finished": "Done, your first campaign is out. The report is on the campaign.",
+    "finishedDismiss": "Close"
+  },
+  "steps": {
+    "sending": {
+      "title": "Connect sending",
+      "description": "Without a sending connection no email leaves the app.",
+      "estimate": "about 3 min",
+      "action": "Connect",
+      "secondaryAction": "Sample data"
+    },
+    "contacts": {
+      "title": "Add contacts",
+      "description": "Upload a CSV file, or try the sample data first.",
+      "estimate": "about 2 min",
+      "action": "Upload a file",
+      "secondaryAction": "Sample data"
+    },
+    "template": {
+      "title": "Create a template",
+      "description": "The template holds the look of the email. Wording comes later.",
+      "estimate": "about 3 min",
+      "action": "Create a template",
+      "secondaryAction": "Sample data"
+    },
+    "testSend": {
+      "title": "Send yourself a test",
+      "description": "See how the email looks in your own inbox.",
+      "estimate": "about 1 min",
+      "action": "Send a test",
+      "secondaryAction": "Sample data"
+    },
+    "firstCampaign": {
+      "title": "Send your first campaign",
+      "description": "Pick the recipients and send. You will see progress live.",
+      "estimate": "about 1 min",
+      "action": "Create a campaign",
+      "secondaryAction": "Sample data"
+    }
+  },
+  "demo": {
+    "bannerTitle": "This project contains sample data.",
+    "bannerDetail": "{contacts, plural, =0 {No sample contact} one {# sample contact} other {# sample contacts}} on example.com addresses, which can never receive anything.",
+    "filterHint": "Show them in contacts by the Sample data tag",
+    "remove": "Remove",
+    "removed": "The sample data is gone.",
+    "removeFailed": "The sample data could not be removed. Please try again.",
+    "dialogTitle": "Remove the sample data?",
+    "dialogContacts": "{contacts, plural, =0 {no contact} one {# contact} other {# contacts}}, {lists, plural, =0 {no list} one {# list} other {# lists}} and {tags, plural, =0 {no tag} one {# tag} other {# tags}}.",
+    "dialogContent": "{segments, plural, =0 {no segment} one {# segment} other {# segments}}, {templates, plural, =0 {no template} one {# template} other {# templates}} and {campaigns, plural, =0 {no campaign} one {# campaign} other {# campaigns}} with its report.",
+    "dialogSafety": "Nothing else in the project is touched.",
+    "dialogAgain": "You can load the sample data again at any time.",
+    "dialogConfirm": "Remove the sample data",
+    "dialogCancel": "Keep them"
+  }
+}

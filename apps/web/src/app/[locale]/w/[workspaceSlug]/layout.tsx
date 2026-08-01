@@ -5,7 +5,6 @@ import { workspaceAccent } from '@mlain/ui/lib/workspace-accent';
 import { visibleNavigation } from '@mlain/ui/patterns/navigation';
 import { AppShell, Sidebar, Topbar, WorkspaceSwitcher } from '@mlain/ui/patterns/shell';
 import type { SystemBarState } from '@mlain/ui/patterns/shell';
-import { useTheme } from '@mlain/ui/theme';
 import { useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -35,7 +34,6 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useParams<{ workspaceSlug: string }>();
-  const { resolved } = useTheme();
   const workspaceSlug = params.workspaceSlug;
 
   const [offline, setOffline] = useState(false);
@@ -67,7 +65,6 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
             <WorkspaceSwitcher
               workspaces={[workspace]}
               currentId={workspace.id}
-              theme={resolved}
               onSwitch={(slug) => router.push(`/w/${slug}`)}
               labels={{
                 switcher: t('shell.projectSwitcher'),

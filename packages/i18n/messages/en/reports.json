@@ -1,0 +1,243 @@
+{
+  "chart": {
+    "showTable": "Show table of values",
+    "hideTable": "Hide table of values"
+  },
+  "table": {
+    "selectRow": "Select row",
+    "selectAllOnPage": "Select all on this page",
+    "previous": "Previous",
+    "next": "Next",
+    "showing": "{shown, number} of {total, number}{estimated, select, true { (estimated)} other {}}",
+    "selectedOnPage": "{count, plural, =0 {nothing selected} one {# selected} other {# selected}}",
+    "selectAllMatching": "Select all {total, number} matching",
+    "selectedAllMatching": "All {total, number} selected",
+    "clearSelection": "Clear selection",
+    "cursorInvalid": "That page link is no longer valid, showing the first page of the same filter.",
+    "sortNotAvailable": "This column cannot be sorted",
+    "sortedAscending": "Sorted ascending",
+    "sortedDescending": "Sorted descending",
+    "columnSettings": "Column settings",
+    "columnVisible": "Show column {column}",
+    "columnWidth": "Width of column {column}"
+  },
+  "report": {
+    "title": "Campaign report",
+    "clicked": {
+      "label": "Clicked",
+      "denominator": "of delivered",
+      "hint": "Share of delivered messages where somebody clicked a link. The most reliable number in this report."
+    },
+    "delivered": {
+      "label": "Delivered",
+      "denominator": "of sent"
+    },
+    "unsubscribed": {
+      "label": "Unsubscribed",
+      "denominator": "of delivered"
+    },
+    "opens": {
+      "heading": "Opens",
+      "verified": "verified",
+      "machine": "likely machine",
+      "uncertain": "uncertain",
+      "clickedFromVerified": "{count, plural, =0 {None of the verified opens clicked a link.} one {One verified open also clicked a link.} other {# verified opens also clicked a link.}}",
+      "warning": "Some opens are produced by mail apps on their own, without anybody reading the message. The reliable number is clicks.",
+      "explainTitle": "Why opens are imprecise",
+      "explainBody": "An open is detected when a mail app downloads a small invisible image. Since 2021 Apple Mail and other apps download it up front, on their own, before anybody reads the message. The tool cannot tell the difference.",
+      "explainAdvice": "Look at clicks. A click needs a human. Opens are still good for one thing: somebody who opened nothing for a year is almost certainly inactive.",
+      "verifiedRate": {
+        "label": "Verified opens",
+        "denominator": "of delivered excluding Apple Mail",
+        "hint": "Calculated only from recipients where measurement works."
+      },
+      "toggle": {
+        "label": "Subtract likely machine opens",
+        "onDescription": "Showing verified opens only. The denominator is delivered without Apple Mail recipients.",
+        "offDescription": "Showing all opens including likely machine ones. The number is inflated by that.",
+        "badgeOff": "Showing all opens"
+      },
+      "predicted": {
+        "label": "Estimated real opens",
+        "range": "estimate {low} to {high}",
+        "hint": "This is not a measurement. It is derived from the part of the audience Apple does not distort."
+      }
+    },
+    "problems": {
+      "heading": "Problems",
+      "bounced": "Not delivered",
+      "complained": "Spam",
+      "failed": "Errors",
+      "withinNorm": "within norm",
+      "high": "high",
+      "showWho": "Show who"
+    },
+    "links": {
+      "heading": "What people clicked",
+      "clicks": "{count, plural, =0 {no clicks} one {# click} other {# clicks}}",
+      "people": "{count, plural, =0 {nobody} one {# person} other {# people}}",
+      "share": "share",
+      "duplicate": "Same address as another link in the e-mail",
+      "showWho": "Show who",
+      "empty": "The campaign had no measured link."
+    },
+    "chart": {
+      "heading": "Over time",
+      "granularity5m": "Every 5 minutes",
+      "granularityHour": "Hourly",
+      "granularityDay": "Daily",
+      "tableCaption": "Table of chart values",
+      "compacted": "Data older than 30 days is stored hourly, finer resolution is no longer available.",
+      "columnTime": "Time",
+      "columnSent": "Sent",
+      "columnDelivered": "Delivered",
+      "columnOpens": "Opens",
+      "columnClicks": "Clicks"
+    },
+    "diagnostics": {
+      "heading": "Diagnostics",
+      "scannerClicks": "Filtered machine clicks",
+      "scannerClicksHint": "Corporate spam filters visit every link to check it. We do not count those clicks.",
+      "lastEvent": "Last event",
+      "noEvents": "No event has arrived yet.",
+      "deliveredSourceProvider": "Delivery is reported by the sending service.",
+      "deliveredSourceDerived": "The sending service does not report delivery, so it is counted as sent minus rejected."
+    },
+    "banner": {
+      "sending": "Sending in progress, numbers keep changing",
+      "progress": "The campaign is still sending, {sent} of {total}",
+      "settling": "Numbers are still settling. Most opens and clicks arrive within the first hour.",
+      "mayChange": "Numbers may still change slightly.",
+      "stopped": "Sending was stopped after {sent} of {total} e-mails. Percentages are calculated from sent, not from the original audience.",
+      "deletedContacts": "Some contacts from this campaign were deleted. Totals still hold, but you cannot drill down to individual people.",
+      "liveUnavailable": "Live updates are failing, we refresh the numbers every 15 seconds."
+    },
+    "states": {
+      "draft": "The report becomes available once the campaign is sent.",
+      "draftAction": "Edit campaign",
+      "justSent": "Sending has just started, the first data appears within seconds.",
+      "trackingOffOpens": "Open tracking was disabled for this campaign",
+      "trackingOffClicks": "Click tracking was disabled for this campaign",
+      "trackingOffBody": "Tracking was disabled for this campaign, that is why the numbers are missing.",
+      "error": "The report could not be loaded.",
+      "retry": "Try again",
+      "smallSample": "Small sample, percentages may be misleading"
+    },
+    "actions": {
+      "resendToUnopened": "Resend to people who did not open",
+      "resendWarning": "Opens are imprecise, so the audience will include people who did read the e-mail. Consider wording other than „you missed it“.",
+      "duplicate": "Duplicate campaign",
+      "download": "Download report",
+      "segmentFromClicked": "Create a segment from people who clicked",
+      "segmentFromNotOpened": "Create a segment from people who did not open",
+      "showUndelivered": "Show who did not receive it"
+    },
+    "recipients": {
+      "heading": "Recipients",
+      "filterAll": "Everyone",
+      "filterOpened": "Opened",
+      "filterClicked": "Clicked",
+      "filterNotOpened": "Did not open",
+      "filterNotClicked": "Did not click",
+      "filterBounced": "Not delivered",
+      "filterComplained": "Reported spam",
+      "filterUnsubscribed": "Unsubscribed",
+      "filterMachineOpenOnly": "Machine opens only",
+      "deletedContact": "Deleted contact",
+      "erasedContact": "Data was erased on request",
+      "columnContact": "Contact",
+      "columnOpened": "Opened",
+      "columnClicked": "Clicked",
+      "machineOpen": "automatic download",
+      "empty": "No recipient matches this filter."
+    }
+  },
+  "timeline": {
+    "heading": "Timeline",
+    "filterAll": "All",
+    "filterEmail": "E-mails",
+    "filterWeb": "Web",
+    "filterContact": "Contact changes",
+    "filterConsent": "Consents",
+    "loadOlder": "Load older",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "expandCluster": "{count, plural, =0 {Expand} one {Expand # event} other {Expand # events}}",
+    "collapseCluster": "Collapse events",
+    "expanded": "Expanded",
+    "collapsed": "Collapsed",
+    "machineOpen": "Automatic download by the mail client, may not mean a real open",
+    "sessionGroup": "{pages, plural, =0 {Web visit} one {Web visit, # page} other {Web visit, # pages}}",
+    "empty": "No activity recorded for this contact yet.",
+    "emptyHint": "Once you send an e-mail or the contact visits your site, it shows up here.",
+    "emptyFiltered": "Nothing happened in this period.",
+    "emptyFilteredAction": "Show the last 90 days",
+    "webNotMeasured": "Web behaviour is not measured.",
+    "webNotMeasuredAction": "Set up",
+    "error": "History failed to load. Try a shorter period.",
+    "item": {
+      "messageSent": "{gender, select, female {Received campaign {campaign}} male {Received campaign {campaign}} other {Campaign {campaign} was sent}}",
+      "messageFailed": "Campaign {campaign} could not be sent",
+      "messageDelivered": "Campaign {campaign} was delivered",
+      "messageOpened": "{gender, select, female {Opened campaign {campaign}} male {Opened campaign {campaign}} other {Campaign {campaign} was opened}}",
+      "messageClicked": "{gender, select, female {Clicked {link} in campaign {campaign}} male {Clicked {link} in campaign {campaign}} other {{link} was clicked in campaign {campaign}}}",
+      "messageBounced": "Campaign {campaign} bounced as undeliverable",
+      "messageComplained": "{gender, select, female {Marked campaign {campaign} as spam} male {Marked campaign {campaign} as spam} other {Campaign {campaign} was marked as spam}}",
+      "messageUnsubscribed": "{gender, select, female {Unsubscribed} male {Unsubscribed} other {Unsubscribed from the list}}",
+      "pageView": "{gender, select, female {Viewed page {page}} male {Viewed page {page}} other {Page {page} was viewed}}",
+      "sessionStarted": "{gender, select, female {Visited the website} male {Visited the website} other {Website visit}}",
+      "contactCreated": "{gender, select, female {Was added to contacts} male {Was added to contacts} other {Contact was created}}",
+      "listSubscribed": "{gender, select, female {Subscribed to list {list}} male {Subscribed to list {list}} other {Subscription to list {list}}}",
+      "listUnsubscribed": "{gender, select, female {Unsubscribed from list {list}} male {Unsubscribed from list {list}} other {Unsubscribed from list {list}}}",
+      "consentGranted": "{gender, select, female {Granted consent} male {Granted consent} other {Consent was granted}}",
+      "consentWithdrawn": "{gender, select, female {Withdrew consent} male {Withdrew consent} other {Consent was withdrawn}}",
+      "generic": "Event {name}"
+    },
+    "purpose": {
+      "email_marketing": "marketing messages",
+      "analytics": "behaviour measurement",
+      "personalization": "personalization",
+      "profiling": "profiling",
+      "third_party": "sharing with a third party"
+    }
+  },
+  "dashboard": {
+    "heading": "Overview",
+    "period7": "7 days",
+    "period30": "30 days",
+    "period90": "90 days",
+    "sent": "Sent",
+    "clicked": "Clicked",
+    "clickedHint": "The headline number. A click needs a human.",
+    "opened": "Opened",
+    "openedMachine": "{share} of which are machine opens",
+    "problems": "Problems",
+    "problemsOk": "all good",
+    "problemsBad": "needs attention",
+    "bounced": "bounced",
+    "complaints": "complaints",
+    "webActive": "On the website right now",
+    "webActiveValue": "{count, plural, =0 {no contacts in 24 h} one {# contact in 24 h} other {# contacts in 24 h}}",
+    "recentCampaigns": "Recent campaigns",
+    "running": "Sending {name}: {sent} of {total}",
+    "runningAction": "Open",
+    "computedAt": "computed at {time}",
+    "tileError": "This tile could not be loaded.",
+    "tileRetry": "Try again",
+    "emptyFirstRun": "Once you send your first campaign, you will see how it did here.",
+    "emptyNoCampaigns": "No campaign sent yet, so there are no rates."
+  },
+  "stats": {
+    "campaignsHeading": "Trend over time",
+    "campaignsQuestion": "Am I getting better or worse?",
+    "seriesDelivered": "Delivered",
+    "seriesClicked": "Clicked",
+    "seriesOpened": "Opened",
+    "seriesUnsubscribed": "Unsubscribed",
+    "tableCaption": "Campaigns and their rates",
+    "columnCampaign": "Campaign",
+    "columnSentAt": "Sent at",
+    "emptyTooFew": "The trend shows up from the third sent campaign.",
+    "openWithMachineNote": "The open rate is always shown together with the share of machine opens."
+  }
+}

@@ -1,0 +1,168 @@
+package mimebuild
+
+import (
+	"bytes"
+	"crypto/rand"
+	"encoding/base32"
+	"encoding/hex"
+	"fmt"
+	"mime/quotedprintable"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Input je všechno, co builder potřebuje. Nic si nedopočítává z okolí, takže
+// je celý deterministický a testovatelný.
+type Input struct {
+	MessageID       string
+	Date            time.Time
+	FromName        string
+	FromEmail       string
+	To              string
+	ReplyTo         string
+	Subject         string
+	Text            string
+	HTML            string
+	ListUnsubscribe []string
+	OneClick        bool
+	FeedbackID      string
+	PrecedenceBulk  bool
+	TestHeader      bool
+	Boundary        string
+}
+
+// MessageID sestaví deterministický identifikátor zprávy podle kontraktu 4.10.1.
+//
+// Nikdy nezahrnuje číslo pokusu ani čas, takže opakované odeslání téže zprávy
+// má identický Message-ID a většina přijímajících serverů ho deduplikuje.
+// Na Amazon SES tahle pojistka NEEXISTUJE, protože SES hlavičku přepisuje vlastní
+// hodnotou; proto je u SES výchozí politika nejednoznačného odeslání fail.
+//
+// Abeceda base32 je RFC 4648 standardní, bez paddingu, převedená na malá písmena.
+// Kontrakt ji nespecifikoval (nález K13) a tohle je volba plánu; je zapsaná
+// v kapitole 31 jako požadavek na doplnění jedné věty do kontraktu.
+func MessageID(id uuid.UUID, domain string) string {
+	enc := base32.StdEncoding.WithPadding(base32.NoPadding)
+	return "<ml." + strings.ToLower(enc.EncodeToString(id[:])) + "@" + domain + ">"
+}
+
+// NewBoundary vyrobí hranici částí. Generátor náhody je injektovatelný, aby byly
+// golden fixtures deterministické.
+func NewBoundary(read func([]byte) (int, error)) (string, error) {
+	buf := make([]byte, 10)
+	if _, err := read(buf); err != nil {
+		return "", err
+	}
+	return "----=_OE_" + hex.EncodeToString(buf), nil
+}
+
+// RandomBoundary je produkční varianta nad crypto/rand.
+func RandomBoundary() (string, error) { return NewBoundary(rand.Read) }
+
+func writeHeader(b *bytes.Buffer, name, value string) {
+	b.WriteString(name)
+	b.WriteString(": ")
+	b.WriteString(value)
+	b.WriteString("\r\n")
+}
+
+func hasHTTPSURI(uris []string) bool {
+	for _, u := range uris {
+		if strings.HasPrefix(u, "https://") {
+			return true
+		}
+	}
+	return false
+}
+
+// Build sestaví celou MIME zprávu.
+//
+// multipart/alternative, ne multipart/mixed: kampaň nemá přílohy a obal navíc
+// jen zvětšuje zprávu a mate některé klienty.
+//
+// quoted-printable, ne base64: český text zůstane v surové zprávě z větší části
+// čitelný, u převážně ASCII obsahu je výsledek menší, a splňuje se tím požadavek
+// SES na sedmibitový obsah. Řádky se lámou měkkým zlomem na 76 znaků, takže se
+// nikdy nepřekročí limit 998 oktetů z RFC 5322.
+//
+// Pořadí hlaviček je pevné a odpovídá tabulce v části 4b, kapitola 3.8.2. Není to
+// požadavek RFC, ale dělá to golden fixtures deterministické a diff čitelný.
+func Build(in Input) ([]byte, error) {
+	if in.Boundary == "" {
+		return nil, fmt.Errorf("boundary nesmí být prázdná")
+	}
+	var b bytes.Buffer
+
+	writeHeader(&b, "Date", in.Date.UTC().Format("Mon, 02 Jan 2006 15:04:05 -0700"))
+	writeHeader(&b, "Message-ID", in.MessageID)
+	writeHeader(&b, "From", EncodeAddress(in.FromName, in.FromEmail))
+	// Bez display name. Zobrazované jméno nepřináší doručitelnosti nic a přidává
+	// další místo, kde může personalizace selhat.
+	writeHeader(&b, "To", "<"+in.To+">")
+	writeHeader(&b, "Subject", EncodeHeaderValue(in.Subject))
+	writeHeader(&b, "MIME-Version", "1.0")
+	writeHeader(&b, "Content-Type", `multipart/alternative; boundary="`+in.Boundary+`"`)
+
+	if in.ReplyTo != "" && !strings.EqualFold(in.ReplyTo, in.FromEmail) {
+		writeHeader(&b, "Reply-To", "<"+in.ReplyTo+">")
+	}
+	if len(in.ListUnsubscribe) > 0 {
+		parts := make([]string, 0, len(in.ListUnsubscribe))
+		for _, u := range in.ListUnsubscribe {
+			parts = append(parts, "<"+u+">")
+		}
+		writeHeader(&b, "List-Unsubscribe", strings.Join(parts, ", "))
+		// RFC 8058: jediná povolená hodnota, a přidává se JEN tehdy, když
+		// List-Unsubscribe nese HTTPS URI.
+		if in.OneClick && hasHTTPSURI(in.ListUnsubscribe) {
+			writeHeader(&b, "List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
+		}
+	}
+	if in.FeedbackID != "" {
+		writeHeader(&b, "Feedback-ID", in.FeedbackID)
+	}
+	if in.PrecedenceBulk {
+		writeHeader(&b, "Precedence", "bulk")
+	}
+	if in.TestHeader {
+		writeHeader(&b, "X-Mlain-Test", "1")
+	}
+	b.WriteString("\r\n")
+
+	if err := writePart(&b, in.Boundary, "text/plain; charset=UTF-8", in.Text); err != nil {
+		return nil, err
+	}
+	if err := writePart(&b, in.Boundary, "text/html; charset=UTF-8", in.HTML); err != nil {
+		return nil, err
+	}
+	b.WriteString("--" + in.Boundary + "--\r\n")
+	return b.Bytes(), nil
+}
+
+func writePart(b *bytes.Buffer, boundary, contentType, body string) error {
+	b.WriteString("--" + boundary + "\r\n")
+	writeHeader(b, "Content-Type", contentType)
+	writeHeader(b, "Content-Transfer-Encoding", "quoted-printable")
+	b.WriteString("\r\n")
+
+	w := quotedprintable.NewWriter(b)
+	if _, err := w.Write([]byte(normalizeNewlines(body))); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	if !bytes.HasSuffix(b.Bytes(), []byte("\r\n")) {
+		b.WriteString("\r\n")
+	}
+	return nil
+}
+
+// normalizeNewlines převede osamocené LF na CRLF. Konec řádku je ve zprávě vždy
+// CRLF, včetně prázdného řádku mezi hlavičkami a tělem.
+func normalizeNewlines(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	return strings.ReplaceAll(s, "\n", "\r\n")
+}
