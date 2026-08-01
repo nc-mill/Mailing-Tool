@@ -1,0 +1,11 @@
+Jen primární barva
+------------------
+
+>> Koupit:
+https://track.mlain.invalid/c/a5a7d935-035e-518e-8895-ca6c6f1f8f38
+
+{{ workspace.sender_address }}
+
+Odhlásit se z odběru: {{ unsubscribe_url }}
+Nastavit předvolby: {{ preferences_url }}
+Zobrazit v prohlížeči: {{ webview_url }}

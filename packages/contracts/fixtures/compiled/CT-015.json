@@ -1,0 +1,116 @@
+{
+  "id": "CT-015",
+  "description": "porovnávací operátor v podmínce je v MVP 0 blokující chyba (rozhodnutí R7)",
+  "document": {
+    "schemaVersion": 1,
+    "meta": {
+      "name": "CT",
+      "previewText": "Náhledový text",
+      "language": "cs"
+    },
+    "theme": {
+      "contentWidth": 600,
+      "canvasBackground": "surface.canvas",
+      "contentBackground": "surface.content",
+      "colors": {},
+      "fonts": {
+        "heading": "system",
+        "body": "system"
+      },
+      "typography": {
+        "baseFontSize": 16,
+        "baseLineHeight": 1.5,
+        "headingScale": 1.25
+      },
+      "radius": 6,
+      "darkMode": {
+        "strategy": "auto",
+        "colors": {}
+      }
+    },
+    "blocks": [
+      {
+        "id": "b_000000000001",
+        "type": "section",
+        "props": {
+          "backgroundColor": null,
+          "outerBackgroundColor": null,
+          "backgroundImageAssetId": null,
+          "backgroundPosition": "center",
+          "padding": {
+            "top": 24,
+            "right": 24,
+            "bottom": 24,
+            "left": 24
+          },
+          "fullWidth": false,
+          "roundedTop": false,
+          "roundedBottom": false
+        },
+        "children": [
+          {
+            "id": "b_000000000002",
+            "type": "html",
+            "props": {
+              "padding": {
+                "top": 0,
+                "right": 24,
+                "bottom": 16,
+                "left": 24
+              },
+              "backgroundColor": null,
+              "hideOnMobile": false,
+              "code": "{% if contact.attr.city > 5 %}x{% endif %}"
+            }
+          },
+          {
+            "id": "b_000000000099",
+            "type": "footer",
+            "props": {
+              "padding": {
+                "top": 0,
+                "right": 24,
+                "bottom": 16,
+                "left": 24
+              },
+              "backgroundColor": null,
+              "hideOnMobile": false,
+              "senderInfo": [
+                {
+                  "t": "p",
+                  "children": [
+                    {
+                      "t": "var",
+                      "expr": "workspace.sender_address"
+                    }
+                  ]
+                }
+              ],
+              "showUnsubscribe": true,
+              "unsubscribeLabel": "Odhlásit se z odběru",
+              "showPreferences": true,
+              "preferencesLabel": "Nastavit předvolby",
+              "showWebview": true,
+              "webviewLabel": "Zobrazit v prohlížeči",
+              "fontSize": 12,
+              "color": "text.muted"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "context": {
+    "trackOpens": true,
+    "trackClicks": true,
+    "language": "cs",
+    "campaignId": "0192f3a0-1c2d-7e60-8a1b-2c3d4e5f6071"
+  },
+  "compiled": {
+    "html": "",
+    "text": ""
+  },
+  "expect": {
+    "error": "liquid_comparison_operator_not_supported"
+  }
+}

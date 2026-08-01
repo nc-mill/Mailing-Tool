@@ -1,0 +1,53 @@
+{
+  "name": "@mlain/core",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./config": "./src/config/index.ts",
+    "./errors": "./src/errors/index.ts",
+    "./queues": "./src/queues/index.ts",
+    "./logging": "./src/logging/index.ts",
+    "./health": "./src/health/index.ts",
+    "./shutdown": "./src/shutdown/index.ts",
+    "./*/jobs": "./src/*/jobs/queue-handlers.ts",
+    "./audit/*": "./src/audit/*.ts",
+    "./errors/*": "./src/errors/*.ts",
+    "./identity/*": "./src/identity/*.ts",
+    "./net/*": "./src/net/*.ts",
+    "./platform/*": "./src/platform/*.ts",
+    "./test-support/*": "./src/test-support/*.ts",
+    "./tx/*": "./src/tx/*.ts",
+    "./*": "./src/*/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "@hono/zod-openapi": "1.5.1",
+    "@mlain/contracts": "workspace:*",
+    "@mlain/db": "workspace:*",
+    "@mlain/emails": "workspace:*",
+    "@node-rs/argon2": "2.0.2",
+    "crawler-user-agents": "1.56.0",
+    "czech-vocative": "2.1.0",
+    "drizzle-orm": "0.44.7",
+    "hono": "4.12.33",
+    "ipaddr.js": "2.4.0",
+    "pg": "8.22.0",
+    "pino": "10.3.1",
+    "uuid": "14.0.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@mlain/config": "workspace:*",
+    "@testcontainers/postgresql": "12.0.4",
+    "@types/pg": "8.15.6",
+    "pg-boss": "12.26.3",
+    "pino-pretty": "^13.1.0",
+    "testcontainers": "12.0.4",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "contractVersion": 1,
+  "secret_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "positive": [
+    {
+      "id": "CR-P1",
+      "key_id": 1,
+      "context": "sending_provider",
+      "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
+      "nonce_hex": "000102030405060708090a0b",
+      "plaintext": "{\"access_key_id\":\"AKIAEXAMPLE\",\"secret_access_key\":\"s3cr3t\",\"region\":\"eu-central-1\"}",
+      "sides": ["ts", "go"],
+      "expected_header_hex": "01011073656e64696e675f70726f7669646572",
+      "expected_aad_hex": "6d61696c65722f637265642f763101011073656e64696e675f70726f76696465720192f3a01c2d7e409a1b2c3d4e5f6071",
+      "expected_ciphertext_hex": "fae5c57114c84c4ec01591b018af427e916c8c3c557225764cf65a3051382d8128c6de1ac3e38c79c5e2d42b5dc41388e567310ccf2aefcb6251a2dfe3f944983da3c3481b0bfd18beb9a930aa089a1231c84ed1",
+      "expected_tag_hex": "1ef74b99f8ae68049656d9240d8b8807",
+      "expected_stored": "enc:v1:AQEQc2VuZGluZ19wcm92aWRlcgABAgMEBQYHCAkKC/rlxXEUyExOwBWRsBivQn6RbIw8VXIldkz2WjBROC2BKMbeGsPjjHnF4tQrXcQTiOVnMQzPKu/LYlGi3+P5RJg9o8NIGwv9GL65qTCqCJoSMchO0R73S5n4rmgEllbZJA2LiAc=",
+      "expected_envelope_bytes": 131
+    }
+  ],
+  "negative": [
+    {
+      "id": "CR-N1",
+      "stored": "enc:v1:AQEQc2VuZGluZ19wcm92aWRlcgABAgMEBQYHCAkKC/rlxXEUyExOwBSRsBivQn6RbIw8VXIldkz2WjBROC2BKMbeGsPjjHnF4tQrXcQTiOVnMQzPKu/LYlGi3+P5RJg9o8NIGwv9GL65qTCqCJoSMchO0R73S5n4rmgEllbZJA2LiAc=",
+      "context": "sending_provider",
+      "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
+      "expected_error": "crypto_auth_failed",
+      "sides": ["ts", "go"]
+    },
+    {
+      "id": "CR-N2",
+      "stored": "enc:v1:AQEOd2ViaG9va19zZWNyZXQAAQIDBAUGBwgJCgv65cVxFMhMTsAVkbAYr0J+kWyMPFVyJXZM9lowUTgtgSjG3hrD44x5xeLUK13EE4jlZzEMzyrvy2JRot/j+USYPaPDSBsL/Ri+uakwqgiaEjHITtEe90uZ+K5oBJZW2SQNi4gH",
+      "context": "webhook_secret",
+      "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
+      "expected_error": "crypto_auth_failed",
+      "sides": ["ts", "go"]
+    },
+    {
+      "id": "CR-N3",
+      "stored": "enc:v1:AQEQc2VuZGluZ19wcm92aWRlcgABAgMEBQYHCAkKC/rlxXEUyExOwBWRsBivQn6RbIw8VXIldkz2WjBROC2BKMbeGsPjjHnF4tQrXcQTiOVnMQzPKu/LYlGi3+P5RJg9o8NIGwv9GL65qTCqCJoSMchO0R73S5n4rmgEllbZJA2LiAc=",
+      "context": "webhook_secret",
+      "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
+      "expected_error": "crypto_context_mismatch",
+      "sides": ["ts", "go"]
+    },
+    {
+      "id": "CR-N4",
+      "stored": "enc:v1:AgEQc2VuZGluZ19wcm92aWRlcgABAgMEBQYHCAkKC/rlxXEUyExOwBWRsBivQn6RbIw8VXIldkz2WjBROC2BKMbeGsPjjHnF4tQrXcQTiOVnMQzPKu/LYlGi3+P5RJg9o8NIGwv9GL65qTCqCJoSMchO0R73S5n4rmgEllbZJA2LiAc=",
+      "context": "sending_provider",
+      "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
+      "expected_error": "crypto_unsupported_version",
+      "sides": ["ts", "go"]
+    },
+    {
+      "id": "CR-N5",
+      "stored": "enc:v1:AQcQc2VuZGluZ19wcm92aWRlcgABAgMEBQYHCAkKC/rlxXEUyExOwBWRsBivQn6RbIw8VXIldkz2WjBROC2BKMbeGsPjjHnF4tQrXcQTiOVnMQzPKu/LYlGi3+P5RJg9o8NIGwv9GL65qTCqCJoSMchO0R73S5n4rmgEllbZJA2LiAc=",
+      "context": "sending_provider",
+      "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
+      "expected_error": "crypto_unknown_key",
+      "sides": ["ts", "go"]
+    },
+    {
+      "id": "CR-N6",
+      "stored": "AQEQc2VuZGluZ19wcm92aWRlcgABAgMEBQYHCAkKC/rlxXEUyExOwBWRsBivQn6RbIw8VXIldkz2WjBROC2BKMbeGsPjjHnF4tQrXcQTiOVnMQzPKu/LYlGi3+P5RJg9o8NIGwv9GL65qTCqCJoSMchO0R73S5n4rmgEllbZJA2LiAc=",
+      "context": "sending_provider",
+      "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
+      "expected_error": "crypto_envelope_malformed",
+      "sides": ["ts", "go"]
+    },
+    {
+      "id": "CR-N7",
+      "stored": "enc:v1:AQEQc2VuZGluZ19wcm92aWRlcgABAgMEBQYHCAkKC/rlxXEUyExOwBWRsBivQn6RbIw8VXIldkz2WjBROC2BKMbeGsPjjHnF4tQrXcQTiOVnMQzPKu/LYlGi3+P5RJg9o8NIGwv9GL65qTCqCJoSMchO0Q==",
+      "context": "sending_provider",
+      "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
+      "expected_error": "crypto_auth_failed",
+      "sides": ["ts", "go"]
+    },
+    {
+      "id": "CR-N8",
+      "stored": "enc:v1:AQEQc2VuZGluZ19wcm92aWRlcgABAgMEBQYHCAkKC/rlxXEUyExOwBWRsBivQn6RbIw8VXIldkz2WjBROC2BKMbeGsPjjHnF4tQrXcQTiOVnMQzPKu/LYlGi3+P5RJg9o8NIGwv9GL65qTCqCJoSMchO0R73S5n4rmgEllbZJA2LiAc=",
+      "context": "sending_provider",
+      "workspace_id": "0192f3a0-1c2d-7e47-9a1b-2c3d4e5f6099",
+      "expected_error": "crypto_auth_failed",
+      "sides": ["ts", "go"]
+    }
+  ]
+}

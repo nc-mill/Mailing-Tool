@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mlain.local/schema/message-id.schema.json",
+  "title": "Závazné vektory base32_lower a hlavičky Message-ID",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "cases"],
+  "properties": {
+    "contractVersion": { "const": 1 },
+    "cases": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "message_id",
+          "sending_domain",
+          "expected_base32",
+          "expected_header",
+          "sides"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^MI-[0-9]{3}$" },
+          "message_id": { "type": "string", "format": "uuid" },
+          "sending_domain": { "type": "string", "minLength": 1 },
+          "expected_base32": { "type": "string", "pattern": "^[a-z2-7]{26}$" },
+          "expected_header": { "type": "string", "pattern": "^<ml\\.[a-z2-7]{26}@.+>$" },
+          "sides": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "enum": ["ts", "go"] }
+          }
+        }
+      }
+    }
+  }
+}

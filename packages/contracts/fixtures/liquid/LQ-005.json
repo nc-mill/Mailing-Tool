@@ -1,0 +1,13 @@
+{
+  "id": "LQ-005",
+  "description": "escapování všech pěti znaků v HTML části",
+  "context": "html",
+  "level": "authored",
+  "template": "{{ contact.note }}",
+  "data": {
+    "contact": {
+      "note": "a&b<c>d\"e'f"
+    }
+  },
+  "expected": "a&amp;b&lt;c&gt;d&quot;e&#39;f"
+}

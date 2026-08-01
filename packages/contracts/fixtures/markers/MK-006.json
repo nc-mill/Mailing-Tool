@@ -1,0 +1,10 @@
+{
+  "id": "MK-006",
+  "description": "mailto a tel se nemění",
+  "source": "<a href=\"mailto:info@example.cz\">mail</a><a href=\"tel:+420800123456\">tel</a>",
+  "tracking_domain": "https://t.example.cz",
+  "link_tokens": {},
+  "open_token": null,
+  "expected": "<a href=\"mailto:info@example.cz\">mail</a><a href=\"tel:+420800123456\">tel</a>",
+  "expected_replacements": 0
+}

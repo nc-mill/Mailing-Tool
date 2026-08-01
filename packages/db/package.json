@@ -1,0 +1,40 @@
+{
+  "name": "@mlain/db",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./migrate": "./src/migrate.ts",
+    "./partitions": "./src/partitions.ts",
+    "./rls": "./src/rls.ts",
+    "./unsafe-context": "./src/unsafe-context.ts"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run --project unit",
+    "test:db": "vitest run --project db",
+    "test:migrations": "vitest run --project db test/migrations-check.test.ts",
+    "test": "pnpm test:unit && pnpm test:db",
+    "db:generate": "drizzle-kit generate",
+    "db:custom": "drizzle-kit generate --custom",
+    "db:check": "drizzle-kit check"
+  },
+  "dependencies": {
+    "@mlain/contracts": "workspace:*",
+    "drizzle-orm": "0.44.7",
+    "pg": "8.22.0",
+    "uuid": "14.0.1"
+  },
+  "devDependencies": {
+    "@mlain/config": "workspace:*",
+    "@testcontainers/postgresql": "12.0.4",
+    "@types/pg": "8.15.6",
+    "drizzle-kit": "0.31.10",
+    "testcontainers": "12.0.4",
+    "vitest": "4.1.10"
+  }
+}

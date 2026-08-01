@@ -1,0 +1,14 @@
+/*
+ * Vstupní styl aplikace. Základní vrstvu, tokeny a focus ring drží
+ * `@mlain/ui`, tady se jen připojí a doplní se cesty ke zdrojům.
+ */
+@import '@mlain/ui/globals.css';
+
+/*
+ * Tailwind v4 si zdroje hledá sám, ale `node_modules` přeskakuje. Balíček
+ * `@mlain/ui` je do `node_modules` jen nasymlinkovaný, takže se jeho zdroje
+ * uvádějí skutečnou cestou v repozitáři. Bez toho by se třídy z primitiv
+ * a vzorů nikdy nevygenerovaly a aplikace by zůstala nestylovaná.
+ */
+@source '../../src';
+@source '../../../../packages/ui/src';

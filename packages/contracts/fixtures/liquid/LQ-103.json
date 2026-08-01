@@ -1,0 +1,13 @@
+{
+  "id": "LQ-103",
+  "description": "default na prázdném řetězci",
+  "context": "html",
+  "level": "compiled",
+  "template": "{{ contact.first_name | default: \"kolego\" }}",
+  "data": {
+    "contact": {
+      "first_name": ""
+    }
+  },
+  "expected": "kolego"
+}

@@ -1,0 +1,9 @@
+{
+  "id": "LQ-702",
+  "description": "escapovaná uvozovka v kompilované šabloně je chyba, ne tichý průchod",
+  "level": "compiled",
+  "template": "{{ contact.first_name | default: &quot;kolego&quot; }}",
+  "expect_validation_error": {
+    "code": "liquid_escaped_entity_in_construct"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "LQ-108",
+  "description": "downcase",
+  "context": "html",
+  "level": "authored",
+  "template": "{{ contact.first_name | downcase }}",
+  "data": {
+    "contact": {
+      "first_name": "JANA"
+    }
+  },
+  "expected": "jana"
+}

@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig/lib.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "allowJs": true,
+    "checkJs": false,
+    // Balíček nic needituje (noEmit), ale kontrola emitu deklarací padá na
+    // TS2742 u default exportu z eslint/index.js: jeho typ pochází z @eslint/core
+    // uvnitř .pnpm a nejde pojmenovat přenositelnou cestou. Deklarace tady nikdo
+    // nekonzumuje, ESLint konfiguraci načítá Node přímo jako JavaScript.
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "vitest/**/*.ts"]
+}

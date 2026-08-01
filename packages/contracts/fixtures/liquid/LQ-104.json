@@ -1,0 +1,13 @@
+{
+  "id": "LQ-104",
+  "description": "default na prázdném poli",
+  "context": "html",
+  "level": "compiled",
+  "template": "{{ contact.tags | default: \"kolego\" }}",
+  "data": {
+    "contact": {
+      "tags": []
+    }
+  },
+  "expected": "kolego"
+}

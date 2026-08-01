@@ -1,0 +1,57 @@
+name: mlain
+
+# Rozdělený režim: každý proces vlastní kontejner. Health porty tady kolidovat
+# nemůžou, ale výchozí hodnoty zůstávají různé, aby se MODE=all a rozdělený
+# režim chovaly stejně.
+#
+# Použití: docker compose -f compose.yml -f compose.scale.yml up -d
+
+services:
+  app:
+    environment:
+      MODE: web
+      MIGRATE_ON_START: "true"
+
+  worker:
+    image: ghcr.io/nc-mill/mlain:1.0.0
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      MODE: worker
+      MIGRATE_ON_START: "false"
+      APP_URL: ${APP_URL:?APP_URL je povinná}
+      DATABASE_URL: ${DATABASE_URL:-postgres://mlain_app:mlain@postgres:5432/mlain}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY je povinná}
+      WORKER_HEALTH_PORT: 3001
+    volumes:
+      - ./data:/data
+    stop_grace_period: 40s
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    security_opt:
+      - no-new-privileges:true
+
+  sender:
+    image: ghcr.io/nc-mill/mlain:1.0.0
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      MODE: sender
+      MIGRATE_ON_START: "false"
+      APP_URL: ${APP_URL:?APP_URL je povinná}
+      DATABASE_URL_SENDER: ${DATABASE_URL_SENDER:-postgres://mlain_sender:mlain@postgres:5432/mlain}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY je povinná}
+      SENDER_HEALTH_PORT: 3002
+      # Statické dělení kvóty provideru mezi repliky, viz část 4b, 3.11.2.
+      SENDER_REPLICAS: ${SENDER_REPLICAS:-1}
+    stop_grace_period: 40s
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    security_opt:
+      - no-new-privileges:true

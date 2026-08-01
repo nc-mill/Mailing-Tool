@@ -1,0 +1,10 @@
+{
+  "id": "MK-008",
+  "description": "systémový tag jako celý href zůstává Liquid výrazem",
+  "source": "<a href=\"{{ unsubscribe_url }}\">Odhlásit</a>",
+  "tracking_domain": "https://t.example.cz",
+  "link_tokens": {},
+  "open_token": null,
+  "expected": "<a href=\"{{ unsubscribe_url }}\">Odhlásit</a>",
+  "expected_replacements": 0
+}

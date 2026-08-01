@@ -1,0 +1,13 @@
+{
+  "id": "LQ-303",
+  "description": "false je nepravdivé",
+  "context": "html",
+  "level": "authored",
+  "template": "{% if contact.is_vip %}A{% else %}B{% endif %}",
+  "data": {
+    "contact": {
+      "is_vip": false
+    }
+  },
+  "expected": "B"
+}

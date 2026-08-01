@@ -1,0 +1,68 @@
+name: mlain
+
+services:
+  app:
+    image: ghcr.io/nc-mill/mlain:1.0.0 # nikdy :latest v produkci
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false # při externím Postgresu se profil "bundled" nepustí
+    environment:
+      MODE: all
+      APP_URL: ${APP_URL:?APP_URL je povinná}
+      DATABASE_URL: ${DATABASE_URL:-postgres://mlain_app:mlain@postgres:5432/mlain}
+      # Migrace běží pod migrátorem, ne pod aplikační rolí. Bez téhle proměnné
+      # nemá runner z 3.13 čím se připojit.
+      DATABASE_URL_MIGRATOR: ${DATABASE_URL_MIGRATOR:-postgres://mlain_migrator:${POSTGRES_PASSWORD:-mlain}@postgres:5432/mlain}
+      DATABASE_URL_SENDER: ${DATABASE_URL_SENDER:-postgres://mlain_sender:mlain@postgres:5432/mlain}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY je povinná, vygenerujte ji příkazem mlain genkey}
+      DEFAULT_LOCALE: ${DEFAULT_LOCALE:-cs}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT:-3001}
+      SENDER_HEALTH_PORT: ${SENDER_HEALTH_PORT:-3002}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    volumes:
+      - ./data:/data
+    stop_grace_period: 40s
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/mlain", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  postgres:
+    image: postgres:18-alpine
+    profiles: ["bundled"] # docker compose --profile bundled up -d
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mlain
+      POSTGRES_USER: mlain_migrator
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlain}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=icu --icu-locale=cs-CZ"
+    volumes:
+      # POZOR: /var/lib/postgresql, NE /var/lib/postgresql/data.
+      # Oficiální image řady 18 přesunul PGDATA na /var/lib/postgresql/18/docker
+      # a deklarovaný VOLUME o úroveň výš. Bind mount na starou cestu NENÍ chyba,
+      # na kterou by kontejner spadl: databáze se založí do anonymního svazku,
+      # všechno vypadá, že běží, a po prvním `docker compose down` jsou data pryč.
+      # Je to tichá ztráta dat. Akceptační kritérium 8b.
+      - ./data/postgres:/var/lib/postgresql
+      - ./initdb:/docker-entrypoint-initdb.d:ro # zakládá role app a sender
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlain_migrator -d mlain"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    stop_grace_period: 30s

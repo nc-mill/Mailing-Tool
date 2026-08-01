@@ -2718,3 +2718,522 @@ Kontrola v `STAV.md` hledala celé slovo starého názvu, takže minula **zkratk
 Na dvou místech zůstalo `oe upgrade`, zatímco všech deset ostatních příkazů má tvar
 `mlain <příkaz>`. Poučení: u přejmenování se musí hledat i každá zkratka a odvozenina
 (prefix env proměnných, scope balíčků, jméno CLI), ne jen název sám.
+
+---
+
+## Nálezy z implementace, vlna 0
+
+### I1. ESLint v repu nikdy neběžel: `typescript-eslint` neumí TypeScript 7.0
+
+- **Našel:** hlavní agent při ověřování P01
+- **Uzavřeno:** 2026-08-01, TypeScript sjednocený na 5.9.3
+
+P01 pinuje TypeScript 7.0.2. `typescript-eslint` 8.x ho odmítá s hláškou
+„typescript-eslint does not support TS 7.0" a padá **dřív, než načte pravidla**.
+`pnpm lint` přesto vracel nulu, protože chyba spadla mimo řetěz `oxlint && eslint && prettier`.
+
+Je to nejhorší podoba problému, který se v tomhle projektu opakuje: ochrana existuje,
+vypadá funkčně, a nespustí se. Po opravě lint napoprvé našel 46 skutečných chyb.
+
+Oprava má dvě části a **obě jsou potřeba**:
+1. `overrides: { typescript: 5.9.3 }` v `pnpm-workspace.yaml` (pnpm 10 už nečte `pnpm.overrides`
+   z kořenového `package.json`).
+2. `typescript` jako výslovná devDependency v `packages/config`. Bez ní si pnpm dotáhne
+   pro peer závislost nejvyšší vydanou verzi, tedy zase 7.0.2, a lint spadne jen v tom
+   jednom balíčku.
+
+Verze 5.9.3 je fallback, se kterým P01 počítá v otevřené otázce O4.
+
+### I2. `config.schema.json` neodpovídá tvaru manifestu konfigurace
+
+- **Našel:** P02
+- **Stav:** otevřené
+
+Schéma z P02 popisuje pole `name`, `type`, `required`, `default`, `consumers`.
+Skutečný `packages/core/src/config/config.manifest.json` od P01 má `name`, `optional`,
+`hasDefault`. Dnes nic nepadá, protože `config.json` se proti schématu nevaliduje,
+schéma se jen načte. Tedy zase brána, která existuje a nic neměří.
+
+Rozhodnout, kdo soubor vlastní, a doplnit validaci, jinak se rozchod nikdy neprojeví.
+
+### I3. Dvě skupiny testů čekají na cizí plán a jsou zaparkované pod `.pending`
+
+- **Našel:** P02
+- **Stav:** otevřené, k dokončení po P03 a P09
+
+- `packages/contracts/test/db/*.test.ts.pending`: scénáře `OB-xx` a test kontraktních sloupců
+  potřebují `test/db/helpers.ts` z úkolu 2 P02, který stojí na schématu z P03.
+- Go runnery kontraktů čekají na produkční balíčky z P09 podle rozhodnutí R1.
+
+Přípona `.pending` je mimo vzory vitestu i tsconfigu, takže typecheck zůstává zelený.
+**Pozor:** zaparkovaný test je test, který neběží. Musí se přejmenovat zpět, jinak
+zůstane napsaný a k ničemu, což je přesně vzor, před kterým plány varují.
+
+### I4. P04 uvádí cesty v `packages/core` bez adresáře `src`
+
+- **Našel:** hlavní agent při zahájení P04
+- **Uzavřeno:** 2026-08-01, platí skutečný stav z P01
+
+P04 vypisuje ve svém seznamu vlastnictví cesty tvaru `packages/core/identity/password.ts`
+a `packages/core/tx/index.ts`. Balíček, který skutečně založil P01, má ale všechno pod
+`packages/core/src/<domena>/` a jeho exports mapa zní `"./*": "./src/*/index.ts"`.
+
+Doslovné provedení P04 by vyrobilo druhý strom vedle prvního, na který by exports mapa
+nedosáhla, takže by `@mlain/core/identity` ukazoval na prázdno a nikdo by si toho nevšiml
+až do prvního importu z cizího balíčku.
+
+Platí skutečný stav: `packages/core/src/`. Týká se to i plánů, které po P04 čtou
+(`P06`, `P07`, `P10`, `P13`, `P14`, `P15`), takže se stejná oprava musí zapracovat i tam.
+
+### I5. Test RLS, který nikdy nechytí porušení
+
+- **Našel:** P03 při psaní transakční vrstvy, naměřeno spuštěním
+- **Uzavřeno:** 2026-08-01, opraveno ve všech testech P03
+
+Plán P03 ověřuje porušení RLS přes `.rejects.toThrow(/row-level security/i)` nad `tx.execute`.
+**Nikdy se to neshodne.** Chyba z Drizzle je `DrizzleQueryError`, jejíž `message` je jen
+„Failed query: INSERT ...", zatímco text z databáze leží na `cause.message`. Naměřeno:
+
+```
+message="Failed query: INSERT INTO tags (workspace_id, name) VALUES ($1, 'bez-kontextu')..."
+pgErrorCode=42501
+cause.message="new row violates row-level security policy for table \"tags\""
+```
+
+Takový test projde i nad tabulkou, kterou RLS vůbec nechrání. Je to tatáž past jako
+rozhodnutí R35, jen o úroveň vedle: R35 řeší čtení kódu chyby v produkčním kódu,
+tohle je totéž v testech. Správný tvar je `pgErrorCode(error) === '42501'` plus kontrola
+`cause.message`.
+
+Platí pro každý plán, který testuje RLS nebo jakoukoli chybu z databáze skrz Drizzle.
+
+### I6. `moduleResolution` se v repu rozcházel a shodil build webu
+
+- **Našel:** P01 a P05 nezávisle
+- **Uzavřeno:** 2026-08-01, workspace sjednocený na `Bundler`
+
+Sdílený preset `tsconfig/base.json` měl `NodeNext`, takže relativní importy musely nést
+příponu `.js`. Preset `tsconfig/next.json`, ze kterého dědí `apps/web`, měl ale `Bundler`,
+kde Turbopack příponu `.js` na zdrojový `.ts` nepřekládá. `next build` padal na třinácti
+chybách „Module not found" a s ním i `docker build`.
+
+Rozhodnutí: celý workspace jede na `Bundler`. V tomhle repu se všechno bundluje, web přes
+Turbopack, worker a CLI přes esbuild, testy přes vite. NodeNext by dával smysl u balíčku
+publikovaného do registru, tady jen vynucoval přípony, které jeden ze čtyř nástrojů neumí.
+
+### I7. `packages/db/src/index.ts` neměl vlastníka a blokoval P04
+
+- **Našel:** P04 a P03 nezávisle
+- **Uzavřeno:** 2026-08-01, dodělal Task 30 P03
+
+Task 30 P03 zakládá vstupní bod balíčku, ale v rozpisu paralelních prací na něj nikdo
+nedosáhl: agent od schématu ho měl zakázaný, agent od klienta taky. P04 na něm přitom stojí.
+Poučení: soubor, který skládá práci víc agentů, potřebuje výslovného vlastníka i v rozpisu
+paralelizace, ne jen v plánu.
+
+### I8. Rozjeté `@types/pg` vyrobilo dvě instance Drizzle s nekompatibilními typy
+
+- **Našel:** P04
+- **Uzavřeno:** 2026-08-01, verze sjednocená na `8.15.6` ve všech čtyřech manifestech
+
+`packages/core`, `packages/db` a `apps/web` pinovaly `@types/pg` na `8.15.6`,
+`packages/contracts` měl `^8.15.0`, což se rozresolvovalo na `8.20.3`. Protože je
+`@types/pg` peer závislost Drizzle, držel pnpm **dvě instance `drizzle-orm`**
+s nekompatibilními typy a `tsc` padal na volání `eq()` v cizím balíčku.
+
+Projev je zavádějící: chyba se ukáže v souboru, který s kontrakty nemá nic společného.
+Poučení: u balíčku, který je peer závislostí něčeho dalšího, se verze pinuje přesně
+a stejně ve všech manifestech. Caret rozsah u peer závislosti je tichý rozkol.
+
+### I9. P04 předpokládá u P01 rozhraní, která P01 nemá
+
+- **Našel:** P04
+- **Uzavřeno:** 2026-08-01, platí skutečný stav z P01
+
+Tři místa, kde plán P04 volá něco, co P01 nevystavuje:
+
+| P04 volá | P01 skutečně má |
+|---|---|
+| `import { config } from '@mlain/core/config'` | jen `loadConfig()`, žádnou hotovou instanci |
+| `QUEUES` z `@mlain/core/queues` | `QUEUE_REGISTRY` a funkci `queue(name)` |
+| exports vzor `"./*/*": "./src/*/*.ts"` | Node umí jen JEDEN `*` na vzor, nahrazeno výčtem podcest |
+
+Ten třetí je nejzrádnější: vzor se dvěma hvězdičkami se nerozresolvuje a import
+`@mlain/core/identity/password` by tiše selhal až za běhu. Platí explicitní výčet
+`./audit/*`, `./errors/*`, `./identity/*`, `./net/*`, `./platform/*`, `./test-support/*`, `./tx/*`.
+
+### I10. Vitest přepisuje `MODE` a shodí tím `loadConfig()` v každém testu
+
+- **Našel:** P04, naměřeno spuštěním, nezávisle přeměřeno hlavním agentem
+- **Uzavřeno:** 2026-08-01, opraveno ve sdíleném presetu i v obou vlastních konfiguracích
+
+`MODE` je ve Vite jméno režimu, takže si ho vitest zapisuje do `process.env.MODE`
+s hodnotou `"test"`. Konfigurační schéma P01 ale `MODE` používá jako přepínač procesu
+s výčtem `web`, `worker`, `sender`, `all`. Důsledek: `loadConfig()` spadne v každém testu,
+který se konfigurace dotkne, **a to i když se `MODE` do prostředí výslovně předá.**
+
+Naměřeno: `MODE=web pnpm exec vitest run` vidí uvnitř testu `MODE === "test"`.
+
+Zrádné je, že se to tváří jako chyba v konfiguraci, ne v testovacím běhu, takže první
+reakce je hledat vadu ve schématu. Obejít se to dá přiřazením za běhu uvnitř testu,
+ale to musí udělat každý plán znovu a každý na to musí nejdřív přijít.
+
+Oprava je jeden řádek `env: { MODE: process.env.MODE ?? 'web' }` v `packages/config/vitest/node.ts`,
+`packages/core/vitest.config.ts` a `apps/web/vitest.config.ts`.
+
+### I11. Turbopack si v monorepu odvodí špatný kořen a spadne panikou
+
+- **Našel:** hlavní agent při spuštění aplikace
+- **Uzavřeno:** 2026-08-01, `turbopack.root` nastavený výslovně
+
+Dev server běžel, obsluhoval health endpointy, a v okamžiku, kdy pod `apps/web/src/app`
+přibyl nový adresář, Turbopack si odvodil kořen workspace jako `apps/web/src/app`,
+odkud `next/package.json` nedohledá. Neprojeví se to chybou v kódu ani hláškou u routy,
+ale **panikou celého Turbopacku a pádem serveru**.
+
+V monorepu se `turbopack.root` nastavuje výslovně, stejně jako `outputFileTracingRoot`,
+který tam pro produkční build už byl.
+
+### I12. `test:db` v `packages/core` a `apps/web` nemá kdo dodat
+
+- **Našel:** P04
+- **Stav:** obejito, systémové řešení otevřené
+
+Plán P04 předepisuje `pnpm --filter @mlain/core test:db` i `--filter @mlain/web test:db`,
+ale ani jeden balíček ten skript nemá a `vitest.config.ts` obou vlastní P01, který o něm neví.
+P04 to obešel vlastním harnessem `packages/core/src/test-support/pg-harness.ts`, který
+si nastartuje kontejner, založí role a pustí migrace, takže databázové testy běží
+v obyčejném `vitest run`.
+
+Funguje to, ale znamená to, že CI job `test-db` nad těmi dvěma balíčky **nic nespustí**,
+protože turbo přeskočí balíček bez skriptu. Tedy zase brána, která existuje a neměří.
+
+### I13. Regresi v RLS politice nezachytila sada, která ji měla hlídat
+
+- **Našel:** P04 (vadu), P03 (díru v pokrytí)
+- **Uzavřeno:** 2026-08-01, politika opravená, doplněný regresní test
+
+Politice `ws_member_visibility` na `workspaces` chyběla stráž, že workspace kontext
+není nastavený. Pod kontextem projektu B tak aktér viděl i projekt A.
+
+Důležitější než ta vada je tohle: **proti verzi bez stráže prošlo všech 98 testů
+`packages/db` zeleně.** Nebyla to náhoda. Všechny cesty k `workspaces` v té sadě vedly
+přes `withUser`, tedy bez workspace kontextu, takže na chybnou větev nedosáhl ani jeden test.
+Chybu odhalily až testy o vrstvu výš, v `packages/core`.
+
+Přesně ten stav, před kterým plán varuje v kapitole 0: ochrana, jejíž porušení nic
+nezachytí automaticky. Doplněný test byl ověřený tak, že proti politice bez stráže
+**skutečně spadne**, ne jen že je zelený.
+
+Poučení pro každý test izolace: musí existovat případ pro `withWorkspace` s aktérem,
+který je členem víc projektů. Bez něj se testuje jen ta jednodušší polovina.
+
+### I14. Chybí politiky RLS pro `api_keys` a `invitations`
+
+- **Našel:** P04
+- **Rozhodnuto:** 2026-08-01 hlavním agentem, politiky se doplňují
+
+Migrace 0004 je nemá. Důsledek by byl tichý a zlý: každý požadavek
+s `Authorization: Bearer ml_live_...` by vrátil `unauthenticated` a `acceptInvitation`
+by vždy vrátilo 404. Ani jedno by nespadlo hlasitě, obojí by vypadalo jako správné
+odmítnutí.
+
+Námitka byla, že se tím počet politik zvedne nad 80, což je číslo zapsané v plánu
+na několika místech. **Číslo v plánu ustupuje funkčnosti.** Politiky se doplní a počet
+se přepočítá skriptem podle `pg_policies`, ne odhadem. Plán se opraví, ne obchází.
+
+### I15. Uzávěr S11 zakazoval soubor, který jiný plán vyžaduje
+
+- **Našel:** hlavní agent při ověřování série
+- **Rozhodnuto:** 2026-08-01, úzká vyjmenovaná výjimka pro `@mlain/db`
+
+Test integrity workspace z P01 vynucuje uzávěr S11 „žádný balíček nemá top level barrel".
+Task 30 plánu P03 ale zakládá `packages/db/src/index.ts` jako vstupní bod balíčku a P04
+z něj importuje. Dva plány si tedy protiřečily a série byla červená.
+
+Rozhodnutí vychází z **důvodu** uzávěru, ne z jeho znění. S11 zakazuje barrely proto,
+že barrel je sdílený soubor s jedním řádkem na doménu, tedy merge konflikt v každém plánu,
+který doménu přidává. To sedí na `@mlain/core`, do kterého píše osm plánů. Nesedí na
+`@mlain/db`, který celý vlastní jediný plán, jehož vstupní bod s doménami neroste
+a je kurátorovaný, ne generovaný.
+
+Výjimka je proto **úzká a doprovázená druhým testem**: vstupní bod `@mlain/db` nesmí
+reexportovat `schema` (rozhodnutí R37, jinak vzniknou dvě rovnocenné cesty k témuž)
+ani `unsafeWorkspaceContext` (obchází izolaci projektů a musí se importovat vědomě).
+Kontrola odstraňuje komentáře, než hledá, jinak by si chytila vysvětlení v hlavičce souboru.
+
+Test byl ověřený tak, že **skutečně diskriminuje**: po doplnění `export * as schema`
+spadne, po vrácení projde. Výjimka bez takového testu by byla jen dírou v ochraně.
+
+### I16. `\s` v regexu přeskočilo konec řádku a rozbilo dva kontraktní dotazy
+
+- **Našel:** hlavní agent při ověřování brány `OB-00`
+- **Uzavřeno:** 2026-08-01, `\s*` nahrazeno `[ \t]*`
+
+Loader normativních dotazů četl hlavičku regexem `/^--\s*params:\s*(.*)$/m`.
+Znak `\s` ale **zahrnuje konec řádku**, takže u prázdné hlavičky přeskočil na další
+řádek a jako hodnotu sebral jeho obsah. Ze souboru
+
+```
+-- params:
+-- args:
+SELECT c.id
+FROM campaigns c
+```
+
+vznikl příkaz `PREPARE jmeno (-- args:) AS SELECT c.id`, kde komentář sežral zbytek
+řádku, a databáze ohlásila `syntax error at or near "FROM"`.
+
+Dvě věci na tom stojí za zapamatování:
+
+1. **Chyba ukazovala na SQL, přestože SQL bylo v pořádku.** Dotaz spuštěný ručně
+   v psql prošel. Bez porovnání skutečně odeslaného příkazu by se hledalo v kontraktu.
+2. **Devět z jedenácti dotazů vadu zamaskovalo**, protože mají parametry, takže se
+   hlavička nikdy nečetla přes konec řádku. Selhaly právě ty dva bez parametrů.
+
+Poučení: `\s*(.*)$` je při čtení řádkových hlaviček past. Správně je `[ \t]*`.
+
+### I17. Přísná CSP zabila hydrataci a v dev režimu nefungovalo vůbec nic
+
+- **Našel:** P05 (příznak), hlavní agent (příčinu)
+- **Rozhodnuto:** 2026-08-01 zadavatelem, výjimka výhradně pro vývoj
+
+Příznak byl nejhorší možný: stránka se vykreslila správně, se všemi styly
+a správnou strukturou pro čtečku obrazovky, ale **žádné tlačítko nefungovalo**.
+Klientská hydratace vůbec neproběhla, v DOM nebyl ani jeden React fiber.
+Automatické testy přístupnosti nad statickou strukturou přitom prošly, protože
+ty na interaktivitu nesahají.
+
+První diagnóza mířila na nonce v CSP a byla mylná. Přeměřeno: nonce v hlavičce
+a nonce na všech 34 skriptech se shodovaly.
+
+Skutečná příčina byla v jediném řádku konzole, který o CSP vůbec nemluvil:
+
+```
+eval() is not supported in this environment.
+React requires eval() in development mode for various debugging features.
+React will never use eval() in production mode
+```
+
+Vývojový build Reactu vyhodnocuje kód za běhu kvůli ladicím funkcím.
+`script-src 'self' 'nonce-...'` to zablokuje. Produkční build to nedělá.
+
+Oprava je uvolnění **výhradně pro vývoj**, produkční CSP zůstává beze změny.
+Varianta „v devu CSP vůbec neposílat" byla zamítnutá, protože zhoršuje paritu
+mezi vývojem a produkcí: porušení pravidla by se poznalo až po nasazení.
+
+Poučení: hlášku v konzoli je potřeba přečíst celou, i když nezmiňuje vrstvu,
+ve které vada je. A test přístupnosti nad statickou strukturou není důkaz,
+že stránka funguje.
+
+### I18. Proxy odbavovala `/api/v1/**` přesměrováním na přihlašovací stránku
+
+- **Našel:** hlavní agent při prvním volání namontovaného API
+- **Uzavřeno:** 2026-08-01, `/api/v1/` doplněno mezi veřejné prefixy
+
+`PUBLIC_PREFIXES` v `proxy.ts` obsahoval trackovací cesty, příchozí webhooky
+a health, ale ne veřejné API. Nepřihlášený požadavek na `/api/v1/auth/me` proto
+dostal **307 na `/login`**, tedy HTML stránku, místo 401 v obálce Problem Details.
+
+Důsledky jsou dva a oba jsou tiché:
+- `fetch` přesměrování mlčky následuje, takže klient dostane HTML a pokusí se ho
+  zpracovat jako JSON. Projeví se to jako nesrozumitelná chyba parsování daleko
+  od příčiny, ne jako „nejsi přihlášený".
+- Přihlašovací formulář by neměl kam poslat požadavek, protože i
+  `POST /api/v1/auth/login` je z definice nepřihlášený.
+
+Přihlášení si veřejné API řeší samo, middlewarem `authenticate` z P04.
+
+### I19. Vstupní bod `@mlain/db` tahal migrační runner do bundlu webu
+
+- **Našel:** hlavní agent při prvním volání namontovaného API
+- **Uzavřeno:** 2026-08-01, `migrate` se z kořene nereexportuje
+
+`packages/db/src/index.ts` reexportoval `runMigrations`. Tím se runner dostal do
+bundlu **každého** konzumenta `@mlain/db`, tedy i do Next.js aplikace přes řetěz
+`route.ts -> openapi.ts -> *.routes.ts -> core/tx -> db`.
+
+Runner si skládá cestu k adresáři s migracemi přes `new URL('../migrations', import.meta.url)`,
+což bundler neumí přeložit, a celé `/api/v1/**` skončilo chybou
+„Module not found: Can't resolve '../migrations'".
+
+Nejdůležitější na tom je, **kdy se to projevilo**: až při prvním skutečném
+požadavku z prohlížeče. Typecheck i všech 2 128 testů byly zelené, protože ty
+runner načítají v Node, ne přes bundler. Rozdíl mezi „modul jde načíst v Node"
+a „modul jde zabalit" žádný z testů neměří.
+
+Migrační runner je nástroj CLI. Importuje se podcestou `@mlain/db/migrate`,
+stejně jako se schéma importuje podcestou `@mlain/db/schema` (rozhodnutí R37).
+
+### I20. Soubor na rozhraní dvou plánů opakovaně neměl vlastníka
+
+- **Našel:** hlavní agent, třikrát během jednoho dne
+- **Poučení pro každý další rozpis paralelizace**
+
+Třikrát se stalo totéž a pokaždé to zastavilo práci:
+
+| Soubor | Kdo ho čekal | Kdo si myslel, že ho nedělá |
+|---|---|---|
+| `packages/db/src/index.ts` | P04, stálo na něm celé jádro API | oba agenti P03, každý ho měl zakázaný |
+| `apps/web/src/app/api/v1/[[...route]]/route.ts` | přihlašovací formulář | nikdo, mount byl poslední úkol P04 a nikdo ho nedostal |
+| `apps/sender/internal/contracts/golden.go` | P09, Task 7 | P02, protože dostal jen úkol 1 |
+
+Plán ten soubor pokaždé popisoval správně. Chyba byla v **rozpisu paralelních prací**:
+když se plán rozřeže na agenty po úkolech, soubor, který skládá výsledky víc úkolů,
+propadne mezi nimi. Každý agent má zakázáno sahat mimo své úkoly, takže se ho nedotkne
+ani ten, komu je nejblíž.
+
+Pravidlo do příště: **u každého rozřezání plánu se musí výslovně přidělit soubory,
+které skládají výstup víc úkolů.** Vlastnictví v plánu nestačí, potřebuje ho i rozpis.
+Poznat se to dá jednoduše: je to soubor, který jmenuje víc úkolů, ale nezakládá ho
+ani jeden z nich.
+
+### I21. Přihlášení se tvářilo úspěšně, ale relaci nepropsalo do prohlížeče
+
+- **Našel:** hlavní agent při ručním průchodu přihlašovací obrazovkou
+- **Předáno vlastníkovi P06**
+
+Naměřeno v prohlížeči: po vyplnění formuláře a kliknutí se adresa změnila
+na `/w/preflight-projekt`, tedy akce se tvářila úspěšně a přesměrovala.
+Obsah stránky ale zůstal přihlašovací formulář a další navigace vyhodila
+zpátky na `/login`. V prohlížeči byla jediná cookie `NEXT_LOCALE`.
+
+Přes API přitom všechno funguje: `POST /api/v1/auth/login` vrátí 200
+s uživatelem a projekty, `GET /api/v1/auth/me` vrátí členství se slugem.
+
+Příčina: serverová akce ani `apiMutate` se cookies vůbec nedotýkají.
+API relaci vytvoří a vrátí v hlavičce `Set-Cookie`, ale akce zahodí hlavičky
+odpovědi. Uživatel je tedy „přihlášený" jen zdánlivě.
+
+Dvě věci k zapamatování:
+- **Screenshot ani unit test to nechytí.** Formulář vypadá správně, akce vrátí
+  úspěch, přesměrování proběhne. Vada je viditelná až při DRUHÉM požadavku.
+- Při propisování se musí použít `response.headers.getSetCookie()`, ne
+  `get('set-cookie')`. Druhý slepí víc hlaviček do jednoho řetězce a atributy
+  se rozpadnou.
+
+### I22. Stráž hlásila jako porušení soubor, který plán předepisuje
+
+- **Našel:** P02, ověřeno a opraveno hlavním agentem
+- **Uzavřeno:** 2026-08-01
+
+Go stráž měla podmínku `HasPrefix(name, "golden_") && HasSuffix(name, "_test.go")`,
+která má chytat runnery P09 v cizím balíčku. Chytala ale i `golden_test.go`,
+tedy soubor, který plán P02 přímo předepisuje.
+
+Důvod je aritmetický a je snadné ho přehlédnout: prefix má 7 znaků, suffix 8,
+dohromady 15, jenže `golden_test.go` má znaků jen 14. Obě podmínky proto platí
+naráz nad **jedním podtržítkem, které si prefix se suffixem sdílejí**.
+
+Poučení: u dvojice prefix a suffix nad krátkým jménem se musí ověřit, že se
+nepřekrývají, jinak podmínka platí i tam, kde platit nemá.
+
+### I23. Relační cookie měla dvě různá jména a nikdo to nemohl poznat
+
+- **Našel:** hlavní agent při ručním průchodu přihlášením
+- **Uzavřeno:** 2026-08-01, jméno má jedinou definici
+
+Po opravě propisování cookie (nález I21) přihlášení pořád nefungovalo. Příčina:
+
+| Kdo | Jméno |
+|---|---|
+| `packages/core/src/identity/session.ts` (P04, nastavuje cookie) | `ml_session` |
+| `apps/web/src/proxy.ts` (P05, kontroluje ji) | `mlain_session` |
+
+Obě strany měly jméno napsané **natvrdo**. API cookie správně vytvořilo, prohlížeč
+ji správně uložil, a proxy ji přesto neviděla, takže každé kliknutí vyhodilo
+uživatele zpátky na přihlašovací stránku. Nespadlo přitom vůbec nic: ani jedna
+strana nemohla poznat, že se ptá na něco jiného, než co ta druhá zapisuje.
+
+Zrádné je, že špatné jméno bylo i ve **třech testovacích souborech**, které si
+falešnou cookie nastavují, aby obešly proxy: `playwright.config.ts`, `proxy.test.ts`
+a jeden e2e scénář. Ty by tedy neměřily nic a chyba by se přes ně nikdy neprojevila.
+
+Oprava není jen srovnání hodnoty. Jméno je teď v listovém modulu
+`packages/core/src/identity/cookie.ts` bez jediného importu, protože `session.ts`
+tahá drizzle, schéma i konfiguraci a jeho importem do proxy by se do bundlu vtáhla
+celá datová vrstva. To je přesně chyba, kterou projekt zaplatil u migračního runneru
+(nález I19), takže se neopakuje.
+
+### I24. Kontrola slovníku hlásila deset planých porušení na jedno skutečné
+
+- **Našel:** hlavní agent při ověřování série
+- **Uzavřeno:** 2026-08-01, kontrola porovnává hranice slov
+
+Kontrola zakázaných výrazů porovnávala čistý podřetězec a k tomu tolerovala
+koncovku, protože čeština skloňuje a term „slučovací značka" musí najít
+i tvar „slučovací značku".
+
+Nad anglickým katalogem to ale znamenalo dvě věci naráz:
+
+1. Term `subscribed` se chytal uvnitř slov `unsubscribed` a `resubscribe`,
+   tedy uvnitř výrazů, které znamenají PRAVÝ OPAK zakázaného stavu.
+2. Tolerance koncovky zkrátila term na `subscribe` a ten se chytil v každé větě
+   typu „people subscribe to a list", tedy v úplně běžném slovese.
+
+Naměřeno: 21 hlášených porušení, z toho **jedno skutečné**.
+
+Kontrola, která hlásí dvacet planých poplachů na jeden nález, se buď vypne,
+nebo se její hlášení začnou přehlížet. V obou případech přestane hlídat to,
+kvůli čemu vznikla, a nikdo si toho nevšimne, protože pořád svítí.
+
+Oprava má dvě části: hranice slova na začátku výrazu (skloňování mění konec,
+ne začátek) a nepovinný příznak `exact` pro výrazy, kde se koncovka tolerovat
+nesmí. Po opravě zbylo jediné porušení a bylo skutečné: anglický katalog měl
+u data přihlášení hodnotu „Subscribed" místo „Confirmed".
+
+Je to tatáž třída chyby jako překrývající se prefix a suffix nad krátkým jménem
+souboru (I22) a jako `\s`, které přeskočilo konec řádku (I16). Pokaždé jde
+o porovnání textu, které je o kousek volnější, než autor zamýšlel.
+
+### I25. Prettier přeformátoval golden soubory a shodil šestnáct testů
+
+- **Našel:** hlavní agent tím, že to sám způsobil
+- **Uzavřeno:** 2026-08-01, golden soubory jsou mimo dosah formátovače
+
+Golden snapshoty rendereru se ukládají jako `.html` a `.txt` do
+`packages/emails/test/__fixtures__/expected/`. Prettier HTML umí formátovat,
+a protože ten adresář nebyl v `.prettierignore`, jeden běh `prettier --write .`
+přepsal očekávaný výstup a šestnáct golden testů zčervenalo.
+
+Že testy spadly, je ta lepší varianta. Horší je tichá: kdyby si po takovém běhu
+někdo snapshoty jen přegeneroval příkazem `vitest -u`, golden test by od té chvíle
+porovnával přeformátovaný výstup sám se sebou. Zůstal by zelený a přestal by
+hlídat cokoliv, protože očekávání i skutečnost by pocházely z téhož běhu.
+
+Do `.prettierignore` proto patří `packages/emails/test/__fixtures__/expected/`
+i `packages/contracts/fixtures/`. Obojí je očekávaný výstup bajt po bajtu,
+ne zdrojový kód, takže se neformátuje.
+
+Ověřeno tak, že jsem po opravě pustil `prettier --write .` znovu a všech
+334 testů balíčku zůstalo zelených.
+
+### I26. Barva projektu se počítala v JavaScriptu podle motivu a rozbíjela hydrataci
+
+- **Našel:** hlavní agent v prohlížeči
+- **Uzavřeno:** 2026-08-01, světlost přesunuta do CSS
+
+`workspaceAccent(workspaceId, theme)` odvozovala odstín z `workspace_id`
+a světlost vybírala podle motivu: 0.55 pro světlý, 0.72 pro tmavý.
+
+Server ale motiv prohlížeče nezná. Vykreslil proto světlou variantu a klient
+hydratoval tmavou. React na to hlásil nesoulad s poznámkou **„This won't be
+patched up"**, tedy rozdíl, který sám neopraví: proužek projektu v topbaru
+i levý okraj hlavní navigace zůstaly ve špatné barvě až do dalšího vykreslení.
+
+Naměřeno v prohlížeči:
+```
+server:  background-color: oklch(0.55 0.16 88)
+klient:  backgroundColor:  oklch(0.72 0.16 88)
+```
+
+Oprava nespočívá ve srovnání hodnoty, ale v tom, že se rozdíl nemá kde vzít.
+Funkce vrací `oklch(var(--workspace-accent-l) 0.16 <odstín>)`. Odstín na motivu
+nezávisí, takže vyjde na obou stranách stejně, a světlost nastavuje `tokens.css`
+zvlášť pro světlý a tmavý režim, tedy vrstva, která o motivu ví.
+
+Test to hlídá tím, že ověřuje **nezávislost na motivu**, ne konkrétní hodnotu:
+funkce bere jediný argument a její výstup nesmí obsahovat číselnou světlost.
+
+Poučení: cokoli, co závisí na motivu, uživatelově zóně nebo šířce okna, se nesmí
+dopočítávat v JavaScriptu, který běží na obou stranách. Server ty vstupy nemá.

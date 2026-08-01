@@ -1,0 +1,10 @@
+Před neznámým blokem.
+
+- Za neznámým blokem
+- A ještě jedna položka
+
+{{ workspace.sender_address }}
+
+Odhlásit se z odběru: {{ unsubscribe_url }}
+Nastavit předvolby: {{ preferences_url }}
+Zobrazit v prohlížeči: {{ webview_url }}

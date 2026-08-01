@@ -1,0 +1,9 @@
+{
+  "id": "LQ-505",
+  "description": "vnořený cyklus",
+  "level": "authored",
+  "template": "{% for a in contact.tags %}{% for b in contact.tags %}x{% endfor %}{% endfor %}",
+  "expect_validation_error": {
+    "code": "liquid_nested_for"
+  }
+}

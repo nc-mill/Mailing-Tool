@@ -1,0 +1,13 @@
+{
+  "id": "LQ-301",
+  "description": "prázdný řetězec je pravdivý",
+  "context": "html",
+  "level": "authored",
+  "template": "{% if contact.note %}A{% else %}B{% endif %}",
+  "data": {
+    "contact": {
+      "note": ""
+    }
+  },
+  "expected": "A"
+}

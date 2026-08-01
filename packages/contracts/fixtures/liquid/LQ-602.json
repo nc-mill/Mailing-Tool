@@ -1,0 +1,13 @@
+{
+  "id": "LQ-602",
+  "description": "simple mapping: znaky s pouze full uppercase mapping se nemění, jinak by se JS rozešel s Go",
+  "context": "html",
+  "level": "authored",
+  "template": "{{ contact.note | upcase }}",
+  "data": {
+    "contact": {
+      "note": "ß ﬁ ŉ ǰ ΐ"
+    }
+  },
+  "expected": "ß ﬁ ŉ ǰ ΐ"
+}

@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "meta": {
+    "name": "Varianty obrázku",
+    "previewText": "Náhledový text kampaně",
+    "language": "cs"
+  },
+  "theme": {
+    "contentWidth": 600,
+    "canvasBackground": "surface.canvas",
+    "contentBackground": "surface.content",
+    "colors": {},
+    "fonts": {
+      "heading": "system",
+      "body": "system"
+    },
+    "typography": {
+      "baseFontSize": 16,
+      "baseLineHeight": 1.5,
+      "headingScale": 1.25
+    },
+    "radius": 6,
+    "darkMode": {
+      "strategy": "auto",
+      "colors": {}
+    }
+  },
+  "blocks": [
+    {
+      "id": "b_000000000005",
+      "type": "section",
+      "props": {
+        "backgroundColor": null,
+        "outerBackgroundColor": null,
+        "backgroundImageAssetId": null,
+        "backgroundPosition": "center",
+        "padding": {
+          "top": 24,
+          "right": 24,
+          "bottom": 24,
+          "left": 24
+        },
+        "fullWidth": false,
+        "roundedTop": false,
+        "roundedBottom": false
+      },
+      "children": [
+        {
+          "id": "b_000000000001",
+          "type": "image",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": null,
+            "hideOnMobile": false,
+            "assetId": "0192f3a0-1c2d-7e60-8a1b-2c3d4e5f6071",
+            "alt": "Banner kampaně",
+            "decorative": false,
+            "width": "full",
+            "align": "center",
+            "href": null,
+            "trackable": true,
+            "borderRadius": null,
+            "darkVariantAssetId": null
+          }
+        },
+        {
+          "id": "b_000000000002",
+          "type": "image",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": null,
+            "hideOnMobile": false,
+            "assetId": "0192f3a0-1c2d-7e60-8a1b-2c3d4e5f6071",
+            "alt": "Užší obrázek",
+            "decorative": false,
+            "width": 300,
+            "align": "left",
+            "href": null,
+            "trackable": true,
+            "borderRadius": null,
+            "darkVariantAssetId": null
+          }
+        },
+        {
+          "id": "b_000000000003",
+          "type": "image",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": null,
+            "hideOnMobile": false,
+            "assetId": "0192f3a0-1c2d-7e60-8a1b-2c3d4e5f6071",
+            "alt": "Logo se světlou i tmavou variantou",
+            "decorative": false,
+            "width": "full",
+            "align": "center",
+            "href": null,
+            "trackable": true,
+            "borderRadius": null,
+            "darkVariantAssetId": "0192f3a0-1c2d-7e60-8a1b-2c3d4e5f6072"
+          }
+        },
+        {
+          "id": "b_000000000004",
+          "type": "footer",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": null,
+            "hideOnMobile": false,
+            "senderInfo": [
+              {
+                "t": "p",
+                "children": [
+                  {
+                    "t": "var",
+                    "expr": "workspace.sender_address"
+                  }
+                ]
+              }
+            ],
+            "showUnsubscribe": true,
+            "unsubscribeLabel": "Odhlásit se z odběru",
+            "showPreferences": true,
+            "preferencesLabel": "Nastavit předvolby",
+            "showWebview": true,
+            "webviewLabel": "Zobrazit v prohlížeči",
+            "fontSize": 12,
+            "color": "text.muted"
+          }
+        }
+      ]
+    }
+  ]
+}

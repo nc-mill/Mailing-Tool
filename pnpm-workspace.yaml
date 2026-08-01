@@ -1,0 +1,15 @@
+packages:
+  - 'apps/cli'
+  - 'apps/web'
+  - 'apps/worker'
+  - 'packages/*'
+  - 'tools'
+
+# TypeScript je v celém workspace sjednocený na 5.9.3.
+# Důvod: typescript-eslint 8.x odmítá TypeScript 7.0 ("does not support TS 7.0")
+# a bez něj nejde spustit ani `pnpm lint`, ani test hranic mezi balíčky.
+# Verze 5.9.3 je fallback, se kterým plán P01 počítá v otevřené otázce O4.
+# Bez tohohle override si balíček, který typescript nedeklaruje, vytáhne 7.0.2
+# jako peer a lint spadne jen v něm.
+overrides:
+  typescript: 5.9.3

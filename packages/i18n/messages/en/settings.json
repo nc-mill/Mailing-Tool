@@ -1,0 +1,578 @@
+{
+  "nav": {
+    "sectionLabel": "Settings",
+    "general": "Project",
+    "members": "Team",
+    "apiKeys": "API keys",
+    "webhooks": "Webhooks",
+    "audit": "Audit log",
+    "account": "My account"
+  },
+  "shared": {
+    "save": "Save",
+    "backToOverview": "Back to the project overview",
+    "selectPlaceholder": "Select",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "saving": "Saving",
+    "saved": "Saved",
+    "saveFailed": "We couldn't save it, we're trying again",
+    "cancel": "Cancel",
+    "close": "Close",
+    "tryAgain": "Try again",
+    "refresh": "Refresh",
+    "createdAt": "Created",
+    "lastUsedAt": "Last used",
+    "never": "Never",
+    "copy": "Copy",
+    "copied": "Copied",
+    "loadingMore": "Loading more",
+    "previousPage": "Previous",
+    "nextPage": "Next",
+    "countExact": "{count, plural, =0 {No items} one {# item} other {# items}}",
+    "countEstimated": "about {count, number} items",
+    "cursorDropped": "That link to a page of results no longer works because the data changed. We're showing the first page of the same filter.",
+    "filtersApplied": "Filter: {summary}",
+    "clearFilters": "Clear filters",
+    "role": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "editor": "Editor",
+      "viewer": "Viewer"
+    }
+  },
+  "jobs": {
+    "title": "Job",
+    "progress": "{done} of {total} done",
+    "startedBy": "Started by {person}",
+    "startedAt": "Started",
+    "finishedAt": "Finished",
+    "notFoundTitle": "We don't know this job",
+    "notFoundBody": "The job either never existed or is older than what we keep. The project overview shows the ones that are running.",
+    "status": {
+      "running": "Running",
+      "paused": "Paused",
+      "completed": "Done",
+      "completedWithErrors": "Done, but with errors",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    }
+  },
+  "confirm": {
+    "irreversible": "This action can't be undone.",
+    "whatHappens": "What happens",
+    "notYetConfirmed": "You haven't ticked the confirmation above the button yet.",
+    "notYetTyped": "The text you typed doesn't match yet. Please check it character by character.",
+    "typeToConfirmMismatch": "The text you typed doesn't match.",
+    "filterInWords": "This applies to the selection: {filter}"
+  },
+  "states": {
+    "forbiddenTitle": "You don't have permission for this section",
+    "forbiddenBody": "This section requires the {permission} permission, which the {roles} roles have. Your role is {currentRole}.",
+    "forbiddenWhoCanHelp": "The project owner or an admin can change your role.",
+    "forbiddenWhoCanHelpNamed": "{name} can change your role.",
+    "forbiddenBack": "Back to the project overview",
+    "notFoundTitle": "We couldn't find this item",
+    "notFoundBody": "It may have been deleted, or your link is out of date.",
+    "notFoundBack": "Back to the list",
+    "offlineTitle": "We lost the connection",
+    "loadingLabel": "Loading",
+    "offlineBody": "We lost the connection. We're trying to reconnect. Your changes will be saved as soon as it works.",
+    "staleTitle": "Last updated {time}",
+    "staleBody": "The refresh failed, so these numbers are older.",
+    "readOnlyTitle": "You can only view this section",
+    "readOnlyBody": "Your {currentRole} role doesn't have the {permission} permission, so you see the values as text and can't edit them.",
+    "partialTitle": "Part of the page didn't load",
+    "loading": "Loading"
+  },
+  "profile": {
+    "title": "My account",
+    "lead": "Details that apply across every project.",
+    "identity": {
+      "title": "Personal details",
+      "name": "Full name",
+      "nameHint": "Other members see your name next to your actions in the audit log.",
+      "email": "Email",
+      "emailHint": "The email is used for signing in and can't be changed yet.",
+      "locale": "Interface language",
+      "timezone": "Time zone",
+      "timezoneHint": "We show times across the tool in this zone.",
+      "saved": "Saved"
+    },
+    "password": {
+      "title": "Change password",
+      "lead": "Changing the password signs you out of every other device. This tab stays signed in.",
+      "current": "Current password",
+      "next": "New password",
+      "submit": "Change password",
+      "submitting": "Changing the password",
+      "doneTitle": "Your password is changed",
+      "doneBody": "We ended the other sessions. You'll need to sign in again on your other devices."
+    },
+    "sessions": {
+      "title": "Active sessions",
+      "lead": "Devices and browsers you're signed in from.",
+      "thisSession": "This session",
+      "device": "Device",
+      "ip": "IP address",
+      "lastUsed": "Last used",
+      "signedInAt": "Signed in",
+      "revoke": "Sign this device out",
+      "revoked": "We signed that device out",
+      "revokeFailed": "We couldn't sign that device out. Please try again.",
+      "logoutAll": "Sign out of every device",
+      "logoutAllDialogTitle": "Sign out of every device, including this one?",
+      "logoutAllConsequence": "{count, plural, =0 {We won't end any session, because no other one is running.} one {We'll end # session, this tab included.} other {We'll end # sessions, this tab included.}}",
+      "logoutAllConsequenceWork": "Forms in progress on other devices will be lost.",
+      "logoutAllConfirm": "Sign out everywhere",
+      "logoutAllCancel": "Keep them signed in",
+      "empty": "You're signed in here only. Once you sign in from another device, you'll see it in this list.",
+      "emptyAction": "Reload the list",
+      "unknownDevice": "Unknown device"
+    }
+  },
+  "general": {
+    "title": "Project",
+    "lead": "Name, address, and defaults for the {projectName} project.",
+    "name": "Project name",
+    "slug": "Project address",
+    "slugHint": "Used in links: /w/{slug}. Lowercase letters, digits, and hyphens.",
+    "slugChangeWarning": "Changing the address breaks links you've already sent to colleagues.",
+    "locale": "Project language",
+    "localeHint": "The language of system emails and of the public pages your recipients see.",
+    "timezone": "Project time zone",
+    "timezoneHint": "Campaigns are scheduled and reports are counted in this zone.",
+    "addressForm": {
+      "label": "Greeting in emails",
+      "hint": "Applies to the emails you send to contacts. The tool's own interface always addresses you formally.",
+      "formal": "Formal",
+      "formalInline": "formal",
+      "formalExample": "Dear Jana,",
+      "informal": "Informal",
+      "informalInline": "informal",
+      "informalExample": "Hi Jana,",
+      "dialogTitle": "Switch the greeting to {target}?",
+      "dialogConsequence1": "{count, plural, =0 {We won't recalculate the vocative for any contact, the database is still empty.} one {We'll recalculate the vocative for # contact.} other {We'll recalculate the vocative for # contacts.}}",
+      "dialogConsequence2": "The recalculation runs in the background and takes a few minutes on a large database.",
+      "dialogConsequence3": "Campaigns you've already sent don't change.",
+      "dialogConfirm": "Switch to {target}",
+      "dialogCancel": "Keep {current}",
+      "started": "We switched the greeting and we're recalculating contacts."
+    },
+    "danger": {
+      "title": "Delete the project",
+      "body": "Deleting removes all contacts, campaigns and statistics. You can restore it for 30 days. Type the project name to confirm.",
+      "button": "Delete project",
+      "dialogTitle": "Delete the {name} project?",
+      "consequence1": "Every contact, list, segment, and tag disappears.",
+      "consequence2": "Every campaign, template, and their statistics disappear.",
+      "consequence3": "The project's API keys and webhooks stop working immediately.",
+      "consequence4": "Emails already sent won't come back, but a send in progress stops.",
+      "restoreNote": "You can restore the project for 30 days. After that it's deleted for good and can't be recovered.",
+      "confirmLabel": "Type the project name to confirm",
+      "confirm": "Delete the {name} project",
+      "cancel": "Keep the project",
+      "onlyOwner": "Only the owner can delete a project."
+    }
+  },
+  "members": {
+    "title": "Team",
+    "lead": "Who can get into the project and what they can do.",
+    "empty": "You are alone in this project. Invite colleagues and choose what they can do.",
+    "emptyAction": "Invite a colleague",
+    "emptyNoPermission": "Only an Admin or an Owner can invite colleagues. Your role doesn't have that permission.",
+    "table": {
+      "person": "Member",
+      "role": "Role",
+      "joinedAt": "In the project since",
+      "actions": "Actions"
+    },
+    "roleDescription": {
+      "owner": "Sees and changes everything, including backups, deletion, and handing the project over.",
+      "admin": "Sees and changes everything except backups, deletion, and handing the project over.",
+      "editor": "Creates contacts, templates, and campaigns, and sends them. Can't see keys, the audit log, or export contacts.",
+      "viewer": "Sees contacts, campaigns, and reports. Changes nothing."
+    },
+    "changeRole": {
+      "label": "Role of {name}",
+      "done": "{name} is now {role}.",
+      "undo": "Undo",
+      "failed": "We couldn't change the role. We put the original value back.",
+      "lastOwner": "The last owner has to stay. Hand ownership over to someone else first."
+    },
+    "remove": {
+      "button": "Remove from the project",
+      "dialogTitle": "Remove {name} from the project?",
+      "consequence1": "They lose access to every contact, campaign, and report in the project.",
+      "consequence2": "What they created in the project stays.",
+      "consequence3": "They can only get back through a new invitation, which they have to accept.",
+      "confirm": "Remove {name}",
+      "cancel": "Keep them in the project",
+      "done": "{name} is no longer in the project."
+    },
+    "invitations": {
+      "title": "Pending invitations",
+      "empty": "No invitation is waiting to be accepted.",
+      "emptyAction": "Type a colleague's email",
+      "email": "Email",
+      "role": "Role",
+      "invitedBy": "Invited by",
+      "expiresAt": "Valid until",
+      "revoke": "Revoke the invitation",
+      "revoked": "The invitation for {email} is revoked.",
+      "reinvite": "Invite again",
+      "limitTitle": "You can't send more invitations at once",
+      "limitBody": "The project has 100 pending invitations, which is the maximum. Revoke one of them, or wait until people accept."
+    },
+    "invite": {
+      "button": "Invite a colleague",
+      "title": "Invite a colleague to the project",
+      "lead": "We'll send them a link that works for 7 days.",
+      "email": "Colleague's email",
+      "role": "Role",
+      "submit": "Send the invitation",
+      "submitting": "Sending the invitation",
+      "done": "We've sent the invitation to {email}.",
+      "alreadyMember": "{email} is already in the project. You can change their role in the member list.",
+      "alreadyInvited": "We've sent the invitation to {email} again, the previous one stopped working."
+    }
+  },
+  "apiKeys": {
+    "title": "API keys",
+    "lead": "A key connects your shop or your own application to this project.",
+    "empty": "You do not have any API keys yet. A key connects your shop or your own application.",
+    "emptyAction": "Create a key",
+    "emptyNoPermission": "Only an Admin or an Owner can create API keys. Your role doesn't have that permission.",
+    "table": {
+      "name": "Name",
+      "prefix": "Key",
+      "scopes": "Permissions",
+      "createdBy": "Created by",
+      "lastUsedAt": "Last used",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "active": "Active",
+      "revoked": "Revoked",
+      "expired": "Expired",
+      "rotating": "Rotating, the old secret works until {time}"
+    },
+    "create": {
+      "button": "Create a key",
+      "title": "New API key",
+      "lead": "Choose what it can do. A key has no role, it gets exactly what you tick here.",
+      "name": "Key name",
+      "nameHint": "The name tells you which application uses the key. For example “Shop, orders”.",
+      "scopes": "Key permissions",
+      "scopesHint": "Tick as few as possible. A key that can do everything is a key nobody understands.",
+      "submit": "Create the key",
+      "submitting": "Creating the key",
+      "noScopeSelected": "Pick at least one permission."
+    },
+    "secret": {
+      "title": "The key is ready",
+      "warning": "Copy the secret now. Neither you nor we can see it again.",
+      "label": "The whole key",
+      "acknowledge": "I've stored the secret",
+      "close": "Done"
+    },
+    "rotate": {
+      "button": "Rotate the secret",
+      "panelCancel": "Back to the key list",
+      "dialogTitle": "Rotate the secret of the {name} key?",
+      "consequence1": "We'll generate a new secret and show it once.",
+      "consequence2": "Applications using the old secret stop working once the grace period ends: {grace}.",
+      "consequence3": "The key's permissions don't change.",
+      "graceLabel": "Grace period for the old secret",
+      "graceHint": "During this time both the old and the new secret work. Zero means the old one stops working immediately.",
+      "graceOptions": {
+        "none": "No grace period",
+        "hour": "1 hour",
+        "day": "24 hours"
+      },
+      "acknowledge": "I understand the old secret will stop working",
+      "confirm": "Rotate the secret",
+      "cancel": "Keep the current secret",
+      "done": "The secret is replaced."
+    },
+    "revoke": {
+      "button": "Revoke the key",
+      "dialogTitle": "Revoke the {name} key?",
+      "consequence1": "Applications using the key stop working immediately.",
+      "consequence2": "A revoked key stays in the list so the audit trail makes sense. It can't be restored.",
+      "consequence3": "It was last used {lastUsed}.",
+      "acknowledge": "I understand a revoked key can't be restored",
+      "confirm": "Revoke the {name} key",
+      "cancel": "Keep the key",
+      "done": "The {name} key is revoked."
+    }
+  },
+  "webhooks": {
+    "title": "Webhooks",
+    "lead": "A webhook posts an event to your URL as soon as something happens in the project.",
+    "empty": "No webhooks yet. A webhook posts an event to your URL as soon as something happens.",
+    "emptyAfterDelete": "You deleted every webhook. Create a new one with the button below.",
+    "emptyAction": "Add a webhook",
+    "emptyNoPermission": "Only an Admin or an Owner can add webhooks. Your role doesn't have that permission.",
+    "limitTitle": "You can't add more webhooks",
+    "limitBody": "The project has 20 webhooks, which is the maximum. Delete one before adding another.",
+    "table": {
+      "url": "URL",
+      "events": "Events",
+      "status": "Status",
+      "lastDelivery": "Last delivery",
+      "actions": "Actions"
+    },
+    "status": {
+      "active": "Active",
+      "disabled": "Disabled",
+      "failing": "{count, plural, =0 {Failing} one {Failing, # failure in a row} other {Failing, # failures in a row}}"
+    },
+    "disabled": {
+      "title": "We disabled your webhook",
+      "body": "We disabled your webhook after 20 failed attempts. Fix the target and enable it again.",
+      "detail": "The endpoint {url} has been returning HTTP {lastStatus} since {since}. After twenty failed attempts we stopped delivering to avoid filling the queue.",
+      "replayNote": "When you enable it, we'll offer to replay the last 24 hours of events. Anything older than that cannot be redelivered.",
+      "showErrors": "Show recent errors",
+      "enable": "Re-enable",
+      "enabling": "Enabling the webhook",
+      "enabled": "The webhook is enabled again."
+    },
+    "form": {
+      "createTitle": "New webhook",
+      "editTitle": "Edit webhook",
+      "url": "URL to post events to",
+      "urlHint": "HTTPS only. We don't post to private addresses or to your local network.",
+      "description": "Description",
+      "descriptionHint": "What the webhook is for. Your colleagues see it in the list.",
+      "events": "Events to send",
+      "eventsHint": "Pick at least one, at most 50.",
+      "submit": "Create the webhook",
+      "submitting": "Creating the webhook",
+      "saveSubmit": "Save changes",
+      "duplicateNote": "Delivery is at least once. If we restart a worker mid-send, an event can arrive twice. Tell them apart by the ML-Event-Id header."
+    },
+    "secret": {
+      "title": "The webhook is ready",
+      "warning": "Copy the signing secret now. Neither you nor we can see it again.",
+      "hint": "The secret proves a request really came from us. The steps are in the documentation for the ML-Signature header.",
+      "acknowledge": "I've stored the secret",
+      "close": "Done"
+    },
+    "test": {
+      "button": "Send a test event",
+      "running": "Sending a test event",
+      "slow": "This is taking longer than we expected",
+      "successTitle": "Test event queued",
+      "successBody": "You will see the result in the delivery log below, usually within a few seconds. Load it again.",
+      "failureTitle": "The test event didn't get through",
+      "failureBody": "Your URL answered {status}. The details are in the delivery log below."
+    },
+    "delete": {
+      "button": "Delete the webhook",
+      "dialogTitle": "Delete the webhook {url}?",
+      "consequence1": "Events stop going to this URL immediately.",
+      "consequence2": "The delivery log stays for 30 days.",
+      "confirm": "Delete the webhook",
+      "cancel": "Keep the webhook",
+      "done": "The webhook is deleted."
+    },
+    "deliveries": {
+      "title": "Delivery log",
+      "lead": "Delivery attempts from the last 30 days.",
+      "empty": "We haven't sent anything to this URL yet.",
+      "emptyAction": "Reload the log",
+      "emptyFiltered": "No delivery matches the filter.",
+      "emptyFilteredBody": "Try loosening the filter, or clear it and go through the whole log.",
+      "table": {
+        "eventType": "Event",
+        "status": "Result",
+        "attempt": "Attempt",
+        "responseStatus": "Response",
+        "duration": "Duration",
+        "createdAt": "When",
+        "nextAttemptAt": "Next attempt"
+      },
+      "status": {
+        "pending": "Waiting",
+        "delivering": "Sending",
+        "succeeded": "Delivered",
+        "failed": "Not delivered",
+        "abandoned": "Given up"
+      },
+      "errorCode": "Error code",
+      "responseSnippet": "Your endpoint's response",
+      "retry": "Try delivering again",
+      "retrying": "Delivering again",
+      "retried": "We queued the delivery.",
+      "blockedTarget": "The address resolves into a private network, so we didn't connect. Check whether the DNS record changed."
+    }
+  },
+  "audit": {
+    "title": "Audit log",
+    "lead": "Who did what in the project. Records can't be deleted or edited.",
+    "empty": "Nothing has happened yet.",
+    "emptyAction": "Reload the records",
+    "emptyFiltered": "No record matches the filter.",
+    "emptyFilteredBody": "Try loosening the filter, or clear it and go through the whole audit log.",
+    "retention": "We keep records for 24 months.",
+    "table": {
+      "when": "When",
+      "actor": "Who",
+      "action": "What",
+      "target": "What it concerned",
+      "requestId": "Request number"
+    },
+    "filters": {
+      "action": "Action",
+      "actor": "Who",
+      "from": "From",
+      "to": "To",
+      "allActions": "All actions",
+      "allActors": "Anyone",
+      "apply": "Apply the filter"
+    },
+    "actorType": {
+      "user": "Member",
+      "apiKey": "API key",
+      "system": "The tool"
+    },
+    "unknownAction": "Unknown action",
+    "actions": {
+      "user": {
+        "login": "Signed in",
+        "login_failed": "Failed sign-in",
+        "logout": "Signed out",
+        "password_changed": "Changed the password",
+        "password_reset_requested": "Requested a password reset",
+        "password_reset_completed": "Completed a password reset"
+      },
+      "workspace": {
+        "created": "Created the project",
+        "updated": "Changed project settings",
+        "deleted": "Deleted the project",
+        "restored": "Restored the project",
+        "ownership_transferred": "Handed the project over"
+      },
+      "member": {
+        "invited": "Invited a member",
+        "invitation_revoked": "Revoked an invitation",
+        "joined": "Accepted an invitation",
+        "role_changed": "Changed a member's role",
+        "removed": "Removed a member"
+      },
+      "api_key": {
+        "created": "Created an API key",
+        "rotated": "Rotated a key secret",
+        "revoked": "Revoked an API key"
+      },
+      "webhook_endpoint": {
+        "created": "Created a webhook",
+        "updated": "Edited a webhook",
+        "deleted": "Deleted a webhook",
+        "disabled": "The webhook was disabled"
+      },
+      "backup": {
+        "created": "Created a backup",
+        "restored": "Restored from a backup"
+      },
+      "settings": {
+        "updated": "Changed settings"
+      }
+    }
+  },
+  "errorBlock": {
+    "retry": "Try again",
+    "requestId": "Request number",
+    "copy": "Copy",
+    "copyAll": "Copy everything",
+    "copied": "Copied",
+    "detailsSummary": "Technical details",
+    "code": "Code",
+    "time": "Time",
+    "path": "Path"
+  },
+  "errors": {
+    "forbidden": {
+      "title": "You don't have permission for this",
+      "body": "This requires the {permission} permission, which the {roles} roles have. Your role is {currentRole}."
+    },
+    "insufficientScope": {
+      "title": "The key isn't enough for this",
+      "body": "The key the application signed in with doesn't have the {permission} permission. It can't be added, create a new key."
+    },
+    "originNotAllowed": {
+      "title": "The request came from somewhere else",
+      "body": "The address the request came from doesn't match the tool's address. Reload the page and try again."
+    },
+    "csrfTokenInvalid": {
+      "title": "The protection token is no longer valid",
+      "body": "The page was open for too long. Reload it and repeat the action."
+    },
+    "sessionExpired": {
+      "title": "You've been signed out",
+      "body": "We signed you out after a period of inactivity for security reasons. Sign in again, your work in progress is safe."
+    },
+    "notFound": {
+      "title": "We couldn't find this item",
+      "body": "It may have been deleted, or your link points to an item in another project."
+    },
+    "conflict": {
+      "title": "Something changed meanwhile",
+      "body": "Someone else edited the same thing before you did. Reload the page and look at the current state."
+    },
+    "alreadyExists": {
+      "title": "This already exists",
+      "body": "An item with the same value is already in the project. Pick a different value."
+    },
+    "alreadyMember": {
+      "title": "This person is already in the project",
+      "body": "There's no need to invite them. You can change their role right in the member list."
+    },
+    "lastOwner": {
+      "title": "The last owner has to stay",
+      "body": "A project always has exactly one owner. Hand ownership over to someone else first, then repeat the action."
+    },
+    "idempotencyKeyReuse": {
+      "title": "The form was submitted with changed values",
+      "body": "The form went out twice, the second time with different content. Reload the page and fill it in once."
+    },
+    "idempotencyInProgress": {
+      "title": "We're already processing the same request",
+      "body": "You submitted the form twice in quick succession. Wait a few seconds and look at the result."
+    },
+    "validationFailed": {
+      "title": "We couldn't save the form",
+      "body": "We've described what needs fixing next to the fields below."
+    },
+    "tooManyItems": {
+      "title": "That's too many items",
+      "body": "You picked more items than we can handle at once. Split it into smaller parts."
+    },
+    "rateLimited": {
+      "title": "You're trying too often",
+      "body": "Wait {seconds, plural, =0 {a moment} one {# second} other {# seconds}} and try again."
+    },
+    "webhookDisabled": {
+      "title": "We disabled this webhook after 20 consecutive failures",
+      "body": "Once you've fixed the problem on your side, re-enable it. We'll offer to replay the last 24 hours of events."
+    },
+    "serviceUnavailable": {
+      "title": "The server isn't responding",
+      "body": "We couldn't reach the tool's server. This is usually temporary and a second attempt goes through."
+    },
+    "dependencyTimeout": {
+      "title": "The server took too long",
+      "body": "We stopped the request because it ran longer than 10 seconds. Try again."
+    },
+    "internalError": {
+      "title": "Something went wrong",
+      "body": "The fault is on our side. Try again, and if it keeps happening, send support the request number below."
+    },
+    "fallback": {
+      "title": "Something went wrong",
+      "body": "The server's description of the error is below. If it doesn't help, send support the request number."
+    }
+  }
+}

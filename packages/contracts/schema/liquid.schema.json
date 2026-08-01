@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mlain.local/schema/liquid.schema.json",
+  "title": "Golden fixture Liquid subsetu",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "description", "template"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^LQ-[0-9]{3}$" },
+    "description": { "type": "string", "minLength": 1 },
+    "context": { "enum": ["html", "text"] },
+    "level": { "enum": ["authored", "compiled"] },
+    "template": { "type": "string" },
+    "data": { "type": "object" },
+    "presence": { "type": "array", "items": { "type": "string" } },
+    "expected": { "type": "string" },
+    "expect_validation_error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^liquid_[a-z_]+$" },
+        "hint_contains": { "type": "string" }
+      }
+    }
+  },
+  "oneOf": [{ "required": ["expected"] }, { "required": ["expect_validation_error"] }]
+}

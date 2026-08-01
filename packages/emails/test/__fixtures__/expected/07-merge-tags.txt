@@ -1,0 +1,10 @@
+{{ contact.greeting }} , {{ contact.first_name }} z {{ contact.attr.city }} .
+
+{{ campaign.name }} od {{ workspace.name }} pro
+{{ contact.first_name | upcase }}
+
+{{ workspace.sender_address }}
+
+Odhlásit se z odběru: {{ unsubscribe_url }}
+Nastavit předvolby: {{ preferences_url }}
+Zobrazit v prohlížeči: {{ webview_url }}

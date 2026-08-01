@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mlain.local/schema/markers.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "description",
+    "source",
+    "tracking_domain",
+    "link_tokens",
+    "expected",
+    "expected_replacements"
+  ],
+  "properties": {
+    "id": { "type": "string", "pattern": "^MK-[0-9]{3}$" },
+    "description": { "type": "string", "minLength": 1 },
+    "source": { "type": "string" },
+    "tracking_domain": { "type": "string" },
+    "link_tokens": { "type": "object", "additionalProperties": { "type": "string" } },
+    "open_token": { "type": ["string", "null"] },
+    "expected": { "type": "string" },
+    "expected_replacements": { "type": "integer", "minimum": 0 }
+  }
+}

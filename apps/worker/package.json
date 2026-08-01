@@ -1,0 +1,22 @@
+{
+  "name": "@mlain/worker",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "codegen": "node codegen.mjs",
+    "build": "node codegen.mjs && node build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "@mlain/core": "workspace:*",
+    "pg-boss": "12.26.3"
+  },
+  "devDependencies": {
+    "@mlain/config": "workspace:*",
+    "esbuild": "^0.25.0",
+    "vitest": "4.1.10"
+  }
+}

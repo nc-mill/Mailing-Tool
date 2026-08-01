@@ -1,0 +1,10 @@
+{
+  "id": "MK-003",
+  "description": "trackOpens vypnuté, komentář v šabloně není a nic se nedoplňuje",
+  "source": "<html><body><p>ahoj</p></body></html>",
+  "tracking_domain": "https://t.example.cz",
+  "link_tokens": {},
+  "open_token": null,
+  "expected": "<html><body><p>ahoj</p></body></html>",
+  "expected_replacements": 0
+}

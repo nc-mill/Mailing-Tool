@@ -1,0 +1,57 @@
+import type { ReactElement } from 'react';
+import type { FooterBlock } from '../../document/types';
+import { useEmitter } from '../ctx';
+import { RichTextView } from '../rich-text';
+import { lineHeightStyle, px } from '../style';
+import { BlockFrame } from './frame';
+
+/**
+ * Patička nese právní minimum. Nemá `visibleWhen` už na úrovni schématu,
+ * takže ji nejde podmínit a musí ji dostat každý příjemce (pravidlo S14).
+ * Systémové adresy zůstávají Liquid výrazem: sender je interpoluje z podepsaného
+ * tokenu, kompilace o nich neví nic víc než jejich jméno.
+ */
+export function FooterBlockView({ block }: { block: FooterBlock }): ReactElement {
+  const { theme } = useEmitter();
+  const p = block.props;
+  const color = theme.light.color(p.color);
+  const links: Array<{ label: string; href: string }> = [];
+  if (p.showUnsubscribe) links.push({ label: p.unsubscribeLabel, href: '{{ unsubscribe_url }}' });
+  if (p.showPreferences) links.push({ label: p.preferencesLabel, href: '{{ preferences_url }}' });
+  if (p.showWebview) links.push({ label: p.webviewLabel, href: '{{ webview_url }}' });
+
+  return (
+    <BlockFrame
+      padding={p.padding}
+      backgroundColor={p.backgroundColor}
+      hideOnMobile={false}
+      tdStyle={{
+        fontFamily: theme.fonts.body,
+        fontSize: px(p.fontSize),
+        color,
+        ...lineHeightStyle(p.fontSize, 1.5),
+      }}
+      align="center"
+    >
+      <div className="ml-muted" style={{ color, textAlign: 'center' }}>
+        <RichTextView
+          rich={p.senderInfo}
+          color={color}
+          linkColor={color}
+          align="center"
+          style={{ fontSize: px(p.fontSize) }}
+        />
+      </div>
+      <div className="ml-muted" style={{ color, textAlign: 'center', paddingTop: '8px' }}>
+        {links.map((link, index) => (
+          <span key={link.href}>
+            {index > 0 ? ' | ' : null}
+            <a className="ml-link" href={link.href} style={{ color, textDecoration: 'underline' }}>
+              {link.label}
+            </a>
+          </span>
+        ))}
+      </div>
+    </BlockFrame>
+  );
+}

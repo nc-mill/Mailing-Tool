@@ -1,0 +1,14 @@
+{
+  "id": "LQ-703",
+  "description": "prosté konstrukce projdou renderem beze změny",
+  "level": "authored",
+  "context": "html",
+  "template": "{% if contact.is_vip %}{{ contact.first_name | upcase }}{% endif %}",
+  "data": {
+    "contact": {
+      "is_vip": true,
+      "first_name": "žofie"
+    }
+  },
+  "expected": "ŽOFIE"
+}

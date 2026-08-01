@@ -1,0 +1,13 @@
+{
+  "id": "LQ-008",
+  "description": "hotové oslovení s ampersandem, nejpoužívanější tag produktu",
+  "context": "html",
+  "level": "authored",
+  "template": "{{ contact.greeting }},",
+  "data": {
+    "contact": {
+      "greeting": "Dobrý den, Jano & spol."
+    }
+  },
+  "expected": "Dobrý den, Jano &amp; spol.,"
+}

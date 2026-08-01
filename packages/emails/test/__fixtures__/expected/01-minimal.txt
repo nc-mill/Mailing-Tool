@@ -1,0 +1,7 @@
+Dobrý den, tohle je nejjednodušší možná kampaň.
+
+{{ workspace.sender_address }}
+
+Odhlásit se z odběru: {{ unsubscribe_url }}
+Nastavit předvolby: {{ preferences_url }}
+Zobrazit v prohlížeči: {{ webview_url }}

@@ -1,0 +1,12 @@
+**/node_modules
+**/.turbo
+**/.next
+**/dist
+**/coverage
+.git
+.github
+data
+docs
+*.md
+!README.md
+apps/sender/ml-sender

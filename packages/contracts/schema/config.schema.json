@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mlain.local/schema/config.schema.json",
+  "title": "Zrcadlo manifestu konfigurace z packages/core pro paritu s Go",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["generatedFrom", "variables"],
+  "properties": {
+    "generatedFrom": { "type": "string" },
+    "variables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "required", "consumers"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "type": { "type": "string" },
+          "required": { "type": "boolean" },
+          "default": {},
+          "consumers": { "type": "array", "items": { "enum": ["web", "worker", "sender"] } }
+        }
+      }
+    }
+  }
+}

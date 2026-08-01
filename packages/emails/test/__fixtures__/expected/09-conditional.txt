@@ -1,0 +1,18 @@
+{% if _present.contact__attr__city %}
+Sekce jen pro vyplněné město.
+
+{% endif %}
+{% if contact.attr.is_vip %}
+Blok jen pro VIP.
+
+{% endif %}
+{% unless _present.contact__attr__city %}
+Blok pro nevyplněné město.
+
+{% endunless %}
+
+{{ workspace.sender_address }}
+
+Odhlásit se z odběru: {{ unsubscribe_url }}
+Nastavit předvolby: {{ preferences_url }}
+Zobrazit v prohlížeči: {{ webview_url }}

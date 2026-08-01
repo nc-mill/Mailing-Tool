@@ -1,0 +1,16 @@
+{
+  "id": "LQ-203",
+  "description": "vstupem je unix čas jako číslo, ne řetězec",
+  "context": "html",
+  "level": "compiled",
+  "template": "{{ contact.signup_at | date: \"%Y-%m-%d\" }}",
+  "data": {
+    "contact": {
+      "signup_at": 1784995200
+    },
+    "_context": {
+      "timezone": "Europe/Prague"
+    }
+  },
+  "expected": "2026-07-25"
+}

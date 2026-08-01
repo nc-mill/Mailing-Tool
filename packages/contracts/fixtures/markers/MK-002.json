@@ -1,0 +1,10 @@
+{
+  "id": "MK-002",
+  "description": "trackClicks vypnuté, žádná značka, cílová URL zůstává i s escapovaným ampersandem",
+  "source": "<a href=\"https://shop.cz/akce?a=1&amp;b=2\">Akce</a>",
+  "tracking_domain": "https://t.example.cz",
+  "link_tokens": {},
+  "open_token": null,
+  "expected": "<a href=\"https://shop.cz/akce?a=1&amp;b=2\">Akce</a>",
+  "expected_replacements": 0
+}

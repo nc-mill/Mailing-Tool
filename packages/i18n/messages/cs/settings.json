@@ -1,0 +1,578 @@
+{
+  "nav": {
+    "sectionLabel": "Nastavení",
+    "general": "Projekt",
+    "members": "Tým",
+    "apiKeys": "Klíče k API",
+    "webhooks": "Webhooky",
+    "audit": "Audit log",
+    "account": "Můj účet"
+  },
+  "shared": {
+    "save": "Uložit",
+    "backToOverview": "Zpět na přehled projektu",
+    "selectPlaceholder": "Vyberte",
+    "showPassword": "Zobrazit heslo",
+    "hidePassword": "Skrýt heslo",
+    "saving": "Ukládáme",
+    "saved": "Uloženo",
+    "saveFailed": "Nepodařilo se uložit, zkoušíme to znovu",
+    "cancel": "Zrušit",
+    "close": "Zavřít",
+    "tryAgain": "Zkusit znovu",
+    "refresh": "Obnovit",
+    "createdAt": "Vytvořeno",
+    "lastUsedAt": "Naposledy použito",
+    "never": "Nikdy",
+    "copy": "Zkopírovat",
+    "copied": "Zkopírováno",
+    "loadingMore": "Načítáme další",
+    "previousPage": "Předchozí",
+    "nextPage": "Další",
+    "countExact": "{count, plural, =0 {Žádná položka} one {# položka} few {# položky} many {# položky} other {# položek}}",
+    "countEstimated": "asi {count, number} položek",
+    "cursorDropped": "Odkaz na stránku výsledků už neplatí, protože se data mezitím změnila. Ukazujeme první stránku stejného filtru.",
+    "filtersApplied": "Filtr: {summary}",
+    "clearFilters": "Zrušit filtry",
+    "role": {
+      "owner": "Vlastník",
+      "admin": "Správce",
+      "editor": "Editor",
+      "viewer": "Prohlížející"
+    }
+  },
+  "jobs": {
+    "title": "Úloha",
+    "progress": "Hotovo {done} z {total}",
+    "startedBy": "Spustil {person}",
+    "startedAt": "Začátek",
+    "finishedAt": "Konec",
+    "notFoundTitle": "Tuhle úlohu neznáme",
+    "notFoundBody": "Úloha buď nikdy neexistovala, nebo je starší, než co si pamatujeme. Přehled projektu ukazuje ty, které běží.",
+    "status": {
+      "running": "Běží",
+      "paused": "Pozastaveno",
+      "completed": "Hotovo",
+      "completedWithErrors": "Hotovo, ale s chybami",
+      "failed": "Selhalo",
+      "cancelled": "Zrušeno"
+    }
+  },
+  "confirm": {
+    "irreversible": "Tuhle akci nejde vzít zpět.",
+    "whatHappens": "Co se stane",
+    "notYetConfirmed": "Ještě jste nezaškrtli potvrzení nad tlačítkem.",
+    "notYetTyped": "Opsaný text se zatím neshoduje. Zkontrolujte ho, prosím, znak po znaku.",
+    "typeToConfirmMismatch": "Opsaný text se neshoduje.",
+    "filterInWords": "Týká se to výběru: {filter}"
+  },
+  "states": {
+    "forbiddenTitle": "Na tuhle část nemáte oprávnění",
+    "forbiddenBody": "Sekce vyžaduje oprávnění {permission}, které mají role {roles}. Vy máte roli {currentRole}.",
+    "forbiddenWhoCanHelp": "Roli vám může změnit vlastník nebo správce projektu.",
+    "forbiddenWhoCanHelpNamed": "Roli vám může změnit {name}.",
+    "forbiddenBack": "Zpět na přehled projektu",
+    "notFoundTitle": "Tuhle položku jsme nenašli",
+    "notFoundBody": "Mohla být smazaná, nebo máte starý odkaz.",
+    "notFoundBack": "Zpět na seznam",
+    "offlineTitle": "Ztratili jsme spojení",
+    "loadingLabel": "Načítáme",
+    "offlineBody": "Ztratili jsme spojení. Zkoušíme se připojit. Vaše změny se uloží, jakmile se to podaří.",
+    "staleTitle": "Naposledy aktualizováno {time}",
+    "staleBody": "Obnovení se nepodařilo, ukazujeme starší čísla.",
+    "readOnlyTitle": "Tuhle sekci můžete jen prohlížet",
+    "readOnlyBody": "Vaše role {currentRole} nemá oprávnění {permission}, takže hodnoty vidíte jako text a nejdou upravit.",
+    "partialTitle": "Část stránky se nenačetla",
+    "loading": "Načítáme"
+  },
+  "profile": {
+    "title": "Můj účet",
+    "lead": "Údaje, které platí napříč všemi projekty.",
+    "identity": {
+      "title": "Osobní údaje",
+      "name": "Jméno a příjmení",
+      "nameHint": "Jméno vidí ostatní členové projektu u vašich akcí v audit logu.",
+      "email": "E-mail",
+      "emailHint": "E-mail slouží k přihlášení a měnit se zatím nedá.",
+      "locale": "Jazyk rozhraní",
+      "timezone": "Časová zóna",
+      "timezoneHint": "Podle zóny zobrazujeme časy v celém nástroji.",
+      "saved": "Uloženo"
+    },
+    "password": {
+      "title": "Změna hesla",
+      "lead": "Po změně hesla vás odhlásíme ze všech ostatních zařízení. Tahle karta zůstane přihlášená.",
+      "current": "Současné heslo",
+      "next": "Nové heslo",
+      "submit": "Změnit heslo",
+      "submitting": "Měníme heslo",
+      "doneTitle": "Heslo je změněné",
+      "doneBody": "Ostatní relace jsme ukončili. Na dalších zařízeních se budete muset přihlásit znovu."
+    },
+    "sessions": {
+      "title": "Aktivní relace",
+      "lead": "Zařízení a prohlížeče, ze kterých jste přihlášení.",
+      "thisSession": "Tato relace",
+      "device": "Zařízení",
+      "ip": "IP adresa",
+      "lastUsed": "Naposledy použito",
+      "signedInAt": "Přihlášeno",
+      "revoke": "Odhlásit toto zařízení",
+      "revoked": "Zařízení jsme odhlásili",
+      "revokeFailed": "Zařízení se nepodařilo odhlásit. Zkuste to prosím znovu.",
+      "logoutAll": "Odhlásit ze všech zařízení",
+      "logoutAllDialogTitle": "Odhlásit ze všech zařízení včetně tohoto?",
+      "logoutAllConsequence": "{count, plural, =0 {Neukončíme žádnou relaci, protože žádná další neběží.} one {Ukončíme # relaci, tuhle kartu nevyjímaje.} few {Ukončíme # relace, tuhle kartu nevyjímaje.} many {Ukončíme # relace, tuhle kartu nevyjímaje.} other {Ukončíme # relací, tuhle kartu nevyjímaje.}}",
+      "logoutAllConsequenceWork": "Rozepsané formuláře na jiných zařízeních se ztratí.",
+      "logoutAllConfirm": "Odhlásit ze všech zařízení",
+      "logoutAllCancel": "Nechat přihlášené",
+      "empty": "Jste přihlášení jen tady. Jakmile se přihlásíte z dalšího zařízení, uvidíte ho v tomhle seznamu.",
+      "emptyAction": "Načíst seznam znovu",
+      "unknownDevice": "Neznámé zařízení"
+    }
+  },
+  "general": {
+    "title": "Projekt",
+    "lead": "Název, adresa a výchozí hodnoty projektu {projectName}.",
+    "name": "Název projektu",
+    "slug": "Adresa projektu",
+    "slugHint": "Používá se v odkazech: /w/{slug}. Malá písmena, číslice a pomlčky.",
+    "slugChangeWarning": "Změna adresy rozbije odkazy, které jste už poslali kolegům.",
+    "locale": "Jazyk projektu",
+    "localeHint": "Jazyk systémových e-mailů a veřejných stránek pro příjemce.",
+    "timezone": "Časová zóna projektu",
+    "timezoneHint": "V téhle zóně se plánují kampaně a počítají reporty.",
+    "addressForm": {
+      "label": "Oslovení v e-mailech",
+      "hint": "Týká se e-mailů, které posíláte kontaktům. Rozhraní nástroje vám vyká vždy.",
+      "formal": "Vykání",
+      "formalInline": "vykání",
+      "formalExample": "Dobrý den, Jano,",
+      "informal": "Tykání",
+      "informalInline": "tykání",
+      "informalExample": "Ahoj Jano,",
+      "dialogTitle": "Přepnout oslovení na {target}?",
+      "dialogConsequence1": "{count, plural, =0 {Nepřepočítáme 5. pád u žádného kontaktu, databáze je zatím prázdná.} one {Přepočítáme 5. pád u # kontaktu.} few {Přepočítáme 5. pád u # kontaktů.} many {Přepočítáme 5. pád u # kontaktu.} other {Přepočítáme 5. pád u # kontaktů.}}",
+      "dialogConsequence2": "Přepočet běží na pozadí, u velké databáze trvá jednotky minut.",
+      "dialogConsequence3": "Kampaně rozeslané v minulosti se nemění.",
+      "dialogConfirm": "Přepnout na {target}",
+      "dialogCancel": "Nechat {current}",
+      "started": "Oslovení jsme přepnuli a přepočítáváme kontakty."
+    },
+    "danger": {
+      "title": "Smazání projektu",
+      "body": "Smazání odstraní všechny kontakty, kampaně i statistiky. Obnovit to jde 30 dní. Pro potvrzení opište název projektu.",
+      "button": "Smazat projekt",
+      "dialogTitle": "Smazat projekt {name}?",
+      "consequence1": "Zmizí všechny kontakty, seznamy, segmenty a štítky.",
+      "consequence2": "Zmizí všechny kampaně, šablony a jejich statistiky.",
+      "consequence3": "Klíče k API a webhooky projektu okamžitě přestanou fungovat.",
+      "consequence4": "Rozeslané e-maily se nevrátí, ale rozesílka, která běží, se zastaví.",
+      "restoreNote": "Projekt jde obnovit 30 dní. Potom se smaže natrvalo a obnovit už nepůjde.",
+      "confirmLabel": "Pro potvrzení opište název projektu",
+      "confirm": "Smazat projekt {name}",
+      "cancel": "Nechat projekt",
+      "onlyOwner": "Smazat projekt může jen vlastník."
+    }
+  },
+  "members": {
+    "title": "Tým",
+    "lead": "Kdo má do projektu přístup a co smí.",
+    "empty": "V projektu jste zatím sami. Pozvěte kolegy a určete, co smí.",
+    "emptyAction": "Pozvat kolegu",
+    "emptyNoPermission": "Zvát kolegy může Správce a Vlastník. Vaše role na to oprávnění nemá.",
+    "table": {
+      "person": "Člen projektu",
+      "role": "Role",
+      "joinedAt": "V projektu od",
+      "actions": "Akce"
+    },
+    "roleDescription": {
+      "owner": "Vidí a mění všechno včetně záloh, smazání a předání projektu.",
+      "admin": "Vidí a mění všechno kromě záloh, smazání a předání projektu.",
+      "editor": "Tvoří kontakty, šablony a kampaně a odesílá je. Nevidí klíče, audit ani export kontaktů.",
+      "viewer": "Vidí kontakty, kampaně a reporty. Nic nemění."
+    },
+    "changeRole": {
+      "label": "Role člena {name}",
+      "done": "Role člena {name} je teď {role}.",
+      "undo": "Vrátit zpět",
+      "failed": "Roli se nepodařilo změnit. Vrátili jsme původní hodnotu.",
+      "lastOwner": "Poslední vlastník musí zůstat. Nejdřív předejte vlastnictví někomu jinému."
+    },
+    "remove": {
+      "button": "Odebrat z projektu",
+      "dialogTitle": "Odebrat {name} z projektu?",
+      "consequence1": "Ztratí přístup ke všem kontaktům, kampaním a reportům projektu.",
+      "consequence2": "To, co v projektu vytvořil, zůstává.",
+      "consequence3": "Zpět se dostane jen novou pozvánkou, kterou musí přijmout.",
+      "confirm": "Odebrat {name}",
+      "cancel": "Nechat v projektu",
+      "done": "{name} už v projektu není."
+    },
+    "invitations": {
+      "title": "Čekající pozvánky",
+      "empty": "Žádná pozvánka nečeká na přijetí.",
+      "emptyAction": "Napsat e-mail kolegy",
+      "email": "E-mail",
+      "role": "Role",
+      "invitedBy": "Pozval",
+      "expiresAt": "Platí do",
+      "revoke": "Zrušit pozvánku",
+      "revoked": "Pozvánka pro {email} je zrušená.",
+      "reinvite": "Pozvat znovu",
+      "limitTitle": "Víc pozvánek naráz poslat nejde",
+      "limitBody": "V projektu čeká 100 pozvánek, což je maximum. Zrušte některou z nich, nebo počkejte, až je lidé přijmou."
+    },
+    "invite": {
+      "button": "Pozvat kolegu",
+      "title": "Pozvat kolegu do projektu",
+      "lead": "Pošleme mu odkaz, který platí 7 dní.",
+      "email": "E-mail kolegy",
+      "role": "Role",
+      "submit": "Poslat pozvánku",
+      "submitting": "Odesíláme pozvánku",
+      "done": "Pozvánku jsme poslali na {email}.",
+      "alreadyMember": "{email} už v projektu je. Roli mu můžete změnit v seznamu členů.",
+      "alreadyInvited": "Pozvánku na {email} jsme poslali znovu, ta předchozí přestala platit."
+    }
+  },
+  "apiKeys": {
+    "title": "Klíče k API",
+    "lead": "Klíčem se k projektu připojí e-shop nebo vlastní aplikace.",
+    "empty": "Zatím nemáte žádný API klíč. Klíč slouží k propojení e-shopu nebo vlastní aplikace.",
+    "emptyAction": "Vytvořit klíč",
+    "emptyNoPermission": "Klíče k API zakládá Správce a Vlastník. Vaše role na to oprávnění nemá.",
+    "table": {
+      "name": "Název",
+      "prefix": "Klíč",
+      "scopes": "Oprávnění",
+      "createdBy": "Vytvořil",
+      "lastUsedAt": "Naposledy použit",
+      "status": "Stav",
+      "actions": "Akce"
+    },
+    "status": {
+      "active": "Aktivní",
+      "revoked": "Zrušený",
+      "expired": "Prošlý",
+      "rotating": "Rotuje se, starý sekret platí do {time}"
+    },
+    "create": {
+      "button": "Vytvořit klíč",
+      "title": "Nový klíč k API",
+      "lead": "Vyberte, co smí. Klíč nemá roli, platí přesně to, co mu tady zaškrtnete.",
+      "name": "Název klíče",
+      "nameHint": "Podle názvu poznáte, která aplikace klíč používá. Třeba „E-shop, objednávky“.",
+      "scopes": "Oprávnění klíče",
+      "scopesHint": "Zaškrtněte co nejmíň. Klíč, který smí všechno, je klíč, o kterém nikdo neví, co smí.",
+      "submit": "Vytvořit klíč",
+      "submitting": "Vytváříme klíč",
+      "noScopeSelected": "Vyberte aspoň jedno oprávnění."
+    },
+    "secret": {
+      "title": "Klíč je vytvořený",
+      "warning": "Zkopírujte si sekret teď. Už ho nikdy neuvidíme ani my.",
+      "label": "Celý klíč",
+      "acknowledge": "Sekret mám uložený",
+      "close": "Hotovo"
+    },
+    "rotate": {
+      "button": "Rotovat sekret",
+      "panelCancel": "Zpět na seznam klíčů",
+      "dialogTitle": "Rotovat sekret klíče {name}?",
+      "consequence1": "Vygenerujeme nový sekret a ukážeme ho jednou.",
+      "consequence2": "Aplikace, které používají starý sekret, přestanou fungovat, jakmile doběhne přechodné období: {grace}.",
+      "consequence3": "Oprávnění klíče se nemění.",
+      "graceLabel": "Přechodné období pro starý sekret",
+      "graceHint": "Po tuhle dobu platí starý i nový sekret naráz. Nula znamená, že starý přestane platit okamžitě.",
+      "graceOptions": {
+        "none": "Bez přechodného období",
+        "hour": "1 hodina",
+        "day": "24 hodin"
+      },
+      "acknowledge": "Rozumím, že starý sekret přestane platit",
+      "confirm": "Rotovat sekret",
+      "cancel": "Nechat současný sekret",
+      "done": "Sekret je vyměněný."
+    },
+    "revoke": {
+      "button": "Zrušit klíč",
+      "dialogTitle": "Zrušit klíč {name}?",
+      "consequence1": "Aplikace, které klíč používají, přestanou fungovat okamžitě.",
+      "consequence2": "Zrušený klíč zůstane v seznamu, aby audit dával smysl. Obnovit ho nejde.",
+      "consequence3": "Naposledy byl použit {lastUsed}.",
+      "acknowledge": "Rozumím, že zrušený klíč už nepůjde obnovit",
+      "confirm": "Zrušit klíč {name}",
+      "cancel": "Nechat klíč",
+      "done": "Klíč {name} je zrušený."
+    }
+  },
+  "webhooks": {
+    "title": "Webhooky",
+    "lead": "Webhook pošle událost na vaši adresu, jakmile se v projektu něco stane.",
+    "empty": "Žádný webhook. Webhook pošle událost na vaši adresu, jakmile se něco stane.",
+    "emptyAfterDelete": "Všechny webhooky jste smazali. Nový vytvoříte tlačítkem níž.",
+    "emptyAction": "Přidat webhook",
+    "emptyNoPermission": "Webhooky přidává Správce a Vlastník. Vaše role na to oprávnění nemá.",
+    "limitTitle": "Víc webhooků přidat nejde",
+    "limitBody": "V projektu je 20 webhooků, což je maximum. Smažte některý, než přidáte další.",
+    "table": {
+      "url": "Adresa",
+      "events": "Události",
+      "status": "Stav",
+      "lastDelivery": "Poslední doručení",
+      "actions": "Akce"
+    },
+    "status": {
+      "active": "Aktivní",
+      "disabled": "Vypnutý",
+      "failing": "{count, plural, =0 {Selhává} one {Selhává, # neúspěch po sobě} few {Selhává, # neúspěchy po sobě} many {Selhává, # neúspěchu po sobě} other {Selhává, # neúspěchů po sobě}}"
+    },
+    "disabled": {
+      "title": "Váš webhook jsme vypnuli",
+      "body": "Váš webhook jsme vypnuli po 20 neúspěšných pokusech. Opravte cíl a zapněte ho znovu.",
+      "detail": "Adresa {url} odpovídá chybou {lastStatus} od {since}. Po dvaceti neúspěšných pokusech jsme posílání zastavili, aby se fronta nezaplnila.",
+      "replayNote": "Při zapnutí nabídneme přehrání událostí za posledních 24 hodin. Co je starší, se doposlat nedá.",
+      "showErrors": "Zobrazit poslední chyby",
+      "enable": "Zapnout znovu",
+      "enabling": "Zapínáme webhook",
+      "enabled": "Webhook je znovu zapnutý."
+    },
+    "form": {
+      "createTitle": "Nový webhook",
+      "editTitle": "Úprava webhooku",
+      "url": "Adresa, kam události posílat",
+      "urlHint": "Jen https. Na privátní adresy a na adresy v místní síti neposíláme.",
+      "description": "Popis",
+      "descriptionHint": "K čemu webhook slouží. Uvidí ho kolegové v seznamu.",
+      "events": "Které události posílat",
+      "eventsHint": "Vyberte aspoň jednu, nejvýš 50.",
+      "submit": "Vytvořit webhook",
+      "submitting": "Vytváříme webhook",
+      "saveSubmit": "Uložit změny",
+      "duplicateNote": "Doručení je nejméně jednou. Když restartujeme worker uprostřed odesílání, událost může dorazit dvakrát. Rozlišujte ji podle hlavičky ML-Event-Id."
+    },
+    "secret": {
+      "title": "Webhook je vytvořený",
+      "warning": "Zkopírujte si podpisový sekret teď. Už ho nikdy neuvidíme ani my.",
+      "hint": "Sekretem ověříte, že požadavek přišel opravdu od nás. Postup je v dokumentaci k hlavičce ML-Signature.",
+      "acknowledge": "Sekret mám uložený",
+      "close": "Hotovo"
+    },
+    "test": {
+      "button": "Poslat testovací událost",
+      "running": "Posíláme testovací událost",
+      "slow": "Trvá to déle, než jsme čekali",
+      "successTitle": "Testovací událost jsme zařadili",
+      "successBody": "Výsledek uvidíte v logu doručení níž, obvykle do pár sekund. Načtěte ho znovu.",
+      "failureTitle": "Testovací událost neprošla",
+      "failureBody": "Vaše adresa odpověděla {status}. Podrobnosti jsou v logu doručení níž."
+    },
+    "delete": {
+      "button": "Smazat webhook",
+      "dialogTitle": "Smazat webhook {url}?",
+      "consequence1": "Události se na tuhle adresu přestanou posílat okamžitě.",
+      "consequence2": "Log doručení zůstane 30 dní.",
+      "confirm": "Smazat webhook",
+      "cancel": "Nechat webhook",
+      "done": "Webhook je smazaný."
+    },
+    "deliveries": {
+      "title": "Log doručení",
+      "lead": "Posledních 30 dní pokusů o doručení.",
+      "empty": "Zatím jsme na tuhle adresu nic neposlali.",
+      "emptyAction": "Načíst log znovu",
+      "emptyFiltered": "Žádné doručení neodpovídá filtru.",
+      "emptyFilteredBody": "Zkuste filtr rozvolnit, nebo ho zrušte a projděte celý log.",
+      "table": {
+        "eventType": "Událost",
+        "status": "Výsledek",
+        "attempt": "Pokus",
+        "responseStatus": "Odpověď",
+        "duration": "Trvání",
+        "createdAt": "Kdy",
+        "nextAttemptAt": "Další pokus"
+      },
+      "status": {
+        "pending": "Čeká",
+        "delivering": "Odesíláme",
+        "succeeded": "Doručeno",
+        "failed": "Nedoručeno",
+        "abandoned": "Vzdali jsme to"
+      },
+      "errorCode": "Kód chyby",
+      "responseSnippet": "Odpověď vaší adresy",
+      "retry": "Zkusit doručit znovu",
+      "retrying": "Doručujeme znovu",
+      "retried": "Doručení jsme zařadili do fronty.",
+      "blockedTarget": "Adresa vede do privátní sítě, takže jsme se na ni nepřipojili. Zkontrolujte, jestli se nezměnil DNS záznam."
+    }
+  },
+  "audit": {
+    "title": "Audit log",
+    "lead": "Kdo v projektu co udělal. Záznamy se nedají mazat ani měnit.",
+    "empty": "Zatím se nic nestalo.",
+    "emptyAction": "Načíst záznamy znovu",
+    "emptyFiltered": "Žádný záznam neodpovídá filtru.",
+    "emptyFilteredBody": "Zkuste filtr rozvolnit, nebo ho zrušte a projděte celý audit log.",
+    "retention": "Záznamy držíme 24 měsíců.",
+    "table": {
+      "when": "Kdy",
+      "actor": "Kdo",
+      "action": "Co",
+      "target": "Čeho se to týkalo",
+      "requestId": "Číslo požadavku"
+    },
+    "filters": {
+      "action": "Akce",
+      "actor": "Kdo",
+      "from": "Od",
+      "to": "Do",
+      "allActions": "Všechny akce",
+      "allActors": "Kdokoli",
+      "apply": "Použít filtr"
+    },
+    "actorType": {
+      "user": "Člen projektu",
+      "apiKey": "Klíč k API",
+      "system": "Nástroj"
+    },
+    "unknownAction": "Neznámá akce",
+    "actions": {
+      "user": {
+        "login": "Přihlásil se",
+        "login_failed": "Neúspěšné přihlášení",
+        "logout": "Odhlásil se",
+        "password_changed": "Změnil heslo",
+        "password_reset_requested": "Vyžádal obnovu hesla",
+        "password_reset_completed": "Dokončil obnovu hesla"
+      },
+      "workspace": {
+        "created": "Založil projekt",
+        "updated": "Změnil nastavení projektu",
+        "deleted": "Smazal projekt",
+        "restored": "Obnovil projekt",
+        "ownership_transferred": "Předal vlastnictví projektu"
+      },
+      "member": {
+        "invited": "Pozval člena",
+        "invitation_revoked": "Zrušil pozvánku",
+        "joined": "Přijal pozvánku",
+        "role_changed": "Změnil roli člena",
+        "removed": "Odebral člena"
+      },
+      "api_key": {
+        "created": "Vytvořil klíč k API",
+        "rotated": "Rotoval sekret klíče",
+        "revoked": "Zrušil klíč k API"
+      },
+      "webhook_endpoint": {
+        "created": "Vytvořil webhook",
+        "updated": "Upravil webhook",
+        "deleted": "Smazal webhook",
+        "disabled": "Webhook byl vypnutý"
+      },
+      "backup": {
+        "created": "Vytvořil zálohu",
+        "restored": "Obnovil ze zálohy"
+      },
+      "settings": {
+        "updated": "Změnil nastavení"
+      }
+    }
+  },
+  "errorBlock": {
+    "retry": "Zkusit znovu",
+    "requestId": "Číslo požadavku",
+    "copy": "Zkopírovat",
+    "copyAll": "Zkopírovat vše",
+    "copied": "Zkopírováno",
+    "detailsSummary": "Technické detaily",
+    "code": "Kód",
+    "time": "Čas",
+    "path": "Cesta"
+  },
+  "errors": {
+    "forbidden": {
+      "title": "Na tuhle akci nemáte oprávnění",
+      "body": "Akce vyžaduje oprávnění {permission}, které mají role {roles}. Vy máte roli {currentRole}."
+    },
+    "insufficientScope": {
+      "title": "Klíč na tuhle akci nestačí",
+      "body": "Klíč, kterým se aplikace přihlásila, nemá oprávnění {permission}. Přidat ho nejde, vytvořte klíč nový."
+    },
+    "originNotAllowed": {
+      "title": "Požadavek přišel odjinud",
+      "body": "Adresa, ze které požadavek přišel, neodpovídá adrese nástroje. Znovu načtěte stránku a zkuste to znovu."
+    },
+    "csrfTokenInvalid": {
+      "title": "Ochranný token neplatí",
+      "body": "Stránka byla otevřená příliš dlouho. Znovu ji načtěte a akci zopakujte."
+    },
+    "sessionExpired": {
+      "title": "Byli jste odhlášeni",
+      "body": "Kvůli neaktivitě jsme vás z bezpečnostních důvodů odhlásili. Přihlaste se prosím znovu, o rozdělanou práci nepřijdete."
+    },
+    "notFound": {
+      "title": "Tuhle položku jsme nenašli",
+      "body": "Mohla být smazaná, nebo máte odkaz na položku z jiného projektu."
+    },
+    "conflict": {
+      "title": "Mezitím se něco změnilo",
+      "body": "Někdo jiný upravil tutéž věc dřív než vy. Načtěte stránku znovu a podívejte se na aktuální stav."
+    },
+    "alreadyExists": {
+      "title": "Tohle už existuje",
+      "body": "Položka se stejnou hodnotou už v projektu je. Zvolte jinou hodnotu."
+    },
+    "alreadyMember": {
+      "title": "Tenhle člověk už v projektu je",
+      "body": "Pozvánku posílat nemusíte. Roli mu můžete změnit přímo v seznamu členů."
+    },
+    "lastOwner": {
+      "title": "Poslední vlastník musí zůstat",
+      "body": "Projekt musí mít vždy právě jednoho vlastníka. Nejdřív předejte vlastnictví někomu jinému a potom akci zopakujte."
+    },
+    "idempotencyKeyReuse": {
+      "title": "Formulář se odeslal se změněnými údaji",
+      "body": "Rozpracovaný formulář se odeslal dvakrát a podruhé s jiným obsahem. Načtěte stránku znovu a vyplňte ji jednou."
+    },
+    "idempotencyInProgress": {
+      "title": "Stejný požadavek už zpracováváme",
+      "body": "Odeslali jste formulář dvakrát rychle za sebou. Počkejte pár sekund a podívejte se na výsledek."
+    },
+    "validationFailed": {
+      "title": "Formulář se nepodařilo uložit",
+      "body": "U polí níž jsme popsali, co je potřeba opravit."
+    },
+    "tooManyItems": {
+      "title": "Položek je moc",
+      "body": "Vybrali jste víc položek, než kolik jich zvládneme zpracovat naráz. Rozdělte to na menší části."
+    },
+    "rateLimited": {
+      "title": "Zkoušíte to příliš často",
+      "body": "Počkejte {seconds, plural, =0 {chvíli} one {# sekundu} few {# sekundy} many {# sekundy} other {# sekund}} a zkuste to znovu."
+    },
+    "webhookDisabled": {
+      "title": "Webhook jsme vypnuli, protože 20krát po sobě selhal",
+      "body": "Až problém na vaší straně vyřešíte, webhook znovu zapněte. Nabídneme vám přitom přehrání událostí za posledních 24 hodin."
+    },
+    "serviceUnavailable": {
+      "title": "Server neodpovídá",
+      "body": "Nepodařilo se nám spojit se serverem nástroje. Většinou je to přechodné a druhý pokus projde."
+    },
+    "dependencyTimeout": {
+      "title": "Server odpovídal moc dlouho",
+      "body": "Požadavek jsme přerušili, protože trval déle než 10 sekund. Zkuste to znovu."
+    },
+    "internalError": {
+      "title": "Něco se nepovedlo",
+      "body": "Chyba je na naší straně. Zkuste to znovu a když se to bude opakovat, pošlete podpoře číslo požadavku níž."
+    },
+    "fallback": {
+      "title": "Něco se nepovedlo",
+      "body": "Popis chyby ze serveru je pod tímhle textem. Když si s ní nevíte rady, pošlete podpoře číslo požadavku."
+    }
+  }
+}

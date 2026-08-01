@@ -1,0 +1,13 @@
+{
+  "id": "LQ-604",
+  "description": "kombinující znaky a delší UTF-8 text přes downcase",
+  "context": "html",
+  "level": "authored",
+  "template": "{{ contact.note | downcase }}",
+  "data": {
+    "contact": {
+      "note": "PŘÍLIŠ ŽLUŤOUČKÝ KŮŇ ÚPĚL ĎÁBELSKÉ ÓDY, Ě̌"
+    }
+  },
+  "expected": "příliš žluťoučký kůň úpěl ďábelské ódy, ě̌"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "LQ-206",
+  "description": "neplatný vstup dá prázdný řetězec, nikdy chybu",
+  "context": "html",
+  "level": "compiled",
+  "template": "[{{ contact.signup_at | date: \"%d.%m.%Y\" }}]",
+  "data": {
+    "contact": {
+      "signup_at": "včera"
+    },
+    "_context": {
+      "timezone": "Europe/Prague"
+    }
+  },
+  "expected": "[]"
+}

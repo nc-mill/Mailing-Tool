@@ -1,0 +1,15 @@
+{
+  "extends": "@mlain/config/tsconfig/next.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": [
+    "next.config.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "test/**/*.ts",
+    "next-env.d.ts",
+    ".next/types/**/*.ts"
+  ]
+}

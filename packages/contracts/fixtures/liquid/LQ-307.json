@@ -1,0 +1,15 @@
+{
+  "id": "LQ-307",
+  "description": "podmínka nad _present pro obě větve, konstrukce emitovaná každým podmíněným blokem",
+  "context": "html",
+  "level": "compiled",
+  "template": "{% if _present.contact__city %}A{% endif %}{% if _present.contact__zip %}B{% endif %}",
+  "data": {
+    "contact": {
+      "city": "Brno",
+      "zip": "   "
+    }
+  },
+  "presence": ["contact.city", "contact.zip"],
+  "expected": "A"
+}

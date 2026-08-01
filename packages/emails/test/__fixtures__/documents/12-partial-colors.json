@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "meta": {
+    "name": "Neúplná mapa barev",
+    "previewText": "Náhledový text kampaně",
+    "language": "cs"
+  },
+  "theme": {
+    "contentWidth": 600,
+    "canvasBackground": "surface.canvas",
+    "contentBackground": "surface.content",
+    "colors": {
+      "brand.primary": "#c2410c"
+    },
+    "fonts": {
+      "heading": "system",
+      "body": "system"
+    },
+    "typography": {
+      "baseFontSize": 16,
+      "baseLineHeight": 1.5,
+      "headingScale": 1.25
+    },
+    "radius": 6,
+    "darkMode": {
+      "strategy": "auto",
+      "colors": {}
+    }
+  },
+  "blocks": [
+    {
+      "id": "b_000000000004",
+      "type": "section",
+      "props": {
+        "backgroundColor": null,
+        "outerBackgroundColor": null,
+        "backgroundImageAssetId": null,
+        "backgroundPosition": "center",
+        "padding": {
+          "top": 24,
+          "right": 24,
+          "bottom": 24,
+          "left": 24
+        },
+        "fullWidth": false,
+        "roundedTop": false,
+        "roundedBottom": false
+      },
+      "children": [
+        {
+          "id": "b_000000000001",
+          "type": "heading",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": null,
+            "hideOnMobile": false,
+            "level": 2,
+            "content": [
+              {
+                "t": "p",
+                "children": [
+                  {
+                    "t": "s",
+                    "v": "Jen primární barva"
+                  }
+                ]
+              }
+            ],
+            "color": "text.default",
+            "align": "left",
+            "fontFamily": null,
+            "fontSize": null,
+            "fontWeight": 700,
+            "lineHeight": null,
+            "letterSpacing": 0
+          }
+        },
+        {
+          "id": "b_000000000002",
+          "type": "button",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": "brand.primary",
+            "hideOnMobile": false,
+            "label": [
+              {
+                "t": "p",
+                "children": [
+                  {
+                    "t": "s",
+                    "v": "Koupit"
+                  }
+                ]
+              }
+            ],
+            "href": "https://example.com/",
+            "trackable": true,
+            "style": "solid",
+            "textColor": "text.inverted",
+            "borderColor": null,
+            "borderWidth": 0,
+            "borderRadius": null,
+            "fullWidth": false,
+            "align": "center",
+            "paddingX": 28,
+            "paddingY": 14,
+            "fontSize": 16
+          }
+        },
+        {
+          "id": "b_000000000003",
+          "type": "footer",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": null,
+            "hideOnMobile": false,
+            "senderInfo": [
+              {
+                "t": "p",
+                "children": [
+                  {
+                    "t": "var",
+                    "expr": "workspace.sender_address"
+                  }
+                ]
+              }
+            ],
+            "showUnsubscribe": true,
+            "unsubscribeLabel": "Odhlásit se z odběru",
+            "showPreferences": true,
+            "preferencesLabel": "Nastavit předvolby",
+            "showWebview": true,
+            "webviewLabel": "Zobrazit v prohlížeči",
+            "fontSize": 12,
+            "color": "text.muted"
+          }
+        }
+      ]
+    }
+  ]
+}

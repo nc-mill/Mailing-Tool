@@ -1,0 +1,425 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Celkový limit workflow je 35 minut při plné paralelizaci (kapitola 3.15).
+# Joby e2e a build-image běží až po zelených rychlých jobech, aby se
+# neplýtvalo runnery.
+
+jobs:
+  # ---------------------------------------------------------------- 1. lint --
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.18.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.1"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: oxlint
+        run: pnpm exec oxlint .
+      - name: eslint
+        run: pnpm exec eslint .
+      - name: prettier
+        run: pnpm exec prettier --check .
+      - name: migration-lint
+        run: node tools/ci/migration-lint.mjs
+
+  # ----------------------------------------------------------- 2. typecheck --
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.18.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.1"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run typecheck
+
+  # ----------------------------------------------------------- 3. test-unit --
+  test-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.18.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.1"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run test:unit
+
+  # ------------------------------------------------------------- 4. test-db --
+  test-db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: mlain_test
+          POSTGRES_USER: mlain_migrator
+          POSTGRES_PASSWORD: mlain
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U mlain_migrator -d mlain_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgres://mlain_migrator:mlain@localhost:5432/mlain_test
+      DATABASE_URL_MIGRATOR: postgres://mlain_migrator:mlain@localhost:5432/mlain_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.18.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.1"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run test:db
+
+  # ------------------------------------------------------------- 5. test-go --
+  test-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: apps/sender
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: apps/sender/go.sum
+      - run: go vet ./...
+      - run: go test ./...
+
+  # ------------------------------------------------- 6. test-go-integration --
+  test-go-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: mlain_test
+          POSTGRES_USER: mlain_migrator
+          POSTGRES_PASSWORD: mlain
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U mlain_migrator -d mlain_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL_SENDER: postgres://mlain_migrator:mlain@localhost:5432/mlain_test
+    defaults:
+      run:
+        working-directory: apps/sender
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: apps/sender/go.sum
+      - run: go test -tags=integration ./...
+
+  # ---------------------------------------------------- 7. contracts-golden --
+  # BEZ DATABÁZE, a to schválně: pouští jazykové implementace nad JSON fixtures
+  # a přidání služby by mu ztrojnásobilo dobu běhu (kapitola 3.15).
+  # Jediný job, který potřebuje setup obou stran naráz.
+  contracts-golden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.18.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.1"
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: apps/sender/go.sum
+      - run: pnpm install --frozen-lockfile
+      - name: parita fixtures mezi TS a Go
+        run: node tools/ci/contracts-golden.mjs
+
+  # ------------------------------------------- 8. contracts-fixtures-schema --
+  # Job jen spouští validátor, který vlastní P02: mapa skupina na schéma patří
+  # ke schématům, ne sem. Proto potřebuje pnpm a nainstalované závislosti.
+  contracts-fixtures-schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.18.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.1"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node tools/ci/contracts-fixtures-schema.mjs
+
+  # ---------------------------------------------------- 9. contracts-schema --
+  # Čtvrtý bod test:parity: kontraktní sloupce existují po migracích a mají
+  # očekávaný typ. Běží tady, ne v contracts-golden, protože potřebuje databázi.
+  contracts-schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: mlain_test
+          POSTGRES_USER: mlain_migrator
+          POSTGRES_PASSWORD: mlain
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U mlain_migrator -d mlain_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL_MIGRATOR: postgres://mlain_migrator:mlain@localhost:5432/mlain_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.18.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.1"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node tools/ci/contracts-schema.mjs
+
+  # ------------------------------------------------------- 10. openapi-drift --
+  openapi-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.18.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.1"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm contracts:generate
+      - run: node tools/ci/openapi-drift.mjs
+
+  # ---------------------------------------------------------- 11. i18n-check --
+  i18n-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.1"
+      - run: node tools/ci/i18n-check.mjs
+
+  # ------------------------------------------------------- 12. licenses-node --
+  licenses-node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.18.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.1"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node tools/ci/licenses-node.mjs
+
+  # --------------------------------------------------------- 13. licenses-go --
+  licenses-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    defaults:
+      run:
+        working-directory: apps/sender
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: apps/sender/go.sum
+      - run: go install github.com/google/go-licenses@latest
+      - name: licenční brána Go
+        run: go-licenses check ./... --disallowed_types=forbidden,restricted,reciprocal
+
+  # ----------------------------------------------------- 14. migrations-check --
+  migrations-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: mlain_test
+          POSTGRES_USER: mlain_migrator
+          POSTGRES_PASSWORD: mlain
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U mlain_migrator -d mlain_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL_MIGRATOR: postgres://mlain_migrator:mlain@localhost:5432/mlain_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.18.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.1"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node tools/ci/migrations-check.mjs
+
+  # ---------------------------------------------------------- 15. build-image --
+  # Kontrolu velikosti proti limitu 250 MB dělá tenhle job.
+  # Samostatný job image-size NEEXISTUJE a nezavádí se (kapitola 3.15).
+  build-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [lint, typecheck, test-unit, test-go]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: build image
+        run: |
+          docker build -f docker/Dockerfile \
+            --build-arg IMAGE_VERSION="${GITHUB_SHA::12}" \
+            -t mlain:ci .
+      - name: verze binárky není prázdná (kritérium 7e)
+        run: |
+          VERSION="$(docker run --rm mlain:ci ml-sender --version)"
+          test -n "$VERSION"
+          test "$VERSION" = "${GITHUB_SHA::12}"
+      - name: image běží pod uživatelem 10001 (kritérium 7)
+        run: test "$(docker inspect -f '{{.Config.User}}' mlain:ci)" = "10001:10001"
+      - name: devět manifestů se nezploštilo (kritérium 7d)
+        run: |
+          docker build -f docker/Dockerfile --target node-deps -t mlain:deps .
+          for p in config contracts core db emails i18n sdk-node sdk-web ui; do
+            docker run --rm mlain:deps test -f "/app/packages/$p/package.json"
+          done
+      - name: velikost image proti limitu 250 MB
+        run: node tools/ci/image-size.mjs mlain:ci
+      - name: uložit image pro job e2e
+        run: docker save mlain:ci -o /tmp/mlain-ci.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mlain-image
+          path: /tmp/mlain-ci.tar
+          retention-days: 1
+
+  # ------------------------------------------------------------------ 16. e2e --
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [lint, typecheck, test-unit, build-image]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: mlain-image
+          path: /tmp
+      - run: docker load -i /tmp/mlain-ci.tar
+      - run: docker tag mlain:ci ghcr.io/nc-mill/mlain:1.0.0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.18.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.1"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: spustit compose
+        working-directory: docker
+        env:
+          APP_URL: http://localhost:3000
+          SECRET_KEY: "1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        run: docker compose --profile bundled up -d
+      - name: čekat na readiness (kritérium 1)
+        run: |
+          for i in $(seq 1 60); do
+            CODE="$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/health/ready)"
+            if [ "$CODE" = "200" ]; then
+              echo "ready po ${i} s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "instalace neodpověděla 200 na /api/health/ready do 60 sekund" >&2
+          curl -s http://localhost:3000/api/health/ready || true
+          docker compose -f docker/compose.yml logs app || true
+          exit 1
+      - name: graceful shutdown do 30 sekund (kritérium 6)
+        working-directory: docker
+        run: |
+          docker compose kill -s SIGTERM app
+          sleep 30
+          docker compose logs app | grep -q "graceful shutdown"
+      - name: Playwright zlaté cesty
+        run: pnpm turbo run test:e2e
+
+  # ------------------------------------------ 17. security-audit, NEBLOKUJÍCÍ --
+  # Blokující by znamenalo, že libovolné nové CVE ve třetí straně zastaví
+  # vydání i bezpečnostní opravy (kapitola 3.15).
+  security-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.18.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.1"
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: apps/sender/go.sum
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level=high
+      - name: govulncheck
+        working-directory: apps/sender
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...

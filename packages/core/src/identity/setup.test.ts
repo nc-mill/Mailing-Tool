@@ -1,0 +1,146 @@
+import { describe, it, expect, afterAll, beforeAll, beforeEach } from 'vitest';
+import { sql } from 'drizzle-orm';
+import { asMigrator, closeMigratorPool } from '../test-support/migrator';
+import { startPgHarness, type PgHarness } from '../test-support/pg-harness';
+import { closePools, withoutContext } from '../tx';
+import { loadConfig } from '../config';
+import { runSetup, isSetupAvailable } from './setup';
+import { verifyPassword } from './password';
+
+let harness: PgHarness;
+
+/**
+ * Úklid MUSÍ běžet pod `mlain_migrator`, ne pod aplikační rolí.
+ *
+ * `memberships` i `workspaces` mají RLS a bez nastaveného kontextu je `USING`
+ * nepravda, takže `DELETE` smaže **nula řádků a nehlásí chybu**. Prošel by jen
+ * `DELETE FROM users`, protože ta tabulka RLS nemá. `beforeEach` by tedy
+ * vypadal, že uklidil, a test „na prázdné instalaci vrací true" by padal nebo,
+ * ještě hůř, procházel jednou z pěti.
+ */
+async function resetInstallation(): Promise<void> {
+  await asMigrator(async (db) => {
+    await db.query(`DELETE FROM audit_log`);
+    await db.query(`DELETE FROM memberships`);
+    await db.query(`DELETE FROM workspaces`);
+    await db.query(`DELETE FROM users`);
+    await db.query(`UPDATE system_settings SET setup_completed_at = NULL WHERE id = true`);
+  });
+}
+
+beforeAll(async () => {
+  harness = await startPgHarness();
+}, 180_000);
+
+afterAll(async () => {
+  await closeMigratorPool();
+  await closePools();
+  await harness?.stop();
+}, 120_000);
+
+const input = {
+  email: 'owner@example.cz',
+  password: 'dostatecne-dlouhe-heslo',
+  name: 'Petr',
+  workspace_name: 'Můj projekt',
+  locale: 'cs',
+  ip: '10.0.0.1',
+  userAgent: 'vitest',
+  requestId: 'r',
+};
+
+beforeEach(resetInstallation);
+
+describe('isSetupAvailable', () => {
+  it('na prázdné instalaci vrací true', async () => {
+    expect(await isSetupAvailable()).toBe(true);
+  });
+
+  it('po dokončení vrací false', async () => {
+    await runSetup(input);
+    expect(await isSetupAvailable()).toBe(false);
+  });
+});
+
+describe('runSetup', () => {
+  it('vytvoří uživatele, projekt a členství owner v jedné transakci', async () => {
+    const result = await runSetup(input);
+    expect(result.user.email).toBe('owner@example.cz');
+    expect(result.workspace.name).toBe('Můj projekt');
+
+    // Čte se pod migrátorem: `memberships` i `workspaces` mají RLS a bez
+    // kontextu by aplikační role viděla nula řádků, takže by test tvrdil
+    // "nic nevzniklo" i tehdy, kdyby všechno proběhlo správně.
+    const rows = await asMigrator(async (db) => {
+      const r = await db.query<{ email: string; slug: string; role: string }>(`
+        SELECT u.email, w.slug, m.role
+          FROM memberships m
+          JOIN users u ON u.id = m.user_id
+          JOIN workspaces w ON w.id = m.workspace_id
+      `);
+      return r.rows;
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.role).toBe('owner');
+  });
+
+  it('slug se odvodí z názvu a je URL bezpečný', async () => {
+    const result = await runSetup({ ...input, workspace_name: 'Můj Skvělý Projekt 2026' });
+    expect(result.workspace.slug).toMatch(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/);
+    expect(result.workspace.slug).toBe('muj-skvely-projekt-2026');
+  });
+
+  it('heslo se uloží jako Argon2id, nikdy v otevřené podobě', async () => {
+    await runSetup(input);
+    const rows = await withoutContext(async (tx) => {
+      const r = await tx.execute<{ password_hash: string }>(sql`SELECT password_hash FROM users`);
+      return r.rows;
+    });
+    expect(rows[0]!.password_hash.startsWith('$argon2id$')).toBe(true);
+    expect(await verifyPassword(rows[0]!.password_hash, input.password)).toBe(true);
+  });
+
+  it('locale a timezone se vyplní explicitně z konfigurace, ne z DEFAULT v DDL', async () => {
+    const config = loadConfig();
+    await runSetup({ ...input, locale: undefined });
+    const rows = await asMigrator(async (db) => {
+      const r = await db.query<{ locale: string; timezone: string }>(
+        `SELECT locale, timezone FROM workspaces`,
+      );
+      return r.rows;
+    });
+    expect(rows[0]!.locale).toBe(config.DEFAULT_LOCALE);
+    expect(rows[0]!.timezone).toBe(config.DEFAULT_TIMEZONE);
+  });
+
+  it('druhé volání vrací setup_already_completed 409', async () => {
+    await runSetup(input);
+    await expect(runSetup({ ...input, email: 'druhy@example.cz' })).rejects.toMatchObject({
+      code: 'setup_already_completed',
+      status: 409,
+    });
+  });
+
+  it('slabé heslo vrací validation_failed a nic nevytvoří', async () => {
+    await expect(runSetup({ ...input, password: 'kratke' })).rejects.toMatchObject({
+      code: 'validation_failed',
+    });
+    const rows = await withoutContext(async (tx) => {
+      const r = await tx.execute(sql`SELECT 1 FROM users`);
+      return r.rows;
+    });
+    expect(rows).toHaveLength(0);
+  });
+
+  it('zapíše workspace.created do audit logu', async () => {
+    const result = await runSetup(input);
+    const rows = await asMigrator(async (db) => {
+      const r = await db.query<{ workspace_id: string }>(
+        `SELECT workspace_id::text AS workspace_id FROM audit_log WHERE action = 'workspace.created'`,
+      );
+      return r.rows;
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.workspace_id).toBe(result.workspace.id);
+  });
+});

@@ -1,0 +1,9 @@
+{
+  "id": "LQ-308",
+  "description": "literály blank a empty validátor odmítá, protože je osteele/liquid nezná",
+  "level": "authored",
+  "template": "{% if contact.city == blank or contact.tags == empty %}x{% endif %}",
+  "expect_validation_error": {
+    "code": "liquid_literal_not_supported"
+  }
+}

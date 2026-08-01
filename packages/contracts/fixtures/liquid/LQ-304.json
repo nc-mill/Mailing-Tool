@@ -1,0 +1,11 @@
+{
+  "id": "LQ-304",
+  "description": "chybějící hodnota je nil, tedy nepravdivá",
+  "context": "html",
+  "level": "authored",
+  "template": "{% if contact.is_vip %}A{% else %}B{% endif %}",
+  "data": {
+    "contact": {}
+  },
+  "expected": "B"
+}

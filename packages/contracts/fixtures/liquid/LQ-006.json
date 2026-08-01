@@ -1,0 +1,13 @@
+{
+  "id": "LQ-006",
+  "description": "v textové části se neescapuje nic",
+  "context": "text",
+  "level": "authored",
+  "template": "{{ contact.note }}",
+  "data": {
+    "contact": {
+      "note": "a&b<c>d\"e'f"
+    }
+  },
+  "expected": "a&b<c>d\"e'f"
+}

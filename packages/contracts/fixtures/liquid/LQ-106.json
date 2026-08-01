@@ -1,0 +1,13 @@
+{
+  "id": "LQ-106",
+  "description": "default na vyplněné hodnotě vrací hodnotu",
+  "context": "html",
+  "level": "compiled",
+  "template": "{{ contact.first_name | default: \"kolego\" }}",
+  "data": {
+    "contact": {
+      "first_name": "Jana"
+    }
+  },
+  "expected": "Jana"
+}

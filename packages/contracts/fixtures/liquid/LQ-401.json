@@ -1,0 +1,13 @@
+{
+  "id": "LQ-401",
+  "description": "cyklus přes prázdné pole neproběhne",
+  "context": "html",
+  "level": "authored",
+  "template": "[{% for item in contact.tags %}{{ item }}{% endfor %}]",
+  "data": {
+    "contact": {
+      "tags": []
+    }
+  },
+  "expected": "[]"
+}

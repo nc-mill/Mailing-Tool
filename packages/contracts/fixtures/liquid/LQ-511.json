@@ -1,0 +1,10 @@
+{
+  "id": "LQ-511",
+  "description": "formát data mimo whitelist v kompilované šabloně",
+  "level": "compiled",
+  "template": "{{ contact.signup_at | date: \"%B %Y\" }}",
+  "expect_validation_error": {
+    "code": "liquid_date_format_not_allowed",
+    "hint_contains": "%B %Y"
+  }
+}

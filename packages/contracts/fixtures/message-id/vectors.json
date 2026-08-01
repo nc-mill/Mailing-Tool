@@ -1,0 +1,37 @@
+{
+  "contractVersion": 1,
+  "cases": [
+    {
+      "id": "MI-001",
+      "message_id": "0192f3a0-1c2d-7e41-8b2c-3d4e5f607182",
+      "sending_domain": "mail.example.cz",
+      "sides": ["ts", "go"],
+      "expected_base32": "agjphia4fv7edczmhvhf6ydrqi",
+      "expected_header": "<ml.agjphia4fv7edczmhvhf6ydrqi@mail.example.cz>"
+    },
+    {
+      "id": "MI-002",
+      "message_id": "00000000-0000-0000-0000-000000000000",
+      "sending_domain": "mail.example.cz",
+      "sides": ["ts", "go"],
+      "expected_base32": "aaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expected_header": "<ml.aaaaaaaaaaaaaaaaaaaaaaaaaa@mail.example.cz>"
+    },
+    {
+      "id": "MI-003",
+      "message_id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "sending_domain": "mail.example.cz",
+      "sides": ["ts", "go"],
+      "expected_base32": "77777777777777777777777774",
+      "expected_header": "<ml.77777777777777777777777774@mail.example.cz>"
+    },
+    {
+      "id": "MI-004",
+      "message_id": "0192f3a0-1c2d-7e40-3a9a-b8e5f0e0e388",
+      "sending_domain": "zasilky.firma.cz",
+      "sides": ["ts", "go"],
+      "expected_base32": "agjphia4fv7eaou2xds7byhdra",
+      "expected_header": "<ml.agjphia4fv7eaou2xds7byhdra@zasilky.firma.cz>"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "LQ-510",
+  "description": "filtr vocative má vlastní hlášku s nápovědou na správný tag",
+  "level": "authored",
+  "template": "{{ contact.first_name | vocative }}",
+  "expect_validation_error": {
+    "code": "liquid_vocative_filter",
+    "hint_contains": "first_name_vocative"
+  }
+}

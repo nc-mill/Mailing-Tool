@@ -1,0 +1,4 @@
+#!/bin/sh
+# Tenký shim. Celé CLI je v apps/cli, aby do adresáře docker/ nemusely psát
+# plány P03 a P16 (rozhodnutí D1, uzávěr S10).
+exec node /app/apps/cli/dist/main.js "$@"

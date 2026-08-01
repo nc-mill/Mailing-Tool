@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mlain.local/schema/columns.schema.json",
+  "title": "Manifest kontraktních sloupců. Čte ho tools/ci/contracts-schema.mjs z P01.",
+  "type": "object",
+  "minProperties": 1,
+  "additionalProperties": {
+    "type": "object",
+    "minProperties": 1,
+    "additionalProperties": {
+      "type": "string",
+      "description": "Hodnota information_schema.columns.data_type, tedy PostgreSQL názvosloví: 'uuid', 'text', 'timestamp with time zone'."
+    },
+    "propertyNames": { "pattern": "^[a-z_][a-z0-9_]*$" }
+  },
+  "propertyNames": { "pattern": "^[a-z_][a-z0-9_]*$" }
+}

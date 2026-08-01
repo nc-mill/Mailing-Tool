@@ -1,0 +1,9 @@
+{
+  "id": "LQ-503",
+  "description": "operátor contains",
+  "level": "authored",
+  "template": "{% if contact.tags contains 1 %}x{% endif %}",
+  "expect_validation_error": {
+    "code": "liquid_contains_not_allowed"
+  }
+}

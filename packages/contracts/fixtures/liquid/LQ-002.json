@@ -1,0 +1,15 @@
+{
+  "id": "LQ-002",
+  "description": "vnořená cesta o třech segmentech",
+  "context": "html",
+  "level": "authored",
+  "template": "[{{ contact.attr.city }}]",
+  "data": {
+    "contact": {
+      "attr": {
+        "city": "Brno"
+      }
+    }
+  },
+  "expected": "[Brno]"
+}

@@ -35,3 +35,23 @@ coverage/
 
 # Tool artifacts
 .playwright-mcp/
+
+# Turborepo
+.turbo/
+
+# Next.js
+.next/
+next-env.d.ts
+
+# Data a zálohy lokálního compose
+/data/
+
+# Go
+apps/sender/ml-sender
+
+# Vitest
+.vitest-reports/
+
+# Lokální vývojová data mimo git
+.dev-data/
+apps/web/.env.local

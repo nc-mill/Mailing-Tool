@@ -1,0 +1,13 @@
+{
+  "id": "LQ-109",
+  "description": "escape je no-op, hodnota se neescapuje dvakrát",
+  "context": "html",
+  "level": "authored",
+  "template": "{{ contact.note | escape }}",
+  "data": {
+    "contact": {
+      "note": "a&b"
+    }
+  },
+  "expected": "a&amp;b"
+}

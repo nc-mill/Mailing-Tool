@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mlain.local/schema/compiled.schema.json",
+  "title": "Fixture kontraktu 5. Data píše P08, schéma a runner vlastní P02 (rozhodnutí R3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "description", "document", "context", "compiled", "expect"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^CT-[0-9]{3}$" },
+    "description": { "type": "string", "minLength": 1 },
+    "document": { "type": "object" },
+    "compiled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["html", "text"],
+      "properties": {
+        "html": { "type": "string" },
+        "text": { "type": "string" }
+      },
+      "description": "Výstup renderu P08. Čte ho i Go strana, která blokový model nezná a dostává hotové compiled_html a compiled_text."
+    },
+    "context": {
+      "type": "object",
+      "required": ["trackOpens", "trackClicks", "language"],
+      "properties": {
+        "campaignId": { "type": "string", "format": "uuid" },
+        "trackOpens": { "type": "boolean" },
+        "trackClicks": { "type": "boolean" },
+        "language": { "type": "string" },
+        "purpose": { "enum": ["send", "preview", "test"] }
+      }
+    },
+    "expect": {
+      "type": "object",
+      "properties": {
+        "htmlContains": { "type": "array", "items": { "type": "string" } },
+        "textContains": { "type": "array", "items": { "type": "string" } },
+        "clickMarkerCount": { "type": "integer", "minimum": 0 },
+        "hasOpenPixelSlot": { "type": "boolean" },
+        "links": { "type": "array", "items": { "type": "object" } },
+        "error": { "type": "string" }
+      }
+    }
+  }
+}

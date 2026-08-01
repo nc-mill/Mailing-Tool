@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mlain.local/schema/crypto.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "secret_key", "positive", "negative"],
+  "properties": {
+    "contractVersion": { "const": 1 },
+    "secret_key": { "type": "string" },
+    "positive": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "key_id",
+          "context",
+          "workspace_id",
+          "nonce_hex",
+          "plaintext",
+          "expected_header_hex",
+          "expected_aad_hex",
+          "expected_ciphertext_hex",
+          "expected_tag_hex",
+          "expected_stored",
+          "expected_envelope_bytes"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^CR-P[0-9]+$" },
+          "key_id": { "type": "integer", "minimum": 1, "maximum": 255 },
+          "context": { "$ref": "#/$defs/context" },
+          "sides": { "$ref": "#/$defs/sides" },
+          "workspace_id": { "type": "string", "format": "uuid" },
+          "nonce_hex": { "type": "string", "pattern": "^[0-9a-f]{24}$" },
+          "plaintext": { "type": "string" },
+          "expected_header_hex": { "type": "string", "pattern": "^[0-9a-f]+$" },
+          "expected_aad_hex": { "type": "string", "pattern": "^[0-9a-f]+$" },
+          "expected_ciphertext_hex": { "type": "string", "pattern": "^[0-9a-f]+$" },
+          "expected_tag_hex": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+          "expected_stored": { "type": "string", "pattern": "^enc:v1:" },
+          "expected_envelope_bytes": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "negative": {
+      "type": "array",
+      "minItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "stored", "context", "workspace_id", "expected_error"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^CR-N[0-9]+$" },
+          "stored": { "type": "string" },
+          "context": { "$ref": "#/$defs/context" },
+          "sides": { "$ref": "#/$defs/sides" },
+          "workspace_id": { "type": "string", "format": "uuid" },
+          "expected_error": {
+            "enum": [
+              "crypto_envelope_malformed",
+              "crypto_unsupported_version",
+              "crypto_context_mismatch",
+              "crypto_unknown_key",
+              "crypto_auth_failed"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "context": {
+      "enum": ["sending_provider", "ai_provider", "webhook_secret", "oauth_token"],
+      "description": "Uzavřený výčet ze 4.10.4. Schéma ho VYNUCUJE, jinak se do fixture dostane kontext, který v produktu nemůže vzniknout."
+    },
+    "sides": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["ts", "go"] }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@mlain/cli",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "mlain": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "@mlain/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@mlain/config": "workspace:*",
+    "esbuild": "^0.25.0",
+    "vitest": "4.1.10"
+  }
+}

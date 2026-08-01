@@ -1,0 +1,13 @@
+{
+  "id": "LQ-105",
+  "description": "nula NENÍ prázdná, default se neuplatní",
+  "context": "html",
+  "level": "compiled",
+  "template": "{{ contact.score | default: \"kolego\" }}",
+  "data": {
+    "contact": {
+      "score": 0
+    }
+  },
+  "expected": "0"
+}

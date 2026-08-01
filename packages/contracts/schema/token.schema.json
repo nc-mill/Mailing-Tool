@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mlain.local/schema/token.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "secret_key", "positive", "negative"],
+  "properties": {
+    "contractVersion": { "const": 1 },
+    "note": { "type": "string" },
+    "secret_key": { "type": "string" },
+    "positive": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "key_id", "fields", "expected_token", "expected_mac_full"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^TK-P[0-9]+$" },
+          "type": { "enum": ["o", "c", "i", "u"] },
+          "key_id": { "type": "integer", "minimum": 1, "maximum": 255 },
+          "fields": { "type": "object" },
+          "expected_token": { "type": "string", "pattern": "^t1[A-Za-z0-9_-]+$" },
+          "expected_mac_full": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "sides": { "$ref": "#/$defs/sides" }
+        }
+      }
+    },
+    "negative": {
+      "type": "array",
+      "minItems": 9,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "token", "endpoint_type", "expected_error"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^TK-N[0-9]+$" },
+          "token": { "type": "string" },
+          "endpoint_type": { "enum": ["o", "c", "i", "u"] },
+          "expected_error": {
+            "enum": [
+              "token_malformed",
+              "token_signature_invalid",
+              "token_type_mismatch",
+              "token_unknown_key",
+              "token_expired",
+              "token_already_used"
+            ]
+          },
+          "now": { "type": "integer" },
+          "nonce_used": { "type": "boolean" },
+          "sides": { "$ref": "#/$defs/sides" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sides": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["ts", "go"] },
+      "description": "Které jazykové strany vektor zpracují. Musí obsahovat aspoň ts."
+    }
+  }
+}

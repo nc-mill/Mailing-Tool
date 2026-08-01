@@ -1,0 +1,14 @@
+{
+  "id": "LQ-306",
+  "description": "and, or a elsif v jedné šabloně",
+  "context": "html",
+  "level": "authored",
+  "template": "{% if contact.is_vip and contact.active %}A{% elsif contact.is_vip or contact.active %}B{% else %}C{% endif %}",
+  "data": {
+    "contact": {
+      "is_vip": true,
+      "active": false
+    }
+  },
+  "expected": "B"
+}

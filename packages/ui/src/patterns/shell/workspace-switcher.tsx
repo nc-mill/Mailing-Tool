@@ -1,0 +1,70 @@
+'use client';
+
+import { ChevronDown } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../components/dropdown-menu';
+import { workspaceAccent } from '../../lib/workspace-accent';
+
+export type WorkspaceSummary = { id: string; slug: string; name: string };
+
+/**
+ * Přepínač projektů. Uživatel musí vždy vědět, ve kterém projektu je,
+ * protože jinak pošle kampaň špatným lidem.
+ *
+ * Přepnutí vede **vždy na Přehled** nového projektu, nikdy na stejnou
+ * stránku v cizím projektu: kampaň s tímhle id tam neexistuje.
+ */
+export function WorkspaceSwitcher({
+  workspaces,
+  currentId,
+  theme,
+  onSwitch,
+  labels,
+}: {
+  workspaces: WorkspaceSummary[];
+  currentId: string;
+  theme: 'light' | 'dark';
+  onSwitch: (slug: string) => void;
+  labels: { switcher: string; current: (name: string) => string };
+}) {
+  const current = workspaces.find((workspace) => workspace.id === currentId);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        // Název tlačítka musí obsahovat viditelný text, jinak hlasové ovládání
+        // nenajde projekt, který uživatel čte na obrazovce (WCAG 2.5.3).
+        // Popis akce se přidává skrytým textem, ne aria-label, který by
+        // viditelný název přebil.
+        aria-label={current ? undefined : labels.switcher}
+        className="flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] px-3 text-sm font-medium text-text hover:bg-surface-muted"
+      >
+        <span
+          data-testid="workspace-accent"
+          aria-hidden="true"
+          className="inline-block h-4 w-1.5 rounded-full"
+          style={{ backgroundColor: workspaceAccent(currentId) }}
+        />
+        {current ? labels.current(current.name) : labels.switcher}
+        {current ? <span className="sr-only">{labels.switcher}</span> : null}
+        <ChevronDown aria-hidden className="size-4 text-text-muted" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        {workspaces.map((workspace) => (
+          <DropdownMenuItem key={workspace.id} onSelect={() => onSwitch(workspace.slug)}>
+            <span
+              aria-hidden
+              className="inline-block h-4 w-1.5 rounded-full"
+              style={{ backgroundColor: workspaceAccent(workspace.id) }}
+            />
+            {workspace.name}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

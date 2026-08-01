@@ -1,0 +1,13 @@
+{
+  "id": "LQ-603",
+  "description": "emoji se ZWJ a vlajka projdou beze změny",
+  "context": "html",
+  "level": "authored",
+  "template": "{{ contact.note | upcase }}",
+  "data": {
+    "contact": {
+      "note": "👩‍👩‍👧‍👦 🇨🇿"
+    }
+  },
+  "expected": "👩‍👩‍👧‍👦 🇨🇿"
+}

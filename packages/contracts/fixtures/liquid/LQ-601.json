@@ -1,0 +1,13 @@
+{
+  "id": "LQ-601",
+  "description": "upcase nad českou diakritikou a nad ch, které je jedno písmeno",
+  "context": "html",
+  "level": "authored",
+  "template": "{{ contact.note | upcase }}",
+  "data": {
+    "contact": {
+      "note": "ěščřžýáíéůúňťď chalupa"
+    }
+  },
+  "expected": "ĚŠČŘŽÝÁÍÉŮÚŇŤĎ CHALUPA"
+}

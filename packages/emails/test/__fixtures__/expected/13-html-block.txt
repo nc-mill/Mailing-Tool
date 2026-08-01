@@ -1,0 +1,9 @@
+Ruční HTML s merge tagem {{ contact.first_name }}.
+
+Odkaz uvnitř bloku html
+
+{{ workspace.sender_address }}
+
+Odhlásit se z odběru: {{ unsubscribe_url }}
+Nastavit předvolby: {{ preferences_url }}
+Zobrazit v prohlížeči: {{ webview_url }}

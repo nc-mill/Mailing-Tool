@@ -1,0 +1,131 @@
+// POZOR: soubor je zatím pod příponou `.pending`, tedy mimo vzory `tsconfig.json`
+// i `vitest.config.ts`, a nespouští se.
+//
+// Obsah je doslovné znění z úkolu 20 plánu docs/superpowers/plans/2026-07-31-p02-kontrakty-golden-fixtures.md,
+// kroku 1. Běžet může teprve tehdy, až přistane úkol 2 téhož plánu, protože odtud
+// pochází `test/db/helpers.ts` (spojení, role, bootstrap). Ten čeká na schéma z P03
+// (ověřeno u P02-A-outbox: úkol 2 teď nedělá nikdo ze čtyř souběžných P02 agentů).
+//
+// Až harness přistane, soubor se přejmenuje na `20-contract-columns.test.ts` a spustí
+// příkazem `pnpm --filter @mlain/contracts run test:schema`. Nic jiného se v něm nemění.
+
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { FOREIGN_CONTRACT_COLUMNS, MESSAGES_CONTRACT_COLUMNS } from '../../src/outbox.js';
+import { type ContractDb, packageRoot, startContractDb, stopContractDb } from './helpers.js';
+
+let db: ContractDb;
+
+beforeAll(async () => {
+  db = await startContractDb();
+}, 180_000);
+afterAll(async () => stopContractDb(db));
+
+describe('contracts-schema: kontraktní sloupce', () => {
+  it('manifest leží tam, kde ho hledá P01, a má tvar, který P01 čte', async () => {
+    // tools/ci/contracts-schema.mjs čte packages/contracts/schema/columns.json
+    // a iteruje Object.entries na dvou úrovních: { tabulka: { sloupec: typ } }.
+    // Dřívější znění generovalo fixtures/outbox/contract-columns.json v jiném
+    // tvaru, takže soubor, který skript hledá, nikdy nevznikl a job tiše
+    // přeskočil; kontraktní sloupce po migracích nehlídalo nic.
+    const manifest = JSON.parse(
+      await readFile(path.join(packageRoot, 'schema', 'columns.json'), 'utf8'),
+    ) as Record<string, Record<string, string>>;
+
+    expect(manifest.messages).toEqual(MESSAGES_CONTRACT_COLUMNS);
+    expect(Object.keys(manifest).sort()).toEqual([
+      'campaigns',
+      'messages',
+      'suppressions',
+      'workspaces',
+    ]);
+    for (const columns of Object.values(manifest)) {
+      for (const type of Object.values(columns)) {
+        expect(typeof type).toBe('string');
+      }
+    }
+  });
+
+  it('sloupce cizích tabulek v manifestu jsou podmnožinou kontraktního výčtu', async () => {
+    const manifest = JSON.parse(
+      await readFile(path.join(packageRoot, 'schema', 'columns.json'), 'utf8'),
+    ) as Record<string, Record<string, string>>;
+    for (const table of ['campaigns', 'workspaces', 'suppressions'] as const) {
+      expect(Object.keys(manifest[table]!).sort()).toEqual(
+        [...FOREIGN_CONTRACT_COLUMNS[table]!].sort(),
+      );
+    }
+  });
+
+  it('každý kontraktní sloupec messages existuje a má očekávaný typ', async () => {
+    const { rows } = await db.migrator.query<{ column_name: string; data_type: string }>(
+      `SELECT column_name, data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'messages'`,
+    );
+    const actual = Object.fromEntries(
+      rows.map((r: { column_name: string; data_type: string }) => [r.column_name, r.data_type]),
+    );
+    const mismatches: string[] = [];
+    for (const [column, type] of Object.entries(MESSAGES_CONTRACT_COLUMNS)) {
+      if (!(column in actual)) mismatches.push(`chybí sloupec ${column}`);
+      else if (actual[column] !== type)
+        mismatches.push(`${column} má typ ${actual[column]}, čeká se ${type}`);
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it('kontraktní sloupce cizích tabulek existují všude, kde tabulka existuje', async () => {
+    const mismatches: string[] = [];
+    for (const [table, columns] of Object.entries(FOREIGN_CONTRACT_COLUMNS)) {
+      const { rows } = await db.migrator.query<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = $1`,
+        [table],
+      );
+      if (rows.length === 0) continue; // tabulku vlastní jiná část a v bootstrapu být nemusí
+      const present = new Set(rows.map((r: { column_name: string }) => r.column_name));
+      for (const column of columns) {
+        if (!present.has(column)) mismatches.push(`${table}.${column} chybí`);
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it('sender nemá UPDATE grant na created_at a má ho na ambiguous_count', async () => {
+    const { rows } = await db.migrator.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.column_privileges
+        WHERE grantee = 'mlain_sender' AND table_name = 'messages' AND privilege_type = 'UPDATE'`,
+    );
+    const granted = rows.map((r: { column_name: string }) => r.column_name);
+    expect(granted).not.toContain('created_at');
+    expect(granted).toContain('ambiguous_count');
+    expect(granted.sort()).toEqual(
+      [
+        ...new Set([
+          'status',
+          'claimed_by',
+          'claimed_at',
+          'claim_expires_at',
+          'dispatch_started_at',
+          'attempts',
+          'next_attempt_at',
+          'provider_message_id',
+          'sent_at',
+          'error_code',
+          'error_detail',
+          'ambiguous_count',
+          'updated_at',
+        ]),
+      ].sort(),
+    );
+  });
+
+  it('politika sender_bypass existuje na každé tabulce, kterou sender čte', async () => {
+    const { rows } = await db.migrator.query<{ tablename: string }>(
+      `SELECT tablename FROM pg_policies WHERE policyname = 'sender_bypass'`,
+    );
+    const tables = rows.map((r: { tablename: string }) => r.tablename).sort();
+    expect(tables).toEqual(['campaigns', 'messages', 'suppressions', 'workspaces']);
+  });
+});

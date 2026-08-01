@@ -1,0 +1,10 @@
+{
+  "id": "LQ-509",
+  "description": "operátor porovnání, který renderer escapuje",
+  "level": "authored",
+  "template": "{% if contact.score > 5 %}x{% endif %}",
+  "expect_validation_error": {
+    "code": "liquid_comparison_operator_not_supported",
+    "hint_contains": ">"
+  }
+}

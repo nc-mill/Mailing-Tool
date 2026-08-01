@@ -1,0 +1,10 @@
+facebook:
+https://facebook.com/mlain
+linkedin:
+https://linkedin.com/company/mlain
+
+{{ workspace.sender_address }}
+
+Odhlásit se z odběru: {{ unsubscribe_url }}
+Nastavit předvolby: {{ preferences_url }}
+Zobrazit v prohlížeči: {{ webview_url }}

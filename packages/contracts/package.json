@@ -1,0 +1,97 @@
+{
+  "name": "@mlain/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./outbox": {
+      "types": "./dist/outbox.d.ts",
+      "import": "./dist/outbox.js"
+    },
+    "./outbox-errors": {
+      "types": "./dist/outbox-errors.d.ts",
+      "import": "./dist/outbox-errors.js"
+    },
+    "./pause-reason": {
+      "types": "./dist/pause-reason.d.ts",
+      "import": "./dist/pause-reason.js"
+    },
+    "./keyring": {
+      "types": "./dist/keyring.d.ts",
+      "import": "./dist/keyring.js"
+    },
+    "./token": {
+      "types": "./dist/token.d.ts",
+      "import": "./dist/token.js"
+    },
+    "./message-id": {
+      "types": "./dist/message-id.d.ts",
+      "import": "./dist/message-id.js"
+    },
+    "./crypto": {
+      "types": "./dist/crypto.d.ts",
+      "import": "./dist/crypto.js"
+    },
+    "./markers": {
+      "types": "./dist/markers.d.ts",
+      "import": "./dist/markers.js"
+    },
+    "./liquid": {
+      "types": "./dist/liquid/validator.d.ts",
+      "import": "./dist/liquid/validator.js"
+    },
+    "./liquid/engine": {
+      "types": "./dist/liquid/engine.d.ts",
+      "import": "./dist/liquid/engine.js"
+    },
+    "./liquid/filters": {
+      "types": "./dist/liquid/filters.d.ts",
+      "import": "./dist/liquid/filters.js"
+    },
+    "./liquid/grammar": {
+      "types": "./dist/liquid/grammar.d.ts",
+      "import": "./dist/liquid/grammar.js"
+    },
+    "./liquid/prepare-render-data": {
+      "types": "./dist/liquid/prepare-render-data.d.ts",
+      "import": "./dist/liquid/prepare-render-data.js"
+    },
+    "./compiled": {
+      "types": "./dist/compiled.d.ts",
+      "import": "./dist/compiled.js"
+    },
+    "./fixtures/*": "./fixtures/*",
+    "./schema/*": "./schema/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "fixtures",
+    "schema",
+    "config.json",
+    "openapi.json"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run --project unit",
+    "test:golden": "vitest run --project golden",
+    "test:schema": "vitest run --project db-ob00 && vitest run --project db-rest",
+    "test:fixtures-schema": "tsx scripts/validate-fixtures.ts",
+    "test:parity": "tsx scripts/check-parity.ts",
+    "contracts:generate": "tsx scripts/generate-fixtures.ts && tsx scripts/sync-config-manifest.ts"
+  },
+  "dependencies": {
+    "liquidjs": "10.27.2"
+  },
+  "devDependencies": {
+    "@types/pg": "8.15.6",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "pg": "8.22.0",
+    "testcontainers": "12.0.4",
+    "tsx": "^4.20.0",
+    "vitest": "4.1.10"
+  }
+}

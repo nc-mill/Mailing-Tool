@@ -1,0 +1,9 @@
+{
+  "id": "LQ-502",
+  "description": "whitespace control",
+  "level": "authored",
+  "template": "{{- contact.first_name -}}",
+  "expect_validation_error": {
+    "code": "liquid_whitespace_control_not_allowed"
+  }
+}

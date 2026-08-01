@@ -1,0 +1,13 @@
+{
+  "id": "LQ-305",
+  "description": "porovnání různých typů je false, nikdy chyba",
+  "context": "html",
+  "level": "authored",
+  "template": "{% if contact.age == 10 %}A{% else %}B{% endif %}",
+  "data": {
+    "contact": {
+      "age": "10"
+    }
+  },
+  "expected": "B"
+}

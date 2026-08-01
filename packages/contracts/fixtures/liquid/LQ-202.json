@@ -1,0 +1,16 @@
+{
+  "id": "LQ-202",
+  "description": "formát bez paddingu s jednociferným dnem i měsícem",
+  "context": "html",
+  "level": "compiled",
+  "template": "{{ contact.signup_at | date: \"%-d.%-m.%Y\" }}",
+  "data": {
+    "contact": {
+      "signup_at": "2026-08-01T12:40:00Z"
+    },
+    "_context": {
+      "timezone": "Europe/Prague"
+    }
+  },
+  "expected": "1.8.2026"
+}

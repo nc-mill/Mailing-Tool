@@ -1,0 +1,21 @@
+node_modules/
+.turbo/
+.next/
+dist/
+coverage/
+pnpm-lock.yaml
+packages/core/src/config/config.manifest.json
+apps/worker/src/handlers.generated.ts
+packages/contracts/reports/
+docs/
+*.md
+!README.md
+
+# Golden soubory se NEFORMÁTUJÍ. Je to očekávaný výstup rendereru bajt po bajtu,
+# takže každé přeformátování je změna toho, proti čemu se porovnává.
+# Naměřeno: jeden běh `prettier --write .` shodil šestnáct golden testů.
+# Horší varianta by byla, kdyby si někdo snapshoty po takovém běhu jen
+# přegeneroval; golden test by pak porovnával přeformátovaný výstup sám se sebou
+# a přestal by hlídat cokoliv.
+packages/emails/test/__fixtures__/expected/
+packages/contracts/fixtures/

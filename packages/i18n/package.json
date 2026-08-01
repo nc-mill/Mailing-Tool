@@ -1,0 +1,33 @@
+{
+  "name": "@mlain/i18n",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./locales": "./src/locales.ts",
+    "./load-messages": "./src/load-messages.ts",
+    "./routing": "./src/routing.ts",
+    "./navigation": "./src/navigation.ts",
+    "./request": "./src/request.ts",
+    "./next-plugin": "./src/next-plugin.ts",
+    "./format": "./src/format.ts",
+    "./formats": "./src/formats.ts",
+    "./messages/*": "./messages/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "next-intl": "4.13.4"
+  },
+  "devDependencies": {
+    "@mlain/config": "workspace:*",
+    "@types/react": "^19.2.18",
+    "intl-messageformat": "11.2.13",
+    "next": "16.2.12",
+    "react": "^19.2.8",
+    "vitest": "4.1.10"
+  }
+}

@@ -145,7 +145,19 @@ Pravidlo není přání: úplný seznam takových odkazů je registr `PARTITIONE
 | `user_own_global_audit` | `audit_log`, jen `FOR SELECT` | 1 |
 | `sender_bypass` | `messages`, `campaigns`, `sending_providers`, `campaign_links`, `workspaces`, `suppressions`, `message_events`, `campaign_render_warnings` | 8 |
 | `maintenance_bypass` | `web_events`, pro `mlain_maintenance` | 1 |
-| **Celkem** | | **80** |
+| `api_key_lookup` | `api_keys`, jen `FOR SELECT` | 1 |
+| `api_key_touch` | `api_keys`, jen `FOR UPDATE` | 1 |
+| `ws_api_key_lookup` | `workspaces`, jen `FOR SELECT` | 1 |
+| `invitation_token_lookup` | `invitations`, jen `FOR SELECT` | 1 |
+| **Celkem** | | **84** |
+
+Počet je přepočítaný z `pg_policies` na čisté databázi po celé sérii migrací, ne odhadem z tabulky výš.
+
+Poslední čtyři politiky doplňuje tenhle plán na požadavky **P04→P03.5** a **P04→P03.6** a mají společnou příčinu: obě cesty zjišťují projekt teprve z tajemství, které poslal volající, takže workspace kontext v okamžiku dotazu **z principu neexistuje**. Bez nich by pod `ws_isolation` vracel dotaz nula řádků a vypadalo by to jako správné odmítnutí: každý požadavek s hlavičkou `Authorization: Bearer ml_live_...` by skončil na `unauthenticated` a `acceptInvitation` by vracelo 404 vždy. Ani jedno by nespadlo hlasitě.
+
+`ws_api_key_lookup` je nutná proto, že ověřovací dotaz JOINuje `workspaces` kvůli `deleted_at`: bez ní by se klíč našel a JOIN by ho zase zahodil. Má v `USING` podmínku, že **není nastavený ani jeden** z obou GUC. Bez té podmínky by se uplatnila i na výpisu projektů (`repo/workspaces-global.ts` čte holé `SELECT FROM workspaces` pod `withUser`) a uživatel by ve svém seznamu uviděl cizí projekt jen proto, že má API klíč. Naměřeno spuštěním proti uvolněné variantě: výpis vracel místo dvou vlastních projektů čtyři.
+
+Obdoba pro `invitations` **záměrně neexistuje**. Přijetí pozvánky běží pod `mlain.user_id`, takže by taková politika platila i na výpisu projektů a každý přihlášený uživatel by v seznamu viděl cizí projekt s otevřenou pozvánkou (naměřeno: pět cizích projektů místo nuly). Jméno a slug projektu proto `acceptInvitation` čte **až v druhé transakci**, která workspace kontext z pozvánky nastavuje; tam ho pustí `ws_isolation_self`. Dotaz, který by `invitations` a `workspaces` JOINoval v jedné transakci pod `withUser`, vrátí nula řádků a je to vlastnost, ne vada.
 
 RLS je zapnutá na **67 tabulkách**. Osm tabulek (`users`, `sessions`, `password_reset_tokens`, `system_settings`, `secret_key_generations`, `identity_token_uses`, `proxy_ranges`, `rate_limits`) ji zapnutou nemá.
 
@@ -167,7 +179,7 @@ Politika `maintenance_bypass` je nutná ze stejného důvodu jako `sender_bypass
 | 0001 | `0001_core_tables.sql` | `drizzle-kit generate` | 66 nepartitionovaných tabulek, jejich indexy a omezení |
 | 0002 | `0002_templates_cycle_fk.sql` | `--custom` | cyklický cizí klíč `templates.current_version_id` |
 | 0003 | `0003_partitioned_tables.sql` | `--custom` | 9 partitionovaných rodičů, jejich indexy a cizí klíč invariantu I1 |
-| 0004 | `0004_rls_policies.sql` | `--custom` | `ENABLE ROW LEVEL SECURITY` a všech 80 politik |
+| 0004 | `0004_rls_policies.sql` | `--custom` | `ENABLE ROW LEVEL SECURITY` a všech 84 politik |
 | 0005 | `0005_grants.sql` | `--custom` | funkce `mlain_apply_grants()` a její první zavolání |
 | 0006 | `0006_system_settings_seed.sql` | `--custom` | řádek singletonu |
 
@@ -6279,10 +6291,10 @@ describe('registr RLS proti skutečnému stavu', () => {
     }
   });
 
-  it('celkem existuje 80 politik', async () => {
+  it('celkem existuje 84 politik', async () => {
     const { rows } = await h.as('mlain_migrator').query<{ n: number }>(
       `SELECT count(*)::int AS n FROM pg_policies WHERE schemaname = 'public'`);
-    expect(rows[0].n).toBe(80);
+    expect(rows[0].n).toBe(84);
   });
 });
 ```
@@ -6434,6 +6446,83 @@ CREATE POLICY user_own_memberships ON memberships FOR SELECT
 --> statement-breakpoint
 
 -- ---------------------------------------------------------------------------
+-- api_keys: ověření klíče běží MIMO workspace kontext (požadavek P04→P03.5).
+--
+-- Workspace se z klíče teprve ZJIŠŤUJE, takže ověřovací dotaz nemá co nastavit
+-- a jede přes withoutContext. Pod samotnou ws_isolation by SELECT vracel VŽDY
+-- nula řádků a KAŽDÝ požadavek s hlavičkou `Authorization: Bearer ml_live_...`
+-- by skončil na `unauthenticated`. Nespadlo by to hlasitě: vypadá to jako
+-- „klíč neexistuje", tedy jako správné odmítnutí.
+--
+-- Politika NEFILTRUJE expires_at. Vypršelý klíč musí ověřovací algoritmus
+-- najít a odmítnout vlastním kódem chyby; kdyby ho politika schovala, dostal
+-- by integrátor „klíč neexistuje" místo „klíč vypršel".
+-- ---------------------------------------------------------------------------
+CREATE POLICY api_key_lookup ON api_keys FOR SELECT
+  USING (NULLIF(current_setting('mlain.workspace_id', true), '') IS NULL
+         AND revoked_at IS NULL);
+--> statement-breakpoint
+-- Zápis last_used_at běží toutéž cestou bez kontextu, jen mimo hlavní
+-- transakci. Bez politiky pro UPDATE by se `last_used_at` nezapsal nikdy
+-- a ticho by bylo úplné: zápis je fire and forget a chybu nikdo nečte.
+--
+-- WITH CHECK je tu úmyslně PŘÍSNĚJŠÍ než USING a je to táž úvaha jako
+-- u sender_bypass na campaigns: politika, která pouští UPDATE, nesmí mlčet
+-- o HODNOTÁCH. Nový řádek musí nést čerstvý last_used_at, takže bezkontextový
+-- `UPDATE api_keys SET scopes = ...` skončí chybou RLS místo tichého rozšíření
+-- oprávnění klíče. Není to zeď (kdo přidá i last_used_at = now(), projde),
+-- je to pojistka, která tichou cestu mění na hlasitou.
+CREATE POLICY api_key_touch ON api_keys FOR UPDATE
+  USING      (NULLIF(current_setting('mlain.workspace_id', true), '') IS NULL
+              AND revoked_at IS NULL)
+  WITH CHECK (NULLIF(current_setting('mlain.workspace_id', true), '') IS NULL
+              AND revoked_at IS NULL
+              AND last_used_at >= now() - interval '1 minute');
+--> statement-breakpoint
+-- Ověřovací dotaz JOINuje workspaces kvůli deleted_at, protože klíč zrušeného
+-- projektu nesmí projít. Pod mlain_app na workspaces dopadá RLS taky, takže
+-- by JOIN nevrátil nic a api_key_lookup by byla k ničemu: klíč by se našel
+-- a JOIN by ho zase zahodil, opět tiše.
+--
+-- Podmínka „ani jeden kontext není nastavený" je POVINNÁ. Kdyby politika
+-- platila i pod mlain.user_id, uplatnila by se na výpisu projektů
+-- (repo/workspaces-global.ts čte holé SELECT FROM workspaces pod withUser)
+-- a uživatel by ve svém seznamu uviděl cizí projekt, který má API klíč.
+-- EXISTS se vyhodnocuje pod politikami api_keys, tedy pod api_key_lookup výš.
+CREATE POLICY ws_api_key_lookup ON workspaces FOR SELECT
+  USING (NULLIF(current_setting('mlain.workspace_id', true), '') IS NULL
+         AND NULLIF(current_setting('mlain.user_id', true), '') IS NULL
+         AND EXISTS (SELECT 1 FROM api_keys k
+                      WHERE k.workspace_id = workspaces.id AND k.revoked_at IS NULL));
+--> statement-breakpoint
+
+-- ---------------------------------------------------------------------------
+-- invitations: dohledání pozvánky podle token_hash (požadavek P04→P03.6).
+--
+-- Pozvánku přijímá uživatel, který v projektu JEŠTĚ NENÍ, takže workspace
+-- kontext nemá odkud vzít; jede přes withUser. Bez téhle politiky vrátí
+-- acceptInvitation VŽDY 404 a z hlášky to nikdo nepozná, protože plán vrací
+-- 404 schválně i u neplatného tokenu, aby nešlo zjistit, jestli pozvánka
+-- existuje.
+--
+-- Únik je nulový: jediný filtr, který volající má, je token_hash s unikátním
+-- indexem. Bez znalosti tokenu se z tabulky nedá vybrat nic užitečného
+-- a politika navíc pouští jen pozvánky živé, nepřijaté a neodvolané.
+--
+-- Obdoba ws_api_key_lookup pro workspaces tu ZÁMĚRNĚ NENÍ. Přijetí běží pod
+-- mlain.user_id, takže by taková politika platila i na výpisu projektů
+-- a každý přihlášený uživatel by v seznamu viděl cizí projekt s otevřenou
+-- pozvánkou. Jméno a slug projektu si volající přečte až v druhé transakci,
+-- která workspace kontext z pozvánky nastavuje, a tam ho pustí ws_isolation_self.
+-- ---------------------------------------------------------------------------
+CREATE POLICY invitation_token_lookup ON invitations FOR SELECT
+  USING (NULLIF(current_setting('mlain.workspace_id', true), '') IS NULL
+         AND accepted_at IS NULL
+         AND revoked_at IS NULL
+         AND expires_at > now());
+--> statement-breakpoint
+
+-- ---------------------------------------------------------------------------
 -- sender_bypass. Tvrzení "sender nepodléhá RLS" bez mechanismu je NEFUNKČNÍ:
 -- role mlain_sender nemá BYPASSRLS a nikdy nevolá set_config('mlain.workspace_id'),
 -- protože pracuje napříč projekty. current_setting(..., true) proto vrátí NULL,
@@ -6489,13 +6578,13 @@ Politiky `sender_bypass` a `maintenance_bypass` odkazují role jménem, takže m
 - [ ] **Step 4: Spusť test a ověř, že projde**
 
 Run: `pnpm --filter @mlain/db test:db -- test/rls-registry.test.ts`
-Expected: PASS, 7 testů. Kdyby poslední test hlásil jiné číslo než 80, porovnej ho s tabulkou počtů v kapitole 2.4 a najdi, která tabulka politiku nedostala.
+Expected: PASS, 7 testů. Kdyby poslední test hlásil jiné číslo než 84, porovnej ho s tabulkou počtů v kapitole 2.4 a najdi, která tabulka politiku nedostala.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add packages/db/migrations packages/db/test/rls-registry.test.ts
-git commit -m "feat(db): migration 0004 adds 80 row level security policies"
+git commit -m "feat(db): migration 0004 adds 84 row level security policies"
 ```
 
 ---
@@ -8052,7 +8141,7 @@ export function registeredRepoModules(): RepoModule[] {
 - [ ] **Step 6: Spusť testy a ověř, že projdou**
 
 Run: `pnpm --filter @mlain/db test:db`
-Expected: PASS. `workspaces-global.test.ts` má 5 testů, `rls-registry.test.ts` hlásí 80 politik, `system-settings.test.ts` hlásí `schema_version` 7.
+Expected: PASS. `workspaces-global.test.ts` má 5 testů, `rls-registry.test.ts` hlásí 84 politik, `system-settings.test.ts` hlásí `schema_version` 7.
 
 - [ ] **Step 7: Commit**
 
@@ -9343,7 +9432,7 @@ Sepsané proto, že každý z nich má za sebou konkrétní poruchu v tomhle pro
 | Retenční job odpojí partition s běžící kampaní | Kampaň přijde o outbox pod rukama a po obnovení se tváří jako doběhlá, přestože neodeslala nic | `dropPartitionsBefore` má **povinný** parametr `veto` a bez něj vyhodí výjimku; test na to je v `partitions.test.ts` |
 | Zavede se `DEFAULT` partition, aby „zápis neselhal" | Data skončí v koši, ze kterého se nedá odpojit rozsah | Test „žádná partitionovaná tabulka nemá DEFAULT partition" |
 | Append-only se řeší přes `CREATE RULE ... DO INSTEAD NOTHING` | Smazání kontaktu proběhne bez chyby, ale souhlasy zůstanou jako osiřelé řádky s osobními údaji | `audit-log.test.ts`, test „ON DELETE CASCADE z contacts souhlasy odstraní" |
-| Očekávané číslo v testu se upraví podle výsledku | Test přestane být bránou a stane se popisem stavu | Každé číslo v testech (75 tabulek, 80 politik, 9 partitionovaných tabulek, 7 migrací) má protějšek v kapitolách 2 a 3 tohohle plánu; mění se obojí naráz, nebo nic |
+| Očekávané číslo v testu se upraví podle výsledku | Test přestane být bránou a stane se popisem stavu | Každé číslo v testech (75 tabulek, 84 politik, 9 partitionovaných tabulek, 7 migrací) má protějšek v kapitolách 2 a 3 tohohle plánu; mění se obojí naráz, nebo nic |
 | `rank` se doplní `DEFAULT`, aby „zápis neselhal" | Špatná hodnota nezpůsobí chybu, ale tiše rozbije odvození stavu zprávy, což je nejtišší možná porucha | `partitioned-tables.test.ts`, test „rank je generovaný sloupec a nejde do něj zapsat zvenčí" |
 | Do `ck_message_events__type` přibude typ bez ramene ve škále `rank` | Zápis takové události spadne na `NOT NULL`, což vypadá jako chyba volajícího | `partitioned-tables.test.ts`, test „každý povolený typ události má rameno ve škále rank", který se ptá katalogu dvakrát ze dvou nezávislých míst |
 | `recipient` se vrátí na `NOT NULL`, protože „adresa přece vždycky je" | E-mailová adresa se okopíruje na každý řádek desetimilionové tabulky a GDPR výmaz ji musí procházet všude | `partitioned-tables.test.ts`, test „recipient je nepovinný, ale doručovací rodina ho mít musí" |

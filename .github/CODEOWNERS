@@ -1,0 +1,5 @@
+# Fixtures zmrazených kontraktů. Změna očekávané hodnoty vyžaduje review
+# vlastníků OBOU stran a commit message začínající "contract:".
+/packages/contracts/fixtures/   @mlain/contract-owners
+/packages/contracts/schema/     @mlain/contract-owners
+/apps/sender/internal/contracts/ @mlain/contract-owners

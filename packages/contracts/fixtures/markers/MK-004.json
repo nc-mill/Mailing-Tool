@@ -1,0 +1,13 @@
+{
+  "id": "MK-004",
+  "description": "dva různé odkazy dostanou různé tokeny",
+  "source": "<a href=\"https://track.mlain.invalid/c/2f1a9c40-0000-4000-8000-000000000001\">A</a><a href=\"https://track.mlain.invalid/c/2f1a9c40-0000-4000-8000-000000000002\">B</a>",
+  "tracking_domain": "https://t.example.cz",
+  "link_tokens": {
+    "2f1a9c40-0000-4000-8000-000000000001": "t1CLICK1",
+    "2f1a9c40-0000-4000-8000-000000000002": "t1CLICK2"
+  },
+  "open_token": null,
+  "expected": "<a href=\"https://t.example.cz/t/c/t1CLICK1\">A</a><a href=\"https://t.example.cz/t/c/t1CLICK2\">B</a>",
+  "expected_replacements": 2
+}

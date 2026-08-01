@@ -1,0 +1,57 @@
+{
+  "messages": {
+    "id": "uuid",
+    "workspace_id": "uuid",
+    "campaign_id": "uuid",
+    "content_variant_id": "uuid",
+    "kind": "text",
+    "contact_id": "uuid",
+    "email": "text",
+    "render_data": "jsonb",
+    "status": "text",
+    "claimed_by": "text",
+    "claimed_at": "timestamp with time zone",
+    "claim_expires_at": "timestamp with time zone",
+    "attempts": "smallint",
+    "ambiguous_count": "smallint",
+    "dispatch_started_at": "timestamp with time zone",
+    "next_attempt_at": "timestamp with time zone",
+    "provider_message_id": "text",
+    "sent_at": "timestamp with time zone",
+    "error_code": "text",
+    "error_detail": "text",
+    "created_at": "timestamp with time zone",
+    "updated_at": "timestamp with time zone"
+  },
+  "campaigns": {
+    "id": "uuid",
+    "workspace_id": "uuid",
+    "status": "text",
+    "pause_reason": "jsonb",
+    "scheduled_at": "timestamp with time zone",
+    "audience_built_at": "timestamp with time zone",
+    "provider_id": "uuid",
+    "compiled_html": "text",
+    "compiled_text": "text",
+    "subject": "text",
+    "preheader": "text",
+    "from_name": "text",
+    "from_email": "text",
+    "reply_to": "text",
+    "track_opens": "boolean",
+    "track_clicks": "boolean",
+    "deleted_at": "timestamp with time zone"
+  },
+  "workspaces": {
+    "id": "uuid",
+    "deleted_at": "timestamp with time zone"
+  },
+  "suppressions": {
+    "workspace_id": "uuid",
+    "email": "USER-DEFINED",
+    "fingerprint": "bytea",
+    "fingerprint_key_id": "smallint",
+    "removed_at": "timestamp with time zone",
+    "created_at": "timestamp with time zone"
+  }
+}

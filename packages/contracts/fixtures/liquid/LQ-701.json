@@ -1,0 +1,9 @@
+{
+  "id": "LQ-701",
+  "description": "apostrof v podmínce musí být odmítnut stejně jako uvozovka",
+  "level": "authored",
+  "template": "{% if contact.country == 'CZ' %}ahoj{% endif %}",
+  "expect_validation_error": {
+    "code": "liquid_string_literal_not_allowed"
+  }
+}

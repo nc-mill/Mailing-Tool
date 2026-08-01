@@ -1,0 +1,16 @@
+{
+  "id": "LQ-205",
+  "description": "jen čas, zóna se bere z _context.timezone",
+  "context": "html",
+  "level": "compiled",
+  "template": "{{ contact.signup_at | date: \"%H:%M\" }}",
+  "data": {
+    "contact": {
+      "signup_at": "2026-08-01T12:40:00Z"
+    },
+    "_context": {
+      "timezone": "Europe/Prague"
+    }
+  },
+  "expected": "14:40"
+}

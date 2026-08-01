@@ -1,0 +1,49 @@
+{
+  "name": "mlain",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "pnpm@10.30.1",
+  "engines": {
+    "node": ">=24.2.0 <25",
+    "pnpm": ">=10.30.1"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "oxlint . && eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "test:unit": "turbo run test:unit",
+    "test:db": "turbo run test:db",
+    "test:e2e": "turbo run test:e2e",
+    "contracts:generate": "turbo run contracts:generate",
+    "ci:i18n-check": "node tools/ci/i18n-check.mjs",
+    "ci:openapi-drift": "node tools/ci/openapi-drift.mjs",
+    "ci:contracts-golden": "node tools/ci/contracts-golden.mjs",
+    "ci:contracts-fixtures-schema": "node tools/ci/contracts-fixtures-schema.mjs",
+    "ci:contracts-schema": "node tools/ci/contracts-schema.mjs",
+    "ci:migration-lint": "node tools/ci/migration-lint.mjs",
+    "ci:migrations-check": "node tools/ci/migrations-check.mjs",
+    "ci:licenses-node": "node tools/ci/licenses-node.mjs",
+    "ci:image-size": "node tools/ci/image-size.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@vitest/coverage-v8": "^4.1.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-import": "^2.32.0",
+    "license-checker": "25.0.1",
+    "oxlint": "1.76.0",
+    "prettier": "3.9.6",
+    "turbo": "2.10.7",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "4.1.10"
+  },
+  "pnpm": {
+    "overrides": {
+      "typescript": "5.9.3"
+    }
+  }
+}

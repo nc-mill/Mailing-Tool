@@ -1,0 +1,10 @@
+{
+  "id": "LQ-508",
+  "description": "vestavěný filtr LiquidJS mimo naši pětici",
+  "level": "authored",
+  "template": "{{ contact.first_name | reverse }}",
+  "expect_validation_error": {
+    "code": "liquid_filter_not_allowed",
+    "hint_contains": "reverse"
+  }
+}

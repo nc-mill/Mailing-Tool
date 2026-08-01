@@ -1,0 +1,13 @@
+{
+  "id": "LQ-007",
+  "description": "jméno kontaktu se skriptem se v HTML zobrazí jako text",
+  "context": "html",
+  "level": "authored",
+  "template": "{{ contact.first_name }}",
+  "data": {
+    "contact": {
+      "first_name": "<script>alert(1)</script>"
+    }
+  },
+  "expected": "&lt;script&gt;alert(1)&lt;/script&gt;"
+}

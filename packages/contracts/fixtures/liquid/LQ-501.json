@@ -1,0 +1,10 @@
+{
+  "id": "LQ-501",
+  "description": "zakázaný tag",
+  "level": "authored",
+  "template": "{% assign x = 1 %}",
+  "expect_validation_error": {
+    "code": "liquid_tag_not_allowed",
+    "hint_contains": "assign"
+  }
+}

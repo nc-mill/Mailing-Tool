@@ -1,0 +1,11 @@
+{
+  "id": "LQ-003",
+  "description": "chybějící mezičlen cesty je prázdný řetězec, ne chyba",
+  "context": "html",
+  "level": "authored",
+  "template": "[{{ contact.attr.city }}]",
+  "data": {
+    "contact": {}
+  },
+  "expected": "[]"
+}

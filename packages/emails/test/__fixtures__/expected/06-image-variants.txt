@@ -1,0 +1,11 @@
+[Banner kampaně]
+
+[Užší obrázek]
+
+[Logo se světlou i tmavou variantou]
+
+{{ workspace.sender_address }}
+
+Odhlásit se z odběru: {{ unsubscribe_url }}
+Nastavit předvolby: {{ preferences_url }}
+Zobrazit v prohlížeči: {{ webview_url }}

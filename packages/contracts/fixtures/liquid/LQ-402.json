@@ -1,0 +1,13 @@
+{
+  "id": "LQ-402",
+  "description": "cyklus přes jeden prvek",
+  "context": "html",
+  "level": "authored",
+  "template": "{% for item in contact.tags %}[{{ item }}]{% endfor %}",
+  "data": {
+    "contact": {
+      "tags": ["vip"]
+    }
+  },
+  "expected": "[vip]"
+}

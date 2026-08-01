@@ -1,0 +1,45 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-text);
+  }
+
+  /* Viditelný focus ring na každém interaktivním prvku, WCAG 2.2 AA. */
+  :focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-control);
+  }
+
+  /* 2.4.11 Focus Not Obscured: sticky hlavička, systémový pruh a toast
+     nesmí zakrýt fokusovaný prvek. Odsazení při skrolování na fokus. */
+  :root {
+    scroll-padding-top: calc(var(--size-topbar) + 0.75rem);
+    scroll-padding-bottom: 5rem;
+  }
+
+  /* Uživatel, který si vypnul animace, je nedostane. Odpočty se změní
+     na statické číslo, průběhové pruhy neanimují. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@utility focus-ring {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}

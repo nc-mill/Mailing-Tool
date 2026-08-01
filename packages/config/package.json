@@ -1,0 +1,31 @@
+{
+  "name": "@mlain/config",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./tsconfig/base.json": "./tsconfig/base.json",
+    "./tsconfig/node.json": "./tsconfig/node.json",
+    "./tsconfig/lib.json": "./tsconfig/lib.json",
+    "./tsconfig/next.json": "./tsconfig/next.json",
+    "./prettier": "./prettier/index.json",
+    "./eslint": "./eslint/index.js",
+    "./eslint/boundaries": "./eslint/boundaries.js",
+    "./vitest/node": "./vitest/node.ts",
+    "./vitest/db": "./vitest/db.ts",
+    "./package-graph": "./src/package-graph.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "eslint-plugin-import": "^2.32.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "4.1.10"
+  }
+}

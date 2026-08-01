@@ -1,0 +1,259 @@
+{
+  "contractVersion": 1,
+  "note": "Registr scénářů kontraktu 1 podle části 1, kapitoly 4.10.1. Pole runner říká, který plán scénář vykonává: contracts = P02, sender = P09, campaigns = P14. Všechny scénáře běží pod rolí mlain_sender, kromě těch, které kontrakt výslovně přiřazuje aplikaci. Klíč transitions drží tabulku povolených přechodů z úkolu 4 a čtou ho obě jazykové strany.",
+  "scenarios": [
+    {
+      "id": "OB-00",
+      "runner": "contracts",
+      "title": "Každý normativní dotaz kontraktu projde parserem a plánovačem",
+      "expected": "žádná chyba, prázdný výsledek je v pořádku",
+      "order": 0
+    },
+    {
+      "id": "OB-01",
+      "runner": "contracts",
+      "title": "Dva sendery, 1000 zpráv, dávka 100",
+      "expected": "každá zpráva claimnutá právě jednou, žádné čekání"
+    },
+    {
+      "id": "OB-02",
+      "runner": "contracts",
+      "title": "Claim, pak SIGKILL, pak reaper po TTL",
+      "expected": "zprávy zpět na pending, attempts nezměněné"
+    },
+    {
+      "id": "OB-03",
+      "runner": "contracts",
+      "title": "Nejednoznačné odeslání, první výskyt, politika retry",
+      "expected": "pending, error_code ambiguous_dispatch, attempts 1"
+    },
+    {
+      "id": "OB-04",
+      "runner": "contracts",
+      "title": "Nejednoznačné odeslání, druhý výskyt",
+      "expected": "failed bez ohledu na politiku"
+    },
+    {
+      "id": "OB-05",
+      "runner": "contracts",
+      "title": "Kampaň přepnutá na paused uprostřed",
+      "expected": "claim dotaz vrací 0 řádků do obnovení"
+    },
+    {
+      "id": "OB-06",
+      "runner": "contracts",
+      "title": "Workspace měkce smazaný",
+      "expected": "claim dotaz vrací 0 řádků"
+    },
+    {
+      "id": "OB-07",
+      "runner": "contracts",
+      "title": "Pokus o UPDATE status sent z pending",
+      "expected": "odmítnuto aplikační kontrolou"
+    },
+    {
+      "id": "OB-08",
+      "runner": "contracts",
+      "title": "Sender se pokusí DELETE FROM messages",
+      "expected": "chyba oprávnění z Postgresu"
+    },
+    {
+      "id": "OB-09",
+      "runner": "contracts",
+      "title": "Sender se pokusí SELECT z contacts",
+      "expected": "chyba oprávnění z Postgresu"
+    },
+    {
+      "id": "OB-10",
+      "runner": "sender",
+      "title": "Graceful shutdown uprostřed dávky 100",
+      "expected": "rozpracované dokončené, zbytek pending, žádná ztráta"
+    },
+    {
+      "id": "OB-11",
+      "runner": "contracts",
+      "title": "Message-ID u dvou pokusů téže zprávy",
+      "expected": "identický řetězec"
+    },
+    {
+      "id": "OB-12",
+      "runner": "contracts",
+      "title": "Pozastavená kampaň s 200000 řádky vedle běžící s 1000",
+      "expected": "claim vrátí dávku rychle a přes částečný index"
+    },
+    {
+      "id": "OB-13",
+      "runner": "contracts",
+      "title": "Materializace 1000 zpráv ve dvou dávkách po 500",
+      "expected": "identické created_at rovné audience_built_at s nulovou sub-sekundovou složkou"
+    },
+    {
+      "id": "OB-14",
+      "runner": "contracts",
+      "title": "Zrušení kampaně s 500 pending a 50 claimed",
+      "expected": "500 na skipped, žádný na failed, 50 claimed doběhne"
+    },
+    {
+      "id": "OB-15",
+      "runner": "campaigns",
+      "title": "Pozdní bounce k už sent zprávě",
+      "expected": "status zůstane sent, vznikne message_events, report ji nepočítá jako doručenou"
+    },
+    {
+      "id": "OB-16",
+      "runner": "contracts",
+      "title": "Sender pozastaví kampaň",
+      "expected": "uspěje; na paused nebo cancelled ovlivní 0 řádků a není to chyba"
+    },
+    {
+      "id": "OB-17",
+      "runner": "contracts",
+      "title": "Sender se pokusí o paused na sending nebo o změnu jiného sloupce",
+      "expected": "chyba oprávnění nebo 0 řádků"
+    },
+    {
+      "id": "OB-18",
+      "runner": "contracts",
+      "title": "Claim nad kampaní s deleted_at IS NOT NULL",
+      "expected": "0 řádků v kroku 1 i v kroku 2"
+    },
+    {
+      "id": "OB-19",
+      "runner": "contracts",
+      "title": "Reaper uvolní claim, vezme ho sender B, teprve pak A zkusí D1",
+      "expected": "D1 ovlivní 0 řádků, A neodešle nic"
+    },
+    {
+      "id": "OB-20",
+      "runner": "contracts",
+      "title": "Totéž, ale A se dostane až k D3",
+      "expected": "D3 ovlivní 0 řádků, nikdy dvojí zápis sent s různým provider_message_id"
+    },
+    {
+      "id": "OB-21",
+      "runner": "contracts",
+      "title": "failed s ambiguous_dispatch přepnuté aplikací na sent",
+      "expected": "přechod uspěje, doplní se provider_message_id a sent_at"
+    },
+    {
+      "id": "OB-22",
+      "runner": "contracts",
+      "title": "Tentýž přechod u zprávy s jiným error_code i s NULL",
+      "expected": "musí selhat ve všech případech, test běží pro každou hodnotu zvlášť"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "TR-001",
+      "from": "pending",
+      "to": "claimed",
+      "actor": "sender",
+      "error_code": null,
+      "allowed": true
+    },
+    {
+      "id": "TR-002",
+      "from": "pending",
+      "to": "skipped",
+      "actor": "app",
+      "error_code": null,
+      "allowed": true
+    },
+    {
+      "id": "TR-003",
+      "from": "claimed",
+      "to": "sent",
+      "actor": "sender",
+      "error_code": null,
+      "allowed": true
+    },
+    {
+      "id": "TR-004",
+      "from": "claimed",
+      "to": "failed",
+      "actor": "sender",
+      "error_code": null,
+      "allowed": true
+    },
+    {
+      "id": "TR-005",
+      "from": "claimed",
+      "to": "pending",
+      "actor": "sender",
+      "error_code": null,
+      "allowed": true
+    },
+    {
+      "id": "TR-006",
+      "from": "claimed",
+      "to": "pending",
+      "actor": "reaper",
+      "error_code": null,
+      "allowed": true
+    },
+    {
+      "id": "TR-007",
+      "from": "claimed",
+      "to": "skipped",
+      "actor": "sender",
+      "error_code": null,
+      "allowed": true
+    },
+    {
+      "id": "TR-008",
+      "from": "failed",
+      "to": "sent",
+      "actor": "app",
+      "error_code": "ambiguous_dispatch",
+      "allowed": true
+    },
+    {
+      "id": "TR-009",
+      "from": "failed",
+      "to": "sent",
+      "actor": "sender",
+      "error_code": "ambiguous_dispatch",
+      "allowed": false
+    },
+    {
+      "id": "TR-010",
+      "from": "failed",
+      "to": "sent",
+      "actor": "app",
+      "error_code": "render_failed",
+      "allowed": false
+    },
+    {
+      "id": "TR-011",
+      "from": "failed",
+      "to": "sent",
+      "actor": "app",
+      "error_code": null,
+      "allowed": false
+    },
+    {
+      "id": "TR-012",
+      "from": "sent",
+      "to": "pending",
+      "actor": "app",
+      "error_code": null,
+      "allowed": false
+    },
+    {
+      "id": "TR-013",
+      "from": "sent",
+      "to": "failed",
+      "actor": "app",
+      "error_code": null,
+      "allowed": false
+    },
+    {
+      "id": "TR-014",
+      "from": "skipped",
+      "to": "pending",
+      "actor": "app",
+      "error_code": null,
+      "allowed": false
+    }
+  ]
+}

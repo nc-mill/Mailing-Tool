@@ -1,0 +1,900 @@
+{
+  "generatedFrom": "packages/core/src/config/config.manifest.json",
+  "variables": [
+    {
+      "name": "AI_ALLOW_CUSTOM_BASE_URL",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "AI_CONVERSATION_RETENTION_DAYS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "AI_ENABLED",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "AI_MAX_TOKENS_PER_REQUEST",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "AI_RATE_PER_HOUR",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "AI_REQUEST_TIMEOUT_MS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "AMBIGUOUS_DISPATCH_POLICY_SES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "AMBIGUOUS_DISPATCH_POLICY_SMTP",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "APP_URL",
+      "optional": false,
+      "hasDefault": false
+    },
+    {
+      "name": "ASSET_BASE_URL",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "ASSET_MAX_UPLOAD_MB",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "ASSET_QUOTA_MB",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "ASSET_RATE_LIMIT_PER_IP",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "ASSET_REQUIRE_SIGNED_URL",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "AUDIT_RETENTION_MONTHS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "AWS_API_TIMEOUT_MS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BACKUP_DIR",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BACKUP_RETENTION_DAYS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BACKUP_SCHEDULE_CRON",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BACKUP_TARGET",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_EXTRACTION_INFER_TONE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_ALLOWED_HOSTS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_ALLOW_HTTP",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_ALLOW_PRIVATE_NETWORKS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_BLOCKED_HOSTS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_BODY_TIMEOUT_MS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_CONCURRENCY",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_CONNECT_TIMEOUT_MS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_DNS_SERVERS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_DNS_TIMEOUT_MS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_ENABLED",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_HEADERS_TIMEOUT_MS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_MAX_CSS_BYTES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_MAX_CSS_FILES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_MAX_HTML_BYTES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_MAX_IMAGE_BYTES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_MAX_IMAGE_FILES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_MAX_TOTAL_BYTES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_RATE_PER_HOUR",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_RESPECT_ROBOTS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "BRAND_FETCH_TOTAL_TIMEOUT_MS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "CAMPAIGN_MATERIALIZE_BATCH_SIZE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "CAMPAIGN_MATERIALIZE_MAX_MINUTES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "CAMPAIGN_MAX_RECIPIENTS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "CAMPAIGN_PARTIAL_THRESHOLD",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "CAMPAIGN_QUOTA_PAUSE_REMAINING",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "CAMPAIGN_QUOTA_RESUME_REMAINING",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "CAMPAIGN_SCHEDULE_CATCHUP_HOURS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "CAMPAIGN_TEST_SEND_PER_HOUR",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "CAMPAIGN_UNDO_WINDOW_SECONDS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "CONTACT_ATTRIBUTES_MAX_BYTES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "CONTACT_FIELD_LIMIT",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "CONTACT_INDEXED_FIELD_LIMIT",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "CONTACT_SEARCH_INDEX_ENABLED",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DATABASE_POOL_MAX",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DATABASE_STATEMENT_TIMEOUT_MS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DATABASE_URL",
+      "optional": false,
+      "hasDefault": false
+    },
+    {
+      "name": "DATABASE_URL_MIGRATOR",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DATABASE_URL_SENDER",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DATA_DIR",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DEFAULT_LOCALE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DEFAULT_TIMEZONE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DELIVERABILITY_BOUNCE_GUARD_RATE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DELIVERABILITY_BOUNCE_WARN_RATE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DELIVERABILITY_COMPLAINT_GUARD_RATE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DELIVERABILITY_COMPLAINT_WARN_RATE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DELIVERABILITY_CONTENT_BOUNCE_LIMIT",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DELIVERABILITY_GUARD_MIN_SENT",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DISPOSABLE_DOMAINS_FILE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DNS_CHECK_CONCURRENCY",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DNS_CHECK_TIMEOUT_MS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "EXPORT_TTL_HOURS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "FORM_RATE_LIMIT_PER_IP_MINUTE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "GDPR_EXPORT_TTL_DAYS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "IMAGE_VERSION",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "IMPORT_BATCH_SIZE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "IMPORT_INMEMORY_DEDUP_MAX_ROWS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "IMPORT_MAX_CELL_CHARS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "IMPORT_MAX_COLUMNS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "IMPORT_MAX_FILE_BYTES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "IMPORT_MAX_LINE_BYTES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "IMPORT_MAX_ROWS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "IMPORT_MAX_STORED_ERRORS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "IMPORT_PREVIEW_TTL_HOURS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "IMPORT_SNIFF_BYTES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "IMPORT_STALE_MINUTES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "IMPORT_WORKER_CONCURRENCY",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "INBOUND_MAX_BODY_BYTES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "LOG_FORMAT",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "LOG_LEVEL",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "MESSAGE_EVENT_RETENTION_DAYS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "MESSAGE_RETENTION_DAYS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "METRICS_ENABLED",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "METRICS_TOKEN",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "MIGRATE_LOCK_TIMEOUT_SECONDS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "MIGRATE_ON_START",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "MODE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "NODE_ENV",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "PGBOSS_SCHEMA",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "PORT",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "RATE_LIMIT_API_READ",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "RATE_LIMIT_API_WRITE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "RATE_LIMIT_BACKEND",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "RATE_LIMIT_ENABLED",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "RATE_LIMIT_IDENTIFY_IP",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "RATE_LIMIT_TRACK_ANON",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "RATE_LIMIT_TRACK_KEY",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "RATE_LIMIT_TRACK_KEY_IP",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "RATE_LIMIT_TRACK_PIXEL_IP",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "RETENTION_MIN_DAYS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "S3_ACCESS_KEY_ID",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "S3_BUCKET",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "S3_ENDPOINT",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "S3_REGION",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "S3_SECRET_ACCESS_KEY",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SECRET_KEY",
+      "optional": false,
+      "hasDefault": false
+    },
+    {
+      "name": "SECRET_KEY_PREVIOUS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SEGMENT_MAX_CONDITIONS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SEGMENT_PREVIEW_TIMEOUT_MS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SEGMENT_RECOUNT_CONCURRENCY",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_BATCH_SIZE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_CLAIM_TTL_SECONDS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_CONCURRENCY",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_CREDENTIALS_MAX_RETRIES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_DISPATCH_TIMEOUT_SECONDS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_FATAL_THRESHOLD",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_FEEDBACK_ID",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_HEALTH_PORT",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_ID",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_MAX_ATTEMPTS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_MAX_BACKOFF_SECONDS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_POLL_INTERVAL_MS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_PRECEDENCE_BULK",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_RATE_SAFETY",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_REPLICAS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_SMTP_COMMAND_TIMEOUT_SECONDS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_SMTP_CONNECT_TIMEOUT_SECONDS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_SMTP_DATA_TIMEOUT_SECONDS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_SMTP_MAX_CONNECTIONS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_SMTP_MAX_MESSAGES_PER_CONN",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SENDER_TEST_TRACKING",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SESSION_ABSOLUTE_TTL_DAYS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SESSION_IDLE_TTL_DAYS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SHUTDOWN_GRACE_SECONDS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SIGNUP_MODE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SNS_CERT_CACHE_SECONDS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SNS_STORE_RAW_EVENTS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SOFT_BOUNCE_THRESHOLD",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SOFT_BOUNCE_WINDOW_DAYS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "STORAGE_DRIVER",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "SUPPORTED_LOCALES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TEMPLATE_VERSION_MAX_UNPINNED",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TEMPLATE_VERSION_RETENTION_DAYS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_ALLOW_IP_STORAGE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_ALLOW_SERVERSIDE_PUBLIC_KEY",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_APPLE_RELAY_RANGES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_DOMAIN",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_GEOIP_DB_PATH",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_IDENTITY_TOKEN_TTL_SECONDS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_IMPORT_BATCH_MAX_EVENTS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_MERGE_MAX_EVENTS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_MERGE_WINDOW_DAYS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_PII_PROPERTY_KEYS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_PROPERTIES_MAX_DEPTH",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_PROPERTIES_MAX_KEYS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_PROPERTIES_MAX_STRING",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_RETENTION_MONTHS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_SSE_MAX_CONNECTIONS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_STORE_COUNTRY",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_STRIP_QUERY_PARAMS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_WRITER_BATCH",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRACKING_WRITER_FLUSH_MS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "TRUST_PROXY",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "UPLOADS_DIR",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "WEBHOOK_ALLOW_PRIVATE_TARGETS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "WEBHOOK_MAX_ATTEMPTS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "WORKER_CONCURRENCY",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "WORKER_HEALTH_PORT",
+      "optional": true,
+      "hasDefault": true
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "extends": "@mlain/config/tsconfig/lib.json",
+  "compilerOptions": { "rootDir": "." },
+  "files": [],
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

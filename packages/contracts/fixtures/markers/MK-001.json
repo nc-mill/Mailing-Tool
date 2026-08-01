@@ -1,0 +1,10 @@
+{
+  "id": "MK-001",
+  "description": "jeden odkaz v HTML a pixel před koncem body",
+  "source": "<html><body><a href=\"https://track.mlain.invalid/c/2f1a9c40-0000-4000-8000-000000000001\">Akce</a><!--ML_OPEN_PIXEL--></body></html>",
+  "tracking_domain": "https://t.example.cz",
+  "link_tokens": { "2f1a9c40-0000-4000-8000-000000000001": "t1CLICK1" },
+  "open_token": "t1OPEN1",
+  "expected": "<html><body><a href=\"https://t.example.cz/t/c/t1CLICK1\">Akce</a><img src=\"https://t.example.cz/t/o/t1OPEN1\" width=\"1\" height=\"1\" alt=\"\" style=\"display:none;max-height:0;overflow:hidden\" /></body></html>",
+  "expected_replacements": 1
+}

@@ -1,0 +1,295 @@
+{
+  "schemaVersion": 1,
+  "meta": {
+    "name": "Všechny typy bloků",
+    "previewText": "Náhledový text kampaně",
+    "language": "cs"
+  },
+  "theme": {
+    "contentWidth": 600,
+    "canvasBackground": "surface.canvas",
+    "contentBackground": "surface.content",
+    "colors": {},
+    "fonts": {
+      "heading": "system",
+      "body": "system"
+    },
+    "typography": {
+      "baseFontSize": 16,
+      "baseLineHeight": 1.5,
+      "headingScale": 1.25
+    },
+    "radius": 6,
+    "darkMode": {
+      "strategy": "auto",
+      "colors": {}
+    }
+  },
+  "blocks": [
+    {
+      "id": "b_000000000010",
+      "type": "section",
+      "props": {
+        "backgroundColor": null,
+        "outerBackgroundColor": null,
+        "backgroundImageAssetId": null,
+        "backgroundPosition": "center",
+        "padding": {
+          "top": 24,
+          "right": 24,
+          "bottom": 24,
+          "left": 24
+        },
+        "fullWidth": false,
+        "roundedTop": false,
+        "roundedBottom": false
+      },
+      "children": [
+        {
+          "id": "b_000000000001",
+          "type": "heading",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": null,
+            "hideOnMobile": false,
+            "level": 1,
+            "content": [
+              {
+                "t": "p",
+                "children": [
+                  {
+                    "t": "s",
+                    "v": "Všechny bloky naráz"
+                  }
+                ]
+              }
+            ],
+            "color": "text.default",
+            "align": "left",
+            "fontFamily": null,
+            "fontSize": null,
+            "fontWeight": 700,
+            "lineHeight": null,
+            "letterSpacing": 0
+          }
+        },
+        {
+          "id": "b_000000000002",
+          "type": "text",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": null,
+            "hideOnMobile": false,
+            "content": [
+              {
+                "t": "p",
+                "children": [
+                  {
+                    "t": "s",
+                    "v": "Odstavec s "
+                  },
+                  {
+                    "t": "s",
+                    "v": "tučným",
+                    "b": true
+                  },
+                  {
+                    "t": "s",
+                    "v": " textem."
+                  }
+                ]
+              }
+            ],
+            "color": "text.default",
+            "linkColor": "link.default",
+            "align": "left",
+            "fontFamily": null,
+            "fontSize": null,
+            "lineHeight": null
+          }
+        },
+        {
+          "id": "b_000000000003",
+          "type": "image",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": null,
+            "hideOnMobile": false,
+            "assetId": "0192f3a0-1c2d-7e60-8a1b-2c3d4e5f6071",
+            "alt": "Banner kampaně",
+            "decorative": false,
+            "width": "full",
+            "align": "center",
+            "href": null,
+            "trackable": true,
+            "borderRadius": null,
+            "darkVariantAssetId": null
+          }
+        },
+        {
+          "id": "b_000000000004",
+          "type": "button",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": "brand.primary",
+            "hideOnMobile": false,
+            "label": [
+              {
+                "t": "p",
+                "children": [
+                  {
+                    "t": "s",
+                    "v": "Zjistit více"
+                  }
+                ]
+              }
+            ],
+            "href": "https://example.com/akce",
+            "trackable": true,
+            "style": "solid",
+            "textColor": "text.inverted",
+            "borderColor": null,
+            "borderWidth": 0,
+            "borderRadius": null,
+            "fullWidth": false,
+            "align": "center",
+            "paddingX": 28,
+            "paddingY": 14,
+            "fontSize": 16
+          }
+        },
+        {
+          "id": "b_000000000005",
+          "type": "divider",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": null,
+            "hideOnMobile": false,
+            "color": "surface.subtle",
+            "thickness": 1,
+            "style": "solid",
+            "width": 100,
+            "align": "center"
+          }
+        },
+        {
+          "id": "b_000000000006",
+          "type": "spacer",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": null,
+            "hideOnMobile": false,
+            "height": 24,
+            "heightMobile": null
+          }
+        },
+        {
+          "id": "b_000000000007",
+          "type": "html",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": null,
+            "hideOnMobile": false,
+            "code": "<p>Vlastní <strong>obsah</strong> bloku html.</p>"
+          }
+        },
+        {
+          "id": "b_000000000008",
+          "type": "social",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": null,
+            "hideOnMobile": false,
+            "items": [
+              {
+                "network": "facebook",
+                "href": "https://facebook.com/mlain"
+              },
+              {
+                "network": "linkedin",
+                "href": "https://linkedin.com/company/mlain"
+              }
+            ],
+            "iconStyle": "color",
+            "iconSize": 28,
+            "gap": 12,
+            "align": "center"
+          }
+        },
+        {
+          "id": "b_000000000009",
+          "type": "footer",
+          "props": {
+            "padding": {
+              "top": 0,
+              "right": 24,
+              "bottom": 16,
+              "left": 24
+            },
+            "backgroundColor": null,
+            "hideOnMobile": false,
+            "senderInfo": [
+              {
+                "t": "p",
+                "children": [
+                  {
+                    "t": "var",
+                    "expr": "workspace.sender_address"
+                  }
+                ]
+              }
+            ],
+            "showUnsubscribe": true,
+            "unsubscribeLabel": "Odhlásit se z odběru",
+            "showPreferences": true,
+            "preferencesLabel": "Nastavit předvolby",
+            "showWebview": true,
+            "webviewLabel": "Zobrazit v prohlížeči",
+            "fontSize": 12,
+            "color": "text.muted"
+          }
+        }
+      ]
+    }
+  ]
+}

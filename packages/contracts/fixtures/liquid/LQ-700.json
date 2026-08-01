@@ -1,0 +1,10 @@
+{
+  "id": "LQ-700",
+  "description": "uvozovka v autorské šabloně musí být odmítnuta validátorem",
+  "level": "authored",
+  "template": "Dobrý den, {{ contact.first_name | default: \"kolego\" }}!",
+  "expect_validation_error": {
+    "code": "liquid_string_literal_not_allowed",
+    "hint_contains": "default"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "extends": "@mlain/config/tsconfig/next.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "incremental": false,
+    "types": ["node", "vitest/globals", "@testing-library/jest-dom"]
+  },
+  "include": ["src", "vitest.config.ts", "vitest.setup.ts"]
+}

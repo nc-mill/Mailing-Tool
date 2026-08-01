@@ -1,0 +1,10 @@
+{
+  "id": "MK-007",
+  "description": "tlačítko s VML dvojčetem: jedna záměna opraví obě místa shodně",
+  "source": "<!--[if mso]><v:roundrect href=\"https://track.mlain.invalid/c/2f1a9c40-0000-4000-8000-000000000003\"><![endif]--><a href=\"https://track.mlain.invalid/c/2f1a9c40-0000-4000-8000-000000000003\">Koupit</a>",
+  "tracking_domain": "https://t.example.cz",
+  "link_tokens": { "2f1a9c40-0000-4000-8000-000000000003": "t1CLICK3" },
+  "open_token": null,
+  "expected": "<!--[if mso]><v:roundrect href=\"https://t.example.cz/t/c/t1CLICK3\"><![endif]--><a href=\"https://t.example.cz/t/c/t1CLICK3\">Koupit</a>",
+  "expected_replacements": 2
+}

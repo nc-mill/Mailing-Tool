@@ -1,0 +1,11 @@
+{
+  "id": "LQ-110",
+  "description": "řetězení filtrů",
+  "context": "html",
+  "level": "compiled",
+  "template": "{{ contact.first_name | default: \"kolego\" | upcase }}",
+  "data": {
+    "contact": {}
+  },
+  "expected": "KOLEGO"
+}

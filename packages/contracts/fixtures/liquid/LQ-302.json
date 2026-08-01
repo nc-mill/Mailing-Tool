@@ -1,0 +1,13 @@
+{
+  "id": "LQ-302",
+  "description": "nula je pravdivá",
+  "context": "html",
+  "level": "authored",
+  "template": "{% if contact.score %}A{% else %}B{% endif %}",
+  "data": {
+    "contact": {
+      "score": 0
+    }
+  },
+  "expected": "A"
+}

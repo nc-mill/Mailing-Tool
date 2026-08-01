@@ -1,0 +1,803 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mlain.dev/schema/document/v1.json",
+  "title": "Mlain Mailer Document v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "meta", "theme", "blocks"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "meta": { "$ref": "#/$defs/meta" },
+    "theme": { "$ref": "#/$defs/theme" },
+    "blocks": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 60,
+      "items": { "$ref": "#/$defs/sectionBlock" }
+    }
+  },
+  "$defs": {
+    "blockId": { "type": "string", "pattern": "^b_[0-9a-z]{12}$" },
+    "hexColor": { "type": "string", "pattern": "^#[0-9a-f]{6}$" },
+    "uuid": { "type": "string", "format": "uuid" },
+    "colorRef": {
+      "oneOf": [
+        { "$ref": "#/$defs/hexColor" },
+        {
+          "enum": [
+            "brand.primary",
+            "brand.secondary",
+            "brand.accent",
+            "text.default",
+            "text.muted",
+            "text.inverted",
+            "surface.canvas",
+            "surface.content",
+            "surface.subtle",
+            "link.default"
+          ]
+        }
+      ]
+    },
+    "colorRefOrNull": { "oneOf": [{ "$ref": "#/$defs/colorRef" }, { "type": "null" }] },
+    "padding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["top", "right", "bottom", "left"],
+      "properties": {
+        "top": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "right": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "bottom": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "left": { "type": "integer", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "visibleWhen": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field", "op"],
+          "properties": {
+            "field": { "type": "string", "maxLength": 120 },
+            "op": { "enum": ["present", "blank", "true", "false"] }
+          }
+        }
+      ]
+    },
+    "dateFormat": {
+      "enum": ["%d.%m.%Y", "%-d.%-m.%Y", "%Y-%m-%d", "%d.%m.%Y %H:%M", "%H:%M"]
+    },
+    "inlineNode": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["t", "v"],
+          "properties": {
+            "t": { "const": "s" },
+            "v": { "type": "string", "maxLength": 5000 },
+            "b": { "const": true },
+            "i": { "const": true },
+            "u": { "const": true },
+            "strike": { "const": true }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["t", "href", "children"],
+          "properties": {
+            "t": { "const": "a" },
+            "href": { "type": "string", "maxLength": 2000 },
+            "trackable": { "type": "boolean" },
+            "children": {
+              "type": "array",
+              "maxItems": 200,
+              "items": { "$ref": "#/$defs/inlineNodeNoLink" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["t"],
+          "properties": { "t": { "const": "br" } }
+        },
+        { "$ref": "#/$defs/varNode" }
+      ]
+    },
+    "inlineNodeNoLink": {
+      "$comment": "Odkaz nesmí obsahovat další odkaz (3.1.5).",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["t", "v"],
+          "properties": {
+            "t": { "const": "s" },
+            "v": { "type": "string", "maxLength": 5000 },
+            "b": { "const": true },
+            "i": { "const": true },
+            "u": { "const": true },
+            "strike": { "const": true }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["t"],
+          "properties": { "t": { "const": "br" } }
+        },
+        { "$ref": "#/$defs/varNode" }
+      ]
+    },
+    "varNode": {
+      "$comment": "additionalProperties false tu drží i interní pole slots mimo uložený JSON.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t", "expr"],
+      "properties": {
+        "t": { "const": "var" },
+        "expr": { "type": "string", "maxLength": 200 },
+        "fallback": { "type": "string", "maxLength": 100 },
+        "dateFormat": { "$ref": "#/$defs/dateFormat" }
+      }
+    },
+    "richText": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["t", "children"],
+            "properties": {
+              "t": { "const": "p" },
+              "align": { "enum": ["left", "center", "right"] },
+              "children": {
+                "type": "array",
+                "maxItems": 200,
+                "items": { "$ref": "#/$defs/inlineNode" }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["t", "items"],
+            "properties": {
+              "t": { "enum": ["ul", "ol"] },
+              "items": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "array",
+                  "maxItems": 200,
+                  "items": { "$ref": "#/$defs/inlineNode" }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "previewText", "language"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "previewText": { "type": "string", "maxLength": 200 },
+        "language": {
+          "type": "string",
+          "maxLength": 35,
+          "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
+        }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contentWidth",
+        "canvasBackground",
+        "contentBackground",
+        "colors",
+        "fonts",
+        "typography",
+        "radius",
+        "darkMode"
+      ],
+      "properties": {
+        "contentWidth": { "enum": [600, 640] },
+        "canvasBackground": { "$ref": "#/$defs/colorRef" },
+        "contentBackground": { "$ref": "#/$defs/colorRef" },
+        "colors": { "$ref": "#/$defs/roleColorMap" },
+        "fonts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["heading", "body"],
+          "properties": {
+            "heading": { "$ref": "#/$defs/fontStackId" },
+            "body": { "$ref": "#/$defs/fontStackId" }
+          }
+        },
+        "typography": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["baseFontSize", "baseLineHeight", "headingScale"],
+          "properties": {
+            "baseFontSize": { "type": "integer", "minimum": 12, "maximum": 20 },
+            "baseLineHeight": { "type": "number", "minimum": 1.2, "maximum": 2 },
+            "headingScale": { "enum": [1.125, 1.2, 1.25, 1.333] }
+          }
+        },
+        "radius": { "enum": [0, 4, 6, 8, 12] },
+        "darkMode": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["strategy", "colors"],
+          "properties": {
+            "strategy": { "enum": ["auto", "off"] },
+            "colors": { "$ref": "#/$defs/roleColorMap" }
+          }
+        }
+      }
+    },
+    "roleColorMap": {
+      "$comment": "Částečná mapa. Neuvedená role bere výchozí hodnotu z rendereru (3.1.4).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "brand.primary": { "$ref": "#/$defs/hexColor" },
+        "brand.secondary": { "$ref": "#/$defs/hexColor" },
+        "brand.accent": { "$ref": "#/$defs/hexColor" },
+        "text.default": { "$ref": "#/$defs/hexColor" },
+        "text.muted": { "$ref": "#/$defs/hexColor" },
+        "text.inverted": { "$ref": "#/$defs/hexColor" },
+        "surface.canvas": { "$ref": "#/$defs/hexColor" },
+        "surface.content": { "$ref": "#/$defs/hexColor" },
+        "surface.subtle": { "$ref": "#/$defs/hexColor" },
+        "link.default": { "$ref": "#/$defs/hexColor" }
+      }
+    },
+    "fontStackId": {
+      "enum": [
+        "system",
+        "arial",
+        "helvetica",
+        "verdana",
+        "tahoma",
+        "trebuchet",
+        "georgia",
+        "times",
+        "courier"
+      ]
+    },
+    "knownBlockType": {
+      "enum": [
+        "section",
+        "columns",
+        "column",
+        "repeat",
+        "heading",
+        "text",
+        "image",
+        "button",
+        "divider",
+        "spacer",
+        "html",
+        "social",
+        "footer"
+      ]
+    },
+    "unknownBlock": {
+      "$comment": "Úniková definice. additionalProperties tu chybí schválně, aby se blok nesl beze ztráty dat (3.1.6).",
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "type": "string", "not": { "$ref": "#/$defs/knownBlockType" } }
+      }
+    },
+    "sectionProps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backgroundColor",
+        "outerBackgroundColor",
+        "backgroundImageAssetId",
+        "backgroundPosition",
+        "padding",
+        "fullWidth",
+        "roundedTop",
+        "roundedBottom"
+      ],
+      "properties": {
+        "backgroundColor": { "$ref": "#/$defs/colorRefOrNull" },
+        "outerBackgroundColor": { "$ref": "#/$defs/colorRefOrNull" },
+        "backgroundImageAssetId": { "oneOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }] },
+        "backgroundPosition": { "enum": ["top", "center", "bottom"] },
+        "padding": { "$ref": "#/$defs/padding" },
+        "fullWidth": { "type": "boolean" },
+        "roundedTop": { "type": "boolean" },
+        "roundedBottom": { "type": "boolean" }
+      }
+    },
+    "sectionBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "props", "children"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "const": "section" },
+        "props": { "$ref": "#/$defs/sectionProps" },
+        "visibleWhen": { "$ref": "#/$defs/visibleWhen" },
+        "children": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "anyOf": [
+              { "$ref": "#/$defs/columnsBlock" },
+              { "$ref": "#/$defs/repeatBlock" },
+              { "$ref": "#/$defs/contentBlock" },
+              { "$ref": "#/$defs/unknownBlock" }
+            ]
+          }
+        }
+      }
+    },
+    "columnsBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "props", "children"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "const": "columns" },
+        "props": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["layout", "gap", "stackOnMobile", "stackOrder", "verticalAlign"],
+          "properties": {
+            "layout": { "enum": ["1-1", "1-2", "2-1", "1-1-1", "2-1-1", "1-1-2"] },
+            "gap": { "type": "integer", "minimum": 0, "maximum": 48 },
+            "stackOnMobile": { "type": "boolean" },
+            "stackOrder": { "enum": ["normal", "reverse"] },
+            "verticalAlign": { "enum": ["top", "middle", "bottom"] }
+          }
+        },
+        "children": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/columnBlock" }
+        }
+      }
+    },
+    "columnBlock": {
+      "$comment": "column nemá visibleWhen ani hideOnMobile, skrytí sloupce rozbije šířky v Outlooku.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "props", "children"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "const": "column" },
+        "props": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["padding", "backgroundColor", "borderRadius"],
+          "properties": {
+            "padding": { "$ref": "#/$defs/padding" },
+            "backgroundColor": { "$ref": "#/$defs/colorRefOrNull" },
+            "borderRadius": { "type": "integer", "minimum": 0, "maximum": 32 }
+          }
+        },
+        "children": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "anyOf": [{ "$ref": "#/$defs/contentBlock" }, { "$ref": "#/$defs/unknownBlock" }]
+          }
+        }
+      }
+    },
+    "repeatBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "props", "children"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "const": "repeat" },
+        "visibleWhen": { "$ref": "#/$defs/visibleWhen" },
+        "props": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["padding", "backgroundColor", "hideOnMobile", "path"],
+          "properties": {
+            "padding": { "$ref": "#/$defs/padding" },
+            "backgroundColor": { "$ref": "#/$defs/colorRefOrNull" },
+            "hideOnMobile": { "type": "boolean" },
+            "path": { "type": "string", "maxLength": 120 }
+          }
+        },
+        "children": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "anyOf": [{ "$ref": "#/$defs/contentBlock" }, { "$ref": "#/$defs/unknownBlock" }]
+          }
+        }
+      }
+    },
+    "contentBlock": {
+      "anyOf": [
+        { "$ref": "#/$defs/headingBlock" },
+        { "$ref": "#/$defs/textBlock" },
+        { "$ref": "#/$defs/imageBlock" },
+        { "$ref": "#/$defs/buttonBlock" },
+        { "$ref": "#/$defs/dividerBlock" },
+        { "$ref": "#/$defs/spacerBlock" },
+        { "$ref": "#/$defs/htmlBlock" },
+        { "$ref": "#/$defs/socialBlock" },
+        { "$ref": "#/$defs/footerBlock" }
+      ]
+    },
+    "headingBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "props"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "const": "heading" },
+        "visibleWhen": { "$ref": "#/$defs/visibleWhen" },
+        "props": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "padding",
+            "backgroundColor",
+            "hideOnMobile",
+            "level",
+            "content",
+            "color",
+            "align",
+            "fontFamily",
+            "fontSize",
+            "fontWeight",
+            "lineHeight",
+            "letterSpacing"
+          ],
+          "properties": {
+            "padding": { "$ref": "#/$defs/padding" },
+            "backgroundColor": { "$ref": "#/$defs/colorRefOrNull" },
+            "hideOnMobile": { "type": "boolean" },
+            "level": { "enum": [1, 2, 3] },
+            "content": { "$ref": "#/$defs/richText" },
+            "color": { "$ref": "#/$defs/colorRef" },
+            "align": { "enum": ["left", "center", "right"] },
+            "fontFamily": { "oneOf": [{ "$ref": "#/$defs/fontStackId" }, { "type": "null" }] },
+            "fontSize": {
+              "oneOf": [{ "type": "integer", "minimum": 12, "maximum": 48 }, { "type": "null" }]
+            },
+            "fontWeight": { "enum": [400, 600, 700] },
+            "lineHeight": {
+              "oneOf": [{ "type": "number", "minimum": 1, "maximum": 2 }, { "type": "null" }]
+            },
+            "letterSpacing": { "type": "number", "minimum": -1, "maximum": 4 }
+          }
+        }
+      }
+    },
+    "textBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "props"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "const": "text" },
+        "visibleWhen": { "$ref": "#/$defs/visibleWhen" },
+        "props": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "padding",
+            "backgroundColor",
+            "hideOnMobile",
+            "content",
+            "color",
+            "linkColor",
+            "align",
+            "fontFamily",
+            "fontSize",
+            "lineHeight"
+          ],
+          "properties": {
+            "padding": { "$ref": "#/$defs/padding" },
+            "backgroundColor": { "$ref": "#/$defs/colorRefOrNull" },
+            "hideOnMobile": { "type": "boolean" },
+            "content": { "$ref": "#/$defs/richText" },
+            "color": { "$ref": "#/$defs/colorRef" },
+            "linkColor": { "$ref": "#/$defs/colorRef" },
+            "align": { "enum": ["left", "center", "right", "justify"] },
+            "fontFamily": { "oneOf": [{ "$ref": "#/$defs/fontStackId" }, { "type": "null" }] },
+            "fontSize": {
+              "oneOf": [{ "type": "integer", "minimum": 10, "maximum": 32 }, { "type": "null" }]
+            },
+            "lineHeight": {
+              "oneOf": [{ "type": "number", "minimum": 1, "maximum": 2.5 }, { "type": "null" }]
+            }
+          }
+        }
+      }
+    },
+    "imageBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "props"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "const": "image" },
+        "visibleWhen": { "$ref": "#/$defs/visibleWhen" },
+        "props": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "padding",
+            "backgroundColor",
+            "hideOnMobile",
+            "assetId",
+            "alt",
+            "decorative",
+            "width",
+            "align",
+            "href",
+            "trackable",
+            "borderRadius",
+            "darkVariantAssetId"
+          ],
+          "properties": {
+            "padding": { "$ref": "#/$defs/padding" },
+            "backgroundColor": { "$ref": "#/$defs/colorRefOrNull" },
+            "hideOnMobile": { "type": "boolean" },
+            "assetId": { "$ref": "#/$defs/uuid" },
+            "alt": { "type": "string", "maxLength": 200 },
+            "decorative": { "type": "boolean" },
+            "width": {
+              "oneOf": [{ "const": "full" }, { "type": "integer", "minimum": 20, "maximum": 640 }]
+            },
+            "align": { "enum": ["left", "center", "right"] },
+            "href": { "oneOf": [{ "type": "string", "maxLength": 2000 }, { "type": "null" }] },
+            "trackable": { "type": "boolean" },
+            "borderRadius": {
+              "oneOf": [{ "type": "integer", "minimum": 0, "maximum": 32 }, { "type": "null" }]
+            },
+            "darkVariantAssetId": { "oneOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }] }
+          }
+        }
+      }
+    },
+    "buttonBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "props"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "const": "button" },
+        "visibleWhen": { "$ref": "#/$defs/visibleWhen" },
+        "props": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "padding",
+            "backgroundColor",
+            "hideOnMobile",
+            "label",
+            "href",
+            "trackable",
+            "style",
+            "textColor",
+            "borderColor",
+            "borderWidth",
+            "borderRadius",
+            "fullWidth",
+            "align",
+            "paddingX",
+            "paddingY",
+            "fontSize"
+          ],
+          "properties": {
+            "padding": { "$ref": "#/$defs/padding" },
+            "backgroundColor": { "$ref": "#/$defs/colorRef" },
+            "hideOnMobile": { "type": "boolean" },
+            "label": { "$ref": "#/$defs/richText" },
+            "href": { "type": "string", "minLength": 1, "maxLength": 2000 },
+            "trackable": { "type": "boolean" },
+            "style": { "enum": ["solid", "outline"] },
+            "textColor": { "$ref": "#/$defs/colorRef" },
+            "borderColor": { "$ref": "#/$defs/colorRefOrNull" },
+            "borderWidth": { "enum": [0, 1, 2] },
+            "borderRadius": {
+              "oneOf": [{ "type": "integer", "minimum": 0, "maximum": 32 }, { "type": "null" }]
+            },
+            "fullWidth": { "type": "boolean" },
+            "align": { "enum": ["left", "center", "right"] },
+            "paddingX": { "type": "integer", "minimum": 8, "maximum": 48 },
+            "paddingY": { "type": "integer", "minimum": 8, "maximum": 48 },
+            "fontSize": { "type": "integer", "minimum": 12, "maximum": 24 }
+          }
+        }
+      }
+    },
+    "dividerBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "props"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "const": "divider" },
+        "visibleWhen": { "$ref": "#/$defs/visibleWhen" },
+        "props": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "padding",
+            "backgroundColor",
+            "hideOnMobile",
+            "color",
+            "thickness",
+            "style",
+            "width",
+            "align"
+          ],
+          "properties": {
+            "padding": { "$ref": "#/$defs/padding" },
+            "backgroundColor": { "$ref": "#/$defs/colorRefOrNull" },
+            "hideOnMobile": { "type": "boolean" },
+            "color": { "$ref": "#/$defs/colorRef" },
+            "thickness": { "enum": [1, 2, 3, 4] },
+            "style": { "enum": ["solid", "dashed", "dotted"] },
+            "width": { "type": "integer", "minimum": 10, "maximum": 100 },
+            "align": { "enum": ["left", "center", "right"] }
+          }
+        }
+      }
+    },
+    "spacerBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "props"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "const": "spacer" },
+        "visibleWhen": { "$ref": "#/$defs/visibleWhen" },
+        "props": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["padding", "backgroundColor", "hideOnMobile", "height", "heightMobile"],
+          "properties": {
+            "padding": { "$ref": "#/$defs/padding" },
+            "backgroundColor": { "$ref": "#/$defs/colorRefOrNull" },
+            "hideOnMobile": { "type": "boolean" },
+            "height": { "type": "integer", "minimum": 4, "maximum": 120 },
+            "heightMobile": {
+              "oneOf": [{ "type": "integer", "minimum": 4, "maximum": 120 }, { "type": "null" }]
+            }
+          }
+        }
+      }
+    },
+    "htmlBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "props"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "const": "html" },
+        "visibleWhen": { "$ref": "#/$defs/visibleWhen" },
+        "props": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["padding", "backgroundColor", "hideOnMobile", "code"],
+          "properties": {
+            "padding": { "$ref": "#/$defs/padding" },
+            "backgroundColor": { "$ref": "#/$defs/colorRefOrNull" },
+            "hideOnMobile": { "type": "boolean" },
+            "code": { "type": "string", "maxLength": 20000 }
+          }
+        }
+      }
+    },
+    "socialBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "props"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "const": "social" },
+        "visibleWhen": { "$ref": "#/$defs/visibleWhen" },
+        "props": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "padding",
+            "backgroundColor",
+            "hideOnMobile",
+            "items",
+            "iconStyle",
+            "iconSize",
+            "gap",
+            "align"
+          ],
+          "properties": {
+            "padding": { "$ref": "#/$defs/padding" },
+            "backgroundColor": { "$ref": "#/$defs/colorRefOrNull" },
+            "hideOnMobile": { "type": "boolean" },
+            "items": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "$comment": "network je otevřený řetězec, ne enum. Neznámou síť renderer vynechá s varováním, aby starší instalace nespadla na novějším dokumentu (3.2.11).",
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["network", "href"],
+                "properties": {
+                  "network": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+                  "href": { "type": "string", "maxLength": 2000 },
+                  "label": { "type": "string", "maxLength": 60 }
+                }
+              }
+            },
+            "iconStyle": { "enum": ["color", "mono_dark", "mono_light"] },
+            "iconSize": { "type": "integer", "minimum": 16, "maximum": 48 },
+            "gap": { "type": "integer", "minimum": 0, "maximum": 32 },
+            "align": { "enum": ["left", "center", "right"] }
+          }
+        }
+      }
+    },
+    "footerBlock": {
+      "$comment": "footer nemá visibleWhen, patičku nejde podmínit (pravidlo S14).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "props"],
+      "properties": {
+        "id": { "$ref": "#/$defs/blockId" },
+        "type": { "const": "footer" },
+        "props": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "padding",
+            "backgroundColor",
+            "hideOnMobile",
+            "senderInfo",
+            "showUnsubscribe",
+            "unsubscribeLabel",
+            "showPreferences",
+            "preferencesLabel",
+            "showWebview",
+            "webviewLabel",
+            "fontSize",
+            "color"
+          ],
+          "properties": {
+            "padding": { "$ref": "#/$defs/padding" },
+            "backgroundColor": { "$ref": "#/$defs/colorRefOrNull" },
+            "hideOnMobile": { "type": "boolean" },
+            "senderInfo": { "$ref": "#/$defs/richText" },
+            "showUnsubscribe": { "type": "boolean" },
+            "unsubscribeLabel": { "type": "string", "maxLength": 60 },
+            "showPreferences": { "type": "boolean" },
+            "preferencesLabel": { "type": "string", "maxLength": 60 },
+            "showWebview": { "type": "boolean" },
+            "webviewLabel": { "type": "string", "maxLength": 60 },
+            "fontSize": { "type": "integer", "minimum": 10, "maximum": 16 },
+            "color": { "$ref": "#/$defs/colorRef" }
+          }
+        }
+      }
+    }
+  }
+}

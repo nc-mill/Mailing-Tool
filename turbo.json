@@ -1,0 +1,43 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "globalDependencies": [".env.example", "packages/config/**"],
+  "globalEnv": ["NODE_ENV", "IMAGE_VERSION", "CI"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "cache": true
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "cache": true
+    },
+    "lint": {
+      "dependsOn": [],
+      "outputs": [],
+      "cache": true
+    },
+    "test:unit": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "cache": true
+    },
+    "test:db": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "cache": false
+    },
+    "test:e2e": {
+      "dependsOn": ["build"],
+      "outputs": ["playwright-report/**"],
+      "cache": false
+    },
+    "contracts:generate": {
+      "dependsOn": [],
+      "outputs": ["packages/contracts/fixtures/**", "packages/contracts/openapi.json"],
+      "cache": true
+    }
+  }
+}

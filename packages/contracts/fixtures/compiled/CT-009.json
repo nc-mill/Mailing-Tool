@@ -1,0 +1,132 @@
+{
+  "id": "CT-009",
+  "description": "při vypnutém měření otevření slot pixelu ve výstupu není vůbec",
+  "document": {
+    "schemaVersion": 1,
+    "meta": {
+      "name": "CT",
+      "previewText": "Náhledový text",
+      "language": "cs"
+    },
+    "theme": {
+      "contentWidth": 600,
+      "canvasBackground": "surface.canvas",
+      "contentBackground": "surface.content",
+      "colors": {},
+      "fonts": {
+        "heading": "system",
+        "body": "system"
+      },
+      "typography": {
+        "baseFontSize": 16,
+        "baseLineHeight": 1.5,
+        "headingScale": 1.25
+      },
+      "radius": 6,
+      "darkMode": {
+        "strategy": "auto",
+        "colors": {}
+      }
+    },
+    "blocks": [
+      {
+        "id": "b_000000000001",
+        "type": "section",
+        "props": {
+          "backgroundColor": null,
+          "outerBackgroundColor": null,
+          "backgroundImageAssetId": null,
+          "backgroundPosition": "center",
+          "padding": {
+            "top": 24,
+            "right": 24,
+            "bottom": 24,
+            "left": 24
+          },
+          "fullWidth": false,
+          "roundedTop": false,
+          "roundedBottom": false
+        },
+        "children": [
+          {
+            "id": "b_000000000002",
+            "type": "text",
+            "props": {
+              "padding": {
+                "top": 0,
+                "right": 24,
+                "bottom": 16,
+                "left": 24
+              },
+              "backgroundColor": null,
+              "hideOnMobile": false,
+              "content": [
+                {
+                  "t": "p",
+                  "children": [
+                    {
+                      "t": "s",
+                      "v": "x"
+                    }
+                  ]
+                }
+              ],
+              "color": "text.default",
+              "linkColor": "link.default",
+              "align": "left",
+              "fontFamily": null,
+              "fontSize": null,
+              "lineHeight": null
+            }
+          },
+          {
+            "id": "b_000000000099",
+            "type": "footer",
+            "props": {
+              "padding": {
+                "top": 0,
+                "right": 24,
+                "bottom": 16,
+                "left": 24
+              },
+              "backgroundColor": null,
+              "hideOnMobile": false,
+              "senderInfo": [
+                {
+                  "t": "p",
+                  "children": [
+                    {
+                      "t": "var",
+                      "expr": "workspace.sender_address"
+                    }
+                  ]
+                }
+              ],
+              "showUnsubscribe": true,
+              "unsubscribeLabel": "Odhlásit se z odběru",
+              "showPreferences": true,
+              "preferencesLabel": "Nastavit předvolby",
+              "showWebview": true,
+              "webviewLabel": "Zobrazit v prohlížeči",
+              "fontSize": 12,
+              "color": "text.muted"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "context": {
+    "trackOpens": false,
+    "trackClicks": true,
+    "language": "cs",
+    "campaignId": "0192f3a0-1c2d-7e60-8a1b-2c3d4e5f6071"
+  },
+  "compiled": {
+    "html": "<!DOCTYPE html><html xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" dir=\"ltr\" lang=\"cs\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/><meta content=\"text/html; charset=UTF-8\" http-equiv=\"Content-Type\"/><meta name=\"x-apple-disable-message-reformatting\"/><meta http-equiv=\"x-ua-compatible\" content=\"ie=edge\"/><meta name=\"color-scheme\" content=\"light dark\"/><meta name=\"supported-color-schemes\" content=\"light dark\"/><title>CT</title><!--[if mso]><xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]--><style>body{margin:0;padding:0;width:100%!important;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%}table{border-collapse:collapse;mso-table-lspace:0;mso-table-rspace:0}img{border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic}a{text-decoration:underline}.ml-body a{color:inherit}u+#body a{color:inherit;text-decoration:none}:root{color-scheme:light dark;supported-color-schemes:light dark}@media only screen and (max-width:600px){.ml-col{display:block!important;width:100%!important;max-width:100%!important}.ml-hide-m{display:none!important}.ml-pad{padding-left:16px!important;padding-right:16px!important}.ml-h1{font-size:26px!important;line-height:1.2!important}.ml-h2{font-size:21px!important;line-height:1.2!important}.ml-h3{font-size:20px!important;line-height:1.2!important}.ml-btn{width:100%!important}}@media (prefers-color-scheme:dark){.ml-canvas{background-color:#0b0f19!important}.ml-content{background-color:#111827!important}.ml-text{color:#e5e7eb!important}.ml-muted{color:#9ca3af!important}.ml-link{color:#93c5fd!important}.ml-logo-light{display:none!important}.ml-logo-dark{display:block!important;max-height:none!important;overflow:visible!important}}[data-ogsc] .ml-text{color:#e5e7eb!important}[data-ogsc] .ml-muted{color:#9ca3af!important}[data-ogsc] .ml-link{color:#93c5fd!important}[data-ogsb] .ml-canvas{background-color:#0b0f19!important}[data-ogsb] .ml-content{background-color:#111827!important}</style></head><body id=\"body\" class=\"ml-body ml-canvas\" style=\"background-color:#f4f5f7;margin:0;padding:0\"><!--$--><!--html--><!--head--><!--body--><table border=\"0\" width=\"100%\" cellPadding=\"0\" cellSpacing=\"0\" role=\"presentation\" align=\"center\"><tbody><tr><td style=\"margin:0;padding:0;width:100%;background-color:#f4f5f7\"><div style=\"display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all\">Náhledový text͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ ͏‌ </div><table role=\"presentation\" class=\"ml-canvas\" width=\"100%\" cellPadding=\"0\" cellSpacing=\"0\" border=\"0\" style=\"width:100%;border-collapse:collapse;background-color:#f4f5f7\"><tbody><tr><td align=\"center\" style=\"background-color:#f4f5f7\"><table role=\"presentation\" class=\"ml-content\" width=\"600\" cellPadding=\"0\" cellSpacing=\"0\" border=\"0\" align=\"center\" style=\"width:600px;max-width:100%;border-collapse:collapse;background-color:#ffffff\"><tbody><tr><td class=\"ml-pad\" style=\"padding-top:24px;padding-right:24px;padding-bottom:24px;padding-left:24px\"><table role=\"presentation\" width=\"100%\" cellPadding=\"0\" cellSpacing=\"0\" border=\"0\" style=\"width:100%;border-collapse:collapse\"><tbody><tr><td class=\"ml-pad\" align=\"left\" style=\"padding-top:0px;padding-right:24px;padding-bottom:16px;padding-left:24px;font-family:-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif;font-size:16px;color:#111827;line-height:24px;mso-line-height-rule:exactly\"><p class=\"ml-text\" style=\"margin:0;color:#111827;text-align:left;font-size:16px;line-height:24px;mso-line-height-rule:exactly\"><span>x</span></p></td></tr></tbody></table><table role=\"presentation\" width=\"100%\" cellPadding=\"0\" cellSpacing=\"0\" border=\"0\" style=\"width:100%;border-collapse:collapse\"><tbody><tr><td class=\"ml-pad\" align=\"center\" style=\"padding-top:0px;padding-right:24px;padding-bottom:16px;padding-left:24px;font-family:-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif;font-size:12px;color:#6b7280;line-height:18px;mso-line-height-rule:exactly\"><div class=\"ml-muted\" style=\"color:#6b7280;text-align:center\"><p class=\"ml-text\" style=\"margin:0;color:#6b7280;text-align:center;font-size:12px\"><span>{{ workspace.sender_address }}</span></p></div><div class=\"ml-muted\" style=\"color:#6b7280;text-align:center;padding-top:8px\"><span><a class=\"ml-link\" href=\"{{ unsubscribe_url }}\" style=\"color:#6b7280;text-decoration:underline\">Odhlásit se z odběru</a></span><span> | <a class=\"ml-link\" href=\"{{ preferences_url }}\" style=\"color:#6b7280;text-decoration:underline\">Nastavit předvolby</a></span><span> | <a class=\"ml-link\" href=\"{{ webview_url }}\" style=\"color:#6b7280;text-decoration:underline\">Zobrazit v prohlížeči</a></span></div></td></tr></tbody></table></td></tr></tbody></table></td></tr></tbody></table></td></tr></tbody></table><!--/$--></body></html>",
+    "text": "x\r\n\r\n{{ workspace.sender_address }}\r\n\r\nOdhlásit se z odběru: {{ unsubscribe_url }}\r\nNastavit předvolby: {{ preferences_url }}\r\nZobrazit v prohlížeči: {{ webview_url }}\r\n"
+  },
+  "expect": {
+    "hasOpenPixelSlot": false
+  }
+}

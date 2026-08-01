@@ -1,0 +1,38 @@
+{
+  "name": "@mlain/emails",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./*": "./src/*.ts",
+    "./*.tsx": "./src/*.tsx",
+    "./schema/document.v1.schema.json": "./schema/document.v1.schema.json",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "@mlain/contracts": "workspace:*",
+    "@react-email/components": "1.0.12",
+    "@react-email/render": "2.1.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "culori": "4.0.2",
+    "html-to-text": "10.0.0",
+    "linkedom": "0.18.13",
+    "nanoid": "6.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sanitize-html": "2.17.6"
+  },
+  "devDependencies": {
+    "@mlain/config": "workspace:*",
+    "@types/culori": "4.0.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/sanitize-html": "^2.16.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "LQ-507",
+  "description": "indexování pole",
+  "level": "authored",
+  "template": "{{ contact.tags[0] }}",
+  "expect_validation_error": {
+    "code": "liquid_index_not_allowed"
+  }
+}

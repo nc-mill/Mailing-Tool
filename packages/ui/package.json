@@ -1,0 +1,54 @@
+{
+  "name": "@mlain/ui",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./tokens.css": "./src/tokens.css",
+    "./globals.css": "./src/globals.css",
+    "./lib/*": "./src/lib/*.ts",
+    "./theme": "./src/theme/theme-provider.tsx",
+    "./a11y": "./src/a11y/index.ts",
+    "./components/*": "./src/components/*.tsx",
+    "./patterns/*": "./src/patterns/*/index.ts",
+    "./patterns/charts/lazy": "./src/patterns/charts/lazy.ts",
+    "./patterns/query-builder/lazy": "./src/patterns/query-builder/lazy.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "next": "^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "@tanstack/react-table": "8.21.3",
+    "@tanstack/react-virtual": "3.14.9",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "cmdk": "1.1.1",
+    "lucide-react": "1.28.0",
+    "radix-ui": "1.6.7",
+    "recharts": "3.10.1",
+    "tailwind-merge": "3.6.0"
+  },
+  "devDependencies": {
+    "@mlain/config": "workspace:*",
+    "@testing-library/jest-dom": "7.0.0",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "6.0.5",
+    "jsdom": "29.1.1",
+    "next": "16.2.12",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "4.3.3",
+    "vitest": "4.1.10"
+  }
+}

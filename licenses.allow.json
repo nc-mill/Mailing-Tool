@@ -1,0 +1,29 @@
+{
+  "$comment": "Výjimky licenční brány. Každá musí mít expires_at, jinak neprojde validací a stala by se z ní trvalá díra. Pole package smí končit hvězdičkou, protože nativní balíčky jsou per platforma; skript si jméno rozvine na konkrétní verzi sám.",
+  "exceptions": [
+    {
+      "package": "@img/sharp-libvips-*",
+      "license": "LGPL-3.0-or-later",
+      "reason": "Nativní libvips pod sharpem. sharp sám je Apache-2.0, LGPL nese jen předkompilovaná knihovna a linkuje se dynamicky, takže povinnost zůstává u distribuce knihovny, ne u našeho kódu. Rovnocenná náhrada pod MIT ani Apache neexistuje a vypuštění sharpu by znamenalo osekat extrakci značky. ROZHODNUTÍ ZADAVATELE 2026-08-01, evidence nález N15.",
+      "approved_by": "zadavatel",
+      "expires_at": "2027-08-01",
+      "obligations": "P16 přiloží při sestavení image plný text LGPL-3.0 a zdokumentuje, jak knihovnu vyměnit. Bez toho není podmínka distribuce splněná."
+    },
+    {
+      "package": "@img/sharp-win32-*",
+      "license": "LGPL-3.0-or-later",
+      "reason": "Windows varianta téhož. Tam je libvips slinkovaný staticky, takže povinnost je přísnější; do produkční image nevstupuje, instaluje se jen vývojářům na Windows.",
+      "approved_by": "zadavatel",
+      "expires_at": "2027-08-01",
+      "obligations": "Stejné jako u @img/sharp-libvips-*, navíc povinnost umožnit relinkování."
+    },
+    {
+      "package": "caniuse-lite",
+      "license": "CC-BY-4.0",
+      "reason": "Licence DAT, ne kódu. caniuse-lite je tabulka podpory funkcí v prohlížečích, kterou táhne browserslist pod Next.js. CC-BY-4.0 žádá uvedení autora a neukládá žádnou povinnost na software, který data používá; není to copyleft. Plošné povolení CC-BY-4.0 by ale pustilo i budoucí balíčky, o kterých nikdo nerozhodl, proto je výjimka jmenná.",
+      "approved_by": "zadavatel",
+      "expires_at": "2027-08-01",
+      "obligations": "Uvést zdroj dat v dokumentaci třetích stran."
+    }
+  ]
+}

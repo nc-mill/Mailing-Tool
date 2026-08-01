@@ -1,0 +1,20 @@
+{
+  "extends": "@mlain/config/tsconfig/lib.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "resolveJsonModule": true,
+    // Balíček čte Next.js přes transpilePackages. Turbopack neumí přepsat
+    // příponu `.js` na zdrojový `.ts`, takže se importuje bez přípony
+    // a rozlišení modulů musí být bundlerové, ne NodeNext.
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    // Balíček je zdrojový, nic se z něj negeneruje. Bez tohohle by tsc
+    // odmítl re-export navigačních pomůcek next-intl: jejich odvozený typ
+    // odkazuje na vnitřní soubory Next.js, které se v .d.ts nedají pojmenovat.
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["node", "vitest/globals"]
+  },
+  "files": [],
+  "include": ["src/**/*.ts", "vitest.config.ts"]
+}

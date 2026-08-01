@@ -1,0 +1,15 @@
+{
+  "name": "@mlain/tools",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run"
+  },
+  "devDependencies": {
+    "@mlain/config": "workspace:*",
+    "vitest": "4.1.10"
+  }
+}

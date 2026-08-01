@@ -1,0 +1,13 @@
+{
+  "id": "LQ-004",
+  "description": "chybějící kořen v datech je prázdný řetězec",
+  "context": "html",
+  "level": "authored",
+  "template": "[{{ campaign.name }}]",
+  "data": {
+    "contact": {
+      "first_name": "Jana"
+    }
+  },
+  "expected": "[]"
+}

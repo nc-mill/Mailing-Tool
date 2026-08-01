@@ -1,0 +1,9 @@
+{
+  "id": "LQ-504",
+  "description": "závorky v podmínce",
+  "level": "authored",
+  "template": "{% if (contact.is_vip) %}x{% endif %}",
+  "expect_validation_error": {
+    "code": "liquid_parentheses_not_allowed"
+  }
+}

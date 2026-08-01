@@ -1,0 +1,10 @@
+{
+  "id": "LQ-506",
+  "description": "parametr cyklu",
+  "level": "authored",
+  "template": "{% for a in contact.tags limit: 2 %}x{% endfor %}",
+  "expect_validation_error": {
+    "code": "liquid_for_parameter_not_allowed",
+    "hint_contains": "limit"
+  }
+}

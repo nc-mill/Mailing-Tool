@@ -1,0 +1,10 @@
+{
+  "id": "MK-009",
+  "description": "prostý text: značka stojí sama na nezalomeném řádku a náhrada nezmění okolí",
+  "source": "Podívejte se na akci:\nhttps://track.mlain.invalid/c/2f1a9c40-0000-4000-8000-000000000001\n\nS pozdravem",
+  "tracking_domain": "https://t.example.cz",
+  "link_tokens": { "2f1a9c40-0000-4000-8000-000000000001": "t1CLICK1" },
+  "open_token": null,
+  "expected": "Podívejte se na akci:\nhttps://t.example.cz/t/c/t1CLICK1\n\nS pozdravem",
+  "expected_replacements": 1
+}

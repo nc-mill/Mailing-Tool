@@ -1,0 +1,11 @@
+{
+  "id": "LQ-101",
+  "description": "default na nil",
+  "context": "html",
+  "level": "compiled",
+  "template": "Dobrý den, {{ contact.first_name | default: \"kolego\" }}!",
+  "data": {
+    "contact": {}
+  },
+  "expected": "Dobrý den, kolego!"
+}

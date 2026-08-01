@@ -1,0 +1,16 @@
+{
+  "name": "@mlain/sdk-node",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@mlain/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@mlain/config": "workspace:*"
+  }
+}

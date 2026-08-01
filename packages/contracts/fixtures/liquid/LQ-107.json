@@ -1,0 +1,13 @@
+{
+  "id": "LQ-107",
+  "description": "upcase",
+  "context": "html",
+  "level": "authored",
+  "template": "{{ contact.first_name | upcase }}",
+  "data": {
+    "contact": {
+      "first_name": "jana"
+    }
+  },
+  "expected": "JANA"
+}

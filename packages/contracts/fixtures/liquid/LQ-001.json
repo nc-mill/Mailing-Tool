@@ -1,0 +1,13 @@
+{
+  "id": "LQ-001",
+  "description": "prostá proměnná v HTML",
+  "context": "html",
+  "level": "authored",
+  "template": "Dobrý den, {{ contact.first_name }}!",
+  "data": {
+    "contact": {
+      "first_name": "Jana"
+    }
+  },
+  "expected": "Dobrý den, Jana!"
+}
