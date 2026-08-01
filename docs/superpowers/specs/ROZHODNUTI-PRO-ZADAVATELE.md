@@ -375,6 +375,29 @@ Editor slibuje „tenhle blok se zobrazí, jen když má zákazník slevový kó
 
 **Rozhodnuto:** uživatel v panelu vlastností vybere pole a operátor, žádný kód nepíše. Pravdivost se počítá mimo šablonovací jazyk. Tím se to omezení obchází místo řešení a zavírá se past, kdy se blok zobrazí i lidem s prázdným polem. Cykly (výpis položek objednávky) se zapisují do gramatiky teď, ale zapnou se až s transakčními maily.
 
+**Doplněno 2026-08-01, uzavření poslední otevřené podotázky.** Zbývalo rozhodnout, jestli se
+v podmínkách povolí **porovnávací operátory** (větší než, menší než), například „když je útrata
+větší než 5 000, ukaž tenhle blok".
+
+Problém je tentýž jako u uvozovek: renderer převádí obsah do HTML a znaky `>` a `<` při tom
+automaticky nahrazuje neškodnou podobou, protože jinak by rozbily stránku. Tím ale rozbije
+i podmínku.
+
+**Rozhodnuto zadavatelem: v MVP 0 zůstávají zakázané.** Důvody:
+
+1. Pro rozesílku mailů je skoro nikdo nepotřebuje. Běžné podmínky jsou „má vyplněné jméno"
+   nebo „je z Prahy", tedy rovnost a prázdnost, a ty fungují.
+2. Kdo potřebuje porovnávat, udělá si **segment**. „Zákazníci s útratou nad 5 000" už umíme
+   a je to přehlednější, protože uživatel vidí předem, kolika lidem to půjde.
+3. Náhradní zápis by se musel vymyslet, ověřit na obou stranách produktu a pokrýt dalšími
+   golden testy. Práce na den až dva kvůli funkci, kterou v prvním kole nikdo nevyužije.
+
+**Zákaz je hlasitý, ne tichý.** Validátor takovou podmínku odmítne jako blokující chybu
+s vysvětlením, takže se nestane, že by mail odešel rozbitý. Plány se tak už chovají, takže
+rozhodnutí nevyžaduje žádnou změnu kódu, jen uzavírá otázku.
+
+Není to nevratné. Zařazeno do MVP 1 spolu s dalšími úpravami šablon.
+
 ### 2. Rezerva pro A/B varianty obsahu
 
 Obsah kampaně byl uložený tak, že se do něj druhá varianta nevejde, přestože A/B test je slíbený v MVP 1.

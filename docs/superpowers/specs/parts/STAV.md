@@ -40,6 +40,7 @@ Kontroly z předchozího kola:
 Kontroly doplněné po vlně 3, všechny ověřené skriptem proti obsahu souborů, ne podle hlášení agentů:
 
 - [x] Nikde není starý název produktu. Dvě povolené výjimky: zdrojové materiály (`Reference-konverzace.txt`, `transcribe.txt`) a jedna věta v `revize/05`, která popisuje chybu ve skriptu na přepočet vektorů a kde jsou oba tvary řetězce podstatou vysvětlení
+- [x] **Doplněno 2026-07-31 při přípravě implementačních plánů:** kontrola výše hledala jen celé slovo starého názvu, takže minula **zkratku CLI**. V části 1 zůstalo na dvou místech `oe upgrade`, zatímco všech deset ostatních příkazů má tvar `mlain <příkaz>`. Implementátor by z toho postavil dvě binárky s různým jménem. Opraveno na `mlain upgrade`. Poučení: u přejmenování nestačí hledat název, musí se hledat i každá jeho zkratka a odvozenina (prefix env proměnných, scope balíčků, jméno CLI)
 - [x] Domain separator řetězce jsou ve tvaru `mailer/...` a neobsahují jméno produktu
 - [x] Žádná stará hodnota testovacího vektoru v žádném souboru
 - [x] `pause_reason` je `jsonb` v částech 1 i 4a a nikde není `text`

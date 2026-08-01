@@ -1,0 +1,2720 @@
+# Nálezy napříč plány
+
+## Stav po fázi 2 (2026-08-01)
+
+Recenze proběhly na deseti plánech, zbylých šest běží. Výsledek je jednoznačný a shodný:
+
+> **Žádný doménový plán není proveditelný proti současnému schématu, a všechny mají tentýž kořen.**
+
+Není to chyba autorů. Je to cena za rozhodnutí nechat celé schéma napsat jediný plán dopředu,
+aby nevznikaly souběžné migrace. P03 psal schéma dřív, než doménové plány zjistily, co potřebují,
+a obráceně to nešlo, protože ty potřebují schéma, aby proti němu mohly psát.
+
+| Plán | Kritických | Nejzávažnější |
+|---|---|---|
+| P03 | 23 (pět recenzí) | uvnitř v pořádku, problémy jsou na hranicích |
+| P04 | 7 | nespustí se bez sedmi zásahů do schématu |
+| P07 | 6 | tři zastaví plán hned na začátku |
+| P08 | 3 | 34 ze 43 úkolů v pořádku, vadí způsob přístupu k databázi |
+| P09 | 3 | z 90 % v pořádku, ale všechny tři se projeví až v produkci |
+| P10 | 5 | tři tvrdé chyby, dva tiché nulové výsledky |
+| P11 | 9 | tři shodí kód hned, ale většina oprav je na straně P11 |
+| P13 | 4 | žádná fáze se nezkompiluje, chybí primitivum |
+| P14 | 4 | doména promyšlená, blokují první úkoly |
+| P16 | 7 | tři třídy „projde testy, v provozu tiše nefunguje"; **opraveno 1. 8. 2026**, plus pět nových nálezů N72 až N76 |
+
+### Jediná položka, která blokuje nejvíc
+
+**Typ transakčního handle.** P03 exportuje syrové databázové spojení, ale P04 na něm volá
+Drizzle API, a P04 ten adaptér dodává všem ostatním plánům. Objevuje se nezávisle v nálezech
+P04, P11 i P13. **Datová vrstva by se nezkompilovala nikde.**
+
+> **UZAVŘENO 2026-08-01 u vlastníka.** Doplňkový průchod schématu to vyřešil v P03, tedy tam,
+> kam to patří. P03 má rozhodnutím **R34** `export type Tx = NodePgDatabase<typeof schema>`
+> a handle vyrábí sám obalením jednoho vyhrazeného spojení; rozhodnutím **R35** navíc exportuje
+> `pgErrorCode`. Přibyla i obálka `withoutContext(pool, fn)`, která dřív chyběla úplně.
+>
+> **P04 se srovnal, ne naopak.** Jeho adaptér `packages/core/tx` už nic nepřevádí ani
+> nepřejmenovává. Zbyla mu jediná úloha: držet aplikační pool a doplnit ho do obálek P03,
+> protože ty ho berou prvním argumentem a `packages/db` žádný singleton nedrží.
+> Transakční logika (BEGIN, `set_config`, kontrola nezměněného kontextu, zahození rozbitého
+> spojení přes `release(true)`) tak existuje v repozitáři **jednou**.
+>
+> Tři věci, na kterých se P04 musel srovnat a stojí za zapamatování pro ostatní plány:
+> obálka se jmenuje **`withoutContext`**, ne `withoutWorkspace`; `withReadOnly` bere
+> **`ReadOnlyOptions`**, tedy objekt `{ statementTimeoutMs, workMem? }`, ne holé číslo
+> (`workMem` zavedl P03 kvůli náhledu segmentu v P11 a přes podpis s číslem by ho P11
+> neměl kudy předat); a `pgErrorCode` **se nepíše znovu**, jeho verze pokrývá i chybu
+> ze syrového `pool.query`, kde SQLSTATE leží přímo na `error.code`.
+>
+> Ověřeno spuštěním `tsc` proti podpisům opsaným z aktuálního P03, ne přečtením: adaptér
+> i všechny vzory použití se přeloží (exit 0), a starý podpis `withReadOnly(ctx, 3000, fn)`
+> správně neprojde (`Argument of type 'number' is not assignable to parameter of type 'ReadOnlyOptions'`).
+>
+> Při té práci vyšly najevo **dvě věci, které minuly všechny recenze**, protože se poznají jen spuštěním:
+>
+> 1. **`tx.execute()` na ovladači `node-postgres` vrací `QueryResult`, ne pole.** Řádky jsou pod `.rows`,
+>    `result[0]` je `undefined`. Vzor `await tx.execute(...) as unknown as Row[]` projde typovou
+>    kontrolou i code review a **za běhu vrátí `undefined`**. V P04 to bylo na 41 místech, opraveno
+>    na `const { rows } = await tx.execute<Row>(...)`. **Ostatní plány mají tentýž vzor a musí ho opravit taky.**
+> 2. **SQLSTATE je na `error.cause.code`, ne na `error.code`.** Drizzle chyby balí do `DrizzleQueryError`.
+>    Kdo testuje `err.code === '23505'`, testuje `undefined` a jeho ošetření kolize se nikdy neprovede.
+
+### Co z toho plyne pro postup
+
+Nejdřív dokončit recenze všech šestnácti plánů, teprve pak **jeden** doplňkový průchod.
+Kdyby se schéma opravilo dřív, nálezy zbylých plánů dorazí po něm a vyžádají si druhý průchod,
+tedy přesně to, čemu se dělení vyhýbá.
+
+Zadání průchodu je hotové v `docs/replan/p03-revize-soulad-napric-plany.md`, souhrnná tabulka
+31 položek se sloupcem, na které straně se opravují.
+
+---
+
+Vzniká při psaní implementačních plánů (fáze 1). Autor plánu, který narazí na rozpor
+mimo své vlastnictví, ho **neopravuje**, ale zapíše sem. Uzavírá se ve fázi 2
+(`/replan:replan`) nebo rozhodnutím zadavatele.
+
+Pravidlo: plán smí měnit jen soubory, které vlastní. Rozpor v cizím vlastnictví
+je nález, ne úkol.
+
+---
+
+## Otevřené
+
+### N60. Plánovač přepočtu nemá jak číst napříč projekty, a selže tiše
+
+- **Našla:** kontrola faktů pro P11, 2026-08-01, ověřeno grepem přes všechny plány
+- **Týká se:** P03 (role a politiky), P11 (segmenty), P07 (importy)
+- **Závažnost:** vysoká, a je to **tichý** režim selhání
+
+Schéma má dva indexy stavěné výslovně pro sken napříč projekty, tedy pro plánovač přepočtu
+segmentů a pro obnovu zaseknutých importů. Ani jeden nemá projekt v čele klíče, protože se
+podle něj nefiltruje.
+
+**Chybí ale přístupová cesta.** Rolí je šest a žádná neumí ty tabulky číst napříč projekty.
+Aplikační role bez nastaveného kontextu vrátí **nula řádků a nevrátí chybu**, což je přesně ten
+tichý režim, kvůli kterému schéma zavedlo výjimky pro sender a pro údržbu.
+
+Výsledek: plánovač by běžel, tvářil se zdravě a **nikdy by nic nepřepočítal**. Segmenty by
+zůstaly se zastaralými počty a zaseknuté importy by nikdo neobnovil.
+
+Rozhodnout: buď se doplní úzká výjimka jako u údržby, nebo plánovač poběží po projektech.
+Druhá varianta je dražší, ale nezavádí další roli s širokým čtením.
+
+### N61. Zápis stavu indexu nad vlastními poli nemá vlastníka
+
+- **Našla:** tatáž kontrola
+- **Týká se:** P03, P07, P11
+- **Závažnost:** střední
+
+Schéma má sloupce `indexed` a `index_state` a nově i utilitu, která index založí nebo zruší.
+**Ale sloupce nikdo nezapisuje.** P03 to sám otevřeně přiznává: bez toho by `indexed` zůstal
+navždy na nepravdě, aniž by to kdokoli nazval rozhodnutím.
+
+Rozhodnout, jestli zápis patří P07 (vlastní pole) nebo P11 (segmenty, které index využívají).
+
+### N41. Kdo zavolá přípravu dat pro render
+
+- **Našla:** křížová kontrola vlny B, 2026-08-01
+- **Týká se:** P13 (materializace), P09 (sender), P08 (renderer)
+- **Závažnost:** vysoká, tichá ztráta obsahu v odeslaných e-mailech
+
+**Pozor, původní znění tohohle nálezu bylo chybné a je opravené.** Tvrdilo, že sender plní jiný
+kořen, než jaký šablona čte, a že jde o rozpor. Není. Jsou to **dva různé mechanismy**:
+
+- **`_present` vyrábí TypeScript strana** funkcí `prepareRenderData` z kontraktu a putuje k senderu
+  **uvnitř `render_data`**. Sender ho jen čte.
+- **`_blank` je vlastní mechanismus senderu** na jiný problém: literály `blank` a `empty` jsou
+  v gramatice povolené, ale Go lexer je nezná a vyhodnotí je na prázdnou hodnotu, takže porovnání
+  vyjde opačně než v prohlížeči.
+
+**Skutečná otázka, která zůstává:** funkci `prepareRenderData` definuje kontrakt, ale **volá ji až
+aplikace při materializaci outboxu, tedy P13.** Kdyby ji nikdo nezavolal, kořen `_present`
+v datech nebude, podmínky se vyhodnotí jako nepravda a **podmíněné bloky se v mailu skryjí,
+aniž by cokoli spadlo**. Slevový kód, který se má ukázat jen některým, by se neukázal nikomu.
+
+Zadáno: sender má mít **hlasitou kontrolu**, tedy když kompilovaná šablona odkazuje na `_present`
+a v datech ten kořen chybí, zpráva se zastaví s chybou. A P13 musí tu funkci při materializaci
+skutečně volat. Součástí je **golden fixture přes celý řetěz**, od bloku s podmínkou přes
+kompilaci až po interpolovaný výstup.
+
+**Stav 2026-08-01: půlka senderu je hotová.** P09 má kontrolu jako V6/V7 v kapitole 1.4
+a jako `RequirePresence` v úkolu 21: chybějící kořen i chybějící jednotlivý klíč jsou tvrdá chyba
+zprávy s kódem `render_data_missing_presence`, takže se z tiché ztráty obsahu stala hlasitá
+porucha. Ověřeno spuštěním. Sender má zároveň Go protějšek sdílené funkce
+(`liquidx.PrepareRenderData`) a jeho pravdivost sedí s TypeScriptem případ po případu.
+**Zbývá:** volání `prepareRenderData` v materializaci P13 (zapsané jako požadavek R7 v kapitole
+31 plánu P09) a golden fixture přes celý řetěz od P02 a P08.
+
+### N42. Dva různé layouty téhož balíčku
+
+- **Našla:** křížová kontrola vlny B
+- **Týká se:** P07, P13, P01 (vlastní manifest a mapu exportů)
+- **Závažnost:** vysoká, import by spadl
+
+P07 má strom pod `packages/core/contacts/`, P13 pod `packages/core/src/campaigns/`.
+Rozhoduje P01, protože balíček zakládá.
+
+Není to kosmetika: **katalog polí vlastní P07** a importuje se cestou, která musí odpovídat mapě
+exportů. Kdyby neodpovídala, import spadne u všech, kdo katalog používají, tedy u P08 i P12.
+
+### N43. Port pro kompilaci nevrací to, co po něm volající vyžaduje
+
+- **Našla:** křížová kontrola vlny B
+- **Týká se:** P13 (kampaně), P08 (renderer)
+- **Závažnost:** vysoká, vnitřní rozpor v P13
+
+P13 správně přijal, že zdrojem pravdy je výstup kompilace, a **vynucuje to dvakrát**: vyhodí
+chybu, když odkaz nemá identifikátor z metadat, i když pozice začíná od nuly.
+
+Jenže **port, kterým kompilaci volá, identifikátor ani počet značek nevrací**. Volající tedy
+požaduje něco, co mu dodavatel z definice nemůže dát. Navíc má ten port ve dvou místech plánu
+dvě různá jména a dvě různé signatury, a nikde není řádek, kde by se skutečně volal.
+
+Patří do vlny C, až přijde P13 na řadu.
+
+### N1. `campaign_links.id`: dva neslučitelné způsoby generování
+
+- **Našel:** P08 (šablony a renderer)
+- **Týká se:** P03 (schéma, **už napsané**), P13 (kampaně), P14 (reporty)
+- **Závažnost:** vysoká, tichá ztráta dat v reportech
+
+Část 4a dává `campaign_links.id` výchozí hodnotu `uuidv7()` a pozice odkazů čísluje od nuly.
+Kontrakt ale vyžaduje `UUIDv5` odvozené z `CompileMeta.links` a pozice od jedné.
+
+Když se to nechá být, kompilace šablony vyrobí jiná ID, než jaká má v databázi kampaň,
+a proklik se spáruje s neexistujícím odkazem. **Nic nespadne**, jen report kliků bude prázdný
+nebo přiřadí kliky ke špatnému odkazu. Zadavatel přitom rozhodl, že hlavní metrika je proklik.
+
+Rozhodnout: platí kontrakt (UUIDv5, pozice od jedné), nebo část 4a. Pak srovnat obě strany.
+
+### N2. Část 5 necituje kontrakt značek a má vlastní znění náhrady pixelu
+
+- **Našel:** P08
+- **Týká se:** P10 (tracking), P02 (kontrakty)
+- **Závažnost:** vysoká
+
+Značky pro tracking jsou pátý kontrakt, dohodnutý mezi částmi 3 a 4b. Část 5 ho ale
+necituje a popisuje náhradu pixelu vlastními slovy. Historicky přesně tohle vedlo k tomu,
+že tracking nefungoval vůbec, protože části 3 a 4b měly nekompatibilní značky.
+
+### N3. Kód pauzy `contract_mismatch` není v registru chybových kódů
+
+- **Našel:** P08
+- **Týká se:** P01 (registr kódů), P13 (kampaně)
+- **Závažnost:** střední
+
+Registr kódů vlastní P01 a předdeklaruje je všechny dopředu. Tenhle v něm chybí.
+
+**UZAVŘENO 2026-08-01 opravou P01.** Kód v registru byl už dřív, ale jen ve jmenném
+prostoru `message` (stav zprávy pro sender). P13 ho potřebuje i jako HTTP kód, takže
+je nově i v `PROBLEM_CODES` se statusem 422. Rozhodnutí R5 to povoluje: kód smí být
+ve víc prostorech, pokud má v každém význam, a musí být v každém, kde se používá.
+
+### N4. Fixture `LQ-051` očekává jiný chybový kód, než jaký vrací katalog hlášek
+
+- **Našel:** P08
+- **Týká se:** P02 (kontrakty a fixtures)
+- **Závažnost:** střední
+
+Golden fixture a katalog hlášek si odporují. Jedna ze stran je špatně.
+
+### N27. Rozhraní `packages/ui` se rozešlo stejně jako schéma (systémový nález)
+
+- **Našla:** revize P05, P06 a P12
+- **Týká se:** P05 a jedenácti plánů, které z něj importují
+- **Závažnost:** vysoká, ale je to tentýž očekávaný důsledek jako N9
+
+**Je to přesná obdoba N9, jen o vrstvu výš.** P05 psal design systém dřív, než navazující plány
+zjistily, co potřebují, a obráceně to nešlo. Výsledek:
+
+- **šest z osmi komponent má jiné jméno nebo jiné props**, než jakými je navazující plány volají
+- **devět komponent, které jiné plány importují, v balíčku vůbec neexistuje**
+  (`Alert`, `FileDrop`, `ErrorState`, `LimitReachedState` a další)
+- P06 v prvním úkolu importuje sedm stavových komponent, které P05 neexportuje
+
+A protože `packages/ui` smí měnit **jen P05**, žádný z jedenácti plánů si to nesmí opravit u sebe.
+
+Čtrnáct z patnácti nálezů o rozhraní vzniklo jen tím, že se plány psaly souběžně a nikdo je
+nepostavil vedle sebe.
+
+**Postup: jeden sjednocující průchod přes rozhraní `packages/ui` před zahájením vlny 1**,
+obdobný tomu, který evidence zavedla pro schéma pod N9. Zadání jsou recenze
+`docs/replan/p05-revize.md`, `p06-revize.md` a `p12-revize.md`.
+
+> **Průchod je hotový, 1. 8. 2026.** P05 sjednotil rozhraní u sebe a rozepsal, co zbývá
+> jedenácti navazujícím plánům. Pokračování je **N30** níž a úplný seznam s čísly řádků
+> v kapitole 8.1 plánu P05. Obě věcné vady z odstavce pod tímhle jsou opravené: K2 unese
+> všech 40 operátorů a chybějící konfiguraci testovacího běhu vede **N28** jako požadavek
+> na P01.
+
+K tomu dvě věcné vady, které s rozhraním nesouvisí a musí se opravit také:
+
+- **K2 query builder nesplňuje svůj tvrdý požadavek.** Pro každý ze 40 operátorů matice vykreslí
+  jediné textové pole, takže rozsahové, seznamové a bezhodnotové operátory nejdou zadat vůbec.
+- **Testy P06 a P12 leží mimo vzor, který hlídá konfigurace testovacího běhu.** Oba plány
+  by proběhly se zdánlivě zelenými kroky, ve kterých se **nespustil ani jeden test**.
+  To je nejtišší možné selhání celé fáze 2.
+
+### N15. Knihovna na obrázky táhne LGPL závislost a shodí licenční bránu
+
+- **Našel:** podagent recenze P15, **ověřeno skutečnou instalací a spuštěním brány**, ne čtením
+- **Týká se:** P15, P01 (licenční brána), a je to **rozhodnutí zadavatele**, ne technické
+- **Závažnost:** blokující pro CI, a je to právní otázka
+
+`sharp` sám je Apache-2.0, ale nativní libvips se instaluje jako `@img/sharp-libvips-<platforma>`
+pod **LGPL-3.0-or-later**. Ověřeno instalací a pak přesně tím nástrojem a whitelistem, který
+předepisuje P01:
+
+```
+Package "@img/sharp-libvips-darwin-arm64@1.3.2" is licensed under "LGPL-3.0-or-later"
+which is not permitted by the --onlyAllow flag. Exiting.
+EXIT CODE = 1
+```
+
+Na Linuxu, tedy v cílové image, je to totéž. Na Windows je to horší, tam je libvips slinkovaný
+staticky.
+
+Plán P15 uvádí jen licenci vrchního balíčku, takže je v přímém rozporu s vlastní větou o tom,
+že LGPL brána nepustí.
+
+**ROZHODNUTO ZADAVATELEM 2026-08-01: cílená výjimka.** `sharp` zůstává. Do whitelistu
+licenční brány se přidá výjimka **výhradně na `@img/sharp-libvips-*` a `@img/sharp-win32-*`**,
+nikdy plošné povolení LGPL.
+
+Co z toho plyne a musí se udělat:
+
+1. **P01** doplní výjimku do konfigurace licenční brány, jmenovitě na ty balíčky, ne vzorem `LGPL`.
+   **HOTOVO 2026-08-01.** V `licenses.allow.json` jsou tři jmenné výjimky
+   (`@img/sharp-libvips-*`, `@img/sharp-win32-*` a `caniuse-lite` kvůli CC-BY-4.0,
+   což je licence dat, ne kódu). Zároveň se opravila vada, kvůli které by výjimka
+   stejně nefungovala: soubor se jen validoval a do `license-checker` se nikdy
+   nepředával. Skript teď vzory rozvine na konkrétní `název@verze` (samotné jméno
+   `--excludePackages` neuznává, ověřeno spuštěním) a předá je do kontroly.
+   Navíc spadne, když se balíček pod existující výjimkou přelicencuje.
+2. **P16** při sestavení image přiloží text licence LGPL-3.0 a zdokumentuje, jak knihovnu vyměnit.
+   Bez toho není podmínka LGPL splněná a nejde o formalitu, je to podmínka distribuce.
+3. **P15** opraví řádek, který uvádí jen licenci vrchního balíčku, a doplní skutečný stav.
+
+Odmítnuté varianty: vypustit `sharp` (rovnocenná náhrada pod MIT nebo Apache neexistuje,
+znamenalo by to osekat extrakci značky) a odložit AI extrakci mimo MVP 0 (zlatá cesta by přišla
+o krok, kde AI vygeneruje šablonu ve firemních barvách).
+
+### N16. Mock v plánu P15 patří k předchozí verzi knihovny
+
+- **Našel:** tentýž podagent, ověřeno rozbalením balíčku
+- **Týká se:** P15
+- **Závažnost:** střední, hlasitá chyba
+
+Plán předepisuje `MockLanguageModelV2`, ale ten export v uvedené verzi neexistuje, patřil
+k předchozí hlavní verzi SDK. Balíček exportuje `MockLanguageModelV3` a `MockLanguageModelV4`.
+Správně je `MockLanguageModelV4`.
+
+Při ověření se zároveň potvrdilo, že **všechny ostatní uvedené verze existují a licence sedí**,
+včetně tranzitivních. Žádná vymyšlená verze.
+
+### N12. Tracking by nefungoval vůbec: zápis události chybí tři povinné sloupce
+
+- **Našla:** revize P03, soulad napříč plány
+- **Týká se:** P10 (tracking), P03 (schéma)
+- **Závažnost:** nejvyšší, produkt by neměl žádná data o otevřeních ani proklicích
+
+P10 vkládá do `message_events` jedenáct sloupců. P03 má v té tabulce navíc `recipient`,
+`rank` a `source`, všechny `NOT NULL` a **žádný z nich nemá `DEFAULT`**. Každé otevření
+i každý proklik by tedy skončily chybou 23502.
+
+Schéma je přitom vnitřně konzistentní, P03 si všechny tři sloupce ve vlastním testu vyplňuje.
+Chybí to na straně P10.
+
+Navazuje druhá vada: P10 používá `ON CONFLICT (id, received_at) DO NOTHING` a tvrdí, že zápis
+dávky je idempotentní. `received_at` ale mezi vkládanými sloupci není, takže se doplní `now()`
+a je pokaždé jiné. **Konflikt tedy nikdy nenastane a opakovaný běh jobu vyrobí duplicity.**
+Je to přesně ta past, kterou P03 sám popsal jinde a vyřešil explicitní podmínkou.
+
+### N13. Tři sirotci ve schématu: nikdo je nezapisuje nebo nemá čím
+
+- **Našla:** revize P03, soulad napříč plány
+- **Týká se:** P03, P09, P10, P13, P14
+- **Závažnost:** střední
+
+1. **`message_events.rank` nemá nikde definovanou škálu.** P13 má katalog hodnot, P10 to slovo
+   vůbec nezná, P03 sloupec jen zakládá. Navíc P13 používá klíč `opened`, zatímco `CHECK`
+   v P03 povoluje `open`.
+2. **Hodnotu `circuit_breaker_open` nezapisuje nikdo.** Vyskytuje se pouze v P03, v jeho
+   rozhodnutí, omezení a vlastním testu. Sender ji podle P09 nezapisuje, P13 řeší totéž jinak.
+3. **`campaign_render_warnings` je osiřelá tabulka.** P03 ji zakládá a tvrdí „zapisuje sender,
+   čte report", ale P08, P09, P13 ani P14 ji nezmiňují ani jednou. A jako jediná z osmi tabulek
+   se senderským grantem nemá politiku, která by senderovi zápis dovolila.
+
+### N14. Sender si drží vlastní repliku schématu a už teď se rozchází
+
+- **Našla:** revize P03, soulad napříč plány
+- **Týká se:** P09 (sender), P03
+- **Závažnost:** vysoká
+
+P09 má v `apps/sender/internal/testsupport/schema.sql` vlastní kopii schématu pro testy.
+Rozdíly proti P03 už teď:
+
+| Věc | P09 replika | P03 |
+|---|---|---|
+| dělení `message_events` | podle `ts` | podle `received_at`, a P03 to výslovně označuje za tvrdou chybu |
+| `messages.contact_id` | nullable | `NOT NULL` |
+| rychlost odesílání | `double precision` | `numeric(10,2)` |
+| `source` | výchozí `'sender'` | hodnota, kterou `CHECK` nedovolí |
+| chybí úplně | `recipient`, `rank`, `campaign_id`, omezení na počet pokusů | |
+
+Sender tedy testuje proti schématu, které v produkci neexistuje. Testy budou zelené a produkce
+spadne. Replika musí být generovaná z pravdy, ne psaná ručně, jinak se rozchod bude opakovat.
+
+### N10. Kontrakt žádá kontrolu, pro kterou sám nedodává vstup
+
+- **Našel:** P09 (sender)
+- **Týká se:** P02 (kontrakt), P13 (kampaně), P03 (schéma)
+- **Závažnost:** střední, ale je to díra ve zmrazeném kontraktu
+
+Kritérium AK-6.21 chce, aby sender porovnal počet nalezených značek odkazů proti
+`clickMarkerCount`. Jenže `CompileMeta` je typ části 3, DDL `campaigns` v části 4a žádný
+sloupec s kompilačními metadaty nemá a kontraktní podmnožina sloupců `campaigns` v 4.10.1
+ho taky nevyjmenovává. **Sender tu hodnotu nemá odkud vzít.**
+
+P09 to řeší degradací: čte nepovinný `campaigns.compile_meta`, při jeho nepřítomnosti vypne
+jen tuhle jednu kontrolu a zaloguje `compile_meta_column_missing`. Ostatní čtyři kontroly
+běží dál. Doplnění sloupce je zapsané jako požadavek na P13.
+
+Patří k N9, tedy do jednoho doplňkového průchodu schématem.
+
+### N11. Testovací vektory tokenů se mezi částí 1 a částí 4b liší
+
+- **Našel:** P09
+- **Týká se:** části 1 a 4b specifikace, P02
+- **Závažnost:** střední
+
+Obě části uvádějí testovací vektory trackovacích tokenů a **nesouhlasí**: jiný open token
+i jiné plné HMAC. P09 ověřil, že vektor v části 1 je vnitřně konzistentní (prvních 16 bajtů
+uvedeného HMAC sedí se závěrem base64 řetězce), a rozhodl, že platí část 1, protože vlastní
+kontrakt. Vektory v části 4b pocházejí ze znění před poslední změnou payloadu.
+
+Opravit v části 4b, ať nezůstanou dvě verze pravdy.
+
+### N9. Doménové plány žádají sloupce, které P03 nemohl znát (systémový nález)
+
+- **Našli:** P08, P10, P16, a pravděpodobně i plány, které se ještě píšou
+- **Týká se:** P03 (schéma), P04
+- **Závažnost:** vysoká, ale je to očekávaný důsledek dělení, ne chyba
+
+Řídicí dokument záměrně nechává celé schéma napsat jediný plán dopředu, aby nevznikaly
+souběžné migrace. Cena za to je tahle: **P03 psal schéma dřív, než doménové plány zjistily,
+co doopravdy potřebují.** Nešlo to obrátit, protože doménové plány zase potřebují schéma,
+aby proti němu mohly psát.
+
+Zatím požadované doplňky:
+
+| Co | Kdo žádá | Proč |
+|---|---|---|
+| `identities.shared` | P10 | Algoritmus převazby ho vyžaduje, specifikace ho v DDL nemá |
+| `message_events.processed_at` | P10, P13 | Značka idempotence při zpracování událostí |
+| `withWorkspaceTx`, `createSystemContext` | P10 (od P03 a P04) | Primitiva pro transakce v kontextu projektu |
+| Příznak ukázkovosti | P16 | Viz N8, zatím obcházeno manifestem |
+| `campaign_links.id` jako UUIDv5 | P08 | Viz N1, teď je `uuidv7()` |
+
+**Postup:** až budou hotové všechny plány, projít nasbírané požadavky a udělat **jeden**
+doplňkový průchod P03. Ne patnáct malých migrací od patnácti plánů, to je přesně to,
+čemu se dělení vyhýbá. Průchod musí proběhnout **před** zahájením implementace,
+jinak si první doménový plán sáhne do cizího balíčku.
+
+**ZADÁNÍ PRŮCHODU JE HOTOVÉ:** `docs/replan/p03-revize-soulad-napric-plany.md`, kapitola
+„Souhrnná tabulka". Obsahuje 31 položek roztříděných podle toho, kde se opravují:
+17 v P03 samotném, 3 v P03 společně s jiným plánem, 7 jen v doménovém plánu,
+4 jsou čistá rozhodnutí bez kódu.
+
+**Změny typu a nullability musí do téže migrace hned**, dokud jsou tabulky prázdné.
+Po vydání by to byly přepisy dat na živé instalaci, tedy přesně ta operace, kterou plán
+sám označuje za nejrizikovější.
+
+Z tabulky stojí za zvýraznění dvě věci, které nikdo nečekal:
+
+- **Typ transakčního handle je neslučitelný mezi P03 a P04.** P03 předává syrový `PoolClient`,
+  P04 a doménové plány počítají s Drizzle handle. Tohle by se projevilo hned prvním
+  doménovým dotazem.
+- **`message_events.rank` může být generovaný sloupec.** Hodnota je čistá funkce typu události,
+  takže ji nemusí zapisovat ani P10, ani P13, a nemůže se rozejít. Řeší to zároveň nález
+  o dvou různých názvech téže hodnoty ve dvou plánech.
+
+### N7. Záloha pod rolí s RLS by vyrobila prázdný dump, a nic by neselhalo
+
+- **Našel:** P16 (onboarding a provoz)
+- **Týká se:** P03 (role a granty, **už napsané**), P16
+- **Závažnost:** nejvyšší, tichá ztráta všech dat
+
+Role `mlain_backup` má podle návrhu jen `pg_read_all_data`. To **není** `BYPASSRLS`.
+Pod takovou rolí `pg_dump` doběhne bez chyby a vyrobí syntakticky bezvadný dump,
+ve kterém má **každá chráněná tabulka nula řádků**.
+
+Nic nespadne, exit kód je nula, soubor existuje a má rozumnou velikost kvůli schématu.
+Chyba se pozná až ve chvíli, kdy někdo obnovuje po havárii, tedy v nejhorší možný okamžik.
+
+P16 to řeší tím, že `mlain backup` odmítne běžet pod rolí, na kterou platí RLS. Ověřit,
+že to sedí s rolemi, které založil P03, a že kontrola je test, ne jen věta v dokumentaci.
+
+### N8. Ukázková data nemají ve schématu příznak ukázkovosti
+
+- **Našel:** P16
+- **Týká se:** P03 (schéma), P07 (kontakty), P13 (kampaně)
+- **Závažnost:** střední
+
+UI specifikace s příznakem počítá (požadavek U→2.9), ale schéma ho nemá a nový sloupec
+by znamenal migraci, kterou vlastní P03. P16 to obchází třemi existujícími mechanismy
+a maže podle manifestu v `workspaces.settings`, ne podle značky, protože uživatel může
+ukázkový kontakt upravit a značku smazat. Rozhodnout, jestli se doplní sloupec, nebo
+zůstane obchvat.
+
+Souvisí s tím nezavřená mezera, kterou P16 přiznal: ochrana „ukázkové kontakty nejdou
+do publika kampaně" leží v souborech P07 a P13, takže ji P16 napsat nemůže. Je z ní
+rozhraní na P13 a E2E scénář, který spadne, pokud ji P13 nedodá.
+
+### N5. Vzor pro rody v kapitole o lokalizaci nedává slíbený výstup
+
+- **Našel:** P05 (design systém a i18n)
+- **Týká se:** část 6 specifikace, kapitola 12.3
+- **Závažnost:** nízká, ale je to chyba ve vzoru, který se bude kopírovat
+
+Specifikace ukazuje `{gender, select, ...}} kampaň {campaign}` a slibuje, že u neznámého
+rodu vznikne „Otevření kampaně". Nevznikne. Slovo „kampaň" je natvrdo mimo přepínací blok,
+takže vyjde „Otevření kampaň". Vlastní příklad porušuje pravidlo „nikdy neskládáme věty
+z fragmentů", které si tatáž kapitola stanovuje.
+
+P05 to ve svém plánu řeší celou větou v každé větvi. Opravit i ve specifikaci, ať se
+chybný vzor nekopíruje dál.
+
+### N6. Kritéria 16 a 18 části 6 nejdou splnit obě doslovně
+
+- **Našel:** P05
+- **Týká se:** část 6, kapitola 15
+- **Závažnost:** nízká
+
+P05 to řeší tak, že nedostupná akce není `disabled`, ale vysvětlí, co chybí. Rozumné,
+ale je to rozhodnutí, ne implementace zadání.
+
+### N17. P01 zakládá čtyři role, model potřebuje šest
+
+- **Našla:** revize P03, zapracování oprav
+- **Týká se:** P01 (`docker/initdb/10-roles.sql`), P03
+- **Závažnost:** vysoká, tichá ztráta dvou operací
+
+P03 počítá se šesti rolemi, `docker/initdb/10-roles.sql` zakládá čtyři. `mlain_gdpr`
+(výmaz podle čl. 17) a `mlain_maintenance` (retence osobních údajů) v P01 ani ve
+specifikaci **nejsou vůbec**.
+
+Dřív to bylo tiché dvakrát: granty pro obě role byly v migraci obalené do
+`EXCEPTION WHEN undefined_object`, takže se v produkci přeskočily, a testovací harness
+si všech šest rolí zakládal sám, takže test „role má právo mazat" byl zelený nad
+prostředím, které u zákazníka neexistuje.
+
+**P03 svou stranu opravil:** obalení výjimkou zmizelo (rozhodnutí R19), takže migrace
+na databázi bez rolí hlasitě spadne, a `test/grants.test.ts` kontroluje počet i atributy
+rolí proti `pg_roles`.
+
+**UZAVŘENO 2026-08-01 opravou P01.** `docker/initdb/10-roles.sql` zakládá `mlain_gdpr`
+i `mlain_maintenance`, obě dostávají `GRANT CONNECT` a `GRANT USAGE ON SCHEMA public`,
+a test v P01 kontroluje všech šest rolí místo čtyř. Ověřeno spuštěním proti
+PostgreSQL 18.4 včetně druhého běhu nad existující databází. Do téhož souboru přibyl
+`ALTER DATABASE mlain SET timezone = 'UTC'`, tedy požadavek B z kapitoly 7 plánu P03,
+který nešlo splnit z migrace, protože `ALTER DATABASE` smí jen vlastník databáze.
+
+### N18. Blokující CI job zůstane po mergnutí červený a nikdo ho nesmí opravit
+
+- **Našla:** revize P03 (proveditelnost)
+- **Týká se:** P01 (`tools/ci`, `.github/workflows`), P03
+- **Závažnost:** vysoká, blokuje merge všech dalších plánů
+
+P01 dodává kontrolní skript, který **záměrně** selže, dokud mu někdo nedodá scénáře,
+a předává to jako požadavek. P03 je píše, ale jinam (`packages/db/test/migrations-check.test.ts`),
+a jeho vlastní pravidlo mu zakazuje sáhnout mimo `packages/db`. Vlastnictví té opravy
+tedy nemá nikdo a job zůstane červený i po tom, co scénáře existují.
+
+**UZAVŘENO 2026-08-01 opravou P01.** `tools/ci/migrations-check.mjs` už nekončí
+bezpodmínečným `fail()`, ale deleguje na `pnpm --filter @mlain/db run test:migrations`.
+Selže jen tehdy, když ten skript v `packages/db/package.json` chybí nebo sám selže,
+tedy když je oprava proveditelná uvnitř `packages/db`, kde P03 pracovat smí. Požadavek
+P01-4 se tím změnil z „doplň scénáře do tools/ci" na „drž skript test:migrations".
+Stejným způsobem se opravily i tři joby kontraktů, které volaly vlastní kontrolu místo
+té, kterou dodává P02.
+
+### N19. Balíčkový skript `lint` neexistuje, plány ho přesto volají
+
+- **Našla:** revize P03 (proveditelnost)
+- **Týká se:** P01 (kořenový `package.json`, lint konfigurace)
+- **Závažnost:** střední, poslední krok plánu skončí chybou
+
+`pnpm --filter @mlain/db lint` není nikde definovaný. P01 lintuje výhradně z kořene
+(`oxlint . && eslint . && prettier --check .`) a žádný balíček skript `lint` nemá.
+
+P03 to na své straně opravil: finální brána volá `pnpm lint` z kořene. Zůstává ověřit,
+že kořenový lint skutečně pokrývá i `packages/db`, a **je pravděpodobné, že totéž volají
+i další plány**, protože ten tvar příkazu se mezi plány kopíroval.
+
+### N20. Tři chybové kódy migračního runneru chybí v registru P01
+
+- **Našla:** revize P03, zapracování oprav
+- **Týká se:** P01 (registr chybových kódů), P16 (`mlain doctor`)
+- **Závažnost:** střední
+
+Registr kódů vlastní P01 a předdeklaruje je všechny dopředu. Runner P03 vrací:
+
+| Kód | Exit | Kdy |
+|---|---|---|
+| `schema_version_ahead` | 5 | databáze je novější, než image umí |
+| `migration_lock_timeout` | 75 | zámek drží jiná replika déle než strop |
+| `migration_hash_mismatch` | 6 | **nový**, obsah už aplikované migrace se změnil |
+
+Třetí kód je nový a zavádí ho oprava nálezu, že runner nekontroloval hash už aplikovaných
+migrací: změna bílého znaku ve vydané migraci ji nechala přehrát nad hotovým schématem.
+U `CREATE TABLE` by to spadlo hlasitě, u `GRANT` nebo `INSERT` tiše prošlo.
+
+**UZAVŘENO 2026-08-01 opravou P01.** Všechny tři jsou v registru, ve **šestém jmenném
+prostoru** `operational` (rozhodnutí R5), spolu s `migration_failed` (3),
+`major_version_skipped` (4), `usage_error` (64), `command_not_implemented` (69)
+a `config_invalid` (78). Tentýž prostor pojal i čtrnáct nálezů `mlain doctor` z P16
+plus `isolation_prerequisites_missing` z nálezu N24. Prostor rozlišuje `scope`
+`cli` a `doctor`, protože závažnost nálezu diagnostiky (`critical | warning | info`)
+je jiná škála než u nálezů preflightu kampaně.
+
+### N21. Materializace publika musí `created_at` nastavovat explicitně, nově to vynutí databáze
+
+- **Našla:** revize P03 (čerstvý pohled, K4)
+- **Týká se:** P13 (kampaně), P09 (sender)
+- **Závažnost:** vysoká, ale nově je hlasitá místo tiché
+
+Invariant I1 („všechny zprávy jednoho běhu mají `created_at` rovné
+`campaigns.audience_built_at`") neměl v databázi žádné vynucení a `messages.created_at`
+má `DEFAULT now()`. Kterákoli cesta, která zprávu vložila bez explicitního `created_at`,
+tedy obešla unikátní index `uq_messages__campaign_contact` a **kontakt dostal e-mail dvakrát**,
+aniž by cokoli selhalo.
+
+P03 to opravil složeným cizím klíčem `messages (campaign_id, created_at) REFERENCES
+campaigns (id, audience_built_at)`. Ověřeno spuštěním: zápis bez explicitního `created_at`
+nově skončí chybou 23503.
+
+**Co z toho plyne pro P13:**
+
+1. Materializace musí `created_at` plnit hodnotou `campaigns.audience_built_at`, jinak
+   dávka spadne. Dosud to bylo doporučení, teď je to podmínka zápisu.
+2. Kampaň musí mít `audience_built_at` vyplněné **dřív**, než vznikne první zpráva.
+3. Testovací odeslání (`kind = 'test'`) buď nese `campaign_id IS NULL` (pak se cizí klíč
+   nekontroluje), nebo musí mít `created_at` shodné s `audience_built_at` kampaně.
+   Rozhodnout na straně P13; index `idx_messages__test_claimable` je bez `campaign_id`,
+   což první variantě odpovídá.
+
+### N22. Dva zápisy musí nově nést druhou složku klíče partitionované tabulky
+
+- **Našla:** revize P03 (schéma a migrace, D1)
+- **Týká se:** P04 (webhooky), P07 nebo P11 (příchozí webhooky kontaktů)
+- **Závažnost:** střední, jinak dohledání prochází všemi oddíly
+
+Plán si sám stanovil, že každý odkaz na partitionovanou tabulku nese obě složky klíče,
+ale u dvou míst to nedodržel a test to nezachytil, protože kontroloval jmenovitě jen
+`message_events`. P03 doplnil sloupce i registr `PARTITIONED_REFERENCES`, podle kterého
+se test nově řídí. Dopad na zapisující stranu:
+
+1. **`webhook_deliveries.created_at` ztratil `DEFAULT now()`.** Plní se hodnotou
+   `webhook_events.created_at`, takže doručení leží ve stejném měsíčním oddílu jako
+   událost a dvojice `(event_id, created_at)` je úplný klíč události. Je to zároveň jediný
+   způsob, jak unikátní index `uq_webhook_deliveries__event_endpoint` doopravdy chrání:
+   s `now()` by dva fan-outy téže události prošly oba a příjemce by dostal webhook dvakrát.
+2. **`inbound_dedup` má nový sloupec `delivery_created_at`** a `workspace_id` v primárním
+   klíči.
+
+### N23. Zpožděná událost z prohlížeče: server musí `occurred_at` oříznout, ne ji zahodit
+
+- **Našla:** revize P03 (čerstvý pohled, D6)
+- **Týká se:** P10 (tracking)
+- **Závažnost:** střední
+
+`ck_web_events__lag` dovoluje `occurred_at` v okně od sedmi dnů zpět do šedesáti sekund
+dopředu. Počítač s posunutými hodinami tedy pošle událost, kterou databáze odmítne
+chybou 23514. Plán neříkal, co se s ní má stát, a obě možné odpovědi jsou špatné:
+tvrdá chyba shodí celou dávku, tiché zahození ztratí data.
+
+P03 to uzavřel rozhodnutím R27: **server hodnotu ořízne do povoleného okna** a `CHECK`
+zůstává jako pojistka. Událost z počítače s hodinami o den napřed tedy dorazí
+s `occurred_at = received_at`. Implementace té části leží v P10.
+
+### N24. `mlain doctor` má nově tři konkrétní kontroly, které mu P03 připravil
+
+- **Našla:** revize P03, zapracování oprav
+- **Týká se:** P16 (onboarding a provoz), navazuje na N7
+- **Závažnost:** vysoká, všechny tři poruchy jsou tiché
+
+P03 dodal tři věci, které samy o sobě nic nekontrolují, dokud je někdo nezavolá:
+
+1. **`checkIsolationPrerequisites(pool)`** v `@mlain/db`. Vrátí seznam důvodů, proč se na
+   aktuální roli nevztahuje RLS (superuživatel, `BYPASSRLS`, vlastnictví schématu).
+   Samohostitel s managed PostgreSQL a jedinou rolí jinak dostane funkční aplikaci
+   **bez izolace projektů** a nedozví se to. Patří do startu aplikace (P04) i do doctoru.
+2. **`SELECT mlain_apply_grants()`**. `pg_dump --no-privileges` obsahuje politiky RLS,
+   ale žádné granty, a ledger migrací se obnoví taky, takže migrace s granty je označená
+   za aplikovanou a už ji nikdo nespustí. Postup obnovy musí funkci zavolat, jinak
+   aplikace po havárii skončí na `permission denied`.
+3. **Tabulka `secret_key_generations`** (`key_id`, otisk klíče, čas zavedení). Ze
+   `SELECT DISTINCT fingerprint_key_id` se pozná, která pokolení se používají, ne jestli
+   klíč pod tím číslem pořád existuje a jestli ho někdo neprohodil. Prohození `SECRET_KEY`
+   a `SECRET_KEY_PREVIOUS` po obnově je u samohostitele reálné a projeví se tím, že
+   **vymazaný člověk dostane e-mail**. Doctor má porovnávat otisk, ne existenci čísla;
+   řádky do tabulky zapisuje setup a rotace klíče, ne migrace.
+
+### N28. Dvě RLS politiky, bez kterých nejde přihlásit klíčem ani přijmout pozvánku
+
+- **Našla:** revize P04, potvrzeno proti aktuálnímu znění P03 dne 2026-08-01
+- **Týká se:** P03 (RLS politiky), P04 (fáze E a úkol 36)
+- **Závažnost:** nejvyšší, a obojí selže **tiše**
+
+Dvě operace musí dohledat řádek **dřív, než je znám projekt**, protože projekt se z toho
+řádku teprve zjišťuje. Obě tabulky mají jen `ws_isolation`, takže pod rolí `mlain_app`
+bez nastaveného `mlain.workspace_id` vrátí `SELECT` vždy nula řádků.
+
+1. **`api_keys` podle prefixu.** Bez politiky skončí **každý** požadavek
+   s `Authorization: Bearer ml_live_...` na `unauthenticated`, tedy jako „klíč neexistuje".
+   Celá fáze E plánu P04 (úkoly 30 až 33, kritéria 19, 24, 25, 26, 26b, 26c) je neproveditelná.
+   Navrhované znění: `CREATE POLICY api_key_lookup ON api_keys FOR SELECT USING
+   (current_setting('mlain.workspace_id', true) IS NULL AND revoked_at IS NULL);`
+   plus obdoba pro UPDATE kvůli `last_used_at`. Čistší varianta je `SECURITY DEFINER`
+   funkce `lookup_api_key(prefix, kind)`, která vrátí jen sloupce potřebné k ověření.
+2. **`invitations` podle `token_hash`.** Bez politiky vrací přijetí pozvánky vždy 404.
+   Navrhované znění: `CREATE POLICY invitation_token_lookup ON invitations FOR SELECT USING
+   (current_setting('mlain.workspace_id', true) IS NULL AND accepted_at IS NULL
+   AND revoked_at IS NULL AND expires_at > now());`
+   Únik dat je nulový: jediný filtr, který volající má, je `token_hash` s unikátním indexem.
+
+**Proč se na to nepřijde z chybové hlášky:** obě cesty vracejí u neplatného vstupu 404 nebo
+`unauthenticated` **schválně**, aby z odpovědi nešlo zjistit, jestli klíč či pozvánka existuje.
+Chybějící politika se tedy projeví přesně tak, jako když uživatel zadá špatný token.
+
+Zbývající tři požadavky P04 na P03 (`api_keys.previous_secret_hash`, `previous_expires_at`,
+tabulka `platform.rate_limits`) už v souhrnné tabulce
+`docs/replan/p03-revize-soulad-napric-plany.md` jsou a neopakují se tady.
+
+**Naopak odpadá dřívější požadavek na politiku `member_bootstrap` pro `memberships`.**
+Aktuální P03 ho řeší pořadím v `createWorkspaceAsUser` (ID projektu se generuje dopředu
+a kontext se nastaví ještě před vložením řádku) a výslovně varuje, že uvolnění politiky
+na `memberships` je „nejlevnější cesta k zelenému testu" a přesně ta chyba, které má model
+bránit. P04 se srovnal a používá tentýž vzor.
+
+### N29. Patnáct validačních kódů z P04 chybí v registru P01
+
+- **Našla:** revize P04, ověřeno porovnáním se skutečným zněním registru, ne odhadem
+- **Týká se:** P01 (`packages/core/src/errors/problem-codes.ts`, seznam `VALIDATION_CODES`)
+- **Závažnost:** střední
+
+Kořenové kódy (`PROBLEM_CODES`) sedí všechny, P04 nepoužívá ani jeden neregistrovaný.
+V poli `errors[]` ale vydává patnáct kódů, které `VALIDATION_CODES` nezná:
+
+`blocked_target`, `confirm_name_mismatch`, `cursor_order_mismatch`, `invalid_cursor`,
+`invalid_idempotency_key`, `not_a_member`, `out_of_range`, `password_contains_email`,
+`password_too_common`, `password_too_long`, `password_too_short`, `public_key_scopes_fixed`,
+`scopes_required`, `unknown_scope`, `unsupported_order`.
+
+Registr vlastní P01 a předdeklaruje kódy dopředu, takže je P04 doplnit nesmí.
+
+### N30. Stránka detailu úlohy nemá vlastníka
+
+- **Našla:** revize P04 při zapracování požadavků P05
+- **Týká se:** P06 (obrazovky), navazuje na rozhodnutí R4 v P05
+- **Závažnost:** nízká, ale bez rozhodnutí ji nenapíše nikdo
+
+P05 dodal prezentační vrstvu Centra úloh a napsal, že „endpoint, napojení na pg-boss
+a stránku `/w/{slug}/jobs/{jobId}` dodá plán, který vlastní API úloh". API úloh je P04
+a ten **endpointy i registr zdrojů dodal** (úkol 45). **Obrazovky ale P04 nepíše žádné**,
+má to ve svém výčtu vyloučení, takže stránka detailu úlohy patří P06.
+
+Zároveň se ukázalo, že generická tabulka úloh ve schématu neexistuje a nemá vzniknout:
+každá doména má vlastní tabulku postupu (`imports` u P11, `campaign_audience_progress`
+u P13). P04 proto dodal **registr zdrojů**, do kterého si doména svůj zdroj zaregistruje.
+**P11 a P13 musí registraci doplnit**, jinak zůstane Centrum úloh prázdné, aniž by cokoli
+selhalo.
+
+### N25. Sender nesmí adresovat měsíční oddíl jménem
+
+- **Našla:** revize P03 (bezpečnost K2, čerstvý pohled K1, schéma K2)
+- **Týká se:** P09 (sender), P13, P14, navazuje na N14
+- **Závažnost:** vysoká
+
+Rozhodnutí R20 v P03 zakazuje přímý přístup na oddíly: žádný oddíl nedostane grant,
+takže `SELECT * FROM messages_y2026m08` pod kteroukoli rolí skončí na `permission denied`.
+Důvod je, že oddíl nedědí `relrowsecurity` ani politiky, takže s granty šlo přes oddíl
+číst řádky všech projektů a mazat cizí auditní záznamy.
+
+Přístup **přes rodičovskou tabulku funguje beze změny** a RLS na něm platí. Kdokoli si
+tedy psal dotaz s názvem oddílu (typicky kvůli výkonu), musí ho přepsat na rodiče
+s podmínkou na partiční sloupec; prořezávání oddílů udělá plánovač sám.
+
+Zároveň padá akceptační kritérium AK-20.2 části 4b („nová partition je pro sender
+čitelná"), protože sender žádný oddíl jménem nečte. Nahrazuje ho opačné kritérium
+a test nad `pg_class.relacl`.
+
+### N26. Testy P03 čtou normativní SQL přímo ze souborů P02
+
+- **Našla:** revize P03 (proveditelnost, D10)
+- **Týká se:** P02 (kontrakty)
+- **Závažnost:** nízká, ale je to nová vazba mezi balíčky
+
+`packages/db/test/contract-sql.test.ts` dosud kontraktní dotazy **opisoval ručně**, takže
+dokazoval, že projde opis, ne kontrakt. Nově je načítá ze souborů
+`packages/contracts/fixtures/outbox/sql/*.sql` včetně hlaviček `-- role`, `-- params`
+a `-- args`.
+
+Je to čtení souboru z disku, ne import: nevzniká build závislost ani hrana v grafu
+balíčků, což je tentýž postup, jakým P02 čte manifest konfigurace z P01. Přesto o tom
+P02 má vědět, protože **přejmenování adresáře nebo změna tvaru hlavičky shodí testy P03**.
+Test má proti tomu pojistku: kontroluje, že se načetlo právě jedenáct dotazů, aby prázdná
+sada nevypadala jako úspěch.
+
+### N28. Nálezy DNS kontrol v P13 mají jiná jména než tytéž kódy v registru
+
+- **Našel:** zapracování oprav P01 (fáze 3)
+- **Týká se:** P13 (kampaně, provideři), P01 (registr kódů)
+- **Závažnost:** střední, ale je to volba jmenné konvence, ne opomenutí
+
+Registr P01 vede nálezy domény jako `domain_spf_missing`, `domain_dkim_missing`
+a `domain_dmarc_missing`. P13 ale v DNS kontrolách emituje **neprefixovanou** sadu
+dvaceti šesti nálezů: `spf_missing`, `spf_multiple_records`, `spf_no_amazon`,
+`spf_permissive_all`, `spf_too_many_lookups`, `spf_unknown`, `dkim_wrong_value`,
+`dkim_name_duplicated`, `dkim_missing`, `dkim_unknown`, `dkim_partial`,
+`dmarc_unknown`, `dmarc_missing`, `dmarc_multiple_records`, `dmarc_invalid_syntax`,
+`dmarc_policy_none`, `dmarc_partial_pct`, `dmarc_spf_alignment_strict`,
+`mail_from_mx_wrong`, `mail_from_mx_missing`, plus šest nálezů preflightu
+(`campaign_audience_only_sample`, `campaign_audience_has_sample`,
+`campaign_recompile_pending`, `campaign_trial_mode`, `deliverability_complaint_blocking`,
+`deliverability_bounce_warning`).
+
+**Do P01 se nedoplnily schválně.** Vlastní konformanční seznam P13
+(`REQUIRED_ERROR_CODES`) je nezmiňuje, takže by šlo o dvacet šest kódů zavedených
+bez toho, aby si je někdo vyžádal, a hlavně by v registru vznikly dvě soupravy
+pro totéž. Rozhodnout je potřeba jedno: buď P13 přejde na prefixovaná jména
+z registru, nebo se prefix z registru zruší a přejmenují se tři existující kódy.
+Druhá varianta je dražší, protože `domain_*` používá i preflight kampaně.
+
+Ve stejné vrstvě jsou i kódy, které P13 zapisuje do `messages.error_code`
+a v registru chybí: `campaign_cancelled`, `unsubscribed`, `contact_deleted`,
+`contact_anonymized`, `processing_restricted`, `contact_status_changed`
+a `render_data_too_large`. Prvních šest je typ `RevokeReason`, který
+`revokePending` zapisuje přímo do sloupce. Ty doplnit lze bez rozhodnutí,
+jen se to má udělat jedním průchodem spolu s nálezy výše.
+
+### N29. P13 a P11 se ptají registrů špatným tvarem
+
+- **Našel:** zapracování oprav P01 (fáze 3)
+- **Týká se:** P13, P11, P01
+- **Závažnost:** střední, konformanční testy obou plánů by padaly z falešného důvodu
+
+`ERROR_REGISTRY` v P01 je mapa **podle druhu** (`problem`, `validation`, `finding`,
+`message`, `import_row`, `operational`), ne podle kódu. P13 na ni ale sahá jako
+`expect(ERROR_REGISTRY[code]).toBeDefined()`, což bude vždy `undefined`.
+Stejně tak `QUEUE_REGISTRY` je **pole**, ne objekt, a P13 dělá
+`Object.keys(QUEUE_REGISTRY)`, což vrátí indexy `'0'`, `'1'` a tak dál.
+
+P01 pro tenhle účel nově exportuje `isRegisteredCode(code)`, `ALL_REGISTERED_CODES`
+a `queueNames()`; `ERROR_CODES` je plochá mapa, ale obsahuje jen druh `problem`,
+protože jen ten má HTTP status. Opravit se to má na straně P13 a P11, ne změnou
+tvaru registrů. Zapsáno i jako požadavek P01-10.
+
+### N30. Fronta `stats.compact` a příkaz `mlain rebuild-campaign-stats` nemají vlastníka
+
+- **Našel:** zapracování oprav P01 (fáze 3)
+- **Týká se:** P14, P10, P16
+- **Závažnost:** střední, obojí by prostě nevzniklo
+
+P14 v rozhodnutí R2 uvádí, že slévání pětiminutových bloků `campaign_stats_buckets`
+do hodinových (`stats.compact`) patří P10. **P10 tu frontu nemá**, jeho vlastní
+seznam `TRACKING_QUEUES` má deset položek a tahle mezi nimi není. Do registru P01
+se nedoplnila, protože fronta bez handleru by jen navždy hlásila varování
+„fronta bez handleru v tomhle buildu".
+
+Totéž u CLI: P14 v integračním bodu P14→P16.1 očekává, že P16 napojí
+`recomputeCampaignCounts` a `compareWithStored` na příkaz `mlain rebuild-campaign-stats`.
+**P16 o tom příkazu neví**, v jeho registru ani textu není. Rekonstrukce po havárii
+by tedy šla spustit jen z testu.
+
+Rozhodnout vlastníka; teprve pak se položka doplní do registru P01, protože
+registry jsou uzavřené a doplňují se změnou P01.
+
+### N31. `tracking.erase_contact` je v P01 fronta, v P10 synchronní volání
+
+- **Našel:** zapracování oprav P01 (fáze 3)
+- **Týká se:** P10, P01
+- **Závažnost:** nízká, ale registry se rozcházejí oběma směry
+
+P01 registruje `tracking.erase_contact` jako frontu s dead letter variantou.
+P10 ji implementuje jako synchronní hook `eraseContact()` a ve svém seznamu deseti
+trackovacích front ji nemá. Buď se z ní stane skutečná fronta (výmaz stopy kontaktu
+může být dlouhý a přerušitelný, takže to dává smysl), nebo se z registru P01 vypustí.
+Zatím tam zůstává, protože varování o chybějícím handleru je hlasitější než tichý
+rozdíl mezi registry.
+
+### N32. Druhá vrstva chybových kódů P06 a P11
+
+- **Našel:** zapracování oprav P01 (fáze 3)
+- **Týká se:** P06, P11, P01
+- **Závažnost:** nízká
+
+Konformanční seznamy obou plánů jsou po opravě P01 splněné. Nad jejich rámec ale
+oba plány vyrábějí kódy, které v registru nejsou: P06 `out_of_range` a `blocked_target`,
+P11 `duplicate_target` a `export_already_running`. Nejsou v žádném konformančním
+seznamu, takže nic nespadne, ale při první odpovědi API by to byl neregistrovaný kód
+a `problemCode()` by vyhodil. Doplnit jedním průchodem spolu s N28.
+
+Sem patří i `campaigns.pause_reason` z P13: devítipoložkový výčet, který si P13
+definuje sám a **výslovně ho drží otevřený**. Formálně je to porušení uzávěru S7,
+věcně je to stejný typ mezery jako migrační kódy u P03, kterou P01 zavřel šestým
+jmenným prostorem. Rozhodnout, jestli i pauzy patří do registru.
+
+### N33. P03 zakládá barrel a přepisuje manifest, který mu P01 předává
+
+- **Našel:** revize P01, nálezy K4 a D1
+- **Týká se:** P03, P01
+- **Závažnost:** vysoká u barrelu (blokující job), nízká u manifestu
+
+Dvě věci na straně P03, které P01 opravit nemůže:
+
+1. **`packages/db/src/index.ts`.** Test integrity workspace v P01 prochází všech
+   devět balíčků a vynucuje uzávěr S11, tedy „barrely se nezakládají, importuje se
+   podcesta". P03 v úkolu 30 ten soubor zakládá a commituje, takže by po merge
+   trvale padal blokující job `test-unit`. Výchozí řešení je, že barrel v P03
+   odpadne a `packages/db` se importuje podcestami (`@mlain/db/schema`,
+   `@mlain/db/client`), jak to P03 sám v kapitole 8 předpokládá. Kdyby se rozhodlo
+   jinak, musí výjimka jít do testu v P01, ne do prózy P03.
+2. **`packages/db/package.json` a `tsconfig.json`.** P03 je uvádí jako `Create`,
+   přestože je zakládá P01 a předává je (nově je to i v kapitole 1.2 P01). Změnit
+   na `Modify` a doplnit větu, že manifest přebírá po P01 a musí v něm zachovat
+   `name`, `license: MIT` a `private: true`. Jinak při přepsání vypadne licence
+   a spadne test, u kterého nebude zřejmé proč. P02 to u `packages/contracts` dělá
+   správně a přiznává to.
+
+### N34. P08 neuvádí `@mlain/i18n` mezi závislostmi, přestože ho graf povoluje
+
+- **Našel:** zapracování oprav P01 (fáze 3)
+- **Týká se:** P08, P01
+- **Závažnost:** nízká
+
+Graf v P01 má `'@mlain/emails': ['@mlain/contracts', '@mlain/i18n']`, ale
+`packages/emails/package.json` v P08 má z monorepa jedinou závislost,
+`@mlain/contracts`, a `@mlain/i18n` se v celém P08 neimportuje. Buď je hrana
+v grafu navíc, nebo P08 na i18n zapomněl. Nadbytečná povolená hrana nic nerozbíjí,
+takže to není blokující; opravit při průchodu rozhraním.
+
+### N28. Testy `apps/web` nemají jak běžet, a týká se to i P05
+
+- **Našly:** revize P06 a P12, potvrdil autor P05 na vlastním plánu
+- **Týká se:** **P01** (vlastník souboru), P05, P06, P12
+- **Závažnost:** nejvyšší, protože selhání je tiché
+
+`apps/web/vitest.config.ts` vlastní P01 a zní `{ environment: 'node', include: ['test/**/*.test.ts'] }`.
+
+- **P06** má dvacet komponentních testů v `apps/web/src/features/**`
+- **P12** má všechny své testy v `apps/web/src/features/editor/**`
+- **P05** má `apps/web/src/proxy.test.ts` s osmi testy
+
+Ani jeden z nich do vzoru `test/**` nespadne. Kroky „spusť test, musí spadnout" nevypíšou
+červený test, ale hlášku, že žádné testy nejsou. **To vypadá jako úspěch a je to horší než
+selhání.** Komponentní testy by navíc neprošly ani po opravě vzoru, protože `render()`
+potřebuje `jsdom` a plugin React.
+
+Že se to týká i P05, je při první četbě překvapivé: jeho testy komponent leží v `packages/ui`
+a `packages/i18n`, jejichž konfiguraci si vlastní sám. Zapomnělo se na jediný soubor, který
+zakládá v `apps/web`.
+
+**Požadavek na P01** (shodně formulovaný v P05 kapitola 8.2, P06 a P12):
+
+```ts
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./vitest.setup.ts'],
+    include: ['src/**/*.test.{ts,tsx}', 'test/**/*.test.{ts,tsx}'],
+  },
+});
+```
+
+**P12 si ten soubor nesmí nárokovat** ani s podmínkou „jen pokud ještě neexistuje". Podmínka se
+nikdy nesplní, protože P01 běží dřív, a soubor se dvěma vlastníky podle pořadí je přesně ta
+nejistota, které se dělení vyhýbá.
+
+**UZAVŘENO 2026-08-01 opravou P01, společně s N55.** Viz tam: samotný tvar zapsaný výše
+nestačil, chyběl obsah setup souboru.
+
+### N29. Registrace ESLint pravidla P01 je kruhová
+
+- **Našla:** revize P05
+- **Týká se:** **P01**
+- **Závažnost:** střední, ale shodí lint třem plánům
+
+P01 má ve sdílené konfiguraci zaregistrovat pravidlo z `packages/ui/eslint-rules/`, jenže ten
+soubor zakládá až P05. Mezi P01 a P05 běží P02, P03 a P04, kterým by `pnpm lint` spadl na
+chybějícím souboru.
+
+**Oprava v P01:** načítat pravidlo podmíněně, `try`/`catch` kolem `require`. P05 si to poznamenal
+u předpokladu E7 jako „není to tvrdý import".
+
+### N30. Rozhraní `packages/ui` je sjednocené, zbytek je na jedenácti plánech
+
+- **Vyřešil:** P05, 1. 8. 2026. Je to dokončení N27.
+- **Týká se:** P06, P07, P11, P12, P13, P14, P15, P16
+- **Závažnost:** blokující pro vlnu 1 a 2, dokud se importy neopraví
+
+P05 postavil vedle sebe seznam svých exportů a **všechna skutečná volání** z jedenácti plánů.
+Rozhodovací pravidlo je v jeho kapitole 8.1 a znělo: kde tvar předepisuje specifikace, platí
+specifikace; kde jméno používají dva a víc plánů nezávisle, platí jejich; jinak platí P05;
+a komponenta, kterou nikdo nevykresluje, se nezakládá.
+
+**Co P05 změnil u sebe** (hotovo, nic se po nikom nechce): AST query builderu je nově doslova
+ten ze specifikace části 2, 4.11.1, komponenta je řízená a unese všech 40 operátorů v pěti
+tvarech hodnoty; K4 bere `accept` jako řetězec s příponami i MIME typy, má skutečné tlačítko
+místo popisku a sama volá nahrávání po částech; K6 má volitelně řízenou šířku a tmavý režim;
+K3 dostal `useWizardStep`, takže krok v URL má konečně vlastníka; K1 má řízený výběr, zadrátované
+nastavení sloupců a virtualizaci; `ConfirmDialog` přebral jména props od P07 a `confirmPhrase`
+od P06 a dostal `extraAction`; registr navigace má `mvp0`; přibyly `Alert`, `FilteredEmptyState`
+a `CopyButton`.
+
+**Co se čeká od ostatních** (úplný seznam s čísly řádků je v P05, kapitola 8.1):
+
+| Plán | Co opravit |
+|---|---|
+| P11 | pět importů z holého `@mlain/ui`; `FileDrop` → `FileUpload`; doplnit povinné `labels`; krok průvodce `{ id, label }` |
+| P13 | osm importů z holého `@mlain/ui`; `Disclosure` → `Collapsible`; `Dot` → `Badge`; `Tile` složit u sebe |
+| P16 | pět importů z holého `@mlain/ui`; `Table` → `DataTable` s jinými sloupci; `Note` a `Banner` → `Alert`; `Panel` složit u sebe |
+| P06 | pět mrtvých jmen v kontraktu; `LimitReachedState` → `OverLimitState`; tvar registru navigace; volat `visibleNavigation`; nepsat vlastní `CopyButton` |
+| P07 | dvě mrtvá jména v kontraktu; `ariaLabel` → `caption`; `ConfirmDialog` má `extraAction`, dialog se nemusí skládat z primitiv |
+| P12 | `useAnnounce` → `useAnnouncer`; **stáhnout požadavek na `sandbox="allow-same-origin"`**; importovat na úroveň adresáře |
+| P14, P15 | importovat na úroveň adresáře, ne souboru |
+
+**Dvě věci stojí za zvláštní pozornost.**
+
+Za prvé, **kořenový import `@mlain/ui` od teď neexistuje**. P05 odstranil klíč `"."` z `exports`,
+takže osmnáct importních řádků v P11, P13 a P16 skončí chybou `ERR_PACKAGE_PATH_NOT_EXPORTED`
+už při sestavení. Uzávěr S11 se tím z napsaného pravidla mění na chybu překladu, což je jediný
+způsob, jak ho udržet.
+
+Za druhé, **pět jmen se vědomě nezaložilo**: `ErrorState`, `LoadingSkeleton`, `StaleDataBanner`,
+`PartialErrorBoundary` a `OfflineBanner`. Ověřeno grepem na `<Jméno` napříč všemi šestnácti
+plány: **nula výskytů v JSX**. Jsou jen v typových deklaracích kontraktů P06 a P07. Zakládat
+komponentu, kterou nikdo nevykresluje, znamená mít v balíčku dvě jména pro totéž.
+
+### N31. Rozhodnutí o „Personalizaci" je zapracované na straně kontroly, chybí ve specifikaci
+
+- **Rozhodl:** zadavatel 1. 8. 2026
+- **Týká se:** **část 6, kapitola 9.2** (opravuje zadavatel), P05 (hotovo), P12 (hotovo)
+- **Závažnost:** střední, ale dokud specifikace neplatí, tvrdí dva dokumenty opak
+
+Merge tag se česky řekne **„Personalizace"**, kvůli návaznosti na slovník, který uživatelé znají
+z Ecomailu, a část 3 ho v 5.4 už používá v klíči `liquid.tokenTooltip`. Slovník 9.2 části 6 měl
+opačné znění: „Doplňovaný údaj" jako závazné a „personalizace" v zakázaném sloupci.
+
+**P05 kontrolu opravil:** `BANNED_CS` nově zakazuje „doplňovaný údaj", „slučovací značka",
+„merge tag" i „placeholder" a jako správný tvar nabízí „Personalizace". Slovo „personalizace"
+v seznamu **není a být nesmí**, jinak by `i18n-check` shodil build na katalogu `editor`.
+Přibyly dva testy, jeden na každou stranu rozhodnutí.
+
+**Zbývá:** opravit kapitolu 9.2 části 6. Do té doby si dokumenty odporují.
+
+Vedlejší nález ze stejného místa: P05 dřív tvrdil, že **kritérium 69 je plně pokryté**. Nebyla to
+pravda, kontrola hlídá dvaadvacet výrazů z více než šedesáti. Doslovný přepis by hlásil chybu na
+běžných slovech („účet", „test", „adresa", „skupina", „klik"). P05 kritérium přeřadil mezi
+částečně pokrytá a napsal, co se vědomě nehlídá a proč.
+
+### N32. Job `contracts-golden` porovnává adresář sám se sebou přes symlink
+
+- **Našel:** oprava P02 ve fázi 3
+- **Týká se:** **P01** (opravuje P01), P02 (hotovo na své straně)
+- **Závažnost:** vysoká, brána vypadá funkčně a neměří nic
+
+`tools/ci/contracts-golden.mjs` hledá Go fixtures v `apps/sender/testdata/fixtures`, jenže symlink
+`testdata` míří **přímo** na `packages/contracts/fixtures`, takže ta cesta je
+`packages/contracts/fixtures/fixtures` a neexistuje. Job proto hlásí u každé fixtury, že je jen
+na TypeScript straně. Po opravě cesty na `apps/sender/testdata` by ale porovnával **tentýž adresář
+sám se sebou**, což je vždy shoda: obě strany čtou jeden adresář, ne dvě kopie.
+
+Porovnání jmen souborů je tedy slepá ulička. Skutečnou paritu měří `pnpm --filter @mlain/contracts
+test:parity`, který porovnává **množiny id, které každá strana opravdu zpracovala**, proti fixtures
+na disku, a navíc kontroluje otisk vstupů, aby neprošel report ze staršího běhu. P02 ho v tomhle
+tvaru dodává.
+
+**Zbývá v P01:** nahradit obsah jobu spuštěním `test:golden`, `test:fixtures-schema` a od vlny 1
+i `test:parity` a `go test ./... -run TestGolden`. Dnes job nespouští **ani jeden** z pěti skriptů,
+které P02 vyrábí.
+
+### N33. `mlain_migrator` nemá právo zakládat rozšíření
+
+- **Našel:** oprava P02 ve fázi 3, ověřeno spuštěním na PostgreSQL 18.4
+- **Týká se:** **P01** (opravuje P01), P02 a P03 (dotčené)
+- **Závažnost:** vysoká, bez toho se nezaloží ani bootstrap, ani produkční schéma
+
+`docker/initdb/10-roles.sql` z P01 dává migrátorovi `ALTER SCHEMA public OWNER TO mlain_migrator`,
+tedy právo na **schéma**. `CREATE EXTENSION` ale chce právo na **databázi**. Ověřeno spuštěním:
+
+```
+ERROR:  permission denied to create extension "citext"
+HINT:  Must have CREATE privilege on current database to create this extension.
+```
+
+Po `GRANT CREATE ON DATABASE mlain TO mlain_migrator` příkaz projde. V přibaleném Postgresu a v CI
+to dnes projde náhodou, protože `POSTGRES_USER` je superuser; na externím Postgresu, který má P01
+v dokumentaci jako ruční krok, to spadne. Řetězec `CREATE EXTENSION` se přitom v celém P01
+nevyskytuje ani jednou, takže nikdo nezakládá `citext` ani `pgcrypto`.
+
+**Zbývá v P01:** doplnit grant do `10-roles.sql` a do dokumentace externího Postgresu.
+P02 si tentýž grant doplnil ve svých testovacích pomocnících, takže jeho vlastní běh je zelený.
+
+### N34. Job `test-go-integration` nedá integračním testům, co potřebují
+
+- **Našel:** oprava P02 ve fázi 3
+- **Týká se:** **P01** (opravuje P01), P02 a P09 (dotčené)
+- **Závažnost:** střední
+
+Job pouští `go test -tags=integration ./...` a nastavuje jedinou proměnnou `DATABASE_URL_SENDER`,
+jejíž hodnota míří na uživatele `mlain_migrator`. Scénář `OB-00` z P02 potřebuje administrátorské
+spojení, ze kterého si založí role a aplikuje kontraktní schéma. P02 to vyřešil tak, že test je
+**samobootstrapovací** a chce jedinou proměnnou `DATABASE_URL_MIGRATOR`, kterou tři jiné joby už
+nastavují.
+
+**Zbývá v P01:** přidat `DATABASE_URL_MIGRATOR` do env jobu `test-go-integration`. Je to jeden
+řádek. Bez něj `TestOB00` skončí `t.Fatal` a jediný scénář, který se podle kontraktu nesmí
+přeskočit, se v CI nespustí.
+
+### N35. Kód `liquid_literal_not_supported` chybí v registru P01
+
+- **Našel:** oprava P02 ve fázi 3, ověřeno grepem
+- **Týká se:** **P01** (opravuje P01), P02 (rozhodnutí D5), část 3 (potvrzení)
+- **Závažnost:** střední
+
+`VALIDATION_CODES` v P01 má 27 kódů s prefixem `liquid_` a tenhle mezi nimi není. Vzniká proto,
+že gramatika kontraktu literály `blank` a `empty` povoluje, `osteele/liquid` je nezná, a část 3
+říká, že je validátor odmítá, ale kód pro to v katalogu 3.7.4 nemá. Fixture `LQ-308` ho očekává.
+
+Vedlejší pozorování ze stejného čtení: `liquid_escaped_entity_in_construct` není ve
+`VALIDATION_CODES`, ale v `MESSAGE_CODES` jako `class: 'fatal'`. Kdo bude kódy párovat, musí
+hledat v obou registrech.
+
+### N36. Sender čtyři kontraktní operace nemá a fixtures s tím musí počítat
+
+- **Našel:** oprava P02 ve fázi 3
+- **Týká se:** P02 (hotovo), P09 (dotčené), část 1 a část 4b (na vědomí)
+- **Závažnost:** střední, jinak by parita počítala jablka s hruškami
+
+Sender tokeny jen **vyrábí** a neověřuje je (ověření dělá aplikace), nevydává **identity token**,
+credentials jen **dešifruje** a validátor Liquidu nemá vůbec. Devět negativních tokenových vektorů,
+jeden pozitivní a všechny validační fixtures tedy na Go straně nemají co spustit.
+
+Dřívější znění P02 to řešilo tím, že Go runner udělal `t.Skip()`, což je neviditelné. P02 nově
+zavádí ve fixtures pole `sides` s hodnotami `ts` a `go`: co která strana zpracuje, je **data pod
+CODEOWNERS**, ne rozhodnutí runneru za běhu, a `check-parity` z něj počítá očekávanou množinu.
+Tím se „nepoužitelné z principu" odliší od „někdo si to odpustil".
+
+Praktický dopad na kritéria: **43** je splnitelné pro tři typy tokenů ze čtyř a **45** jen ve směru
+TypeScript šifruje a Go dešifruje. Obojí je zapsané v tabulce akceptačních kritérií P02.
+
+### N37. Fixtures kompilované šablony: tři plány, tři různé tvary a dvě různé cesty
+
+- **Našel:** oprava P02 ve fázi 3
+- **Týká se:** P02 (hotovo), **P08** (píše data), **P09** (opravuje cestu a tvar)
+- **Závažnost:** střední
+
+Rozhodnutí R3 určilo, že data píše P08 a P02 dodává schéma a runner. Při zápisu se ukázalo, že
+tvar fixture si nezávisle definují tři plány: P02 čekal `document` a `context`, P09 čte `html`,
+`text` a `meta`, a cesta je v P09 `testdata/compile`, kdežto v P02 a P08 `compiled`.
+
+P02 sjednotil schéma tak, aby posloužilo oběma: `document` a `context` jsou vstup renderu P08,
+nový klíč `compiled` s `html` a `text` je jeho výstup a čte ho Go strana, která blokový model
+nezná a dostává hotové `compiled_html`. Platí cesta `compiled`.
+
+**Zbývá v P09:** změnit `testdata/compile` na `testdata/compiled` a číst `compiled.html`,
+`compiled.text` a `expect.clickMarkerCount` místo `html`, `text` a `meta`.
+
+### N38. Go runnery golden fixtures existují dvakrát a v jiném tvaru
+
+- **Našel:** oprava P02 ve fázi 3
+- **Týká se:** P02 (hotovo), **P09** (vypouští své runnery)
+- **Závažnost:** vysoká, jinak se balíček nepřeloží
+
+Rozhodnutí R1 přiřklo runnery P02 a implementaci P09. P09 ale ve svém plánu zakládá v témže
+adresáři `apps/sender/internal/contracts` čtyři vlastní runnery (`TestGoldenTokens`,
+`TestGoldenCrypto`, `TestGoldenLiquid`, `TestGoldenCompileHandoff`) plus `writeGoldenReport`,
+tedy přesně ty symboly, kvůli kterým R1 vzniklo.
+
+P02 runnery přepsal tak, aby produkční kód dostávaly **jako hodnoty parametru**, ne importem.
+Díky tomu se `internal/contracts` přeloží už ve vlně 0 a P09 k nim dodá jen tenká volání ve
+svých balíčcích; ta jsou v P02 vypsaná doslova, aby si je P09 nevymýšlel.
+
+**Zbývá v P09:** vypustit vlastní `golden_*_test.go` z `internal/contracts`, založit místo nich
+tenká volání v `internal/token`, `internal/credentials`, `internal/mimebuild`, `internal/liquidx`,
+`internal/markers` a `internal/outbox`, a doplnit tři chybějící kousky produkčního API:
+`Builder` musí umět vrátit **plnou HMAC před zkrácením** (kontrakt ji uvádí jako závaznou),
+`markers` potřebuje `PixelHTML` a `HasResidual` nad všemi čtyřmi vyhrazenými řetězci bez ohledu
+na velikost písmen, a `outbox` potřebuje `CanTransition`. Navíc `ErrUnsupportedVersio` je překlep.
+
+### N39. Formát reportu parity si každý plán psal jinak
+
+- **Našel:** oprava P02 ve fázi 3
+- **Týká se:** P02 (hotovo), **P09** (přebírá formát)
+- **Závažnost:** střední
+
+P09 zapisuje `{"lang","category","count"}` do adresáře z proměnné `MLAIN_GOLDEN_REPORT_DIR`,
+a když proměnná není nastavená, **report se tiše nezapíše a test projde**. P02 čekal jiný tvar
+v `packages/contracts/reports/`.
+
+Podle R1 platí formát, který čte `check-parity.ts` z P02: `{ language, section, total, executed,
+skipped, ids, groups, fixturesDigest }`, jeden soubor na sekci, cesta odvozená od zdrojového
+souboru, ne z prostředí. Pole `ids` a `fixturesDigest` jsou nová a jsou důvodem, proč to nejde
+jen přejmenovat: bez `ids` se nepozná, **které** fixture se zpracovaly, a bez otisku projde
+zelená parita nad reportem ze staršího běhu, protože adresář `reports/` se nikde nemaže.
+
+### N40. Chybové kódy tokenů se z Go chyb nedají přečíst
+
+- **Našel:** oprava P02 ve fázi 3
+- **Týká se:** P09 (na vědomí)
+- **Závažnost:** nízká
+
+`internal/token` v P09 vrací obyčejné `fmt.Errorf` bez kontraktního kódu, kdežto
+`internal/credentials` má pro každý kód sentinel. Runner P02 to obchází tím, že překlad chyby na
+kód dodává adaptér, takže se nic neblokuje. Za zvážení ale stojí, jestli má sender u tokenů
+kódy vůbec potřebovat: tokeny jen vyrábí a chyba při stavbě znamená vadný vstup, ne odmítnutí.
+
+### N45. Job `test-go-integration` posílá testy senderu pod migrátorem
+
+- **Našel:** oprava P09 ve fázi 3, ověřeno čtením workflow v P01 a spuštěním pod oběma rolemi
+- **Týká se:** **P01** (opravuje P01), P09 (srovnal se u sebe)
+- **Závažnost:** vysoká, brána vypadá funkčně a negarantuje nic
+
+Rozšiřuje N34. Job nastavuje jedinou proměnnou `DATABASE_URL_SENDER` a její hodnota je
+`postgres://mlain_migrator:...`, tedy **migrátor pod jménem senderu**. Není to jen chybějící
+proměnná, je to horší stav než žádná: `mlain_migrator` je vlastník schématu a RLS obchází, takže
+by testy práv i politik `sender_bypass` byly **zelené, přestože by neověřovaly nic**. Přesně
+tenhle druh selhání má přitom AK-20.5 vylučovat.
+
+P09 si to u sebe zavřel: harness je nově samobootstrapovací, chce jedinou proměnnou
+`DATABASE_URL_MIGRATOR`, roli `mlain_sender` **si založí sám**, připojení senderu si z ní
+**odvodí** místo čtení z prostředí, a `TestScenariosRunAsSenderRole` ověří, že `current_user`
+je `mlain_sender` a že role nemá `BYPASSRLS`. Prostředí tedy nemá jak testy poslat pod jinou rolí.
+
+**Zbývá v P01:** v jobu `test-go-integration` nahradit `DATABASE_URL_SENDER` proměnnou
+`DATABASE_URL_MIGRATOR`. Uživatel v `services.postgres` už `mlain_migrator` je, takže je to
+změna jednoho řádku.
+
+### N46. P01 přidává do `go.mod` senderu závislost, kterou P09 vědomě nepoužívá
+
+- **Našel:** oprava P09 ve fázi 3
+- **Týká se:** **P01**, P09 (ošetřeno)
+- **Závažnost:** nízká
+
+Úkol 15 v P01 pouští `go get github.com/caarlos0/env/v11 github.com/jackc/pgx/v5`. P09 ale
+konfiguraci parsuje vlastním kódem (kapitola 1.6), protože `caarlos0/env` umí opačnou sémantiku
+sufixu `_FILE`, než jakou předepisuje kontrakt 4.9, a neumí vypsat všechny problémy naráz.
+Závislost by tedy zůstala v `go.mod` a v `go.sum` a licenční brána by kontrolovala strom, který
+se do binárky nedostane.
+
+P09 to řeší `go mod tidy` hned v úkolu 1. Za zvážení stojí, jestli ji má P01 vůbec přidávat.
+
+### N47. Ukázkový adaptér pro P09 v P02 nepoužívá parametr `presence`
+
+- **Našel:** oprava P09 ve fázi 3, ověřeno spuštěním proti `osteele/liquid` v1.8.1
+- **Týká se:** **P02** (opravuje P02), P09 (srovnal se)
+- **Závažnost:** střední, jinak by adaptér zmrazil tichou vadu
+
+Runner `LiquidRunner.Render` má správnou signaturu včetně `presence []string`, ale **ukázkový
+adaptér, který P02 vypisuje pro P09, ten parametr ignoruje**: volá
+`liquidx.WithBlankBindings(data, prepared.BlankPaths)` a kořen `_present` nikde nenaplní.
+Fixtures ho přitom potřebují, například `LQ-307` má `presence: ["contact.city","contact.zip"]`
+a očekává výstup `A`.
+
+Kdyby si P09 ten úryvek opsal doslova, `_present` by v datech nebyl, obě podmínky by se
+vyhodnotily jako nepravda a fixture by spadla na prázdném výstupu. V provozu by se totéž
+projevilo tím, že z mailu tiše zmizí podmíněné bloky.
+
+P09 to má u sebe správně: adaptér volá `liquidx.PrepareRenderData(rawData,
+liquidx.RenderSchema{Presence: presence})`, což je Go protějšek sdílené funkce
+`prepareRenderData`, a jeho pravdivost je ověřená proti týmž případům, které má P02 v testu
+(`"   "` není present, chybějící klíč není present, prázdné pole není present, prázdný objekt
+**je** present).
+
+**Zbývá v P02:** srovnat ukázkový úryvek s runnerem, ať si ho P09 může opsat doslova.
+Zároveň je v něm `liquidx.New(liquidx.Options{})`, takže by se ztratila časová zóna
+z `_context.timezone` a filtr `date` by u fixtur s jinou zónou vracel jiný čas.
+
+### N48. Zápis času pozastavení kampaně senderem nemá kam jít
+
+- **Našel:** revize P09 (D4), potvrzeno proti aktuálnímu P03
+- **Týká se:** **P03** (granty), **P13** (čtení v UI), P09 (dotčené)
+- **Závažnost:** střední
+
+`campaigns` má `paused_at` i `updated_at`, ale sloupcový grant senderu je přesně
+`GRANT UPDATE (status, pause_reason)`. Sender tedy po pozastavení nechá `paused_at` prázdné
+a `updated_at` zastaralé. `paused_at` je přitom jediný indexovatelný čas pauzy, takže „kdy se to
+zastavilo" jde zjistit jen parsováním `pause_reason ->> 'at'`, a každá cache nebo optimistický
+zámek nad `updated_at` pauzu od senderu přehlédne.
+
+Rozhodnout musí P03 s P13, protože jde o grant a o to, odkud UI čas čte. Buď rozšířit grant na
+`GRANT UPDATE (status, pause_reason, paused_at, updated_at)` a doplnit oba sloupce do
+`StmtPauseCampaign`, nebo do obou plánů výslovně napsat, že po pauze od senderu je `paused_at`
+NULL a čas se čte z jsonb. P09 dnes dělá druhou variantu, protože první by znamenala psát do
+sloupců, na které nemá právo.
+### N-P03X. Nálezy z doplňkového průchodu schématem P03 (2026-08-01)
+
+- **Našel:** doplňkový průchod P03 podle páté recenze (`docs/replan/p03-revize-soulad-napric-plany.md`)
+- **Stav:** schéma na straně P03 doplněné a ověřené spuštěním; níže je to, co P03 udělat **nesmí**, protože to patří jiným plánům
+- **Závažnost:** vysoká u prvních dvou, střední u zbytku
+
+Souhrnná tabulka recenze má 31 řádků. P03 provedl svých sedmnáct plus tři sdílené a čtyři
+rozhodnutí. Zbylých sedm patří doménovým plánům a P03 se jich záměrně nedotkl.
+
+**Pro P10 (tracking).**
+
+1. **`message_events.source` doplnit do zápisu.** Sloupec zůstává `NOT NULL` **bez `DEFAULT`**
+   a je to úmysl: hodnota se liší podle zapisovatele (`delivered` může přijít z `ses_sns`,
+   ze `smtp` i `internal`) a výchozí hodnota by mlčky označila událost od providera za vlastní.
+   P10 doplní do `insertMessageEvents` konstantu `'tracking'`, kterou `CHECK` už povoluje.
+   Bez toho skončí každé otevření i proklik chybou `23502`.
+2. **`rank` ze zápisu naopak ODEBRAT.** Je to nově generovaný sloupec (rozhodnutí R32 v P03).
+   Explicitní hodnota skončí chybou „cannot insert a non-DEFAULT value into column rank",
+   ověřeno spuštěním. `recipient` P10 posílat nemusí: je nově nepovinný (R33) a podmíněný
+   `CHECK` ho vyžaduje jen u doručovací rodiny, do které otevření ani proklik nepatří.
+3. **Idempotence zápisu nefunguje.** `ON CONFLICT (id, received_at) DO NOTHING` nesepne
+   **nikdy**, protože `received_at` není ve vkládaných sloupcích a doplní se `now()`, tedy
+   pokaždé jiné. Opakovaný běh jobu vloží tytéž události znovu. Je to táž past, kterou P03
+   popsal a vyřešil u `provider_event_receipts`: deduplikace patří do explicitního
+   `WHERE NOT EXISTS` nad `(workspace_id, id)`.
+
+**Pro P13 (kampaně).**
+
+4. **`rankOf('opened')` opravit na `'open'`.** `ck_message_events__type` hodnotu `opened`
+   nedovolí. Po R32 navíc katalog přestává být zdrojem hodnoty `rank`: škálu vlastní P03
+   a P13 ji nemá zapisovat, jen číst.
+5. **`countAudienceGates` přesunout mimo `packages/db`.** Požadavek R-P07.1 umisťuje cizí
+   funkci do `packages/db/src/repo/segments.ts`, tedy do balíčku, který výhradně vlastní P03
+   a jehož obsah kapitola 7 vyjmenovává. Patří do `packages/core/segments`.
+
+**Pro P09 (sender).**
+
+6. **Testovací replika schématu se rozchází na sedmi místech.** Nejzávažnější je partiční klíč:
+   replika má `PARTITION BY RANGE (ts)` a PK `(id, ts)`, produkce `received_at`. `ts` je hodnota
+   od providera, takže zpožděný bounce s časovou značkou mimo okno v produkci **tvrdě selže**,
+   zatímco v testech projde. Dál se liší `source` (`DEFAULT 'sender'` bez `CHECK`),
+   `messages.contact_id` (nullable místo `NOT NULL`), `quota_max_send_rate`
+   (`double precision` místo `numeric(10,2)`), `suppressions.email` a `reason` (nullable),
+   chybějící sloupce `message_events` a dvě omezení `messages`.
+   **Nově přibývá osmý rozdíl:** `rank` je v produkci generovaný a `recipient` nepovinný,
+   takže replika musí obojí převzít, jinak testy senderu projdou u zápisu, který v produkci
+   spadne, a naopak.
+7. **Job `contracts-schema` repliku nevynucuje** (společně s P01). Porovnává jen kontraktní
+   podmnožinu sloupců `messages` ze 4.10.1, takže rozchod v `message_events`, `suppressions`
+   ani v typech nezachytí. Buď se replika generuje ze skutečných migrací, nebo job musí
+   porovnávat všechno, co replika obsahuje. Dokud ani jedno neplatí, je pravidlo
+   „při rozporu platí P03" věta, kterou nic nevynucuje.
+
+**Pro P11 (import a segmenty).**
+
+8. **Jména sloupců `contact_engagement` srovnat podle P03.** Požadavek 10.1 mluví o
+   `sent_count`, `delivered_count`, `opened_count`, `clicked_count`, `bounced_count`,
+   ale schéma má `sent_total`, `delivered_total`, `opens_total`, `clicks_total`,
+   `bounces_total`. Schéma se nemění: P10, který do rollupu skutečně zapisuje, už používá
+   jména z P03, takže se odchyluje jen text požadavku v P11.
+
+**Pro P04 (jádro).**
+
+9. **Adaptér `packages/core/tx` nesmí transakční logiku opakovat.** P03 nově exportuje
+   `Tx = NodePgDatabase<typeof schema>` a čtyři obálky (`withWorkspace`, `withUser`,
+   `withReadOnly`, `withoutContext`) plus `pgErrorCode`. Adaptér má jen doplnit pool ze
+   singletonu a delegovat sem, ne psát vlastní `BEGIN`/`COMMIT`: kontrola nezměněného
+   kontextu a zahození rozbitého spojení přes `release(true)` musí existovat jednou.
+   `Tx` v P04 má být **reexport** z `@mlain/db`, ne druhá definice téhož jména.
+10. **`withReadOnly` má nově čtvrtý tvar argumentů:** `(pool, ctx, { statementTimeoutMs,
+    workMem }, fn)` místo číselného timeoutu, kvůli požadavku P11 na `work_mem`.
+
+**Co P03 naopak rozhodl a nikdo to nemá měnit.**
+
+- **Trigger `trg_campaigns__immutable_while_sending` se NEZAVÁDÍ** (požadavek P13 R-P03.3).
+  Konvence zákazu triggerů platí, protože sender `campaigns` mění a trigger by nečekaně sáhl
+  do jeho transakce; Go strana o něm neví. Neměnnost kampaně za běhu vynucuje sloupcový grant
+  plus `WITH CHECK (status = 'paused')` v politice `sender_bypass`. Test „žádná tabulka nemá
+  trigger" zůstává v platnosti.
+- **`campaign_render_warnings` zůstává** a sender je její zapisovatel. Politika `sender_bypass`
+  i `GRANT SELECT` (nutný kvůli `ON CONFLICT DO UPDATE`) v P03 už jsou. **P09 tu funkci dnes
+  neimplementuje**, takže je to otevřený požadavek na P09, ne důvod tabulku rušit.
+- **`circuit_breaker_open` v `CHECK` zůstává.** `CHECK` říká „je povolená", ne „zapisuje se".
+  Zapisovatele nemá; je to zamýšlené použití senderského `INSERT` do `message_events`.
+- **Senderský `INSERT` na `message_events` se nezužuje**, protože je kontraktní (4.10.1)
+  a `circuit_breaker_open` je jeho zamýšlené použití. Sender z tabulky číst nesmí a test to hlídá.
+- **`schema` se z kořene `@mlain/db` NEREEXPORTUJE** (R37). Jde výhradně podcestou
+  `@mlain/db/schema`. Druhá rovnocenná cesta by zrušila smysl „jednoho zjevného způsobu";
+  hlídá to test kořenového exportu.
+
+
+### N49. `RAW_SLOT_PATTERN` v kontraktech nesedí na žádný skutečný žeton
+
+- **Našel:** oprava P08 ve vlně B, ověřeno spuštěním
+- **Týká se:** P02 (vlastní `packages/contracts/src/markers.ts`)
+- **Závažnost:** střední, ochrana existuje a nikdy se nespustí
+
+P02 má `RAW_SLOT_PATTERN = /ML_RAW_(\d{4})/gi`, tedy `ML_RAW_` plus **čtyři číslice**.
+P08 ale emituje `ML_RAW_<nonce>_0001`, kde nonce je deset hexadecimálních znaků,
+protože bez náhodného nonce by si uživatelský text mohl odklonit cizí slot.
+
+Ověřeno spuštěním: `/ML_RAW_(\d{4})/gi` proti `ML_RAW_ab12cd34ef_0001` **nemá ani jednu shodu**.
+Sesterský `FILTER_SLOT_PATTERN = /ML_ARG_(\d{4})/gi` naopak sedí přesně, protože slot argumentu
+filtru nonce nemá (`ML_ARG_0007`).
+
+Nic to dnes nerozbíjí: zbytkové žetony se hledají přes `RESERVED_MARKERS`, kde je `ML_RAW_`
+jako podřetězec a porovnává se bez ohledu na velikost písmen, takže detekce funguje.
+`RAW_SLOT_PATTERN` je ale ochrana, která vypadá funkčně a **nenajde nikdy nic**.
+Buď ji upravit na `/ML_RAW_[0-9a-f]{10}_(\d{4})/gi`, nebo ji zrušit.
+
+### N50. Dvě neslučitelné věci pod jménem `RenderSchema`
+
+- **Našel:** oprava P08 ve vlně B
+- **Týká se:** P02 (`packages/contracts/src/liquid/prepare-render-data.ts`), P08 (obchází), P09, P13
+- **Závažnost:** střední
+
+Je to přesně tentýž tvar problému, který u `FieldCatalog` uzavřelo rozhodnutí R2.
+
+`prepare-render-data.ts` exportuje `RenderSchema = { fields: readonly string[]; presence: readonly string[] }`.
+Kontrakt 5, který vlastní P08, používá pod týmž jménem bohatý tvar
+`{ version, fields: Array<{path,type,required}>, systemTags, presence, loops }`, a právě ten jde
+do `compile_meta` a k Go senderu.
+
+P08 to obchází funkcí `toPreparedSchema()` ve vlastním balíčku, takže **blokovaný není nikdo**.
+Zůstává ale past: první, kdo si ta dvě jména splete, dostane buď chybu typu, nebo to protlačí
+přetypováním a ztratí kontrolu úplně. Doporučení: přejmenovat úzký typ na `PreparedDataSchema`.
+Zapsáno i jako požadavek R13 v P08.
+
+### N51. Katalog polí mapuje typy, takže hodnota `string` je správně
+
+- **Našel:** oprava P08 ve vlně B
+- **Týká se:** nikoho, **uzavírá nález D5 z recenze P08**
+- **Závažnost:** žádná, evidence proti opakovanému nálezu
+
+Recenze P08 vytkla, že renderer vydává typ pole `"string"`, který slovník `contact_fields.type`
+nezná (ten má `text`, `long_text`, `url`, `email`, `phone`, `enum`, `multi_enum`, …).
+
+Není to vada. Katalog polí vlastní **P07** (rozhodnutí R2) a ten typy **mapuje**:
+`TYPE_MAP` v `packages/core/contacts/fields/catalog.ts` převádí pět databázových typů na
+`string` a `multi_enum` na `list`. `FieldCatalogType` je proto
+`'string' | 'number' | 'boolean' | 'date' | 'datetime' | 'list'` a `"string"` je platná hodnota.
+
+Kdo bude nález D5 „opravovat" změnou na `"text"`, rozbije jak P08, tak P07.
+
+### N52. `content_snippets` nemá vlastníka
+
+- **Našel:** recenze P08, potvrzeno při opravě
+- **Týká se:** P12 (editor) nebo P03, rozhodnout
+- **Závažnost:** střední, sdílené bloky dnes neimplementuje nikdo
+
+P03 zrušil druh šablony `snippet` s odůvodněním „sdílené bloky mají jedno místo, `content_snippets`".
+Tabulka existuje (`id`, `workspace_id`, `name`, `design jsonb`, `created_at`, `updated_at`),
+ale **žádný plán do ní nečte ani nezapisuje**. P08 ji dřív uváděl mezi tabulkami, „které jen čte",
+což nebyla pravda; při opravě se to z P08 vyškrtlo.
+
+Navíc jí chybí `schema_version`. Její `design` je pole bloků z modelu, který P08 verzuje přes
+`MIGRATIONS` a `loadDocument`, takže bez toho sloupce nejde u snippetu poznat, které migrace
+pustit, a **první změna blokového modelu snippety tiše rozbije**. `templates` i `template_versions`
+ten sloupec mají.
+
+Rozhodnout vlastníka (nejspíš P12, protože sdílené bloky zakládá editor) a požádat P03
+o `content_snippets.schema_version integer NOT NULL DEFAULT 1`.
+
+### N53. `templates.design_hash` nemá kontrolu délky v databázi
+
+- **Našel:** recenze P08, částečně ošetřeno v P08
+- **Týká se:** P03
+- **Závažnost:** nízká
+
+`assets.sha256` má `check('ck_assets__sha256_len', octet_length(sha256) = 32)`.
+`templates.design_hash` ani `template_versions.design_hash` obdobný CHECK nemají, přestože se
+nad nimi porovnávají buffery přicházející z hlavičky requestu.
+
+**P08 si to ošetřil u sebe**: délku hexu hlídá router (422 místo 412) a délku bufferu repository
+(`precondition_malformed`), obojí má test. Poslední pojistka v databázi ale chybí, takže hash
+o špatné délce se pořád dá zapsat jinou cestou. Doporučení: doplnit `octet_length(...) = 32`
+na oba sloupce.
+
+### N54. Komentář u `campaign_links.url` slibuje Liquid, který tam nikdy nebude
+
+- **Našel:** recenze P08, potvrzeno při opravě
+- **Týká se:** P03 (jen komentář), P13 (čte ho)
+- **Závažnost:** nízká
+
+P03 u sloupce píše „původní URL, může obsahovat Liquid". P08 v `CompiledLink.url` garantuje opak:
+absolutní statickou URL bez Liquidu. Do `links[]` se dostanou jen odkazy, které projdou
+`isTrackableTarget`, tedy žádné systémové značky, žádné `mailto:`, `tel:` ani `#`, a odkaz
+s proměnnou v `href` se buď odmítne kódem `liquid_in_trackable_href`, nebo projde jako
+netrackovatelný a do seznamu se nedostane vůbec.
+
+Sjednotit komentář v P03, jinak si P13 přečte, že v tom sloupci má Liquid čekat, a bude ho ošetřovat.
+
+---
+
+### ~~N41 (druhý výskyt)~~. `rank` a `recipient`: UZAVŘENO, byl to souběh
+
+> **POZOR, tenhle nález je neplatný a je uzavřený.** Vznikl tím, že oprava P10 a doplňkový
+> průchod schématem běžely **souběžně**, takže P10 četl P03 ještě před doplněním a v dobré víře
+> zapsal, že chybí.
+>
+> **Ověřeno v aktuálním P03 hlavním agentem 2026-08-01:** obojí je doplněné.
+> `rank smallint NOT NULL GENERATED ALWAYS AS (CASE type ...)` je na třech místech včetně testu,
+> který vynucuje, že sloupec **musí** být generovaný, aby ho volající nemohl uvést špatně.
+> `recipient` je uvolněný na nepovinný s podmíněným omezením, rozhodnutí R33.
+>
+> **Práce P10 zůstává správná**, protože psal svou stranu podle rozhodnutí, ne podle toho,
+> co v P03 zrovna viděl. Zápis události ty dva sloupce nevyjmenovává, což je přesně to,
+> co má generovaný a podmíněný sloupec vyžadovat.
+>
+> Číslo `N41` je obsazené dvakrát, viz nález o přípravě dat pro render výš. Poučení pro další
+> vlny: **při souběžných opravách se stav dodavatele musí ověřit až v okamžiku zápisu nálezu,
+> ne na začátku práce.**
+
+Původní znění pro doložení:
+
+- **Našel:** oprava P10 ve fázi 3
+- **Týká se:** **P03** (schéma), P10 (píše svou stranu proti rozhodnutí)
+- **Závažnost:** nejvyšší, bez toho neprojde jediné otevření ani proklik
+
+Rozhodnutí z revize schématu znělo: `rank` se změní na **generovaný sloupec** odvozený z `type`
+(je to čistá funkce typu, každý zapisovatel by si škálu napsal jinak) a `recipient` se **uvolní
+na nepovinný** s podmíněným omezením jen pro doručovací události (u otevření a prokliků je to
+zbytečná kopie osobního údaje na každém řádku desetimilionové tabulky, kterou pak musí výmaz
+podle GDPR procházet).
+
+Opravený P03 ani jedno neudělal. Ověřeno grepem v jeho aktuální podobě:
+
+```sql
+recipient          text        NOT NULL,     -- řádek 4546, bez DEFAULT
+rank               smallint    NOT NULL,     -- řádek 4550, bez DEFAULT, není generovaný
+```
+
+Důvod je znám a je organizační: pátá recenze schématu se do jeho opravy nedostala. Doplňkový
+průchod schématem běží.
+
+**P10 je napsaný proti rozhodnutí**, tedy zápisy události ani jeden z těch dvou sloupců
+nevyjmenovávají. Dokud se schéma nesrovná, skončí každé otevření chybou `23502`. Ověřeno
+spuštěním proti PostgreSQL 18.4: s `rank` jako generovaným sloupcem a `recipient` nepovinným
+zápis projde, `rank` se dopočítá (u `type = 'open'` na 50) a `recipient` zůstane prázdný.
+
+Třetí sloupec, `source`, **je opravený na straně P10** doplněním konstanty `'tracking'`. Povinnost
+bez výchozí hodnoty je u něj správně: hodnota se skutečně liší podle zapisovatele a výchozí
+hodnota by mlčky označila událost od providera za vlastní.
+
+### N42. Pět zásahů do schématu, bez kterých je tracking částečně tichý
+
+- **Našel:** oprava P10 ve fázi 3
+- **Týká se:** **P03**, u jednoho bodu i P13
+- **Závažnost:** vysoká, čtyři z pěti se projeví jako tichý nulový výsledek
+
+Všech pět je zapsaných jako požadavek v sekci 2 plánu P10, takže se na ně nezapomene, ale opravit
+je musí P03.
+
+1. **`GRANT UPDATE (properties, context) ON web_events`.** Dnešní sloupcový grant má jen
+   `contact_id, identity_merge_id, erased_at`. Hook `tracking.erase_contact` je přitom jediná cesta,
+   jak z uložených událostí odstranit PII a IP adresu. Dnes skončí na `42501` a protože běží
+   v jedné transakci, **výmaz podle čl. 17 neproběhne vůbec**. Plný `GRANT UPDATE` je zakázaný:
+   kontrolní test P10 ověřuje, že `UPDATE web_events SET name` na oprávnění padá.
+2. **`message_events.processed_at timestamptz NULL` plus rozšíření grantu** na
+   `GRANT UPDATE (contact_id, erased_at, recipient, processed_at)`. Samotný sloupec je už
+   v evidenci; bez grantu ho aplikace stejně nepřepíše a job by při každém běhu zpracoval tytéž
+   události znovu, takže `campaign_stats.delivered` by rostlo donekonečna.
+3. **Šest indexů pro retenci a výmaz.** Nejcitelnější je poslední: `idx_message_engagement__contact`
+   je částečný `WHERE first_open_at IS NOT NULL`, takže výmaz kontaktu, který nikdy nic neotevřel,
+   tedy většiny databáze, projde sekvenčně všech 37 měsíčních oddílů. Úplný seznam je v sekci 2 P10.
+4. **Mechanismus systémového přístupu napříč projekty.** P03 má dnes `sender_bypass` pro
+   `mlain_sender` a `maintenance_bypass` na `web_events` pro `mlain_maintenance`, obecný mechanismus
+   pro systémové joby ale ne. Bez něj **nejde dohledat veřejný klíč** (workspace se dozvídáme
+   teprve z řádku `api_keys`, takže ho nemáme čím nastavit předem) a retenční, přepočtové
+   i rekonstrukční joby zpracují **nula řádků, aniž by vrátily chybu**. P10 má všechny takové
+   dotazy soustředěné za jedinou funkcí `withCrossWorkspaceTx` a hlídá je test, takže po dodání
+   mechanismu stačí projít jeden krátký seznam.
+5. **`campaign_stats.materialized` a `.skipped` nemá kdo zapsat.** Z událostí je dopočítat nejde,
+   vznikají při materializaci publika. Patří **P09**, nebo mají ze schématu zmizet. P10 si je
+   nedopočítává, protože dopočet z událostí by dal jiná čísla než skutečnost.
+
+`GRANT DELETE ON web_events` pro `mlain_maintenance` byl v recenzi taky, ale **opravený P03 už ho
+má**, včetně `SELECT` a politiky `maintenance_bypass`. Není to tedy otevřený nález.
+
+### N43. Akceptační kritérium 60 části 5 nejde splnit doslova
+
+- **Našel:** oprava P10 ve fázi 3
+- **Týká se:** **specifikace části 5** (3196), P10 (má opravený test)
+- **Závažnost:** střední, jinak by na tom úkolu padala správná implementace
+
+Kritérium 60 předepisuje test „dekódovaný payload `ml_token` neobsahuje `@`". Payload je
+60 bajtů binárních UUID, osmibajtového nonce z CSPRNG a uint32. Bajt `0x40` je ASCII `@`
+a v UUID verze 7 je zcela běžný, například v `...-7e40-...`.
+
+Ověřeno spuštěním na 100 000 vydaných tokenech s vektory z plánu: bajt `0x40` obsahovalo
+**100 000 ze 100 000**. Kritérium tedy není náhodně křehké, je nesplnitelné vždy.
+
+Věcný záměr kritéria je v pořádku a P10 ho plní: test ověřuje, že se v payloadu neobjeví žádný
+ze vstupů v textové podobě (s pomlčkami i bez nich), že má přesně 60 bajtů a že změna bitu
+v `contact_id` vede na `token_signature_invalid`. Znění kritéria ve specifikaci je potřeba
+srovnat, jinak si ho někdo přepíše zpátky.
+
+---
+
+### N55. Dohodnutá konfigurace testů `apps/web` nestačí, a P01 zatím nezměnil ani to původní
+
+- **Našla:** oprava P06 ve fázi 3, **ověřeno spuštěním** na Vitest 4.1.10, ne přečtením
+- **Týká se:** **P01** (vlastník souboru), P05, P06, P12
+- **Závažnost:** nejvyšší, protože selhání je tiché. Doplňuje nález N28, který tím není vyřešený.
+
+Dvě zjištění, obě z běhu, ne ze čtení.
+
+**Za prvé, P01 opravu zatím neprovedl.** V opraveném P01 (řádek 5783) stojí dál
+`{ environment: 'node', include: ['test/**/*.test.ts'] }`. Požadavek P05→P01.5 z jeho kapitoly 8.2
+tedy zůstává nesplněný a P06 ani P12 na něj nemají jak čekat jinak než vlastní kontrolou.
+
+Měřeno na projektu s jedním procházejícím testem v `test/` a jedním **záměrně padajícím** v `src/`:
+
+```
+ ✓ test/ok.test.ts (1 test) 1ms
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+EXIT=0
+```
+
+Kompletní série skončí zeleně a s kódem 0, přestože padající test nikdo nespustil.
+Jednotlivý běh na soubor mimo vzor skončí kódem 1 a hláškou `No test files found`,
+což je červené, ale hlásí to něco jiného, než se stalo.
+
+**Za druhé, tvar konfigurace zapsaný v N28 nestačí.** Se samotným `plugins: [react()]`,
+`environment: 'jsdom'` a rozšířeným `include` běh dopadne takhle:
+
+```
+TestingLibraryElementError: Found multiple elements with the role "button"
+ Test Files  1 failed | 1 passed (2)
+```
+
+Automatický úklid `@testing-library/react` se registruje jen tehdy, když existuje globální
+`afterEach`, tedy při `globals: true`. Bez něj zůstane strom z předchozího testu v dokumentu.
+**Postihlo by to všech 27 testů komponent P06 a všechny testy P12**, a vypadalo by to jako
+chyba testu, ne konfigurace. Obsah `vitest.setup.ts` přitom v požadavku nikdo nenapsal, takže
+soubor mohl vzniknout prázdný a chyba by přišla i tak.
+
+**Doplněné znění požadavku na P01.** Ověřeno spuštěním na Vitest 4.1.10, `@vitejs/plugin-react`
+6.0.5, `jsdom` 30.0.1 a `@testing-library/react` 16.3.2:
+
+```ts
+// apps/web/vitest.setup.ts
+import '@testing-library/jest-dom/vitest';
+import { cleanup } from '@testing-library/react';
+import { afterEach } from 'vitest';
+
+afterEach(() => {
+  cleanup();
+});
+```
+
+**Co udělal P06 u sebe, aby na tom nebyl závislý poslepu:** kontrola
+`apps/web/test/p06/test-runner.test.ts` leží uvnitř **starého** vzoru, takže se spustí i tehdy,
+když se nespustí nic jiného. Porovná seznam testovacích souborů pod `src/` proti `include`
+z živé konfigurace, ověří `jsdom`, přítomnost pluginu a to, že `setupFiles` registruje úklid.
+Plán se na ní zastaví dřív, než napíše první komponentu. **P12 si totéž může převzít.**
+
+**UZAVŘENO 2026-08-01 opravou P01.** Obojí je zapracované v úkolu 13:
+
+- `apps/web/vitest.config.ts` má `plugins: [react()]`, `environment: 'jsdom'`,
+  `setupFiles: ['./vitest.setup.ts']` a `include: ['src/**/*.test.{ts,tsx}', 'test/**/*.test.{ts,tsx}']`.
+- `apps/web/vitest.setup.ts` vzniká s obsahem, ne prázdný: importuje matchery jest-dom
+  a registruje `afterEach(cleanup)`. Explicitní `afterEach` je zvolený místo `globals: true`,
+  aby se testy nepsaly proti implicitním globálům.
+- Čtyři závislosti (`@vitejs/plugin-react` 6.0.5, `jsdom` 30.0.1, `@testing-library/react`,
+  `@testing-library/jest-dom`) zavádí manifest `apps/web`, který vlastní P01.
+- Vlastní strážní test P01 (`konfigurace testů apps/web` v `apps/web/test/health-routes.test.ts`)
+  leží uvnitř starého vzoru ze stejného důvodu jako kontrola P06, a čte **živou** konfiguraci:
+  ověří `src/` ve vzoru, `.tsx` ve vzoru, `jsdom`, přítomnost pluginu, neprázdné `setupFiles`
+  a to, že setup soubor obsahuje `cleanup` i `afterEach`. Kontrola P06 tím není nadbytečná,
+  obě měří něco jiného a obě se spustí.
+
+Doloženo spuštěním na Vitest 4.1.10 se záměrně padajícím testem v `src/`: s původní
+konfigurací série skončila `Test Files 1 passed (1)` a **kódem 0**, s opravenou skončila
+`FAIL src/...` a **kódem 1**. Prázdný setup soubor reprodukoval
+`Found multiple elements with the role "button"`, s doplněným obsahem testy komponent prošly.
+
+**Stejná past byla i jinde a opravila se zároveň:** `packages/core`, `apps/worker`, `apps/cli`
+i sdílené presety `@mlain/config/vitest/{node,db}` měly vzor jen `test/**`, přestože do
+`packages/core/src/<domena>/**` píše patnáct dalších plánů. Všechny nově berou i `src/**`.
+
+### N56. Kontrola slovníku v P05 hledá zakázané výrazy i ve jménech slotů
+
+- **Našla:** oprava P06 ve fázi 3, ověřeno spuštěním nad skutečnými katalogy
+- **Týká se:** **P05** (`packages/i18n/src/checks/glossary.ts`)
+- **Závažnost:** střední, ale je to past pro každý plán s obrazovkou
+
+`findViolations` porovnává zakázaný výraz proti **celé zprávě**, tedy i proti jménům ICU slotů.
+Zpráva `"Pozvánka do projektu {workspace}"` je česky správně a slovník 9.2 neporušuje, protože
+slovo „workspace" se uživateli nikdy nezobrazí. Kontrola ji přesto označí a `ci:i18n-check` spadne.
+V katalozích P06 to byly čtyři zprávy.
+
+**Oprava na straně P06 je hotová:** slot se jmenuje `projectName`. Je to ale léčba příznaku.
+Kterýkoli další plán, který pojmenuje slot `{workspace}`, `{sandbox}` nebo `{placeholder}`,
+narazí znovu, a spadne mu build na správně napsaném textu.
+
+**Oprava na straně P05:** před porovnáním odstranit obsah složených závorek, tedy hledat
+v `value.replace(/\{[^}]*\}/g, ' ')`. Texty uvnitř větví `plural` se tím sice přeskočí taky,
+což je vedlejší ztráta, ale menší než falešně padající brána. Přesnější řešení je číst ICU strom
+a kontrolovat jen literály.
+
+### N57. Položka „Projekt" v registru navigace chce oprávnění, které prohlížející nemá
+
+- **Našla:** oprava P06 ve fázi 3, ověřeno proti skutečnému znění registru
+- **Týká se:** **P05** (`packages/ui/src/patterns/navigation/registry.ts`)
+- **Závažnost:** střední, dělá z jednoho povinného stavu mrtvý kód
+
+Položka `settings-general` má v registru `permission: 'workspace:update'`. Obrazovku Projekt
+ale podle kritéria 23 kapitoly 15.3 části 6 **vidí každý člen**, jen bez zápisu se vykreslí
+jako stav S12 „jen pro čtení", tedy hodnoty jako text místo zašedlých polí. P06 tenhle stav
+implementuje a testuje (úkol 22).
+
+S dnešním registrem se k němu prohlížející z menu nedostane, protože položku vůbec neuvidí,
+a jedinou cestou zůstane ručně napsaná URL. Stav S12 tím prakticky přestane existovat.
+
+**Návrh:** `permission: 'workspace:read'` u `settings-general`. Zápis pak dál řídí obrazovka
+podle `workspace:update`, což už dělá.
+
+**P06 se mezitím řídí registrem, jak je**, a testy sub-navigace to popisují pravdivě:
+prohlížejícímu zbude v sekci Nastavení jen „Můj účet".
+
+### N58. `JobSummary` nemá `kind`, přestože detail úlohy je adresovaný druhem
+
+- **Našla:** oprava P06 ve fázi 3
+- **Týká se:** **P05** (`packages/ui/src/patterns/jobs/types.ts`)
+- **Závažnost:** nízká, ale bez ní nejde složit odkaz
+
+Endpoint detailu je `GET /api/v1/jobs/{kind}/{id}` a `kind` v cestě stojí schválně: ID pocházejí
+z různých doménových tabulek a napříč nimi nejsou zaručeně jedinečná (P04, úkol 45). Typ
+`JobSummary` v P05 nese `id` a hotový `href`, ale `kind` ne, takže ho ten, kdo `href` staví,
+nemá odkud vzít. Odpověď endpointu `kind` obsahuje, chybí jen v typu komponenty.
+
+**Stránka detailu je hotová v P06** (úkol 34) na cestě `/w/{slug}/jobs/{kind}/{jobId}`; tím se
+uzavírá nález N30. Zbývá doplnit `kind` do `JobSummary` a v P05 i P04 opravit text, který cestu
+uvádí jako `/w/{slug}/jobs/{jobId}`.
+
+<!-- Nálezy z opravy P07 (fáze 3). Číslovány prefixem plánu, protože číselná řada Nxx
+     se v tomhle souboru mezi vlnami opakuje a kolidovala by. -->
+
+### P07-1. Layout `packages/core`: rozhodnuto, a hluboká podcesta navíc nefunguje (uzavírá N42 z vlny B)
+
+- **Našla:** oprava P07 ve fázi 3, na podnět koordinátora. **Uzavírá otázku z N42 vlny B.**
+- **Týká se:** **P04** (367 výskytů), **P10** (413), P08 a P11 (smíšeně), P07 (opraveno)
+- **Závažnost:** nejvyšší, protože to není styl, ale chyba překladu
+
+**Rozhodnuto: platí `packages/core/src/<domena>/`, tedy tvar P13.** P07 se opravil.
+
+Manifest `packages/core/package.json` vlastní P01 a jeho mapa `exports` zní:
+
+```json
+"./*/jobs": "./src/*/jobs/queue-handlers.ts",
+"./*": "./src/*/index.ts"
+```
+
+`packages/core/tsconfig.json` má `include: ["src/**/*.ts", "test/**/*.ts"]`. Soubor mimo `src/`
+se tedy **ani nezkompiluje**, natož aby se dal naimportovat.
+
+P13 to má správně (`packages/core/src/campaigns/`), P07 se opravil. **P04 zakládá
+`packages/core/tx/index.ts`, `packages/core/errors/api-error.ts`, `packages/core/identity/**`
+a dalších 367 cest bez `src/`; P10 má 413.** Import `@mlain/core/tx` je přitom v obou
+případech správný, takže se rozdíl neprojeví na volajících, jen na tom, že cílový soubor
+nikde nevznikne.
+
+**Druhá půlka téhož nálezu: hluboká podcesta se nerozřeší na soubor.** Zástupný znak v mapě
+`exports` pohlcuje i lomítka, takže `@mlain/core/contacts/fields/catalog` míří na
+`src/contacts/fields/catalog/index.ts`, tedy na **adresář**. Ověřeno spuštěním pod Node 24.2:
+
+```
+FAIL @mlain/core                        -> ERR_PACKAGE_PATH_NOT_EXPORTED
+OK   @mlain/core/contacts               -> src/contacts/index.js
+OK   @mlain/core/contacts/jobs          -> src/contacts/jobs/queue-handlers.js
+OK   @mlain/core/contacts/fields/catalog -> src/contacts/fields/catalog/index.js  (ADRESÁŘ)
+```
+
+Týká se to konkrétně:
+
+| Plán | Import | Kam to ve skutečnosti míří |
+|---|---|---|
+| P08 | `@mlain/core/contacts/fields/catalog` (4 místa) | `src/contacts/fields/catalog/index.ts` |
+| P12 | `@mlain/core/contacts/fields` | `src/contacts/fields/index.ts` |
+| P04 | `@mlain/core/errors/api-error`, `@mlain/core/audit/write` | `src/errors/api-error/index.ts`, `src/audit/write/index.ts` |
+
+**Platný tvar je `@mlain/core/<domena>`.** P07 proto zakládá `packages/core/src/contacts/index.ts`
+jako veřejnou plochu domény a katalog polí z něj reexportuje; P08 a P12 mají importovat odtud.
+Uvnitř balíčku se importuje relativně.
+
+### P07-2. `@mlain/db` nemá podcestu k repository ani k testovacímu harnessu
+
+- **Našla:** oprava P07 ve fázi 3
+- **Týká se:** **P03** (vlastník manifestu), P07 (opraveno), a každý doménový plán s testy nad databází
+- **Závažnost:** vysoká, dvě různé věci pod jedním nálezem
+
+Mapa `exports` balíčku `@mlain/db` má pět klíčů (`.`, `./schema`, `./migrate`, `./partitions`,
+`./rls`, `./unsafe-context`) a **žádný zástupný znak**.
+
+1. **Doménová repository v `packages/db/src/repo/` nejsou dosažitelná.** P07 jich tam mělo
+   třináct a importoval je jako `@mlain/db/repo/contacts`. Skončilo by to na
+   `ERR_PACKAGE_PATH_NOT_EXPORTED`. P03 to sám v komentáři u `src/index.ts` říká jinak, než
+   jak si to plány vyložily: „doménové repository si píše každý doménový plán do
+   `packages/core/<domena>`". **P07 je přestěhoval do `packages/core/src/contacts/repo/`.**
+   Stejnou chybu ať si ověří P10, P11, P13 a P14.
+2. **Testovací harness není vystavený.** `startHarness()` a `seedTwoWorkspaces()` leží
+   v `packages/db/test/helpers/`, což je mimo `exports`. **Žádný doménový plán tedy nemá jak
+   spustit test proti reálné databázi**, a alternativa je, že si každý napíše vlastní
+   kontejner. Požadavek na P03 je jeden řádek:
+   `"./test-support": "./test/helpers/index.ts"` s reexportem `startHarness`,
+   `seedTwoWorkspaces` a typu `Harness`.
+
+### P07-3. `packages/core` nemá běh databázových testů
+
+- **Našla:** oprava P07 ve fázi 3
+- **Týká se:** **P01** (vlastník manifestu), P07, P10, P11, P13, P14
+- **Závažnost:** vysoká, protože selhání je tiché
+
+`packages/core/package.json` má jen `test:unit`. Jakmile se doménová datová vrstva přestěhuje
+do `packages/core` (viz N42), nemají její databázové testy kde běžet. Konfigurace, která
+nenajde žádný test, přitom **skončí zeleně**, takže by to vypadalo jako úspěch.
+
+Požadavek na P01: skript `test:db` s vlastním vitest projektem a `@mlain/db` plus
+`testcontainers` v `devDependencies` balíčku `packages/core`.
+
+### P07-4. Výmaz podle článku 17 nemá jak přepnout roli, takže selže pokaždé
+
+- **Našla:** revize P07, potvrzeno při opravě
+- **Týká se:** **P03** (`PoolKind`), **P04** (adaptér `packages/core/tx`), P07
+- **Závažnost:** nejvyšší, výchozí režim výmazu nefunguje
+
+Migrace 0006 plánu P03 odebírá `mlain_app` práva `UPDATE` i `DELETE` na `consents`, migrace
+0005 dává `DELETE` jedině roli `mlain_gdpr`. P03 ale vystavuje `PoolKind` jen jako
+`'app' | 'readOnly'` a tu roli používá **pouze ve vlastních testech**. Produkční cesta k ní
+neexistuje, takže `DELETE FROM consents` skončí na `42501` při každém výmazu v režimu
+`anonymize`, což je výchozí režim.
+
+Režim `purge` roli nepotřebuje, protože kaskáda `ON DELETE CASCADE` se provádí systémem.
+Právě proto se vada neprojeví na testu fyzického smazání.
+
+Požadavek: `PoolKind: 'app' | 'readOnly' | 'gdpr'` v P03 a obálka `withGdpr(ctx, fn)`
+v adaptéru `packages/core/src/tx`. Zvážit `GRANT SELECT ON contacts TO mlain_gdpr`, protože
+dnes ta role nemá právo si přečíst, co maže.
+
+### P07-5. Šest symbolů, které doménové plány volají a vlna A je nemá
+
+- **Našla:** oprava P07 ve fázi 3 srovnáním proti aktuální podobě P02 a P04
+- **Týká se:** P07 (opraveno), a s velkou pravděpodobností P10, P11, P13, P14, P15
+- **Závažnost:** vysoká, každý z nich je chyba překladu nebo tichý rozchod kontraktu
+
+| Co plány volají | Co ve skutečnosti existuje | Kde |
+|---|---|---|
+| `DomainError(code, { fieldCode })` | `ApiError(code, { params, errors, findings })` | P04, `@mlain/core/errors` |
+| `writeAudit(tx, ctx, entry)` | `writeAuditLog(tx, entry)` s plnou položkou a `actorInfo(actor, label)` | P04, `@mlain/core/audit` |
+| `emitWebhookEvent(tx, ctx, type, data)` | `emitWebhookEvent(tx, { workspaceId, type, occurredAt, data })` | P04, `@mlain/core/platform` |
+| `getKeyring()` vracející `{ current, all }` | `keyringFromEnv()` vracející **`Map<number, Uint8Array>`** | P02, `@mlain/contracts/keyring` |
+| `encodeToken(type, payload)`, `decodeToken(raw)` vracející `{ ok }` | `buildToken({ type, keyId, fields, keyring })` a `verifyToken({...})`, které **hází `TokenError`** | P02, `@mlain/contracts/token` |
+| `withTransaction(ctx, fn)` | `withWorkspace(ctx, fn)` z adaptéru P04, callback dostane Drizzle handle | P04, `@mlain/core/tx` |
+
+Nejzáludnější je keyring: P07 si vedle kontraktu držel **vlastní** konstantu purpose, vlastní
+HKDF sůl a vlastní typ `Keyring`. Byly by to dvě implementace téhož receptu a rozdíl mezi nimi
+se nepozná ničím jiným než tím, že vymazaný člověk dostane mail, protože otisk smazané adresy
+nejde přepočítat.
+
+### P07-6. Dva nepovinné indexy, které by P07 využil
+
+- **Našla:** oprava P07 ve fázi 3
+- **Týká se:** **P03**, P07 (funguje i bez nich)
+- **Závažnost:** nízká, je to výkon, ne správnost
+
+1. GIN `gin_trgm_ops` nad `(workspace_id, first_name_key, last_name_key)`. Bezdiakritické
+   hledání jde po opravě přes tyhle dva sloupce (P07 zrušil požadavek na nový sloupec
+   `search_key`) a vlastní index nemá.
+2. Druhý částečný index se stejným predikátem jako `idx_contacts__ws_vocative_review`, ale nad
+   `last_name_key`. Fronta kontroly oslovení umí obě větve, indexovaná je jen ta podle
+   křestního jména.
+
+Ani jeden nemění zápis, takže se dají doplnit kdykoli později.
+
+### N59. P06 nepoužívá komponentu K1, přestože ji řídicí dokument u tabulek předpokládá
+
+- **Našla:** křížová kontrola opravy P06 proti hotovému P05, ověřeno grepem na `<DataTable`
+- **Týká se:** **P06** (rozhodnutí zapsáno u něj), P05 jako vlastník komponenty
+- **Závažnost:** střední, není to chyba překladu, ale rozpor v tom, co plán tvrdí
+
+Všech pět seznamů P06 (členové, pozvánky, klíče, webhooky, log doručení, audit) kreslí
+`<table>` ručně. `DataTable` z `@mlain/ui/patterns/data-table` **nevykresluje ani jednou**,
+přestože dřívější znění jeho kapitoly 2.2 komponentu uvádělo mezi předpoklady a rozhodnutí R3
+mluvilo o „datové tabulce K1".
+
+Důvody, proč to tak vzniklo, jsou věcné: `DataTable` žádá `count` a `pagination` v tvaru,
+který P06 nemá čím naplnit (kurzorové stránkování bez celkového počtu u čtyř z pěti seznamů),
+a u dvou tabulek je řádek formulářem se Server Action, ne jen daty.
+
+**P06 to má opravené na své straně:** tvrzení z 2.2 i z R3 jsou srovnaná s kódem a kontrakt
+už `DataTable` neobsahuje. **Zbývá rozhodnout**, jestli se K1 má do P06 vrátit. Je to průchod
+přes pět tabulek a dotýká se toho, jestli `DataTable` unese řádek s formulářem; to je otázka
+na P05, ne na P06.
+
+### P13-1. `campaigns.compile_meta` v P03 pořád není, a blokuje to fázi J i materializaci
+
+- **Našel:** oprava P13, ověřeno grepem v P03 **v okamžiku zápisu** (2026-08-01, 13:36),
+  a znovu po námitce koordinátora (13:45, soubor P03 se mezitím nezměnil, poslední zápis 12:13)
+- **Týká se:** **P03** jako vlastník schématu, P09 jako druhý odběratel, P13 jako zapisovatel
+- **Závažnost:** kritická, bez sloupce se fáze J nedá dokončit
+
+Grep `compile_meta|compileMeta` v P03 vrací **jediný** výskyt: ř. 2845 `compileMeta: jsonb()`.
+Ten řádek ale patří do tabulky **`template_versions`**, jejíž definice začíná na ř. 2835
+(`export const templateVersions = pgTable('template_versions', {`). Tabulka `campaigns` je až
+na ř. 3172 až 3230 a `compile_meta` v ní **není**; má `compiledHtml`, `compiledText`,
+`compiledAt`, `compiledFields`, `compiledHash`, `audienceBreakdown` a `releaseAt`, ale
+metadata kompilace ne.
+
+**Metadata z `template_versions` ten sloupec nahradit nemůžou**, a to ze dvou nezávislých důvodů:
+
+1. `campaigns` odkazuje na `templates.id` (`ON DELETE SET NULL`), **ne na konkrétní verzi**.
+   Sloupec `template_version_id` neexistuje, takže z kampaně není jak dohledat, která verze
+   šablony ji vyrobila. Navíc `campaigns.design` je samostatné jsonb: kampaň může mít obsah,
+   který v žádné šabloně není.
+2. I kdyby ten odkaz existoval, obsah by neseděl. `CompiledLink.id` je podle kontraktu 5
+   plánu P08 **UUIDv5 odvozené z `campaignId`**, takže dvě kampaně ze stejné šablony mají
+   různá ID odkazů. Metadata uložená u verze šablony by pro kampaň platila jen náhodou.
+
+DDL: `ALTER TABLE campaigns ADD COLUMN compile_meta jsonb;`
+
+Odběratelé jsou dva a oba tiší:
+
+1. **Sender (P09)** má podle kritéria AK-6.21 porovnat počet nalezených značek odkazů proti
+   `clickMarkerCount`. Dnes to obchází degradací s logem `compile_meta_column_missing`.
+2. **Materializace (P13)** z něj bere `renderSchema` a `usedPaths` pro `prepareRenderData`.
+   Bez nich se nenaplní kořen `_present` a **podmíněné bloky se v odeslaných mailech tiše skryjí**.
+
+P13 to má u sebe zapsané jako požadavek R-P03.5 a celou cestu (`saveCompilation`, `readCompileMeta`,
+`renderPlanForCampaign`) napsanou tak, aby fungovala v okamžiku, kdy sloupec vznikne.
+DDL: `ALTER TABLE campaigns ADD COLUMN compile_meta jsonb;`
+
+### P13-2. Cizí klíč invariantu I1 znemožňuje testovací odeslání z draftu
+
+- **Našel:** oprava P13, **ověřeno spuštěním** proti PostgreSQL 18 (ne přečtením)
+- **Týká se:** **P03** jako vlastník `fk_messages__campaign_audience`
+- **Závažnost:** kritická, testovací mail z rozepsané kampaně nejde odeslat vůbec
+
+P03 zavádí složený cizí klíč, který drží invariant I1:
+
+```sql
+FOREIGN KEY (campaign_id, created_at) REFERENCES campaigns (id, audience_built_at)
+```
+
+Kampaň v draftu má `audience_built_at = NULL`. Testovací odeslání ale zapisuje řádek do `messages`
+s vyplněným `campaign_id`, takže dvojice `(campaign_id, created_at)` v `campaigns` neexistuje
+a `INSERT` skončí chybou **23503**. Ověřeno spuštěním: `Key (campaign_id, created_at)=(...) is not
+present in table "campaigns"`. Přitom právě z draftu si uživatel testovací mail posílá nejčastěji.
+
+Řešení, které nechává invariant I1 nedotčený (ověřeno všemi čtyřmi scénáři: test z draftu projde,
+kampaňová zpráva bez materializace pořád spadne, po materializaci projde, opakovaný test projde):
+
+```sql
+ALTER TABLE messages ADD COLUMN audience_campaign_id uuid
+  GENERATED ALWAYS AS (CASE WHEN kind = 'campaign' THEN campaign_id END) STORED;
+ALTER TABLE messages DROP CONSTRAINT fk_messages__campaign_audience,
+  ADD CONSTRAINT fk_messages__campaign_audience
+  FOREIGN KEY (audience_campaign_id, created_at) REFERENCES campaigns (id, audience_built_at);
+```
+
+Zapsáno u P13 jako požadavek R-P03.7.
+
+### P13-3. `campaign_links.position` má v P03 komentář „od 0", kompilace vrací 1..N
+
+- **Našel:** oprava P13, ověřeno v P03 ř. 3283 a v kontraktu 5 plánu P08
+- **Týká se:** **P03** (komentář), P08 (zdroj hodnot), P13 a P14 (odběratelé)
+- **Závažnost:** nízká, je to jen komentář, ale zavádí do omylu
+
+P03 má u sloupce `position: integer().notNull()` komentář `// pořadí výskytu v HTML, od 0`.
+Kontrakt 5 plánu P08 přitom u `CompiledLink.position` deklaruje `1..N, souvislá řada podle
+prvního výskytu`, a P13 rozhodnutím D17 přebírá pozice z `CompileMeta` **doslova** a vyhazuje
+`contract_mismatch`, když dorazí pozice menší než 1.
+
+Nic nespadne, protože sloupec žádný `CHECK` nemá. Jen komentář tvrdí opak toho, co v tabulce
+skutečně bude, a druhý čtenář podle něj může napsat dotaz s `position = 0`.
+
+Stačí opravit komentář na `// pořadí výskytu v HTML, 1..N (viz kontrakt 5 plánu P08)`.
+
+### P13-4. `sending_providers` nemá kam uložit stav žádosti o produkční přístup
+
+- **Našel:** oprava P13
+- **Týká se:** **P03** jako vlastník tabulky
+- **Závažnost:** střední, preflight nemá uživateli co poradit
+
+Hodnota z AWS `GetAccount → Details.ReviewDetails.Status` projde v P13 třemi vrstvami (čtení kvót,
+signatura `updateAccountSnapshot`) a v samotném `UPDATE` tiše zmizí, protože sloupec neexistuje.
+Preflight podle ní má rozlišit „žádost běží" (`PENDING`) od „žádost zamítnuta" (`DENIED`), což je
+u zablokovaného odesílání pro uživatele zásadní rozdíl.
+
+Bez `CHECK`, ze stejného důvodu jako u `enforcement_status`: uzavřený výčet by se rozbil při první
+nové hodnotě od AWS a shodil by job `provider.refresh_quota`.
+DDL: `ALTER TABLE sending_providers ADD COLUMN review_status text;`
+Zapsáno u P13 jako požadavek R-P03.8.
+
+### P13-5. Retenční job potřebuje migrátorské spojení, které mu nikdo nedodá
+
+- **Našel:** oprava P13
+- **Týká se:** **P01** (worker), P03 (`dropPartitionsBefore`)
+- **Závažnost:** kritická pro fázi I, retence dnes nefunguje vůbec
+
+`dropPartitionsBefore` z `@mlain/db/partitions` používá `DETACH PARTITION ... CONCURRENTLY`.
+Ten příkaz **nesmí běžet v transakčním bloku** a DDL vyžaduje vlastníka relace, tedy
+`mlain_migrator`. `@mlain/db` přitom vystavuje jen aplikační a read-only pool
+(`createPool(url, 'app' | 'readOnly', max)`), takže doménový plán se k migrátorskému spojení
+nemá jak dostat.
+
+Původní podoba P13 to obcházela vlastním `DROP TABLE` pod `mlain_app`, což by skončilo chybou
+**42501** `must be owner of table`. P13 to má opravené na volání `dropPartitionsBefore` s vlastním
+veto predikátem, ale spojení musí přijít zvenčí. Worker (P01) stejnou cestou už pouští
+`platform.maintain_partitions`, takže jde o zpřístupnění, ne o novou schopnost.
+Zapsáno u P13 jako požadavek R-P01.6.
+
+### P13-6. `packages/core` nemá `test:db`, a týká se to už tří plánů
+
+- **Našel:** oprava P13; **shodné s P07-3**, tenhle záznam jen doplňuje třetího postiženého
+- **Týká se:** **P01** jako vlastník manifestu `packages/core`
+- **Závažnost:** vysoká, databázové testy tří plánů se nespustí
+
+Po rozhodnutí P07-1 leží datové vrstvy domén v `packages/core/src/<domena>/repo/**`. P13 tam po
+opravě přesunul `campaigns/repo/**` a `providers/repo/**` (dřív byly v `packages/db`, kam
+nepatřily a odkud navíc nešly naimportovat, viz P07-2). `packages/core` má ale jen `test:unit`,
+takže databázové testy P07, P11 a P13 nemá co spustit.
+Zapsáno u P13 jako požadavek R-P01.7.
+
+### P13-7. Barrel P07 exportuje `isMailable`, které v P07 neexistuje
+
+- **Našel:** oprava P13 při hledání predikátu způsobilosti; ověřeno grepem v P07 (2026-08-01, 13:36)
+- **Týká se:** **P07**
+- **Závažnost:** vysoká, `packages/core/src/contacts/index.ts` se nezkompiluje
+
+`packages/core/src/contacts/index.ts` na ř. 521 má
+`export { isMailable, type MailableVerdict } from './mailable.js';`, ale úkol 18 téhož plánu
+implementuje `evaluateMailability`, `MailabilityInput`, `MailabilityResult` a `MAILABLE_STATUS`.
+Symboly `isMailable` ani `MailableVerdict` nejsou v P07 nikde definované; jediné dva výskyty jsou
+ten export a test veřejné plochy na ř. 587, který je jmenovitě vypisuje jako „odběratele P13".
+
+P13 ani jeden z těch symbolů nepoužívá (staví publikum výhradně přes `compileAudienceToSql`),
+takže ho to neblokuje. Blokuje to ale P07 sám: barrel je vstupní bod celé domény.
+
+### P13-8. P04 zakládá `packages/core/tx/` bez mezistupně `src/`
+
+- **Našel:** oprava P13 při napojení na transakční vrstvu; ověřeno grepem v P04 (13 výskytů)
+- **Týká se:** **P04**; totéž rozhodnutí jako P07-1
+- **Závažnost:** střední, import `@mlain/core/tx` se nerozřeší
+
+Mapa `exports` balíčku `@mlain/core` (vlastní P01) míří na `"./*": "./src/*/index.ts"`, takže
+`@mlain/core/tx` se rozřeší na `packages/core/src/tx/index.ts`. P04 ale svůj adaptér zakládá jako
+`packages/core/tx/index.ts`, tedy o jednu úroveň výš, a stejně tak `packages/core/errors/`,
+`packages/core/identity/` a další.
+
+Rozhodnutí P07-1 tuhle otázku uzavřelo obecně ve prospěch `src/` a P07 se podle něj opravil.
+P13 používá **import cestu** `@mlain/core/tx`, která je správná v obou případech, takže ho to
+neblokuje. P04 se ale musí srovnat, jinak žádný z těch souborů nebude na místě, kam ukazuje
+jeho vlastní export.
+
+<!-- Nálezy z opravy P12 (fáze 3). Číslovány prefixem plánu, protože číselná řada Nxx
+     se v tomhle souboru mezi vlnami opakuje a N60 i N61 jsou už obsazené. -->
+
+### P12-1. Šablona nemá endpoint pro testovací odeslání, přestože ho žádají kritéria 43 a 44
+
+- **Našla:** oprava P12 ve fázi 3, ověřeno výpisem všech cest routeru, ne grepem na slovo
+- **Týká se:** **P08** (vlastník `apps/web/src/server/routes/templates.router.ts`), P12, P13
+- **Závažnost:** vysoká, dvě akceptační kritéria zůstanou nepokrytá
+- **Stav dodavatele v okamžiku zápisu:** P08 ve verzi z 1. 8. 2026 12:27, **nula výskytů**
+  řetězce `test-send` v celém plánu
+
+Router `/api/v1/templates` má patnáct cest (`GET /`, `GET /field-usage`, `POST /import`,
+`POST /`, `GET|PATCH|DELETE /:template_id`, `/duplicate`, `/validate`, `/compile`, `/preview`,
+`/versions`, `/versions/:version/restore`, `/export`). **`POST /:template_id/test-send` mezi
+nimi není.**
+
+P12 ho volá v úkolu 26, protože kritéria 43 a 44 části 3 žádají testovací e-mail, který obejde
+suppression list a nepočítá se do statistik. Funkce `sendTest` v P13
+(`packages/core/src/campaigns/test-send/send-test.ts`) je pro **kampaň**, ne pro šablonu, takže
+ji P12 nemá jak zavolat: šablona v tu chvíli žádnou kampaň nemá.
+
+**Požadavek na P08:** `POST /api/v1/templates/{id}/test-send` se scope `templates:write`, tělem
+`{ recipients: string[] (1 až 5), add_test_prefix: boolean, preview_data }` a chováním podle
+kritérií 43 a 44. Editorová strana je hotová a otestovaná proti dvojníkovi portů, takže se P12
+nezastaví, ale **kritéria zůstanou nepokrytá a nesmí se odškrtnout**.
+
+### P12-2. Endpoint náhledu neumí variantu „kontakt bez jména", takže kritérium 55 nejde splnit
+
+- **Našla:** oprava P12 ve fázi 3, ověřeno čtením těla obsluhy, ne průvodního textu
+- **Týká se:** **P08** (`templates.router.ts`, `preview-data.ts`), P12
+- **Závažnost:** vysoká, blokuje jedno z pouhých dvou tučně zvýrazněných kritérií P12
+- **Stav dodavatele v okamžiku zápisu:** P08 z 1. 8. 2026 12:27, **nula výskytů** řetězce
+  `preview_data`
+
+Obsluha `POST /:template_id/preview` čte z těla **`render_data`**, tedy hotová data, a když
+chybí, sáhne po `sampleRenderData(language)`. Jiná varianta vzorových dat neexistuje.
+
+Kritérium 55 části 6 žádá tlačítko „Kontakt bez jména", které ukáže náhled s prázdnými osobními
+údaji. Nejde ho nahradit výběrem konkrétního kontaktu, protože kontakt bez jména v projektu být
+nemusí, a nejde ho ani obejít posláním vlastního `render_data`: klient by musel znát tvar
+`renderSchema`, který vzniká až kompilací na serveru.
+
+**Požadavek na P08:** přijmout `preview_data: { type: "sample", variant: "default" | "no_name" }`
+a `{ type: "contact", contact_id }`, s tím, že `no_name` vyrobí vzorová data s prázdným
+`first_name`, `last_name` i `greeting`. Je to vedené jako P08-R2 v kapitole 9.2 plánu P12.
+
+### P12-3. `packages/core/identity` nemá veřejnou plochu, takže se z obrazovky nedá vyrobit kontext projektu
+
+- **Našla:** oprava P12 ve fázi 3. **Je to konkrétní dopad nálezu P07-1**, ne nový problém.
+- **Týká se:** **P04** (vlastník domény), P12, a každý další plán se serverovou komponentou
+- **Závažnost:** vysoká, chyba překladu
+- **Stav dodavatele v okamžiku zápisu:** P04 z 1. 8. 2026 13:04, `createWorkspaceContext` se
+  importuje výhradně jako `@mlain/core/identity/context`, soubor `identity/index.ts` neexistuje
+
+Mapa `exports` balíčku `@mlain/core` zní `"./*": "./src/*/index.ts"` a zástupný znak pohlcuje
+lomítka, takže `@mlain/core/identity/context` míří na `src/identity/context/index.ts`, tedy na
+adresář. P07-1 to popisuje obecně; tohle je místo, kde to zastaví konkrétní plán.
+
+`createWorkspaceContext` je podle 3.6 části 1 **jediná legitimní továrna** kontextu projektu,
+typ je branded schválně a jinou cestou vzniknout nemá. Serverová komponenta editoru ho potřebuje,
+aby přečetla šablonu a katalog polí; obojí je čtení v procesu, protože endpoint vracející
+sloučený katalog prvotřídních i vlastních polí neexistuje (`GET /api/v1/contact-fields` vrací
+jen vlastní pole v jiném tvaru).
+
+**Požadavek na P04:** založit `packages/core/src/identity/index.ts` jako veřejnou plochu domény
+a reexportovat z ní aspoň `createWorkspaceContext`. Je to jeden soubor a uzavírá to i těch 367
+hlubokých podcest, o kterých mluví P07-1.
+
+### P12-4. Odhad rozsahu P12 v řídicím dokumentu je poloviční proti skutečnosti
+
+- **Našla:** revize P12, potvrzeno měřením při opravě
+- **Týká se:** **řídicí dokument** `2026-07-31-rozdeleni-implementacnich-planu.md`, kapitola 5
+- **Závažnost:** nízká pro kód, střední pro plánování vlny 2
+
+Kapitola 5 u P12 uvádí „zhruba 3000 řádků při 6 až 8 typech bloků". Blokový model P08 má typů
+bloků **dvanáct** (`section`, `columns`, `column`, `repeat`, `heading`, `text`, `image`,
+`button`, `divider`, `spacer`, `html`, `social`, `footer`, přičemž `repeat` se v paletě
+nenabízí) a editor je musí obsloužit všechny.
+
+Změřeno v opraveném plánu: **6 370 řádků TypeScriptu**, z toho 1 891 testů a 4 479 implementace.
+Není to chyba P12, počet typů určuje P08. Architektura nárůst tlumí přesně tak, jak měla:
+dvanáct typů bloků obsluhuje **dvanáct ovládacích prvků**, ne osmdesát, protože prvek zná druh
+vlastnosti a ne blok.
+
+P12 si odhad opravil u sebe v tabulce rizik. **Zbývá opravit řídicí dokument**, ať se podle něj
+neplánuje vlna; ten patří koordinátorovi, ne doménovému plánu.
+
+### P12-5. `packages/emails/src/paths.ts` importuje katalog polí hlubokou podcestou
+
+- **Našla:** oprava P12 ve fázi 3 při ověřování, odkud brát `toMergePath`
+- **Týká se:** **P08**, drobnost, ale zastaví typovou kontrolu balíčku
+- **Závažnost:** nízká, běhu se nedotkne, protože jde o `import type`
+
+`packages/emails/src/paths.ts` má
+`import type { FieldCatalog } from "@mlain/core/contacts/fields/catalog"`.
+Ta cesta se přes zástupný znak rozřeší na `src/contacts/fields/catalog/index.ts`, tedy na adresář
+(nález P07-1). Za běhu se nic nestane, protože `import type` po překladu zmizí, ale
+`tsc --noEmit` nad `packages/emails` na tom skončí.
+
+Platný tvar je `@mlain/core/contacts`, odkud P07 katalog i jeho typy reexportuje. P12 z téhož
+souboru bere `toCatalogPath`, `toMergePath` a `toLiquidRoots`, takže se ho to týká přímo.
+
+### P12-6. Kontrola slovníku v P05 pořád porovnává jména ICU slotů, doplnění k N56
+
+- **Našla:** oprava P12 ve fázi 3, ověřeno čtením `findViolations` v aktuálním P05
+- **Týká se:** **P05**, a každý plán s obrazovkou
+- **Závažnost:** střední. **N56 zatím opravený není**, tohle je jen potvrzení stavu.
+- **Stav dodavatele v okamžiku zápisu:** P05 z 1. 8. 2026 11:14, `findViolations` má dál
+  `const haystack = value.toLocaleLowerCase('cs')` bez odstranění obsahu složených závorek
+
+Katalogy P12 se tomu vyhnuly tím, že žádný slot nepojmenovaly `{workspace}`, `{sandbox}` ani
+`{placeholder}`. Test v úkolu 27 kontroluje slovník **stejně nepřesně jako P05 schválně**, tedy
+proti celé zprávě včetně jmen slotů, aby porušení chytil při psaní katalogu a ne až v CI. Až se
+N56 opraví, tenhle test začne být mírnější než brána, což nevadí; opačné pořadí by vadilo.
+
+<!-- Nálezy z opravy P11 (fáze 3, vlna C). -->
+
+### P11-1. `contacts.is_sample` neexistuje a jedna chybějící brána shodí celý rozpad publika
+
+- **Našla:** oprava P11 ve fázi 3
+- **Týká se:** **P03** (vlastník schématu), P16 (vlastník ukázkových dat), P13 (odběratel rozpadu)
+- **Stav dodavatele v okamžiku zápisu:** P03 z 1. 8. 2026 12:13, `grep -n "is_sample"` vrací **nula** výskytů
+- **Závažnost:** střední. P11 se zatím obešel, ale bez sloupce je funkce nesplnitelná.
+
+Rozpad publika (část 6, 8.4.6) má sedm bran a skládá je do **jednoho** dotazu se sedmi
+`count(*) FILTER`. Neexistující sloupec v kterékoli z nich tedy neshodí jednu bránu, ale celou
+obrazovku chybou `42703`. P11 proto bránu `sample` zneškodnil natvrdo na `false` (rozhodnutí R20)
+a přidal test, který obě neměřicí brány drží na nule, aby si je nikdo nespletl s naměřenými.
+
+Až sloupec vznikne, je to v P11 změna jednoho řádku. Souvisí se zadáním „u importu nabídnout
+50 ukázkových kontaktů a umět je hromadně smazat", které vlastní **P16**: bez příznaku na kontaktu
+nemá P16 jak ukázkové kontakty najít, takže hromadné smazání by muselo jít přes štítek, což je
+slabší (uživatel štítek smaže) a nejde to vynutit.
+
+### P11-2. Sken napříč projekty nad `segments` a `imports` vrací tichou nulu
+
+- **Našla:** oprava P11 ve fázi 3, **ověřeno spuštěním** nad PostgreSQL 18 s politikou `ws_isolation`
+- **Týká se:** **P03**, a je to týž požadavek, jaký si už vyžádal P10 pro tracking
+- **Stav dodavatele v okamžiku zápisu:** P03 z 1. 8. 2026 12:13; `mlain_scheduler`, `system_bypass`
+  ani `list_stale_*` v něm nejsou, `workspaces` v `TABLES_WITHOUT_RLS` taky ne
+- **Závažnost:** vysoká u importů, střední u segmentů
+
+Ověřeno spuštěním pod rolí bez `BYPASSRLS` a bez `set_config`:
+
+```
+bez kontextu -> { users: 2, segments: 0 }
+pocet radku skenu bez bypassu: 0   (a ZADNA chyba)
+```
+
+Dopad má dvě úrovně. U segmentů je hodinový přepočet pohodlí a `listSegments` ho zastoupí při
+otevření seznamu. **U importů je to jediná cesta zpátky z uváznutí:** zabitý worker nechá import
+ve stavu `importing`, `singletonKey` projektu zůstane obsazený a v projektu už nejde spustit
+žádný další import. `imports.updated_at` je jediný signál živosti a P03 to sám v komentáři píše,
+jen k tomu nedal přístupovou cestu.
+
+Nabízí se řídit obnovu z mrtvé fronty pg-boss a sken zrušit. **Nejde to:** `retryLimit` je 0
+schválně, aby se rozpracovaný import nespouštěl od začátku, a `SIGKILL` neposílá žádnou událost.
+
+P11 to zatím řeší strážcem, který ticho odliší od prázdna a job shodí chybou
+`cross_workspace_scan_blocked` místo hlášení `{ scheduled: 0 }`, plus databázovým testem nad
+**dvěma** projekty. Hlasitá porucha je horší než funkční stav, ale nesrovnatelně lepší než
+porucha, kterou nikdo nikdy nenajde. Rozsah požadavku na P03 je `segments` a `imports` navíc
+k seznamu, který už uvedl P10.
+
+### P11-3. `upsertContacts` si otevírá vlastní transakci, takže s ní nejde sdílet dávku
+
+- **Našla:** oprava P11 ve fázi 3
+- **Týká se:** **P07** (vlastník upsertu), P11 (jediný volající, který potřebuje atomicitu)
+- **Stav dodavatele v okamžiku zápisu:** P07 z 1. 8. 2026 12:39, `upsertContacts(ctx, input)`
+  volá uvnitř `withWorkspace(ctx, …)`; třetí argument nemá
+- **Závažnost:** vysoká, ruší celou obnovitelnost importu
+
+P07 označuje `upsertContacts` komentářem „P11 import" a je to správně: je to jediné místo
+v produktu, kde kontakt vzniká hromadně, a P11 si vlastní `INSERT` psát nemá. Dřívější podoba
+P11 si ho psala a přesně proto v ní chyběly `first_name_key` a `last_name_key`, takže by fronta
+ke kontrole oslovení zůstala po importu prázdná.
+
+Jenže import musí zapsat kontakty **a checkpoint v jedné transakci**. Na tom stojí kritéria 7
+(„zabití workera uprostřed nezpůsobí duplicitu ani vynechání") a 14. Když si `upsertContacts`
+otevře vlastní transakci, jsou to transakce dvě: pád mezi nimi znamená zapsané kontakty bez
+posunutého checkpointu a po restartu se tytéž řádky zapíšou podruhé.
+
+Požadavek je malý: `upsertContacts(ctx, input, tx?)`, kde se při zadaném `tx` transakce neotvírá.
+Týká se to každého volajícího, který zapisuje kontakt spolu s něčím dalším, tedy i příchozích
+webhooků v P07 samotném.
+
+### P11-4. `actorUserId(ctx)` chybí a `actorInfo` ho nenahradí
+
+- **Našla:** oprava P11 ve fázi 3
+- **Týká se:** **P04** (vlastník identity), a každý plán, který zakládá řádek z jobu
+- **Stav dodavatele v okamžiku zápisu:** P04 z 1. 8. 2026 13:04. `createSystemContext` **už má**
+  a `withReadOnly` s objektem taky, tohle je jediné, co zbývá.
+- **Závažnost:** střední, ale selhání je odložené do provozu
+
+Sloupce `created_by` jsou `uuid REFERENCES users(id)` a hodnotu smí dostat **jen** aktér typu
+`user`. P11 na ně sahá na čtyřech místech (`segments`, `imports`, `exports`, zmrazený segment).
+
+Existující `actorInfo(actor, label)` to nenahrazuje a je to past: u aktéra typu `api_key` vrací
+`actorId` **klíče**, tedy hodnotu, která do `created_by` nesmí a která projde jak typovou
+kontrolou, tak vložením, dokud se nenarazí na cizí klíč. Potřebný pomocník je tříradkový:
+
+```ts
+export function actorUserId(ctx: WorkspaceContext): string | null {
+  return ctx.actor.type === 'user' ? ctx.actor.userId : null;
+}
+```
+
+Zrádné je, že se to přes obrazovku nikdy neprojeví: uživatel má platné UUID. Spadne to teprve
+při prvním běhu jobu.
+
+### P11-5. `users.preferences` chybí a odložení skupiny ve frontě oslovení nemá kam zapsat
+
+- **Našla:** revize P11, přechází s agendou na P07 podle rozhodnutí U3
+- **Týká se:** **P03** (schéma), **P07** (nový vlastník fronty)
+- **Stav dodavatele v okamžiku zápisu:** P03 z 1. 8. 2026 12:13, `users` sloupec `preferences`
+  ani `attributes` nemá
+- **Závažnost:** střední, jedna z pěti operací nad skupinou nejde provést
+
+Operace „odložit skupinu" zapisovala `UPDATE users SET attributes = jsonb_set(…)`. Tabulka
+`users` ale žádný jsonb sloupec pro uživatelské předvolby nemá; nejbližší jsou
+`workspaces.settings` a `system_settings.settings`, ani jedno není per uživatel.
+
+Navrhovaný tvar je `preferences jsonb NOT NULL DEFAULT '{}'` s `CHECK` na `jsonb_typeof = 'object'`
+a stropem `pg_column_size`, tedy po vzoru `contacts.attributes`. Jméno `preferences` je lepší než
+`attributes`, aby se nepletlo s uživatelskými poli kontaktu.
+
+Nález se sem zapisuje proto, že úkoly 37, 38 a 53 z P11 vypadly, ale problém s nimi nezmizel:
+P07 na něj narazí u téže operace.
+
+### P11-6. Testovací harness `@mlain/db` je pořád mimo mapu exportů
+
+- **Našla:** oprava P11 ve fázi 3. **Je to potvrzení stavu nálezu P07-2, ne nový nález.**
+- **Týká se:** **P03**
+- **Stav dodavatele v okamžiku zápisu:** P03 z 1. 8. 2026 12:13, mapa `exports` má pět klíčů
+  (`.`, `./schema`, `./migrate`, `./partitions`, `./rls`, `./unsafe-context`) a `./test-support`
+  mezi nimi není; `startHarness` a `seedTwoWorkspaces` leží v `packages/db/test/helpers/`
+- **Závažnost:** střední, důsledkem je duplikace, ne nefunkčnost
+
+P11 si proto v `packages/core/test/segments/helpers/db.ts` spouští vlastní kontejner. Totéž
+udělá P10, P13 a P14, takže vzniknou čtyři kopie téhož bootstrapu, které se rozejdou v tom, co
+seedují. Požadavek je jeden řádek v manifestu plus reexport `startHarness`, `seedTwoWorkspaces`
+a typu `Harness`.
+
+
+### P13-9. Ochrana ukázkových kontaktů potřebuje manifest, ne jen značku (uzavírá N8 na straně P13)
+
+- **Našel:** oprava P13 po námitce koordinátora, **ověřeno spuštěním** na 200 000 řádcích
+- **Týká se:** **P13** (vynucení, opraveno), P16 jako vlastník konvence
+- **Závažnost:** nálezu ubyla, tohle je záznam o tom, jak se uzavřel
+
+Nález **N8** žádal sloupec `contacts.is_sample`. Rozhodnutí A1 plánu P16 ho zavírá jinak a lépe:
+nový sloupec znamená migraci, kterou vlastní P03, a ukázkovost jde vyjádřit třemi existujícími
+mechanismy. **Žádný sloupec se nezakládá.** P13 svůj požadavek R-P07.5 ruší.
+
+Vynucení „ukázkové kontakty nejdou do publika kampaně" zůstává v P13 (P16 to potvrzuje ve své
+kapitole o hranicích) a opírá se o **dva** mechanismy, ne o jeden:
+
+- **manifest** `workspaces.settings -> 'demoData' -> 'contactIds'` je autoritativní pro rozsah sady,
+- **značka** `contacts.source_ref = 'demo-data:v1'` je záchytná síť pro kontakty mimo manifest.
+
+Obojí je nutné a je to ověřené spuštěním, ne úvahou. Na sadě 200 000 kontaktů s 50 ukázkovými,
+u kterých deset mělo uživatelem přepsaný `source_ref`, propustil filtr jen podle značky
+**deset ukázkových kontaktů do publika**; s manifestem prošly nula. Opačně platí, že kontakt
+se značkou mimo manifest (starší pokolení sady, obnova ze zálohy) by prošel, kdyby se
+filtrovalo jen podle manifestu.
+
+P13 si konvenci **nepíše znovu**: `DEMO_SOURCE_REF` i `parseDemoManifest` importuje
+z `@mlain/core/demo`, tedy od P16. Manifest se čte jednou před materializační smyčkou a předává
+se jako pole; poddotaz nad `settings` přímo v kandidátském dotazu stojí 225 ms na 200 000 řádcích
+proti 75 ms u předaného pole.
+
+**Zbývá na P16:** aby `packages/core/src/demo/manifest.ts` byl importovatelný zvenčí, potřebuje
+`@mlain/core` podcestný export `./demo`. Je to táž třída požadavku jako R-P01.3 pro `./campaigns`.
+
+### N62. `baseSectionSpecSchema` v P08 neexistuje, a stojí na něm celý strukturovaný výstup P15
+
+- **Našla:** oprava P15, ověřeno grepem v P08 k 2026-08-01 (`grep -c baseSectionSpecSchema` vrací **0**)
+- **Týká se:** P08 (vlastník), P15 (odběratel)
+- **Závažnost:** blokující, zastaví P15 na druhém úkolu ze čtyřiceti čtyř
+
+P15 staví strukturovaný výstup na `import { baseSectionSpecSchema } from '@mlain/emails/base'`
+a používá ho jako runtime schéma: `baseSectionSpecSchema.safeParse(...)` a
+`z.array(baseSectionSpecSchema).min(1).max(12)`.
+
+P08 ale exportuje **jen typ TypeScriptu**:
+
+```ts
+export type BaseSectionSpec =
+  | { kind: "hero"; headline: string; ... }
+  | ... osm variant celkem
+```
+
+Typ v runtime neexistuje, nemá `safeParse` a nedá se vložit do `z.array()`. Ostatní tři rozhraní,
+která P15 od P08 čeká (`buildBaseTemplate`, `validateDocument`, `validateLiquid`), existují.
+
+**Řeší se v P08**, ne v P15: druhý zdroj pravdy pro blokové schéma je přesně to, čemu se
+rozhodnutí D8 plánu P15 vyhýbá, a P15 si proto vlastní kopii psát nesmí. Doplnit
+`z.discriminatedUnion('kind', [...])` a typ z něj odvodit přes `z.infer`, aby nevznikly dvě
+definice. Kontraktní test P15 od schématu navíc čeká refinement „odmítne HTML tam, kde má být
+prostý text", což z typu odvodit nejde.
+
+**Dobrá zpráva:** P15 to odhalí sám v úkolu 2, tedy dřív, než napíše cokoliv dalšího.
+
+### N63. `ANTHROPIC_AUTH_TOKEN` projde vstupním skriptem, protože nekončí na `_API_KEY`
+
+- **Našla:** oprava P15, ověřeno grepem v P01 k 2026-08-01
+- **Týká se:** P01 (entrypoint a výčet výjimek)
+- **Závažnost:** střední, je to díra v první vrstvě akceptačního kritéria 7b
+
+`docker/entrypoint.sh` maže proměnné vzorem `*_API_KEY` plus výčtem
+(`AWS_BEARER_TOKEN_BEDROCK`, `GOOGLE_APPLICATION_CREDENTIALS`, `GOOGLE_GENAI_USE_VERTEXAI`,
+`AZURE_OPENAI_ENDPOINT`, `OLLAMA_HOST`, `HF_TOKEN`). `ANTHROPIC_AUTH_TOKEN` **v seznamu není**
+a vzoru neodpovídá, takže v prostředí zůstane.
+
+Je to fallback proměnná Anthropicu, tedy přesně ta třída proměnných, kvůli které kritérium 7b
+vzniklo: SDK po ní sáhne, když se klíč nepředá explicitně, a projekt bez nakonfigurovaného klíče
+by utrácel peníze provozovatele.
+
+**Oprava v P01:** doplnit do `AI_PROVIDER_ENV_EXCEPTIONS` a do výčtu `unset` v entrypointu.
+
+P15 se na tu opravu nespoléhá a chytá proměnnou druhou vrstvou (`leakedProviderEnvVars` staví
+na registru providerů, kde `ANTHROPIC_AUTH_TOKEN` je), ale spoléhat u bezpečnostní pojistky na
+jednu vrstvu je málo.
+
+### N64. Tři důvody na úrovni pole chybí v uzavřeném registru P01
+
+- **Našla:** oprava P15, ověřeno diffem seznamů kódů obou plánů
+- **Týká se:** P01 (registr `VALIDATION_CODES`), P15
+- **Závažnost:** nízká, ale porušuje pravidlo o uzavřeném registru
+
+P15 používá tři kódy jako `errors[].code` u `validation_failed`, a v `VALIDATION_CODES` nejsou:
+
+| Kód | Kde v P15 |
+|---|---|
+| `ai_base_url_not_allowed` | routa credentials, `base_url` u providera, který ji nepovoluje |
+| `ai_base_url_required` | `buildModel`, `openai_compatible` bez `base_url` |
+| `ai_custom_base_url_disabled` | `buildModel`, `AI_ALLOW_CUSTOM_BASE_URL = false` |
+
+Registr je podle architektury P01 „předdeklarovaný úplný, dopředu, pro všech sedm specifikací,
+takže ho pozdější doménové plány jen čtou a nikdy nerozšiřují". Konvence P15 říká totéž.
+
+Opačným směrem je stav v pořádku: P01 má `brand_extract_running`, který P15 nepoužívá, protože
+souběh řeší obecným `conflict`, a to je s konvencí v souladu.
+
+
+### N65. `ON CONFLICT` nad `campaign_stats_buckets` v P10 nesedí s primárním klíčem, který mu dal P03
+
+- **Našla:** oprava P14, ověřeno porovnáním DDL v P03 s dotazy v P10
+- **Týká se:** P10 (čtyři místa), P03 (zdroj klíče)
+- **Závažnost:** vysoká, každý zápis do bloků skončí chybou
+
+P03 má u `campaign_stats_buckets` primární klíč **třísloupcový**, s `workspace_id` v čele:
+
+```
+primaryKey({ name: 'pk_campaign_stats_buckets',
+             columns: [t.workspaceId, t.campaignId, t.bucketAt] })
+```
+
+Důvod je v P03 vysvětlený: politika RLS se vyhodnocuje nad indexovaným sloupcem a upsert z jobu
+nemůže omylem trefit cizí projekt. P10 ale ve čtyřech dotazech píše `ON CONFLICT (campaign_id, bucket_at)`.
+Cíl `ON CONFLICT` musí odpovídat existujícímu unikátnímu omezení, jinak Postgres skončí chybou
+`42P10 invalid_column_reference`. Dvojice `(campaign_id, bucket_at)` žádnému omezení neodpovídá.
+
+Místa v P10: řádky 8400, 9028, 9455 a 9691.
+
+Oprava je `ON CONFLICT (workspace_id, campaign_id, bucket_at)` na všech čtyřech místech.
+`ON CONFLICT (campaign_id)` u `campaign_stats` je naopak v pořádku, tam je klíč jednosloupcový.
+
+P14 tabulku jen čte, takže se ho to přímo netýká, ale bez opravy P10 zůstane graf průběhu
+i dlaždice odesílání trvale prázdná a `bucketDrift()` z P14 bude hlásit rozdíl pokaždé.
+
+### N66. Registr front P01 přisuzuje `tracking.refresh_campaign_progress` plánu P14, který ho odmítá
+
+- **Našla:** oprava P14, ověřeno v registru P01 a v mapě souborů P10
+- **Týká se:** P01 (registr front), P10, P14
+- **Závažnost:** střední, fronta by neměla obsluhu nebo by ji měla dvakrát
+
+`QUEUE_REGISTRY` v P01 má u `tracking.refresh_campaign_progress` `owner: 'P14'`. P14 si ale
+rozhodnutím R2 job výslovně nebere a je čistě čtecí vrstva; hlídá to jeho test `ownership.test.ts`,
+který v doméně zakazuje adresář `jobs`. P10 naopak handler má: `packages/core/src/tracking/jobs/refresh-campaign-progress.ts`.
+
+Vlastníkem má být **P10**. Dokud je v registru P14, hrozí, že se handler nikam nezaregistruje
+(P14 ho podle svého plánu nenapíše) a průběh odesílání se nikdy nepohne, aniž by cokoliv spadlo.
+
+### N67. Kontext projektu v Honu: P04 ho ukládá pod `auth`, P07 a P13 čtou `ctx`
+
+- **Našla:** oprava P14, ověřeno v obou plánech
+- **Týká se:** P04 (vlastník middleware), P07, P13, P14
+- **Závažnost:** vysoká, na produkčním běhu spadne každá cesta jednoho z obou tvarů
+
+Autentizační middleware v P04 nastavuje `c.set('auth', { ctx, label })` a jeho `ApiVariables`
+obsahuje `auth: AuthContext`. P07 i P13 ale ve všech svých cestách čtou `c.get('ctx')` a P07
+si k tomu deklaruje vlastní `ContactsEnv = { Variables: { ctx: WorkspaceContext } }`.
+
+Jeden z obou tvarů je špatně a projeví se to až za běhu: `c.get('ctx')` vrátí `undefined`
+a cesta spadne na prvním použití kontextu. V testech obou plánů to neprojde ani neselže,
+protože jejich harness si proměnnou nastavuje sám podle vlastní představy.
+
+Rozsoudit to má **P04** jako vlastník middleware. P14 je psaný proti `auth.ctx`, tedy proti
+tomu, co middleware skutečně nastavuje, a přístup má schovaný v jediném souboru
+`packages/core/src/reports/api/context.ts`, takže je u něj oprava jednořádková.
+
+### N68. `campaign_stats` nemá čítač pro `rejected` a odmítnutá zpráva se počítá jako doručená
+
+- **Našla:** oprava P14
+- **Týká se:** P03 (sloupec), P10 (plnění), P14 a P13 (zobrazení)
+- **Závažnost:** střední, tichá chyba v hlavní metrice produktu
+
+`ck_message_events__type` v P03 zná typ `rejected` a P10 ho v `message_events` očekává, ale
+`campaign_stats` pro něj čítač nemá a agregační job P10 ho nikam nepřičítá.
+
+Důsledek je v odvozeném jmenovateli. Kde provider události doručení neposílá (SMTP) nebo ještě
+neposlal, počítá se doručení jako `sent - bounced_hard - bounced_soft - failed`. Zpráva, kterou
+provider odmítl, se z tohohle vzorce neodečte, takže se počítá jako doručená. U kampaně,
+kterou SES odmítne kvůli vlastnímu suppression listu, ukáže report míru doručení blízko sta
+procent a míru prokliku podstřelí. Proklik je rozhodnutím zadavatele hlavní metrika produktu
+a jmenovatel je právě tohle číslo.
+
+Oprava: `ALTER TABLE campaign_stats ADD COLUMN rejected bigint NOT NULL DEFAULT 0` v P03,
+plnění v P10 vedle `delivered` a `bounced_*`, odečet v `deliveredEffective` v P14.
+
+### N69. Nad `campaigns.started_at` není index, přestože podle něj filtruje a řadí přehled
+
+- **Našla:** oprava P14
+- **Týká se:** P03
+- **Závažnost:** nízká v MVP 0, rostoucí s počtem kampaní
+
+`campaigns` má v P03 tři indexy: `idx_campaigns__workspace_status (workspace_id, status, updated_at DESC)`,
+`idx_campaigns__scheduler (scheduled_at)` a `idx_campaigns__running (workspace_id)`. Nad
+`started_at` žádný.
+
+Přehled projektu podle něj filtruje období (`readTotals`) i řadí poslední kampaně
+(`readRecentCampaigns`), a je to nejčastěji otevíraná stránka produktu. Návrh:
+
+```
+CREATE INDEX idx_campaigns__ws_started ON campaigns (workspace_id, started_at DESC)
+  WHERE deleted_at IS NULL AND started_at IS NOT NULL;
+```
+
+### N70. Po slití bloků nejde poznat, jestli je řádek pětiminutový, nebo hodinový
+
+- **Našla:** oprava P14
+- **Týká se:** P03 (tabulka), P10 (slévání), P14 (čtení)
+- **Závažnost:** nízká, ale vyrábí trvalý falešný poplach v kontrole driftu
+
+`tracking.enforce_retention` v P10 slévá bloky starší třiceti dnů do hodinových: smaže
+pětiminutové řádky a vloží hodinové do **téže** tabulky. `campaign_stats_buckets` ale nemá
+sloupec, který by granularitu rozlišil, takže z dat samotných nejde poznat, co řádek znamená.
+
+P14 to dnes obchází heuristikou „nejstarší bod je starší než 30 dní", což je dohad podle
+téhož pravidla, ne údaj. Návrh: `granularity text NOT NULL DEFAULT '5m'` s pojmenovaným CHECK
+a s rozšířeným primárním klíčem.
+
+### N71. Doména P10 leží mimo `packages/core/src/`, kam míří konfigurace testů z P01
+
+- **Našla:** oprava P14 při srovnávání cest s P07 a P13
+- **Týká se:** P10
+- **Závažnost:** vysoká, testy domény by se nespustily a série by prošla zeleně
+
+`packages/core/vitest.config.ts` z P01 má `include: ['src/**/*.test.ts', 'test/**/*.test.ts']`
+a mapa `exports` balíčku má jediné pravidlo `"./*": "./src/*/index.ts"`. P07 i P13 podle toho
+píšou do `packages/core/src/<domena>/`. P10 píše do `packages/core/tracking/`, tedy o úroveň
+výš: 506 výskytů cesty bez `src/`, nula s ním.
+
+Kód mimo `src/` se nepřeloží pod `@mlain/core/tracking` a jeho testy se **vůbec nespustí**.
+Prázdná sada projde zeleně, takže se to nepozná jinak než tímhle srovnáním.
+
+### N72. Testovací harness `@mlain/db` má napříč plány tři různá jména
+
+- **Našla:** oprava P16 při hledání, jak spustit databázový test
+- **Týká se:** P03 (vlastník), P07, P10, P16
+- **Závažnost:** vysoká, dva z těch tří importů se nikdy nerozřeší
+
+Harness existuje jako `packages/db/test/helpers/container.ts` a vystavuje `startHarness()`,
+`type Harness` a `seedTwoWorkspaces(migrator: Pool)`. V mapě `exports` balíčku `@mlain/db`
+ale **není žádná podcesta, která by na něj mířila**; jsou tam jen `.`, `./schema`, `./migrate`,
+`./partitions`, `./rls` a `./unsafe-context`.
+
+Tři plány si o něj říkají třemi jmény:
+
+| Plán | Import | API, které předpokládá |
+|---|---|---|
+| P07 | `@mlain/db/test-support` | `startHarness`, `seedTwoWorkspaces`, `Harness` (odpovídá skutečnosti) |
+| P10 | `@mlain/db/testing` | `withTestDatabase`, `seedContact`, `seedMessage`, `seedCampaign`, `seedWebEvents` |
+| P16 | dřív `@mlain/db/testing` | `startTestPostgres` s vlastními fixtures |
+
+P16 se srovnal na `@mlain/db/test-support` a skutečné API P03 (`startHarness`), protože P07
+si tuhle podcestu vyžádal první a jeho tvar sedí s tím, co harness opravdu má. Vlastní fixtures
+si P16 postavil ve svém souboru `packages/core/test/support/db.ts` nad tím harnessem, takže
+po P03 chce **jen dva řádky v `exports`**, ne nové API.
+
+**P10 zůstává nesrovnaný.** Jeho `withTestDatabase` a čtyři `seed*` funkce v P03 neexistují
+pod žádným jménem, takže jeho databázové testy se nenaimportují. Rozhodnout musí P03 jako
+vlastník: buď podcestu `./test-support` s dnešním API (pak se srovná P10), nebo bohatší
+`./testing` (pak se srovná P07 i P16).
+
+### N73. Osm příkazů `mlain` od P16 nemá v dispatcheru P01 kam dosednout
+
+- **Našla:** oprava P16 při srovnávání tvaru příkazů se skutečným CLI
+- **Týká se:** P01 (vlastník `apps/cli/src/{registry,dispatch}.ts`), P16
+- **Závažnost:** vysoká, jinak každý provozní příkaz skončí kódem 69
+
+`apps/cli/src/dispatch.ts` z P01 obsluhuje příkazy `switch`em nad jménem a pro příkaz
+s `implemented: false` vrací `EXIT_UNAVAILABLE`. Osm příkazů P16 (`genkey`, `backup`,
+`restore`, `doctor`, `upgrade`, `rotate-credentials`, `reset-password`, `rebuild-engagement`)
+je v registru správně, ale `implemented: false` a v `switch` větev nemají.
+
+P16 do `registry.ts` ani `dispatch.ts` sáhnout nesmí (uzávěr S10). Dodává tedy soubory
+v `apps/cli/src/commands/` ve tvaru, který P01 už používá u svých tří příkazů, tedy prostou
+funkci `run<Jméno>(streams, argv, env)`, a nechává v `registration.test.ts` červený test,
+který na chybějící zapojení ukáže. Po P01 se chce přepnout příznak a doplnit osm větví.
+
+Vedlejší nález: P16 měl příkazy napsané jako objekt `CliCommand` s poli `name`, `implemented`,
+`describe` a `run(argv)`. **Takový typ v P01 neexistuje**, registr je samostatný uzavřený výčet
+s polem `summary`, ne `describe`. Opraveno na straně P16.
+
+### N74. `jsonb_set` s `create_missing` nevytvoří mezilehlý objekt, a tiše nic neudělá
+
+- **Našla:** oprava P16, ověřeno spuštěním proti PostgreSQL 18
+- **Týká se:** každý plán, který zapisuje do vnořené cesty v jsonb sloupci
+- **Závažnost:** střední, ale porucha je zcela tichá
+
+Naměřeno:
+
+```sql
+SELECT jsonb_set('{}'::jsonb, '{onboarding,hidden}', to_jsonb(true), true);  -- {}
+SELECT jsonb_set('{"onboarding":{}}'::jsonb, '{onboarding,hidden}', to_jsonb(true), true);
+-- {"onboarding": {"hidden": true}}
+```
+
+Čtvrtý argument `create_missing` vytvoří **jen poslední klíč cesty**, ne mezilehlé objekty.
+Na čerstvém projektu, kde je `settings` prázdný objekt, tedy UPDATE proběhne, ovlivní jeden
+řádek, vrátí nulový kód a hodnotu neuloží. V P16 to bylo skrytí panelu onboardingu: uživatel
+panel skryje, po načtení stránky se vrátí, nikde není chyba.
+
+Správný tvar sloučí podobjekt operátorem `||` a chybějící mezistupeň nahradí prázdným objektem:
+
+```sql
+jsonb_set(settings, '{onboarding}',
+          coalesce(settings -> 'onboarding', '{}'::jsonb) || '{"hidden":true}'::jsonb, true)
+```
+
+Ověřeno, že zachová sourozence i uvnitř `onboarding`. **Jednoúrovňová cesta problém nemá**,
+takže `jsonb_set(settings, '{demoData}', ..., true)` je v pořádku. Opraveno na straně P16;
+ostatní plány, které do vnořeného jsonb zapisují, si to mají zkontrolovat.
+
+### N75. `pg_dump` pod rolí s RLS nevyrábí tichou prázdnou zálohu, ale padá; tichá je až „oprava"
+
+- **Našla:** oprava P16, ověřeno spuštěním proti PostgreSQL 18
+- **Týká se:** P16 (záloha), P01 (role `mlain_backup` v `docker/initdb`), doplňuje N7
+- **Závažnost:** střední, mění to navrženou obranu, ne její potřebu
+
+Nález N7 tvrdil, že `pg_dump` pod rolí, na kterou platí RLS, vyrobí bezvadný dump s nula
+řádky. Naměřený stav je jiný:
+
+| Role | Přepínač | Výsledek |
+|---|---|---|
+| `mlain_backup` (`pg_read_all_data`) | žádný | **exit 1**, `ERROR: query would be affected by row-level security policy` |
+| `mlain_backup` | `--enable-row-security` | **exit 0, chráněné tabulky prázdné** |
+| `mlain_migrator` (vlastní schéma) | žádný | exit 0, data kompletní |
+
+`pg_dump` sám posílá `SET row_security = off` a server dotaz odmítne. Praktický dopad: pod
+`mlain_backup` by noční záloha **padala každou noc** s hláškou, ze které provozovatel nepozná,
+co dělat. Tichá prázdná záloha vznikne teprve tehdy, když někdo tu chybu „opraví" dopsáním
+`--enable-row-security`, což je realistické, protože přepínač se tak jmenuje.
+
+P16 kvůli tomu drží obojí: pojistku před během, která chybu nahradí návodem, a test, který
+skutečně spustí `pg_dump` s tím přepínačem a ověří, že dump je prázdný. Zůstává otevřená
+otázka pro P01: **role `mlain_backup` je po tomhle bez použití.** Buď jí `docker/initdb` dá
+`BYPASSRLS` (vyžaduje superuživatele) a záloha pojede pod ní, což je bezpečnější než pod
+migrátorem, nebo se role zruší, ať ve schématu neleží mrtvý objekt, který svádí k použití.
+
+### N76. Rotace klíče musí znát projekt každého řádku, protože obálka je na něj vázaná
+
+- **Našla:** oprava P16 při srovnávání s kontraktem P02
+- **Týká se:** P16 (rotace), P13 a P15 (kdo obálky zapisuje)
+- **Závažnost:** vysoká pro rotaci, jinak informativní
+
+`encryptEnvelope` a `decryptEnvelope` z `@mlain/contracts/crypto` berou **povinné
+`workspaceId`**, které vstupuje do AAD. Dešifrování s jiným projektem selže. `mlain
+rotate-credentials` proto musí u každého řádku číst i `workspace_id`, ne jen primární klíč;
+jinak by u prvního projektu uspěl a u zbytku hlásil poškozená data. Opraveno na straně P16
+a doplněn test se dvěma projekty, protože nad jedním projektem ta chyba neprojde.
+
+Dva vedlejší poznatky téhož srovnání, oba opravené v P16:
+`parseKeyring` bere jeden objekt `{ secretKey, secretKeyPrevious }`, ne dva poziční argumenty,
+a `secretKeyFingerprint(master)` si odvození klíče dělá sama. Zavolat ji s už odvozeným klíčem
+se přeloží, nespadne a **vrátí tiše jiný otisk** (ověřeno: `VXGoNjoPSBY` proti `5P_j-3XY714`),
+kterým by `mlain doctor` hlásil kritickou neshodu klíče u instalace, které nic není.
+
+Kontext `inbound_secret` v `CREDENTIAL_CONTEXTS` **neexistuje**; výčet má čtyři hodnoty
+(`sending_provider`, `ai_provider`, `webhook_secret`, `oauth_token`). P16 pro
+`inbound_endpoints.secret_encrypted` používá `webhook_secret`. Pokud P07 jako vlastník té
+tabulky šifruje jiným kontextem, je to nález proti P07, ne důvod zavádět pátý kontext.
+
+### N77. Prefix `demo-data:` žije na dvou místech, přestože konvenci vlastní P16
+
+- **Našla:** oprava P16 při ověřování napojení P13 na manifest
+- **Týká se:** P13 (drobná změna), P16 (hotovo)
+- **Závažnost:** nízká dnes, vysoká při první změně konvence
+
+P13 správně importuje `DEMO_SOURCE_REF` a `parseDemoManifest` z `@mlain/core/demo`
+a nic si neopisuje. Jednu konstantu ale má vlastní:
+
+```ts
+// packages/core/src/campaigns/audience/sample-guard.ts, P13
+export const SAMPLE_SOURCE_REF_PATTERN = 'demo-data:%';
+```
+
+Prefix `demo-data:` tím existuje dvakrát: v `DEMO_SOURCE_REF = 'demo-data:v1'` u P16
+a v tomhle vzoru u P13. Dokud se konvence nemění, funguje obojí. Při první změně
+(třeba na `sample-data:`) by se rozešly a **ochrana by tiše přestala platit**: dotaz
+by proběhl, nikoho nevyloučil a ukázkové kontakty by se dostaly do publika kampaně.
+Je to táž třída chyby, kterou P13 sám u sebe zavřel u `DEMO_SOURCE_REF`.
+
+**P16 to vyřešil na své straně** a vyváží z `@mlain/core/demo` obojí:
+
+```ts
+export const DEMO_SOURCE_REF_PREFIX = 'demo-data:';
+export const DEMO_SOURCE_REF = `${DEMO_SOURCE_REF_PREFIX}v1`;
+export const DEMO_SOURCE_REF_PATTERN = `${DEMO_SOURCE_REF_PREFIX}%`;
+```
+
+Po P13 se chce jediná změna: nahradit vlastní konstantu importem
+`DEMO_SOURCE_REF_PATTERN` z `@mlain/core/demo`. Test v P16
+(`dataset.test.ts`, blok „konvence source_ref") hlídá, že vzor chytí i budoucí
+pokolení sady a nechytí cizí značky.
+
+Ověřeno spuštěním proti PostgreSQL 18, že společná konvence dělá to, co P13 potřebuje:
+vzor `demo-data:%` vyloučí `v1`, `v2` i `v10`; filtr jen podle značky propustí ukázkový
+kontakt s přepsaným `source_ref` (reprodukce nálezu P13 v miniatuře); značka a manifest
+dohromady ho zachytí; a `NOT (id = ANY(ARRAY[]::uuid[]))` nad prázdným manifestem
+nespadne a nikoho nevyloučí.
+
+## Uzavřené
+
+### U4. Osiřelý balíček `packages/sdk-node`
+
+- **Našel:** podagent recenze P05 při ověřování požadavků na P04
+- **Uzavřeno:** 2026-08-01 rozhodnutím hlavního agenta
+- **Rozhodnutí: `sdk-node` není v MVP 0. P01 nechá manifest, obsah nikdo nepíše.**
+
+P01 balíček zakládá a v tabulce vlastnictví ho předává P04 jako „API klient". **P04 o něm nemá
+ani řádek** a nemá ho ani v seznamu toho, čeho se nedotýká. Balíček by tedy zůstal prázdný
+a nikdo by se k němu nehlásil.
+
+Je to díra v řídicím dokumentu dělení, ne chyba autorů. V zadání P04 jsem `sdk-node` vůbec
+neuvedl, ani jako vlastnictví, ani jako vyloučení.
+
+Rozhodnutí: **nedoplňovat práci, ale rozsah.** Zlatá cesta MVP 0 klienta pro Node nepotřebuje,
+je to materiál pro MVP 1 spolu s kompletním veřejným API. Prázdný manifest je v pořádku,
+protože akceptační kritérium žádá jen to, aby všech devět balíčků existovalo.
+
+Do řídicího dokumentu doplnit, že `sdk-node` je vědomě prázdný, a do P04 větu, že se ho
+nedotýká. Bez toho by si to za měsíc někdo vyložil jako opomenutí a začal ho psát.
+
+### Tři nálezy z téhož ověření, které patří do fáze 2 a nejsou moje
+
+P05 očekává od P04 tři věci, které P04 nedodává. Nejsou tady rozepsané, protože je nese
+recenze P05, až doběhne. Ve zkratce: endpoint a napojení Centra úloh na frontu jobů,
+stránka detailu úlohy, a rozšířený tvar chyby `forbidden` o to, kdo oprávnění udělit může.
+Poslední z nich je nejzajímavější: komentář v P04 slibuje, že „u `forbidden` má klient
+požádat kolegu o vyšší roli", ale chyba nenese data, podle kterých by šlo kolegu najít.
+
+### U3. Dvojí nárok na frontu ke kontrole oslovení
+
+- **Našel:** P11 (import a segmenty), zapsáno i v jeho kapitole 13 jako rozpor 11
+- **Uzavřeno:** 2026-08-01 rozhodnutím hlavního agenta
+- **Rozhodnutí: frontu vlastní P07**, včetně modulu, jobu, obou rout a obrazovky.
+
+Obě strany měly oporu v řídicím dokumentu, který u P07 uvádí „vokativ" a u P11 „fronta
+ke kontrole oslovení je součást importu". Rozpor vznikl mou nepřesností, ne chybou agentů.
+
+Rozhoduje tohle: **vokativ se počítá při zápisu kontaktu, ne při odeslání.** Nejisté případy
+tedy vznikají u každého zápisu, ne jen při importu, konkrétně i přes API, z formuláře na webu
+a z příchozího webhooku. Ty tři cesty vlastní P07. Kdyby frontu vlastnil import, neměly by do ní
+čím zapsat a nejistá jména z nich by se tiše uhodla, což je přesně ten výsledek, kterému se
+celý vokativ vyhýbá.
+
+P11 to má napsané obranně: do rozhodnutí se neprovádějí úkoly 37, 38 a 53. **Tyhle tři úkoly
+z P11 vypadávají**, zbylých 57 se nemění. P07 si frontu už nárokuje, takže na jeho straně
+není co měnit.
+
+Umístění adresáře je vedlejší. P11 argumentoval, že `import/vocative-review/` řekne čtenáři,
+odkud fronta pochází. To je pravda jen pro jeden ze čtyř zdrojů, takže složka patří pod
+`contacts/naming/`, kde už P07 vlastní `resolveName()` a výpočet vokativu.
+
+### U1. `middleware.ts` versus `proxy.ts`
+
+- **Našel:** P05
+- **Uzavřeno:** 2026-08-01, opraveno v řídicím dokumentu, seam S6 i zadání P05
+
+Next.js 16 přejmenoval `middleware.ts` na `proxy.ts` a exportovanou funkci na `proxy`.
+Řídicí dokument dělení uváděl starý název. Specifikace to má správně na čtyřech místech,
+chyba byla na straně řídicího dokumentu.
+
+### U2. Zbytek starého názvu produktu v příkazu CLI
+
+- **Našel:** hlavní agent při přípravě dělení
+- **Uzavřeno:** 2026-07-31, opraveno na `mlain upgrade`
+
+Kontrola v `STAV.md` hledala celé slovo starého názvu, takže minula **zkratku CLI**.
+Na dvou místech zůstalo `oe upgrade`, zatímco všech deset ostatních příkazů má tvar
+`mlain <příkaz>`. Poučení: u přejmenování se musí hledat i každá zkratka a odvozenina
+(prefix env proměnných, scope balíčků, jméno CLI), ne jen název sám.

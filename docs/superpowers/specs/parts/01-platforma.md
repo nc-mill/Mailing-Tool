@@ -2023,7 +2023,7 @@ Uživatel, který přeskočí verzi (z N rovnou na N+2), je na tom stejně, prot
 |---|---|
 | Ručně | `docker compose exec app mlain backup` |
 | Plánovaně | pg-boss `schedule('platform.backup', BACKUP_SCHEDULE_CRON)`, výchozí `0 3 * * *` v `workspaces`-nezávislé, instalační rovině |
-| Před upgradem | `oe upgrade` udělá zálohu automaticky, než pustí migrace |
+| Před upgradem | `mlain upgrade` udělá zálohu automaticky, než pustí migrace |
 
 Zálohu pouští jen `MODE=worker` nebo `MODE=all`, aby při víc replikách neběžela paralelně (pg-boss `schedule` to zajistí sám, protože scheduled job vzniká jednou).
 
@@ -2062,7 +2062,7 @@ Job `platform.backup_verify` pouští `verify` na poslední záloze jednou týdn
 docker compose pull && docker compose up -d
 ```
 
-`oe upgrade` (volitelný, opatrnější postup) navíc: zastaví sender a worker, udělá zálohu, pustí migrace, spustí procesy zpět, ověří readiness. Hlavní specifikace slibuje jednoduchou variantu, `oe upgrade` je pro ty, kdo chtějí jistotu.
+`mlain upgrade` (volitelný, opatrnější postup) navíc: zastaví sender a worker, udělá zálohu, pustí migrace, spustí procesy zpět, ověří readiness. Hlavní specifikace slibuje jednoduchou variantu, `mlain upgrade` je pro ty, kdo chtějí jistotu.
 
 ### 3.15 CI, testovací strategie a licenční brána (otázka 18)
 

@@ -2877,7 +2877,7 @@ Test, který to hlídá, je v 15.4: **součet vyloučených plus výsledný poč
 | Položka | Úroveň | Podmínka |
 |---|---|---|
 | Předmět | blokující | prázdný |
-| Předmět | varování | delší než 60 znaků (na mobilu se ořízne) nebo obsahuje neplatný doplňovaný údaj |
+| Předmět | varování | delší než 60 znaků (na mobilu se ořízne) nebo obsahuje neplatnou personalizaci |
 | Odesílatel | blokující | prázdný, nebo doména neověřená a nejsme ve zkušebním režimu |
 | Odesílatel | varování | veřejná doména (gmail.com a spol.) |
 | Obsah | blokující | prázdný, nebo se nepodařila kompilace šablony |
@@ -3705,7 +3705,7 @@ Sloupec "Nikdy nepoužívat" je stejně závazný jako sloupec s překladem. Kon
 
 | Koncept | Česky (závazně) | English | Nikdy nepoužívat česky |
 |---|---|---|---|
-| merge tag | **Doplňovaný údaj** | Merge tag | personalizace, proměnná, placeholder, slučovací značka, merge tag |
+| merge tag | **Personalizace** | Merge tag | doplňovaný údaj, proměnná, placeholder, slučovací značka, merge tag |
 | personalization | **Osobní oslovení** | Personalization | |
 | vocative | **5. pád** | Vocative | vokativ (v dokumentaci ano, v UI ne) |
 | greeting | **Oslovení** | Greeting | pozdrav |
@@ -3890,7 +3890,7 @@ Důsledek je praktický, ne formální: typovaný klient by k `params` a `findin
 | 11 | Záznam má jinou hodnotu | `dns_record_value_mismatch` | část 4a | `expected`, `found`, `diffIndex` |
 | 12 | Doména není ověřená | `domain_dkim_missing` nebo `domain_spf_missing` | část 4a | `domain`, plus `recordType` podle toho, který ze dvou kódů přišel |
 | 13 | Prázdné publikum | `campaign_audience_empty` | část 4a | `segmentId`, `segmentName` |
-| 14 | Neexistující doplňovaný údaj | `campaign_unknown_merge_field` | část 4a, vrací ho preflight | `tagPath`, `tagLabel` |
+| 14 | Neexistující personalizace | `campaign_unknown_merge_field` | část 4a, vrací ho preflight | `tagPath`, `tagLabel` |
 | 15 | Vysoká míra stížností | `campaign_complaint_rate_too_high` | část 4a | `complaints`, `sample`, `rate`, `threshold` |
 | 16 | Kvóta na dnes | `provider_quota_exceeded` | část 4a | `recipients`, `remaining`, `reset_at`, `quota`. **Ne obecný `quota_exceeded`**, ten část 4a výslovně nepoužívá |
 | 17 | Příliš složitý segment | `segment_too_complex` | část 2 | `conditionCount`, `limit` |
@@ -4108,7 +4108,7 @@ Prakticky to znamená: implementace **musí** mít pro každý kód z 10.2 hlá�
 **14. `campaign_unknown_merge_field`** (Kampaň, kontrolní seznam)
 
 > **cs** E-mail používá údaj, který v projektu neexistuje
-> V textu je doplňovaný údaj **Věrnostní body**, ale takové pole v projektu není. Nejspíš ho někdo smazal nebo přejmenoval. Bez opravy by v e-mailu zůstalo prázdné místo.
+> V textu je personalizace **Věrnostní body**, ale takové pole v projektu není. Nejspíš ho někdo smazal nebo přejmenoval. Bez opravy by v e-mailu zůstalo prázdné místo.
 > [ Zobrazit v editoru ] [ Vytvořit pole Věrnostní body ]
 
 > **en** The email uses a field that doesn't exist in this project
@@ -5125,7 +5125,7 @@ Konkrétní požadavky. Každý má číslo, adresáta, tvar a odůvodnění.
 | O3 | **Zkušební režim v MVP 0, nebo později?** | V MVP 0. Bez něj se produkt bez DNS nedá vyzkoušet. Odhad půl dne. | Zadavatel |
 | O4 | **Ukázková data v MVP 0, nebo později?** | V MVP 0. Odhad půl dne. | Zadavatel |
 | O5 | **Vykání ve všech textech rozhraní.** | Ano. | Zadavatel |
-| O6 | **Český název pro merge tag.** | "Doplňovaný údaj", v editoru "Vložit údaj o příjemci". | Zadavatel, nejde to později levně změnit |
+| ~~O6~~ | ~~**Český název pro merge tag.**~~ | **UZAVŘENO zadavatelem: „Personalizace".** Návrh „Doplňovaný údaj" byl přebit, důvod je návaznost na slovník, který uživatelé znají z Ecomailu. Slovník v 9.2 i kritérium 69 opraveny. V editoru tlačítko „Vložit personalizaci". Zakázané zůstávají „doplňovaný údaj", „slučovací značka" a „merge tag" v českém textu. | Zadavatel |
 | O7 | **Blokuje vysoká míra stížností odeslání, nebo jen varuje?** | Blokuje nad 0,3 %, s možností vědomého přebití a auditem. Viz R1. | Zadavatel spolu s částí 4a |
 | O8 | **Struktura postranního menu: patří Segmenty, Formuláře a Reporty do hlavního menu, nebo pod nadřazenou položku?** *(Otázka přeformulovaná: dřív zněla „šest položek, nebo osm?", což z počtu dělalo rozhodnutí.)* | Segmenty a Formuláře pod Kontakty, Reporty pod Kampaně. V MVP 0 z toho vyjde šest položek, sedmá je rezervovaná pro Automatizace (MVP 2). Viz R7 a 0.2. | Synchronizace s částí 1 |
 | ~~O9~~ | ~~**Rozšiřující člen `params` v chybové odpovědi.**~~ | **VYŘÍZENO.** Část 1 ho v 4.2 má, i s `findings[]` a s příklady pro preflight a kvótu. Otázka zaniká. Zbylá drobnost (doplnit `params` a `findings` do typu `Problem` v 4.8) není otevřená otázka, ale konkrétní požadavek U→1.1. | – |
