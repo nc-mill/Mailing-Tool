@@ -6,6 +6,20 @@ import { requireUser } from '@/lib/identity/require-user';
 import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
 import { CreateTemplateButton, TemplatesEmpty } from './create-template';
 
+/**
+ * Stránka závisí na přihlášeném uživateli, takže se NEPŘEDRENDEROVÁVÁ.
+ *
+ * Bez tohohle ji Next při `next build` vykreslí a spadne, protože v době
+ * sestavení žádná relace neexistuje:
+ *
+ *   TypeError: Cannot read properties of null (reading 'useContext')
+ *   Export encountered an error on <cesta>, exiting the build.
+ *
+ * Chyba nemíří na příčinu, takže se hledá v komponentách. Statická podoba
+ * téhle stránky přitom neexistuje: obsah je pro každého jiný.
+ */
+export const dynamic = 'force-dynamic';
+
 /** Minimální seznam šablon (rozhodnutí R16): bez něj se do editoru nedá prokliknout. */
 export default async function TemplatesPage({
   params,

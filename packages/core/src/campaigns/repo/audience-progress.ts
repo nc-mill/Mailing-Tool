@@ -26,7 +26,23 @@ export type AudienceProgress = {
  * fakticky nezapojene. Nic pritom nespadlo, tlacitko se jen nikdy neobjevilo.
  *
  * Pocita se ze stejneho `now()` jako `audience_built_at`, aby okno zacinalo presne
- * tam, kde vznika publikum, a `COALESCE` zajistuje, ze opakovany beh okno neposune.
+ * tam, kde vznika publikum.
+ *
+ * `release_at` se ale NEDRZI pres COALESCE, na rozdil od `audience_built_at`. Nalez
+ * z integrace HTTP vrstvy: kdyz zarazeni ulohy po zabrani kampane selze, cesta
+ * `POST /send` vrati stav zpatky a odpovi 503. `audience_built_at` a `release_at`
+ * pritom v radku zustanou. Kdyz uzivatel za pet minut zmackne Odeslat znovu, COALESCE
+ * podrzel STAROU hodnotu `release_at`, ktera uz uplynula, materializace zapsala
+ * `next_attempt_at` do minulosti a sender vzal zpravy okamzite. Uzivatel cekal
+ * slibenych 60 sekund na zruseni a nemel ani jednu. Nespadlo pritom nic.
+ *
+ * Uplynule okno se proto pocita znovu. Pro obnovu po padu workeru to nic nemeni:
+ * ta jde vzdy druhou vetvi, protoze tenhle UPDATE bere jen stavy `draft`, `scheduled`
+ * a `schedule_missed`, kdezto rozpracovana kampan je v `queueing`. Zprávy s driv
+ * zapsanym `next_attempt_at` tedy nemuzou existovat a okno se nema jak rozdvojit.
+ *
+ * `audience_built_at` naopak COALESCE drzet MUSI: je to cil slozeneho ciziho klice
+ * a jakykoliv uz existujici radek v `messages` na nej ukazuje.
  */
 export async function startMaterialization(
   ctx: WorkspaceContext,
@@ -39,11 +55,14 @@ export async function startMaterialization(
         `UPDATE campaigns
             SET status = 'queueing',
                 audience_built_at = COALESCE(audience_built_at, date_trunc('second', now())),
-                release_at = COALESCE(
-                  release_at,
-                  CASE WHEN $3::int > 0
-                       THEN date_trunc('second', now()) + ($3::int || ' seconds')::interval
-                  END),
+                release_at = CASE
+                  WHEN $3::int <= 0 THEN NULL
+                  -- Jeste bezici okno se nechava, uplynule se pocita znovu.
+                  -- Porovnani s NULL vyjde NULL, tedy nepravda, takze prvni zabrani
+                  -- kampane spadne do posledni vetve a okno vznikne.
+                  WHEN release_at > now() THEN release_at
+                  ELSE date_trunc('second', now()) + ($3::int || ' seconds')::interval
+                END,
                 started_at = COALESCE(started_at, now()),
                 updated_at = now()
           WHERE id = $1 AND workspace_id = $2

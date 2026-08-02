@@ -50,6 +50,20 @@
       "when": 1785595826141,
       "tag": "0006_system_settings_seed",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785600000000,
+      "tag": "0007_pgboss_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785601000000,
+      "tag": "0008_campaigns_compile_meta",
+      "breakpoints": true
     }
   ]
 }

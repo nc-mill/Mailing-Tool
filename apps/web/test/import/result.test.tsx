@@ -55,7 +55,9 @@ describe('import result', () => {
     view(row({ status: 'completed_with_errors', errorSummary: { excel_serial_date_assumed: 84 } }));
     const line = screen.getByText(/84 dat vypadalo jako číslo z excelu/i);
     expect(line).toBeInTheDocument();
-    expect(within(line.closest('li')!).getByRole('button', { name: /zobrazit/i })).toBeInTheDocument();
+    expect(
+      within(line.closest('li')!).getByRole('button', { name: /zobrazit/i }),
+    ).toBeInTheDocument();
   });
 
   it('hides a warning whose count is zero', () => {

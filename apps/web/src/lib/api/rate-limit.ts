@@ -27,18 +27,52 @@ export type Rule = { points: number; durationSec: number; configurable: boolean 
  *
  * Limity trackovacích endpointů (RATE_LIMIT_TRACK_*) tady schválně nejsou:
  * patří části 5 a jejich pravidla si zaregistruje P10 do vlastního katalogu.
+ *
+ * KATALOG JE FUNKCE, NE KONSTANTA, a je to oprava vady, která se projevovala
+ * jinde, než byla.
+ *
+ * Dřív to byl `export const` s literálem objektu, uvnitř kterého se volalo
+ * `getConfig()`. Tím se konfigurace vyhodnotila při každém načtení modulu.
+ * Tenhle soubor importuje `authenticate.ts` a ten importuje kdekdo, takže
+ * `next build` padal ve fázi „Collecting page data" pokaždé, jen na jiné trase:
+ *
+ *   Failed to collect page data for /t/[[...path]]
+ *   Failed to collect page data for /api/v1/[[...route]]
+ *   Failed to collect page data for /api/internal/ai/chat
+ *
+ * Každá z těch tří se dala složit líně a stavba pak spadla na další. Byla to
+ * hra na krtky: příčina nebyla v trasách, ale tady.
+ *
+ * Produkční image tedy nešla postavit bez znalosti `SECRET_KEY`
+ * a `DATABASE_URL`. Kdyby je někdo do stavby dodal, zapekl by je do vrstev.
+ * Konfigurace je běhová věc, ne sestavovací.
+ *
+ * `getConfig()` v `lib/runtime.ts` je napsané správně a memoizuje. Vada nebyla
+ * v něm, ale v tom, KDY se poprvé zavolá.
+ *
+ * Volání `getConfig()` uvnitř funkcí níž v tomhle souboru jsou v pořádku
+ * a nechávají se být.
  */
-export const RATE_LIMIT_RULES: Record<RuleName, Rule> = {
-  api_key_read: { points: getConfig().RATE_LIMIT_API_READ, durationSec: 60, configurable: true },
-  api_key_write: { points: getConfig().RATE_LIMIT_API_WRITE, durationSec: 60, configurable: true },
-  campaign_send: { points: 30, durationSec: 3600, configurable: false },
-  contacts_import: { points: 10, durationSec: 3600, configurable: false },
-  login_ip: { points: 20, durationSec: 300, configurable: false },
-  login_ip_email: { points: 5, durationSec: 300, configurable: false },
-  password_reset_ip: { points: 5, durationSec: 3600, configurable: false },
-  session_user: { points: 600, durationSec: 60, configurable: false },
-  setup_ip: { points: 10, durationSec: 3600, configurable: false },
-};
+let cachedRules: Record<RuleName, Rule> | undefined;
+
+export function rateLimitRules(): Record<RuleName, Rule> {
+  cachedRules ??= {
+    api_key_read: { points: getConfig().RATE_LIMIT_API_READ, durationSec: 60, configurable: true },
+    api_key_write: {
+      points: getConfig().RATE_LIMIT_API_WRITE,
+      durationSec: 60,
+      configurable: true,
+    },
+    campaign_send: { points: 30, durationSec: 3600, configurable: false },
+    contacts_import: { points: 10, durationSec: 3600, configurable: false },
+    login_ip: { points: 20, durationSec: 300, configurable: false },
+    login_ip_email: { points: 5, durationSec: 300, configurable: false },
+    password_reset_ip: { points: 5, durationSec: 3600, configurable: false },
+    session_user: { points: 600, durationSec: 60, configurable: false },
+    setup_ip: { points: 10, durationSec: 3600, configurable: false },
+  };
+  return cachedRules;
+}
 
 export type LimiterRegistry = { enabled: boolean; limiters: Map<RuleName, RateLimiterAbstract> };
 
@@ -81,7 +115,7 @@ export function createLimiterRegistry(opts: {
       ? new pg.Pool({ connectionString: getConfig().DATABASE_URL, max: 2 })
       : undefined;
 
-  for (const [name, rule] of Object.entries(RATE_LIMIT_RULES) as Array<[RuleName, Rule]>) {
+  for (const [name, rule] of Object.entries(rateLimitRules()) as Array<[RuleName, Rule]>) {
     limiters.set(
       name,
       opts.backend === 'postgres'
@@ -123,7 +157,7 @@ export async function consumeAll(
   for (const item of consumptions) {
     const limiter = registry.limiters.get(item.rule);
     if (!limiter) continue;
-    const rule = RATE_LIMIT_RULES[item.rule];
+    const rule = rateLimitRules()[item.rule];
     try {
       const res = await limiter.consume(item.key, item.cost ?? 1);
       const candidate = {

@@ -44,6 +44,21 @@ describe('proxy', () => {
     }
   });
 
+  // Streamovaný chat asistenta žije mimo /api/v1 a přihlášení si řeší sám.
+  // Kdyby ho proxy odbavila, nepřihlášený dostane přesměrování na HTML
+  // a přihlášenému jazykové middleware doplní předponu, takže cesta spadne
+  // do stromu stránek a klient místo proudu dostane HTML.
+  it('interní endpointy neodbavuje ani bez relace, ani s ní', async () => {
+    const bezRelace = await proxy(request('/api/internal/ai/chat'));
+    expect(bezRelace.status).toBe(200);
+    expect(bezRelace.headers.get('location')).toBeNull();
+
+    const sRelaci = await proxy(request('/api/internal/ai/chat', { session: true }));
+    expect(sRelaci.status).toBe(200);
+    expect(sRelaci.headers.get('location')).toBeNull();
+    expect(sRelaci.headers.get('x-middleware-rewrite')).toBeNull();
+  });
+
   it('přihlašovací stránka je dostupná bez relace', async () => {
     const response = await proxy(request('/login'));
     expect(response.status).toBe(200);
@@ -86,9 +101,42 @@ describe('proxy', () => {
     }
   });
 
-  it('nonce předá dál v hlavičce požadavku, aby ho layout mohl použít', async () => {
+  /**
+   * Tenhle test dřív jen ověřoval, že `x-nonce` na ODPOVĚDI není prázdný,
+   * přestože se jmenoval „předá dál v hlavičce požadavku". Prošel tedy i ve
+   * chvíli, kdy nonce k Nextu vůbec nedorazil.
+   *
+   * Následek byl vážný a čistě produkční: Next si nonce bere z hlaviček
+   * POŽADAVKU a razítkuje jím své bootstrapové inline skripty. Bez něj je
+   * prohlížeč zablokoval, devětkrát na stránku, a **React se vůbec
+   * nenamountoval**. Stránka se vykreslila ze serveru, vypadala hotově, a nic
+   * na ní nefungovalo: žádné tlačítko, formulář ani navigace. V dev režimu se
+   * to neprojevilo, protože tam má politika `'unsafe-eval'`.
+   *
+   * Next předává upravené hlavičky požadavku přes `x-middleware-request-*`
+   * a jejich seznam v `x-middleware-override-headers`, takže se to dá ověřit
+   * přímo na odpovědi middlewaru.
+   */
+  it('nonce z CSP se SHODUJE s nonce, který dostane Next v hlavičkách požadavku', async () => {
     const response = await proxy(request('/login'));
-    expect(response.headers.get('x-nonce')).toBeTruthy();
+
+    const csp = response.headers.get('content-security-policy') ?? '';
+    const nalezeny = csp.match(/'nonce-([A-Za-z0-9+/=]+)'/);
+    const nonceProProhlizec = nalezeny?.[1];
+    expect(nonceProProhlizec, 'CSP neobsahuje nonce').toBeTruthy();
+
+    const prepsane = response.headers.get('x-middleware-override-headers') ?? '';
+    expect(prepsane, 'middleware nepředává žádné upravené hlavičky požadavku').toContain('x-nonce');
+
+    const nonceProNext = response.headers.get('x-middleware-request-x-nonce');
+    expect(
+      nonceProNext,
+      'Next nedostane nonce v hlavičkách požadavku, takže své inline skripty neorazítkuje ' +
+        'a prohlížeč je zablokuje. Stránka se vykreslí, ale nic na ní nepůjde kliknout.',
+    ).toBe(nonceProProhlizec);
+
+    // Tatáž politika musí jít i do požadavku, jinak si ji Next nemá kde přečíst.
+    expect(response.headers.get('x-middleware-request-content-security-policy')).toBe(csp);
   });
 
   it('matcher vynechává statické soubory', () => {

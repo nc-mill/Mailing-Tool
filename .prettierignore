@@ -19,3 +19,16 @@ docs/
 # a přestal by hlídat cokoliv.
 packages/emails/test/__fixtures__/expected/
 packages/contracts/fixtures/
+
+# Artefakty běhu Playwrightu. Formátovat cizí HTML a CSS ze stop nemá smysl
+# a `pnpm lint` na nich jinak padá po každém běhu testů v prohlížeči.
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/playwright-report-golden/
+
+# Vygenerované dokumenty OpenAPI. Vyrábí je `generate:openapi` a test hlídá
+# SHODU BAJT PO BAJTU s tím, co servíruje `/api/v1/openapi.json`.
+# Přeformátování je tedy tiše rozbije: soubor vypadá stejně, test padne.
+# Naměřeno, stalo se to při plošném běhu `prettier --write`.
+packages/contracts/openapi.json
+packages/contracts/openapi.generated.json

@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestTx, startTestDatabase, testContext, type TestDatabase } from '../test-support/db';
+import {
+  createTestTx,
+  startTestDatabase,
+  testContext,
+  type TestDatabase,
+} from '../test-support/db';
 import {
   ensurePartitions,
   seedCampaign,
@@ -168,5 +173,34 @@ describe('readDashboard', () => {
     const clicks = result.tiles.click_rate;
     if (clicks.status === 'ok') expect(clicks.data.rate).toBeNull();
     expect(result.tiles.recent_campaigns.status).toBe('ok');
+  });
+
+  /**
+   * Čerstvá instalace: projekt existuje, ale ještě v něm neproběhla jediná
+   * kampaň ani jediná návštěva webu. Prázdno je tu NORMÁLNÍ stav, ne porucha,
+   * a všech šest dlaždic z něj musí umět vytěžit prázdná DATA, ne `error`.
+   * Kdyby některá dlaždice spadla na dotazu (chybějící oddíl, cizí tabulka
+   * bez řádku…), objeví se to tady jako `status: 'error'`, ne jako pád testu:
+   * `TileCache.resolve()` chybu polyká schválně (viz `cache.ts`), takže se
+   * musí kontrolovat status KAŽDÉ dlaždice zvlášť.
+   */
+  it('čerstvě založený projekt vrací u všech šesti dlaždic prázdná data, ne error', async () => {
+    const ws = await seedWorkspace(db);
+    const result = await readDashboard(createTestTx(db), testContext(ws.workspaceId), {
+      periodDays: 30,
+      timezone: 'UTC',
+      cache: new TileCache(),
+    });
+
+    expect(result.tiles.sent).toMatchObject({ status: 'ok', data: { value: 0 } });
+    expect(result.tiles.click_rate).toMatchObject({ status: 'ok', data: { rate: null } });
+    expect(result.tiles.open_rate).toMatchObject({ status: 'ok', data: { rate: null } });
+    expect(result.tiles.problems).toMatchObject({
+      status: 'ok',
+      data: { bounceRate: null, complaintRate: null, level: 'ok' },
+    });
+    expect(result.tiles.web_active).toMatchObject({ status: 'ok', data: { contacts: 0 } });
+    expect(result.tiles.recent_campaigns).toMatchObject({ status: 'ok', data: { items: [] } });
+    expect(result.tiles.running).toMatchObject({ status: 'ok', data: { campaign: null } });
   });
 });

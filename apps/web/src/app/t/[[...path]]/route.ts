@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { handle } from 'hono/vercel';
-import { trackingRuntime } from '../tracking-runtime';
+import { getTrackingRuntime } from '../tracking-runtime';
 
 /**
  * Veřejný povrch `/t/**`: open pixel a přesměrování prokliku. Autentizuje se
@@ -27,7 +27,24 @@ import { trackingRuntime } from '../tracking-runtime';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const app = new Hono().route('/t', trackingRuntime.publicTrackingRoutes);
+/**
+ * Aplikace se skládá až při prvním požadavku. Kdyby vznikala na úrovni modulu,
+ * sáhla by při importu na `getTrackingRuntime()`, ten na `loadConfig()`,
+ * a `next build` by ve fázi „Collecting page data" spadl na chybějícím
+ * `SECRET_KEY` a `DATABASE_URL`. Podrobně je to popsané v `tracking-runtime.ts`.
+ *
+ * `dynamic = 'force-dynamic'` výš tohle NEŘEŠÍ: říká, že se trasa nemá
+ * předrenderovat, ne že se nemá naimportovat její modul.
+ */
+let handler: ReturnType<typeof handle> | undefined;
 
-export const GET = handle(app);
-export const HEAD = handle(app);
+function getHandler(): ReturnType<typeof handle> {
+  handler ??= handle(new Hono().route('/t', getTrackingRuntime().publicTrackingRoutes));
+  return handler;
+}
+
+export const GET = (...args: Parameters<ReturnType<typeof handle>>): Response | Promise<Response> =>
+  getHandler()(...args);
+export const HEAD = (
+  ...args: Parameters<ReturnType<typeof handle>>
+): Response | Promise<Response> => getHandler()(...args);

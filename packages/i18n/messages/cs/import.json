@@ -135,7 +135,7 @@
   "progress": {
     "title": "Importujeme kontakty",
     "counter": "{processed} z {total}",
-    "eta": "Zbývá asi {seconds, plural, one {# sekunda} few {# sekundy} other {# sekund}}",
+    "eta": "{seconds, plural, =0 {Za chvilku bude hotovo} one {Zbývá asi # sekunda} few {Zbývá asi # sekundy} many {Zbývá asi # sekundy} other {Zbývá asi # sekund}}",
     "runsOnServer": "Import běží na serveru. Okno můžete zavřít, po návratu uvidíte výsledek. Dáme vám vědět e-mailem.",
     "liveUpdatesFailed": "Živé aktualizace se nedaří, počet obnovujeme každých pět sekund.",
     "cancel": "Zrušit import",
@@ -165,7 +165,7 @@
       "content": "Obsah",
       "why": "Proč"
     },
-    "downloadErrors": "Stáhnout {count, plural, one {# chybný řádek} few {# chybné řádky} other {# chybných řádků}} jako CSV",
+    "downloadErrors": "{count, plural, =0 {Stáhnout chybné řádky jako CSV} one {Stáhnout # chybný řádek jako CSV} few {Stáhnout # chybné řádky jako CSV} many {Stáhnout # chybného řádku jako CSV} other {Stáhnout # chybných řádků jako CSV}}",
     "showImported": "Zobrazit naimportované kontakty",
     "reviewVocative": "Zkontrolovat",
     "resume": "Pokračovat od řádku {row}",
@@ -268,11 +268,11 @@
     "genderUnknown": "nevím",
     "vocativeField": "Oslovení",
     "remember": "Zapamatovat i pro budoucí kontakty se jménem {name}",
-    "confirm": "Potvrdit pro {count, plural, one {# kontakt} few {# kontakty} other {# kontaktů}}",
+    "confirm": "{count, plural, =0 {Není co potvrzovat} one {Potvrdit pro # kontakt} few {Potvrdit pro # kontakty} many {Potvrdit pro # kontaktu} other {Potvrdit pro # kontaktů}}",
     "noName": "Neoslovovat jménem",
     "defer": "Odložit",
-    "remaining": "Zbývá {count, plural, one {# skupina} few {# skupiny} other {# skupin}}",
-    "confirmAll": "Potvrdit všechny návrhy ({count, plural, one {# skupina} few {# skupiny} other {# skupin}})",
+    "remaining": "{count, plural, =0 {Hotovo, nic nezbývá} one {Zbývá # skupina} few {Zbývá # skupiny} many {Zbývá # skupiny} other {Zbývá # skupin}}",
+    "confirmAll": "{count, plural, =0 {Není co potvrzovat} one {Potvrdit všechny návrhy (# skupina)} few {Potvrdit všechny návrhy (# skupiny)} many {Potvrdit všechny návrhy (# skupiny)} other {Potvrdit všechny návrhy (# skupin)}}",
     "noNameAll": "Neoslovovat jménem u všech",
     "lockNote": "Co jednou potvrdíte nebo opravíte, už nikdy sami nezměníme.",
     "empty": "Ve frontě nic není. Všechna oslovení jsou potvrzená nebo jistá."

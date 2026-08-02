@@ -77,21 +77,28 @@ describe('registr navigace', () => {
     expect(contacts?.children?.[0]?.href).toBe('/w/eshop-kolo/contacts');
   });
 
-  it('šest obrazovek Nastavení, které v MVP 0 nikdo nedodá, se nezobrazí', () => {
-    // Bez příznaku by menu nabídlo šest cest končících na prázdné stránce.
+  it('obrazovky Nastavení, které nikdo nedodal, se nezobrazí', () => {
+    // Bez příznaku by menu nabídlo cesty končící na prázdné stránce.
+    //
+    // Seznam se ZKRACUJE, jak obrazovky přibývají. `settings-ai`,
+    // `settings-sending` a `settings-backups` z něj už zmizely, protože jejich
+    // obrazovky existují a byly jen skryté; `settings-sending` kvůli tomu
+    // nešlo připojit odesílání jinak než přímou adresou.
+    //
+    // Že příznak odpovídá skutečnosti, hlídá `registry-screens.test.ts`:
+    // skrytá položka nesmí mít hotovou obrazovku.
     const visible = visibleNavigation({ permissions: owner });
     const settings = visible.find((section) => section.id === 'settings');
     const ids = settings?.children?.map((child) => child.id) ?? [];
-    for (const hidden of [
-      'settings-sending',
-      'settings-fields',
-      'settings-consent',
-      'settings-tracking',
-      'settings-ai',
-      'settings-backups',
-    ]) {
+    for (const hidden of ['settings-fields', 'settings-consent', 'settings-tracking']) {
       expect(ids, `${hidden} se v MVP 0 nemá zobrazit`).not.toContain(hidden);
     }
+  });
+
+  it('P15 přehodil mvp0 u settings-ai, položka se tedy v MVP 0 zobrazuje', () => {
+    const visible = visibleNavigation({ permissions: [...owner, 'ai:configure'] });
+    const settings = visible.find((section) => section.id === 'settings');
+    expect(settings?.children?.map((child) => child.id)).toContain('settings-ai');
   });
 
   it('po přehození příznaku se položka objeví, aniž se registr rozšiřuje', () => {

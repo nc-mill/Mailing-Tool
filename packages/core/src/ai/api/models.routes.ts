@@ -1,4 +1,5 @@
 import { createRoute, z } from '@hono/zod-openapi';
+import { problemResponse } from '../../identity/api/schemas';
 import { curatedModels, defaultModelFor } from '../catalog';
 import { getProvider, type providerIdSchema } from '../providers';
 
@@ -28,6 +29,9 @@ export const listModelsRoute = createRoute({
         },
       },
     },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    422: problemResponse('validation_failed'),
   },
 });
 

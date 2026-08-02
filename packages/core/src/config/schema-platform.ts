@@ -68,7 +68,33 @@ export const platformShape = {
   SENDER_CLAIM_TTL_SECONDS: envInt(30, 3600).default(300),
   SENDER_POLL_INTERVAL_MS: envInt(100, 60000).default(1000),
   SHUTDOWN_GRACE_SECONDS: envInt(1, 300).default(25),
-  TRACKING_DOMAIN: z.string().min(1).optional(),
+  /**
+   * Absolutní adresa se schématem, ne holý host, i když se jmenuje „doména".
+   *
+   * Validace tu dřív byla jen `z.string().min(1)`, takže propustila i holý
+   * host. Sender ho ale odmítá a z hodnoty skládá odkazy prostým spojením,
+   * takže bez schématu by v e-mailu vznikl neklikatelný řetězec. Rozpor mezi
+   * oběma jazyky se projevil tím, že výchozí hodnota vyrobená TypeScriptem
+   * neprošla validací v Go a sender vůbec nenastartoval.
+   */
+  TRACKING_DOMAIN: z
+    .string()
+    .min(1)
+    .refine(
+      (value) => {
+        try {
+          const url = new URL(value);
+          return (url.protocol === 'http:' || url.protocol === 'https:') && url.host !== '';
+        } catch {
+          return false;
+        }
+      },
+      {
+        message:
+          'musí být absolutní URL se schématem http nebo https, například https://mail.firma.cz',
+      },
+    )
+    .optional(),
   WEBHOOK_ALLOW_PRIVATE_TARGETS: envBool().prefault('false'),
   // Horní mez se rovná počtu řádků tabulky odstupů v 3.8, ne pevnému číslu.
   // Vyšší hodnota by neměla definované zpoždění. Kritérium 36b.

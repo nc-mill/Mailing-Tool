@@ -188,6 +188,17 @@ export const campaigns = pgTable(
     trackClicks: boolean().notNull().default(true),
     unsubscribeListId: uuid().references(() => lists.id, { onDelete: 'set null' }),
     revision: integer().notNull().default(1), // klíč cache senderu
+    /**
+     * Metadata z kompilace šablony. Sender z nich čte `clickMarkerCount`
+     * a porovnává ho s počtem značek, které v těle skutečně našel (kontrola V4).
+     *
+     * Sloupec tu dřív nebyl a sender si tu kontrolu SÁM VYPÍNAL, jen s řádkem
+     * v logu: `compile_meta_column_missing, kontrola počtu značek se vypíná`.
+     * Nic nespadlo, jen se tiše ztratila ochrana proti rozbité kompilaci.
+     * Ta shovívavost v senderu zůstává, protože musí umět běžet i proti starší
+     * databázi, ale ve schématu ten sloupec od téhle migrace je.
+     */
+    compileMeta: jsonb(),
     releaseAt: timestamp({ withTimezone: true }), // undo okno
     scheduledAt: timestamp({ withTimezone: true }),
     scheduleTimezone: text(), // IANA, např. 'Europe/Prague'

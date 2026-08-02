@@ -5,6 +5,7 @@
   "license": "MIT",
   "type": "module",
   "exports": {
+    "./openapi.json": "./openapi.json",
     "./outbox": {
       "types": "./dist/outbox.d.ts",
       "import": "./dist/outbox.js"

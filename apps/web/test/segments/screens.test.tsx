@@ -39,7 +39,9 @@ function astNested(depth: number): SegmentAst {
 describe('segment builder', () => {
   it('shows the null hint for every negating operator', () => {
     for (const operator of ['neq', 'not_contains', 'not_in', 'has_none', 'not_in_last_days']) {
-      const { unmount } = renderIntl(<SegmentBuilder value={astWith(operator)} onChange={vi.fn()} />);
+      const { unmount } = renderIntl(
+        <SegmentBuilder value={astWith(operator)} onChange={vi.fn()} />,
+      );
       expect(
         screen.getByText(/kontakty, které pole vůbec nemají, sem nespadnou/i),
         operator,
@@ -82,13 +84,19 @@ describe('segment builder', () => {
   it('numbers groups and suggests splitting from the third level', () => {
     renderIntl(<SegmentBuilder value={astNested(3)} onChange={vi.fn()} />);
     expect(screen.getByText(/skupina 3/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /nechcete ho rozdělit na dva/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /nechcete ho rozdělit na dva/i }),
+    ).toBeInTheDocument();
   });
 
   it('warns about two contradicting conditions on the same field in an all group', () => {
     const ast: SegmentAst = {
       version: 1,
-      root: { type: 'group', op: 'and', children: [condition('eq', 'Praha'), condition('eq', 'Brno')] },
+      root: {
+        type: 'group',
+        op: 'and',
+        children: [condition('eq', 'Praha'), condition('eq', 'Brno')],
+      },
     };
     renderIntl(<SegmentBuilder value={ast} onChange={vi.fn()} />);
     expect(screen.getByText(/nemůže splnit nikdo najednou/i)).toBeInTheDocument();
@@ -298,8 +306,17 @@ describe('reactivation cleanup', () => {
       />,
     );
     const body = document.body.textContent ?? '';
+    // Čeština odděluje tisíce i části data NEZLOMITELNOU mezerou, a jsou dvě
+    // různé: U+00A0 a U+202F (úzká). Které přesně, rozhoduje `Intl` podle verze
+    // ICU, takže se obě před porovnáním nahradí tečkou a očekávané hodnoty
+    // se píšou s tečkou.
+    //
+    // Zapisují se ESCAPEM, ne doslovným znakem. V editoru jsou k nerozeznání
+    // od obyčejné mezery a lint je hlásí jako podezřelý znak; při plošném
+    // úklidu „neviditelných mezer" jsem je jednou omylem nahradil obyčejnými
+    // a rozbil tím právě tenhle regulární výraz.
     for (const value of ['1.842', '2.480', '638', '18. 7.']) {
-      expect(body.replace(/ | /g, '.')).toContain(value);
+      expect(body.replace(/\u00a0|\u202f/g, '.')).toContain(value);
     }
     for (const name of [/zkontrolovat/i, /odložit o 14 dní/i, /zrušit úklid/i]) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
@@ -308,7 +325,9 @@ describe('reactivation cleanup', () => {
 
   it('offers downloading the affected contacts before the cleanup runs', () => {
     renderIntl(<CleanupScenario step="confirm" segment={segment} days={3} />);
-    expect(screen.getByRole('button', { name: /stáhnout těch/i }).textContent).toMatch(/1.842/);
+    expect(screen.getByRole('button', { name: /stáhnout těch/i }).textContent).toMatch(
+      /1\u00a0842/,
+    );
   });
 
   it('requires typing the segment name, because this is protection level N4', async () => {

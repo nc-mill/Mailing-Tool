@@ -14,13 +14,23 @@ import { OnboardingStepRow } from './onboarding-step-row';
  */
 function Panel({
   tone = 'default',
+  label,
   children,
 }: {
   tone?: 'default' | 'success' | 'muted';
+  label: string;
   children: React.ReactNode;
 }) {
   return (
     <section
+      // `aria-label` NENÍ ozdoba a nesmí se odsud smazat.
+      //
+      // Holý `<section>` NEMÁ roli `region`. Dostane ji teprve tehdy, když má
+      // přístupné jméno. Bez něj panel v přístupnostním stromu vůbec není,
+      // takže ho neuvidí ani odečítač obrazovky, ani navigace po orientačních
+      // bodech. Naměřeno v běžící instalaci: `getByRole('region')` vracelo
+      // šest dlaždic Přehledu a panel onboardingu mezi nimi nebyl.
+      aria-label={label}
       className={cn(
         'rounded-[var(--radius-surface)] border p-4',
         tone === 'success' && 'border-success bg-success-surface',
@@ -61,7 +71,7 @@ export function OnboardingPanel({ state, slug, onHide, onDismiss }: OnboardingPa
 
   if (state.finished) {
     return (
-      <Panel tone="success">
+      <Panel tone="success" label={t('title')}>
         <p>{t('finished')}</p>
         <Button
           variant="ghost"
@@ -82,7 +92,7 @@ export function OnboardingPanel({ state, slug, onHide, onDismiss }: OnboardingPa
 
   if (state.hidden) {
     return (
-      <Panel tone="muted">
+      <Panel tone="muted" label={t('title')}>
         <p>{t('collapsed', { done: state.doneCount, total: state.total })}</p>
         <Button
           variant="ghost"
@@ -98,7 +108,7 @@ export function OnboardingPanel({ state, slug, onHide, onDismiss }: OnboardingPa
   }
 
   return (
-    <Panel>
+    <Panel label={t('title')}>
       <div className="flex items-center justify-between">
         <h2>{t('title')}</h2>
         <Button

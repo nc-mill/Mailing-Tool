@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Alert } from '@mlain/ui/patterns/states';
 import { Button } from '@mlain/ui/components/button';
-import { useToast } from '@mlain/ui/patterns/toast';
+import { ToastProvider, useToast } from '@mlain/ui/patterns/toast';
 import { DemoDataDialog, type DemoCounts } from './demo-data-dialog';
 
 export type DemoDataState = {
@@ -25,6 +25,38 @@ export type DemoDataState = {
  * smazat i po částech, tedy tak, jak to žádá rozhodnutí zadavatele Z2.
  */
 export function DemoDataBanner({ state, slug }: { state: DemoDataState; slug: string }) {
+  const t = useTranslations('common');
+
+  // `useToast` mimo `ToastProvider` VYHODÍ VÝJIMKU a shodí celou stránku.
+  //
+  // Skořápka projektu (`w/[workspaceSlug]/layout.tsx`, vlastní ji P05) provider
+  // nemontuje, takže si ho obrazovky zapínají samy; doména kontaktů to řeší
+  // souborem `features/contacts/contacts-toasts.tsx`. Přehled je server
+  // component bez vlastního layoutu, takže si ho pruh musí obalit sám.
+  //
+  // Bez toho padal CELÝ Přehled, ne jen pruh:
+  //   ⨯ Error: useToast se smí volat jen uvnitř ToastProvider.
+  // a uživatel viděl „Aplikace se neočekávaně zastavila". Naměřeno v produkční
+  // image; jednotkové testy to nechytly, protože si provider montují samy.
+  //
+  // Až skořápka provider dostane, tenhle obal zmizí a `DemoDataBannerInner`
+  // se přejmenuje zpátky.
+  return (
+    <ToastProvider
+      labels={{
+        undo: t('actions.undo'),
+        close: t('actions.close'),
+        notifications: t('a11y.notifications'),
+        countdown: (seconds: number) => t('feedback.undoCountdown', { seconds }),
+        repeated: (message: string, count: number) => t('feedback.repeated', { message, count }),
+      }}
+    >
+      <DemoDataBannerInner state={state} slug={slug} />
+    </ToastProvider>
+  );
+}
+
+function DemoDataBannerInner({ state, slug }: { state: DemoDataState; slug: string }) {
   const t = useTranslations('onboarding.demo');
   const toast = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);

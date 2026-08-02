@@ -33,9 +33,9 @@ test.describe('editor šablony, klávesová cesta', () => {
     await page.keyboard.press('Alt+ArrowRight');
     await page.keyboard.press('Alt+ArrowLeft');
     // Oznámení přijde vždy: buď o nové pozici, nebo o tom, že dál to nejde.
-    await expect(page.locator('[role=status], [role=alert]').filter({ hasText: /./ })).not.toHaveCount(
-      0,
-    );
+    await expect(
+      page.locator('[role=status], [role=alert]').filter({ hasText: /./ }),
+    ).not.toHaveCount(0);
   });
 
   test('z plátna se dá vyjít Tabem do panelu vlastností, není to past na fokus', async ({

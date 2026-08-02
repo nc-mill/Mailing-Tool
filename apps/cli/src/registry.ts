@@ -44,14 +44,14 @@ export const COMMANDS: readonly CommandDefinition[] = [
     summary: 'Aplikuje migrace pod rolí mlain_migrator s advisory lockem.',
     usage: 'mlain migrate',
     owner: 'P03',
-    implemented: false,
+    implemented: true,
   },
   {
     name: 'genkey',
     summary: 'Vygeneruje nový SECRET_KEY ve tvaru <key_id>:<base64url>.',
     usage: 'mlain genkey [--id <n>]',
     owner: 'P16',
-    implemented: false,
+    implemented: true,
   },
   {
     name: 'backup',
@@ -60,35 +60,35 @@ export const COMMANDS: readonly CommandDefinition[] = [
       'Vytvoří zálohu databáze a uploadů. Podpříkaz verify ji ověří do dočasné databáze, list vypíše existující zálohy.',
     usage: 'mlain backup [--skip-prune] | mlain backup verify <adresář> | mlain backup list',
     owner: 'P16',
-    implemented: false,
+    implemented: true,
   },
   {
     name: 'restore',
     summary: 'Obnoví instalaci ze zálohy.',
     usage: 'mlain restore <adresář> [--force] [--skip-uploads] [--i-know-the-key-differs]',
     owner: 'P16',
-    implemented: false,
+    implemented: true,
   },
   {
     name: 'doctor',
     summary: 'Prověří instalaci a vypíše nálezy podle závažnosti.',
     usage: 'mlain doctor',
     owner: 'P16',
-    implemented: false,
+    implemented: true,
   },
   {
     name: 'upgrade',
     summary: 'Opatrný upgrade: zastaví procesy, zazálohuje, migruje, spustí zpět.',
     usage: 'mlain upgrade',
     owner: 'P16',
-    implemented: false,
+    implemented: true,
   },
   {
     name: 'rotate-credentials',
     summary: 'Přešifruje všechny obálky na aktuální key_id.',
     usage: 'mlain rotate-credentials',
     owner: 'P16',
-    implemented: false,
+    implemented: true,
   },
   // Dva příkazy doplněné po nálezu: P16 je oba implementuje a označuje
   // `implemented: true`, ale v tomhle registru chyběly. Registr je uzavřený
@@ -99,7 +99,7 @@ export const COMMANDS: readonly CommandDefinition[] = [
       'Nastaví uživateli nové heslo. Jediná cesta zpět do instalace, která ještě nemá nastavené odesílání.',
     usage: 'mlain reset-password <e-mail> [--password <heslo>]',
     owner: 'P16',
-    implemented: false,
+    implemented: true,
   },
   {
     name: 'rebuild-engagement',
@@ -107,7 +107,7 @@ export const COMMANDS: readonly CommandDefinition[] = [
       'Přepočítá tabulku zapojení kontaktů od nuly po dávkách, po havárii nebo obnově zálohy.',
     usage: 'mlain rebuild-engagement --workspace <id> [--batch-size <n>]',
     owner: 'P16',
-    implemented: false,
+    implemented: true,
   },
 ];
 

@@ -13,6 +13,7 @@ import { isSupportedLocale, type Locale } from './locales';
  * Že se seznam shoduje s obsahem adresáře, hlídá test v `load-messages.test.ts`.
  */
 export const NAMESPACES = [
+  'ai',
   'auth',
   'campaigns',
   'common',

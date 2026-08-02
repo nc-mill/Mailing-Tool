@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestTx, startTestDatabase, testContext, type TestDatabase } from '../test-support/db';
+import {
+  createTestTx,
+  startTestDatabase,
+  testContext,
+  type TestDatabase,
+} from '../test-support/db';
 import { ensurePartitions, seedContact, seedWorkspace } from '../test-support/fixtures';
 import { readContactTimeline } from './query';
 

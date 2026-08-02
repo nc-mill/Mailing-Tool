@@ -231,7 +231,9 @@ describe('options step', () => {
     );
     await userEvent.selectOptions(screen.getByLabelText(/zařadit do seznamu/i), 'l1');
     await userEvent.click(screen.getByRole('radio', { name: /potvrzené/i }));
-    expect(screen.getByRole('checkbox', { name: /potvrzuji, že tito lidé souhlasili/i })).toBeRequired();
+    expect(
+      screen.getByRole('checkbox', { name: /potvrzuji, že tito lidé souhlasili/i }),
+    ).toBeRequired();
   });
 
   it('says the declaration is stored as evidence', () => {
@@ -241,11 +243,7 @@ describe('options step', () => {
 
   it('greys out the duplicate error option above the memory threshold and explains why', () => {
     renderIntl(
-      <StepOptions
-        estimate={{ ...base, totalRows: 2_000_000 }}
-        lists={[]}
-        onSubmit={vi.fn()}
-      />,
+      <StepOptions estimate={{ ...base, totalRows: 2_000_000 }} lists={[]} onSubmit={vi.fn()} />,
     );
     expect(screen.getByRole('radio', { name: /nahlásit jako chybu/i })).toHaveAttribute(
       'aria-disabled',

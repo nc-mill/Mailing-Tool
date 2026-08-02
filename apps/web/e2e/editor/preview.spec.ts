@@ -1,8 +1,23 @@
 import { expect, test } from '@playwright/test';
 import { editorConfigured, openEditor, SKIP_REASON } from './fixtures';
 
+/**
+ * Náhled si nechává vyrobit HTML na serveru. Endpoint
+ * `POST /api/v1/templates/{id}/preview` **v routeru dnes není** (otevřený
+ * požadavek P08-R2), takže pruh ukáže „Náhled se nepodařilo vytvořit."
+ * a testy níž nemají co kontrolovat. Zapínají se proto příznakem, aby suita
+ * nebyla trvale červená na cizím díle a přitom bylo vidět, na co se čeká.
+ * Editorová strana včetně tlačítka „Kontakt bez jména" je hotová a pokrytá
+ * jednotkovým testem `preview-pane.test.tsx` proti dvojníkovi portů.
+ */
+const previewApi = process.env['E2E_TEMPLATES_API'] === '1';
+
 test.describe('náhled šablony', () => {
   test.skip(!editorConfigured, SKIP_REASON);
+  test.skip(
+    !previewApi,
+    'Chybí POST /api/v1/templates/{id}/preview, viz P08-R2. Zapni E2E_TEMPLATES_API=1.',
+  );
 
   test.beforeEach(async ({ page }) => {
     await openEditor(page);

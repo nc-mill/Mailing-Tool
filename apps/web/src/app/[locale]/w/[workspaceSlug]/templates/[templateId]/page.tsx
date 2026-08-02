@@ -1,11 +1,33 @@
 import { Link } from '@mlain/i18n/navigation';
 import { ForbiddenState, NotFoundState } from '@mlain/ui/patterns/states';
 import { notFound } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getFormatter, getTranslations } from 'next-intl/server';
+import { getProvider } from '@mlain/core/ai';
+import { AiAssistantPanel } from '@/features/ai/assistant-panel';
 import { loadEditorData } from '@/features/editor/ports/server-ports';
+import {
+  aiWorkspaceContext,
+  fetchBrandProfiles,
+  fetchCredentials,
+  fetchUsage,
+} from '@/lib/ai/queries';
 import { requireUser } from '@/lib/identity/require-user';
 import { getWorkspaceAccess, hasPermission } from '@/lib/identity/workspace-access';
 import { EditorClient } from './editor-client';
+
+/**
+ * Stránka závisí na přihlášeném uživateli, takže se NEPŘEDRENDEROVÁVÁ.
+ *
+ * Bez tohohle ji Next při `next build` vykreslí a spadne, protože v době
+ * sestavení žádná relace neexistuje:
+ *
+ *   TypeError: Cannot read properties of null (reading 'useContext')
+ *   Export encountered an error on <cesta>, exiting the build.
+ *
+ * Chyba nemíří na příčinu, takže se hledá v komponentách. Statická podoba
+ * téhle stránky přitom neexistuje: obsah je pro každého jiný.
+ */
+export const dynamic = 'force-dynamic';
 
 /**
  * Identitu ani přístup si tenhle plán neřeší sám: `requireUser` a `getWorkspaceAccess`
@@ -56,9 +78,41 @@ export default async function TemplateEditorPage({
   const data = await loadEditorData({ userId: me.data.user.id, workspaceSlug, templateId });
   if (!data) return notFoundState;
 
+  /*
+   * Podklady pro panel asistenta (P15, úkol 37). Čtou se týmiž funkcemi jako na
+   * obrazovce nastavení, aby existoval jediný zdroj pravdy o tom, jestli
+   * projekt má klíč. Panel bez klíče není chyba: vysvětlí, co je potřeba.
+   */
+  const aiCtx = await aiWorkspaceContext({ userId: me.data.user.id, workspaceSlug });
+  const [credentials, brandProfiles, usage] = await Promise.all([
+    fetchCredentials(aiCtx),
+    fetchBrandProfiles(aiCtx),
+    fetchUsage(aiCtx, 30),
+  ]);
+  const format = await getFormatter();
+  const defaultBrand = brandProfiles.find((profile) => profile.defaultProfile) ?? brandProfiles[0];
+  const defaultCredential =
+    credentials.find((credential) => credential.default_credential) ?? credentials[0];
+  const providerLabel =
+    defaultCredential === undefined ? undefined : getProvider(defaultCredential.provider).label;
+  const spendLabel =
+    usage.estimatedCostUsd === null
+      ? undefined
+      : format.number(usage.estimatedCostUsd, { style: 'currency', currency: 'USD' });
+
   return (
     <EditorClient
       templateId={templateId}
+      assistant={
+        <AiAssistantPanel
+          templateId={templateId}
+          hasCredential={credentials.length > 0}
+          brandName={defaultBrand?.name ?? null}
+          {...(providerLabel === undefined ? {} : { providerLabel })}
+          settingsHref={`/w/${workspaceSlug}/settings/ai`}
+          {...(spendLabel === undefined ? {} : { spendLabel })}
+        />
+      }
       document={data.document}
       designHash={data.designHash}
       fieldCatalog={data.fieldCatalog}

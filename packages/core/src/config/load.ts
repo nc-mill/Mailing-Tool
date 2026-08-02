@@ -88,7 +88,17 @@ export function loadConfig(rawEnv: Record<string, string | undefined> = process.
     UPLOADS_DIR: path.resolve(config.UPLOADS_DIR ?? path.join(dataDir, 'uploads')),
     BACKUP_DIR: path.resolve(config.BACKUP_DIR ?? path.join(dataDir, 'backups')),
     DATABASE_URL_SENDER: config.DATABASE_URL_SENDER ?? deriveSenderUrl(config.DATABASE_URL),
-    TRACKING_DOMAIN: config.TRACKING_DOMAIN ?? new URL(config.APP_URL).host,
+    // Celá adresa VČETNĚ schématu, ne holý host, přestože se proměnná jmenuje
+    // „doména". Původně to bylo `new URL(config.APP_URL).host`, což vyrábělo
+    // hodnotu, kterou sender odmítne:
+    //
+    //   TRACKING_DOMAIN: "localhost:4600" není absolutní URL se schématem
+    //
+    // Sender z ní skládá odkazy prostým spojením (`base() + "/t/o/" + token`),
+    // takže bez schématu vznikne řetězec, který v e-mailu není odkaz. Věcně má
+    // tedy pravdu Go strana a sjednocuje se na její tvar. Jméno proměnné je
+    // matoucí, ale přejmenovat ji znamená rozbít existující instalace.
+    TRACKING_DOMAIN: config.TRACKING_DOMAIN ?? config.APP_URL,
     ASSET_BASE_URL: config.ASSET_BASE_URL ?? config.APP_URL,
   };
 

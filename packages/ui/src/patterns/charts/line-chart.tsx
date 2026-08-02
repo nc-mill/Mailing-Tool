@@ -54,7 +54,14 @@ export function LineChart({
       {...(formatValue ? { formatValue } : {})}
     >
       <ResponsiveContainer width="100%" height={280}>
-        <RechartsLine data={data}>
+        {/* Rám kolem grafu skrývá tuhle SVG před čtečkou (`aria-hidden`) a nese
+            skutečnou textovou i klávesovou alternativu v tabulce, viz ChartFrame.
+            Rechartsí vlastní klávesová vrstva (`accessibilityLayer`, výchozí
+            zapnutá) by jinak vložila do skrytého stromu fokusovatelné `<svg
+            tabindex="0" role="application">`, na které nejde z klávesnice
+            smysluplně reagovat a čtečka ho navíc nikdy neuvidí. Axe to hlásí
+            jako `aria-hidden-focus`. */}
+        <RechartsLine data={data} accessibilityLayer={false}>
           <CartesianGrid stroke="var(--color-border)" />
           <XAxis dataKey="x" stroke="var(--color-text-muted)" />
           <YAxis stroke="var(--color-text-muted)" />

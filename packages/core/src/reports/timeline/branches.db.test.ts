@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestTx, startTestDatabase, testContext, type TestDatabase } from '../test-support/db';
+import {
+  createTestTx,
+  startTestDatabase,
+  testContext,
+  type TestDatabase,
+} from '../test-support/db';
 import {
   ensurePartitions,
   seedCampaign,
@@ -156,10 +161,10 @@ describe('větve časové osy', () => {
       [contact],
     );
     const listId = randomUUID();
-    await db.pool.query(`INSERT INTO lists (id, workspace_id, name) VALUES ($1, $2, 'Newsletter')`, [
-      listId,
-      ws.workspaceId,
-    ]);
+    await db.pool.query(
+      `INSERT INTO lists (id, workspace_id, name) VALUES ($1, $2, 'Newsletter')`,
+      [listId, ws.workspaceId],
+    );
     await db.pool.query(
       `INSERT INTO list_subscriptions (contact_id, list_id, workspace_id, status, source, subscribed_at)
        VALUES ($1, $2, $3, 'confirmed', 'form', '2026-07-03T09:00:00.000Z')`,

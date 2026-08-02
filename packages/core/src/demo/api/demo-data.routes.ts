@@ -59,7 +59,9 @@ const seedRoute = createRoute({
   request: {
     body: {
       required: false,
-      content: { 'application/json': { schema: z.object({}).strict().openapi('DemoDataSeedInput') } },
+      content: {
+        'application/json': { schema: z.object({}).strict().openapi('DemoDataSeedInput') },
+      },
     },
   },
   responses: {

@@ -26,6 +26,36 @@ function findHandlerModules() {
     .sort();
 }
 
+/**
+ * Ověří, že každá nalezená doména má v `packages/core/package.json` explicitní
+ * klíč `"./<domena>/jobs"`. Bez něj se import nerozřeší a build workeru spadne.
+ *
+ * PROČ TENHLE HLÍDAČ EXISTUJE: mapa `exports` měla obecný vzor s hvězdičkou uprostřed,
+ * jenže Node ani esbuild neberou v potaz pořadí klíčů, rozhoduje délka základu
+ * vzoru. Jakmile doména dostala vlastní vzor se svým jménem, přebil obecný vzor
+ * a import se rozvinul na soubor, který neexistuje. Stalo se to dvakrát,
+ * u `platform` a pak u `ai`, a pokaždé se to projevilo až při stavbě produkční
+ * image, tedy hodně daleko od příčiny.
+ *
+ * Obecný vzor je proto zrušený a klíče jsou vypsané. Tenhle hlídač zajišťuje,
+ * že chybějící zápis padne HLASITĚ tady, ne tiše až v Dockerfile.
+ */
+function assertExportsMapCovers(domains) {
+  const manifestPath = path.join(ROOT, 'packages/core/package.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const exportsMap = manifest.exports ?? {};
+  const chybi = domains.filter((domain) => !(`./${domain}/jobs` in exportsMap));
+  if (chybi.length > 0) {
+    const radky = chybi
+      .map((d) => `    "./${d}/jobs": "./src/${d}/jobs/queue-handlers.ts",`)
+      .join('\n');
+    throw new Error(
+      `packages/core/package.json nemá v "exports" klíč pro tyhle domény s frontami: ` +
+        `${chybi.join(', ')}.\nDoplň do mapy "exports":\n${radky}`,
+    );
+  }
+}
+
 function render(domains) {
   const imports = domains
     .map((domain, index) => `import { handlers as h${index} } from '@mlain/core/${domain}/jobs';`)
@@ -44,7 +74,9 @@ ${spread}
 `;
 }
 
-const output = render(findHandlerModules());
+const domains = findHandlerModules();
+assertExportsMapCovers(domains);
+const output = render(domains);
 if (process.argv.includes('--stdout')) {
   process.stdout.write(output);
 } else {

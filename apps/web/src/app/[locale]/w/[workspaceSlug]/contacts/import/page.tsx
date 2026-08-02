@@ -5,6 +5,20 @@ import { apiFetch } from '@/lib/api-client/fetch';
 import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
 import { ImportWizard, type Step } from '@/features/import/import-wizard';
 
+/**
+ * Stránka závisí na přihlášeném uživateli, takže se NEPŘEDRENDEROVÁVÁ.
+ *
+ * Bez tohohle ji Next při `next build` vykreslí a spadne, protože v době
+ * sestavení žádná relace neexistuje:
+ *
+ *   TypeError: Cannot read properties of null (reading 'useContext')
+ *   Export encountered an error on <cesta>, exiting the build.
+ *
+ * Chyba nemíří na příčinu, takže se hledá v komponentách. Statická podoba
+ * téhle stránky přitom neexistuje: obsah je pro každého jiný.
+ */
+export const dynamic = 'force-dynamic';
+
 type PageProps = {
   params: Promise<{ locale: string; workspaceSlug: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -27,13 +41,13 @@ export default async function ImportPage({ params, searchParams }: PageProps) {
   }
   const workspaceId = access.data.workspace.id;
 
-  const step = typeof query['step'] === 'string' && STEPS.includes(query['step']) ? query['step'] : 'upload';
+  const step =
+    typeof query['step'] === 'string' && STEPS.includes(query['step']) ? query['step'] : 'upload';
   const importId = typeof query['import'] === 'string' ? query['import'] : null;
 
-  const lists = await apiFetch<{ data: { id: string; name: string; opt_in: 'single' | 'double' }[] }>(
-    '/api/v1/lists',
-    { workspaceId },
-  );
+  const lists = await apiFetch<{
+    data: { id: string; name: string; opt_in: 'single' | 'double' }[];
+  }>('/api/v1/lists', { workspaceId });
 
   return (
     <ImportWizard

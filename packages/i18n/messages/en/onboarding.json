@@ -60,5 +60,20 @@
     "dialogAgain": "You can load the sample data again at any time.",
     "dialogConfirm": "Remove the sample data",
     "dialogCancel": "Keep them"
+  },
+  "backups": {
+    "title": "Backups",
+    "empty": "No backups yet. Set up scheduled backups before you add your first contacts.",
+    "run": "Run a backup",
+    "running": "Backup running",
+    "verify": "Verify",
+    "verifiedOk": "Verified {when}, all good.",
+    "verifiedFailed": "Verification on {when} failed.",
+    "neverVerified": "Not verified yet.",
+    "columnCreated": "Created",
+    "columnSize": "Size",
+    "columnRows": "Contacts in backup",
+    "columnVerified": "Verification",
+    "keyWarning": "The encryption key is not in the backup. Store the whole keyring separately, that is SECRET_KEY and every previous generation from SECRET_KEY_PREVIOUS. Without the old generations the fingerprints of erased addresses stop matching and erased people come back with the next import."
   }
 }

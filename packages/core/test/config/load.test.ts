@@ -146,9 +146,25 @@ describe('loadConfig', () => {
     expect(config.DATABASE_URL_SENDER).toContain('mlain_sender');
   });
 
-  it('odvodí TRACKING_DOMAIN z APP_URL', () => {
+  // Odvozená hodnota je CELÁ adresa se schématem, ne holý host, přestože se
+  // proměnná jmenuje „doména". Dřív to byl `new URL(APP_URL).host`, jenže
+  // takovou hodnotu sender odmítá: skládá z ní odkazy prostým spojením, takže
+  // bez schématu vznikne řetězec, který v e-mailu není odkaz. Kdo TRACKING_DOMAIN
+  // nenastavil ručně, tomu sender vůbec nenastartoval.
+  it('odvodí TRACKING_DOMAIN z APP_URL i se schématem', () => {
     const config = loadConfig(MINIMAL());
-    expect(config.TRACKING_DOMAIN).toBe('mail.example.cz');
+    expect(config.TRACKING_DOMAIN).toBe('https://mail.example.cz');
+  });
+
+  it('odmítne TRACKING_DOMAIN bez schématu, protože ho sender neumí použít', () => {
+    expect(() => loadConfig({ ...MINIMAL(), TRACKING_DOMAIN: 'mail.example.cz' })).toThrow(
+      ConfigError,
+    );
+  });
+
+  it('vlastní TRACKING_DOMAIN se schématem projde', () => {
+    const config = loadConfig({ ...MINIMAL(), TRACKING_DOMAIN: 'https://click.example.cz' });
+    expect(config.TRACKING_DOMAIN).toBe('https://click.example.cz');
   });
 
   it('APP_URL nesmí mít koncové lomítko', () => {

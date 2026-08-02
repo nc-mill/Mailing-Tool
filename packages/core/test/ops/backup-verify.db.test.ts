@@ -32,20 +32,35 @@ afterAll(async () => {
   await pg?.stop();
 });
 
-const verifyDbs = async () =>
-  pg.sql<{ datname: string }>(`SELECT datname FROM pg_database WHERE datname LIKE 'ml_verify_%'`);
+/**
+ * `pg_database` je společná pro CELÝ server, na kterém běží i ostatní
+ * testovací soubory. Nelze proto tvrdit „žádná ml_verify_* databáze
+ * neexistuje", jen „naše volání po sobě žádnou nenechalo", tedy že se
+ * množina proti stavu před během nerozrostla.
+ */
+const verifyDbs = async (): Promise<string[]> =>
+  (
+    await pg.sql<{ datname: string }>(
+      `SELECT datname FROM pg_database WHERE datname LIKE 'ml_verify_%'`,
+    )
+  ).map((r) => r.datname);
+
+async function expectNothingLeftBehind(run: () => Promise<unknown>): Promise<void> {
+  const before = new Set(await verifyDbs());
+  await run().catch(() => undefined);
+  expect((await verifyDbs()).filter((n) => !before.has(n))).toEqual([]);
+}
 
 describe('verifyBackup', () => {
   it('na čerstvé záloze skončí v pořádku (kritérium 10)', async () => {
     const report = await verifyBackup({ backupDir, adminUrl: pg.ownerUrl });
     expect(report.ok).toBe(true);
     expect(report.problems).toEqual([]);
-  });
+  }, 180000);
 
   it('nenechá po sobě databázi ml_verify_* (kritérium 10)', async () => {
-    await verifyBackup({ backupDir, adminUrl: pg.ownerUrl });
-    expect(await verifyDbs()).toEqual([]);
-  });
+    await expectNothingLeftBehind(() => verifyBackup({ backupDir, adminUrl: pg.ownerUrl }));
+  }, 180000);
 
   it('pozná rozdíl v počtu řádků a pojmenuje tabulku', async () => {
     const manifest = await readManifest(backupDir);
@@ -57,7 +72,7 @@ describe('verifyBackup', () => {
     expect(report.ok).toBe(false);
     expect(report.problems.join(' ')).toContain('contacts');
     await writeManifest(backupDir, manifest);
-  });
+  }, 180000);
 
   it('pozná poškozený dump podle kontrolního součtu, aniž zakládá databázi', async () => {
     const manifest = await readManifest(backupDir);
@@ -65,17 +80,19 @@ describe('verifyBackup', () => {
       ...manifest,
       database: { ...manifest.database, sha256: 'f'.repeat(64) },
     });
+    const before = new Set(await verifyDbs());
     const report = await verifyBackup({ backupDir, adminUrl: pg.ownerUrl });
     expect(report.ok).toBe(false);
     expect(report.problems.join(' ')).toMatch(/kontroln|sha256/i);
-    expect(await verifyDbs()).toEqual([]);
+    expect((await verifyDbs()).filter((n) => !before.has(n))).toEqual([]);
     await writeManifest(backupDir, manifest);
-  });
+  }, 180000);
 
   it('uklidí dočasnou databázi i tehdy, když obnova spadne', async () => {
-    await expect(
-      verifyBackup({ backupDir: join(backupDir, 'neexistuje'), adminUrl: pg.ownerUrl }),
-    ).rejects.toThrow();
-    expect(await verifyDbs()).toEqual([]);
-  });
+    await expectNothingLeftBehind(async () => {
+      await expect(
+        verifyBackup({ backupDir: join(backupDir, 'neexistuje'), adminUrl: pg.ownerUrl }),
+      ).rejects.toThrow();
+    });
+  }, 180000);
 });

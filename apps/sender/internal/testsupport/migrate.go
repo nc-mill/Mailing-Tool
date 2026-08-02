@@ -4,6 +4,8 @@ package testsupport
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -30,6 +32,47 @@ func migrationsDir() string {
 	// že migrace P03 neexistují, přestože leží na svém místě.
 	root := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))))
 	return filepath.Join(root, "packages", "db", "migrations")
+}
+
+// templateDatabase vrací jméno šablony odvozené z OBSAHU migrací, ne z pevného
+// řetězce.
+//
+// Kontejner přežívá mezi běhy a migrace se podle rozhodnutí R39 (P03) upravují
+// NA MÍSTĚ, ne novým souborem. Šablona s pevným jménem by tedy po úpravě staré
+// migrace zůstala neaktuální a testy by běžely nad starým schématem, aniž by
+// cokoli spadlo. S otiskem obsahu v názvu vznikne po každé změně migrací
+// šablona nová automaticky, stejný princip jako templateDatabase()
+// v packages/core/src/test-support/pg-harness.ts.
+func templateDatabase() string {
+	dir := migrationsDir()
+	h := sha256.New()
+
+	raw, err := os.ReadFile(filepath.Join(dir, "meta", "_journal.json"))
+	if err != nil {
+		panic(fmt.Sprintf("testsupport: _journal.json nejde přečíst z %s: %v", dir, err))
+	}
+	h.Write(raw)
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		panic(fmt.Sprintf("testsupport: migrace nejdou vypsat z %s: %v", dir, err))
+	}
+	var names []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".sql") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		h.Write([]byte(name))
+		body, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			panic(fmt.Sprintf("testsupport: migrace %s nejde přečíst: %v", name, err))
+		}
+		h.Write(body)
+	}
+	return templateDBPrefix + hex.EncodeToString(h.Sum(nil))[:12]
 }
 
 type journalEntry struct {

@@ -45,7 +45,11 @@ export function BarChart({
       {...(formatValue ? { formatValue } : {})}
     >
       <ResponsiveContainer width="100%" height={280}>
-        <RechartsBar data={data}>
+        {/* Viz stejná poznámka u LineChart: rám graf schovává čtečce
+            (`aria-hidden`) a skutečnou alternativu nese tabulka, takže
+            Rechartsí vlastní fokusovatelná klávesová vrstva by tu porušila
+            `aria-hidden-focus`. */}
+        <RechartsBar data={data} accessibilityLayer={false}>
           <CartesianGrid stroke="var(--color-border)" />
           <XAxis dataKey="x" stroke="var(--color-text-muted)" />
           <YAxis stroke="var(--color-text-muted)" />

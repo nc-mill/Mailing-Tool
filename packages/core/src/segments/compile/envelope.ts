@@ -1,3 +1,4 @@
+import { suppressedExistsSql } from '../../contacts/suppression/predicate';
 import type { ParamBag } from './params';
 import { assertAlias } from './columns';
 
@@ -23,10 +24,9 @@ export const ENVELOPE_CONDITIONS = [
  * countSegment i listSegmentContacts bez rozdílu, takže náhled segmentu a publikum
  * kampaně vidí tutéž množinu kontaktů.
  *
- * Otisková větev porovnává proti POLI `email_fingerprints`, tedy proti otiskům pod
- * všemi známými pokoleními klíče. Suppression řádek nese jedno pokolení a přepočítat
- * mu ho nejde; kontakt nese všechna, protože jeho plaintext máme. Bez toho by se
- * adresa zablokovaná před rotací SECRET_KEY vrátila prvním dalším importem.
+ * Podmínku nad `suppressions` obálka NEPÍŠE sama: skládá ji `suppressedExistsSql`
+ * z `contacts/suppression/predicate.ts`, které je jediné místo, kde ten predikát
+ * existuje. Důvod i všechny tři povinné podmínky jsou popsané tam.
  *
  * Anonymizovaný kontakt se vylučuje DVĚMA podmínkami, protože jeden příznak
  * nestačí. Výmaz podle článku 17 řádek NEMAŽE: přepíše `email`, vyprázdní
@@ -46,12 +46,7 @@ export function buildEnvelope(alias: string, audienceSql: string, bag: ParamBag)
     `   AND ${alias}.anonymized_at IS NULL`,
     `   AND ${alias}.status <> 'deleted'`,
     `   AND ${alias}.processing_restricted = false`,
-    `   AND NOT EXISTS (`,
-    `         SELECT 1 FROM suppressions su`,
-    `          WHERE su.workspace_id = ${alias}.workspace_id`,
-    `            AND su.removed_at IS NULL`,
-    `            AND (su.email = ${alias}.email`,
-    `                 OR su.fingerprint = ANY(${alias}.email_fingerprints)))`,
+    `   AND NOT ${suppressedExistsSql(alias)}`,
     `   AND (${audienceSql})`,
   ].join('\n');
 }

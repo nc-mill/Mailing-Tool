@@ -168,6 +168,25 @@ export function DataTable<Row>({
     }
   }
 
+  /**
+   * Otevření řádku myší. Doplněno dodatečně, protože tabulka reagovala VÝHRADNĚ
+   * na Enter a na klik neměla handler vůbec. Klávesová cesta byla hotová
+   * a odladěná, takže to nikoho nenapadlo zkusit myší, jenže drtivá většina
+   * uživatelů seznam otevírá kliknutím. Týkalo se to všech seznamů v aplikaci,
+   * protože tuhle tabulku používají všechny.
+   *
+   * Kliknutí na ovládací prvky UVNITŘ řádku se ignoruje. Bez toho by zaškrtnutí
+   * políčka nebo stisk tlačítka v řádku zároveň otevřely detail, takže by výběr
+   * několika položek nešel udělat vůbec.
+   */
+  function onRowClick(event: React.MouseEvent<HTMLDivElement>, index: number, row: Row) {
+    if (!onRowActivate) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('button, a, input, label, [role="checkbox"], [role="menuitem"]')) return;
+    setFocusedIndex(index);
+    onRowActivate(row);
+  }
+
   const sortDirection = order?.value.endsWith('.desc') ? 'desc' : 'asc';
   const sortColumn = order?.value.split('.')[0];
 
@@ -321,6 +340,7 @@ export function DataTable<Row>({
                 aria-selected={selection.isSelected(id)}
                 tabIndex={index === focusedIndex ? 0 : -1}
                 onKeyDown={(event) => onKeyDown(event, index, row)}
+                onClick={(event) => onRowClick(event, index, row)}
                 onFocus={() => setFocusedIndex(index)}
                 style={
                   virtualized

@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { suppressedExistsSql } from '../../suppression/predicate';
 
 /**
  * Strukturální pojistka nad dvěma pravidly, na kterých tahle doména stojí:
@@ -23,7 +24,14 @@ const repoRoot = join(here, '..', '..', '..', '..', '..', '..');
 const sourceFile = join(here, '..', '..', 'repo', 'suppressions.ts');
 const source = readFileSync(sourceFile, 'utf8');
 
-const SKIPPED_DIRS = new Set(['node_modules', 'dist', '.next', '.turbo', 'fixtures']);
+// `e2e` je adresář se zlatými cestami v Playwrightu. Testy tam připravují výchozí
+// stav přímým zápisem do databáze, takže je to testovací kód, ne produkční,
+// jen se soubory jmenují `.spec.ts` místo `.test.ts`.
+const SKIPPED_DIRS = new Set(['node_modules', 'dist', '.next', '.turbo', 'fixtures', 'e2e']);
+
+function isTestFile(name: string): boolean {
+  return /\.(test|spec)\.tsx?$/.test(name);
+}
 
 function collectTsFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -37,7 +45,7 @@ function collectTsFiles(dir: string, out: string[] = []): string[] {
     if (!entry.name.endsWith('.ts') && !entry.name.endsWith('.tsx')) continue;
     // Testy a jejich pomůcky smějí do tabulky sáhnout přímo: připravují výchozí stav
     // a kontrolují výsledek, tedy dělají přesně to, co produkční kód dělat nesmí.
-    if (entry.name.endsWith('.test.ts') || entry.name.endsWith('.test.tsx')) continue;
+    if (isTestFile(entry.name)) continue;
     const parts = full.split(sep);
     if (parts.includes('test') || parts.includes('tests')) continue;
     out.push(full);
@@ -46,14 +54,27 @@ function collectTsFiles(dir: string, out: string[] = []): string[] {
 }
 
 /**
- * DVĚ pojmenované výjimky z pravidla "kontrola se píše jen v repo/suppressions.ts".
- * Obě jsou vypsané tady, ne schované v kódu, a obě jsou podmíněné testy níž.
+ * Věta o dotazu není dotaz. Bez tohohle kroku hlásil test jako porušení
+ * `ops/db.ts`, kde je `SELECT DISTINCT fingerprint_key_id FROM suppressions`
+ * uvnitř komentáře, který VYSVĚTLUJE, proč se ten dotaz musí spustit pod
+ * migrátorskou rolí. Stejná třída falešného poplachu, jakou už jednou řešil
+ * filtr `isCode` v `src/ai/wiring.test.ts`.
+ */
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+}
+
+/**
+ * POJMENOVANÉ VÝJIMKY z pravidla "kontrola se píše jen v repo/suppressions.ts".
+ * Všechny jsou vypsané tady, ne schované v kódu, a každá je podmíněná testem.
  *
- * 1. `listMailableContacts` staví publikum kampaně, tedy množinu o statisících řádcích.
- *    Ta se z principu nedá poskládat voláním `checkSuppression` na řádek, protože by to
- *    bylo statisíce kol do databáze; podmínka musí být součástí jednoho množinového
- *    dotazu. Test proto po ní vyžaduje všechny tři povinné podmínky. Kdyby kterákoliv
- *    zmizela, spadne tenhle soubor, ne až doručený e-mail vymazanému člověku.
+ * 1. `contacts/suppression/predicate.ts` je MNOŽINOVÁ podoba téže kontroly.
+ *    Publikum kampaně má statisíce řádků a nedá se poskládat voláním
+ *    `checkSuppression` na řádek, protože by to bylo statisíce kol do databáze;
+ *    podmínka musí být součástí jednoho dotazu. Dřív si ji každý volající psal
+ *    sám a byly z toho ČTYŘI kopie (materializace publika, obálka segmentu,
+ *    rozpad publika po branách, operátor `is_suppressed`). Teď je jedna a test
+ *    níž po ní vyžaduje všechny tři povinné podmínky.
  *
  * 2. Detail kontaktu (`contacts-query.ts`) si k řádku dotahuje důvod blokace, aby ho
  *    obrazovka mohla ukázat. Je to ČTENÍ PRO ZOBRAZENÍ, ne brána: o odeslání podle něj
@@ -61,11 +82,41 @@ function collectTsFiles(dir: string, out: string[] = []): string[] {
  *    článku 17 už kontakt s tou adresou neexistuje a není co zobrazovat; podmínku
  *    `removed_at IS NULL` ale mít musí, jinak by detail ukazoval dávno sundanou blokaci.
  *
+ * 3. `campaigns/repo/outbox.ts` (`reconcileSuppressed`) je ZÁCHYTNÁ CESTA nad frontou
+ *    zpráv, ne nad kontakty: hledá `messages` ve stavu `pending`, kterým mezitím
+ *    přibyla blokace, protože okamžitá cesta selhala (pád workeru, přímý zápis do
+ *    databáze). Predikát nad kontaktem se na ni použít nedá, protože porovnává adresu
+ *    ZPRÁVY, kterou kontakt už nemusí mít. Test níž po ní vyžaduje obě větve.
+ *
+ * 4. `ops/doctor/checks-keyring.ts` se neptá, jestli je adresa zablokovaná. Dělá
+ *    inventuru pokolení šifrovacího klíče přes celou instalaci
+ *    (`SELECT DISTINCT fingerprint_key_id`, `count(*)`) a běží pod migrátorskou rolí,
+ *    tedy mimo RLS. Je to diagnostika, ne brána, a rozhodnutí o odeslání z ní
+ *    nevychází.
+ *
  * Nový soubor s vlastním dotazem povolený není a testy `jediné povolené místo` ho
  * zachytí. Zápis do tabulky výjimku nemá vůbec.
  */
-const AUDIENCE_QUERY_FILE = join(here, '..', '..', 'repo', 'contacts.ts');
+const SET_QUERY_FILE = join(here, '..', '..', 'suppression', 'predicate.ts');
 const DETAIL_QUERY_FILE = join(here, '..', '..', 'repo', 'contacts-query.ts');
+const OUTBOX_RECONCILE_FILE = join(
+  repoRoot,
+  'packages',
+  'core',
+  'src',
+  'campaigns',
+  'repo',
+  'outbox.ts',
+);
+const KEYRING_DOCTOR_FILE = join(
+  repoRoot,
+  'packages',
+  'core',
+  'src',
+  'ops',
+  'doctor',
+  'checks-keyring.ts',
+);
 
 function productionFilesMatching(pattern: RegExp, allow: readonly string[] = []): string[] {
   const roots = [join(repoRoot, 'packages'), join(repoRoot, 'apps')];
@@ -74,7 +125,9 @@ function productionFilesMatching(pattern: RegExp, allow: readonly string[] = [])
   for (const root of roots) {
     for (const file of collectTsFiles(root)) {
       if (exempt.has(file)) continue;
-      if (pattern.test(readFileSync(file, 'utf8'))) offenders.push(relative(repoRoot, file));
+      if (pattern.test(stripComments(readFileSync(file, 'utf8')))) {
+        offenders.push(relative(repoRoot, file));
+      }
     }
   }
   return offenders;
@@ -103,9 +156,14 @@ describe('tvar kontrolního dotazu', () => {
 });
 
 describe('jediné povolené místo', () => {
-  it('kontrola se nepíše nikde jinde než v repo/suppressions.ts a ve dvou pojmenovaných výjimkách', () => {
+  it('kontrola se nepíše nikde jinde než v repo/suppressions.ts a v pojmenovaných výjimkách', () => {
     expect(
-      productionFilesMatching(/FROM\s+suppressions/i, [AUDIENCE_QUERY_FILE, DETAIL_QUERY_FILE]),
+      productionFilesMatching(/FROM\s+suppressions/i, [
+        SET_QUERY_FILE,
+        DETAIL_QUERY_FILE,
+        OUTBOX_RECONCILE_FILE,
+        KEYRING_DOCTOR_FILE,
+      ]),
     ).toEqual([]);
   });
 
@@ -119,10 +177,9 @@ describe('jediné povolené místo', () => {
     expect(detail).not.toMatch(/UPDATE\s+suppressions/i);
   });
 
-  it('výjimka pro materializaci publika nese všechny tři povinné podmínky', () => {
-    const audience = readFileSync(AUDIENCE_QUERY_FILE, 'utf8');
-    const query = audience.slice(audience.indexOf('FROM suppressions'));
-    const branch = query.slice(0, query.indexOf(')'));
+  it('množinová podoba kontroly nese všechny tři povinné podmínky', () => {
+    // Měří se VÝSTUP funkce, ne text souboru: co se opravdu vloží do dotazu.
+    const branch = suppressedExistsSql('c');
 
     // 1. Odebraná blokace se ignoruje.
     expect(branch).toMatch(/removed_at\s+IS\s+NULL/i);
@@ -132,6 +189,34 @@ describe('jediné povolené místo', () => {
     //    pokolením, takže porovnání proti němu strop nemá. Kdyby tam byl jednotlivý
     //    otisk pod aktuálním klíčem, první rotace by ochranu tiše odřízla.
     expect(branch).toContain('email_fingerprints');
+    // Izolace projektu. Bez ní by predikát viděl blokace cizího projektu.
+    expect(branch).toContain('su.workspace_id = c.workspace_id');
+    // Alias se skládá do SQL textem, takže se ověřuje.
+    expect(() => suppressedExistsSql('c; DROP TABLE contacts --')).toThrow();
+  });
+
+  it('množinovou podobu opravdu používají všichni čtyři volající', () => {
+    // Kdyby některý volající přestal sdílenou funkci volat a napsal si predikát
+    // znovu, test „jediné povolené místo" ho sice chytí, ale až podle textu SQL.
+    // Tenhle test drží viditelné, KDO na ní stojí.
+    const callers = [
+      join(here, '..', '..', 'repo', 'contacts.ts'),
+      join(repoRoot, 'packages', 'core', 'src', 'segments', 'audience.ts'),
+      join(repoRoot, 'packages', 'core', 'src', 'segments', 'compile', 'envelope.ts'),
+      join(repoRoot, 'packages', 'core', 'src', 'segments', 'compile', 'tag-list-consent.ts'),
+    ];
+    for (const caller of callers) {
+      expect(readFileSync(caller, 'utf8'), caller).toContain('suppressedExistsSql');
+    }
+  });
+
+  it('výjimka pro záchytnou cestu outboxu nese obě větve', () => {
+    const outbox = stripComments(readFileSync(OUTBOX_RECONCILE_FILE, 'utf8'));
+    const reconcile = outbox.slice(outbox.indexOf('export async function reconcileSuppressed'));
+    expect(reconcile).toMatch(/removed_at\s+IS\s+NULL/i);
+    // Větev přes otisk kontaktu, tedy pokrytí adres vymazaných podle článku 17.
+    expect(reconcile).toMatch(/fingerprint\s*=\s*ANY/i);
+    expect(reconcile).toContain('email_fingerprints');
   });
 
   it('zablokovat adresu jde jen přes addSuppression', () => {

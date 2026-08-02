@@ -91,11 +91,22 @@ export function schemaCheck(options: SchemaCheckOptions): Check {
         detail: `databáze má schema_version ${actual}, image očekává ${options.expectedVersion}`,
       };
     } catch (error) {
-      // ROZHODNUTÍ D3: tabulku zakládá až P03. Do té doby je kontrola přeskočená,
-      // ne selhaná, jinak by /api/health/ready nikdy nevrátil 200 a akceptační
-      // kritérium 1 by nešlo splnit dřív než po P03.
+      // ROZHODNUTÍ D3 tu původně vracelo 'skip', protože tabulku zakládá až P03
+      // a do té doby by /api/health/ready nikdy nevrátil 200. P03 je dodané,
+      // migrace existují, a ta tolerance se z pomůcky stala past: kontejner
+      // s PRÁZDNÝM schématem hlásil 200 a tvářil se zdravě, zatímco worker
+      // vedle něj padal na „permission denied for database mlain". Naměřeno
+      // při stavbě zlaté cesty. Chybějící system_settings ve chvíli, kdy image
+      // migrace zná (expectedVersion > 0), znamená nezmigrovanou databázi,
+      // a to je selhání, ne stav k přeskočení.
       if ((error as { code?: string }).code === UNDEFINED_TABLE) {
-        return { name: 'schema', status: 'skip', detail: 'system_settings zatím neexistuje' };
+        return {
+          name: 'schema',
+          status: 'fail',
+          detail:
+            'system_settings neexistuje, databáze není zmigrovaná; spusťte "mlain migrate" ' +
+            '(v kontejneru to dělá entrypoint při MIGRATE_ON_START=true)',
+        };
       }
       return { name: 'schema', status: 'fail', detail: (error as Error).message };
     }

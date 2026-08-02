@@ -38,7 +38,11 @@ describe('composeTitle', () => {
   });
 
   it('u neznámého typu předá jeho název jako slot', () => {
-    const title = composeTitle(translate, row('product_viewed', { name: 'product_viewed' }), 'male');
+    const title = composeTitle(
+      translate,
+      row('product_viewed', { name: 'product_viewed' }),
+      'male',
+    );
     expect(title).toContain('timeline.item.generic');
     expect(title).toContain('"name":"product_viewed"');
   });

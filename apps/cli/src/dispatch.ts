@@ -2,6 +2,15 @@ import { EXIT_OK, EXIT_UNAVAILABLE, EXIT_USAGE } from './exit-codes';
 import { COMMANDS, findCommand, suggest } from './registry';
 import { runConfigCheck } from './commands/config-check';
 import { runHealthcheck } from './commands/healthcheck';
+import { runMigrateCommand } from './commands/migrate';
+import { runBackupCommand } from './commands/backup';
+import { runDoctorCommand } from './commands/doctor';
+import { runGenkeyCommand } from './commands/genkey';
+import { runRebuildEngagementCommand } from './commands/rebuild-engagement';
+import { runResetPasswordCommand } from './commands/reset-password';
+import { runRestoreCommand } from './commands/restore';
+import { runRotateCredentialsCommand } from './commands/rotate-credentials';
+import { runUpgradeCommand } from './commands/upgrade';
 
 export interface CliStreams {
   stdout(line: string): void;
@@ -72,6 +81,35 @@ export async function dispatch(argv: readonly string[], streams: CliStreams): Pr
     }
     case 'healthcheck': {
       return runHealthcheck(streams, env);
+    }
+    // Osm provozních příkazů z P16. Rozhraní I→P01.1: tělo příkazu vlastní
+    // plán, který ho dodává, tahle větev je jen zapojení do dispatcheru.
+    case 'migrate': {
+      return runMigrateCommand(streams, rest, env);
+    }
+    case 'backup': {
+      return runBackupCommand(streams, rest, env);
+    }
+    case 'restore': {
+      return runRestoreCommand(streams, rest, env);
+    }
+    case 'doctor': {
+      return runDoctorCommand(streams, rest, env);
+    }
+    case 'upgrade': {
+      return runUpgradeCommand(streams, rest, env);
+    }
+    case 'rotate-credentials': {
+      return runRotateCredentialsCommand(streams, rest, env);
+    }
+    case 'genkey': {
+      return runGenkeyCommand(streams, rest);
+    }
+    case 'reset-password': {
+      return runResetPasswordCommand(streams, rest, env);
+    }
+    case 'rebuild-engagement': {
+      return runRebuildEngagementCommand(streams, rest, env);
     }
     default: {
       streams.stderr(

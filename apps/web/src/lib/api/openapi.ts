@@ -1,6 +1,3 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import { registerSetupRoutes } from '@mlain/core/identity/api/setup.routes';
 import { registerAuthRoutes } from '@mlain/core/identity/api/auth.routes';
@@ -14,45 +11,56 @@ import { registerJobRoutes } from '@mlain/core/platform/api/jobs.routes';
 import { registerContactsRoutes } from '@mlain/core/contacts/api';
 import { registerOnboardingRoutes } from '@mlain/core/onboarding/api';
 import { registerDemoDataRoutes } from '@mlain/core/demo/api';
+import { registerBackupRoutes } from '@mlain/core/ops/api';
 import { registerSegmentApiRoutes } from '@mlain/core/segments/api';
+import { registerCampaignApiRoutes } from '@mlain/core/campaigns/api';
+import { registerProviderApiRoutes } from '@mlain/core/providers/api';
+import { registerAiApiRoutes } from '@mlain/core/ai/api';
 import { registerImportApiRoutes } from '@mlain/core/contacts/import/api';
 import { registerExportApiRoutes } from '@mlain/core/contacts/export/api';
+import { registerReportsRoutes } from '@mlain/core/reports/api';
 import type { ApiEnv } from '@mlain/core/identity/api/schemas';
 import { createApiApp, CONTENT_TYPE_EXEMPT_PREFIXES } from './app';
 import { renderDocsHtml } from './docs';
 import { buildPage, parsePaginationQuery } from './pagination';
 
 /**
- * ODCHYLKA OD PLÁNU: cesta ke commitnutému dokumentu se hledá, nepočítá.
+ * Dokument se IMPORTUJE, nehledá se na disku, a je to oprava dvou vad naráz.
  *
- * Plán měl jediný výraz `new URL('../../../../packages/contracts/openapi.json',
- * import.meta.url)`. Ten je špatně o jednu úroveň (z `apps/web/src/lib/api`
- * vede na `apps/packages/...`) a navíc stojí na tom, že `import.meta.url`
- * ukazuje do zdrojového stromu. To v bundlu Next.js neplatí, viz stejný nález
- * u `EXPECTED_SCHEMA_VERSION` v `src/runtime.ts`. Zkoušejí se proto tři
- * kandidáti a bere se první existující; když neexistuje ani jeden, chyba to
- * řekne nahlas i s tím, co se hledalo.
+ * Dřív se zkoušely tři kandidátské cesty a brala se první existující. Vzniklo
+ * to jako oprava plánu, který měl jediný a špatně spočítaný výraz, a fungovalo
+ * to při vývoji. V produkci ale ne, ze dvou nezávislých důvodů:
+ *
+ * 1. `packages/contracts` se do image VŮBEC NEKOPÍRUJE. Runtime vrstva bere
+ *    `.next/standalone`, `.next/static`, `public`, `worker/dist`, `cli/dist`
+ *    a migrace. Žádný ze tří kandidátů by tedy neexistoval a `/api/v1/docs`
+ *    i `/api/v1/openapi.json` by v běžící instalaci padaly. Že to nikdo
+ *    nezjistil dřív, je tím, že se ty dvě trasy nikdy neprošly v kontejneru.
+ *
+ * 2. Hledání souboru za běhu shodilo analýzu závislostí Next.js, která nemá
+ *    jak vědět, který kandidát platí. Stavba to hlásila jako „Encountered
+ *    unexpected file in NFT list" se stopou přes tenhle soubor a vystopovala
+ *    kvůli tomu celý projekt, čímž zbytečně nafoukla image.
+ *
+ * Statický import obojí ruší: dokument je součástí svazku, takže existuje vždy
+ * a nikde se nehledá. Zůstává vlastnost, kvůli které se to čtení ze souboru
+ * zavádělo, tedy že se servíruje TENTÝŽ commitnutý dokument jako v repozitáři,
+ * ne dokument generovaný za běhu.
+ *
+ * CESTA JE RELATIVNÍ, NE PŘES JMÉNO BALÍČKU, a je to vynucené, ne z pohodlí.
+ * Turbopack podcestu `@mlain/contracts/openapi.json` nerozřeší ani tehdy, když
+ * ji `exports` mapa vystavuje. Ověřeno spuštěním: s klíčem v mapě, po `pnpm
+ * install` i po restartu serveru vracelo CELÉ `/api/v1` pětistovku s hláškou
+ * `Module not found: Can't resolve '@mlain/contracts/openapi.json'`. Nezáleželo
+ * na tom, jestli je u importu atribut `with { type: 'json' }`.
+ *
+ * Klíč v `exports` mapě contracts přesto zůstává: platí pro Node i pro vitest
+ * a je správně. Jen se na něj tady nedá spolehnout.
+ *
+ * `turbopack.root` v `next.config.ts` ukazuje na kořen workspace, takže tahle
+ * cesta drží i v produkčním sestavení.
  */
-const OPENAPI_CANDIDATES = [
-  fileURLToPath(new URL('../../../../../packages/contracts/openapi.json', import.meta.url)),
-  resolve(process.cwd(), '../../packages/contracts/openapi.json'),
-  resolve(process.cwd(), 'packages/contracts/openapi.json'),
-];
-
-let openapiPath: string | null = null;
-
-export function openapiFilePath(): string {
-  if (openapiPath) return openapiPath;
-  const found = OPENAPI_CANDIDATES.find((candidate) => existsSync(candidate));
-  if (!found) {
-    throw new Error(
-      `packages/contracts/openapi.json nenalezen. Hledáno: ${OPENAPI_CANDIDATES.join(', ')}. ` +
-        'Spusť pnpm --filter @mlain/web generate:openapi.',
-    );
-  }
-  openapiPath = found;
-  return found;
-}
+import openapiDocument from '../../../../../packages/contracts/openapi.json';
 
 /**
  * Jediné místo, kde se skládá celá aplikace. Používá ho runtime (route.ts),
@@ -82,12 +90,43 @@ export function buildApp(): OpenAPIHono<ApiEnv> {
   // leží v packages/core, mount je tady.
   registerOnboardingRoutes(app);
   registerDemoDataRoutes(app);
+  // Zálohy: registruje se ČTENÍ SEZNAMU a SPUŠTĚNÍ, nikdy ne ověřování.
+  //
+  // Tenhle řádek tu třikrát byl a třikrát shodil CELOU aplikaci na 500, ne jen
+  // zálohy. `ops/api/backups.routes.ts` tehdy táhl přes `backup-verify.ts`
+  // migrační runner, a ten si skládá cestu k adresáři s migracemi výrazem,
+  // který bundler neumí přeložit. Nepomohl ani dynamický import, ani vytažení
+  // výrazu do funkce; bundler prochází i dynamické importy. Hledalo se to
+  // mizerně, protože obrazovky spadly agentovi, který na zálohy vůbec nesáhl.
+  // Viz nálezy I19 a I33.
+  //
+  // Registrace je bezpečná teprve od chvíle, kdy `backups.routes.ts` endpoint
+  // pro ověření zálohy NEMÁ a `backup-verify.ts` tedy neimportuje ani nepřímo.
+  // Je to zapsané i v tom souboru: ověřování zálohy zakládá dočasnou databázi,
+  // nahraje celý dump a přehraje migrace, což u reálné instalace trvá minuty.
+  // Držet na tom otevřený HTTP požadavek je špatný tvar bez ohledu na bundlery,
+  // takže ověřování patří do `mlain backup verify` a do týdenní úlohy.
+  //
+  // Kdo sem bude přidávat další cestu k zálohám: napřed se ujisti, že nová
+  // závislost nevede na `backup-verify.ts` ani na `@mlain/db/migrate`. Selže
+  // to celou aplikací, ne tou jednou cestou.
+  registerBackupRoutes(app);
   // Doména segmentů (P11). Stejný tvar jako u kontaktů: router si skládá
   // `packages/core/src/segments/api/index.ts`, tady se jen mountuje pod /api/v1.
   registerSegmentApiRoutes(app);
+  // Doména kampaní a nastavení odesílání (P13). Týž tvar jako u kontaktů a segmentů:
+  // definice cest leží v packages/core, mount je tady.
+  registerCampaignApiRoutes(app);
+  registerProviderApiRoutes(app);
   // Import a export kontaktů (P11).
   registerImportApiRoutes(app);
   registerExportApiRoutes(app);
+  // Doména AI (P15). Týž tvar jako u kontaktů a segmentů: definice cest
+  // i handlery leží v `packages/core/src/ai/api/index.ts`, tady jen mount.
+  registerAiApiRoutes(app);
+  // Doména reportů (P14). Pět čtecích cest: souhrn kampaně, průběh v čase,
+  // odkazy, příjemci, živý proud a časová osa kontaktu s přehledem projektu.
+  registerReportsRoutes(app);
   // Nahrání souboru je JEDINÉ místo v /api/v1, které neposílá application/json:
   // tělo je surový proud (nebo multipart), aby server nikdy nedržel 200 MB
   // v paměti. Bez téhle výjimky by výchozí kontrola typu vrátila 415.
@@ -96,13 +135,19 @@ export function buildApp(): OpenAPIHono<ApiEnv> {
   // 4.7: endpoint servíruje TEN SAMÝ commitnutý soubor, ne dokument generovaný
   // za běhu, aby se produkce chovala stejně jako repozitář.
   app.get('/api/v1/openapi.json', () => {
-    const body = readFileSync(openapiFilePath(), 'utf8');
-    return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
+    // Serializace musí dát BAJT PO BAJTU tentýž obsah jako soubor
+    // v repozitáři, protože to hlídá test kontraktu. Odsazení dvěma mezerami
+    // a koncový nový řádek odpovídají tomu, jak dokument zapisuje generátor.
+    // Prosté `JSON.stringify(doc)` shodu rozbije a projeví se to až tím testem,
+    // ne ničím v prohlížeči.
+    return new Response(`${JSON.stringify(openapiDocument, null, 2)}\n`, {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
   });
 
   app.get('/api/v1/docs', (c) => {
-    const document = JSON.parse(readFileSync(openapiFilePath(), 'utf8')) as OpenApiDocument;
-    return c.html(renderDocsHtml(document));
+    return c.html(renderDocsHtml(openapiDocument as OpenApiDocument));
   });
 
   return app;
@@ -145,6 +190,8 @@ export function buildOpenApiDocument(app: OpenAPIHono<ApiEnv>): OpenApiDocument 
       { name: 'Retention' },
       { name: 'Vocative review' },
       { name: 'Name overrides' },
+      { name: 'Campaigns' },
+      { name: 'Sending' },
     ],
   }) as OpenApiDocument;
 }

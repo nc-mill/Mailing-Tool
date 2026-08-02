@@ -131,7 +131,18 @@ jobs:
           --health-cmd "pg_isready -U mlain_migrator -d mlain_test"
           --health-interval 10s --health-timeout 5s --health-retries 5
     env:
-      DATABASE_URL_SENDER: postgres://mlain_migrator:mlain@localhost:5432/mlain_test
+      # DATABASE_URL_MIGRATOR, ne DATABASE_URL_SENDER. testsupport.New(t) čte
+      # výhradně DATABASE_URL_MIGRATOR a bez ní hlasitě spadne (t.Fatal), takže
+      # tenhle job byl s DATABASE_URL_SENDER červený hned na první integrační
+      # test. Je to přesně regrese R8 z plánu P09 (kapitola 31.2): sender si
+      # připojení pod rolí mlain_sender ODVOZUJE sám z jediné proměnné, aby
+      # testy práv a RLS neběžely omylem pod migrátorem, který RLS obchází.
+      #
+      # go test -tags=integration ./... běží s výchozí paralelností napříč
+      # balíčky BEZ `-p 1` záměrně: harness (internal/testsupport/pg.go) dává
+      # každému testu vlastní databázi klonovanou ze šablony, takže souběžné
+      # balíčky si už nešlapou na sdílené schéma. Podrobnosti u bootstrapLockID.
+      DATABASE_URL_MIGRATOR: postgres://mlain_migrator:mlain@localhost:5432/mlain_test
     defaults:
       run:
         working-directory: apps/sender
@@ -395,6 +406,21 @@ jobs:
           docker compose logs app | grep -q "graceful shutdown"
       - name: Playwright zlaté cesty
         run: pnpm turbo run test:e2e
+      # Log kontejneru a přehled Playwrightu se archivují VŽDY, i po zeleném
+      # běhu. Pád zlaté cesty se jinak v CI vyšetřuje jen z toho, co bylo vidět
+      # v prohlížeči, a příčina přitom bývá v logu aplikace. Global teardown
+      # ukládá `compose-logs.txt` do `playwright-report-golden/`, takže tenhle
+      # krok jen vynese, co už na disku je.
+      - name: archivovat log kontejneru a přehled zlaté cesty
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-golden
+          path: |
+            apps/web/playwright-report-golden/
+            apps/web/test-results/
+          retention-days: 7
+          if-no-files-found: warn
 
   # ------------------------------------------ 17. security-audit, NEBLOKUJÍCÍ --
   # Blokující by znamenalo, že libovolné nové CVE ve třetí straně zastaví

@@ -81,7 +81,19 @@ export function runOperation(store: EditorStore, operation: OperationId): Operat
       return { announce: { key: 'a11y.blockDuplicated', params: { block: label } }, undo: true };
     }
     case 'delete': {
+      /**
+       * Výběr se po smazání přesune na souseda, ne na nic.
+       *
+       * `removeBlock` sám nastaví `selectedId` na null. Kdyby to tak zůstalo,
+       * plátno by ztratilo fokus, spadl by na `body` a další úhoz už by se
+       * k editoru nedostal: **`Ctrl+Z` by po smazání nešlo z klávesnice vůbec**.
+       * Ověřeno v prohlížeči, ne odvozeno.
+       */
+      const neighbour = flat[index + 1] ?? flat[index - 1];
       store.removeBlock(id);
+      if (neighbour && findBlock(store.getState().document, neighbour.block.id)) {
+        store.select(neighbour.block.id);
+      }
       return { announce: { key: 'a11y.blockDeleted', params: { block: label } }, undo: true };
     }
     case 'insert-after': {

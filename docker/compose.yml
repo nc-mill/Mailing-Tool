@@ -17,6 +17,26 @@ services:
       DATABASE_URL_MIGRATOR: ${DATABASE_URL_MIGRATOR:-postgres://mlain_migrator:${POSTGRES_PASSWORD:-mlain}@postgres:5432/mlain}
       DATABASE_URL_SENDER: ${DATABASE_URL_SENDER:-postgres://mlain_sender:mlain@postgres:5432/mlain}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY je povinná, vygenerujte ji příkazem mlain genkey}
+      # Doména pro odkazy /t/o/, /t/c/ a /u/, které staví SENDER.
+      #
+      # Konfigurace v Node si ji umí odvodit z APP_URL, jenže sender je binárka
+      # v Go a APP_URL nedostává (nález K7 plánu P09). Bez téhle proměnné se
+      # tedy sender ve výchozí instalaci vůbec nespustí:
+      #
+      #   konfigurace je neplatná:
+      #     - TRACKING_DOMAIN: chybí. Sender z ní staví odkazy /t/o/, /t/c/ a /u/.
+      #
+      # Kontejner pak skončí v restartové smyčce, přestože web i worker běží.
+      #
+      # Když se nenastaví, odvodí ji `docker/entrypoint.sh` z APP_URL. Compose
+      # to udělat nemůže: umí jen `${VAR:-výchozí}`, ne úpravu řetězce, takže
+      # `${TRACKING_DOMAIN:-${APP_URL#*://}}` skončí na
+      # „invalid interpolation format". Odvození proto patří do entrypointu,
+      # kde je skutečný shell.
+      #
+      # Nastavte ji výslovně, když máte odkazy na jiné doméně, typicky přes
+      # CNAME kvůli doručitelnosti.
+      TRACKING_DOMAIN: ${TRACKING_DOMAIN:-}
       DEFAULT_LOCALE: ${DEFAULT_LOCALE:-cs}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT:-3001}

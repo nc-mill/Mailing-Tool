@@ -55,6 +55,29 @@ export function loadOpsKeyring(env: KeyringEnv): OpsKeyring {
   };
 }
 
+/**
+ * Převede klíče z `loadConfig()` zpátky na tvar, kterému rozumí kontrakt P02.
+ *
+ * ODCHYLKA OD PLÁNU, VYNUCENÁ KONFIGURACÍ P01. Plán všude předával
+ * `config.SECRET_KEY` a `config.SECRET_KEY_PREVIOUS` rovnou do
+ * `loadOpsKeyring`, jenže zod schéma P01 je **nevrací jako řetězce**:
+ * `SECRET_KEY` je `{ keyId, key, raw }` a `SECRET_KEY_PREVIOUS` je pole
+ * takových objektů. Ověřeno spuštěním: bez tohohle převodu spadnou všechny
+ * čtyři kontroly keyringu v `mlain doctor` na `value.trim is not a function`
+ * a vypíšou se jako čtyři nicneříkající `check_failed`. Diagnostika, která
+ * nejtišší poruchu produktu ohlásí jako „kontrolu se nepodařilo dokončit",
+ * je horší než žádná, protože vypadá jako provozní drobnost.
+ */
+export function keyringEnvFromConfig(config: {
+  SECRET_KEY: { raw: string };
+  SECRET_KEY_PREVIOUS: readonly { raw: string }[];
+}): KeyringEnv {
+  return {
+    secretKey: config.SECRET_KEY.raw,
+    secretKeyPrevious: config.SECRET_KEY_PREVIOUS.map((g) => g.raw).join(','),
+  };
+}
+
 export function knownKeyIds(keyring: OpsKeyring): number[] {
   return [...keyring.fingerprints.keys()].sort((a, b) => a - b);
 }

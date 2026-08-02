@@ -69,7 +69,18 @@ function present(row: SegmentRow): z.infer<typeof SegmentResponse> {
  * Bez ní by se do kompilátoru dostal strom, který schéma nikdy neviděl.
  */
 function parseDefinition(value: unknown): SegmentAst {
-  return SegmentAstV1.parse(value);
+  const parsed = SegmentAstV1.safeParse(value);
+  if (parsed.success) return parsed.data;
+  // Vadný strom je chyba VOLAJÍCÍHO, tedy 422 s cestou k poli, ne 500.
+  // Holá `parse()` vyhodí ZodError, kterou obálka chyb nezná, a klient místo
+  // „tahle podmínka je špatně" dostane „interní chyba serveru".
+  throw new ApiError('validation_failed', {
+    errors: parsed.error.issues.map((issue) => ({
+      path: ['definition', ...(issue.path ?? []).map((part) => String(part))].join('.'),
+      code: issue.code ?? 'invalid_value',
+      message: issue.message,
+    })),
+  });
 }
 
 async function loadDefinition(

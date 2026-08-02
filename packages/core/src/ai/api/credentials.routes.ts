@@ -106,6 +106,55 @@ export async function handleListCredentials(ctx: ApiContext, deps: ListCredentia
   return { status: 200 as const, body: { data: rows.map(toPublicCredential) } };
 }
 
+export type DeleteCredentialDeps = {
+  deleteCredential: (params: { credentialId: string }) => Promise<boolean>;
+  writeAuditLog: (entry: Record<string, unknown>) => Promise<void> | void;
+};
+
+/** Smazání je nevratné, ale bezpečné: dřívější konverzace zůstávají (viz repo). */
+export async function handleDeleteCredential(
+  ctx: ApiContext,
+  params: { credentialId: string },
+  deps: DeleteCredentialDeps,
+) {
+  const deleted = await deps.deleteCredential({ credentialId: params.credentialId });
+  if (!deleted) return { status: 404 as const, code: 'not_found' as const };
+
+  await deps.writeAuditLog({
+    workspaceId: ctx.workspaceId,
+    actorId: ctx.actorId,
+    action: 'ai_credential_deleted',
+    targetId: params.credentialId,
+    metadata: {},
+  });
+
+  return { status: 204 as const };
+}
+
+export type SetDefaultCredentialDeps = {
+  setDefaultCredential: (params: { credentialId: string }) => Promise<boolean>;
+  writeAuditLog: (entry: Record<string, unknown>) => Promise<void> | void;
+};
+
+export async function handleSetDefaultCredential(
+  ctx: ApiContext,
+  params: { credentialId: string },
+  deps: SetDefaultCredentialDeps,
+) {
+  const ok = await deps.setDefaultCredential({ credentialId: params.credentialId });
+  if (!ok) return { status: 404 as const, code: 'not_found' as const };
+
+  await deps.writeAuditLog({
+    workspaceId: ctx.workspaceId,
+    actorId: ctx.actorId,
+    action: 'ai_credential_default_changed',
+    targetId: params.credentialId,
+    metadata: {},
+  });
+
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 export type TestCredentialDeps = {
   probe: (params: { credentialId: string }) => Promise<{ models?: string[] }>;
   markCredentialError: (params: { credentialId: string; code: string }) => Promise<void>;

@@ -4,6 +4,8 @@ import { Link, usePathname, useRouter } from '@mlain/i18n/navigation';
 import { workspaceAccent } from '@mlain/ui/lib/workspace-accent';
 import { visibleNavigation } from '@mlain/ui/patterns/navigation';
 import { AppShell, Sidebar, Topbar, WorkspaceSwitcher } from '@mlain/ui/patterns/shell';
+import { TooltipProvider } from '@mlain/ui/components/tooltip';
+import { ToastProvider } from '@mlain/ui/patterns/toast';
 import type { SystemBarState } from '@mlain/ui/patterns/shell';
 import { useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
@@ -57,57 +59,85 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
     ? [{ kind: 'offline', message: t('systemBar.offline') }]
     : [];
 
+  /**
+   * Providery montuje SKOŘÁPKA, ne jednotlivé domény.
+   *
+   * `useToast` mimo `ToastProvider` a `Tooltip` mimo `TooltipProvider` vyhodí
+   * výjimku. Chyba v klientské komponentě přitom neshodí tu komponentu, ale
+   * **celý strom po nejbližší error boundary**, takže uživatel místo obrazovky
+   * uvidí „Aplikace se neočekávaně zastavila". Naměřeno na Přehledu: zapojení
+   * jednoho panelu shodilo i dlaždice, které předtím fungovaly.
+   *
+   * Dokud to skořápka nedělala, obcházely to domény samy vlastními `layout.tsx`
+   * (kontakty, seznamy, štítky, zablokované adresy) a nakonec i komponenty.
+   * Šest míst, každé s poznámkou „až je skořápka dostane, tenhle soubor zmizí".
+   * Sedmá obrazovka by spadla stejně a spadla by celá.
+   *
+   * Vnořené providery nevadí, ty obcházky můžou zmizet postupně.
+   */
   return (
-    <AppShell
-      topbar={
-        <Topbar
-          workspaceSwitcher={
-            <WorkspaceSwitcher
-              workspaces={[workspace]}
-              currentId={workspace.id}
-              onSwitch={(slug) => router.push(`/w/${slug}`)}
+    <ToastProvider
+      labels={{
+        undo: t('actions.undo'),
+        close: t('actions.close'),
+        notifications: t('a11y.notifications'),
+        countdown: (seconds: number) => t('feedback.undoCountdown', { seconds }),
+        repeated: (message: string, count: number) => t('feedback.repeated', { message, count }),
+      }}
+    >
+      <TooltipProvider>
+        <AppShell
+          topbar={
+            <Topbar
+              workspaceSwitcher={
+                <WorkspaceSwitcher
+                  workspaces={[workspace]}
+                  currentId={workspace.id}
+                  onSwitch={(slug) => router.push(`/w/${slug}`)}
+                  labels={{
+                    switcher: t('shell.projectSwitcher'),
+                    current: (name) => t('shell.currentProject', { name }),
+                  }}
+                />
+              }
+              // Paletu příkazů a nápovědu napojí plán zkratek a plán nápovědy,
+              // skořápka pro ně drží místo na stejné pozici na všech stránkách.
+              onOpenSearch={() => {}}
+              onOpenHelp={() => {}}
+              jobsBadge={null}
+              userMenu={null}
               labels={{
-                switcher: t('shell.projectSwitcher'),
-                current: (name) => t('shell.currentProject', { name }),
+                search: t('shell.search'),
+                help: t('shell.help'),
+                skipToContent: t('shell.skipToContent'),
               }}
             />
           }
-          // Paletu příkazů a nápovědu napojí plán zkratek a plán nápovědy,
-          // skořápka pro ně drží místo na stejné pozici na všech stránkách.
-          onOpenSearch={() => {}}
-          onOpenHelp={() => {}}
-          jobsBadge={null}
-          userMenu={null}
-          labels={{
-            search: t('shell.search'),
-            help: t('shell.help'),
-            skipToContent: t('shell.skipToContent'),
-          }}
-        />
-      }
-      sidebar={
-        <Sidebar
-          items={items}
-          currentPath={pathname}
-          collapsed={false}
-          accentColor={accent}
-          translate={(labelKey) => t(labelKey.replace(/^common\./, ''))}
-          renderLink={({ href, label, active, children: linkChildren }) => (
-            <Link
-              key={href}
-              href={href}
-              aria-current={active ? 'page' : undefined}
-              aria-label={label}
-            >
-              {linkChildren}
-            </Link>
-          )}
-          labels={{ mainNavigation: t('shell.mainNavigation') }}
-        />
-      }
-      systemBarStates={systemBarStates}
-    >
-      {children}
-    </AppShell>
+          sidebar={
+            <Sidebar
+              items={items}
+              currentPath={pathname}
+              collapsed={false}
+              accentColor={accent}
+              translate={(labelKey) => t(labelKey.replace(/^common\./, ''))}
+              renderLink={({ href, label, active, children: linkChildren }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  aria-current={active ? 'page' : undefined}
+                  aria-label={label}
+                >
+                  {linkChildren}
+                </Link>
+              )}
+              labels={{ mainNavigation: t('shell.mainNavigation') }}
+            />
+          }
+          systemBarStates={systemBarStates}
+        >
+          {children}
+        </AppShell>
+      </TooltipProvider>
+    </ToastProvider>
   );
 }

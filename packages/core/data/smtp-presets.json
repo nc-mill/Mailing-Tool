@@ -1,0 +1,58 @@
+[
+  {
+    "id": "wedos",
+    "label": "Wedos",
+    "host": "smtp.wedos.net",
+    "port": 587,
+    "encryption": "starttls",
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "forpsi",
+    "label": "Forpsi",
+    "host": "smtp.forpsi.com",
+    "port": 587,
+    "encryption": "starttls",
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "active24",
+    "label": "Active24",
+    "host": "smtp.active24.cz",
+    "port": 587,
+    "encryption": "starttls",
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "webglobe",
+    "label": "Webglobe",
+    "host": "smtp.webglobe.cz",
+    "port": 587,
+    "encryption": "starttls",
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "seznam",
+    "label": "Seznam",
+    "host": "smtp.seznam.cz",
+    "port": 465,
+    "encryption": "tls",
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "google",
+    "label": "Google Workspace",
+    "host": "smtp.gmail.com",
+    "port": 587,
+    "encryption": "starttls",
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "microsoft",
+    "label": "Microsoft 365",
+    "host": "smtp.office365.com",
+    "port": 587,
+    "encryption": "starttls",
+    "verifiedAt": "2026-07-31"
+  }
+]

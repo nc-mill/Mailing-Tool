@@ -40,7 +40,12 @@ function nested(depth: number): SegmentAst['root'] {
     type: 'group',
     op: 'and',
     children: [
-      { type: 'condition', field: { kind: 'contact', key: 'status' }, operator: 'eq', value: 'active' },
+      {
+        type: 'condition',
+        field: { kind: 'contact', key: 'status' },
+        operator: 'eq',
+        value: 'active',
+      },
     ],
   };
   for (let i = 1; i < depth; i += 1) node = { type: 'group', op: 'and', children: [node] };
@@ -87,7 +92,9 @@ describe('K2 query builder conformance', () => {
         labels={labels}
       />,
     );
-    expect(screen.getAllByLabelText(new RegExp(`${labels.is}|${labels.isNot}`, 'i')).length).toBeGreaterThanOrEqual(3);
+    expect(
+      screen.getAllByLabelText(new RegExp(`${labels.is}|${labels.isNot}`, 'i')).length,
+    ).toBeGreaterThanOrEqual(3);
   });
 
   it('offers only operators that fit the field class', () => {
@@ -100,7 +107,9 @@ describe('K2 query builder conformance', () => {
       />,
     );
     const select = screen.getAllByLabelText(labels.chooseOperator)[0]!;
-    const options = within(select).getAllByRole('option').map((node) => node.getAttribute('value'));
+    const options = within(select)
+      .getAllByRole('option')
+      .map((node) => node.getAttribute('value'));
     // Prázdná úvodní volba („vyberte") není operátor a do matice nepatří.
     const offered = options.filter((option) => option !== null && option !== '');
     expect(offered.length).toBeGreaterThan(0);

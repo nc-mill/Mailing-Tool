@@ -1,3 +1,4 @@
+import { suppressedExistsSql } from '../../contacts/suppression/predicate';
 import type { Operator } from '../ast';
 import type { ParamBag } from './params';
 import { assertAlias } from './columns';
@@ -89,9 +90,8 @@ export function compileConsentCondition(
 
 export function compileSuppressionCondition(alias: string, operator: Operator): string {
   assertAlias(alias);
-  const exists =
-    `EXISTS (SELECT 1 FROM suppressions su WHERE su.workspace_id = ${alias}.workspace_id AND su.removed_at IS NULL ` +
-    `AND (su.email = ${alias}.email OR su.fingerprint = ANY(${alias}.email_fingerprints)))`;
+  // Predikát se tu neopisuje, viz contacts/suppression/predicate.ts.
+  const exists = suppressedExistsSql(alias);
   switch (operator) {
     case 'is_suppressed':
       return `(${exists})`;

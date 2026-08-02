@@ -1,8 +1,10 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const manifestPath = fileURLToPath(new URL('../../package.json', import.meta.url));
+const srcDir = fileURLToPath(new URL('../', import.meta.url));
 
 type Manifest = {
   exports: Record<string, string>;
@@ -13,11 +15,44 @@ function manifest(): Manifest {
   return JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest;
 }
 
+/** Domény, které mají vlastní modul s handlery front, tedy ty, co codegen workeru hledá. */
+function domainsWithJobs(): string[] {
+  return readdirSync(srcDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .filter((domain) => existsSync(join(srcDir, domain, 'jobs', 'queue-handlers.ts')))
+    .sort();
+}
+
 describe('balíček @mlain/core', () => {
-  it('má zástupné pravidlo, takže doménové plány do exports mapy nepíšou', () => {
+  /**
+   * ZMĚNA PRAVIDLA, ne změkčení testu. Původní znění vyžadovalo zástupný vzor
+   * s hvězdičkou uprostřed klíče (podcesta `jobs` za hvězdičkou), aby doménové
+   * plány do mapy `exports` psát nemusely. Ten vzor je podle nálezu I35 ZRUŠENÝ a vrátit se
+   * nesmí: Node ani esbuild neberou v potaz pořadí klíčů, rozhoduje délka
+   * základu vzoru. Jakmile doména dostala vlastní vzor se svým jménem
+   * (`"./ai/*"`, `"./platform/*"`), přebil obecný vzor a `@mlain/core/ai/jobs`
+   * se rozvinul na soubor, který neexistuje. Vystřelilo to dvakrát a pokaždé
+   * až při stavbě produkční image.
+   *
+   * Nové pravidlo je proto opačné: klíče se vypisují a hlídá se, že žádná
+   * doména s frontami nechybí. Test má tím pádem stejné zuby jako dřív, jen
+   * měří platný stav. Druhá pojistka je v `apps/worker/codegen.mjs`, aby
+   * chybějící zápis padl i mimo tenhle balíček.
+   */
+  it('má pro každou doménu s frontami explicitní klíč, zástupný vzor se nevrátil', () => {
     const { exports: map } = manifest();
     expect(map['./*']).toBe('./src/*/index.ts');
-    expect(map['./*/jobs']).toBe('./src/*/jobs/queue-handlers.ts');
+    expect(map['./*/jobs']).toBeUndefined();
+
+    const domains = domainsWithJobs();
+    // Pojistka, že test nekontroluje prázdnou množinu.
+    expect(domains.length).toBeGreaterThan(0);
+    for (const domain of domains) {
+      expect(map[`./${domain}/jobs`], `chybí klíč "./${domain}/jobs" v exports mapě`).toBe(
+        `./src/${domain}/jobs/queue-handlers.ts`,
+      );
+    }
   });
 
   it('nemá kořenový export, aby nešlo importovat @mlain/core bez podcesty', () => {

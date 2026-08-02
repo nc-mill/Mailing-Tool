@@ -216,3 +216,60 @@ describe('DataTable', () => {
     expect(screen.getAllByRole('row')).toHaveLength(6);
   });
 });
+
+/**
+ * Tahle skupina vznikla kvůli reálné mezeře, ne pro pokrytí.
+ *
+ * Tabulka reagovala na `Enter`, ale na kliknutí myší neměla handler vůbec.
+ * Klávesová cesta byla hotová a odladěná, takže nikoho nenapadlo zkusit myš,
+ * a protože tuhle tabulku používají všechny seznamy v aplikaci, nešel myší
+ * otevřít jediný z nich.
+ */
+describe('DataTable: otevření řádku myší', () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it('kliknutí na řádek ho otevře', async () => {
+    const onRowActivate = vi.fn();
+    render(<DataTable {...base({ onRowActivate })} />);
+
+    await userEvent.click(screen.getByText('kontakt2@firma.cz'));
+
+    expect(onRowActivate).toHaveBeenCalledTimes(1);
+    expect(onRowActivate.mock.calls[0]?.[0]).toMatchObject({ id: 'c2' });
+  });
+
+  it('kliknutí na zaškrtávací políčko řádek NEotevře', async () => {
+    const onRowActivate = vi.fn();
+    render(<DataTable {...base({ onRowActivate })} />);
+
+    const row = screen.getAllByRole('row')[3]!;
+    await userEvent.click(within(row).getByRole('checkbox'));
+
+    // Kdyby políčko řádek otevíralo, nešlo by označit víc položek: první
+    // zaškrtnutí by odnavigovalo pryč.
+    expect(onRowActivate).not.toHaveBeenCalled();
+  });
+
+  it('bez onRowActivate se klikáním nic nestane', async () => {
+    render(<DataTable {...base()} />);
+
+    await userEvent.click(screen.getByText('kontakt1@firma.cz'));
+
+    expect(screen.getByText('kontakt1@firma.cz')).toBeInTheDocument();
+  });
+
+  it('klávesnice a myš otevírají tentýž řádek', async () => {
+    const onRowActivate = vi.fn();
+    render(<DataTable {...base({ onRowActivate })} />);
+
+    await userEvent.click(screen.getByText('kontakt2@firma.cz'));
+    const klikem = onRowActivate.mock.calls[0]?.[0];
+
+    onRowActivate.mockClear();
+    const row = screen.getAllByRole('row')[3]!;
+    row.focus();
+    await userEvent.keyboard('{Enter}');
+
+    expect(onRowActivate.mock.calls[0]?.[0]).toEqual(klikem);
+  });
+});

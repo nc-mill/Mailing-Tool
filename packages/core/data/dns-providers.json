@@ -1,0 +1,105 @@
+[
+  {
+    "id": "wedos",
+    "label": "WEDOS",
+    "nsPatterns": ["wedos.net", "wedos.cz"],
+    "steps": ["Zákaznický portál", "Domény", "DNS", "Přidat záznam"],
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "forpsi",
+    "label": "FORPSI",
+    "nsPatterns": ["forpsi.net", "forpsi.com"],
+    "steps": ["Administrace", "Domény", "DNS zóna", "Nový záznam"],
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "active24",
+    "label": "ACTIVE 24",
+    "nsPatterns": ["active24.com", "active24.cz"],
+    "steps": ["Klientské centrum", "Domény", "DNS", "Přidat"],
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "webglobe",
+    "label": "Webglobe",
+    "nsPatterns": ["webglobe.cz"],
+    "steps": ["Klientská zóna", "Domény", "DNS záznamy"],
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "gransy",
+    "label": "Gransy / Subreg",
+    "nsPatterns": ["subreg.cz", "gransy.com"],
+    "steps": ["Přihlášení", "Domény", "DNS správa"],
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "banan",
+    "label": "Banán",
+    "nsPatterns": ["ns.banan.cz"],
+    "steps": ["Administrace", "Domény", "DNS"],
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "cloudflare",
+    "label": "Cloudflare",
+    "nsPatterns": ["cloudflare.com"],
+    "steps": ["Dashboard", "Vybraná doména", "DNS", "Add record"],
+    "warning": "cloudflareProxy",
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "godaddy",
+    "label": "GoDaddy",
+    "nsPatterns": ["domaincontrol.com"],
+    "steps": ["My Products", "Domains", "DNS", "Add"],
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "route53",
+    "label": "AWS Route 53",
+    "nsPatterns": ["awsdns"],
+    "steps": ["Route 53", "Hosted zones", "Create record"],
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "vercel",
+    "label": "Vercel",
+    "nsPatterns": ["vercel-dns.com"],
+    "steps": ["Dashboard", "Domains", "DNS Records"],
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "namecheap",
+    "label": "Namecheap",
+    "nsPatterns": ["registrar-servers.com"],
+    "steps": ["Domain List", "Manage", "Advanced DNS"],
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "ionos",
+    "label": "IONOS",
+    "nsPatterns": ["ui-dns", "ionos"],
+    "steps": ["Domains & SSL", "Vybraná doména", "DNS"],
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "squarespace",
+    "label": "Squarespace",
+    "nsPatterns": ["googledomains.com", "squarespacedns.com"],
+    "steps": ["Domains", "DNS Settings", "Add record"],
+    "verifiedAt": "2026-07-31"
+  },
+  {
+    "id": "generic",
+    "label": "Neznámý poskytovatel",
+    "nsPatterns": [],
+    "steps": [
+      "Přihlaste se ke správci DNS své domény",
+      "Najděte správu DNS záznamů",
+      "Přidejte záznamy z tabulky níž"
+    ],
+    "verifiedAt": "2026-07-31"
+  }
+]

@@ -30,6 +30,24 @@ async function main(): Promise<void> {
     connectionString: config.DATABASE_URL,
     schema: config.PGBOSS_SCHEMA,
     max: config.DATABASE_POOL_MAX,
+    // Worker schéma fronty NEZAKLÁDÁ ani nemigruje. Dělá to `mlain migrate`
+    // pod rolí migrátora, aby platilo, že schéma vlastní jedině migrátor.
+    //
+    // Není to jen čistota. Worker běží pod `DATABASE_URL`, tedy jako
+    // `mlain_app`, a ta nemá `CREATE` na databázi. `PgBoss.start()` volá
+    // `Contractor.create()` s `CREATE SCHEMA IF NOT EXISTS`, takže padal na
+    //
+    //   error: permission denied for database mlain   (SQLSTATE 42501)
+    //     file: 'aclchk.c', routine: 'aclcheck_error'
+    //
+    // a kontejner skončil v restartové smyčce. `IF NOT EXISTS` to neodvrátí:
+    // Postgres kontroluje oprávnění dřív než existenci, takže samotné
+    // předchozí založení schématu migrací nestačilo. Ověřeno.
+    //
+    // S `false` knihovna schéma jen ZKONTROLUJE. Když chybí nebo má jinou
+    // verzi, řekne to nahlas, což je správně: znamená to, že se zapomnělo
+    // migrovat, a tichý start nad polovičním schématem by byl horší.
+    migrate: false,
   });
   boss.on('error', (error) => logger.error({ err: error.message }, 'pg-boss ohlásil chybu'));
   boss.on('warning', (warning) => logger.warn({ warning }, 'pg-boss varuje'));

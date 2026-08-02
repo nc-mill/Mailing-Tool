@@ -13,10 +13,7 @@ const MESSAGES_DIR = path.resolve(import.meta.dirname, '../../../../packages/i18
  * s tím, co komponenta vykresluje, a to je přesně ten rozchod, kvůli kterému
  * konformanční testy existují.
  */
-export function messages(
-  locale: 'cs' | 'en',
-  ...namespaces: string[]
-): Record<string, unknown> {
+export function messages(locale: 'cs' | 'en', ...namespaces: string[]): Record<string, unknown> {
   const tree: Record<string, unknown> = {};
   for (const namespace of namespaces) {
     tree[namespace] = JSON.parse(

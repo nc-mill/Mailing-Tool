@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@mlain/ui/components/button';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { formatCount, hoursSince } from './labels';
@@ -37,34 +38,54 @@ export function PresetCard({
   const stale = ageHours !== null && ageHours >= STALE_HOURS;
 
   return (
-    <article data-testid={`preset-${preset.key}`} className="flex flex-col gap-2">
-      <h3>{t(preset.labelKey)}</h3>
+    <article
+      data-testid={`preset-${preset.key}`}
+      className="flex h-full flex-col gap-3 rounded-[var(--radius-surface)] border border-border bg-surface p-4"
+    >
+      <h3 className="text-sm font-semibold text-text">{t(preset.labelKey)}</h3>
       {/* Podmínka na počet odeslaných zpráv je NA KARTĚ, ne v nápovědě: bez ní
           by do „nikdy neotevřel" spadli i lidé, kterým jsme nikdy nic neposlali,
           a to je nejčastější chyba konkurenčních nástrojů. */}
-      <p>{t(preset.explanationKey)}</p>
+      <p className="text-sm text-text-muted">{t(preset.explanationKey)}</p>
 
-      {preset.cachedCount === null ? (
-        <button type="button" onClick={() => onRecount?.(preset.key)}>
-          {t('count.action')}
-        </button>
-      ) : (
-        <p>{formatCount(preset.cachedCount, locale)}</p>
-      )}
+      <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
+        {preset.cachedCount === null ? (
+          <Button variant="secondary" size="sm" onClick={() => onRecount?.(preset.key)}>
+            {t('count.action')}
+          </Button>
+        ) : (
+          <span className="text-sm font-medium text-text">
+            {formatCount(preset.cachedCount, locale)}
+          </span>
+        )}
 
-      {ageHours !== null ? <p>{t('stale', { time: `${ageHours} h` })}</p> : null}
-      {stale ? (
-        <button type="button" onClick={() => onRecount?.(preset.key)}>
-          {t('recount')}
-        </button>
-      ) : null}
+        {ageHours !== null ? (
+          <span
+            data-stale={stale ? 'true' : 'false'}
+            className={stale ? 'text-xs text-text-muted opacity-70' : 'text-xs text-text-muted'}
+          >
+            {t('stale', { time: `${ageHours} h` })}
+          </span>
+        ) : null}
 
-      {/* Použití vyrobí VLASTNÍ KOPII s klíčem presetu, ne odkaz na sdílenou
-          definici: jinak by úprava presetu v kódu tiše změnila segment,
-          který si uživatel pojmenoval po svém. */}
-      <button type="button" onClick={() => onUse?.({ preset_key: preset.key })}>
-        {t('presets.use')}
-      </button>
+        {stale ? (
+          <Button variant="ghost" size="sm" onClick={() => onRecount?.(preset.key)}>
+            {t('recount')}
+          </Button>
+        ) : null}
+
+        {/* Použití vyrobí VLASTNÍ KOPII s klíčem presetu, ne odkaz na sdílenou
+            definici: jinak by úprava presetu v kódu tiše změnila segment,
+            který si uživatel pojmenoval po svém. */}
+        <Button
+          variant="primary"
+          size="sm"
+          className="ml-auto"
+          onClick={() => onUse?.({ preset_key: preset.key })}
+        >
+          {t('presets.use')}
+        </Button>
+      </div>
     </article>
   );
 }
@@ -83,8 +104,8 @@ export function PresetGrid({
   const t = useTranslations('segments');
   return (
     <section className="flex flex-col gap-3">
-      <h2>{t('presets.sectionTitle')}</h2>
-      <div className="grid gap-3 md:grid-cols-3">
+      <h2 className="text-base font-semibold text-text">{t('presets.sectionTitle')}</h2>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {presets.map((preset) => (
           <PresetCard
             key={preset.key}

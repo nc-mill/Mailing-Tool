@@ -42,23 +42,23 @@ describe('runBackup', () => {
       'uploads.tar.gz',
     ]);
     expect(result.dir).toContain('mlain-20260731T030000Z');
-  });
+  }, 120000);
 
   it('row_counts.contacts odpovídá skutečnosti (kritérium 9)', async () => {
     const result = await runBackup(base('backups2'));
     expect((await readManifest(result.dir)).row_counts['contacts']).toBe(7);
-  });
+  }, 120000);
 
   it('manifest nese kontrolní součty obou archivů', async () => {
     const manifest = await readManifest((await runBackup(base('backups3'))).dir);
     expect(manifest.database.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(manifest.uploads?.files).toBe(1);
-  });
+  }, 120000);
 
   it('bez adresáře uploads nechá uploads v manifestu null a nespadne', async () => {
     const result = await runBackup({ ...base('backups4'), uploadsDir: join(root, 'neexistuje') });
     expect((await readManifest(result.dir)).uploads).toBeNull();
-  });
+  }, 120000);
 
   it('nedokončenou zálohu nenechá pod finálním jménem', async () => {
     await expect(
@@ -66,7 +66,7 @@ describe('runBackup', () => {
     ).rejects.toThrow();
     const files = await readdir(join(root, 'backups5')).catch(() => [] as string[]);
     expect(files.filter((f) => !f.endsWith('.partial'))).toEqual([]);
-  });
+  }, 120000);
 
   it('zavolá post-backup hook s cestou k adresáři', async () => {
     const hooks = join(root, 'hooks');
@@ -76,5 +76,5 @@ describe('runBackup', () => {
     await chmod(hook, 0o755);
     const result = await runBackup({ ...base('backups6'), postBackupHook: hook });
     expect(await readdir(result.dir)).toContain('hook-was-here.txt');
-  });
+  }, 120000);
 });

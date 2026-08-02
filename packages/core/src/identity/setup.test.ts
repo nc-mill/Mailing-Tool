@@ -143,4 +143,49 @@ describe('runSetup', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.workspace_id).toBe(result.workspace.id);
   });
+
+  /**
+   * Průvodce uživatele zakládá, takže ho musí i přihlásit.
+   *
+   * Bez relace proběhla instalace celá, správce i projekt vznikly a přesměrování
+   * na `/w/{slug}` taky, jenže prohlížeč neměl jedinou cookie a proxy poslala
+   * uživatele na přihlašovací formulář. Hned po tom, co si nastavil heslo.
+   * Naměřeno v produkční image při průchodu zlatou cestou.
+   */
+  it('založí relaci pro nového správce a vrátí její token', async () => {
+    const result = await runSetup(input);
+
+    expect(result.token).toBeTypeOf('string');
+    expect(result.token.length).toBeGreaterThan(20);
+  });
+
+  it('relace v databázi patří právě založenému uživateli', async () => {
+    const result = await runSetup(input);
+
+    const rows = await asMigrator(async (db) => {
+      const r = await db.query<{ user_id: string }>(
+        `SELECT user_id::text AS user_id FROM sessions WHERE revoked_at IS NULL`,
+      );
+      return r.rows;
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.user_id).toBe(result.user.id);
+  });
+
+  // Relace vzniká v TÉŽE transakci jako uživatel, takže neúspěšný setup po sobě
+  // nesmí nechat osiřelou relaci. Bez toho by v databázi zůstal záznam ukazující
+  // na uživatele, který nikdy nevznikl.
+  it('neúspěšný setup nenechá po sobě relaci', async () => {
+    await expect(runSetup({ ...input, password: 'kratke' })).rejects.toMatchObject({
+      code: 'validation_failed',
+    });
+
+    const rows = await asMigrator(async (db) => {
+      const r = await db.query(`SELECT 1 FROM sessions`);
+      return r.rows;
+    });
+
+    expect(rows).toHaveLength(0);
+  });
 });

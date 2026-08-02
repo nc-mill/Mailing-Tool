@@ -48,7 +48,15 @@ export function GroupSentence({ op, not, onChange }: GroupSentenceProps) {
         {/* Sloty jsou PROSTÉ argumenty zprávy, ne značky. `t.rich` proto
             dostane rovnou uzly; kdyby dostal funkce, next-intl by je předal
             Reactu jako potomka a React funkci jako dítě nevykreslí. */}
-        {t.rich('builder.groupSentence', { polarity, quantifier })}
+        {t.rich(
+          'builder.groupSentence',
+          // Typ `RichTranslationValues` počítá jen se značkami, tedy funkcemi.
+          // Sloty téhle věty jsou PROSTÉ argumenty a next-intl je za běhu jako
+          // uzly vykreslí; ověřeno testem, který kontroluje pořadí prvků ve
+          // větě i to, že jazyk umí sloty prohodit. Přetypování je proto úzké
+          // a týká se jen dvou hodnot, ne celé zprávy.
+          { polarity, quantifier } as unknown as Parameters<typeof t.rich>[1],
+        )}
       </p>
       {/* Vysvětlující řádek u OBOU negovaných kombinací, ne jen u třetí.
           „Nesplňují všechny" si část lidí přečte jako „nesplňují žádnou",

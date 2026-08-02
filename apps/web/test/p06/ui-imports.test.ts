@@ -15,12 +15,20 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
-/** Povolené tvary podle mapy `exports` v `packages/ui/package.json`. */
+/**
+ * Povolené tvary podle mapy `exports` v `packages/ui/package.json`.
+ *
+ * Poslední řádek nejsou výjimky, ale dvě položky, které mapa `exports`
+ * VYJMENOVÁVÁ zvlášť, protože líné hranice grafů a stavitele segmentů se musí
+ * dát naimportovat bez recharts v základním balíku. Dřívější znění seznamu je
+ * neznalo, takže test hlásil porušení u importu, který balíček sám nabízí.
+ */
 const ALLOWED = [
   /^@mlain\/ui\/components\/[a-z0-9-]+$/,
   /^@mlain\/ui\/patterns\/[a-z0-9-]+$/,
   /^@mlain\/ui\/lib\/[a-z0-9-]+$/,
   /^@mlain\/ui\/(theme|a11y|tokens\.css|globals\.css)$/,
+  /^@mlain\/ui\/patterns\/(charts|query-builder)\/lazy$/,
 ];
 
 describe('importy z @mlain/ui', () => {

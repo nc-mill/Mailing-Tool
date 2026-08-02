@@ -8,6 +8,7 @@ import { writeAuditLog } from '../audit/write';
 import { assertPasswordPolicy, hashPassword } from './password';
 import { IdentityAuditActions } from './audit';
 import { toPublicUser, type PublicUser } from './login';
+import { createSession } from './session';
 
 /**
  * ODCHYLKA OD PLÁNU: plán psal `import { config } from '@mlain/core/config'`.
@@ -34,6 +35,20 @@ export type SetupInput = {
 export type SetupResult = {
   user: PublicUser;
   workspace: { id: string; name: string; slug: string };
+  /**
+   * Relační token pro nově založeného správce.
+   *
+   * Průvodce prvním spuštěním uživatele zakládá, takže ho musí i přihlásit.
+   * Dřív tu token nebyl a `setup.routes.ts` proto neposílal `Set-Cookie`,
+   * na rozdíl od přihlášení. Následek: instalace proběhla, správce i projekt
+   * vznikly, přesměrování na `/w/{slug}` proběhlo, a **uživatel zůstal
+   * nepřihlášený**. Prohlížeč neměl jedinou cookie a proxy ho poslala na
+   * přihlašovací formulář, hned po tom, co si nastavil heslo.
+   *
+   * Relace se zakládá uvnitř TÉŽE transakce jako uživatel a projekt, takže
+   * nemůže vzniknout stav, kdy je založený správce bez relace nebo naopak.
+   */
+  token: string;
 };
 
 /** Slug se generuje z názvu; diakritika se odstraní, aby zůstala URL bezpečná. */
@@ -146,6 +161,13 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
     // transakce se rollbackne, takže nevznikne druhý owner ani druhý projekt.
     if (updated.length !== 1) throw new ApiError('setup_already_completed');
 
-    return { user: toPublicUser(user!), workspace: workspace! };
+    // Relace pro nově založeného správce, ve stejné transakci jako on sám.
+    const session = await createSession(tx, {
+      userId: user!.id,
+      userAgent: input.userAgent,
+      ip: input.ip,
+    });
+
+    return { user: toPublicUser(user!), workspace: workspace!, token: session.token };
   });
 }

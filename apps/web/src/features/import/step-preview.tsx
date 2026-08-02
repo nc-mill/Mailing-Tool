@@ -68,8 +68,16 @@ export function StepPreview({
               <td>{row.titlePrefix}</td>
               <td>{row.firstName}</td>
               {/* Otazník, ne prázdno: prázdná buňka vypadá jako chybějící
-                  sloupec, otazník říká „nevíme, a víme, že nevíme". */}
-              <td>{row.gender ?? '?'}</td>
+                  sloupec, otazník říká „nevíme, a víme, že nevíme".
+                  Rod se píše slovem, ne kódem: `female` v tabulce vedle
+                  českých jmen vypadá jako nedodělek, kterým taky je. */}
+              <td>
+                {row.gender === 'female'
+                  ? t('vocative.genderFemale')
+                  : row.gender === 'male'
+                    ? t('vocative.genderMale')
+                    : '?'}
+              </td>
               <td>{row.lastName}</td>
               <td>{row.greeting}</td>
             </tr>
@@ -84,8 +92,12 @@ export function StepPreview({
         </button>
       ) : null}
 
-      {estimate.reviewRows > 0 ? <p>{t('preview.vocativeNotice', { count: estimate.reviewRows })}</p> : null}
-      {estimate.noEmailRows > 0 ? <p>{t('preview.noEmailRows', { count: estimate.noEmailRows })}</p> : null}
+      {estimate.reviewRows > 0 ? (
+        <p>{t('preview.vocativeNotice', { count: estimate.reviewRows })}</p>
+      ) : null}
+      {estimate.noEmailRows > 0 ? (
+        <p>{t('preview.noEmailRows', { count: estimate.noEmailRows })}</p>
+      ) : null}
       {estimate.duplicateRows > 0 ? (
         <p>{t('preview.duplicateRows', { count: estimate.duplicateRows })}</p>
       ) : null}

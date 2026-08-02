@@ -55,3 +55,10 @@ apps/sender/ml-sender
 # Lokální vývojová data mimo git
 .dev-data/
 apps/web/.env.local
+
+# Artefakty běhu Playwrightu. Vznikají při každém spuštění testů a nepatří
+# do repozitáře: jsou to stovky souborů se stopami, snímky a HTML reportem,
+# které se liší běh od běhu. V CI se archivují jako artefakt jobu, ne commitem.
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/playwright-report-golden/

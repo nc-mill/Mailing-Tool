@@ -198,7 +198,7 @@ export const NAVIGATION: NavigationItem[] = [
         labelKey: 'common.nav.settingsSending',
         path: '/settings/sending',
         permission: 'providers:read',
-        mvp0: false,
+        mvp0: true,
       },
       {
         id: 'settings-fields',
@@ -230,24 +230,31 @@ export const NAVIGATION: NavigationItem[] = [
       },
       {
         id: 'settings-consent',
+        // `gdpr:export`, ne neexistující `gdpr:read`. Skutečná oprávnění domény
+        // jsou `gdpr:erase` a `gdpr:export`; kdo smí vyexportovat data subjektu,
+        // smí vidět i jeho souhlasy. Neexistující jméno by znamenalo, že
+        // kontrola nikdy neprojde a položku neuvidí NIKDO, aniž by co selhalo.
         labelKey: 'common.nav.settingsConsent',
         path: '/settings/consent',
-        permission: 'gdpr:read',
+        permission: 'gdpr:export',
         mvp0: false,
       },
       {
         id: 'settings-tracking',
+        // `workspace:update`, ne neexistující `tracking:read`. Nastavení měření
+        // mění chování celého projektu, takže patří k tomu, kdo projekt
+        // spravuje. Doména `tracking` vlastní oprávnění nemá.
         labelKey: 'common.nav.settingsTracking',
         path: '/settings/tracking',
-        permission: 'tracking:read',
+        permission: 'workspace:update',
         mvp0: false,
       },
       {
         id: 'settings-ai',
         labelKey: 'common.nav.settingsAi',
         path: '/settings/ai',
-        permission: 'ai:read',
-        mvp0: false,
+        permission: 'ai:configure',
+        mvp0: true,
       },
       {
         id: 'settings-audit',
@@ -261,7 +268,7 @@ export const NAVIGATION: NavigationItem[] = [
         labelKey: 'common.nav.settingsBackups',
         path: '/settings/backups',
         permission: 'backups:read',
-        mvp0: false,
+        mvp0: true,
       },
       // Můj účet vidí každý, je to jeho vlastní profil.
       {

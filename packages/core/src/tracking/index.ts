@@ -69,5 +69,13 @@ export type { EventBufferOptions } from './writer/event-buffer';
 export { insertMessageEvents } from './repo/message-events.repo';
 export type { MessageEventInsert } from './repo/message-events.repo';
 
+// Rozhraní I→P10.1. Provozní příkaz `mlain rebuild-engagement` z P16 si tuhle
+// funkci načítá jménem přes tenhle barrel, takže reexport není kosmetika.
+export { recomputeContactEngagement } from './repo/contact-engagement.repo';
+export type {
+  RecomputeEngagementBatch,
+  RecomputeEngagementInput,
+} from './repo/contact-engagement.repo';
+
 export { createPublicTrackingRoutes } from './api/public-tracking.routes';
 export type { PublicTrackingDeps } from './api/public-tracking.routes';

@@ -8,6 +8,20 @@ import { ContactsProblem } from '@/features/contacts/contacts-problem';
 import { ContactsTable, type ContactRow } from '@/features/contacts/contacts-table';
 import { filtersToQuery, readContactFilters } from '@/features/contacts/filters';
 
+/**
+ * Stránka závisí na přihlášeném uživateli, takže se NEPŘEDRENDEROVÁVÁ.
+ *
+ * Bez tohohle ji Next při `next build` vykreslí a spadne, protože v době
+ * sestavení žádná relace neexistuje:
+ *
+ *   TypeError: Cannot read properties of null (reading 'useContext')
+ *   Export encountered an error on <cesta>, exiting the build.
+ *
+ * Chyba nemíří na příčinu, takže se hledá v komponentách. Statická podoba
+ * téhle stránky přitom neexistuje: obsah je pro každého jiný.
+ */
+export const dynamic = 'force-dynamic';
+
 type PageProps = {
   params: Promise<{ locale: string; workspaceSlug: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;

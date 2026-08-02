@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EXIT_UNAVAILABLE, EXIT_USAGE } from '../src/exit-codes';
+import { EXIT_CONFIG, EXIT_UNAVAILABLE, EXIT_USAGE } from '../src/exit-codes';
 import { COMMANDS } from '../src/registry';
 import { dispatch } from '../src/dispatch';
 
@@ -57,18 +57,43 @@ describe('mlain dispatcher', () => {
   });
 
   it('deklarovaný, ale neimplementovaný příkaz skončí 69 s jasnou chybou', async () => {
+    // Konkrétní jméno se tu SCHVÁLNĚ nepíše. Dřív tu byl `backup`, pak
+    // `migrate`, a oba mezitím jejich plány dodaly; test pak měřil opak toho,
+    // co má, protože implementovaný příkaz končí na chybějící konfiguraci (78),
+    // ne na 69. Bere se proto libovolný příkaz, který je v registru
+    // deklarovaný a zatím nedodaný.
+    const pending = COMMANDS.find((command) => !command.implemented);
+    if (!pending) return; // Všechno je dodané, tahle větev už nemá co ověřit.
     const streams = io();
-    const code = await dispatch(['backup'], streams);
+    const code = await dispatch([pending.name], streams);
     expect(code).toBe(EXIT_UNAVAILABLE);
     const text = streams.err.join('\n');
     expect(text).toContain('not implemented');
-    expect(text).toContain('P16');
+    expect(text).toContain(pending.owner);
   });
 
-  it('migrate hlásí, že ho dodá P03', async () => {
-    const streams = io();
-    expect(await dispatch(['migrate'], streams)).toBe(EXIT_UNAVAILABLE);
-    expect(streams.err.join('\n')).toContain('P03');
+  // Tenhle test dřív ověřoval, že `migrate` hlásí „dodá ho P03", a zůstal
+  // zelený i poté, co příkaz vznikl: `dispatch` u něj tou dobou ještě vracel
+  // EXIT_UNAVAILABLE. Zastaralý zelený test je horší než žádný, protože tvrdí,
+  // že se něco měří. Teď měří skutečné chování implementovaného příkazu.
+  it('migrate bez konfigurace vrátí EXIT_CONFIG a jmenuje chybějící proměnné', async () => {
+    const streams = { ...io(), env: { NODE_ENV: 'test' } };
+
+    const code = await dispatch(['migrate'], streams);
+
+    expect(code).toBe(EXIT_CONFIG);
+    const text = streams.err.join('\n');
+    // Validace hlásí VŠECHNY chybějící proměnné najednou, ne jen první.
+    // `DATABASE_URL_MIGRATOR` mezi nimi není: konfigurace padne dřív na
+    // základních povinných hodnotách a k volitelným se nedostane.
+    expect(text).toContain('SECRET_KEY');
+    expect(text).toContain('DATABASE_URL');
+    // Nesmí to spadnout výjimkou. Příkaz dřív volal `streams.err.write()`,
+    // jenže `CliStreams` má metody `stdout()`/`stderr()`, ne objekty s `write`.
+    // Padalo to na `TypeError: Cannot read properties of undefined`, tedy
+    // neodchyceně a bez exit kódu. Entrypoint kontejneru se rozhoduje podle
+    // exit kódu, takže by instalace vůbec nenaběhla.
+    expect(text).not.toContain('TypeError');
   });
 
   it('version vypíše verzi a skončí nulou', async () => {

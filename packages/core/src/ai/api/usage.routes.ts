@@ -1,4 +1,5 @@
 import { createRoute, z } from '@hono/zod-openapi';
+import { problemResponse } from '../../identity/api/schemas';
 
 export const usageRoute = createRoute({
   method: 'get',
@@ -48,5 +49,8 @@ export const usageRoute = createRoute({
         },
       },
     },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    422: problemResponse('validation_failed'),
   },
 });

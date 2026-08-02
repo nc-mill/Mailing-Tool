@@ -28,11 +28,16 @@ export function BlockNode(props: {
   }, [isSelected]);
 
   return (
-    // ODCHYLKA OD PLÁNU: obal má `role="group"`. Bez role by to byl obyčejný div
-    // jako přímý potomek `role="tree"`, což axe hlásí jako `aria-required-children`.
-    // `group` je povolený potomek stromu a `treeitem` uvnitř něj má povoleného rodiče.
+    // ODCHYLKA OD PLÁNU: obal má `role="none"` a ovládání bloku i tlačítko „+"
+    // bydlí **uvnitř** položky stromu.
+    //
+    // Doslovný kód plánu je stavěl vedle ní, takže se ze stromu stalo
+    // `tree > div > button`, což axe hlásí jako `aria-required-children`:
+    // strom smí obsahovat jen položky a skupiny, ne tlačítka. Ověřeno spuštěním
+    // axe v prohlížeči, ne odhadem. `role="none"` obal z přístupnostního stromu
+    // odstraní, takže položka je přímým potomkem stromu.
     <div
-      role="group"
+      role="none"
       className="group relative"
       style={{ marginInlineStart: (item.level - 1) * 12 }}
     >
@@ -71,10 +76,10 @@ export function BlockNode(props: {
         ) : (
           <BlockPreview block={item.block} canWriteHtml={canWriteHtml} />
         )}
+        {isSelected ? <BlockToolbar blockId={item.block.id} /> : null}
+        <InsertBetween item={item} />
       </div>
       {props.dragHandle ?? null}
-      {isSelected ? <BlockToolbar blockId={item.block.id} /> : null}
-      <InsertBetween item={item} />
     </div>
   );
 }

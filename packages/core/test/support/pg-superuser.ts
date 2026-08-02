@@ -21,7 +21,22 @@ async function asSuperuser(ownerUrl: string, statements: readonly string[]): Pro
   const su = new Client({ connectionString: u.toString() });
   await su.connect();
   try {
-    for (const statement of statements) await su.query(statement);
+    for (const statement of statements) {
+      // Souběh je tu normální stav: víc testovacích souborů běží proti JEDNOMU
+      // sdílenému serveru a dva zápisy do téhož řádku v pg_authid skončí na
+      // „tuple concurrently updated". Výsledek je přitom u obou stejný, takže
+      // se opakuje, místo aby padl celý soubor.
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          await su.query(statement);
+          break;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (attempt >= 5 || !message.includes('tuple concurrently updated')) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
+        }
+      }
+    }
   } finally {
     await su.end();
   }

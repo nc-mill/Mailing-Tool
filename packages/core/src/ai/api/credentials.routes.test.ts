@@ -1,7 +1,9 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   handleCreateCredential,
+  handleDeleteCredential,
   handleListCredentials,
+  handleSetDefaultCredential,
   handleTestCredential,
 } from './credentials.routes';
 
@@ -125,6 +127,53 @@ describe('GET /api/v1/ai/credentials', () => {
     expect(serialized).toContain('"key_hint":"XYZW"');
     expect(serialized).not.toContain('api_key');
     expect(serialized).not.toContain('deadbeefdeadbeef');
+  });
+});
+
+describe('DELETE /api/v1/ai/credentials/{id}', () => {
+  it('smaže klíč a zapíše audit bez hodnoty klíče', async () => {
+    const writeAuditLog = vi.fn();
+    const result = await handleDeleteCredential(
+      ctx,
+      { credentialId: 'c1' },
+      { deleteCredential: vi.fn(async () => true), writeAuditLog },
+    );
+    expect(result).toMatchObject({ status: 204 });
+    expect(writeAuditLog).toHaveBeenCalledTimes(1);
+    expect(writeAuditLog.mock.calls[0]![0]).toMatchObject({ targetId: 'c1' });
+  });
+
+  it('neexistující klíč vrátí 404 a nezapisuje audit', async () => {
+    const writeAuditLog = vi.fn();
+    const result = await handleDeleteCredential(
+      ctx,
+      { credentialId: 'chybi' },
+      { deleteCredential: vi.fn(async () => false), writeAuditLog },
+    );
+    expect(result).toMatchObject({ status: 404, code: 'not_found' });
+    expect(writeAuditLog).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/v1/ai/credentials/{id}/default', () => {
+  it('nastaví výchozí klíč a zapíše audit', async () => {
+    const writeAuditLog = vi.fn();
+    const result = await handleSetDefaultCredential(
+      ctx,
+      { credentialId: 'c1' },
+      { setDefaultCredential: vi.fn(async () => true), writeAuditLog },
+    );
+    expect(result).toMatchObject({ status: 200, body: { ok: true } });
+    expect(writeAuditLog).toHaveBeenCalledTimes(1);
+  });
+
+  it('neexistující klíč vrátí 404', async () => {
+    const result = await handleSetDefaultCredential(
+      ctx,
+      { credentialId: 'chybi' },
+      { setDefaultCredential: vi.fn(async () => false), writeAuditLog: vi.fn() },
+    );
+    expect(result).toMatchObject({ status: 404, code: 'not_found' });
   });
 });
 

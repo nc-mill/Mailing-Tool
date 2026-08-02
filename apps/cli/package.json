@@ -13,10 +13,15 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
-    "@mlain/core": "workspace:*"
+    "@mlain/core": "workspace:*",
+    "@mlain/db": "workspace:*",
+    "@node-rs/argon2": "2.0.2",
+    "pg": "8.22.0",
+    "pg-boss": "12.26.3"
   },
   "devDependencies": {
     "@mlain/config": "workspace:*",
+    "@types/pg": "8.15.6",
     "esbuild": "^0.25.0",
     "vitest": "4.1.10"
   }

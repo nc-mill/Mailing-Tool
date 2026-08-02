@@ -65,7 +65,11 @@ export function useImportUpload({ workspaceId, maxBytes, accept }: UploadOptions
         setState({
           phase: 'error',
           code: 'file_too_large',
-          meta: { filename: file.name, actual: formatBytes(file.size), limit: formatBytes(maxBytes) },
+          meta: {
+            filename: file.name,
+            actual: formatBytes(file.size),
+            limit: formatBytes(maxBytes),
+          },
         });
         return;
       }
@@ -95,7 +99,9 @@ export function useImportUpload({ workspaceId, maxBytes, accept }: UploadOptions
           ...(first?.meta === undefined ? {} : { meta: first.meta }),
         });
       });
-      xhr.addEventListener('error', () => setState({ phase: 'error', code: 'storage_unavailable' }));
+      xhr.addEventListener('error', () =>
+        setState({ phase: 'error', code: 'storage_unavailable' }),
+      );
 
       const query = opts.force === true ? '?force=true' : '';
       xhr.open('POST', `/api/v1/contacts/imports${query}`);

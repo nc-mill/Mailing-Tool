@@ -4,13 +4,23 @@ import { buildModel, toApiKey } from './build-model';
 type FactoryArgs = { apiKey: string; baseURL?: string; fetch: typeof fetch; name?: string };
 
 const factories = () => ({
-  createAnthropic: vi.fn((_a: FactoryArgs) => (modelId: string) => ({ modelId, provider: 'anthropic' })),
+  createAnthropic: vi.fn((_a: FactoryArgs) => (modelId: string) => ({
+    modelId,
+    provider: 'anthropic',
+  })),
   createOpenAI: vi.fn((_a: FactoryArgs) => (modelId: string) => ({ modelId, provider: 'openai' })),
-  createGoogleGenerativeAI: vi.fn(
-    (_a: FactoryArgs) => (modelId: string) => ({ modelId, provider: 'google' }),
-  ),
-  createOpenRouter: vi.fn((_a: FactoryArgs) => (modelId: string) => ({ modelId, provider: 'openrouter' })),
-  createOpenAICompatible: vi.fn((_a: FactoryArgs) => (modelId: string) => ({ modelId, provider: 'compat' })),
+  createGoogleGenerativeAI: vi.fn((_a: FactoryArgs) => (modelId: string) => ({
+    modelId,
+    provider: 'google',
+  })),
+  createOpenRouter: vi.fn((_a: FactoryArgs) => (modelId: string) => ({
+    modelId,
+    provider: 'openrouter',
+  })),
+  createOpenAICompatible: vi.fn((_a: FactoryArgs) => (modelId: string) => ({
+    modelId,
+    provider: 'compat',
+  })),
 });
 
 describe('buildModel', () => {

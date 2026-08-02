@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { HTTPException } from 'hono/http-exception';
 import { ApiError } from '@mlain/core/errors/api-error';
 import { toProblem, PROBLEM_CONTENT_TYPE } from './problem';
 import { resolveRequestId } from './request-id';
@@ -59,6 +60,30 @@ describe('toProblem', () => {
     );
     expect(body.errors).toHaveLength(1);
     expect(body.errors![0]!.path).toBe('email');
+  });
+
+  // Rozbité tělo je chyba klienta. Dokud padalo na internal_error, dostal
+  // volající 5xx („zkus to znovu") na něco, co si musí opravit sám, a v logu
+  // z toho byl incident. Text od frameworku může nést kus těla, ven nesmí.
+  it('nečitelné tělo požadavku je 422 od klienta, ne 500 od serveru', () => {
+    const { body, status } = toProblem(
+      new HTTPException(400, { message: 'Malformed JSON in request body' }),
+      REQ,
+    );
+    expect(status).toBe(422);
+    expect(body.code).toBe('validation_failed');
+    expect(body.errors?.[0]?.path).toBe('body');
+    expect(JSON.stringify(body)).not.toContain('Malformed JSON');
+  });
+
+  it('chybu frameworku od 500 výš nechává jako internal_error', () => {
+    const { body, status } = toProblem(
+      new HTTPException(500, { message: 'nitro frameworku' }),
+      REQ,
+    );
+    expect(status).toBe(500);
+    expect(body.code).toBe('internal_error');
+    expect(JSON.stringify(body)).not.toContain('nitro frameworku');
   });
 
   it('neznámou chybu přeloží na internal_error a nikdy nevyzradí příčinu', () => {

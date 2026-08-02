@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { COMPOSE_ENV, REPO_ROOT } from './fixtures/test-data';
 
 const run = promisify(execFile);
 
@@ -33,9 +34,14 @@ export default async function globalSetup(): Promise<void> {
   if (process.env.MLAIN_E2E_SKIP_COMPOSE === '1') return;
 
   await run('docker', [...COMPOSE_ARGS, 'down', '--volumes', '--remove-orphans'], {
-    cwd: process.cwd(),
+    cwd: REPO_ROOT,
+    env: COMPOSE_ENV,
   });
-  await run('docker', [...COMPOSE_ARGS, 'up', '-d'], { cwd: process.cwd(), maxBuffer: 32e6 });
+  await run('docker', [...COMPOSE_ARGS, 'up', '-d'], {
+    cwd: REPO_ROOT,
+    maxBuffer: 32e6,
+    env: COMPOSE_ENV,
+  });
 
   const base = process.env.MLAIN_E2E_BASE_URL ?? 'http://localhost:3000';
   await waitForReady(`${base}/api/health/ready`, 120_000);

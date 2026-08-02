@@ -12,6 +12,7 @@ import { normalizeNameKey } from '../naming/normalize';
 import { resolveName } from '../naming/resolve';
 import type { Gender, NameOverrideLookup } from '../naming/types';
 import { readContactsSettings } from '../settings';
+import { suppressedExistsSql } from '../suppression/predicate';
 import type { ContactStatus, UpsertMode } from '../types';
 import { applyWriteRules } from '../write';
 import { byteaArrayLiteral } from './bytea';
@@ -733,12 +734,7 @@ export async function listMailableContacts(
        WHERE c.workspace_id = ${ctx.workspaceId}::uuid
          AND c.deleted_at IS NULL
          AND c.processing_restricted = false
-         AND NOT EXISTS (
-           SELECT 1 FROM suppressions sup
-            WHERE sup.workspace_id = c.workspace_id
-              AND sup.removed_at IS NULL
-              AND (sup.email = c.email OR sup.fingerprint = ANY(c.email_fingerprints))
-         )
+         AND NOT ${sql.raw(suppressedExistsSql('c'))}
          AND CASE
                WHEN ${listId}::uuid IS NULL THEN c.status = 'active'
                ELSE s.status = 'confirmed'

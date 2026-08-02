@@ -1,6 +1,9 @@
 'use client';
 
-import type { SegmentAst } from '@mlain/ui/patterns/query-builder';
+import type { FieldDefinition, SegmentAst } from '@mlain/ui/patterns/query-builder';
+import { Button } from '@mlain/ui/components/button';
+import { Field } from '@mlain/ui/components/field';
+import { Input } from '@mlain/ui/components/input';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { LiveCount } from './live-count';
@@ -14,12 +17,15 @@ export function SegmentEditor({
   locale = 'cs',
   segment,
   totalContacts,
+  fields = [],
 }: {
   workspaceId: string;
   workspaceSlug: string;
   locale?: string;
   segment: { id: string; name: string; definition: unknown } | null;
   totalContacts?: number;
+  /** Katalog polí skládá serverová komponenta, viz `field-catalog.ts`. */
+  fields?: FieldDefinition[];
 }) {
   const t = useTranslations('segments');
   const [name, setName] = useState(segment?.name ?? '');
@@ -39,23 +45,35 @@ export function SegmentEditor({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <label htmlFor="segment-name">{t('name')}</label>
-      <input id="segment-name" value={name} onChange={(event) => setName(event.target.value)} />
+    <section className="flex flex-col gap-6">
+      <header className="flex flex-col gap-2">
+        <h1 className="text-xl font-semibold text-text">
+          {segment === null ? t('new') : segment.name}
+        </h1>
+        <Field label={t('name')}>
+          <Input value={name} onChange={(event) => setName(event.target.value)} />
+        </Field>
+      </header>
 
       <SegmentBuilder
         value={ast}
+        fields={fields}
         onChange={setAst}
         {...(totalContacts === undefined ? {} : { totalContacts })}
         footer={<LiveCount definition={ast} workspaceId={workspaceId} locale={locale} />}
       />
 
-      <div className="flex gap-2">
-        <button type="button" disabled={saving} onClick={() => void save()}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="primary" pending={saving} onClick={() => void save()}>
           {t('builder.save')}
-        </button>
-        <a href={`/w/${workspaceSlug}/segments`}>{t('builder.cancel')}</a>
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() => window.location.assign(`/w/${workspaceSlug}/segments`)}
+        >
+          {t('builder.cancel')}
+        </Button>
       </div>
-    </div>
+    </section>
   );
 }

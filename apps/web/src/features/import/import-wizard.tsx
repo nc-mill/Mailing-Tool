@@ -68,7 +68,10 @@ export function ImportWizard({
 }: ImportWizardProps) {
   const t = useTranslations('import');
   const router = useRouter();
-  const { current, goToStep } = useWizardStep({ steps: STEPS.map((id) => ({ id })), defaultStepId: initialStep });
+  const { current, goToStep } = useWizardStep({
+    steps: STEPS.map((id) => ({ id })),
+    defaultStepId: initialStep,
+  });
   const step = current as Step;
 
   const [importId, setImportId] = useState<string | null>(initialImportId);
@@ -91,20 +94,35 @@ export function ImportWizard({
   const sample: string[][] = preview
     ? [
         preview.header,
-        ...preview.rows.slice(0, 2).map((row) => [
-          row.email ?? '',
-          row.first_name ?? '',
-          row.last_name ?? '',
-        ]),
+        ...preview.rows
+          .slice(0, 2)
+          .map((row) => [row.email ?? '', row.first_name ?? '', row.last_name ?? '']),
       ]
     : [];
 
+  /**
+   * Ukázka u sloupce je HODNOTA, kterou ten sloupec vyrobil, ne n-tá hodnota
+   * prvního řádku. Indexování `Object.values(row)[index]` vypadá, že funguje,
+   * ale řadí se podle pořadí klíčů odpovědi, takže u sloupce s e-mailem
+   * ukazovalo číslo řádku. Odhalilo to teprve proklikání v prohlížeči.
+   */
+  const first = preview?.rows[0];
+  const sampleFor = (target: string): string => {
+    if (first === undefined) return '';
+    if (target === 'email') return first.email ?? '';
+    if (target === 'first_name') return first.first_name ?? '';
+    if (target === 'last_name') return first.last_name ?? '';
+    if (target === 'title_prefix') return first.title_prefix ?? '';
+    if (target === 'full_name')
+      return [first.first_name, first.last_name].filter(Boolean).join(' ');
+    return '';
+  };
+
   const columns: MappingColumn[] = preview
-    ? preview.header.map((name, index) => ({
-        name,
-        sample: String(Object.values(preview.rows[0] ?? {})[index] ?? ''),
-        target: String((preview.mapping as Record<string, string>)[name] ?? 'ignore'),
-      }))
+    ? preview.header.map((name) => {
+        const target = String((preview.mapping as Record<string, string>)[name] ?? 'ignore');
+        return { name, sample: sampleFor(target), target };
+      })
     : [];
 
   const previewRows: PreviewRow[] = (preview?.rows ?? []).map((row) => ({

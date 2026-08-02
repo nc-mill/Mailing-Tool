@@ -42,7 +42,15 @@ test('K8: osa je průchozí z klávesnice a rozbalení shluku se ohlásí', asyn
     'aria-expanded',
     'true',
   );
-  await expect(page.getByRole('status')).toContainText('Rozbaleno');
+  // Omezeno na sekci, stejně jako všechny asserce nad ní. Bez toho byl tenhle
+  // jediný řádek v souboru neomezený a chytal i `role="status"` z K3, kde má
+  // Wizard vlastní čítač kroku „Krok 2 z 3". Padalo to na
+  //
+  //   strict mode violation: getByRole('status') resolved to 2 elements
+  //
+  // což vypadalo jako vada osy, ale byl to dosah dotazu. Wizard a osa se
+  // potkávají jedině na galerii, kde je záměrně všechno pohromadě.
+  await expect(section.getByRole('status')).toContainText('Rozbaleno');
 });
 
 test('fokus je vidět a nezakrývá ho sticky hlavička ani systémový pruh', async ({ page }) => {

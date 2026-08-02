@@ -59,12 +59,29 @@ async function seedContactsBulk(ctx: TestWorkspace, count: number): Promise<void
  * jsou ty osiřelé, které nikdo neclaimne a které navěky brání odpojení oddílu.
  * Jediná obrana je kontrola stavu po dávce, kterou tenhle test zapíná a vypíná.
  */
+/**
+ * DRUHÁ ODCHYLKA OD PLÁNU, VYNUCENÁ MĚŘENÍM. Plán psal 20 000 kontaktů a dávku 1 000
+ * na každý z pětadvaceti běhů. Naměřeno: první běh trvá minuty, jedenáctý čtvrthodinu,
+ * celý scénář by neskončil. Příčina není v testovaném kódu: harness dává všem běhům
+ * JEDNU databázi, `cancelPendingBatch` čte podle `campaign_id` sekvenčním průchodem
+ * oddílu (viz jeho plán) a ten oddíl s každým během roste. Po jedenácti bězích v něm
+ * bylo 115 000 zpráv a každá dávka je znovu přečetla celé. Je to vlastnost scénáře,
+ * ne vada úklidu: v provozu leží v oddílu jeden měsíc jednoho projektu.
+ *
+ * Objem se proto snižuje a POMĚR se zachovává: 4 000 kontaktů a dávka 200 dávají
+ * dvacet dávek, tedy přesně tolik, kolik jich plán potřebuje pro zrušení po 3. až 14.
+ * dávce. Závod se tím nemění ani o kus, mění se jen počet řádků, které se u něj vozí.
+ * Objem sám o sobě zkouší úkol 23 na padesáti tisících zprávách.
+ */
+const RACE_AUDIENCE_SIZE = 4_000;
+const RACE_BATCH_SIZE = 200;
+
 async function runOnce(
   checkStatusAfterBatch: boolean,
   cancelAfterBatches: number,
 ): Promise<number> {
   const ctx = await withTestWorkspace();
-  await seedContactsBulk(ctx, 20_000);
+  await seedContactsBulk(ctx, RACE_AUDIENCE_SIZE);
   const id = await seedCampaign(ctx, { status: 'draft' });
   const { audienceBuiltAt } = await startMaterialization(ctx.workspace, id, 0);
 
@@ -76,11 +93,18 @@ async function runOnce(
       batch: async (i) => {
         const running = materializeBatch(ctx.workspace, { ...i, statementTimeoutMs: 30_000 });
         batches += 1;
-        if (batches === cancelAfterBatches) {
-          // ZÁMĚRNĚ BEZ await: zrušení běží proti nedokončené dávce.
-          cancelInFlight = cancelCampaign(ctx.workspace, id, { reason: 'test' });
-        }
-        return running;
+        const triggering = batches === cancelAfterBatches;
+        // ZÁMĚRNĚ BEZ await: úklid zrušení běží proti nedokončené dávce, obojí ve
+        // vlastní transakci na vlastním spojení. Tohle je ten závod.
+        if (triggering) cancelInFlight = cancelCampaign(ctx.workspace, id, { reason: 'test' });
+        const r = await running;
+        // Ale NEŽ se pustí další dávka, úklid musí doběhnout. Bez toho by smyčka
+        // `cancelCampaign` mopovala i všechny pozdější dávky a záporná kontrola
+        // by vycházela nula i nad implementací, která závod neošetřuje. Překryv
+        // s dávkou, kvůli kterému scénář existuje, zůstává: úklid běžel celou dobu,
+        // co běžel `INSERT`.
+        if (triggering) await cancelInFlight;
+        return r;
       },
       advanceCursor: async () => {},
       // Vypnuta kontrola je presne ta implementace, ktera zavod NEOSETRUJE.
@@ -97,7 +121,7 @@ async function runOnce(
       campaignId: id,
       audienceBuiltAt: audienceBuiltAt!,
       startCursor: ZERO_UUID,
-      batchSize: 1000,
+      batchSize: RACE_BATCH_SIZE,
       maxMinutes: 60,
       where: { sql: 'true', params: [] },
       renderPlan: EMPTY_RENDER_PLAN,

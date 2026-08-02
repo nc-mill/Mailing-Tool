@@ -26,7 +26,10 @@ export type RunBackupResult = { dir: string; manifest: BackupManifest };
 
 /** Jméno adresáře podle 3.14: mlain-<ISO bez oddělovačů>Z */
 export function backupDirName(now: Date): string {
-  return `mlain-${now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')}`;
+  return `mlain-${now
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}Z$/, 'Z')}`;
 }
 
 export async function runBackup(input: RunBackupInput): Promise<RunBackupResult> {
@@ -69,10 +72,16 @@ export async function runBackup(input: RunBackupInput): Promise<RunBackupResult>
     await rm(finalDir, { recursive: true, force: true });
     await rename(workDir, finalDir);
 
-    if (input.postBackupHook) {
+    // Hook je nepovinný a volající mu cestu předává vždy, takže se nejdřív
+    // ptáme, jestli vůbec existuje. Bez toho by KAŽDÁ záloha v instalaci bez
+    // hooku končila varováním „spawn ... ENOENT", a varování, které vidíte
+    // pokaždé, přestanete číst i ve chvíli, kdy hlásí něco skutečného.
+    if (input.postBackupHook && (await exists(input.postBackupHook))) {
       // Selhání hooku nesmí zneplatnit hotovou zálohu, jen se hlasitě zapíše.
+      // `console.error`, ne `warn`: hook typicky odváží zálohu mimo stroj,
+      // takže jeho selhání znamená, že záloha leží jen tam, kde vznikla.
       await runProcess(input.postBackupHook, [finalDir], { timeoutMs: 15 * 60 * 1000 }).catch(
-        (err: Error) => console.warn(`post-backup hook selhal: ${err.message}`),
+        (err: Error) => console.error(`post-backup hook selhal: ${err.message}`),
       );
     }
 
@@ -80,6 +89,15 @@ export async function runBackup(input: RunBackupInput): Promise<RunBackupResult>
   } catch (err) {
     await rm(workDir, { recursive: true, force: true });
     throw err;
+  }
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -94,7 +112,9 @@ async function archiveUploads(
   }
   await runProcess('tar', ['-czf', target, '-C', uploadsDir, '.']);
   const listing = await runProcess('tar', ['-tzf', target]);
-  const files = listing.stdout.split('\n').filter((l) => l.trim() !== '' && !l.endsWith('/')).length;
+  const files = listing.stdout
+    .split('\n')
+    .filter((l) => l.trim() !== '' && !l.endsWith('/')).length;
   const s = await stat(target);
   return { bytes: s.size, sha256: await fileSha256(target), files };
 }

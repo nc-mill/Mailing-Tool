@@ -12,7 +12,23 @@ import { Client } from 'pg';
  */
 export const MIGRATION_ADVISORY_LOCK_ID = 7264150401;
 
-const DEFAULT_MIGRATIONS_FOLDER = fileURLToPath(new URL('../migrations', import.meta.url));
+/**
+ * Cesta k adresáři s migracemi. Počítá se AŽ PŘI VOLÁNÍ, ne při načtení modulu.
+ *
+ * Na modulové úrovni to byl výraz `fileURLToPath(new URL('../migrations',
+ * import.meta.url))`, který bundler neumí přeložit a hlásí „Module not found:
+ * Can't resolve '../migrations'". Jakmile se tenhle modul jakkoli dostal do
+ * grafu Next.js aplikace, spadla CELÁ aplikace na 500, ne jen migrace.
+ *
+ * Stalo se to dvakrát a pokaždé jinou cestou: nejdřív přes reexport v kořeni
+ * `@mlain/db`, podruhé přes `ops/api/backups.routes.ts` a `openapi.ts`.
+ * Ani dynamický import to neřeší, protože bundler prochází i ty. Jediná
+ * spolehlivá oprava je nemít ten výraz na modulové úrovni: uvnitř funkce
+ * se vyhodnotí až v Node, kam patří, a bundler ho nikdy nepotká.
+ */
+function defaultMigrationsFolder(): string {
+  return fileURLToPath(new URL('../migrations', import.meta.url));
+}
 
 export type RunMigrationsOptions = {
   url: string;
@@ -102,7 +118,7 @@ async function readSchemaVersion(client: Client): Promise<number | null> {
 }
 
 export async function runMigrations(options: RunMigrationsOptions): Promise<void> {
-  const folder = options.migrationsFolder ?? DEFAULT_MIGRATIONS_FOLDER;
+  const folder = options.migrationsFolder ?? defaultMigrationsFolder();
   const log = options.logger ?? ((m: string) => console.info(`[migrate] ${m}`));
   const journal: Journal = JSON.parse(readFileSync(join(folder, 'meta', '_journal.json'), 'utf8'));
   const entries = [...journal.entries].sort((a, b) => a.idx - b.idx);

@@ -12,6 +12,34 @@ set -eu
 
 MODE="${MODE:-all}"
 
+# --- 0) Doména pro trackovací odkazy -----------------------------------------
+# Sender z ní staví odkazy /t/o/, /t/c/ a /u/. Konfigurace v Node si ji umí
+# odvodit z APP_URL, jenže sender je binárka v Go a APP_URL nedostává
+# (nález K7 plánu P09), takže je pro něj povinná. Bez ní se nespustí:
+#
+#   konfigurace je neplatná:
+#     - TRACKING_DOMAIN: chybí. Sender z ní staví odkazy /t/o/, /t/c/ a /u/.
+#
+# Při MODE=all to znamená, že celý kontejner skončí v restartové smyčce,
+# přestože web i worker naběhly. Naměřeno při stavbě zlaté cesty.
+#
+# Odvozuje se to TADY, ne v compose: Compose umí jen `${VAR:-výchozí}`, ne
+# úpravu řetězce, a `${TRACKING_DOMAIN:-${APP_URL#*://}}` v něm skončí na
+# „invalid interpolation format".
+#
+# Bere se CELÁ adresa VČETNĚ schématu, jen bez koncového lomítka. Přestože se
+# proměnná jmenuje „doména", sender z ní skládá odkazy prostým spojením
+# (`base() + "/t/o/" + token`), takže z holého hostu by vznikl řetězec, který
+# v e-mailu není odkaz. Sender to sám kontroluje:
+#
+#   TRACKING_DOMAIN: "localhost:4600" není absolutní URL se schématem
+#
+# Obě strany, TypeScript i Go, jsou na tenhle tvar srovnané.
+if [ -z "${TRACKING_DOMAIN:-}" ] && [ -n "${APP_URL:-}" ]; then
+  TRACKING_DOMAIN="${APP_URL%/}"
+  export TRACKING_DOMAIN
+fi
+
 # --- 1) Validace konfigurace -------------------------------------------------
 # `mlain config check` vypíše všechny problémy naráz a vrátí 78 (kritéria 2 a 3).
 if ! mlain config check; then

@@ -13,7 +13,11 @@ process.env['DATA_DIR'] ??= os.tmpdir();
 Object.assign(process.env, { NODE_ENV: 'test' });
 process.env['MODE'] = 'web';
 
-const { RATE_LIMIT_RULES, createLimiterRegistry, consumeAll } = await import('./rate-limit');
+const { rateLimitRules, createLimiterRegistry, consumeAll } = await import('./rate-limit');
+// Katalog je funkce, ne konstanta: kdyby byl konstanta, vyhodnotila by se
+// konfigurace při načtení modulu a `next build` by na tom padal. Viz komentář
+// u `rateLimitRules` ve zdroji.
+const RATE_LIMIT_RULES = rateLimitRules();
 
 describe('katalog limitů', () => {
   it('obsahuje právě ta pravidla, která patří P04 a doménám s API klíčem', () => {

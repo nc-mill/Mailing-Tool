@@ -41,21 +41,19 @@ describe('assertDumpRoleSeesAllRows', () => {
   });
 
   it('hláška jmenuje roli i konkrétní tabulku, aby šlo jednat', async () => {
-    const err = await assertDumpRoleSeesAllRows(pg.urlForRole('mlain_app')).catch(
-      (e: Error) => e,
-    );
-    expect(err.message).toContain('mlain_app');
-    expect(err.message).toContain('contacts');
+    const err = await assertDumpRoleSeesAllRows(pg.urlForRole('mlain_app')).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain('mlain_app');
+    expect((err as Error).message).toContain('contacts');
   });
 
   it('jmenuje i partitionované tabulky, na které RLS sedí na rodiči', async () => {
     // messages má relkind 'p', ne 'r'. Dotaz zúžený na 'r' by devět největších
     // tabulek přeskočil a pojistka by mlčela právě u nich. Ověřeno spuštěním:
     // relkind='r' najde jen contacts, relkind IN ('r','p') najde i messages.
-    const err = await assertDumpRoleSeesAllRows(pg.urlForRole('mlain_app')).catch(
-      (e: Error) => e,
-    );
-    expect(err.message).toContain('messages');
+    const err = await assertDumpRoleSeesAllRows(pg.urlForRole('mlain_app')).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain('messages');
   });
 });
 

@@ -1,4 +1,5 @@
 import { createRoute, z } from '@hono/zod-openapi';
+import { problemResponse } from '../../identity/api/schemas';
 
 const conversationSummary = z.object({
   id: z.string().uuid(),
@@ -32,6 +33,9 @@ export const listConversationsRoute = createRoute({
         },
       },
     },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    422: problemResponse('validation_failed'),
   },
 });
 
@@ -63,7 +67,10 @@ export const getConversationRoute = createRoute({
         },
       },
     },
-    404: { description: 'Konverzace neexistuje' },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    422: problemResponse('validation_failed'),
   },
 });
 
@@ -72,5 +79,11 @@ export const deleteConversationRoute = createRoute({
   path: '/ai/conversations/{conversation_id}',
   tags: ['AI'],
   request: { params: z.object({ conversation_id: z.string().uuid() }) },
-  responses: { 204: { description: 'Smazáno' }, 404: { description: 'Neexistuje' } },
+  responses: {
+    204: { description: 'Smazáno' },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    422: problemResponse('validation_failed'),
+  },
 });

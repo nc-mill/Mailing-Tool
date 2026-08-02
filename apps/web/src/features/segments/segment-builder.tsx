@@ -2,10 +2,12 @@
 
 import { QueryBuilder, MAX_CHILDREN, MAX_DEPTH } from '@mlain/ui/patterns/query-builder';
 import type { FieldDefinition, SegmentAst } from '@mlain/ui/patterns/query-builder';
+import { Alert } from '@mlain/ui/patterns/states';
 import { useTranslations } from 'next-intl';
 import { GroupSentence } from './group-sentence';
 import { builderLabels } from './labels';
-import { isNegating, NullHint } from './null-hint';
+import { isNegating } from './negating-operators';
+import { NullHint } from './null-hint';
 
 /** Nejvýš sto podmínek na segment, od osmdesáti se počítadlo ukazuje. */
 export const MAX_CONDITIONS = 100;
@@ -13,15 +15,16 @@ export const COUNTER_FROM = 80;
 /** Od třetí úrovně se nabízí rozdělení: hlouběji už segment nikdo nepřečte. */
 export const SPLIT_FROM_DEPTH = 3;
 
-type Node = SegmentAst['root'] | { type: 'condition'; field: unknown; operator: string; value?: unknown };
-
 /**
  * Hloubka se počítá po SKUPINÁCH, ne po uzlech. Podmínka není další úroveň
  * zanoření: kdyby se počítala, hlásil by builder mez o jedna dřív, než ji
  * kompilátor doopravdy má, a uživatel by nemohl postavit segment, který
  * server bez problému přijme.
  */
-function walk(node: unknown, depth = 1): { conditions: number; depth: number; operators: string[] } {
+function walk(
+  node: unknown,
+  depth = 1,
+): { conditions: number; depth: number; operators: string[] } {
   const typed = node as { type?: string; children?: unknown[]; operator?: string };
   if (typed.type === 'condition') {
     return { conditions: 1, depth: depth - 1, operators: [typed.operator ?? ''] };
@@ -105,7 +108,10 @@ export function SegmentBuilder({
         ...(first ? [first] : []),
         {
           type: 'condition' as const,
-          field: (first as { field?: unknown } | undefined)?.field ?? { kind: 'contact', key: 'first_name' },
+          field: (first as { field?: unknown } | undefined)?.field ?? {
+            kind: 'contact',
+            key: 'first_name',
+          },
           operator: 'is_empty',
         },
       ],
@@ -117,31 +123,46 @@ export function SegmentBuilder({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 rounded-[var(--radius-surface)] border border-border bg-surface p-4">
       {stats.conditions === 0 && totalContacts !== undefined ? (
         // Prázdný segment NENÍ chyba: obsahuje všechny kontakty. Kdyby to
         // svítilo červeně, uživatel by hledal, co udělal špatně.
-        <p>{t('count.emptyAll', { count: totalContacts })}</p>
+        <p className="text-sm text-text-muted">{t('count.emptyAll', { count: totalContacts })}</p>
       ) : null}
 
       {stats.conditions >= COUNTER_FROM ? (
-        <p>{t('builder.conditionCounter', { used: stats.conditions, limit: MAX_CONDITIONS })}</p>
+        <p className="text-sm text-text-muted">
+          {t('builder.conditionCounter', { used: stats.conditions, limit: MAX_CONDITIONS })}
+        </p>
       ) : null}
 
       {stats.depth >= SPLIT_FROM_DEPTH ? (
         <>
-          <p>{t('builder.groupNumber', { path: stats.depth })}</p>
-          <button type="button">{t('builder.splitSuggestion')}</button>
+          <p className="text-sm text-text-muted">
+            {t('builder.groupNumber', { path: stats.depth })}
+          </p>
+          <button
+            type="button"
+            className="self-start text-sm text-accent-text underline underline-offset-4"
+          >
+            {t('builder.splitSuggestion')}
+          </button>
         </>
       ) : null}
 
-      {stats.depth >= MAX_DEPTH ? <p>{t('builder.noDeeper')}</p> : null}
+      {stats.depth >= MAX_DEPTH ? (
+        <p className="text-sm text-text-muted">{t('builder.noDeeper')}</p>
+      ) : null}
 
       {negating ? <NullHint onAddEmptyCondition={addEmptyCondition} /> : null}
 
-      {clash ? <p role="alert">{t('traps.contradiction', { a: clash[0], b: clash[1] })}</p> : null}
+      {clash ? (
+        <Alert tone="warning">{t('traps.contradiction', { a: clash[0], b: clash[1] })}</Alert>
+      ) : null}
 
-      {neverOpened && campaignCount === 0 ? <p>{t('traps.noCampaignsYet')}</p> : null}
+      {neverOpened && campaignCount === 0 ? (
+        <Alert tone="info">{t('traps.noCampaignsYet')}</Alert>
+      ) : null}
 
       <QueryBuilder
         value={ast}
@@ -162,7 +183,7 @@ export function SegmentBuilder({
       />
 
       {stats.conditions >= MAX_CONDITIONS ? (
-        <p>{t('limits.tooComplex', { limit: MAX_CONDITIONS })}</p>
+        <Alert tone="warning">{t('limits.tooComplex', { limit: MAX_CONDITIONS })}</Alert>
       ) : null}
 
       <span hidden data-max-children={MAX_CHILDREN} />

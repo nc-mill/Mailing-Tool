@@ -14,11 +14,18 @@ services:
       MP_SMTP_AUTH_ACCEPT_ANY: "1"
       MP_SMTP_AUTH_ALLOW_INSECURE: "1"
       MP_MAX_MESSAGES: "5000"
+      # Past poslouchá na 587, ne na výchozím 1025.
+      #
+      # Dialog „Nový odesílací účet" nabízí port jako VÝBĚR ze čtyř hodnot
+      # (587, 465, 25, 2525), ne jako textové pole, takže 1025 do něj zadat
+      # nejde. Ověřeno výpisem nabídky z běžící instalace. Než ohýbat produkt
+      # kvůli testu, je správnější posadit past na port, který produkt nabízí.
+      MP_SMTP_BIND_ADDR: "0.0.0.0:587"
     ports:
       # Porty jsou parametrizované, protože na vývojářském stroji běží souběžně
       # víc instalací. Výchozí hodnoty odpovídají plánu.
       - "${MAILPIT_HTTP_PORT:-8025}:8025"
-      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_SMTP_PORT:-1025}:587"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8025/readyz"]
       interval: 2s
@@ -31,6 +38,40 @@ services:
       # protože 60 s by prodloužilo každý běh o minutu bez jakéhokoliv přínosu.
       CAMPAIGN_SEND_DELAY_SECONDS: "0"
       APP_URL: "${APP_URL:-http://localhost:3000}"
+      # Doména trackovacích odkazů. Odvození z `APP_URL` dělá `loadConfig()`,
+      # jenže sender je binárka v Go a `APP_URL` nedostává (nález K7), takže pro
+      # `MODE=all` musí přijít zvenčí. Bez ní sender nenastartuje a v logu je
+      #   konfigurace je neplatná: TRACKING_DOMAIN: chybí
+      #
+      # Hodnota je CELÁ ADRESA včetně schématu, ne holý host. Sender v Go ji
+      # tak vyžaduje (`apps/sender/internal/config/load.go:190`), zatímco
+      # `packages/core/src/config/load.ts:91` počítá výchozí hodnotu jako
+      # `new URL(APP_URL).host`. Ty dva kontrakty se neshodují a holý host
+      # sendera shodí na
+      #   TRACKING_DOMAIN: "localhost:4600" není absolutní URL se schématem http nebo https
+      # Ověřeno spuštěním, zapsáno jako nález.
+      TRACKING_DOMAIN: "${TRACKING_DOMAIN:-${APP_URL:-http://localhost:3000}}"
     depends_on:
       mailpit:
         condition: service_healthy
+    volumes:
+      # ODCHYLKA OD PLÁNU, ověřená spuštěním. Základní compose montuje ./data
+      # a ./data/postgres jako bind mount na hostitele. `docker compose down
+      # --volumes` bind mount NEMAŽE, maže jen pojmenované svazky. Global setup
+      # přitom stojí na tvrzení „zlatá cesta musí projít na ČISTÉ instalaci,
+      # jinak netestuje instalaci, ale zbytky po minulém běhu". S bind mountem
+      # to tvrzení neplatí: druhý běh najde databázi i nahrané soubory z prvního,
+      # průvodce prvním spuštěním se nespustí a test spadne na něčem jiném, než
+      # co má hlídat. Pojmenované svazky dělají to, co global setup slibuje.
+      - mlain-e2e-data:/data
+
+  postgres:
+    volumes:
+      # Cesty v překryvném souboru se vyhodnocují proti adresáři PRVNÍHO
+      # souboru v `-f`, tedy proti `docker/`, ne proti tomuhle adresáři.
+      - mlain-e2e-pgdata:/var/lib/postgresql
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  mlain-e2e-data:
+  mlain-e2e-pgdata:

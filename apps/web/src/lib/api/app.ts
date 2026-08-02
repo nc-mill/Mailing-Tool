@@ -218,9 +218,27 @@ export function createApiApp() {
     }
     // Request BEZ TĚLA žádný Content-Type deklarovat nemá co. Týká se to zápisů,
     // které si vystačí s cestou a aktérem: POST /api/v1/auth/logout,
-    // /auth/logout-all a rotace bez parametrů. Bez téhle větve by vracely 415,
-    // ačkoli je na nich úplně všechno v pořádku.
-    const hasBody = c.req.raw.body !== null || Number(c.req.header('Content-Length') ?? '0') > 0;
+    // /auth/logout-all, rotace bez parametrů a `/ai/credentials/{id}/test`
+    // i `/default`.
+    //
+    // ODCHYLKA OD PLÁNU, oprava vadné detekce. Undici (fetch v Node, kterým
+    // `apiMutate` volá tohle API ze serverových akcí) u POST/PATCH bez těla
+    // sám připojí `Content-Length: 0`, a Next.js pak `c.req.raw.body`
+    // vykreslí jako neprázdný (prázdný) stream, ne jako `null`. Původní `||`
+    // proto vyhodnotilo `hasBody = true` i pro request BEZ jediného bajtu,
+    // klient neposlal `Content-Type` (nemá co deklarovat) a middleware to
+    // shodil na 415, ačkoli šlo přesně o případ, který měl projít. Ověřeno
+    // v prohlížeči: `POST /ai/credentials/{id}/test` i `/default` vracely
+    // 415 „This Content-Type is not supported by this endpoint.“
+    //
+    // Oprava: když je `Content-Length` deklarovaná, je to jediná pravda o
+    // tom, kolik bajtů request nese. `raw.body !== null` se použije jen bez
+    // ní, pro chunked přenos bez délky předem.
+    const declaredContentLength = c.req.header('Content-Length');
+    const hasBody =
+      declaredContentLength === undefined
+        ? c.req.raw.body !== null
+        : Number(declaredContentLength) > 0;
     const pathname = new URL(c.req.url).pathname;
     if (hasBody && ![...CONTENT_TYPE_EXEMPT_PREFIXES].some((p) => pathname.startsWith(p))) {
       const declared = c.req.header('Content-Type') ?? '';
@@ -228,7 +246,7 @@ export function createApiApp() {
         throw new ApiError('unsupported_media_type');
       }
     }
-    const declaredLength = Number(c.req.header('Content-Length') ?? '0');
+    const declaredLength = Number(declaredContentLength ?? '0');
     if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BODY_BYTES) {
       throw new ApiError('payload_too_large');
     }

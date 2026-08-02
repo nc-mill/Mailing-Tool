@@ -9,36 +9,49 @@
  * dovoluje v `packages/core/package.json` sáhnout jen na `dependencies`
  * a `exports`, na `scripts` výslovně NE.
  *
- * Kontejner si proto zakládají testy samy a tenhle pomocník drží ten kód na
- * jednom místě. Tři kopie téhož bootstrapu (tx, apps/web, identity) by se
- * rozešly a rozdíl by se projevil jako záhadně padající test v jednom balíčku.
- *
  * Dělá přesně to, co `docker/initdb` v produkci: šest rolí, vlastnictví
  * schématu migrátorem a migrace pod `mlain_migrator`. Aplikační spojení jde
  * pod `mlain_app`, tedy pod rolí, na kterou RLS dopadá; pod vlastníkem
  * schématu by testy izolace byly falešně zelené.
  *
- * JEDEN KONTEJNER NA CELÝ BĚH (rozhodnutí R31 plánu P03). Dřív startovalo
- * `startPgHarness()` vlastní kontejner při KAŽDÉM zavolání a volá ho 23
- * testovacích souborů, takže jeden běh balíčku znamenal 23 databázových
- * serverů a 23krát přehranou tutéž sadu migrací. Naměřeno: při souběhu víc
- * balíčků vyskočil počet kontejnerů na 74 a zátěž stroje na 29.
+ * JEDEN KONTEJNER NA CELÝ STROJ, ne na běh a už vůbec ne na soubor.
  *
- * Dnes má funkce dvě cesty a rozhoduje mezi nimi to, jestli běh má
- * `globalSetup`, který sdílený server ohlásil:
+ * Vývoj toho čísla je naměřený, ne odhadnutý. Původně startoval harness vlastní
+ * kontejner při KAŽDÉM zavolání, a volá ho přes dvacet testovacích souborů:
+ * jeden běh `packages/core` znamenal 23 kontejnerů, 49 přehrání téže sady
+ * migrací a při souběhu víc agentů 74 kontejnerů a zátěž stroje 29. Pak byl
+ * kontejner jeden na běh, jenže agentů běží pět, takže jich na stroji bylo
+ * pět až deset. Dnes je jeden na celý stroj: jmenuje se `mlain-test-pg`
+ * a sdílí ho každý běh vitestu, který tenhle modul použije.
  *
- *  1. SDÍLENÝ SERVER (`packages/core`, viz `global-setup.ts` vedle). Kontejner
- *     už běží, role existují a šablona `mlain_template` je zmigrovaná. Soubor
- *     dostane VLASTNÍ databázi příkazem `CREATE DATABASE ... TEMPLATE`, což je
- *     otázka desítek milisekund. `TEMPLATE` kopíruje tabulky, politiky RLS
- *     I granty, takže izolace mezi soubory zůstává úplná; ověřeno spuštěním,
- *     protože bez grantů by testy oprávnění byly falešně zelené.
- *  2. VLASTNÍ KONTEJNER (`apps/web`, který tenhle modul reexportuje a vlastní
- *     `globalSetup` nemá; ten soubor leží mimo rozsah téhle změny). Chová se
- *     přesně jako dřív: čerstvý kontejner, šest rolí, migrace, jedna databáze.
+ * Sdílený je ale JEN KONTEJNER. Každý testovací soubor si dál bere VLASTNÍ
+ * databázi z předmigrované šablony přes `CREATE DATABASE ... TEMPLATE`
+ * (rozhodnutí R31 plánu P03), takže izolace zůstává úplná: `TEMPLATE` kopíruje
+ * tabulky, politiky RLS I granty. Ověřeno spuštěním, ne odvozeno; bez grantů
+ * by testy oprávnění byly falešně zelené.
+ *
+ * TŘI VĚCI, KTERÉ SDÍLENÍ MEZI BĚHY VYNUCUJE a bez kterých by to tiše lhalo:
+ *
+ *  1. Kontejner NIKDO nezastavuje. `stop()` na harnessu zahazuje jen svou
+ *     databázi. Kdyby ho zastavoval každý běh, sebral by ho ostatním uprostřed
+ *     práce. `ryuk` ho taky neuklidí, a je to schválně: testcontainers dává
+ *     session label jen kontejnerům BEZ `withReuse()`, s reuse ho vynechá.
+ *     Úklid je tedy ruční, viz `tools/dev/uklizec-kontejneru.sh`.
+ *  2. Šablona je adresovaná OBSAHEM migrací, ne pevným jménem. Kontejner žije
+ *     dýl než jedna sada migrací a plán P03 rozhodnutím R39 mění migrace NA
+ *     MÍSTĚ, ne novým souborem. Šablona pojmenovaná natvrdo by tedy po úpravě
+ *     0001 zůstala stará a testy by běžely nad neaktuálním schématem, aniž by
+ *     cokoli spadlo. Jméno proto nese otisk obsahu `packages/db/migrations`.
+ *  3. Bootstrap běží pod výhradním poradním zámkem a všechno v něm je
+ *     PODMÍNĚNÉ. Pět agentů startuje naráz a druhé `CREATE ROLE mlain_app`
+ *     nebo druhé `CREATE DATABASE` by spadlo.
  */
-import { randomUUID } from 'node:crypto';
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { PostgreSqlContainer } from '@testcontainers/postgresql';
+import { getContainerRuntimeClient } from 'testcontainers';
 import { Client } from 'pg';
 import { inject } from 'vitest';
 import { runMigrations } from '@mlain/db/migrate';
@@ -54,10 +67,33 @@ export const HARNESS_ROLES = [
 ] as const;
 
 /**
- * Předmigrovaná šablona na sdíleném serveru. Zakládá ji `global-setup.ts`,
- * testovací soubory si z ní klonují vlastní databázi.
+ * Jméno sdíleného kontejneru. Podle něj ho harness najde, když už běží, takže
+ * druhý běh nestartuje druhý server.
+ *
+ * NENÍ to `mlain-dev-pg`. Ten na portu 55432 je vývojová databáze, na které
+ * běží aplikace, a testy na ni nesmí sáhnout.
  */
-export const TEMPLATE_DB = 'mlain_template';
+export const SHARED_CONTAINER_NAME = 'mlain-test-pg';
+
+/** Předpona šablon. Za ní jde otisk migrací, viz `templateDatabase()`. */
+export const TEMPLATE_DB_PREFIX = 'mlain_tpl_';
+
+/**
+ * Poradní zámek nad databází `postgres`. Drží ho ten, kdo staví role a šablonu,
+ * aby to pět souběžných agentů nedělalo pětkrát naráz. Session-scoped, takže se
+ * pustí i při pádu procesu; to je jeho hlavní výhoda proti zámkové tabulce.
+ *
+ * Hodnota je o jedna vedle `MIGRATION_ADVISORY_LOCK_ID` z `@mlain/db/migrate`,
+ * schválně: jsou to dva různé zámky a nesmí se potkat.
+ */
+const BOOTSTRAP_LOCK_ID = 7264150402;
+
+/**
+ * Složka s migracemi. Relativní cesta napříč balíčky je tu vědomá: `@mlain/db`
+ * svou složku migrací v `exports` nevystavuje a ten soubor vlastní P03. Kdyby
+ * se rozpadlo uspořádání monorepa, spadne to hlasitě už při stavbě šablony.
+ */
+const MIGRATIONS_DIR = fileURLToPath(new URL('../../../db/migrations', import.meta.url));
 
 export type PgHarness = {
   /** URL pod rolí `mlain_app`, tedy to, co dostane `DATABASE_URL`. */
@@ -81,37 +117,304 @@ export type PgHarnessOptions = {
    * aktuální měsíc skončí každý zápis na „no partition of relation audit_log
    * found for row", což je hláška, která na příčinu vůbec neukazuje.
    *
-   * Na sdíleném serveru nese oddíly rovnou šablona, takže je klon dostane
-   * zadarmo. Zestarat nemají jak: `ensureUpcomingPartitions` zakládá aktuální
-   * měsíc a tři dopředu a šablona žije jen po dobu jednoho běhu.
+   * Oddíly nese rovnou šablona, takže je klon dostane zadarmo.
    */
   partitions?: boolean;
 };
 
 export async function startPgHarness(options: PgHarnessOptions = {}): Promise<PgHarness> {
-  const server = sharedServer();
-  return server === null ? startOwnContainer(options) : startOnSharedServer(server, options);
+  const server = injectedServer() ?? (await ensureSharedServer());
+  return startOnServer(server, options);
+}
+
+export type PgServer = { host: string; port: number };
+
+/**
+ * Sdílený server pro celý stroj. Slib je uložený v modulu, takže dva testovací
+ * soubory v jednom procesu nespustí hledání dvakrát; druhý si počká na tentýž.
+ */
+let sharedServerStart: Promise<PgServer> | undefined;
+
+export function ensureSharedServer(): Promise<PgServer> {
+  sharedServerStart ??= startSharedServer();
+  return sharedServerStart;
+}
+
+async function startSharedServer(): Promise<PgServer> {
+  const server = (await findRunningContainer()) ?? (await createSharedContainer());
+  await waitForServer(server);
+  await ensureBootstrap(server);
+  return server;
 }
 
 /**
- * Host a port sdíleného serveru z `globalSetup`, nebo null, když žádný není.
+ * Najde běžící kontejner podle JMÉNA, ne podle hashe konfigurace.
  *
- * `inject()` čte kontext, který dodal `globalSetup` běhu. V `apps/web` žádný
- * takový `globalSetup` není, takže vrátí `undefined`; mimo běžícího workera
- * vitestu (což se nemá stát, harness se volá z `beforeAll`) umí i vyhodit
- * chybu, proto try/catch. Obojí znamená totéž: sdílený server není, postará
- * se o sebe volající sám.
+ * `withReuse()` páruje kontejnery přes label s hashem `createOpts`, což je
+ * křehké přesně v týhle situaci: pět agentů může mít v pracovní kopii různě
+ * starou verzi tohohle souboru, hash by se lišil a druhý běh by místo připojení
+ * spadl na „name is already in use". Jméno je proti tomu stabilní.
+ */
+async function findRunningContainer(): Promise<PgServer | null> {
+  const client = await getContainerRuntimeClient();
+  // `all: true` je nutné, ne opatrnost: `client.container.list()` vrací jen
+  // BĚŽÍCÍ kontejnery, jenže zastavený kontejner drží jméno dál. Bez tohohle
+  // by pokus o založení skončil na konfliktu jména, přestože stačí ten, co už
+  // existuje, nastartovat.
+  const containers = await client.container.dockerode.listContainers({ all: true });
+  const found = containers.find((c) =>
+    c.Names.some((name) => name.replace(/^\//, '') === SHARED_CONTAINER_NAME),
+  );
+  if (found === undefined) return null;
+
+  const handle = client.container.getById(found.Id);
+  if (found.State !== 'running') {
+    await client.container.start(handle);
+  }
+  const inspected = await client.container.inspect(handle);
+  const binding = inspected.NetworkSettings.Ports['5432/tcp']?.[0];
+  if (binding === undefined) return null;
+  return { host: client.info.containerRuntime.host, port: Number(binding.HostPort) };
+}
+
+async function createSharedContainer(): Promise<PgServer> {
+  try {
+    // `withReuse()` je tu i kvůli úklidu, ne jen kvůli sdílení: BEZ něj dá
+    // testcontainers kontejneru session label a `ryuk` ho zabije, jakmile
+    // skončí proces, který ho založil. Ostatním agentům by zmizel pod rukama.
+    const container = await new PostgreSqlContainer('postgres:18-alpine')
+      .withName(SHARED_CONTAINER_NAME)
+      .withDatabase('postgres')
+      .withUsername('postgres')
+      .withPassword('postgres')
+      // Jeden server obsluhuje všechny běhy na stroji naráz. Pět agentů po
+      // třech vláknech, každé s aplikačním poolem (10 spojení), read-only
+      // poolem (5) a migrátorským poolem, dá k pěti stovkám. Výchozích 100
+      // by došlo a testy by padaly na „too many connections", což je hláška,
+      // která na příčinu neukazuje.
+      //
+      // Přepínače trvanlivosti jsou bezpečné právě proto, že jde o testovací
+      // databázi: po pádu kontejneru se nemá co obnovovat, kontejner se
+      // zahazuje. Ušetřený zápis na disk je přitom to, co sérii nejvíc zrychlí.
+      .withCommand([
+        'postgres',
+        '-c',
+        'max_connections=400',
+        '-c',
+        'fsync=off',
+        '-c',
+        'synchronous_commit=off',
+        '-c',
+        'full_page_writes=off',
+      ])
+      .withReuse()
+      .start();
+    return { host: container.getHost(), port: container.getMappedPort(5432) };
+  } catch (error) {
+    // Závod mezi procesy. `withReuse()` má zámek jen uvnitř procesu, takže dva
+    // agenti můžou začít stavět naráz; ten druhý dostane od Dockeru konflikt
+    // jména a správná odpověď je připojit se k tomu, co mezitím vzniklo.
+    if (!isNameConflict(error)) throw error;
+    const running = await findRunningContainer();
+    if (running === null) throw error;
+    return running;
+  }
+}
+
+function isNameConflict(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /already in use|Conflict/i.test(message);
+}
+
+/**
+ * Počká, až server přijme spojení. Když se harness připojuje k cizímu
+ * kontejneru, který někdo právě založil, nemá vlastní čekací strategii
+ * testcontainers a bez tohohle by narazil na spojení odmítnuté.
+ */
+async function waitForServer(server: PgServer, timeoutMs = 120_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const probe = await superuser(server);
+      await probe.end();
+      return;
+    } catch (error) {
+      if (Date.now() >= deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+}
+
+/**
+ * Jméno šablony odvozené z OBSAHU migrací.
+ *
+ * Kontejner přežívá mezi běhy a migrace se podle rozhodnutí R39 upravují na
+ * místě. Šablona s pevným jménem by tedy po úpravě staré migrace zůstala
+ * neaktuální a testy by běžely nad starým schématem, aniž by cokoli spadlo.
+ * S otiskem v názvu vznikne po každé změně migrací šablona nová.
+ */
+export function templateDatabase(): string {
+  const digest = createHash('sha256');
+  digest.update(readFileSync(join(MIGRATIONS_DIR, 'meta', '_journal.json')));
+  for (const file of readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()) {
+    digest.update(file);
+    digest.update(readFileSync(join(MIGRATIONS_DIR, file)));
+  }
+  return `${TEMPLATE_DB_PREFIX}${digest.digest('hex').slice(0, 12)}`;
+}
+
+/**
+ * Role a předmigrovaná šablona. Všechno podmíněně a pod výhradním zámkem,
+ * protože tohle běží v každém procesu na stroji a kontejner je společný.
+ */
+async function ensureBootstrap(server: PgServer): Promise<void> {
+  const template = templateDatabase();
+  const su = await superuser(server);
+  try {
+    await su.query('SELECT pg_advisory_lock($1)', [BOOTSTRAP_LOCK_ID]);
+
+    for (const role of HARNESS_ROLES) {
+      // `CREATE ROLE` nemá `IF NOT EXISTS`, tak se odchytává duplicita.
+      await su.query(
+        `DO $$ BEGIN
+           CREATE ROLE ${role} LOGIN PASSWORD '${role}';
+         EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      );
+      // Heslo se dorovná VŽDY, ne jen při zakládání role.
+      //
+      // `DO` blok výš odchytává `duplicate_object`, takže nad existující rolí
+      // neudělá nic. Bootstrap byl tedy idempotentní vůči existenci role, ale
+      // ne vůči jejímu heslu. Jakmile kontejner přežil změnu očekávaného hesla,
+      // padaly všechny databázové testy na
+      //
+      //   error: password authentication failed for user "mlain_app"
+      //
+      // a to hned v bootstrapu, takže se testy jen přeskočily. Nešlo o jeden
+      // balíček: přes tenhle harness jdou testy kampaní, providerů, kontaktů,
+      // identity, trackingu i platformy, takže to zastavilo úplně každého.
+      //
+      // Smazat kontejner by pomohlo taky, ale jen do příštího nesouladu.
+      await su.query(`ALTER ROLE ${role} LOGIN PASSWORD '${role}'`);
+    }
+
+    if (await templateReady(su, template)) {
+      await dropOrphans(su, template);
+      return;
+    }
+
+    // Nedostavěná šablona po spadlém běhu. `datistemplate` se nastavuje až
+    // úplně nakonec, takže tohle je spolehlivá značka „tahle je k zahození".
+    await su.query(`DROP DATABASE IF EXISTS ${template} WITH (FORCE)`);
+    await su.query(`CREATE DATABASE ${template}`);
+    // Bez práva CREATE na DATABÁZI neprojde `CREATE SCHEMA drizzle` v runneru.
+    await su.query(`GRANT CREATE ON DATABASE ${template} TO mlain_migrator`);
+
+    const tpl = new Client({
+      host: server.host,
+      port: server.port,
+      database: template,
+      user: 'postgres',
+      password: 'postgres',
+    });
+    await tpl.connect();
+    try {
+      // Migrátor vlastní schéma. Bez vlastnictví na něj RLS nedopadá a testy
+      // izolace by prošly, i kdyby politiky vůbec neexistovaly.
+      await tpl.query(`ALTER SCHEMA public OWNER TO mlain_migrator`);
+      await tpl.query(`GRANT CREATE, USAGE ON SCHEMA public TO mlain_migrator`);
+    } finally {
+      await tpl.end();
+    }
+
+    // Migrace se pouští JEDNOU do šablony, ne v každém souboru ani běhu.
+    await runMigrations({
+      url: `postgres://mlain_migrator:mlain_migrator@${server.host}:${server.port}/${template}`,
+      ensurePartitions: true,
+      logger: () => {},
+    });
+
+    // Až tady je šablona použitelná. Do tohohle okamžiku ji nikdo neklonuje,
+    // protože `templateReady()` se ptá právě na tenhle příznak.
+    await su.query(`ALTER DATABASE ${template} IS_TEMPLATE true`);
+    await dropOrphans(su, template);
+  } finally {
+    // Zámek je session-scoped, takže ho zavření spojení pustí samo.
+    await su.end();
+  }
+}
+
+async function templateReady(su: Client, template: string): Promise<boolean> {
+  const { rows } = await su.query<{ ready: boolean }>(
+    `SELECT datistemplate AS ready FROM pg_database WHERE datname = $1`,
+    [template],
+  );
+  return rows[0]?.ready === true;
+}
+
+/**
+ * Úklid uvnitř sdíleného kontejneru. Bez něj by v něm databáze přibývaly
+ * donekonečna, protože server přežívá běhy i pády.
+ *
+ * Zahazuje dvě věci a obě opatrně:
+ *  - testovací databáze `mlain_t<pid>_…`, jejichž proces UŽ NEŽIJE. Živé se
+ *    nesmí sáhnout, patří běžícímu testu jiného agenta. Znovupoužité PID je
+ *    jediná chyba, které se to může dopustit, a ta je neškodná: databáze
+ *    zůstane ležet do příště.
+ *  - staré šablony jiného otisku, tedy z předchozích verzí migrací.
+ *
+ * Chyby se schválně polykají. Když někdo mezitím z té databáze čte, `DROP`
+ * neprojde a je to v pořádku; uklidí se příště.
+ */
+async function dropOrphans(su: Client, currentTemplate: string): Promise<void> {
+  // ESCAPE je tu nutné, ne kosmetika: v LIKE je `_` zástupný znak pro JEDEN
+  // libovolný znak, takže `'mlain_t%'` by sedělo i na `mlain_template`.
+  const { rows } = await su.query<{ datname: string }>(
+    `SELECT datname FROM pg_database
+      WHERE datname LIKE 'mlain!_t%' ESCAPE '!' AND datname <> $1`,
+    [currentTemplate],
+  );
+  for (const { datname } of rows) {
+    const owner = datname.match(/^mlain_t(\d+)_/);
+    if (owner !== null) {
+      // Testovací databáze živého procesu patří běžícímu testu jiného agenta.
+      if (processAlive(Number(owner[1]))) continue;
+    } else if (!datname.startsWith(TEMPLATE_DB_PREFIX)) {
+      // Cokoli jiného (třeba `mlain_template` ze starší verze harnessu) není
+      // moje a nesahám na to.
+      continue;
+    }
+    try {
+      await su.query(`DROP DATABASE IF EXISTS ${datname} WITH (FORCE)`);
+    } catch {
+      // Někdo z ní právě čte nebo klonuje. Příští běh to zkusí znovu.
+    }
+  }
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Host a port, které běhu ohlásil `globalSetup`. Bez něj (třeba v `apps/web`)
+ * vrátí null a volající si sdílený server najde sám.
  *
  * Typ `inject` se tu schválně uvolňuje na `(key: string) => unknown`. Klíče
- * `corePgHost` a `corePgPort` deklaruje `global-setup.ts` rozšířením
- * `ProvidedContext`, jenže ten soubor je součástí typové kontroly jen
- * v `packages/core`. `apps/web` tenhle modul reexportuje a jeho `tsc` tu
- * deklaraci nevidí, takže by na přesně typovaném `inject('corePgHost')`
- * spadl na neznámý klíč. Hodnoty se stejně kontrolují za běhu.
+ * deklaruje `global-setup.ts` rozšířením `ProvidedContext`, jenže ten soubor je
+ * součástí typové kontroly jen v `packages/core`. `apps/web` tenhle modul
+ * reexportuje a jeho `tsc` tu deklaraci nevidí, takže by na přesně typovaném
+ * `inject('corePgHost')` spadl na neznámý klíč. Hodnoty se kontrolují za běhu.
  */
 const injectProvided = inject as unknown as (key: string) => unknown;
 
-function sharedServer(): { host: string; port: number } | null {
+function injectedServer(): PgServer | null {
   try {
     const host = injectProvided('corePgHost');
     const port = injectProvided('corePgPort');
@@ -124,38 +427,32 @@ function sharedServer(): { host: string; port: number } | null {
 
 let databaseCounter = 0;
 
-/** Vlastní databáze na sdíleném serveru, ve výchozím stavu klon šablony. */
-async function startOnSharedServer(
-  server: { host: string; port: number },
-  options: PgHarnessOptions,
-): Promise<PgHarness> {
+/** Vlastní databáze pro jeden testovací soubor, ve výchozím stavu klon šablony. */
+async function startOnServer(server: PgServer, options: PgHarnessOptions): Promise<PgHarness> {
   const { host, port } = server;
   const migrate = options.migrate ?? true;
   const partitions = options.partitions ?? true;
   // Šablona je zmigrovaná VČETNĚ oddílů. Kdo si vyžádá jinou kombinaci, musí
   // dostat databázi stavěnou na míru, jinak by ta volba tiše nic neznamenala.
   const fromTemplate = migrate && partitions;
-  // Náhodný konec jména je pojistka, ne ozdoba. Vitest pouští soubory v jednom
-  // procesu za sebou a s výchozím `isolate: true` dostane každý soubor čerstvý
-  // modul, takže se čítač vrátí na nulu. Kdyby některý soubor svou databázi
-  // neuklidil, další by narazil na „database already exists" a hlásil by úplně
-  // jinou chybu, než jaká se stala.
+  // PID je v názvu schválně: podle něj pozná `dropOrphans()`, že databáze
+  // patří mrtvému procesu a smí se zahodit. Náhodný konec je pojistka proti
+  // tomu, že vitest s `isolate: true` vrátí čítač v každém souboru na nulu.
   const database = `mlain_t${process.pid}_${(databaseCounter += 1)}_${randomUUID().replaceAll('-', '').slice(0, 8)}`;
 
-  const su = await superuser(host, port);
+  const su = await superuser(server);
   try {
     await su.query(
       fromTemplate
-        ? `CREATE DATABASE ${database} TEMPLATE ${TEMPLATE_DB}`
+        ? `CREATE DATABASE ${database} TEMPLATE ${templateDatabase()}`
         : `CREATE DATABASE ${database}`,
     );
-    // Bez práva CREATE na DATABÁZI neprojde `CREATE SCHEMA drizzle` v runneru.
     await su.query(`GRANT CREATE ON DATABASE ${database} TO mlain_migrator`);
   } finally {
     await su.end();
   }
 
-  if (!fromTemplate) await giveSchemaToMigrator(host, port, database);
+  if (!fromTemplate) await giveSchemaToMigrator(server, database);
 
   const urls = harnessUrls(host, port, database);
   if (!fromTemplate && migrate) {
@@ -168,65 +465,42 @@ async function startOnSharedServer(
     ...urls,
     host,
     port,
-    stop: async () => {
-      const admin = await superuser(host, port);
-      try {
-        // FORCE ukončí spojení, která test nezavřel. Bez něj by DROP čekal
-        // do vypršení hooku a spadl by na „database is being accessed".
-        await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`);
-      } finally {
-        await admin.end();
-      }
-    },
+    stop: () => dropDatabase(server, database),
   };
 }
 
 /**
- * Vlastní kontejner pro jeden harness. Cesta pro balíčky bez `globalSetup`.
- * Je to původní chování, beze změny.
+ * Zahodí databázi jednoho testovacího souboru. Kontejner se NEZASTAVUJE, sdílí
+ * ho ostatní běhy na stroji.
+ *
+ * Má vlastní strop čekání a po jeho vypršení se vrací TICHO, ne výjimkou.
+ * Zní to jako zametání pod koberec, ale je to naopak: `afterAll` má ve vitestu
+ * výchozí strop 10 sekund a naměřeno spuštěním, že na vytíženém stroji se do
+ * něj samo navázání spojení nemusí vejít. Test by pak spadl na úklidu, ne na
+ * tom, co ověřuje. Nechaná databáze se neztratí, sebere ji `dropOrphans()` při
+ * příštím startu, protože její proces už tou dobou nežije.
  */
-async function startOwnContainer(options: PgHarnessOptions): Promise<PgHarness> {
-  const container: StartedPostgreSqlContainer = await new PostgreSqlContainer('postgres:18-alpine')
-    .withDatabase('mlain')
-    .withUsername('postgres')
-    .withPassword('postgres')
-    .start();
+async function dropDatabase(server: PgServer, database: string, timeoutMs = 5_000): Promise<void> {
+  const work = (async () => {
+    const admin = await superuser(server);
+    try {
+      // FORCE ukončí spojení, která test nezavřel. Bez něj by DROP čekal na
+      // jejich uzavření a skončil na „database is being accessed".
+      await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`);
+    } finally {
+      await admin.end();
+    }
+  })();
 
-  const host = container.getHost();
-  const port = container.getMappedPort(5432);
-
-  const su = new Client({ host, port, database: 'mlain', user: 'postgres', password: 'postgres' });
-  await su.connect();
-  for (const role of HARNESS_ROLES) {
-    await su.query(`CREATE ROLE ${role} LOGIN PASSWORD '${role}'`);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  try {
+    await Promise.race([work.catch(() => undefined), deadline]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
-  // Migrátor vlastní schéma. Bez vlastnictví na něj RLS nedopadá.
-  await su.query(`ALTER SCHEMA public OWNER TO mlain_migrator`);
-  await su.query(`GRANT CREATE, USAGE ON SCHEMA public TO mlain_migrator`);
-  // Bez práva CREATE na DATABÁZI neprojde `CREATE SCHEMA drizzle` v runneru.
-  await su.query(`GRANT CREATE ON DATABASE mlain TO mlain_migrator`);
-  await su.end();
-
-  const urls = harnessUrls(host, port, 'mlain');
-
-  if (options.migrate ?? true) {
-    // Oddíly zakládá runner P03 sám (`ensureUpcomingPartitions(new Date(), 4)`),
-    // a to pod migrátorem, tedy pod rolí, která smí DDL. Aplikační role schéma
-    // nevlastní a `CREATE TABLE ... PARTITION OF` by pod ní skončila na
-    // `permission denied` (kapitola 0.9).
-    await runMigrations({ url: urls.migratorUrl, ensurePartitions: options.partitions ?? true });
-  }
-
-  applyHarnessEnv(urls);
-
-  return {
-    ...urls,
-    host,
-    port,
-    stop: async () => {
-      await container.stop();
-    },
-  };
 }
 
 function harnessUrls(
@@ -240,10 +514,10 @@ function harnessUrls(
   };
 }
 
-async function superuser(host: string, port: number): Promise<Client> {
+async function superuser(server: PgServer): Promise<Client> {
   const client = new Client({
-    host,
-    port,
+    host: server.host,
+    port: server.port,
     database: 'postgres',
     user: 'postgres',
     password: 'postgres',
@@ -256,8 +530,14 @@ async function superuser(host: string, port: number): Promise<Client> {
  * Vlastnictví schématu migrátorem v čerstvé, NEklonované databázi. U klonu
  * šablony to řešit netřeba, `CREATE DATABASE ... TEMPLATE` vlastnictví kopíruje.
  */
-async function giveSchemaToMigrator(host: string, port: number, database: string): Promise<void> {
-  const fresh = new Client({ host, port, database, user: 'postgres', password: 'postgres' });
+async function giveSchemaToMigrator(server: PgServer, database: string): Promise<void> {
+  const fresh = new Client({
+    host: server.host,
+    port: server.port,
+    database,
+    user: 'postgres',
+    password: 'postgres',
+  });
   await fresh.connect();
   try {
     await fresh.query(`ALTER SCHEMA public OWNER TO mlain_migrator`);

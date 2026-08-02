@@ -23,6 +23,26 @@ export async function generateMetadata(): Promise<Metadata> {
  * 2. Slug členství se jmenuje `slug`, ne `workspace_slug`, viz kapitola 2.1
  *    plánu a `MembershipSchema` v P04.
  */
+/**
+ * Stránka se NEPŘEDRENDEROVÁVÁ, a je to vynucené, ne preference.
+ *
+ * Nemá dynamický segment, takže by ji Next při sestavení vykreslil jako
+ * `/cs/no-workspace`. Při tom renderu se sáhne na `getConfig()` a `next build`
+ * spadne, protože stavba `SECRET_KEY` ani `DATABASE_URL` nezná a znát nemá:
+ *
+ *   Error [ConfigError]: Konfigurace není platná, 3 problémů.
+ *   Export encountered an error on /[locale]/(account)/no-workspace/page
+ *
+ * Tady `dynamic = 'force-dynamic'` POMÁHÁ, na rozdíl od route handlerů. U nich
+ * řídí jen předrenderování, ne import modulu, takže tam byla ta samá direktiva
+ * k ničemu a musely se skládat líně. U stránky je předrenderování přesně ten
+ * problém, takže jeden řádek stačí.
+ *
+ * Věcně to sedí i bez ohledu na stavbu: obsah závisí na přihlášeném uživateli
+ * a na režimu registrace, takže žádná statická podoba téhle stránky neexistuje.
+ */
+export const dynamic = 'force-dynamic';
+
 export default async function NoWorkspacePage() {
   const me = await requireUser('/no-workspace');
   if (!me.ok) return <AuthProblem problem={me.problem} />;

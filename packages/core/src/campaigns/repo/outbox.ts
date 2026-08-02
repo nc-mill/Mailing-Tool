@@ -342,6 +342,13 @@ export async function cancelPendingBatch(
     // zrusilo i cekajici testovaci maily, ktere si uzivatel prave poslal.
     // `finishMaterialization` ten filtr uz spravne ma, slo tedy o nekonzistenci
     // uvnitr plánu.
+    //
+    // `ORDER BY id` v poddotazu je DOPLNEK PROTI PLÁNU a neni kosmeticky. Uklid volaji
+    // DVE mista soubezne: smycka `cancelCampaign` a `cleanupCancelled` z materializacni
+    // smycky. Bez urceneho poradi si kazde z nich zamyka radky v jinem poradi a ob par
+    // behu vznikne uvazknuti. Neni to teorie, vypadlo to z opakovaneho testu zavodu
+    // jako `40P01 deadlock detected ... while updating tuple in relation
+    // messages_y2026m08`. Se spolecnym poradim jeden pockej a pak pokracuje.
     const r = await tx.execute(
       rawSql(
         `UPDATE messages
@@ -356,6 +363,7 @@ export async function cancelPendingBatch(
             SELECT id FROM messages
              WHERE campaign_id = $1 AND created_at = $2::timestamptz
                AND status = 'pending' AND kind = 'campaign'
+             ORDER BY id
              LIMIT ${CANCEL_CLEANUP_BATCH_SIZE}
           )`,
         [input.campaignId, input.audienceBuiltAt],

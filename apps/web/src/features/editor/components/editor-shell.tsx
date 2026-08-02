@@ -6,7 +6,7 @@
 import { LiveRegionProvider } from '@mlain/ui/a11y';
 import { Alert } from '@mlain/ui/patterns/states';
 import { useTranslations } from 'next-intl';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useAutosave } from '../autosave/use-autosave';
 import { useUnloadGuard } from '../autosave/use-unload-guard';
 import { MAX_BLOCKS } from '../config';
@@ -33,6 +33,12 @@ export type EditorShellProps = {
   readOnly: boolean;
   fieldCatalog: FieldCatalog;
   ports: EditorPorts;
+  /**
+   * Panel AI asistenta (P15-R1, výjimka V2 plánu P15). Vykresluje se vedle
+   * panelu vlastností, protože uživatel musí vidět, co se v e-mailu mění.
+   * Nepovinný: instalace bez AI ho nemá čím naplnit a editor funguje dál.
+   */
+  assistant?: ReactNode;
 };
 
 export function EditorShell(props: EditorShellProps) {
@@ -94,6 +100,7 @@ export function EditorShell(props: EditorShellProps) {
                   ports={props.ports}
                 />
               ) : null}
+              {mode === 'edit' ? props.assistant : null}
             </div>
             <TestSendDialog
               open={testSendOpen}

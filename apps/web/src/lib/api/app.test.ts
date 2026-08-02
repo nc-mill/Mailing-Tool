@@ -64,6 +64,20 @@ describe('kostra API', () => {
     expect((await res.json()).code).toBe('payload_too_large');
   });
 
+  /**
+   * Regresní test na skutečnou vadu, ne na domněnku. Undici (Node fetch, kterým
+   * `apiMutate` volá tohle API ze serverových akcí) posílá u POST bez těla
+   * `Content-Length: 0`; ověřeno přímo v prohlížeči na `/ai/credentials/{id}/test`
+   * a `/default`, obě vracely 415, ačkoli neposílaly jediný bajt.
+   */
+  it('POST bez těla s Content-Length: 0 neprojde jako 415', async () => {
+    const res = await app.request('/api/v1/__test/ok', {
+      method: 'POST',
+      headers: { 'Content-Length': '0' },
+    });
+    expect(res.status).not.toBe(415);
+  });
+
   it('nepovolená metoda na existující cestě vrací 405', async () => {
     const res = await app.request('/api/v1/__test/ok', { method: 'DELETE' });
     expect(res.status).toBe(405);

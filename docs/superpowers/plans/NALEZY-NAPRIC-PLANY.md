@@ -3288,3 +3288,1483 @@ a `apps/web`. Série doběhne pomaleji, ale doběhne.
 Souvislost s I27 je poučná: obě vady vypadaly stejně (nic se neděje, testy
 neběží) a obě měly jinou příčinu. První byla v tom, KOLIK databází se zakládá,
 druhá v tom, KOLIK vláken si každý běh vezme. Oprava první odhalila druhou.
+
+### I29. Dva agenti si protiřečili v účtování spotřeby tokenů
+
+- **Našel:** hlavní agent při porovnání dvou hlášení
+- **Uzavřeno:** 2026-08-02, rozhodnuto podle typů nainstalované verze
+
+Dva agenti nezávisle sáhli na tentýž řádek adaptéru AI SDK a každý tvrdil něco
+jiného. Jeden psal, že se má účtovat přes `event.usage`, protože `totalUsage`
+je zavržený alias. Druhý psal opak, že `usage` je spotřeba posledního kroku
+a ve smyčce s nástroji by se uživateli naúčtoval zlomek.
+
+U BYOK platí za tokeny uživatel, takže to není detail. Rozhodnuto přečtením
+`.d.ts` nainstalované `ai@7.0.47`, ne dohodou ani hlasováním:
+
+```
+readonly usage: LanguageModelUsage;
+    The total token usage of all steps.
+    When there are multiple steps, the usage is the sum of all step usages.
+
+readonly totalUsage: LanguageModelUsage;
+    @deprecated Use `usage` instead.
+```
+
+Správně je `usage`. Na disku to naštěstí bylo správně, rozpor byl jen v hlášeních.
+
+Zajímavější je, ODKUD se ta chyba vzala. Rozdíl „usage je poslední krok,
+totalUsage je součet" v starších verzích SDK skutečně platil, jen na jiném typu
+a v jiné verzi. Agent si pamatoval pravidlo, které kdysi platilo, a přenesl ho
+na verzi, kde už neplatí. Přeměřil pak i druhý typ, který moje kontrola
+nepokrývala, a ukázalo se, že rozdíl neplatí ani tam: obě pole jsou dnes
+agregát a `totalUsage` je všude jen alias.
+
+Poučení: u rychle se měnícího rozhraní nestačí ověřit jedno místo. Když se
+ukáže, že zapamatované pravidlo neplatí, musí se přeměřit KAŽDÉ místo, kde
+se podle něj rozhodovalo. A hlášení agenta není doklad ani tehdy, když zní
+sebejistě, obzvlášť když si dva protiřečí.
+
+### I30. Obecný vzor v `exports` přebil konkrétní a shodil build workeru
+
+- **Našel:** P16 při stavbě produkční image
+- **Uzavřeno:** 2026-08-02, doplněn explicitní vzor
+
+`packages/core/package.json` měl v `exports` dva vzory, které si u jedné cesty
+konkurují:
+
+```json
+"./*/jobs":     "./src/*/jobs/queue-handlers.ts",
+"./platform/*": "./src/platform/*.ts",
+```
+
+Node i esbuild vybírají vzor s NEJDELŠÍ částí před hvězdičkou. Pro
+`@mlain/core/platform/jobs` vyhraje `./platform/*` (základ `./platform/`)
+nad `./*/jobs` (základ `./`), takže se rozvine na `./src/platform/jobs.ts`,
+což je adresář, ne soubor. Build workeru spadl na „Could not resolve".
+
+Zrádné je, že `@mlain/core/segments/jobs` fungovalo, protože pro `segments`
+žádný konkurenční vzor neexistoval. Vada tedy tikala u každé domény, které by
+někdo přidal vlastní `./<domena>/*`, a projevila se až u té jediné, kde se obě
+pravidla potkala.
+
+Opraveno explicitním vzorem `"./platform/jobs"` PŘED oběma obecnými.
+
+### I31. Handlery front pod nekonvenčním jménem projdou testy a shodí bundle
+
+- **Našel:** hlavní agent při opravě I30
+- **Uzavřeno:** 2026-08-02, tři domény srovnány
+
+Odblokování I30 odhalilo druhou vadu ve stejném řetězu. Codegen workeru generuje
+`import { handlers as hN } from '@mlain/core/<domena>/jobs'`, ale tři domény
+(`segments`, `contacts/import`, `contacts/export`) exportovaly `queueHandlers`.
+
+Soubor se přitom normálně zkompiluje, typová kontrola projde a testy taky.
+Selže až `esbuild` při stavbě bundle workeru hláškou „No matching export for
+import handlers", tedy ve chvíli, kdy se staví produkční image.
+
+Jméno `handlers` je tedy KONTRAKT s codegenem, ne stylová volba. Doplněno
+do všech tří souborů i s vysvětlením, proč se nesmí přejmenovat.
+
+### I32. Nativní binárka se nedá zabalit do bundlu
+
+- **Našel:** hlavní agent při opravě I30
+- **Uzavřeno:** 2026-08-02, `@node-rs/argon2` je externí
+
+Třetí vada v témže řetězu. Po opravě rozlišení modulů spadl build workeru na
+„No loader is configured for .node files" u `@node-rs/argon2`, tedy u knihovny
+na hashování hesel.
+
+Bundlovat nativní modul nejde z principu: je to zkompilovaná knihovna pro
+konkrétní architekturu, ne JavaScript. Patří do `external`, aby se načetla
+za běhu z `node_modules`.
+
+Všechny tři nálezy I30 až I32 ležely za sebou v jednom řetězu a odhalily se
+postupně: každá oprava odkryla další. Do té doby je zakrývala ta první, protože
+build spadl dřív, než se k nim dostal.
+
+### I33. Migrační runner shodil aplikaci podruhé, jinou cestou
+
+- **Našel:** P14, když mu přestaly odpovídat obrazovky
+- **Uzavřeno:** 2026-08-02, zálohy odpojené z veřejného API
+
+Tatáž vada jako nález I19, jen jinou cestou. Poprvé se runner dostal do bundlu
+webu přes reexport v kořeni `@mlain/db`, podruhé přes řetěz
+`ops/api/backups.routes.ts` -> `openapi.ts` -> `route.ts`.
+
+Příznak je nepříjemný: aplikace vrací 500 na KAŽDÉ stránce, ne jen na zálohách,
+protože se rozbije kompilace celého API. Agent, který na obrazovkách pracoval,
+hledal chybu u sebe.
+
+Zkusil jsem dvě opravy a ani jedna nestačila:
+1. Dynamický import (`await import('@mlain/db/migrate')`). Bundler prochází
+   i dynamické importy, takže výraz stejně potkal.
+2. Vytažení `new URL('../migrations', import.meta.url)` z modulové úrovně
+   do funkce. Bundler ho našel i tam.
+
+Platná oprava je věcná, ne technická: **zálohy do veřejného API nepatří.**
+Zálohování je operace CLI (`mlain backup`, `restore`, `doctor`), kterou spouští
+operátor na serveru, ne uživatel z prohlížeče. Registrace v `openapi.ts` byla
+chyba v zadání, ne v provedení.
+
+Poučení: když se stejná vada vrátí druhou cestou, je to signál, že se opravoval
+příznak. Runner nemá v grafu modulů aplikace co dělat, a jediný spolehlivý
+způsob, jak to zajistit, je nemít k němu z aplikace cestu.
+
+### I34. Dva agenti pojmenovali tentýž parametr cesty různě
+
+- **Našel:** hlavní agent v logu dev serveru
+- **Uzavřeno:** 2026-08-02, sjednoceno na `[id]`
+
+Souběžně vznikly `campaigns/[campaignId]/report` a `campaigns/[id]/{send,progress}`.
+Next.js to odmítne: „You cannot use different slug names for the same dynamic
+path", a shodí tím CELOU aplikaci, ne jen ty dvě cesty.
+
+Horší je, co následuje: ta výjimka je neošetřená, takže Turbopack zůstane
+zaseknutý i po opravě. Každý další požadavek vrací holé „Internal Server Error"
+BEZ jediného řádku v logu, takže vypadá jako úplně jiná vada. Spraví to až
+restart s vyčištěnou mezipamětí.
+
+Sjednoceno na `[id]`, protože je to konvence zbytku repozitáře (pět výskytů)
+a byl ve dvou ze tří cest.
+
+### I35. Tatáž vada v `exports` vystřelila podruhé, na jiné doméně
+
+- **Našel:** P16 při stavbě produkční image, podruhé
+- **Uzavřeno:** 2026-08-02, obecný vzor zrušen a doplněn hlídač
+
+Nález I30 jsem opravil doplněním explicitního klíče pro `platform`. O pár hodin
+později přibyl vzor pro doménu `ai` a vada se vrátila přesně stejným způsobem:
+`./ai/*` má delší základ než obecný vzor, takže ho přebije, a
+`@mlain/core/ai/jobs` se rozvine na soubor, který neexistuje.
+
+Byla to oprava příznaku. Vzor tikal dál a čekal na další doménu.
+
+Platná oprava má dvě části:
+
+1. **Obecný vzor zrušen úplně.** V mapě jsou teď vypsané všechny domény
+   s frontami: `ai`, `contacts/export`, `contacts/import`, `platform`, `segments`.
+   Pořadí klíčů nepomůže, Node ani esbuild ho neberou v potaz, rozhoduje délka
+   základu vzoru. Jediné, co funguje, je explicitní zápis.
+
+2. **Hlídač v `apps/worker/codegen.mjs`.** Codegen si stejně prochází domény
+   s `jobs/queue-handlers.ts`, takže rovnou ověří, že pro každou existuje klíč
+   v mapě. Chybějící zápis teď padne HLASITĚ při generování, ne tiše až
+   při `docker build`, kde se hledá o dvě vrstvy dál od příčiny.
+
+Ověřeno tak, že hlídač skutečně diskriminuje: po odebrání klíče `./ai/jobs`
+spadne s hláškou, která rovnou napíše řádek k doplnění, po vrácení projde.
+
+Poučení: když se vada vrátí druhou cestou, opravoval se příznak. A když je
+řešením „nezapomenout na to příště", patří k němu mechanismus, který
+zapomenutí zachytí.
+
+### I36. Nedeklarovaná závislost projde lokálně a spadne až v produkční image
+
+- **Našel:** P16 při stavbě image
+- **Uzavřeno:** 2026-08-02, `@mlain/db` doplněno do manifestu CLI
+
+Je to moje chyba: psal jsem `apps/cli/src/commands/migrate.ts`, který importuje
+`@mlain/db/migrate`, ale nedoplnil jsem `@mlain/db` do `dependencies` manifestu.
+
+Lokálně to prošlo úplně vším: build, typová kontrola i testy. Balíček se totiž
+najde v hoistovaném `node_modules` v kořeni workspace, kam ho přitáhl někdo jiný.
+
+Dockerfile ale staví přes `turbo prune --docker`, a ten do podstromu vezme
+**jen deklarované závislosti**. V pruned stromu balíček není a esbuild ho nemá
+kde vzít.
+
+Je to tatáž třída vady jako chybějící `export const handlers` (nález I31):
+všechno lokálně svítí zeleně a selže až produkční image. Rozdíl mezi
+„modul jde načíst z kořene workspace" a „modul je deklarovaná závislost"
+neměří ani jeden test.
+
+Poučení: import z jiného workspace balíčku vyžaduje záznam v `dependencies`,
+i když bez něj kód lokálně běží. Hoisting je pohodlí vývojáře, ne kontrakt.
+
+### I37. Dočasná tolerance přežila důvod, kvůli kterému vznikla
+
+- **Našel:** P16 při stavbě zlaté cesty
+- **Uzavřeno:** 2026-08-02, `skip` změněno na `fail` a doplněno 14 testů
+
+Kontrola schématu v `packages/core/src/health/readiness.ts` vracela při
+chybějící tabulce `system_settings` stav `skip`, ne `fail`. Rozhodnutí D3
+plánu P01 to zavedlo schválně: tabulku zakládá až P03 a bez té tolerance by
+`/api/health/ready` nikdy nevrátil 200, takže by nešlo splnit akceptační
+kritérium 1.
+
+P03 dorazilo, migrace existují, tolerance zůstala. Z pomůcky se stala past:
+kontejner s **prázdným schématem** hlásil 200 a tvářil se zdravě, zatímco
+worker vedle něj padal na „permission denied for database mlain", protože
+pg-boss neměl kde založit své schéma. Prohlížeč pak na `/setup` dostal
+odmítnuté spojení. Readiness přitom celou dobu svítila zeleně.
+
+Podstatné je, PROČ to nikdo nechytil: modul `health` neměl **jediný test**.
+`vitest run src/health` vracelo „No test files found". Kontrola, která
+rozhoduje o tom, jestli je instalace zdravá, nebyla ověřená ničím.
+
+Nově chybějící `system_settings` při `expectedVersion > 0` znamená `fail`.
+Stav `skip` zbyl jen pro build bez migrací (`expectedVersion === 0`), kde
+dává smysl. Test je ověřený tím, že jsem dočasně vrátil `skip` a viděl, že
+padnou přesně dva scénáře, ne že jich 14 svítí zeleně.
+
+Poučení: dočasná výjimka potřebuje vlastní datum expirace a test, který ji
+zabije, jakmile pomine důvod. Bez toho přežije projekt.
+
+### I38. Externí nativní balíček musí být v manifestu každého, kdo ho spouští
+
+- **Našel:** hlavní agent při zkoušení `mlain genkey`
+- **Uzavřeno:** 2026-08-02, `@node-rs/argon2` doplněn do CLI i workeru
+
+`@node-rs/argon2` je v buildu CLI i workeru označený jako `external`, tedy
+se do svazku nezabalí a musí se za běhu najít v `node_modules`. Deklarovaný
+byl ale jen v `packages/core`.
+
+Build prošel, typová kontrola prošla, testy prošly. Spadlo to až na spuštění:
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@node-rs/argon2'
+imported from apps/cli/dist/main.js
+```
+
+To je stejná třída jako I36, jen o krok dál: tam chyběl balíček v pruned
+stromu produkční image, tady chybí i lokálně, a přesto build svítí zeleně.
+Označit závislost jako `external` znamená slíbit, že ji dodá někdo jiný.
+Ten slib nikdo nevymáhá.
+
+Dopad byl by tichý a pozdní: `mlain reset-password` a hashování hesel ve
+workeru by spadly až ve chvíli, kdy je někdo potřebuje, tedy v provozu.
+
+Poučení: `external` v konfiguraci bundleru a `dependencies` v manifestu jsou
+dva různé seznamy a musí si odpovídat. Zkusit příkaz doopravdy spustit
+stojí pár sekund a odhalí to, co build ani testy nevidí.
+
+### I39. Dva dev servery nad jedním .next zabijí hydrataci a nic nespadne
+
+- **Našel:** P14 při ověřování obrazovek reportu
+- **Uzavřeno:** 2026-08-02, osiřelý proces ukončen
+
+Nad `apps/web/.next` běžely dva procesy `next-server` současně, každý
+puštěný jiným agentem. Jeden držel port 3100, druhý poslouchal na 3000.
+Přepisovaly si build artefakty, takže prohlížeč dostal nesourodou sadu
+chunků a klientský runtime se vůbec nerozjel.
+
+Projev byl zákeřný, protože **nic nespadlo**. Server vracel 200, serverové
+HTML se vykreslilo, žádný chunk nevracel 4xx, v konzoli nebyla výjimka.
+Jen se nenamountoval React: `document.documentElement` byl bez jediného
+klíče `__react*`, takže se nespustil žádný `useEffect` a neodešel ani jeden
+požadavek na API. Stránky vypadaly jako prázdné placeholdery.
+
+Testy, které kontrolují jen obsah, procházely. Padaly výhradně ty, které
+potřebují reakci na klávesu nebo kliknutí, tedy živý React. To svádělo
+hledat chybu v komponentě, která s tím neměla nic společného.
+
+Poučení: hydrataci ověřuj přímo, ne přes odvozené příznaky. Dotaz
+`Object.keys(document.documentElement).filter(k => k.startsWith('__react'))`
+odpoví za sekundu. A dev server smí startovat jen jeden, hlavní agent;
+subagenti si ho pouštět nesmějí.
+
+### I40. Vývojářský .env.local se dostával do vrstev produkční image
+
+- **Našel:** P16 při stavbě image
+- **Uzavřeno:** 2026-08-02, `.dockerignore` doplněn a ověřen zkušební stavbou
+
+`.dockerignore` vylučoval `node_modules`, `.turbo`, `.next`, `dist`, `coverage`,
+`.git`, `.github`, `data`, `docs` a `*.md`. **`.env*` v něm nebylo.**
+
+Projevilo se to jako nudná chyba stavby. Next si `.env.local` při buildu sám
+načte, což ohlásí řádkem `- Environments: .env.local`, a `next build` spadl:
+
+```
+Error [ConfigError]: Konfigurace není platná, 1 problémů.
+  variable: 'DATA_DIR',
+  message: 'adresář /Users/petr/Projects/Mailing_Tool/.dev-data musí existovat'
+  exitCode: 78
+```
+
+Cesta ze stolu vývojáře uvnitř kontejneru neexistuje. V CI se to neprojevilo,
+protože čerstvý checkout `.env.local` nemá, takže úloha `build-image` svítila
+zeleně a lokální build padal pořád. Rozdíl mezi CI a stolem se hledá špatně.
+
+Vážnější je ale ten druhý směr: **cokoliv si vývojář do `.env.local` napíše,
+skončí ve vrstvách image.** Dneska cesta, zítra `SECRET_KEY` nebo klíč
+k poskytovateli. Vrstvy jdou rozbalit i po smazání souboru, takže smazat
+tajemství z běžící image ho z historie vrstev neodstraní. Není to nepohodlí
+při stavbě, je to únik přístupů, který by nikdo nezpozoroval.
+
+Oprava vylučuje `**/.env` a `**/.env.*` a vrací zpět jen `.env.example`, kterou
+`turbo.json` drží v `globalDependencies`; bez ní by se lišil hash úloh mezi
+stolem a CI. Šablona je prázdná, ověřeno.
+
+Ověření je empirické, ne z hlavy. Jednorázová alpine image, která kontext jen
+vypíše, našla v kontextu jediný soubor:
+
+```
+ENVSOUBOR:/.env.example
+KONEC
+```
+
+Poučení: `.dockerignore` je bezpečnostní hranice, ne jen zrychlovač stavby.
+Co se do něj nedostane, dostane se do image i tehdy, když to není v gitu.
+`.gitignore` a `.dockerignore` chrání dvě různé věci a jeden druhý nezastoupí.
+
+### I41. Konfigurace se načítala při stavbě, ne za běhu
+
+- **Našel:** P16 při stavbě image, po odstranění `.env.local` z kontextu
+- **Uzavřeno:** 2026-08-02, runtime se skládá líně při prvním požadavku
+
+Po opravě nálezu I40 vylezla vada, kterou `.env.local` maskoval tím, že hodnoty
+dodával. `next build` padl ve fázi „Collecting page data":
+
+```
+Error [ConfigError]: Konfigurace není platná, 3 problémů.
+  { variable: 'APP_URL',      message: 'je povinná (required) a chybí' }
+  { variable: 'SECRET_KEY',   message: 'je povinná (required) a chybí' }
+  { variable: 'DATABASE_URL', message: 'je povinná (required) a chybí' }
+Failed to collect page data for /t/[[...path]]
+```
+
+`apps/web/src/app/t/tracking-runtime.ts` volal `loadConfig()` na úrovni modulu
+a rovnou tam skládal keyring, cache i zapisovací buffer. Fáze sběru stránek
+modul naimportuje, čímž se to všechno vyhodnotilo. Vedle konfigurace se tak
+při stavbě spouštěl i časovač `domains.start()`, tedy obnovovací smyčka nad
+databází, ke které se build nemá jak připojit.
+
+Produkční image by tedy nešla postavit bez znalosti `SECRET_KEY`
+a `DATABASE_URL`. To je špatně z obou stran. V CI úloha `build-image` žádná
+tajemství nedostává, takže by padala. A kdyby je tam někdo „na opravu" dodal,
+**zapekl by je do vrstev image**, čímž by vznikl obraz nesoucí podpisový klíč,
+který se nedá distribuovat. Červená stavba je menší zlo.
+
+Podstatná past: `export const dynamic = 'force-dynamic'` v route handleru na to
+NESTAČÍ a v souboru byl celou dobu. Řídí, jestli se trasa předrenderuje, ne
+jestli se naimportuje její modul. Import proběhne tak jako tak.
+
+Runtime se teď skládá až při prvním požadavku a drží se v memoizované proměnné.
+
+Poučení: konfigurace je běhová věc. Cokoli, co ji čte, musí být za funkcí, ne
+na úrovni modulu. Rozdíl je vidět jedině skutečnou stavbou bez tajemství
+v prostředí, což lokálně nikdo nedělá.
+
+### I42. Playwright si pouštěl vlastní dev server, protože hlídal jiný port
+
+- **Našel:** hlavní agent při reprodukci hlášení o mrtvé hydrataci
+- **Uzavřeno:** 2026-08-02, port i hostname se odvozují z `APP_URL`
+
+Tohle je kořenová příčina nálezu I39, tedy dvou dev serverů nad jedním `.next`.
+
+`apps/web/playwright.config.ts` měl natvrdo `3000` na třech místech: v `baseURL`,
+v `webServer.url` a nepřímo v příkazu `pnpm --filter @mlain/web dev`, který bez
+přepínače bere výchozí port. Vývojový server přitom běží podle `APP_URL` na
+`3100`.
+
+`reuseExistingServer: !process.env.CI` tedy nikdy nezabral: hlídal port, na
+kterém nikdo neposlouchá. Playwright proto pokaždé nastartoval DRUHÝ dev server
+nad tímtéž adresářem `.next`. Každý agent, který pustil testy, vyrobil další.
+
+Port i hostname se teď odvozují z `APP_URL` a port se předává do `next dev`
+výslovně. Konfigurák si `.env.local` načítá sám přes `process.loadEnvFile()`,
+protože běží ve vlastním procesu, kam se z Nextu nic nedostane.
+
+Poučení: tatáž hodnota na třech místech se dřív nebo později rozejde. Když
+`reuseExistingServer` mlčky nefunguje, není to nekonfliktní stav, ale tichá
+výroba dalších procesů.
+
+### I43. localhost a 127.0.0.1 nejsou pro Next 16 synonyma
+
+- **Našel:** hlavní agent při hledání příčiny nenamountovaného Reactu
+- **Uzavřeno:** 2026-08-02, doplněno `allowedDevOrigins`
+
+Poslední ze tří příčin mrtvé hydratace, a nejzákeřnější.
+
+Next 16 obsluhuje vývojové zdroje pod `_next` jen pro originy uvedené
+v `allowedDevOrigins`. Nastavené nebylo, Playwright jezdil na `127.0.0.1`
+a dostal místo websocket handshaku obyčejnou HTTP odpověď. Klientský runtime
+se kvůli tomu vůbec nerozjel.
+
+Naměřeno přímo, tatáž stránka ve stejnou chvíli:
+
+```
+127.0.0.1:3100/login  ->  reactNaHtml: []                  chyby: [ERR_INVALID_HTTP_RESPONSE]
+localhost:3100/login  ->  reactNaHtml: ["__reactFiber$…"]  chyby: []
+```
+
+Projev byl matoucí: stránky vracely 200, serverové HTML se vykreslilo správně
+včetně roving tabindexu, žádný chunk nevracel 4xx a nepadla výjimka. Procházely
+testy, které kontrolují obsah, a padaly výhradně ty, které potřebují kliknutí
+nebo klávesu. To svádělo hledat vadu v komponentách, které nikdy nedostaly
+šanci se spustit.
+
+Po opravě všech tří příčin dává sada `e2e/ui` 25 zelených a 3 červené, a ty tři
+jsou konečně skutečné vady komponent.
+
+Poučení: dvě jména téhož stroje nemusí být totéž jméno pro framework. A když
+testy dělí čistě na „kontroluje obsah" versus „potřebuje interakci", nehledej
+vadu v komponentách, ale v tom, jestli se vůbec spustil klientský runtime.
+Dotaz na klíče `__react*` na `documentElement` to rozhodne za sekundu.
+
+### I44. Sestavené CLI hledalo migrace vedle sebe, ne v packages/db
+
+- **Našel:** P16 při zkoušení všech provozních příkazů
+- **Uzavřeno:** 2026-08-02, cesta se počítá vůči sestavenému CLI
+
+`mlain migrate` byl rozbitý dvěma nezávislými způsoby najednou a oba se
+projevily až na spuštění sestaveného binárního souboru, ne v testech.
+
+**Cesta k migracím.** `packages/db/src/migrate.ts` skládá výchozí cestu jako
+`new URL('../migrations', import.meta.url)`. To platí, dokud modul běží ze
+svého místa ve stromu. CLI se ale bundluje esbuildem do jediného souboru
+`apps/cli/dist/main.js`, takže se `import.meta.url` vztahuje k němu a cesta
+vyšla na `apps/cli/migrations`, kde nic není. V produkční image to bylo stejně
+mimo: Dockerfile kopíruje migrace do `/app/packages/db/migrations`.
+
+**Zápis do streamů.** Psal jsem `streams.err.write(...)` a `streams.out.write(...)`,
+jenže `CliStreams` má metody `stdout(line)` a `stderr(line)`, žádné objekty
+s `write`. Padalo to na `TypeError: Cannot read properties of undefined`,
+tedy neodchycenou výjimkou bez exit kódu. `docker/entrypoint.sh` přitom při
+každém nenulovém kódu jiném než 69 kontejner ukončí, takže by instalace
+vůbec nenaběhla.
+
+Obojí je moje chyba a obojí prošlo typovou kontrolou i testy. `streams.err`
+je `undefined` až za běhu, protože `CliStreams` má `env?` a struktura se
+kontroluje na přiřazení, ne na přístup k neexistujícímu poli.
+
+Test na to existoval, ale měřil opak: „migrate hlásí, že ho dodá P03" zůstal
+zelený i poté, co příkaz vznikl. Nahrazen testem, který ověřuje skutečné
+chování včetně toho, že výstup neobsahuje `TypeError`.
+
+Ověřeno spuštěním proti čisté databázi: 7 migrací, 111 tabulek, 84 RLS politik,
+druhý běh je bez efektu.
+
+Poučení: příkaz, který spouští entrypoint kontejneru, se musí zkusit spustit
+ze SESTAVENÉ podoby. Zdrojová a zabalená verze nemají stejné `import.meta.url`
+ani stejný strom kolem sebe.
+
+### I45. Tichý catch v úklidu nechával osiřelé databáze
+
+- **Našel:** P16 při běhu celé sady `test/ops`
+- **Uzavřeno:** 2026-08-02, tři pokusy a hlášení do výsledku
+
+`backup-verify.ts` uklízel dočasnou databázi voláním `dropdb --force` zabaleným
+v `.catch(() => undefined)`. Pod zátěží úklid občas selhal, protože se ještě
+zavírala spojení, a to selhání zmizelo beze stopy.
+
+Projev je zákeřný v tom, že se nedá reprodukovat: v izolaci prošel test 3 ze 3,
+a padl teprve při souběžném běhu celé sady, kdy zbyla databáze `ml_verify_*`.
+
+Úklid se teď zkouší třikrát a poslední selhání se přidá mezi problémy ověření
+včetně příkazu na ruční smazání. Výjimka se nevyhazuje schválně: `finally` by
+přebilo skutečný výsledek ověření.
+
+Poučení: `.catch(() => undefined)` je vhodné jen tam, kde je selhání opravdu
+bez následku. U úklidu zdrojů následek má, jen se projeví jinde a později.
+
+### I46. Prázdné tělo požadavku vracelo 415
+
+- **Našel:** P15 při zprovozňování obrazovky nastavení AI
+- **Uzavřeno:** 2026-08-02, detekce těla se řídí `Content-Length`
+
+Middleware veřejného API považoval požadavek za nesoucí tělo podle
+`c.req.raw.body !== null`. Undici, tedy `fetch` v Node, kterým serverové akce
+volají vlastní API, ale u POST bez těla sám připojí `Content-Length: 0`
+a Next vykreslí `raw.body` jako prázdný stream, ne jako `null`.
+
+Detekce proto ohlásila tělo i u požadavku bez jediného bajtu. Klient žádný
+`Content-Type` neposlal, protože nemá co deklarovat, a middleware to shodil na
+`415 This Content-Type is not supported by this endpoint`.
+
+Postihlo to celou třídu endpointů, které něco přepínají a nic neposílají.
+Konkrétně `POST /ai/credentials/{id}/test` a `POST /ai/credentials/{id}/default`
+nefungovaly v prohlížeči vůbec. Není to vada AI domény, jen se tam projevila
+první, protože je to první doména s beztělovými akcemi.
+
+Nově platí, že když je `Content-Length` deklarovaná, je jediným zdrojem pravdy
+o počtu bajtů. `raw.body !== null` se použije jen bez ní, pro chunked přenos
+bez předem známé délky.
+
+Poučení: prázdný stream a chybějící stream nejsou totéž. Kontrola na `!== null`
+vypadá jako kontrola „přišlo něco", ale ptá se na jinou věc.
+
+### I47. Položka navigace vyžadovala oprávnění, které neexistuje
+
+- **Našel:** P15 při zprovozňování obrazovky nastavení AI
+- **Uzavřeno:** 2026-08-02, opraveno na `ai:configure` a `mvp0: true`
+
+Registr navigace vázal položku `settings-ai` na oprávnění `ai:read`. Takové
+oprávnění v systému není, skutečná jsou `ai:use` a `ai:configure`. Položka měla
+navíc `mvp0: false`.
+
+Neselhalo nic. Kontrola oprávnění na neexistující jméno prostě nikdy neprojde,
+takže se položka jen nikdy nezobrazila a k nastavení AI se nedalo proklikat,
+přestože obrazovka existovala a fungovala.
+
+To je nejhorší tvar vady v přístupových právech: nevzniká chyba, jen tichý
+zákaz. Opačná záměna, tedy kontrola na oprávnění, které má kdekdo, by se
+projevila stejně tiše a byla by bezpečnostní dírou.
+
+Poučení: jména oprávnění patří pod typovou kontrolu nebo pod test, který
+porovná registr navigace se seznamem existujících oprávnění. Řetězec, který
+se nikde neověřuje, se dřív nebo později rozejde.
+
+### I48. Bootstrap testovacího harnessu nedorovnával heslo rolí
+
+- **Našel:** P13 při běhu databázových testů
+- **Uzavřeno:** 2026-08-02, doplněno `ALTER ROLE ... PASSWORD`
+
+Bootstrap zakládal role příkazem `CREATE ROLE` v `DO` bloku s odchycením
+`duplicate_object`. Nad existující rolí tedy neudělal nic, včetně hesla.
+Jakmile kontejner přežil změnu očekávaného hesla, padal každý soubor už
+v bootstrapu:
+
+```
+error: password authentication failed for user "mlain_app"
+ Test Files  3 failed (3)
+      Tests  16 skipped (16)
+```
+
+Podstatné je slovo `skipped`. Testy se nepokazily, ony se vůbec nespustily,
+takže série vypadala jako „nic nepadá". A netýkalo se to jednoho balíčku:
+přes tenhle harness jdou testy kampaní, providerů, kontaktů, identity,
+trackingu i platformy, takže to zastavilo úplně každého.
+
+Bootstrap byl idempotentní vůči EXISTENCI role, ne vůči jejímu STAVU. To je
+rozdíl, který se pozná jedině tak, že se prostředí jednou rozejde.
+
+Smazat kontejner by pomohlo taky, ale jen do příštího nesouladu.
+
+Poučení: idempotentní příprava prostředí musí dorovnávat stav, ne jen ověřit,
+že objekt existuje. A hlášení o přeskočených testech je varování, ne informace.
+
+### I49. Seznamy v aplikaci nešlo otevřít myší
+
+- **Našel:** P13 při psaní e2e testu obrazovek kampaní
+- **Uzavřeno:** 2026-08-02, doplněn `onClick` a čtyři testy
+
+`DataTable` z návrhového systému měl na řádku `onKeyDown` s obsluhou `Enter`,
+ale žádný `onClick`. Kliknutí myší tedy nedělalo vůbec nic.
+
+Tuhle tabulku používají všechny seznamy v aplikaci, takže se to netýkalo jedné
+obrazovky: myší nešel otevřít jediný záznam nikde.
+
+Vzniklo to obráceným pořadím práce, které je jinak správné. Přístupnost
+z klávesnice se dělala první a pořádně, prošla testy i kontrolou axe, a protože
+klávesová cesta fungovala, nikoho nenapadlo zkusit myš. Testy měřily to, co
+kdo psal, tedy klávesnici.
+
+Doplněný handler ignoruje kliknutí na ovládací prvky uvnitř řádku (políčko,
+tlačítko, odkaz). Bez toho by zaškrtnutí položky zároveň otevřelo detail
+a nešlo by vybrat víc záznamů najednou.
+
+Čtyři nové testy ověřeny tím, že po odebrání `onClick` padnou přesně dva.
+
+Poučení: hotová a otestovaná klávesová cesta je důkaz o klávesnici, ne o myši.
+Když se nová interakce staví od přístupnosti, patří k ní i test na tu obvyklou
+cestu, kterou používá většina lidí.
+
+### I50. Neomezený dotaz v testu měřil cizí komponentu
+
+- **Našel:** P05 při opravě přístupnosti
+- **Uzavřeno:** 2026-08-02, dotaz omezen na sekci
+
+Scénář K8 ověřoval, že se rozbalení shluku na ose ohlásí čtečce. Všechny jeho
+asserce byly omezené na `#section-k8` až na poslední řádek, kde stálo
+`page.getByRole('status')`.
+
+Galerie je záměrně jedna stránka se všemi vzory pohromadě a průvodce v sekci K3
+má vlastní `role="status"` s čítačem kroku. Test proto padal na
+
+```
+strict mode violation: getByRole('status') resolved to 2 elements
+```
+
+Vypadalo to jako vada osy. Ve skutečnosti byla komponenta v pořádku, jen dotaz
+sahal mimo měřenou sekci. V provozu se průvodce a osa nikdy nepotkají, takže
+tenhle konflikt nemohl nastat nikde jinde než v galerii.
+
+Oprava je zúžení dotazu, ne změkčení asserce. Celá sada `e2e/ui` je po ní
+zelená, 26 z 26.
+
+Poučení: jedno neomezené `page.getBy…` mezi omezenými je podezřelé samo o sobě.
+A test, který padá kvůli sousední komponentě, hlásí vadu měření, ne vadu kódu.
+
+### I51. Deklarovaná verze Node byla nižší, než závislosti dovolují
+
+- **Našel:** P15 při doinstalaci závislostí modulu značky
+- **Uzavřeno:** 2026-08-02, spodní hranice zvednuta na 24.15.0
+
+Kořenový `package.json` deklaroval `"node": ">=24.2.0 <25"`. `jsdom@30` ale
+požaduje `^22.22.2 || ^24.15.0 || >=26.0.0`, a protože `.npmrc` má
+`engine-strict=true`, na starším Node spadne CELÁ instalace, ne jen ten balíček.
+
+Deklarovaný rozsah tedy povoloval verzi, na které `pnpm install` neprojde.
+CI to nezachytilo, protože běží na 24.18.1, tedy uvnitř skutečně funkčního
+rozsahu. Projeví se to jen tomu, kdo má Node mezi 24.2.0 a 24.15.0, a ten
+uvidí selhání instalace bez zjevné souvislosti s tím, co dělal.
+
+Poučení: `engines` je slib, ne přání. Když je širší než průnik požadavků
+závislostí, je to nepravdivý údaj, který někoho jednou stojí hodinu hledání.
+
+### I52. Dokument OpenAPI se hledal na disku, kde v produkci nebyl
+
+- **Našel:** P16 při stavbě image, dohledáno hlavním agentem
+- **Uzavřeno:** 2026-08-02, dokument se importuje do svazku
+
+`apps/web/src/lib/api/openapi.ts` hledal `packages/contracts/openapi.json` mezi
+třemi kandidátskými cestami a bral první existující. Při vývoji to fungovalo.
+V produkci ne, ze dvou nezávislých důvodů.
+
+**Soubor tam vůbec není.** Runtime vrstva image kopíruje `.next/standalone`,
+`.next/static`, `public`, `worker/dist`, `cli/dist` a migrace. `packages/contracts`
+mezi nimi nefiguruje, takže by neexistoval žádný ze tří kandidátů a `/api/v1/docs`
+i `/api/v1/openapi.json` by v běžící instalaci padaly. Nikdo to nezjistil, protože
+se ty dvě trasy nikdy neprošly v kontejneru.
+
+**Hledání souboru za běhu shodilo analýzu závislostí.** Next nemá jak vědět,
+který kandidát platí, takže vystopoval celý projekt a hlásil to varováním
+„Encountered unexpected file in NFT list". Zbytečně to nafukovalo image, která
+je zrovna 2,4 MB nad limitem.
+
+Statický import obojí ruší a zachovává vlastnost, kvůli které se čtení ze
+souboru zavádělo: servíruje se TENTÝŽ commitnutý dokument, ne generovaný.
+
+Cesta musí být RELATIVNÍ, ne přes jméno balíčku. Turbopack podcestu
+`@mlain/contracts/openapi.json` nerozřeší ani tehdy, když ji `exports` mapa
+vystavuje. Ověřeno spuštěním: s klíčem v mapě, po `pnpm install` i po restartu
+serveru vracelo celé `/api/v1` pětistovku, bez ohledu na atribut
+`with { type: 'json' }`. Klíč v mapě jsem přesto nechal, pro Node a vitest platí.
+
+Poučení: „funguje to při vývoji" u čehokoli, co sahá na disk, neříká nic
+o produkci. Cesty, obsah image a chování bundleru se liší všechny tři najednou.
+
+### I53. Job integračních testů v CI dostával jinou proměnnou, než čte
+
+- **Našel:** P09 při opravě testovacího harnessu
+- **Uzavřeno:** 2026-08-02, opraveno na `DATABASE_URL_MIGRATOR`
+
+Job `test-go-integration` předával `DATABASE_URL_SENDER`, ale `testsupport.New(t)`
+čte výhradně `DATABASE_URL_MIGRATOR` a bez ní volá `t.Fatal`. Job byl tedy
+červený hned na prvním integračním testu.
+
+Plán P09 tuhle regresi předvídal jmenovitě jako R8 v kapitole 31.2 včetně věty
+„dnešní tvar je horší než chybějící proměnná". Přesto se do CI dostala, protože
+jméno proměnné vypadá věrohodně a nikdo ten job nespustil.
+
+Poučení: konfigurace CI se neověřuje čtením. Proměnná se správným jménem
+v nesprávné roli je nerozeznatelná od správné, dokud to někdo nepustí.
+
+### I54. Konfigurace v literálu na úrovni modulu, projev na třech různých trasách
+
+- **Našel:** P16 při stavbě image, po dvou nesprávně mířených opravách
+- **Uzavřeno:** 2026-08-02, katalog limitů je líná funkce plus nová brána
+
+Nález I41 byl opravený špatně, i když ta oprava sama byla správná. Odstranil
+totiž jeden projev, ne příčinu. Stavba pak padala dál, jen pokaždé jinde:
+
+```
+Failed to collect page data for /t/[[...path]]
+Failed to collect page data for /api/v1/[[...route]]
+Failed to collect page data for /api/internal/ai/chat
+```
+
+Skutečná příčina byla v `apps/web/src/lib/api/rate-limit.ts`, kde
+`RATE_LIMIT_RULES` volal `getConfig()` uvnitř literálu objektu na úrovni modulu.
+Ten soubor importuje `authenticate.ts` a ten importuje kdekoli. Každá z těch
+tří tras se dala složit líně a stavba pak spadla na další. Byla to hra na krtky.
+
+Samotné `getConfig()` je napsané správně a memoizuje. Vada nebyla v něm, ale
+v tom, KDY se poprvé zavolá.
+
+Poučení o diagnostice: když se táž chyba objeví na třetím různém místě, přestaň
+opravovat místa. Hlášení jmenovalo trasu, protože tam se import uzavřel, ne
+protože tam byla chyba.
+
+Aby se to nevrátilo počtvrté, vznikla brána
+`apps/web/test/ci/config-at-module-level.test.ts`, která projde `apps/web/src`
+a zakáže `loadConfig()` a `getConfig()` mimo tělo funkce.
+
+Brána si při prvním běhu vysloužila vlastní poučení: nahlásila dvě stránky,
+ve kterých je volání SPRÁVNĚ. Detektor nepoznal `export default async function`,
+tedy tvar každé stránky App Routeru, a považoval jejich vnitřek za úroveň
+modulu. Falešně červená brána je nebezpečnější než děravá, protože se obvykle
+„opraví" tím, že se vypne. Ten tvar je proto teď v testech natvrdo, spolu
+s testem, že detektor chytí přesně ten vzor, který vadu vyrobil.
+
+### I55. Klient PostgreSQL o čtyři verze starší shodil osmnáct testů
+
+- **Našel:** hlavní agent při kompletní sérii
+- **Uzavřeno:** 2026-08-02, doinstalován klient 18 a zapsán do README
+
+Osmnáct testů v `packages/core` padalo na jediné příčině:
+
+```
+pg_dump: error: server version: 18.4; pg_dump version: 14.18 (Homebrew)
+pg_dump: error: aborting because of server version mismatch
+```
+
+Není to vada kódu ani prostředí projektu. Databáze běží na 18, na stroji byl
+klient 14, a `pg_dump` odmítá pracovat proti novějšímu serveru, než je sám.
+V produkční image se to projevit nemůže, `Dockerfile` instaluje
+`postgresql18-client`.
+
+Zákeřné na tom je, co ta hláška způsobí u toho, kdo ji nečeká. Osmnáct
+červených testů kolem záloh vypadá jako rozbité zálohování, ne jako chybějící
+nástroj. Jeden z nich navíc padal na porovnání textu:
+
+```
+expected 'pg_dump: error: server version…' to contain 'row-level security'
+```
+
+což vede k domněnce, že se rozbila pojistka proti tichým prázdným zálohám.
+
+`mlain doctor` tuhle neshodu poznal a pojmenoval ji `backup_binary_version_mismatch`.
+Nikdo ho ale nespustil, protože se hledala příčina v kódu.
+
+Zapsáno do README včetně příkazu a včetně upozornění, že `export PATH` patří
+do `.zshrc`, jinak se to vrátí po prvním restartu terminálu.
+
+Poučení: než začneš hledat vadu v osmnácti testech naráz, ověř verze nástrojů,
+na kterých stojí. A když má projekt diagnostický příkaz, spusť ho dřív než
+debugger.
+
+### I56. Kontrola v mezivrstvě dokládá jen tu mezivrstvu
+
+- **Našel:** P16 při ověřování hotové image
+- **Uzavřeno:** 2026-08-02, doplněn `COPY` a kontrola v runtime vrstvě
+
+Oprava nálezu I38 byla udělaná z poloviny. Fáze `node-builder` připravila
+`@node-rs/argon2` do `/runtime-deps`, ověřila ho tím, že modul načetla
+a zavolala `hashSync`, a tím to skončilo: runtime vrstva ten adresář nikdy
+nezkopírovala. Modul se připravil, ověřil a zahodil spolu s mezivrstvou.
+
+Build byl zelený, kontrola v něm proběhla úspěšně, a kontejner přesto skončil
+v restartové smyčce `Restarting (78)`:
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@node-rs/argon2'
+  imported from /app/apps/cli/dist/main.js
+```
+
+Padlo to hned na `mlain migrate` z entrypointu, takže instalace nenaběhla vůbec.
+
+Podstatné je, PROČ ta kontrola nepomohla, přestože byla napsaná dobře a modul
+opravdu volala. **Ověřovala ho na místě, kde se nepoužívá.** Doklad o tom, že
+mezivrstva byla v pořádku, neříká nic o tom, jestli se její obsah dostal dál.
+
+Runtime vrstva teď má vlastní kontrolu, která načte modul z `/app/node_modules`
+a udělá `hashSync` i `verifySync`. Ta by tuhle vadu chytila při stavbě.
+
+Druhá past, na kterou upozornil P16 a která stojí za zapsání: `COPY` toho
+adresáře musí přijít AŽ ZA `.next/standalone`. Standalone si nese vlastní
+`node_modules` a v opačném pořadí by ho přepsal. V tomhle pořadí Docker obsah
+sloučí a `@node-rs` se přidá vedle.
+
+Poučení: kontrolu umísti tam, kde se věc používá, ne tam, kde ji připravuješ.
+A když ověřuješ výsledek stavby, ověřuj HOTOVOU image, ne mezistupeň.
+
+### I57. Generátor OpenAPI vyžadoval prostředí, které v CI není
+
+- **Našel:** hlavní agent při přegenerování dokumentu
+- **Uzavřeno:** 2026-08-02, generátor si chybějící hodnoty doplní sám
+
+`pnpm --filter @mlain/web generate:openapi` spadl bez proměnných prostředí:
+
+```
+ConfigError: Konfigurace není platná, 3 problémů.
+  at createApiApp (apps/web/src/lib/api/app.ts:360:7)
+  at buildApp (apps/web/src/lib/api/openapi.ts:71:15)
+  at generate-openapi.ts:25:39
+```
+
+`buildApp()` volá `createApiApp()` a ten sáhne na `getConfig()`. Volání je
+uvnitř funkce, tedy formálně v pořádku a brána z nálezu I54 ho nechytí, jenže
+generátor tu funkci zavolat musí.
+
+Selhalo by to právě tam, kde na tom nejvíc záleží: na čerstvém checkoutu a v CI
+žádné `.env.local` není, takže by nikdo nemohl přegenerovat dokument ani ověřit
+odchylku proti commitnuté verzi.
+
+Generátor si teď chybějící hodnoty doplní sám a jen ty chybějící, takže skutečné
+prostředí má přednost. Dvě z nich stály za pozornost:
+
+- `DATA_DIR` musí být adresář, který SKUTEČNĚ existuje a jde do něj zapsat,
+  protože to validace ověřuje voláním na disk. Výchozí `/data` je cesta uvnitř
+  kontejneru a jinde neexistuje. Bere se `tmpdir()`.
+- `MIGRATE_ON_START` musí být `false`, jinak validace trvá na roli migrátora.
+  Generátor nemigruje, jen čte definice cest.
+
+Ověřeno s `env -u` na všech pěti proměnných: 136 cest, 180 operací, obě
+varianty výstupu, brána `openapi-drift` zelená.
+
+Poučení: nástroj, který vyrábí artefakt do repozitáře, musí běžet na čistém
+stroji. Když potřebuje prostředí, dodá si atrapy sám, jinak funguje jen
+u toho, kdo ho zrovna napsal.
+
+### I58. Fronta úloh neměla kde vzniknout, worker padal na oprávnění
+
+- **Našel:** P16 při startu kontejneru
+- **Uzavřeno:** 2026-08-02, migrace 0007 zakládá schéma `pgboss`
+
+Worker se připojuje pod `DATABASE_URL`, tedy jako `mlain_app`, a pg-boss si při
+startu zakládá vlastní schéma a tabulky. Aplikační role ale nemá `CREATE` na
+databázi, takže padal hned:
+
+```
+error: permission denied for database mlain   (SQLSTATE 42501)
+  at Contractor.create ... PgBoss.start ... main
+```
+
+Migrace 0005 rozdává práva ve schématu `public`, což `CREATE` na úrovni
+DATABÁZE není. Zvenčí to vypadá jako chyba oprávnění, přitom šlo o objekt,
+který nikdy nikdo nezaložil.
+
+Nabízely se dvě cesty. Pustit workera pod rolí migrátora je rychlejší, ale
+dalo by mu vlastníka celého schématu, tedy právo měnit i tabulky, do kterých
+nemá co zasahovat. Zvolená cesta drží pravidlo, že schéma vlastní jedině
+migrátor: schéma vzniká migrací a aplikační role v NĚM smí zakládat objekty,
+protože tvar tabulek pg-boss patří knihovně, ne našim migracím.
+
+Vedlejší nález, který odhalila chyba při psaní té migrace: přidal jsem do ní
+`ALTER DEFAULT PRIVILEGES FOR ROLE mlain_app`, aby na tabulky dosáhl sender,
+a migrace spadla na `permission denied to change default privileges`. Měnit
+výchozí oprávnění cizí role smí jen její člen nebo superuživatel. Při opravě
+se ukázalo, že **sender pg-boss nepoužívá vůbec** a má vlastní outbox
+v `public`. Rozdával jsem práva, která nikdo nechce.
+
+Poučení: chyba oprávnění nemusí znamenat chybějící `GRANT`. Někdy znamená
+chybějící objekt. A když databáze odmítne příkaz, který se zdá rozumný, stojí
+za to nejdřív ověřit, jestli ten příkaz vůbec potřebujeme.
+
+### I59. Výchozí instalace nespustila sender, chyběla jedna proměnná
+
+- **Našel:** P16 při startu kontejneru
+- **Uzavřeno:** 2026-08-02, entrypoint ji odvozuje z `APP_URL`
+
+`docker/compose.yml` nenastavoval `TRACKING_DOMAIN`. Konfigurace v Node si ji
+umí odvodit z `APP_URL`, jenže sender je binárka v Go a `APP_URL` nedostává
+(nález K7 plánu P09), takže je pro něj povinná:
+
+```
+konfigurace je neplatná:
+  - TRACKING_DOMAIN: chybí. Sender z ní staví odkazy /t/o/, /t/c/ a /u/.
+```
+
+Ve výchozím `MODE=all` to znamená, že celý kontejner skončí v restartové
+smyčce, přestože web i worker naběhly. Tedy: čerstvá instalace podle návodu
+nenaběhne.
+
+Odvození nešlo dát do Compose. Zkoušel jsem `${TRACKING_DOMAIN:-${APP_URL#*://}}`
+a končí to na `invalid interpolation format`: Compose umí jen
+`${VAR:-výchozí}`, ne úpravu řetězce. Patří to proto do `entrypoint.sh`, kde
+je skutečný shell, a před validaci konfigurace.
+
+Ověřeno skutečným během v kontejneru, ne úvahou nad zápisem:
+
+```
+https://mail.firma.cz            -> mail.firma.cz
+http://localhost:3000            -> localhost
+https://mail.firma.cz:8443/app   -> mail.firma.cz
+```
+
+Výslovně nastavená hodnota se nepřepisuje, což potřebuje každý, kdo má odkazy
+na jiné doméně kvůli doručitelnosti.
+
+Poučení: proměnná s rozumnou výchozí hodnotou v jednom jazyce nemá výchozí
+hodnotu v druhém. Hranice mezi TypeScriptem a Go je i hranicí platnosti všeho,
+co se „odvodí automaticky".
+
+### I60. Postgres kontroluje oprávnění dřív než existenci
+
+- **Našel:** P16 při startu kontejneru, podruhé po opravě I58
+- **Uzavřeno:** 2026-08-02, pg-boss si schéma staví pod migrátorem
+
+Oprava nálezu I58 nestačila. Schéma `pgboss` migrace založila, a worker přesto
+padal na tomtéž:
+
+```
+error: permission denied for database mlain   (SQLSTATE 42501)
+  at Contractor.create ... PgBoss.start ... main
+  file: 'aclchk.c', line: '2793', routine: 'aclcheck_error'
+```
+
+`PgBoss.start()` volá `Contractor.create()` a ten pouští
+`CREATE SCHEMA IF NOT EXISTS`. Klíčové je, že **`IF NOT EXISTS` pád neodvrátí**:
+Postgres kontroluje oprávnění DŘÍV než existenci, takže role bez `CREATE` na
+databázi dostane 42501, i když schéma dávno existuje. Je to vidět na tom, že
+chyba přichází z `aclchk.c`, tedy z kontroly práv, ne z „už existuje".
+
+První pokus o řešení byl vlepit vygenerované SQL knihovny do migrace přes
+`getConstructionPlans()`. Zavrženo po vyzkoušení, protože není idempotentní:
+
+```
+pokus 1: OK
+pokus 2: ERROR: type "job_state" already exists
+```
+
+Druhá instalace by tedy spadla.
+
+Použité řešení: schéma si pg-boss postaví a zmigruje sám, ale v `mlain migrate`
+pod rolí MIGRÁTORA, a worker pak jede s `migrate: false` a jen kontroluje.
+Knihovna si existující instalaci pozná a dopočítá jen chybějící, takže je to
+idempotentní. Tvar tabulek zůstává věcí knihovny, což je správně: mění se s její
+verzí a do našich migrací nepatří.
+
+Ověřeno oběma směry: dvojí běh `mlain migrate` nic nerozbije a pg-boss pod
+`mlain_app` s `migrate: false` nastartuje a zařadí úlohu.
+
+Poučení: `IF NOT EXISTS` chrání před konfliktem, ne před chybějícím oprávněním.
+A když knihovna nabízí „vygeneruj mi SQL", stojí za to ho spustit dvakrát dřív,
+než ho někam vlepíš.
+
+### I61. Táž proměnná měla v TypeScriptu a v Go neslučitelný tvar
+
+- **Našel:** P16 při startu senderu
+- **Uzavřeno:** 2026-08-02, sjednoceno na absolutní URL
+
+`TRACKING_DOMAIN` se v každém jazyce chápala jinak:
+
+- `packages/core/src/config/load.ts` odvozovala výchozí hodnotu jako
+  `new URL(APP_URL).host`, tedy holý host.
+- `apps/sender/internal/config/load.go` vyžadovala absolutní URL se schématem.
+
+Výchozí hodnota vyrobená TypeScriptem tedy neprošla validací v Go:
+
+```
+konfigurace je neplatná:
+  - TRACKING_DOMAIN: "localhost:4600" není absolutní URL se schématem
+```
+
+Kdo proměnnou nenastavil ručně, dostal buď „chybí" (sender `APP_URL` nevidí,
+nález K7), nebo po odvození „není absolutní URL". **Obě větve končily tím, že
+sender nenastartoval.** Zod to nechytil, měl jen `z.string().min(1).optional()`,
+takže propouštěl cokoli neprázdného.
+
+Rozhodnuto podle toho, co s hodnotou sender DĚLÁ: skládá odkazy prostým
+spojením, `base() + "/t/o/" + token`. Z holého hostu vznikne řetězec, který
+v e-mailu není odkaz, takže věcně má pravdu Go a TypeScript se srovnal na něj.
+Jméno proměnné je matoucí, ale přejmenování by rozbilo existující instalace.
+
+Srovnáno na čtyřech místech: odvození, schéma zod, entrypoint a compose.
+Původní test čekal holý host a po změně správně spadl; nahradily ho tři, které
+měří nové pravidlo včetně odmítnutí hodnoty bez schématu.
+
+Poučení: sdílená proměnná napříč dvěma jazyky potřebuje jeden zdroj pravdy
+o svém TVARU, ne jen o jménu. Validace, které si každá strana napíše sama,
+se rozejdou a projeví se to až tam, kde se obě strany potkají, tedy v provozu.
+
+### I62. Pořadí zakládání front bylo neškodné, dokud si je pg-boss dělal sám
+
+- **Našel:** P16 při startu kontejneru, potřetí v téže oblasti
+- **Uzavřeno:** 2026-08-02, prohozeny dva bloky v `registerQueues`
+
+Po opravě nálezu I60 kontejner spadl znovu, tentokrát jinak:
+
+```
+Error: Queue platform.webhook_fanout.dlq does not exist
+RestartCount 9
+```
+
+V databázi byla JEDNA fronta, a to ještě interní `__pgboss__send-it`, přestože
+registr jich deklaruje 63.
+
+Zajímavé je, že `registerQueues()` volalo `createQueue()` celou dobu, pro fronty
+i pro jejich DLQ. Vadilo POŘADÍ: zakládala se napřed hlavní fronta s volbou
+`deadLetter: <jméno>.dlq` a teprve po ní ta DLQ. pg-boss trvá na tom, aby cílová
+fronta v tu chvíli existovala.
+
+Podstatné je, PROČ to nikdy dřív nevadilo. Dokud si pg-boss migroval schéma sám,
+zakládal si chybějící fronty mimoděk při prvním `send`, takže na pořadí
+nezáleželo. Oprava nálezu I60, tedy `migrate: false`, tu shovívavost odstranila
+a z neškodného pořadí se stal blokátor. Jedna správná oprava tak odhalila vadu,
+která tam ležela od začátku.
+
+Ověřeno spuštěním skutečného workera proti čisté databázi: 61 front, 37 DLQ,
+99 řádků v `pgboss.queue`, nula chyb v logu.
+
+Poučení: „funguje to" může znamenat „funguje to díky shovívavosti někoho
+jiného". Když se ta shovívavost odstraní, vypadne ven pořadí, na kterém dosud
+nezáleželo.
+
+### I63. Sender si sám vypínal kontrolu, protože sloupec chyběl
+
+- **Našel:** P16 v logu kontejneru
+- **Uzavřeno:** 2026-08-02, migrace 0008 sloupec doplňuje
+
+```
+{"level":"WARN","msg":"compile_meta_column_missing",
+ "detail":"campaigns.compile_meta ve schématu není, kontrola počtu značek se vypíná"}
+```
+
+Sender čte z `campaigns.compile_meta` hodnotu `clickMarkerCount` a porovnává ji
+s počtem značek prokliku, které v těle skutečně našel. Sloupec ve schématu
+nebyl, takže sender kontrolu sám vypnul a napsal o tom jedinou řádku do logu.
+
+Nic nespadlo. Odesílání běželo dál, jen bez ochrany proti rozbité kompilaci
+šablony. Je to táž třída vady jako readiness vracející 200 nad prázdným
+schématem (nález I37): měřidlo se samo odpojí a ohlásí to způsobem, který nikdo
+nečte.
+
+Shovívavost v senderu zůstává schválně, protože musí umět běžet i proti starší
+databázi během postupného upgradu. Nová instalace ten sloupec má.
+
+Při té příležitosti byl zvážen i `messages.audience_campaign_id`, hlášený jako
+chybějící požadavek. NEPŘIDÁN: prohledáním kódu se ukázalo, že ho nečte nikdo,
+ani TypeScript, ani Go. Sloupec bez spotřebitele je jen další věc, kterou bude
+někdo za rok udržovat a nebude vědět proč.
+
+Poučení: hlídej varování, po kterých se něco VYPNE. Chyba se opraví, protože
+bolí; tiché vypnutí kontroly nebolí nikoho, dokud se neprojeví to, proti čemu
+ta kontrola stála.
+
+### I64. CSP nonce šel do odpovědi místo do požadavku, v produkci nefungovalo NIC
+
+- **Našel:** P16 při průchodu zlatou cestou v produkční image
+- **Uzavřeno:** 2026-08-02, CSP se předává i v hlavičkách požadavku
+
+Nejvážnější nález celého dne. `applySecurityHeaders()` skládal politiku
+s nonce a zapisoval ji do hlaviček ODPOVĚDI. Next.js si ale nonce bere
+z hlaviček POŽADAVKU, které mu middleware podstrčí přes
+`NextResponse.next({ request: { headers } })`, a razítkuje jím své bootstrapové
+inline skripty.
+
+Prohlížeč tedy dostal přísnou politiku a skripty bez nonce, takže je zablokoval:
+
+```
+Executing inline script violates the following Content Security Policy directive
+'script-src 'self' 'nonce-069ECiHwJXjyRUy2+mUsvA=='. The action has been blocked.
+```
+
+Devětkrát na stránku. **Následek: React se vůbec nenamountoval a v celé
+aplikaci nefungovalo nic.** Stránka se vykreslila ze serveru, vypadala hotově,
+a žádné tlačítko, formulář ani navigace nereagovaly. Doloženo na výběru jazyka
+v průvodci prvním spuštěním: klik proběhl, `data-state` zůstal `closed`,
+nabídka měla nula položek.
+
+Dvě věci dělají tenhle nález obzvlášť zákeřným.
+
+**Vada je výhradně produkční.** V dev režimu politika obsahuje `'unsafe-eval'`
+a inline bootstrap má jiný tvar, takže se nic neprojeví. Lokálně tedy všechno
+funguje a rozbité je jen to, co dostane zákazník.
+
+**Test na to existoval a procházel.** Jmenoval se „nonce předá dál v hlavičce
+požadavku", ale kontroloval `x-nonce` na ODPOVĚDI, tedy hlavičku, kterou nikdo
+nečte: `grep -rn "x-nonce" apps/web/src` mimo `proxy.ts` najde jediný výskyt,
+a to právě v tom testu. Ochrana nefungovala ani jedním směrem a měřidlo tvrdilo,
+že je vše v pořádku.
+
+Test je přepsaný na shodu, ne na existenci: nonce v CSP se musí rovnat tomu
+v `x-middleware-request-x-nonce`. Ověřeno tím, že po vrácení staré podoby proxy
+padne jmenovitě.
+
+Poučení: hlavička nastavená na odpovědi a hlavička předaná dál do požadavku
+jsou dvě různé věci a framework čte jen jednu z nich. A test, který ověřuje
+„hodnota je neprázdná", neměří nic; musí ověřovat, že se ta hodnota dostala
+tam, kde ji někdo použije.
+
+### I65. Stránky závislé na relaci se předrenderovávaly
+
+- **Našel:** hlavní agent při produkčním buildu
+- **Uzavřeno:** 2026-08-02, 27 stránek dostalo `force-dynamic`
+
+`next build` padal na předrenderu stránky nastavení profilu:
+
+```
+TypeError: Cannot read properties of null (reading 'useContext')
+Error occurred prerendering page "/cs/settings/profile"
+```
+
+Sedmadvacet stránek volá `requireUser()` nebo `apiFetch()`, tedy závisí na
+přihlášeném uživateli, a ani jedna to Nextu neříkala. V době sestavení žádná
+relace neexistuje, takže se to muselo rozbít.
+
+Chyba přitom na příčinu vůbec neukazuje a svádí hledat vadu v komponentách.
+
+Opraveno hromadně, ne stránku po stránce, protože po zkušenosti s nálezem I54
+je jasné, že opravovat projevy jeden po druhém je hra na krtky. Statická podoba
+takové stránky stejně neexistuje: obsah je pro každého jiný.
+
+### I66. Per-request nonce a předrenderovaná stránka se vylučují z principu
+
+- **Našel:** P16 po opravě nálezu I64, která nestačila
+- **Uzavřeno:** 2026-08-02, jedenáct stránek dostalo `force-dynamic` plus brána
+
+Oprava nálezu I64 byla nutná, ale ne dostatečná. Nonce se sice dostal do
+hlaviček požadavku, a `/setup` byl přesto mrtvý: devět blokovaných inline
+skriptů, React nenamountovaný.
+
+Příčina je logická, ne technická. Proxy vyrábí nonce PRO KAŽDÝ POŽADAVEK.
+Předrenderované HTML vzniká PŘI STAVBĚ, kdy žádný požadavek neexistuje, takže
+do něj nonce nemá jak vstoupit. Za běhu pak prohlížeč dostane přísnou politiku
+a skripty bez nonce a zablokuje je. **Ty dvě věci se vylučují vždycky**, ne
+shodou okolností.
+
+V tabulce tras z `next build` to bylo vidět jako značka `●`:
+
+```
+├ ● /[locale]/setup          <- SSG, prerendered as static HTML
+├ ● /[locale]/forgot-password
+├ ƒ /[locale]/login          <- Dynamic, server-rendered on demand
+```
+
+Postiženy byly dvě stránky přes `generateStaticParams` nad locale a dalších
+devět, které o sobě Nextu neříkaly nic a nechaly ho rozhodnout: přehled
+projektu, nastavení, statistiky kampaní, report kampaně, časová osa kontaktu,
+značka a kořenová stránka.
+
+Zvlášť zlé je, že `/setup` je úplně první obrazovka po instalaci. Nový zákazník
+by viděl formulář, do kterého nejde nic vyplnit.
+
+Vznikla brána `apps/web/test/ci/no-static-pages.test.ts`. Dvě rozhodnutí v ní
+stojí za zaznamenání:
+
+Čte ZDROJ, ne výstup `next build`. Tabulka tras je čitelnější, ale existuje až
+po stavbě, tedy pozdě a jen tam, kde někdo stavěl.
+
+Dovoluje výslovné `force-static`. Vada nebyla statičnost, ale CHYBĚJÍCÍ
+ROZHODNUTÍ: `/setup` neměl ani jedno. `/t/expired` má `force-static` vědomě
+a je to správně, protože nemá jediný interaktivní prvek. Brána proto vyžaduje
+rozhodnutí, ne konkrétní volbu.
+
+Poučení: když oprava odstraní příznak jen zčásti, zbytek většinou není další
+vada téhož druhu, ale předpoklad, který nikde nestojí napsaný. Tady zněl
+„každá stránka se vykresluje na požadavek", a nikdo ho nevymáhal.
+
+### I67. NODE_ENV z .env.local vyrobilo dvě instance Reactu v jednom procesu
+
+- **Našel:** hlavní agent zadáním, dohledal agent na plný úvazek
+- **Uzavřeno:** 2026-08-02, skript `build` vynucuje `NODE_ENV=production`
+
+`next build` padal na hlášce, která mířila úplně jinam, než byla příčina:
+
+```
+TypeError: Cannot read properties of null (reading 'useContext')
+Export encountered an error on /_global-error/page, exiting the build.
+```
+
+Null nebyl modul Reactu, jak to svádí číst, ale **dispatcher uvnitř něj**.
+V jednom procesu vznikly DVĚ instance Reactu:
+
+- chunky se zkompilovaly natvrdo proti produkčnímu runtime, protože se to
+  rozhoduje v čase kompilace,
+- renderer si Next vybral za běhu podle `NODE_ENV`, tedy vývojový.
+
+`OuterLayoutRouter` pak volal `useContext` z produkční instance, zatímco
+rendrovala vývojová, a `ReactSharedInternals.H` produkční instance byl `null`.
+Next navíc rámce z `next-server` v zásobníku skrývá, takže bylo vidět jen
+`OuterLayoutRouter`.
+
+Kde se vzalo špatné `NODE_ENV`: v `apps/web/.env.local` je `NODE_ENV=development`
+a doporučený postup „před buildem si načti prostředí přes `set -a && . .env.local`"
+ho vyexportuje do shellu. `next build` si `NODE_ENV` doplní jen tehdy, když
+NENÍ nastavené, takže ho nepřepsal, a `turbo.json` ho má v `globalEnv`, takže
+prošlo i přes turbo.
+
+Vysvětluje to i nedeterminismus (podle rozdělení tras mezi devět prerender
+workerů padala pokaždé jiná stránka) a to, proč nepomohla vlastní
+`global-error.tsx`: s tou komponentou to nikdy nesouviselo.
+
+Potvrzeno nezávisle: vercel/next.js#95119, kde reportér dospěl k témuž.
+Oprava v Nextu žádná není.
+
+Skript `build` teď `NODE_ENV=production` vynucuje a `next.config.ts` má hlídač,
+který build shodí s čitelnou hláškou, kdyby ho někdo pustil ručně mimo skript.
+
+Poučení: chybová hláška ukazuje na místo, kde se to projevilo, ne kde to
+vzniklo. A soubor s vývojovým prostředím načtený do shellu ovlivní i nástroje,
+o kterých se to nečeká.
+
+### I68. Server volal vlastní API přes veřejnou adresu
+
+- **Našel:** P16 při průchodu instalací v produkční image
+- **Uzavřeno:** 2026-08-02, na serveru loopback, v prohlížeči relativní cesta
+
+`getApiBaseUrl()` vracelo `APP_URL` pro server i pro prohlížeč. `APP_URL` je
+ale adresa, na kterou chodí PROHLÍŽEČ. Serverová akce běží uvnitř kontejneru,
+kde ta adresa neplatí: aplikace tam poslouchá na `PORT`, kdežto `APP_URL` nese
+port namapovaný na hostiteli, nebo rovnou veřejnou doménu za reverzní proxy.
+
+Dokončení průvodce prvním spuštěním proto skončilo takhle:
+
+```
+1:{"status":"error","problem":{"status":503,"instance":"/api/v1/setup",
+   "code":"service_unavailable"}}
+```
+
+a uživatel viděl „Server neodpovídá. Nepodařilo se nám spojit se serverem."
+
+Podstatné je, PROČ to nikdo nezachytil dřív. Lokálně i ve většině testů se
+vnější a vnitřní port shodou okolností SHODUJÍ, takže volání projde náhodou.
+Odhalilo to teprve prostředí, kde je zvenčí 4600 a uvnitř 3000. V běžném
+produkčním nasazení, tedy na HTTPS doméně za reverzní proxy, by se **žádná
+serverová akce nedovolala do vlastního API** a instalace by vypadala živě,
+ale první obrazovka by nešla dokončit.
+
+Nově se na serveru míří na `http://127.0.0.1:${PORT}`, což nejde ven
+z kontejneru a nedotýká se DNS, TLS ani reverzní proxy. V prohlížeči se vrací
+prázdný základ, tedy relativní cesta na tentýž původ: ta se nemůže rozejít
+s tím, co uživatel vidí v adresním řádku.
+
+Pět nových testů, ověřeno tím, že se starým chováním padnou čtyři. Jeden z nich
+hlídá opačný směr, tedy že se v prohlížeči nesáhne na loopback, protože ten by
+vedl na počítač uživatele.
+
+Poučení: prostředí, kde se vnější a vnitřní port shodují, je pohodlné a lživé.
+Testovat proti kontejneru s JINÝM vnějším portem je levné a chytá celou třídu
+vad, které se jinak projeví až u zákazníka.
+
+### I69. Docker nastavuje HOSTNAME a Next se na něj váže
+
+- **Našel:** P16 po opravě nálezu I68, která bez tohohle nemohla zabrat
+- **Uzavřeno:** 2026-08-02, `HOSTNAME=0.0.0.0` v Dockerfile
+
+Oprava nálezu I68 přesměrovala volání ze serveru na loopback. Nefungovalo to,
+protože **Next uvnitř kontejneru na loopbacku vůbec neposlouchá.**
+
+`server.js` z Next standalone má na řádku 15:
+
+```js
+const hostname = process.env.HOSTNAME || '0.0.0.0'
+```
+
+a Docker do KAŽDÉHO kontejneru nastavuje `HOSTNAME` sám, na jeho ID. Next si to
+vezme jako adresu k navázání a poslouchá jedině na IP kontejneru:
+
+```
+HOSTNAME=12fdfa58ad13
+pres hostname kontejneru:  HTTP 200
+pres loopback:             ECONNREFUSED
+```
+
+Zvenčí se to neprojeví nijak, protože mapování portu míří přesně na tu IP.
+Jediná stopa je řádek ve startovacím logu, kde místo `http://localhost:3000`
+stojí `http://<id kontejneru>:3000`, a toho si nikdo nevšimne.
+
+Je to proměnná, kterou nikdo nehledá, protože ji nikdo nezapsal. U řádku
+v Dockerfile je proto komentář začínající větou, že se nesmí smazat, i když
+vypadá zbytečně; bez ní ho někdo při úklidu vyhodí.
+
+Ověřeno obojí zvlášť: `docker run --rm alpine sh -c 'echo $HOSTNAME'` vrátí ID
+kontejneru, s `-e HOSTNAME=0.0.0.0` vrátí nulovou adresu.
+
+Poučení, a je to poučení o postupu, ne o Dockeru: **když oprava nezabere,
+neopravuj znovu jinak, ale ověř předpoklad, na kterém stála.** Ten zdejší zněl
+„aplikace poslouchá na loopbacku" a nikdo ho nikdy neověřil. Bez toho by se
+došlo k závěru „loopback nefunguje" a hledala by se chyba v adrese.
+
+### I70. Průvodce uživatele založil a nepřihlásil
+
+- **Našel:** P16 při průchodu zlatou cestou
+- **Uzavřeno:** 2026-08-02, `runSetup` zakládá relaci v téže transakci
+
+Po dokončení průvodce prvním spuštěním proběhlo všechno: správce vznikl,
+projekt vznikl, přesměrování na `/w/{slug}` proběhlo. Prohlížeč ale neměl
+jedinou cookie a proxy poslala uživatele na přihlašovací formulář, hned po tom,
+co si nastavil heslo.
+
+Nabízelo se hledat vadu v přeposílání `Set-Cookie` ze serverové akce do
+prohlížeče, protože akce volá API po HTTP a odpověď API není odpovědí pro
+prohlížeč. Ten mechanismus ale v repu je a funguje: `apiMutate` volá
+`forwardSetCookies()`, která hlavičky zapíše přes `cookies()` z `next/headers`.
+
+Skutečná příčina byla o krok dřív: **`POST /api/v1/setup` žádnou cookie
+nevracel**, protože `runSetup()` relaci nikdy nezakládal. Vracel jen
+`{ user, workspace }`, kdežto `login` vedle toho zakládá relaci a cookie posílá.
+Nebylo tedy co přeposlat.
+
+Relace se nově zakládá UVNITŘ TÉŽE TRANSAKCE jako uživatel a projekt, takže
+nemůže vzniknout správce bez relace ani relace bez správce. Token se do těla
+odpovědi schválně neposílá, patří výhradně do cookie s `HttpOnly`.
+
+Poučení: než začneš hledat, kde se hodnota ztrácí, ověř, jestli vůbec vzniká.
+Chybějící krok se snadno splete s rozbitým přenosem, protože projev je stejný.
+
+### I71. Komponenty existovaly, měly testy, a nikdo je nevykresloval
+
+- **Našel:** P16 při průchodu zlatou cestou
+- **Uzavřeno:** 2026-08-02, oba panely zapojeny do Přehledu
+
+Na Přehledu projektu nebyl jediný `role="region"`. `OnboardingPanel`
+a `DemoDataBanner` přitom v repu existovaly, měly vlastní jednotkové testy
+a ty procházely. Jen je nikdo nezapojil do stránky (rozhraní I→P14.1).
+
+Nový uživatel tedy po instalaci nedostal žádnou pobídku, co dělat dál, a to na
+obrazovce, která je k tomu určená.
+
+Podstatné je, PROČ to jednotkové testy nechytily: měřily komponenty izolovaně
+a o tom, jestli je někdo vykresluje, nevěděly nic. Zelený test komponenty je
+důkaz, že komponenta funguje, ne že je v aplikaci vidět.
+
+Poučení: mezi „komponenta je hotová" a „uživatel ji uvidí" je krok, který
+neměří žádný jednotkový test. Chytne ho jedině průchod celou cestou.
+
+### I72. Podmíněné vykreslení skrylo chybu, protože ji nikdo nelogoval
+
+- **Našel:** P16 při průchodu zlatou cestou
+- **Uzavřeno:** 2026-08-02, doplněn kontext projektu a logování selhání
+
+Panel prvních kroků se nevykresloval ani po zapojení do Přehledu (nález I71).
+Volání `GET /api/v1/onboarding` ze serverové komponenty vracelo 404:
+
+```
+route:"/api/v1/onboarding", status:404, workspace_id:null, actor_type:null
+route:"/api/v1/onboarding", status:200, workspace_id:"019fc06f-…"   <- s hlavičkou
+```
+
+Autentizace skládá projekt z hlavičky `X-Workspace-Id`, nebo ze segmentu
+`/w/{slug}` v cestě. Volání ze serveru míří na `/api/v1/onboarding`, kde žádný
+takový segment není, a hlavičku nikdo nenastavil. `apiFetch` přitom parametr
+`workspaceId` umí, jen mu ho volající nedal.
+
+Podstatnější než ta oprava je ale to, PROČ se vada schovala. Kód zněl:
+
+```tsx
+{onboarding.ok && <OnboardingPanel state={…} />}
+```
+
+To je **tichý přeskok**: když čtení vždycky selže, komponenta se nikdy
+nevykreslí a nikde se to neukáže. Výsledek vypadá, jako by tam ta komponenta
+nikdy neměla být, ne jako porucha. Selhání se teď zapisuje do serverového logu
+i s celým Problem objektem.
+
+Za pozornost stojí, kolik vrstev ta jediná chybějící věc měla. Komponenta
+existovala a byla otestovaná, ale nikdo ji nevykresloval (I71). Pak byla
+zapojená, ale její data vždycky selhala. A to selhání se nikde neukázalo.
+Každá z těch tří vrstev sama o sobě vypadala jako hotovo.
+
+Poučení: podmíněné vykreslení podle úspěchu čtení potřebuje větev pro neúspěch,
+aspoň do logu. Bez ní je rozdíl mezi „nic tu není" a „nepodařilo se to načíst"
+neviditelný, a to i tomu, kdo se na stránku dívá zblízka.
+
+### I73. Skořápka nemontovala providery, šest domén to obcházelo
+
+- **Našel:** P16 poté, co zapojení panelu shodilo celý Přehled
+- **Uzavřeno:** 2026-08-02, providery ve skořápce plus brána
+
+`useToast` mimo `ToastProvider` a `Tooltip` mimo `TooltipProvider` vyhodí
+výjimku. Skořápka projektu ani jednoho nemontovala.
+
+Projev je horší, než by čekal ten, kdo přidává komponentu: **chyba v klientské
+komponentě neshodí komponentu, ale celý strom po nejbližší error boundary.**
+Zapojení jednoho panelu na Přehled tedy nejen nepřidalo panel, ono rozbilo
+i dlaždice, které předtím fungovaly. Uživatel místo obrazovky viděl:
+
+```
+heading "Aplikace se neočekávaně zastavila"
+⨯ Error: useToast se smí volat jen uvnitř ToastProvider.  digest: '1464532984'
+```
+
+Do té doby to obcházely domény samy: `contacts/layout.tsx`, `lists/layout.tsx`,
+`tags/layout.tsx`, `suppressions/layout.tsx` a `settings-toasts.tsx`, každá
+s poznámkou „až je skořápka dostane, tenhle soubor zmizí". Pět obchází, a šestou
+právě přidávala další doména. Sedmá obrazovka by spadla stejně.
+
+Jednotkové testy to nechytnou z principu: montují si providery samy, takže měří
+komponentu, ne její zasazení. Obě komponenty měly 17 zelených testů.
+
+Providery jsou teď ve skořápce a obalují `AppShell`, ne naopak; uvnitř by
+nedosáhly na topbar ani na boční menu a tooltip v navigaci by spadl dál.
+Hlídá to `apps/web/test/ci/shell-providers.test.ts`. Vnořené providery nevadí,
+takže staré obcházky můžou mizet postupně.
+
+Poučení, a je to poučení o mém postupu: zapojil jsem komponentu do stránky
+a neověřil, že se ta stránka pořád vykreslí. Build byl zelený a testy taky,
+jenže ani jedno neměří, jestli obrazovka opravdu naběhne. Když se přidává
+klientská komponenta do cizí stránky, je potřeba tu stránku otevřít.
+
+### I74. Šest klientských volání neposílalo projekt, chyba se hlásila jako prázdno
+
+- **Našel:** P16 na Přehledu, dohledáno agentem
+- **Uzavřeno:** 2026-08-02, projekt se odvozuje z adresy prohlížeče
+
+Na čerstvé instalaci hlásily čtyři ze šesti dlaždic Přehledu chybu:
+
+```
+region "Odesláno":          alert: Tuhle dlaždici se nepodařilo načíst.
+region "Problémy":          alert: Tuhle dlaždici se nepodařilo načíst.
+region "Na webu právě teď": alert: Tuhle dlaždici se nepodařilo načíst.
+region "Poslední kampaně":  alert: Tuhle dlaždici se nepodařilo načíst.
+```
+
+Zbylé dvě se přitom chovaly správně a hlásily „Zatím žádná odeslaná kampaň".
+
+Backend byl v pořádku. Ověřeno přímým voláním `readDashboard()` proti čerstvě
+zmigrované databázi bez kampaní: všech šest dlaždic vrátilo `status: 'ok'`
+s prázdnými daty. Dotazy používají `coalesce()` a `LEFT JOIN` správně.
+
+Vada byla v tom, že klientská volání neposílala hlavičku `X-Workspace-Id`.
+Autentizace skládá projekt z té hlavičky, nebo ze segmentu `/w/{slug}` v CESTĚ
+POŽADAVKU. `/api/v1/dashboard` žádný takový segment nemá, takže je hlavička
+povinná. Bez ní vrací API 404 a klient si celý přehled uloží jako prázdný.
+
+Rozdíl 4 versus 2 vysvětluje jediná věc: čtyři dlaždice mají dvoucestnou
+podmínku (`ok` versus chyba), kdežto zbylé dvě trojcestnou, kde chybějící data
+padnou do vlídné hlášky. Obě skupiny přitom dostaly totéž, tedy nic.
+
+Netýkalo se to dvou míst, ale šesti: přehled, trend kampaní, report kampaně,
+panel příjemců, časová osa kontaktu a živé statistiky.
+
+Opraveno JEDNÍM místem, ne šesti: klient si projekt odvodí z `location.pathname`,
+kde je slug vždycky, protože ten kód běží výhradně v prohlížeči. Výslovně
+předaná hodnota má přednost. Protahovat parametr přes komponenty by znamenalo
+čekat, až na to někdo u sedmého volání zapomene.
+
+Poučení: když se táž chybějící hodnota objeví na šesti místech, není to šest
+chyb, ale jedno špatně položené rozhraní. A obrazovka, která hlásí chybu jako
+prázdno, je horší než ta, co spadne: uživatel nepozná, jestli tam nic není,
+nebo se to nepovedlo načíst.
+
+### I75. Hotové obrazovky zůstaly skryté příznakem pro nedodané
+
+- **Našel:** P16, když zlatá cesta potřebovala obrazovku odesílání
+- **Uzavřeno:** 2026-08-02, příznaky srovnány se skutečností plus brána
+
+Položky navigace mají příznak `mvp0`, kterým se skrývají, dokud jejich obrazovka
+neexistuje. To dává smysl. Nikdo ho ale nepřepnul zpátky ve chvíli, kdy
+obrazovka vznikla, takže byly hotové a funkční obrazovky dostupné jedině přímou
+adresou:
+
+```
+/settings/sending   odesílací účty a domény
+/settings/backups   zálohy
+```
+
+Nic nespadlo, jen tam ta položka nebyla. Uživatel nemá jak zjistit, že obrazovka
+existuje, a autor nemá jak zjistit, že ji nikdo nevidí. U odesílání to zastavilo
+sedm kroků zlaté cesty, protože bez připojeného účtu se nedá poslat nic.
+
+Vznikla brána `packages/ui/src/patterns/navigation/registry-screens.test.ts`,
+která porovná příznak se skutečností: skrytá položka nesmí mít hotovou
+`page.tsx`.
+
+Při prvním běhu našla druhou polovinu téže vady, kterou nikdo nehlásil:
+`settings-consent` vyžadoval `gdpr:read` a `settings-tracking` vyžadoval
+`tracking:read`. **Ani jedno oprávnění neexistuje.** Kontrola by nikdy neprošla
+a položku by neuviděl nikdo, aniž by cokoli selhalo. Je to týž tvar jako nález
+I47 u nastavení AI, tedy už potřetí.
+
+Opraveno na `gdpr:export` (kdo smí exportovat data subjektu, smí vidět souhlasy)
+a `workspace:update` (nastavení měření mění chování celého projektu).
+
+Poučení: příznak „ještě to není hotové" musí mít protějšek, který kontroluje,
+jestli to pořád platí. Bez něj zůstane napořád, protože jeho odstranění není
+ničí úkol a nikomu nic nepadá.
+
+### I76. Tlačítko volalo obsluhu, kterou nikdo nedodal
+
+- **Našel:** P16 při průchodu zlatou cestou
+- **Uzavřeno:** 2026-08-02 (zadáno), dialog pro přidání účtu
+
+Tlačítko „Přidat odesílací účet" nedělalo nic. `sending-settings.tsx` volá
+`onAddProvider?.()`, jenže ten prop je volitelný a nikdo ho nepředává; `grep`
+najde tři výskyty a všechny v tomtéž souboru.
+
+Volitelný callback s otazníkem je tichý přeskok stejného druhu jako
+`{x.ok && <Component/>}` z nálezu I72: chybějící obsluha se neprojeví ničím,
+tlačítko je vidět, je aktivní, a po kliknutí se prostě nic nestane. Uživatel
+nepozná, jestli to nefunguje, nebo jestli něco dělá špatně.
+
+Zastavilo to sedm kroků zlaté cesty: bez odesílacího účtu se nedá poslat
+kampaň, ověřit adresa ani zapnout zkušební režim.
+
+Poučení: nepovinný callback dává smysl u komponenty, která má bez něj smysl.
+U jediné akce prázdného stavu je povinný, protože prázdný stav bez cesty ven
+není stav, ale slepá ulička.

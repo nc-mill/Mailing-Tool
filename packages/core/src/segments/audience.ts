@@ -1,3 +1,4 @@
+import { suppressedExistsSql } from '../contacts/suppression/predicate';
 import type { WorkspaceContext } from '../identity/types';
 import { compileAudienceToSql, type Audience } from './repo';
 import { toSql } from './compile/params';
@@ -24,8 +25,8 @@ export type AudienceBreakdown = {
  * a započítá se u té první.
  */
 const GATE_SQL: Record<GateKey, string> = {
-  suppressed: `EXISTS (SELECT 1 FROM suppressions su WHERE su.workspace_id = b.workspace_id AND su.removed_at IS NULL
-             AND (su.email = b.email OR su.fingerprint = ANY(b.email_fingerprints)))`,
+  // Predikát se tu neopisuje, skládá ho jediné místo, kde existuje.
+  suppressed: suppressedExistsSql('b'),
   // 'bounced' patří sem taky. Kontakt s tvrdým odrazem má stav 'bounced' a bez
   // něj by prošel touhle bránou a spadl až na 'suppressed', což je správně JEN
   // tehdy, když suppression řádek opravdu existuje. Spoléhat na to znamená

@@ -60,5 +60,20 @@
     "dialogAgain": "Ukázková data si můžete kdykoli nahrát znovu.",
     "dialogConfirm": "Odstranit ukázková data",
     "dialogCancel": "Nechat je tu"
+  },
+  "backups": {
+    "title": "Zálohy",
+    "empty": "Zatím žádná záloha. Nastavte pravidelné zálohování, než vložíte první kontakty.",
+    "run": "Spustit zálohu",
+    "running": "Záloha běží",
+    "verify": "Ověřit",
+    "verifiedOk": "Ověřeno {when}, v pořádku.",
+    "verifiedFailed": "Ověření {when} selhalo.",
+    "neverVerified": "Zatím neověřeno.",
+    "columnCreated": "Vytvořeno",
+    "columnSize": "Velikost",
+    "columnRows": "Kontaktů v záloze",
+    "columnVerified": "Ověření",
+    "keyWarning": "Šifrovací klíč v záloze není. Uložte si zvlášť celý keyring, tedy SECRET_KEY i všechna předchozí pokolení ze SECRET_KEY_PREVIOUS. Bez starých pokolení přestanou platit otisky smazaných adres a smazaní lidé se vrátí prvním dalším importem."
   }
 }

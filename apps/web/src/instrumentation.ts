@@ -17,4 +17,10 @@ export async function register(): Promise<void> {
     logger.info({}, 'web přestává přijímat nová spojení');
   });
   controller.listen();
+
+  // Kompoziční kořen AI (P15, úkol 39). Sestavuje se při startu, protože jeho
+  // vedlejším účinkem je druhá vrstva kritéria 7b: kontrola, že klíč providera
+  // nezůstal v prostředí web procesu. Vrstva, kterou nikdo nezavolá, není vrstva.
+  const { getAiRuntime } = await import('@/lib/ai/runtime');
+  getAiRuntime();
 }

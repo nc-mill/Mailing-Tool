@@ -1,5 +1,6 @@
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import { runSetup } from '../setup';
+import { isSecureCookieContext, serializeSessionCookie, sessionMaxAgeSeconds } from '../session';
 import { problemResponse, PublicUserSchema, type ApiEnv } from './schemas';
 
 export const SetupInputSchema = z
@@ -51,6 +52,25 @@ export function registerSetupRoutes(app: OpenAPIHono<ApiEnv>): void {
       userAgent: c.req.header('User-Agent') ?? '',
       requestId: c.get('requestId'),
     });
-    return c.json(result, 201);
+    // Průvodce uživatele zakládá, takže ho rovnou přihlásí. Bez tohohle by
+    // instalace proběhla, přesměrovala na projekt a uživatel by tam našel
+    // přihlašovací formulář, hned po tom, co si nastavil heslo.
+    c.header(
+      'Set-Cookie',
+      serializeSessionCookie(result.token, {
+        secure: isSecureCookieContext(),
+        maxAgeSeconds: sessionMaxAgeSeconds(),
+      }),
+    );
+    c.set('actorType', 'user');
+    c.set('actorId', result.user.id);
+
+    // Token se do těla odpovědi NEPOSÍLÁ. Patří výhradně do cookie s `HttpOnly`,
+    // odkud ho JavaScript nepřečte. V těle by skončil v paměti prohlížeče,
+    // v historii požadavků a případně i v logu, což je zbytečná cesta k relaci.
+    // `token` se do těla NEPOSÍLÁ, patří výhradně do cookie s `HttpOnly`.
+    // V těle by skončil v paměti prohlížeče, v historii požadavků a v logu.
+    const body = { user: result.user, workspace: result.workspace };
+    return c.json(body, 201);
   });
 }

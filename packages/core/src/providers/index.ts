@@ -88,3 +88,15 @@ export {
   type DomainRow,
   type SaveChecksInput,
 } from './repo/domain';
+
+export {
+  createDelegationToken,
+  verifyDelegationToken,
+  DELEGATION_PUBLIC_FIELDS,
+} from './delegation';
+export {
+  canSendInTrial,
+  trialAudienceNotice,
+  addTrialAddress,
+  type TrialSettings,
+} from './trial-mode';

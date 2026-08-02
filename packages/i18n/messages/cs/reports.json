@@ -61,6 +61,9 @@
         "label": "Odhad skutečných otevření",
         "range": "odhad {low} až {high}",
         "hint": "Není to měření, ale dopočet z části publika, kterou Apple nezkresluje."
+      },
+      "allRate": {
+        "denominator": "z doručených"
       }
     },
     "problems": {
@@ -79,7 +82,10 @@
       "share": "podíl",
       "duplicate": "Stejná adresa jako jiný odkaz v e-mailu",
       "showWho": "Zobrazit koho",
-      "empty": "V kampani nebyl žádný měřený odkaz."
+      "empty": "V kampani nebyl žádný měřený odkaz.",
+      "columnLink": "Odkaz",
+      "columnClicks": "Kliknutí",
+      "columnPeople": "Lidé"
     },
     "chart": {
       "heading": "V čase",

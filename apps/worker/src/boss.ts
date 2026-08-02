@@ -52,8 +52,18 @@ export async function registerQueues(
 ): Promise<void> {
   const missing: string[] = [];
 
+  // POŘADÍ JE PODSTATNÉ: napřed fronta pro nedoručitelné, teprve pak ta, která
+  // na ni odkazuje. `queueOptions` posílá `deadLetter: <jméno>.dlq` a pg-boss
+  // trvá na tom, aby cílová fronta v té chvíli existovala:
+  //
+  //   Error: Queue platform.webhook_fanout.dlq does not exist
+  //
+  // Dokud si pg-boss migroval schéma sám, zakládal si chybějící fronty mimoděk
+  // při prvním `send`, takže obrácené pořadí nevadilo. Od chvíle, kdy schéma
+  // vlastní migrátor a worker jede s `migrate: false`, je `createQueue()`
+  // jediná cesta a pořadí najednou rozhoduje. Kontejner na tom skončil
+  // v restartové smyčce s jedinou frontou v databázi, a to ještě interní.
   for (const entry of QUEUE_REGISTRY) {
-    await boss.createQueue(entry.name, queueOptions(entry));
     if (entry.deadLetter) {
       await boss.createQueue(dlqName(entry.name), {
         retryLimit: 0,
@@ -62,6 +72,7 @@ export async function registerQueues(
         expireInSeconds: entry.expireInSeconds,
       });
     }
+    await boss.createQueue(entry.name, queueOptions(entry));
   }
 
   for (const entry of QUEUE_REGISTRY) {

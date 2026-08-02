@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildModel, toApiKey, type ProviderFactories } from './build-model';
 import { prepareConversation, type PrepareDeps } from './chat';
 import { createMeteredFetch } from './metered-fetch';
+import { factories as realFactories } from './sdk';
 
 /**
  * Akceptační kritérium 7b, měřené, ne popsané.
@@ -60,8 +61,10 @@ describe('kritérium 7b: bez klíče projektu neodejde žádný požadavek', () 
         ),
       ).toThrowError(expect.objectContaining({ code: 'ai_credential_missing' }));
     }
-    expect(outboundCalls, `odešlo ${outboundCalls.length} požadavků: ${outboundCalls.join(', ')}`)
-      .toHaveLength(0);
+    expect(
+      outboundCalls,
+      `odešlo ${outboundCalls.length} požadavků: ${outboundCalls.join(', ')}`,
+    ).toHaveLength(0);
   });
 
   it('kontrolní vzorek: s platným klíčem požadavek naopak odejde, takže test měří', () => {
@@ -120,5 +123,53 @@ describe('kritérium 7b: bez klíče projektu neodejde žádný požadavek', () 
     } finally {
       delete process.env['ANTHROPIC_API_KEY'];
     }
+  });
+
+  /**
+   * Tady už nejde o zmokované továrny, ale o SKUTEČNÉ SDK. Dvě věci, které se
+   * dají ověřit jen s nainstalovaným balíčkem:
+   *
+   * 1) Když projekt klíč nemá, `buildModel` skutečnou tovární funkci vůbec
+   *    nezavolá, takže nevznikne ani klient, natož požadavek.
+   * 2) Když klíč má, veškerý provoz teče NAŠÍM `fetch`. Kdyby si SDK drželo
+   *    vlastní, neměli bychom nad odchozími požadavky kontrolu a měření
+   *    z `metered-fetch` by bylo jen dekorace.
+   */
+  describe('proti skutečnému SDK, ne proti zmokované továrně', () => {
+    it('bez klíče se skutečná tovární funkce Anthropicu vůbec nezavolá', () => {
+      expect(() =>
+        buildModel({ provider: 'anthropic', apiKey: '' as never, baseUrl: null }, 'claude-opus-5', {
+          fetchImpl: spyFetch,
+          factories: realFactories,
+        }),
+      ).toThrowError(expect.objectContaining({ code: 'ai_credential_missing' }));
+      expect(outboundCalls).toHaveLength(0);
+    });
+
+    it('s klíčem teče provoz skutečného SDK naším fetch, ne jeho vlastním', async () => {
+      const handle = buildModel(
+        { provider: 'anthropic', apiKey: toApiKey('sk-ant-testovaci'), baseUrl: null },
+        'claude-opus-5',
+        { fetchImpl: spyFetch, factories: realFactories },
+      );
+
+      // Samotné sestavení modelu nesmí nic poslat.
+      expect(outboundCalls).toHaveLength(0);
+
+      // Teprve volání modelu. Odpověď je nesmysl, takže parsování selže, ale
+      // nás zajímá jen to, KUDY požadavek šel. Skutečná síť se nepoužije.
+      const model = handle.model as { doGenerate: (options: unknown) => Promise<unknown> };
+      await model
+        .doGenerate({
+          prompt: [{ role: 'user', content: [{ type: 'text', text: 'ahoj' }] }],
+        })
+        .catch(() => undefined);
+
+      expect(
+        outboundCalls.length,
+        'skutečné SDK si drží vlastní fetch, měřený fetch je pak jen dekorace',
+      ).toBeGreaterThan(0);
+      expect(outboundCalls[0]).toContain('api.anthropic.com');
+    });
   });
 });

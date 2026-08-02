@@ -61,6 +61,9 @@
         "label": "Estimated real opens",
         "range": "estimate {low} to {high}",
         "hint": "This is not a measurement. It is derived from the part of the audience Apple does not distort."
+      },
+      "allRate": {
+        "denominator": "of delivered"
       }
     },
     "problems": {
@@ -79,7 +82,10 @@
       "share": "share",
       "duplicate": "Same address as another link in the e-mail",
       "showWho": "Show who",
-      "empty": "The campaign had no measured link."
+      "empty": "The campaign had no measured link.",
+      "columnLink": "Link",
+      "columnClicks": "Clicks",
+      "columnPeople": "People"
     },
     "chart": {
       "heading": "Over time",
@@ -187,7 +193,7 @@
       "pageView": "{gender, select, female {Viewed page {page}} male {Viewed page {page}} other {Page {page} was viewed}}",
       "sessionStarted": "{gender, select, female {Visited the website} male {Visited the website} other {Website visit}}",
       "contactCreated": "{gender, select, female {Was added to contacts} male {Was added to contacts} other {Contact was created}}",
-      "listSubscribed": "{gender, select, female {Subscribed to list {list}} male {Subscribed to list {list}} other {Subscription to list {list}}}",
+      "listSubscribed": "{gender, select, female {Joined list {list}} male {Joined list {list}} other {Subscription to list {list}}}",
       "listUnsubscribed": "{gender, select, female {Unsubscribed from list {list}} male {Unsubscribed from list {list}} other {Unsubscribed from list {list}}}",
       "consentGranted": "{gender, select, female {Granted consent} male {Granted consent} other {Consent was granted}}",
       "consentWithdrawn": "{gender, select, female {Withdrew consent} male {Withdrew consent} other {Consent was withdrawn}}",

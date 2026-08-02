@@ -38,6 +38,11 @@ export function BlockToolbar({ blockId }: { blockId: string }) {
                 variant="ghost"
                 size="sm"
                 className="min-h-8 px-2"
+                // Plátno má jediný tabstop (rozhodnutí R4): jeden Tab dovnitř,
+                // jeden ven. Tlačítka ovládání bloku proto z tabulátoru vypadávají
+                // a klávesnice je obsluhuje zkratkou z registru operací, kterou
+                // má každé z nich. Myš tak nemá víc možností než klávesnice.
+                tabIndex={-1}
                 aria-label={t(operation.labelKey)}
                 onClick={(event) => {
                   event.stopPropagation();

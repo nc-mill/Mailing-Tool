@@ -2,7 +2,7 @@
 
 import { FileUpload } from '@mlain/ui/patterns/file-upload';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { uploadLabels } from './labels';
 import { formatBytes, useImportUpload } from './use-import-upload';
 
@@ -27,11 +27,20 @@ export function StepUpload({
 }: StepUploadProps) {
   const t = useTranslations('import');
   const [file, setFile] = useState<File | null>(null);
-  const { state, upload, cancel, reset } = useImportUpload({ workspaceId, maxBytes, accept: ACCEPT });
+  const { state, upload, cancel, reset } = useImportUpload({
+    workspaceId,
+    maxBytes,
+    accept: ACCEPT,
+  });
 
-  if (state.phase === 'done') {
-    onCreated(state.importId);
-  }
+  // Ohlášení hotového nahrání patří do efektu, ne do vykreslení. Volání
+  // `onCreated` přímo v těle komponenty nastaví stav rodiče PŘI RENDERU,
+  // takže se render opakuje a průvodce zapíše krok do historie tolikrát,
+  // kolikrát se překreslí.
+  const importId = state.phase === 'done' ? state.importId : null;
+  useEffect(() => {
+    if (importId !== null) onCreated(importId);
+  }, [importId, onCreated]);
 
   const meta = state.phase === 'error' ? ((state.meta ?? {}) as Record<string, string>) : {};
 
@@ -81,10 +90,7 @@ export function StepUpload({
           <strong>{t('duplicateImport.title')}</strong>
           <p>{t('duplicateImport.body', { date: String(meta['created_at'] ?? '') })}</p>
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => onCreated(String(meta['import_id'] ?? ''))}
-            >
+            <button type="button" onClick={() => onCreated(String(meta['import_id'] ?? ''))}>
               {t('duplicateImport.openOriginal')}
             </button>
             <button

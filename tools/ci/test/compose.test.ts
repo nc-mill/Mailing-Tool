@@ -85,7 +85,11 @@ describe('docker/initdb/10-roles.sql', () => {
       const match = /CREATE\s+ROLE\s+([a-z_]+)/i.exec(line);
       if (!match || /IF\s+NOT\s+EXISTS/i.test(line)) return;
       const guard = lines.slice(Math.max(0, index - 3), index).join('\n');
+      // `match[1]` je při `noUncheckedIndexedAccess` typu `string | undefined`,
+      // přestože ho regulární výraz vždycky naplní. Kontrola je tu proto pro
+      // typy, ne proti skutečnému stavu.
       const role = match[1];
+      if (role === undefined) return;
       const guarded =
         /IF\s+NOT\s+EXISTS/i.test(guard) &&
         /pg_catalog\.pg_roles/i.test(guard) &&

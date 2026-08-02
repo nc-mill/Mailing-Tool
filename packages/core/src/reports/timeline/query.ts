@@ -109,7 +109,9 @@ export async function readContactTimeline(
     ]);
 
     const filtered = branches.map((rows) =>
-      rows.filter((row) => (wanted === null ? true : wanted.includes(row.source as TimelineFilter))),
+      rows.filter((row) =>
+        wanted === null ? true : wanted.includes(row.source as TimelineFilter),
+      ),
     );
 
     collected.push(...mergeSortedBranches(filtered, limit + 1 - collected.length));

@@ -2,7 +2,7 @@
   "title": "Segmenty",
   "new": "Nový segment",
   "name": "Název segmentu",
-  "emptyList": "Zatím tu nejsou žádné segmenty. Začněte hotovým, nebo si postavte vlastní.",
+  "emptyList": "Segment je uložená otázka nad kontakty, například „kdo za půl roku nic neotevřel\". Začněte hotovým, nebo si postavte vlastní.",
   "stale": "Aktualizováno před {time}.",
   "neverCounted": "Ještě jsme nepočítali",
   "recount": "Přepočítat",
@@ -239,5 +239,6 @@
     },
     "gateLink": "Zobrazit tyhle lidi",
     "willSend": "Kampaň se odešle {count, plural, =0 {nikomu} one {# člověku} few {# lidem} many {# člověku} other {# lidem}}"
-  }
+  },
+  "emptyTitle": "Zatím tu nejsou žádné segmenty"
 }

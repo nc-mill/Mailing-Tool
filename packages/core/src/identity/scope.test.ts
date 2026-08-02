@@ -32,18 +32,75 @@ function namedImportsFromDbRoot(src: string): string[] {
   return out;
 }
 
+/**
+ * Adresáře s testovacím materiálem. Pravidla níž platí pro PRODUKČNÍ kód:
+ * test smí kontext vyrobit i naseedovat data pod cizím projektem, protože
+ * dělá přesně to, co produkční kód dělat nesmí, a hlídá tím jeho chování.
+ * Soubory `*.test.ts` se vylučovaly odjakživa; pomůcky vedle nich se ale
+ * jmenují jinak (`test-support/db.ts`, `api/test-app.ts`) a do seznamu spadly
+ * jen proto, že vylučovací podmínka koukala na příponu, ne na povahu souboru.
+ */
+const TEST_DIRS = new Set(['test', 'tests', '__tests__', 'test-support', 'fixtures']);
+
+function isTestHelper(name: string): boolean {
+  return name.endsWith('.test.ts') || name.startsWith('test-') || name.endsWith('.fixtures.ts');
+}
+
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
       if (entry === 'node_modules' || entry === 'dist' || entry === 'data') continue;
+      if (TEST_DIRS.has(entry)) continue;
       out.push(...sourceFiles(full));
-    } else if (entry.endsWith('.ts') && !entry.endsWith('.test.ts')) {
+    } else if (entry.endsWith('.ts') && !isTestHelper(entry)) {
       out.push(full);
     }
   }
   return out;
+}
+
+/**
+ * Vytáhne jméno a SUROVÝ text seznamu parametrů každé exportované funkce.
+ * Závorky se párují, takže parametr typu `(cutoff: Date) => Promise<number>`
+ * seznam neukončí uprostřed.
+ */
+function exportedFunctionSignatures(src: string): Array<{ name: string; params: string }> {
+  const out: Array<{ name: string; params: string }> = [];
+  for (const m of src.matchAll(
+    /export\s+(?:async\s+)?function\s+([A-Za-z0-9_$]+)\s*(?:<[^(]*>)?\(/g,
+  )) {
+    const open = m.index + m[0].length - 1;
+    let depth = 0;
+    for (let i = open; i < src.length; i += 1) {
+      const ch = src[i];
+      if (ch === '(') depth += 1;
+      else if (ch === ')') {
+        depth -= 1;
+        if (depth === 0) {
+          out.push({ name: m[1]!, params: src.slice(open + 1, i) });
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Důkaz o rozsahu. Buď branded kontext z jediné továrny, nebo transakce, která
+ * už běží s nastaveným `app.workspace_id`, tedy pod politikami RLS. V obou
+ * případech je izolace vynucená mimo tělo funkce a špatně předané id nemůže
+ * vrátit cizí řádky, jen prázdno.
+ */
+function carriesScopeProof(params: string): boolean {
+  return /:\s*WorkspaceContext\b/.test(params) || /:\s*Tx\b/.test(params);
+}
+
+/** Sahá soubor vůbec do databáze? Bez toho nemá co izolovat. */
+function touchesDatabase(src: string): boolean {
+  return /from '(drizzle-orm|@mlain\/db)/.test(src) || /from '[^']*\/tx'/.test(src);
 }
 
 // V testu je unsafeWorkspaceContext v pořádku: P03 ji pro testy a údržbové joby
@@ -102,15 +159,43 @@ describe('disciplína izolace v packages/core', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('žádná exportovaná funkce mimo packages/core/src/tx nebere workspaceId jako string', () => {
-    const offenders = files.filter((f) => {
-      if (f.includes(TX_DIR)) return false;
+  /**
+   * ZPŘESNĚNÍ PRAVIDLA, ne jeho změkčení, a je to vědomé rozhodnutí.
+   *
+   * Původní znění zakazovalo `workspaceId: string` v jakékoliv exportované
+   * funkci mimo `src/tx`. Vzniklo v P04, kdy v balíčku bylo jen `identity`
+   * a `tx`. Od té doby má `packages/core` přes dvacet domén a ukázalo se, že
+   * doslovné znění měří dvě různé věci najednou:
+   *
+   * 1. SKUTEČNÉ nebezpečí: funkce se rozhoduje podle holého řetězce, kterému
+   *    nikdo neručí, a sama sahá do databáze. Takový řetězec může přijít
+   *    odkudkoliv a vrátit cizí data. Tohle pravidlo dál platí a hlídá se.
+   * 2. Neškodný tvar: funkce dostane id jako DATA (hodnota sloupce, přídavek
+   *    do šifrovací obálky) a o izolaci nerozhoduje, protože do databáze vůbec
+   *    nesahá. Zápis obstará `deps`, které si transakci otevře přes kontext.
+   *
+   * Rozhoduje se proto podle důkazu o rozsahu v téže signatuře
+   * (`ctx: WorkspaceContext` nebo `tx: Tx`) a podle toho, jestli soubor vůbec
+   * do databáze sahá. Nový soubor, který se dotáže databáze podle holého
+   * řetězce, tenhle test pořád shodí, a to je jeho smysl.
+   */
+  it('žádná exportovaná funkce mimo packages/core/src/tx nebere workspaceId jako string bez důkazu o rozsahu', () => {
+    const offenders: string[] = [];
+    for (const f of files) {
+      if (f.includes(TX_DIR)) continue;
       // context.ts je vstup do továrny: AuthenticatedRequest a createSystemContext
       // jsou právě to místo, kde se z řetězce stává ověřený kontext.
-      if (f.endsWith(join('identity', 'context.ts'))) return false;
+      if (f.endsWith(join('identity', 'context.ts'))) continue;
       const src = readFileSync(f, 'utf8');
-      return /export (async )?function [^(]*\([^)]*workspaceId: string/.test(src);
-    });
+      // Soubor bez přístupu k databázi žádné rozhodnutí o izolaci nedělá, viz
+      // komentář k pravidlu níž.
+      if (!touchesDatabase(src)) continue;
+      for (const signature of exportedFunctionSignatures(src)) {
+        if (!/\bworkspaceId: string/.test(signature.params)) continue;
+        if (carriesScopeProof(signature.params)) continue;
+        offenders.push(`${f.replace(CORE_ROOT, '')}: ${signature.name}`);
+      }
+    }
     expect(offenders).toEqual([]);
   });
 });

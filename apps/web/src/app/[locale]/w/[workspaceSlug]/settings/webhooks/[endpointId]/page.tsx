@@ -23,6 +23,20 @@ import {
 } from '@/lib/api-client/cursor';
 import { getWorkspaceAccess, hasPermission } from '@/lib/identity/workspace-access';
 
+/**
+ * Stránka závisí na přihlášeném uživateli, takže se NEPŘEDRENDEROVÁVÁ.
+ *
+ * Bez tohohle ji Next při `next build` vykreslí a spadne, protože v době
+ * sestavení žádná relace neexistuje:
+ *
+ *   TypeError: Cannot read properties of null (reading 'useContext')
+ *   Export encountered an error on <cesta>, exiting the build.
+ *
+ * Chyba nemíří na příčinu, takže se hledá v komponentách. Statická podoba
+ * téhle stránky přitom neexistuje: obsah je pro každého jiný.
+ */
+export const dynamic = 'force-dynamic';
+
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('settings');
   return { title: t('webhooks.title') };

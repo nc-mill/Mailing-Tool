@@ -1,7 +1,7 @@
 import { routing } from '@mlain/i18n/routing';
 import { SESSION_COOKIE_NAME } from '@mlain/core/identity/cookie';
 import createIntlMiddleware from 'next-intl/middleware';
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 /**
  * Jediný proxy soubor aplikace (uzávěr S6). Řeší tři věci naráz:
@@ -40,6 +40,17 @@ const PUBLIC_PREFIXES = [
   // ne jako „nejsi přihlášený". Přihlašovací formulář by navíc neměl kam
   // poslat požadavek, protože i `POST /api/v1/auth/login` je nepřihlášený.
   '/api/v1/',
+  // Interní endpointy (`/api/internal/ai/chat`) mají tentýž důvod jako `/api/v1/`,
+  // a ještě o stupeň naléhavější. Přihlášení si řeší samy middlewarem
+  // `authenticate`, takže se tím nic neotevírá.
+  //
+  // Bez tohohle řádku je streamovaný chat nedostupný OBĚMA směry. Nepřihlášený
+  // dostane 307 na `/login`. Přihlášený je na tom hůř: požadavek propadne do
+  // `intlMiddleware`, které mu doplní jazykovou předponu, cesta spadne do
+  // stromu stránek pod `[locale]` a klientovi se vrátí HTML místo proudu.
+  // Parser AI SDK pak hlásí rozbitý proud a příčina se hledá v adaptéru,
+  // úplně jinde, než ve skutečnosti je.
+  '/api/internal/',
 ];
 
 /** Stránky aplikace, které jsou dostupné bez přihlášení. */
@@ -75,7 +86,11 @@ function createNonce(): string {
   return btoa(String.fromCharCode(...bytes));
 }
 
-function applySecurityHeaders(response: NextResponse, nonce: string): NextResponse {
+/**
+ * Složí CSP. Tentýž řetězec musí jít do hlaviček POŽADAVKU i ODPOVĚDI,
+ * viz `proxy()` níž.
+ */
+function buildCsp(nonce: string): string {
   // Uvolnění platí VÝHRADNĚ ve vývoji, v produkci nikdy. Schváleno zadavatelem
   // 2026-08-01 poté, co se ukázalo, že jinak v dev režimu nefunguje nic.
   //
@@ -91,7 +106,7 @@ function applySecurityHeaders(response: NextResponse, nonce: string): NextRespon
       ? `script-src 'self' 'nonce-${nonce}'`
       : `script-src 'self' 'unsafe-eval' 'nonce-${nonce}'`;
 
-  const csp = [
+  return [
     "default-src 'self'",
     scriptSrc,
     "style-src 'self' 'unsafe-inline'",
@@ -103,7 +118,9 @@ function applySecurityHeaders(response: NextResponse, nonce: string): NextRespon
     "base-uri 'self'",
     "form-action 'self'",
   ].join('; ');
+}
 
+function applySecurityHeaders(response: NextResponse, csp: string, nonce: string): NextResponse {
   response.headers.set('content-security-policy', csp);
   response.headers.set('x-nonce', nonce);
   response.headers.set('x-content-type-options', 'nosniff');
@@ -119,13 +136,43 @@ function applySecurityHeaders(response: NextResponse, nonce: string): NextRespon
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const nonce = createNonce();
+  const csp = buildCsp(nonce);
   const { pathname, search } = request.nextUrl;
+
+  /**
+   * CSP MUSÍ JÍT I DO HLAVIČEK POŽADAVKU, nejen do odpovědi.
+   *
+   * Next.js si z hlaviček požadavku vytáhne nonce a orazítkuje jím své
+   * bootstrapové inline skripty. Když se hlavička nastaví jen na odpovědi,
+   * prohlížeč sice dostane přísnou politiku, ale skripty žádný nonce nemají,
+   * takže je zablokuje:
+   *
+   *   Executing inline script violates the following Content Security Policy
+   *   directive 'script-src 'self' 'nonce-...''. The action has been blocked.
+   *
+   * Devětkrát na stránku, pokaždé jiný hash. Následek je nejhorší možný:
+   * stránka se vykreslí ze serveru, vypadá hotově, a **nic na ní nefunguje**.
+   * React se nenamountuje, takže žádné tlačítko, formulář ani navigace
+   * nereagují. Naměřeno v produkční image na `/setup`: klik na výběr jazyka
+   * proběhl, `data-state` zůstal `closed` a nabídka měla nula položek.
+   *
+   * V dev režimu se to neprojevilo, protože tam politika obsahuje
+   * `'unsafe-eval'` a inline bootstrap má jiný tvar. Vada je tedy VÝHRADNĚ
+   * produkční, což je nejhorší místo, kde ji mít.
+   *
+   * Hlavička `x-nonce` na odpovědi tady zůstává, ale je to jen doplněk pro
+   * ladění: nikdo v aplikaci ji nečte a Next si nonce bere z požadavku.
+   */
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('content-security-policy', csp);
+  requestHeaders.set('x-nonce', nonce);
+  const forward = { request: { headers: requestHeaders } };
 
   // 1. Veřejné a trackovací cesty: žádný jazyk, žádné přihlášení, žádná cache.
   if (isPublicPath(pathname)) {
-    const response = NextResponse.next();
+    const response = NextResponse.next(forward);
     response.headers.set('cache-control', 'no-store, no-cache, must-revalidate');
-    return applySecurityHeaders(response, nonce);
+    return applySecurityHeaders(response, csp, nonce);
   }
 
   const withoutLocale = stripLocale(pathname);
@@ -137,16 +184,32 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     target.pathname = '/login';
     target.search = '';
     target.searchParams.set('next', `${withoutLocale}${search}`);
-    return applySecurityHeaders(NextResponse.redirect(target), nonce);
+    return applySecurityHeaders(NextResponse.redirect(target), csp, nonce);
   }
 
   // 3. Jazyk. next-intl doplní nebo odebere prefix podle localePrefix.
-  const response = intlMiddleware(request);
-  return applySecurityHeaders(response as NextResponse, nonce);
+  //
+  // Požadavek se předává s doplněnými hlavičkami, aby se nonce dostal až
+  // k Nextu i touhle větví. `next-intl` hlavičky požadavku propouští dál.
+  const response = intlMiddleware(
+    new NextRequest(request.nextUrl, { headers: requestHeaders }) as NextRequest,
+  );
+  return applySecurityHeaders(response as NextResponse, csp, nonce);
 }
 
 export const config = {
-  // Jediný matcher pro celou aplikaci. Vynechává statické soubory Next.js
+  // Jediný matcher pro celou aplikaci. Vynechává celý `_next`, favicon
   // a soubory s příponou, aby proxy nezdržovala doručení obrázků a fontů.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)'],
+  //
+  // Vynechává se CELÉ `_next`, ne jen `_next/static` a `_next/image`. Pod
+  // `_next` nejsou žádná data pracovních prostorů, jsou to buildové artefakty
+  // a vývojový kanál, takže tam autentizace nemá co chránit. Zato tam patří
+  // `_next/webpack-hmr`, po kterém jede vývojový websocket. Ten při užším
+  // vzoru procházel autentizací a bez session dostal přesměrování na přihlášení:
+  //
+  //   GET /_next/webpack-hmr  ->  307 na /login?next=%2F_next%2Fwebpack-hmr
+  //
+  // Přesměrování místo `101 Switching Protocols` znamená rozbitý handshake
+  // a v konzoli `ERR_INVALID_HTTP_RESPONSE` na každé stránce.
+  matcher: ['/((?!_next|favicon.ico|.*\\..*).*)'],
 };

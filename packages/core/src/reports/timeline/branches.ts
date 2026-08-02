@@ -1,6 +1,10 @@
 import { sql } from 'drizzle-orm';
 import type { Tx, WorkspaceContext } from '../../tx';
-import { HIDDEN_OPEN_SUBTYPES, NON_HUMAN_CLICK_SUBTYPES, TIMELINE_EVENT_TYPES } from '../event-types';
+import {
+  HIDDEN_OPEN_SUBTYPES,
+  NON_HUMAN_CLICK_SUBTYPES,
+  TIMELINE_EVENT_TYPES,
+} from '../event-types';
 import type { TimeWindow } from './months';
 import type { TimelineRow } from './types';
 

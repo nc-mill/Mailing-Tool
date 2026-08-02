@@ -32,4 +32,51 @@ export interface QueueJob<TPayload = Record<string, unknown>> {
   readonly data: TPayload;
 }
 
+/**
+ * Obsluha DÁVKY úloh, protože přesně tak ji volá pg-boss.
+ *
+ * Domény, které pracují s jednou úlohou (a to jsou skoro všechny), si dávku
+ * rozbalí adaptérem `perJob` z tohohle modulu. Kdo si adaptér nepřidá, dostane
+ * pole tam, kde čeká objekt, sáhne na `.data` a dostane `undefined`.
+ *
+ * Nekontroluje to nic za běhu: fronty se zaregistrují, worker naběhne
+ * a projeví se to teprve na první skutečně zpracované úloze. Typová kontrola
+ * je tu tedy jediná pojistka a nesmí se obcházet.
+ */
 export type QueueHandler = (jobs: readonly QueueJob[]) => Promise<void>;
+
+/**
+ * Převod obsluhy jedné úlohy na obsluhu dávky.
+ *
+ * Bydlí tady, ne v jednotlivých doménách. Původně ho měla jen `platform`
+ * a ostatní domény vystavovaly obsluhu jedné úlohy rovnou jako `QueueHandler`,
+ * takže neseděl typ ani chování.
+ */
+export function perJob<TData>(run: (job: { data: TData }) => Promise<unknown>): QueueHandler {
+  return async (jobs) => {
+    for (const job of jobs) {
+      await run({ data: job.data as TData });
+    }
+  };
+}
+
+/**
+ * Obsluha, která potřebuje injektované závislosti, jenže je nikdo nedodává.
+ *
+ * Týká se `content.brand_extract` a `ai.cleanup_conversations`: obě funkce
+ * existují a mají testy, ale továrna jejich `deps` v repu není, takže je nemá
+ * kdo složit. Bez tohohle by se do registru dostaly s typem, který lže, nebo
+ * by se z něj tiše vypustily a fronta by neměla obsluhu vůbec.
+ *
+ * Takhle se fronta zaregistruje, worker naběhne a při první úloze řekne
+ * NAHLAS, co chybí. Úloha skončí v chybě a půjde po ní dohledat, na rozdíl od
+ * `undefined` v datech nebo od fronty, do které nikdo nekouká.
+ */
+export function needsDependencies(queue: string, missing: string): QueueHandler {
+  return async () => {
+    throw new Error(
+      `Fronta ${queue} nemá zapojené závislosti: ${missing} nikdo nedodává. ` +
+        'Obsluha existuje, ale nedá se složit, takže se úloha nezpracuje.',
+    );
+  };
+}

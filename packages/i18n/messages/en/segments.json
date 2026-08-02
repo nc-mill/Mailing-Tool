@@ -2,7 +2,7 @@
   "title": "Segments",
   "new": "New segment",
   "name": "Segment name",
-  "emptyList": "There are no segments yet. Start from a ready made one, or build your own.",
+  "emptyList": "A segment is a saved question about your contacts, for example „who opened nothing in half a year\". Start from a ready made one, or build your own.",
   "stale": "Updated {time} ago.",
   "neverCounted": "Not counted yet",
   "recount": "Recount",
@@ -239,5 +239,6 @@
     },
     "gateLink": "Show these people",
     "willSend": "The campaign will go out to {count, plural, =0 {nobody} one {# person} few {# people} many {# people} other {# people}}"
-  }
+  },
+  "emptyTitle": "There are no segments yet"
 }

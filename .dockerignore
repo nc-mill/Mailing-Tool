@@ -10,3 +10,24 @@ docs
 *.md
 !README.md
 apps/sender/ml-sender
+
+# Konfigurace prostředí se do image NESMÍ dostat, a to ze dvou důvodů.
+#
+# Provozní: Next si `.env.local` při buildu sám načte, takže se do kontejneru
+# propsaly cesty ze stolu vývojáře. `next build` pak padal na
+# `DATA_DIR=/Users/.../.dev-data musí existovat`, protože ten adresář uvnitř
+# kontejneru není. V CI se to neprojevilo, čerstvý checkout `.env.local` nemá,
+# takže image svítila zeleně a lokální build padal pořád.
+#
+# Bezpečnostní, a ten je vážnější: cokoliv si vývojář do `.env.local` napíše,
+# skončí ve vrstvách image. Dneska cesta, zítra `SECRET_KEY` nebo klíč
+# k poskytovateli. Vrstvy jdou rozbalit i po smazání souboru, takže smazání
+# tajemství z běžící image ho z historie vrstev neodstraní.
+#
+# Konfiguraci dostane kontejner za běhu přes proměnné prostředí, ne v obrazu.
+**/.env
+**/.env.*
+
+# Výjimka: `.env.example` je šablona bez jediné skutečné hodnoty a turbo.json
+# ji má v `globalDependencies`. Bez ní by se lišil hash úloh mezi stolem a CI.
+!**/.env.example

@@ -1,0 +1,17 @@
+-- Metadata z kompilace šablony, ze kterých sender čte `clickMarkerCount`.
+--
+-- Sender s nimi porovnává počet značek prokliku, které v těle skutečně našel
+-- (kontrola V4). Sloupec ve schématu chyběl, takže si sender tu kontrolu SÁM
+-- VYPÍNAL a napsal o tom jedinou řádku do logu:
+--
+--   {"level":"WARN","msg":"compile_meta_column_missing",
+--    "detail":"campaigns.compile_meta ve schématu není, kontrola počtu značek se vypíná"}
+--
+-- Nic nespadlo, nikomu se nic nerozbilo, jen se tiše ztratila ochrana proti
+-- rozbité kompilaci. Je to táž třída vady jako readiness, která vracela 200 nad
+-- prázdným schématem: měřidlo se samo odpojí a hlásí to způsobem, který nikdo
+-- nečte.
+--
+-- Shovívavost v senderu zůstává schválně, musí umět běžet i proti starší
+-- databázi během postupného upgradu. Ale nová instalace ten sloupec má.
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS compile_meta jsonb;

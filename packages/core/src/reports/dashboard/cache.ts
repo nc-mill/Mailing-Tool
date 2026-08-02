@@ -1,6 +1,5 @@
 export type Tile<T> =
-  | { status: 'ok'; data: T; computedAt: string; stale: boolean }
-  | { status: 'error'; code: string };
+  { status: 'ok'; data: T; computedAt: string; stale: boolean } | { status: 'error'; code: string };
 
 type Entry = { value: unknown; computedAt: number };
 

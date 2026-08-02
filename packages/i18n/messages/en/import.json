@@ -135,7 +135,7 @@
   "progress": {
     "title": "Importing contacts",
     "counter": "{processed} of {total}",
-    "eta": "About {seconds, plural, one {# second} few {# seconds} other {# seconds}} left",
+    "eta": "{seconds, plural, =0 {Almost done} one {About # second left} few {About # seconds left} many {About # seconds left} other {About # seconds left}}",
     "runsOnServer": "The import runs on the server. You can close the window, the result will be here when you come back. We will email you.",
     "liveUpdatesFailed": "Live updates are not getting through, we refresh the number every five seconds.",
     "cancel": "Cancel import",
@@ -165,7 +165,7 @@
       "content": "Content",
       "why": "Why"
     },
-    "downloadErrors": "Download {count, plural, one {# failed row} few {# failed rows} other {# failed rows}} as CSV",
+    "downloadErrors": "{count, plural, =0 {Download the failed rows as CSV} one {Download # failed row as CSV} few {Download # failed rows as CSV} many {Download # failed rows as CSV} other {Download # failed rows as CSV}}",
     "showImported": "Show the imported contacts",
     "reviewVocative": "Review",
     "resume": "Continue from row {row}",
@@ -268,11 +268,11 @@
     "genderUnknown": "not sure",
     "vocativeField": "Greeting",
     "remember": "Remember this for future contacts named {name}",
-    "confirm": "Confirm for {count, plural, one {# contact} few {# contacts} other {# contacts}}",
+    "confirm": "{count, plural, =0 {Nothing to confirm} one {Confirm for # contact} few {Confirm for # contacts} many {Confirm for # contacts} other {Confirm for # contacts}}",
     "noName": "Do not use the name",
     "defer": "Postpone",
-    "remaining": "{count, plural, one {# group} few {# groups} other {# groups}} left",
-    "confirmAll": "Confirm all suggestions ({count, plural, one {# group} few {# groups} other {# groups}})",
+    "remaining": "{count, plural, =0 {All done, nothing left} one {# group left} few {# groups left} many {# groups left} other {# groups left}}",
+    "confirmAll": "{count, plural, =0 {Nothing to confirm} one {Confirm all suggestions (# group)} few {Confirm all suggestions (# groups)} many {Confirm all suggestions (# groups)} other {Confirm all suggestions (# groups)}}",
     "noNameAll": "Do not use the name anywhere",
     "lockNote": "Once you confirm or correct something, we never change it on our own again.",
     "empty": "The queue is empty. Every greeting is either confirmed or certain."

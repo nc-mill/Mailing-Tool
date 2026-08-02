@@ -38,6 +38,9 @@ export function InsertBetween({ item }: { item: FlatItem }) {
             variant="secondary"
             size="sm"
             className="min-h-6 px-2"
+            // Mimo tabulátor ze stejného důvodu jako ovládání bloku: plátno má
+            // jediný tabstop. Klávesnice vkládá blok zkratkou `Mod+Enter`.
+            tabIndex={-1}
             data-testid={`insert-after-${item.block.id}`}
             aria-label={t('insert.after', { block: t(`block.${item.block.type}`) })}
           >

@@ -39,7 +39,10 @@ export function ImportResult({
     row.status === 'completed'
       ? t('result.completed', { count: row.createdRows + row.updatedRows })
       : row.status === 'completed_with_errors'
-        ? t('result.withErrors', { done: n(row.createdRows + row.updatedRows), total: n(row.totalRows) })
+        ? t('result.withErrors', {
+            done: n(row.createdRows + row.updatedRows),
+            total: n(row.totalRows),
+          })
         : row.status === 'cancelled'
           ? t('result.cancelled', { row: n(row.checkpointRow) })
           : t('result.failed');
@@ -78,7 +81,11 @@ export function ImportResult({
       {warnings.length > 0 ? (
         <section>
           <h2>{t('result.guessedSection')}</h2>
-          <p>{t('result.guessedIntro', { count: n(warnings.reduce((sum, code) => sum + (row.errorSummary[code] ?? 0), 0)) })}</p>
+          <p>
+            {t('result.guessedIntro', {
+              count: n(warnings.reduce((sum, code) => sum + (row.errorSummary[code] ?? 0), 0)),
+            })}
+          </p>
           <ul>
             {/* Varování s nulou se NEZOBRAZUJE. Řádek „0 jmen se nepodařilo
                 rozdělit" je šum, ve kterém zanikne to, co se opravdu stalo. */}

@@ -1,3 +1,4 @@
+import { perJob } from '../../../queues';
 import { createSystemContext } from '../../../identity/context';
 import { importLimits } from '../limits';
 import { handler as runImport } from './run-import';
@@ -13,8 +14,16 @@ import { inWorkspaceTx } from '../db';
  * Fronta `contacts.bulk_vocative_review` tady NENÍ. Po rozhodnutí U3 ji vlastní
  * celou P07 (úkoly 37 a 38 tohohle plánu jsou vyřazené).
  */
-export const queueHandlers = {
-  'contacts.import': runImport,
+// Jméno `handlers` je závazné, ne libovolné: codegen workeru generuje
+// `import { handlers as hN } from '@mlain/core/<domena>/jobs'`. Pod jiným
+// jménem se soubor sice zkompiluje a testy projdou, ale bundle workeru spadne
+// na „No matching export for import handlers", tedy až při buildu image.
+// Každá obsluha se obaluje `perJob`: pg-boss volá handler s DÁVKOU úloh,
+// kdežto tyhle funkce berou jednu. Bez obalu by dostaly pole, sáhly na `.data`
+// a dostaly `undefined`. Fronty by se přitom zaregistrovaly a worker naběhl,
+// takže by se to poznalo teprve na první skutečně zpracované úloze.
+export const handlers = {
+  'contacts.import': perJob(runImport),
   'contacts.cleanup_import_files': async (job: {
     data: { workspaceId: string };
   }): Promise<{ deleted: number }> => {
