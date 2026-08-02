@@ -1,3 +1,4 @@
+import type { ResolvedTrialSettings } from '../../providers/trial-mode';
 import type { RenderPlan } from '../repo/outbox';
 import type { KnownCampaignStatus } from '../types';
 
@@ -11,6 +12,7 @@ export type LoopDeps = {
     renderPlan: RenderPlan;
     sampleContactIds: readonly string[];
     releaseAt: string | null;
+    trial: ResolvedTrialSettings;
   }): Promise<{ scanned: number; inserted: number; nextCursor: string | null }>;
   advanceCursor(input: { campaignId: string; cursor: string; inserted: number }): Promise<void>;
   readStatus(campaignId: string): Promise<KnownCampaignStatus>;
@@ -31,6 +33,13 @@ export type MaterializeLoopInput = {
   renderPlan: RenderPlan;
   sampleContactIds: readonly string[];
   releaseAt: string | null;
+  /**
+   * Zkusebni rezim projektu. Cte se JEDNOU pred smyckou, ne v kazde davce: je to
+   * jedno cislo z nastaveni projektu a beh materializace ma stejne jedno publikum
+   * urcene k okamziku `audience_built_at`. Prepnuti rezimu uprostred behu tak
+   * nerozdeli jednu kampan na dve poloviny s jinym pravidlem.
+   */
+  trial: ResolvedTrialSettings;
 };
 
 export async function runMaterializeLoop(
@@ -51,6 +60,7 @@ export async function runMaterializeLoop(
       renderPlan: input.renderPlan,
       sampleContactIds: input.sampleContactIds,
       releaseAt: input.releaseAt,
+      trial: input.trial,
     });
     inserted += r.inserted;
     if (r.nextCursor) {

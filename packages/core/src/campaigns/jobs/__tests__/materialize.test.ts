@@ -36,6 +36,7 @@ function harness(over: Record<string, unknown> = {}) {
     setGateCounters: vi.fn(async () => {}),
     renderPlan: vi.fn(async () => RENDER_PLAN),
     sampleContactIds: vi.fn(async () => []),
+    trialSettings: vi.fn(async () => ({ trial_mode: false })),
     loop: vi.fn(async () => ({ outcome: 'completed' as const, inserted: 10, cursor: 'x' })),
     finish: vi.fn(async () => true),
     pause: vi.fn(async () => {}),
@@ -101,6 +102,23 @@ describe('job campaign.materialize', () => {
     expect(h.emit).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'campaign.sending_started' }),
     );
+  });
+
+  /**
+   * Brana zkusebniho rezimu musi dojit az do smycky. Puvodni vada nebyla v tom,
+   * ze by `canSendInTrial` pocitala spatne, ale v tom, ze ji nikdo nevolal;
+   * kdyby job hodnotu precetl a zahodil, byla by chyba zpatky a tenhle soubor
+   * by o tom mlcel.
+   */
+  it('precte zkusebni rezim JEDNOU a preda ho do smycky', async () => {
+    const trial = {
+      trial_mode: true,
+      trial_verified: [{ email: 'overena@firma.cz', verified_at: '2026-08-01T10:00:00.000Z' }],
+    };
+    const h = harness({ trialSettings: vi.fn(async () => trial) });
+    await materializeHandler(h as never, { campaignId: 'k1', workspaceId: 'w1' });
+    expect(h.trialSettings).toHaveBeenCalledTimes(1);
+    expect(h.loop).toHaveBeenCalledWith(expect.objectContaining({ trial }));
   });
 
   it('rozpad bran se ulozi jeste pred prvni davkou', async () => {

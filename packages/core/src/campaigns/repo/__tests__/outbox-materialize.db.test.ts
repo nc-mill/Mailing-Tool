@@ -12,6 +12,13 @@ import { ZERO_UUID } from '../../materialize/plan-constants';
 import { materializeBatch, type RenderPlan } from '../outbox';
 import { startMaterialization } from '../audience-progress';
 import { rawSql } from '../raw-sql';
+import type { ResolvedTrialSettings } from '../../../providers/trial-mode';
+
+/**
+ * Vypnuty zkusebni rezim. Brana `canSendInTrial` je od teto zmeny POVINNY vstup
+ * materializace, takze si ji kazdy test musi vyslovne rozhodnout.
+ */
+const TRIAL_OFF: ResolvedTrialSettings = { trial_mode: false };
 
 /** Sablona bez merge tagu a bez podminek. */
 const EMPTY_RENDER_PLAN: RenderPlan = {
@@ -45,6 +52,7 @@ describe('materializacni davka', () => {
         },
         sampleContactIds: [],
         releaseAt: null,
+        trial: TRIAL_OFF,
       });
       if (!r.nextCursor) break;
       cursor = r.nextCursor;
@@ -75,6 +83,7 @@ describe('materializacni davka', () => {
       renderPlan: EMPTY_RENDER_PLAN,
       sampleContactIds: [],
       releaseAt: null,
+      trial: TRIAL_OFF,
     };
     await materializeBatch(ctx.workspace, args);
     await materializeBatch(ctx.workspace, args);
@@ -105,6 +114,7 @@ describe('materializacni davka', () => {
       renderPlan: EMPTY_RENDER_PLAN,
       sampleContactIds: [],
       releaseAt: null,
+      trial: TRIAL_OFF,
     });
     const r = await withWorkspace(ctx.workspace, (tx) =>
       tx.execute<{ kind: string; campaign_id: string | null }>(
@@ -130,6 +140,7 @@ describe('materializacni davka', () => {
       renderPlan: EMPTY_RENDER_PLAN,
       sampleContactIds: [],
       releaseAt: release,
+      trial: TRIAL_OFF,
     });
     const r = await withWorkspace(ctx.workspace, (tx) =>
       tx.execute<{ next_attempt_at: string }>(
@@ -164,6 +175,7 @@ describe('materializacni davka', () => {
       },
       sampleContactIds: [],
       releaseAt: null,
+      trial: TRIAL_OFF,
     });
 
     const r = await withWorkspace(ctx.workspace, (tx) =>
@@ -208,6 +220,7 @@ describe('materializacni davka', () => {
       },
       sampleContactIds: [],
       releaseAt: null,
+      trial: TRIAL_OFF,
     });
 
     expect(out.skippedOversize).toBe(1);
@@ -236,6 +249,7 @@ describe('materializacni davka', () => {
       renderPlan: EMPTY_RENDER_PLAN,
       sampleContactIds: [],
       releaseAt: null,
+      trial: TRIAL_OFF,
     });
     expect(out.inserted).toBe(2);
   });
@@ -256,6 +270,7 @@ describe('materializacni davka', () => {
       renderPlan: EMPTY_RENDER_PLAN,
       sampleContactIds: [vlastni!],
       releaseAt: null,
+      trial: TRIAL_OFF,
     });
     expect(out.inserted).toBe(2);
   });
@@ -272,6 +287,7 @@ describe('materializacni davka', () => {
       renderPlan: EMPTY_RENDER_PLAN,
       sampleContactIds: [],
       releaseAt: null,
+      trial: TRIAL_OFF,
     });
     expect(r.inserted).toBe(0);
     expect(r.nextCursor).toBeNull();

@@ -12,9 +12,10 @@ import {
 // Dřívější znění mělo obojí vlastní; byla by to třetí kopie téhož receptu vedle
 // kontraktu a modulu otisků, a kopie se rozcházejí tiše.
 //
-// Purpose je podle rozhodnutí R4 správný právě tenhle: mailer/v1/confirm-token
-// zůstává v tabulce rezervovaný a NEPOUŽITÝ, protože potvrzovací token double
-// opt-in je náhodných 32 bajtů se stavem v databázi, ne podepsaný token.
+// Purpose je podle rozhodnutí R4 správný právě tenhle: pro double opt-in se
+// mailer/v1/confirm-token NEPOUŽÍVÁ, protože jeho potvrzovací token je náhodných
+// 32 bajtů se stavem v databázi, ne podepsaný token. (Ten purpose od P13 používá
+// podepsaný odkaz na ověření adresy ve zkušebním režimu, viz providers/trial-token.ts.)
 
 const NONCE_TTL_MS = 30 * 60 * 1000;
 

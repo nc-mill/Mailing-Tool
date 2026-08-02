@@ -172,6 +172,32 @@ export async function detectAndPreview(
   return { encoding, dialect, mapping, header };
 }
 
+/**
+ * Hlavička souboru, čtená při KAŽDÉM náhledu, ne jen při detekci.
+ *
+ * `detectAndPreview()` hlavičku vrací, jenže běží jedinkrát, na přechodu
+ * pending → previewing. Druhé a každé další volání náhledu ji tedy nemělo
+ * odkud vzít a posílalo prázdné pole, takže krok Mapování neuměl vypsat ani
+ * jeden sloupec souboru. Vada se nedala vidět na první obrazovce a projevila
+ * se teprve při návratu o krok zpět.
+ *
+ * Kódování se bere ze záznamu (uživatel ho v kroku 2 mohl přepsat), ale
+ * délka BOM z čerstvé detekce: bez ní by první název sloupce začínal
+ * neviditelným znakem a přestal by sedět na mapování.
+ */
+export async function readHeaderRow(row: ImportRow): Promise<string[]> {
+  if (row.storage_key === null || !row.has_header) return [];
+  const limits = importLimits();
+  const head = await readHead(row.storage_key, limits.sniffBytes);
+  const detected = detectEncoding(head, limits.sniffBytes);
+  const sample = decodeSampleFor(head, {
+    encoding: (row.encoding ?? detected.encoding) as DetectedEncoding['encoding'],
+    source: 'manual',
+    bomLength: detected.bomLength,
+  });
+  return (sample.split(/\r\n|\n|\r/)[0] ?? '').split(row.delimiter ?? ';');
+}
+
 export async function patchImport(
   ctx: WorkspaceContext,
   importId: string,
@@ -199,6 +225,13 @@ export async function patchImport(
         encoding = coalesce(${encoding}::text, encoding),
         encoding_source = CASE WHEN ${encoding}::text IS NULL THEN encoding_source ELSE 'manual' END,
         delimiter = coalesce(${patch.delimiter ?? null}::text, delimiter),
+        -- Spočítaný počet řádků platí pro JEDNU dvojici kódování a oddělovače.
+        -- Když uživatel kterékoli z nich přepíše, rozpadne se soubor na jiný
+        -- počet řádků a uložené číslo by lhalo. Zahodí se, náhled ho spočítá
+        -- znovu.
+        total_rows = CASE
+          WHEN ${encoding}::text IS NULL AND ${patch.delimiter ?? null}::text IS NULL
+          THEN total_rows ELSE NULL END,
         updated_at = now()
       WHERE id = ${importId}::uuid AND workspace_id = ${ctx.workspaceId}::uuid RETURNING *`),
   );

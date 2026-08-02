@@ -24,6 +24,13 @@ export type {
   UserMessage,
 } from './chat';
 
+export { composeTemplateDraft } from './compose';
+export type { ComposeDeps, ComposeParams, ComposeResult } from './compose';
+export { composeSchema, type ComposeOutput } from './compose-schema';
+
+export { compactToolResult, truncateRawOutput, MAX_RAW_OUTPUT_CHARS } from './conversation-service';
+export type { CompactedToolResult } from './conversation-service';
+
 export { buildModel, toApiKey } from './build-model';
 export type {
   BuildModelOptions,

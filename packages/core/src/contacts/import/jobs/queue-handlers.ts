@@ -24,12 +24,15 @@ import { inWorkspaceTx } from '../db';
 // takže by se to poznalo teprve na první skutečně zpracované úloze.
 export const handlers = {
   'contacts.import': perJob(runImport),
-  'contacts.cleanup_import_files': async (job: {
-    data: { workspaceId: string };
-  }): Promise<{ deleted: number }> => {
-    const ctx = createSystemContext(job.data.workspaceId, 'contacts.cleanup_import_files');
-    return { deleted: await runRetention(ctx) };
-  },
+  // I tahle obsluha musí přes `perJob`, přestože je psaná rovnou tady.
+  // Bez obalu má jiný tvar než ostatní a registr handlerů se pak nedá popsat
+  // jedním typem; pg-boss by jí navíc předal celou dávku.
+  'contacts.cleanup_import_files': perJob(
+    async (job: { data: { workspaceId: string } }): Promise<{ deleted: number }> => {
+      const ctx = createSystemContext(job.data.workspaceId, 'contacts.cleanup_import_files');
+      return { deleted: await runRetention(ctx) };
+    },
+  ),
 } as const;
 
 /**

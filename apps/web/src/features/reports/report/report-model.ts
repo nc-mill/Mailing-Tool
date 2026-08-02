@@ -1,3 +1,15 @@
+/*
+ * Pravidlo „co se má u téhle metriky vůbec ukázat" bydlí v jádře
+ * (`metricDisplay`, úkol 7 plánu P14) a tenhle model je jeho jediný volající
+ * na straně reportu. Kdyby si ho každá komponenta rozhodovala sama, rozjede se
+ * report, dashboard a export, což je přesně to, čemu má jedna funkce zabránit.
+ *
+ * Podcesta `@mlain/core/reports/metrics/display` je v mapě `exports` balíčku
+ * schválně: barrel `@mlain/core/reports` táhne celou doménu včetně SQL, a ta do
+ * prohlížeče nesmí. `display.ts` je čistá funkce bez jediného importu.
+ */
+import { metricDisplay, type MetricDisplay } from '@mlain/core/reports/metrics/display';
+
 export type StatsPayload = {
   campaign_id: string;
   name: string;
@@ -30,11 +42,15 @@ export type HeadlineTile = {
   key: 'clicked' | 'delivered' | 'unsubscribed';
   size: 'primary' | 'secondary';
   count: number;
-  rate: number | null;
   labelKey: string;
   denominatorKey: string;
   hintKey: string | null;
-  disabled: boolean;
+  /**
+   * Co dlaždice ukáže. Nahrazuje dřívější dvojici `rate` plus `disabled`, nad
+   * kterou si komponenta pravidla dopočítávala sama, a proto u vypnutého
+   * měření prokliků vykreslovala velkou nulu.
+   */
+  display: MetricDisplay;
 };
 
 /**
@@ -42,36 +58,60 @@ export type HeadlineTile = {
  * Míra otevření mezi nimi schválně není: je o patro níž ve vlastním panelu.
  */
 export function headlineTiles(payload: StatsPayload): HeadlineTile[] {
+  const clicked = payload.counts.clicks_unique_human ?? 0;
+  const delivered = payload.counts.delivered_effective ?? 0;
+  const unsubscribed = payload.counts.unsubscribed ?? 0;
+
   return [
     {
       key: 'clicked',
       size: 'primary',
-      count: payload.counts.clicks_unique_human ?? 0,
-      rate: payload.rates.click_rate ?? null,
+      count: clicked,
       labelKey: 'report.clicked.label',
       denominatorKey: 'report.clicked.denominator',
       hintKey: 'report.clicked.hint',
-      disabled: !payload.track_clicks,
+      display: metricDisplay({
+        rate: payload.rates.click_rate ?? null,
+        absolute: clicked,
+        enabled: payload.track_clicks,
+        smallSample: payload.small_sample,
+        disabledReason: 'clicks_disabled',
+      }),
     },
     {
       key: 'delivered',
       size: 'secondary',
-      count: payload.counts.delivered_effective ?? 0,
-      rate: safeRatio(payload.counts.delivered_effective, payload.counts.sent),
+      count: delivered,
       labelKey: 'report.delivered.label',
       denominatorKey: 'report.delivered.denominator',
       hintKey: null,
-      disabled: false,
+      /*
+       * Doručení se měří vždycky, tracking se ho netýká. `enabled: true` je
+       * tedy fakt o metrice, ne obcházení příznaku: `disabledReason` se u ní
+       * nikdy nepoužije.
+       */
+      display: metricDisplay({
+        rate: safeRatio(payload.counts.delivered_effective, payload.counts.sent),
+        absolute: delivered,
+        enabled: true,
+        smallSample: payload.small_sample,
+        disabledReason: 'clicks_disabled',
+      }),
     },
     {
       key: 'unsubscribed',
       size: 'secondary',
-      count: payload.counts.unsubscribed ?? 0,
-      rate: payload.rates.unsubscribe_rate ?? null,
+      count: unsubscribed,
       labelKey: 'report.unsubscribed.label',
       denominatorKey: 'report.unsubscribed.denominator',
       hintKey: null,
-      disabled: false,
+      display: metricDisplay({
+        rate: payload.rates.unsubscribe_rate ?? null,
+        absolute: unsubscribed,
+        enabled: true,
+        smallSample: payload.small_sample,
+        disabledReason: 'clicks_disabled',
+      }),
     },
   ];
 }
@@ -79,10 +119,17 @@ export function headlineTiles(payload: StatsPayload): HeadlineTile[] {
 export type OpensMode = 'verified' | 'all';
 
 export type OpensView = {
+  /**
+   * Odvozuje se z `display`, ne z `payload.track_opens` zvlášť. Byla to druhá
+   * implementace téhož rozhodnutí vedle `metricDisplay`; zůstává jako pole,
+   * protože panel má pro nezměřené otevření celou vlastní podobu, ne jen jiné
+   * číslo.
+   */
   disabled: boolean;
   mode: OpensMode;
   headlineCount: number | null;
   rate: number | null;
+  display: MetricDisplay;
   denominatorKey: string;
   badgeKey: string | null;
   segments: Array<{ key: 'verified' | 'machine' | 'uncertain'; count: number; share: number }>;
@@ -101,12 +148,27 @@ export function opensView(payload: StatsPayload, mode: OpensMode): OpensView {
   const sum = breakdown.verified + breakdown.machine + breakdown.uncertain;
   const share = (value: number) => (sum > 0 ? value / sum : 0);
 
-  if (!payload.track_opens) {
+  const headlineCount = mode === 'verified' ? breakdown.verified : breakdown.total;
+  const rate =
+    mode === 'verified'
+      ? (payload.rates.verified_open_rate ?? null)
+      : (payload.rates.open_rate ?? null);
+
+  const display = metricDisplay({
+    rate,
+    absolute: headlineCount,
+    enabled: payload.track_opens,
+    smallSample: payload.small_sample,
+    disabledReason: 'opens_disabled',
+  });
+
+  if (display.kind === 'not_measured') {
     return {
       disabled: true,
       mode,
       headlineCount: null,
       rate: null,
+      display,
       denominatorKey: 'report.states.trackingOffOpens',
       badgeKey: null,
       segments: [],
@@ -118,11 +180,9 @@ export function opensView(payload: StatsPayload, mode: OpensMode): OpensView {
   return {
     disabled: false,
     mode,
-    headlineCount: mode === 'verified' ? breakdown.verified : breakdown.total,
-    rate:
-      mode === 'verified'
-        ? (payload.rates.verified_open_rate ?? null)
-        : (payload.rates.open_rate ?? null),
+    headlineCount,
+    rate,
+    display,
     /*
      * OPRAVA PROTI PLÁNU. Plán v poloze „všechna otevření" ukazoval jmenovatel
      * `report.delivered.denominator`, což je „z odeslaných". Míra otevření se

@@ -62,6 +62,16 @@ export const ImportPreviewResponse = z
     has_header: z.boolean(),
     header: z.array(z.string()),
     mapping: z.record(z.string(), z.unknown()),
+    /**
+     * Počet DATOVÝCH řádků celého souboru, bez hlavičky. Průvodce z něj skládá
+     * větu „51 řádků, z toho 1 hlavička, tedy 50 kontaktů", takže hlavičku si
+     * přičítá sám podle `has_header`.
+     */
+    total_rows: z.number().int(),
+    /** U souboru nad stropem přesného průchodu je počet extrapolovaný z bajtů. */
+    total_rows_approximate: z.boolean(),
+    /** Prvních pár řádků v SUROVÉ podobě, ve stejném pořadí sloupců jako `header`. */
+    sample_rows: z.array(z.array(z.string())),
     rows: z.array(PreviewRowSchema),
     mapping_warnings: z.array(z.string()),
   })

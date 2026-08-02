@@ -38,7 +38,13 @@ export type BrandProfileSummary = {
   extractedAt: string | null;
 };
 
-const DEFAULT_PALETTE: BrandPalette = {
+/**
+ * Neutrální výchozí značka. Používá se dvakrát: při čtení profilu uloženého
+ * starší verzí extrakce a v kompozičním kořeni skládání šablony, kde projekt
+ * ještě žádný profil mít nemusí. Proto se exportuje, ať nevznikne třetí kopie
+ * těchhle barev.
+ */
+export const DEFAULT_PALETTE: BrandPalette = {
   primary: '#1f2937',
   secondary: '#4b5563',
   accent: '#2563eb',
@@ -47,7 +53,7 @@ const DEFAULT_PALETTE: BrandPalette = {
   source: {},
 };
 
-const DEFAULT_TYPOGRAPHY: BrandTypography = {
+export const DEFAULT_TYPOGRAPHY: BrandTypography = {
   headingStack: 'Arial, Helvetica, sans-serif',
   bodyStack: 'Arial, Helvetica, sans-serif',
   radius: 4,

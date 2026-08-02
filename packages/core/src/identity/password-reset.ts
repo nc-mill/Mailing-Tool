@@ -95,6 +95,9 @@ async function performResetRequest(input: RequestResetInput): Promise<void> {
     to: email,
     locale: user.locale,
     data: { url: `${cfg().APP_URL}/reset-password?token=${token}` },
+    // Bez uživatele by odesílatel neměl kudy najít projekt, a tím ani odesílací
+    // účet. Obnova hesla projekt z principu nemá: kdo zapomene heslo, není přihlášený.
+    userId: user.id,
   });
 }
 
@@ -171,5 +174,6 @@ export async function confirmPasswordReset(input: ConfirmResetInput): Promise<vo
     to: user.email,
     locale: user.locale,
     data: { changed_at: new Date().toISOString() },
+    userId: user.id,
   });
 }

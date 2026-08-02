@@ -29,13 +29,17 @@ const preflight: Preflight = {
   checked_at: '2026-08-01T12:00:00.000Z',
 };
 
-function renderChecklist(override: Partial<Preflight> = {}) {
+function renderChecklist(
+  override: Partial<Preflight> = {},
+  trialNotice: { audience: number; willReceive: number } | null = null,
+) {
   return renderWithProviders(
     <ReadinessChecklist
       preflight={{ ...preflight, ...override }}
       campaignName="Letní výprodej"
       fromLine="Jana z Kolo Shopu <jana@kolo-shop.cz>"
       subject="Letní výprodej začíná"
+      trialNotice={trialNotice}
       onSend={vi.fn().mockResolvedValue({ status: 'success' })}
     />,
   );
@@ -127,5 +131,40 @@ describe('potvrzovací dialog odeslání', () => {
     expect(dialog).toHaveTextContent(/1\s?129 příjemců/u);
     expect(dialog).toHaveTextContent('jana@kolo-shop.cz');
     expect(dialog).toHaveTextContent('Letní výprodej začíná');
+  });
+});
+
+/**
+ * Riziko z 8.2.9: uživatel postaví kampaň na velké publikum a teprve při odeslání
+ * zjistí, že je ve zkušebním režimu. Obecné varování to nezmírní, musí tam být
+ * OBĚ čísla.
+ */
+describe('pruh zkušebního režimu na publiku', () => {
+  it('bez zkušebního režimu nevisí žádný pruh', () => {
+    renderChecklist();
+    expect(screen.queryByTestId('trial-mode-audience-notice')).not.toBeInTheDocument();
+  });
+
+  it('říká konkrétní čísla: kolik lidí je v publiku a kolika se odešle', () => {
+    renderChecklist({ audience_estimate: 12_480 }, { audience: 12_480, willReceive: 2 });
+    const notice = screen.getByTestId('trial-mode-audience-notice');
+    expect(notice).toHaveTextContent(/12\s?480 příjemců/u);
+    expect(notice).toHaveTextContent(/jen 2 ověřeným adresám/u);
+  });
+
+  it('nula ověřených adres se ukáže jako nula, ne jako obecné varování', () => {
+    renderChecklist({ audience_estimate: 50 }, { audience: 50, willReceive: 0 });
+    // Věta drží tvar podle počtu (ICU plurál), ale číslo v ní zůstává i u nuly:
+    // bez čísla by pruh zněl stejně u nuly jako u dvou ověřených adres.
+    expect(screen.getByTestId('trial-mode-audience-notice')).toHaveTextContent(
+      /z vybraných 50 příjemců se e-mail odešle nikomu, ověřených adres máte 0/u,
+    );
+  });
+
+  it('jedna ověřená adresa má správný pád, ne strojové „1 adresám"', () => {
+    renderChecklist({ audience_estimate: 50 }, { audience: 50, willReceive: 1 });
+    expect(screen.getByTestId('trial-mode-audience-notice')).toHaveTextContent(
+      /jen 1 ověřené adrese/u,
+    );
   });
 });

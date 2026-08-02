@@ -23,4 +23,14 @@ export async function register(): Promise<void> {
   // nezůstal v prostředí web procesu. Vrstva, kterou nikdo nezavolá, není vrstva.
   const { getAiRuntime } = await import('@/lib/ai/runtime');
   getAiRuntime();
+
+  /**
+   * Kompoziční kořen systémové pošty. Bez tohohle řádku měl proces zapojený
+   * `LoggingSystemMailer`, takže obnova hesla i pozvánka tiše zmizely a obrazovka
+   * přitom hlásila „e-mail odeslán". Volá se i ve workeru (`apps/worker/src/main.ts`),
+   * protože upozornění na vypnutý webhook vzniká tam.
+   */
+  const { installSystemMailer } = await import('@mlain/core/platform/system-mail-runtime');
+  installSystemMailer();
+  logger.info({}, 'systémová pošta je zapojená');
 }

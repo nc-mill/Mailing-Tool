@@ -31,3 +31,21 @@ apps/sender/ml-sender
 # Výjimka: `.env.example` je šablona bez jediné skutečné hodnoty a turbo.json
 # ji má v `globalDependencies`. Bez ní by se lišil hash úloh mezi stolem a CI.
 !**/.env.example
+
+# Artefakty testovacích běhů a mezivýsledky kompilace.
+#
+# Do produkční image nepatří a hlavně DĚLAJÍ JEJÍ VELIKOST NÁHODNOU: fáze
+# `pruner` dělá `COPY . .`, takže do image jde všechno, co má vývojář zrovna
+# na disku. Naměřeno v hotové image po jednom běhu zlaté cesty:
+#
+#   /app/apps/web/test-results             4,2 MB
+#   /app/apps/web/tsconfig.tsbuildinfo     1,0 MB
+#   /app/apps/web/playwright-report-golden 536 kB
+#
+# Skoro šest megabajtů, které o produktu nevypovídají nic. Image se kvůli nim
+# přehoupla přes limit 250 MB, a to podle toho, kdo naposledy pustil testy.
+# Brána velikosti pak měří jednou tak, jednou onak.
+**/test-results
+**/playwright-report*
+**/*.tsbuildinfo
+**/coverage

@@ -45,5 +45,13 @@ export const MESSAGE_CODES: readonly MessageCodeEntry[] = [
   { code: 'unsubscribe_url_missing', class: 'permanent', source: 'spec' },
   { code: 'max_attempts_exceeded', class: 'permanent', source: 'spec' },
   { code: 'suppressed', class: 'permanent', source: 'spec' },
+  /**
+   * Zprávu zastavil zkušební režim projektu: adresa není mezi potvrzenými.
+   *
+   * Třída je `permanent`, ne `fatal`. Kampaň běží dál, protože na potvrzené adresy
+   * se odeslat MÁ; kdyby to bylo `fatal`, zkušební režim by kampaň pozastavil
+   * a nedoručil by ani těch pár zpráv, kvůli kterým existuje.
+   */
+  { code: 'trial_not_verified', class: 'permanent', source: 'derived' },
   { code: 'ambiguous_dispatch', class: 'contract', source: 'spec' },
 ];

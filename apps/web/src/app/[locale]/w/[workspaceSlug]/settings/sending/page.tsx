@@ -6,6 +6,7 @@ import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
 import { SendingScreen } from '@/features/sending/sending-screen';
 import type { DomainView, ProviderView } from '@/features/sending/sending-settings';
 import type { GuardLimits, GuardSettings } from '@/features/sending/guard-thresholds';
+import type { TrialView } from '@/features/sending/trial-mode-panel';
 
 /**
  * Stránka závisí na přihlášeném uživateli, takže se NEPŘEDRENDEROVÁVÁ.
@@ -34,15 +35,16 @@ export default async function SendingSettingsPage({ params }: PageProps) {
   if (!access.ok) notFound();
   const workspaceId = access.data.workspace.id;
 
-  const [providers, domains, guards] = await Promise.all([
+  const [providers, domains, guards, trial] = await Promise.all([
     apiFetch<{ data: ProviderView[] }>('/api/v1/providers', { workspaceId }),
     apiFetch<{ data: DomainView[] }>('/api/v1/domains', { workspaceId }),
     apiFetch<{ settings: GuardSettings; limits: GuardLimits }>('/api/v1/settings/deliverability', {
       workspaceId,
     }),
+    apiFetch<TrialView>('/api/v1/settings/trial', { workspaceId }),
   ]);
 
-  if (!guards.ok) notFound();
+  if (!guards.ok || !trial.ok) notFound();
 
   return (
     <SendingScreen
@@ -50,6 +52,7 @@ export default async function SendingSettingsPage({ params }: PageProps) {
       domains={domains.ok ? domains.data.data : []}
       guards={guards.data.settings}
       limits={guards.data.limits}
+      trial={trial.data}
       basePath={`/w/${workspaceSlug}`}
       workspaceId={workspaceId}
     />

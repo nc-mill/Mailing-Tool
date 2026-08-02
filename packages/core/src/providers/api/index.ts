@@ -20,11 +20,16 @@ export const providersApi = new OpenAPIHono<ProvidersEnv>({ defaultHook: validat
 
 /* Naplnění routeru běží při načtení modulu, viz komentář u domény segmentů. */
 import { registerProviderRoutes } from './providers.routes';
+// Zkušební režim je vlastní soubor, ne další kapitola v `providers.routes.ts`:
+// je to samostatné nastavení projektu a mount zůstává jeden.
+import { registerTrialRoutes } from './trial.routes';
 
 registerProviderRoutes(providersApi);
+registerTrialRoutes(providersApi);
 
-export { registerProviderRoutes };
+export { registerProviderRoutes, registerTrialRoutes };
 export * from './service';
+export * from './trial-service';
 export * from './sns-webhook';
 
 export function registerProviderApiRoutes(app: OpenAPIHono<ApiEnv>): void {

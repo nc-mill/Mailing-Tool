@@ -83,6 +83,21 @@ export function buildApp(): OpenAPIHono<ApiEnv> {
   registerWebhookEndpointRoutes(app);
   registerAuditRoutes(app);
   registerJobRoutes(app);
+  // Import a export kontaktů (P11) se registrují PŘED doménou kontaktů, a to
+  // je podstatné, ne kosmetické.
+  //
+  // Hono zkouší cesty v pořadí registrace. `registerContactsRoutes` definuje
+  // `/contacts/{id}`, což je vzor, na který sedí i `/contacts/imports`: slovo
+  // `imports` se matchne jako identifikátor kontaktu. Seznam importů pak vrací
+  //
+  //   422 invalid_uuid   (na parametru `id`)
+  //
+  // tedy hlášku o neplatném UUID nad cestou, kde žádné UUID není. Hledá se to
+  // mizerně, protože obě cesty jsou správně definované a chyba je jen v pořadí.
+  //
+  // Pravidlo: konkrétnější cesta se registruje dřív než ta s parametrem.
+  registerImportApiRoutes(app);
+  registerExportApiRoutes(app);
   // Doména kontaktů (P07). Router si skládá `packages/core/src/contacts/api/index.ts`
   // a tady se jen mountuje pod /api/v1, protože packages/core nesmí importovat z apps/web.
   registerContactsRoutes(app);
@@ -118,9 +133,6 @@ export function buildApp(): OpenAPIHono<ApiEnv> {
   // definice cest leží v packages/core, mount je tady.
   registerCampaignApiRoutes(app);
   registerProviderApiRoutes(app);
-  // Import a export kontaktů (P11).
-  registerImportApiRoutes(app);
-  registerExportApiRoutes(app);
   // Doména AI (P15). Týž tvar jako u kontaktů a segmentů: definice cest
   // i handlery leží v `packages/core/src/ai/api/index.ts`, tady jen mount.
   registerAiApiRoutes(app);

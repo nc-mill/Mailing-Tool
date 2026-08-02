@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import { sql } from 'drizzle-orm';
@@ -7,16 +8,20 @@ import { IdempotencyHeaderSchema, problemResponse } from '../../../identity/api/
 import type { WorkspaceContext } from '../../../identity/types';
 import { inWorkspaceTx } from '../db';
 import { buildErrorsCsv, type ErrorCsvEncoding } from '../errors-csv';
+import { estimateFile, type EstimateContext } from '../estimate';
 import { importLimits } from '../limits';
 import { buildPreview } from '../preview';
-import { detectAndPreview } from '../service';
+import { loadRunContext } from '../run-context';
 import {
   cancelImport,
   confirmImport,
   createImport,
+  detectAndPreview,
   loadImport,
   patchImport,
+  readHeaderRow,
   resumeImport,
+  setTotalRows,
   type ImportRow,
 } from '../service';
 import type { ImportsEnv } from './index';
@@ -411,30 +416,82 @@ export function registerImportRoutes(app: OpenAPIHono<ImportsEnv>): void {
     const { id } = c.req.valid('param');
     const { limit, offset } = c.req.valid('query');
     let row = await loadImport(ctx, id);
-    let header: string[] = [];
     // Detekce běží jen jednou, na přechodu pending → previewing. Podruhé už
     // by přepsala ruční volbu kódování, kterou uživatel udělal v kroku 2.
     if (row.status === 'pending' || row.status === 'validating') {
-      const detected = await detectAndPreview(ctx, id);
-      header = detected.header;
+      await detectAndPreview(ctx, id);
       row = await loadImport(ctx, id);
     }
-    if (row.storage_key === null) throw new ApiError('not_found');
+    // Do lokální proměnné, ne přímo z `row`: `row` se výš přiřazuje uvnitř
+    // podmínky, takže TypeScript zúžení typu po téhle kontrole neudrží
+    // a `storage_key` zůstane `string | null`.
+    const storageKey = row.storage_key;
+    if (storageKey === null) throw new ApiError('not_found');
+
+    /*
+     * Kontext se SKLÁDÁ Z `loadRunContext()`, neplní se ručně, a je to oprava
+     * konkrétní vady, ne úklid.
+     *
+     * Dřív tu stál objekt s poli `encoding: 'utf-8'`, `delimiter`, `hasHeader`
+     * a `limits`, přetypovaný `as never`. Jenže `buildPreview` čte `ctx.dialect`,
+     * `ctx.encoding.encoding`, `ctx.maxCellChars` a `ctx.maxLineBytes`, tedy
+     * ani jedno z toho. Přetypování tu neshodu utlumilo a náhled padal na
+     *
+     *   Error: Encoding not recognized: 'undefined' (searched as: 'undefined')
+     *
+     * tedy pětistovkou při KAŽDÉM volání. Průvodce chybu tiše přeskakoval,
+     * takže obrazovka místo počtu kontaktů ukazovala výchozí nulu a středník,
+     * přestože server měl v databázi správně detekovanou čárku. Uživatel pak
+     * ručně přepisoval nastavení, které bylo v pořádku.
+     *
+     * `loadRunContext()` skládá tentýž kontext, se kterým import doopravdy
+     * poběží, takže náhled ukazuje výsledek běhu, ne jinak nastavený odhad.
+     * `existingEmails` je prázdná množina schválně: rozdíl „nový versus
+     * aktualizovaný" náhled netvrdí a načítat kvůli němu všechny e-maily
+     * projektu by byl neúměrný dotaz.
+     */
     const limits = importLimits();
-    const preview = await buildPreview(
-      row.storage_key,
-      {
-        workspaceId: ctx.workspaceId,
-        encoding: (row.encoding ?? 'utf-8') as never,
-        delimiter: row.delimiter ?? ';',
-        hasHeader: row.has_header,
-        mapping: row.mapping,
-        options: row.options as never,
-        limits,
-      } as never,
-      limit,
-      offset,
-    );
+    const run = await loadRunContext(ctx, id);
+    const previewCtx: EstimateContext = {
+      ...run.rowContext,
+      dialect: run.dialect,
+      encoding: run.encoding,
+      maxCellChars: limits.maxCellChars,
+      maxLineBytes: limits.maxLineBytes,
+      existingEmails: new Set<string>(),
+      byteSize: Number(row.byte_size),
+    };
+    /*
+     * CESTA SE SKLÁDÁ Z `dataDir`, nepředává se holý `storage_key`.
+     *
+     * `storage_key` je relativní klíč (`imports/<projekt>/<id>.csv`), kdežto
+     * `readRows()` otevírá soubor přímo, takže dřív četl neexistující cestu.
+     * Neprojevilo se to chybou: `stream.pipe()` chybu zdroje nepředá cíli,
+     * takže parser jen nikdy nedostal ani data, ani konec, a požadavek visel
+     * až do vypršení. Tentýž tvar má `run-import.ts` na řádku s `join()`.
+     */
+    const path = join(limits.dataDir, storageKey);
+    const preview = await buildPreview(path, previewCtx, limit, offset);
+    const header = await readHeaderRow(row);
+
+    /*
+     * Počet řádků je číslo o CELÉM souboru, ne o dvaceti řádcích náhledu.
+     * Krok „Kontrola souboru" se ptá „tedy 50 kontaktů?" a odpověď musí sedět,
+     * jinak uživatel usoudí, že se nahrála jen část souboru.
+     *
+     * Počítá se jednou a ukládá do `imports.total_rows`; `patchImport()` ho
+     * zahazuje, kdykoli se změní kódování nebo oddělovač. Bez toho by se
+     * dvousetmegabajtový soubor přečetl znovu při každém kroku průvodce.
+     */
+    let totalRows = row.total_rows === null ? null : Number(row.total_rows);
+    let approximate = false;
+    if (totalRows === null) {
+      const estimate = await estimateFile(path, previewCtx);
+      totalRows = estimate.totalRows;
+      approximate = estimate.approximate;
+      await setTotalRows(ctx, id, totalRows);
+    }
+
     return c.json(
       {
         encoding: row.encoding ?? 'utf-8',
@@ -443,6 +500,9 @@ export function registerImportRoutes(app: OpenAPIHono<ImportsEnv>): void {
         has_header: row.has_header,
         header,
         mapping: (row.mapping ?? {}) as Record<string, unknown>,
+        total_rows: totalRows,
+        total_rows_approximate: approximate,
+        sample_rows: preview.rows.slice(0, 3).map((r) => r.fields),
         rows: preview.rows.map((r) => ({
           row_number: r.rowNumber,
           email: r.email,

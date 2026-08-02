@@ -1,3 +1,4 @@
+import type { ResolvedTrialSettings } from '../../providers/trial-mode';
 import { decideAfterFailedClaim } from '../materialize/plan';
 import { shouldRunFinish } from '../materialize/finish';
 import { ZERO_UUID } from '../materialize/plan-constants';
@@ -53,6 +54,15 @@ export type MaterializeDeps = {
    * manifest ma nizke desitky polozek a v davce by se cetl zbytecne znovu.
    */
   sampleContactIds(): Promise<string[]>;
+  /**
+   * Zkusebni rezim projektu s uz rozhodnutym prepinacem (`resolveTrialSettings`).
+   *
+   * Je to POVINNA zavislost, ne nepovinna. Brana `canSendInTrial` byla napsana,
+   * otestovana a nikdo ji nevolal, takze zapnuty zkusebni rezim kampan nezastavil.
+   * Nepovinna zavislost s vychozi hodnotou by tu diru vratila prvnimu volajicimu,
+   * ktery ji zapomene naplnit; takhle se to bez ni nezkompiluje.
+   */
+  trialSettings(): Promise<ResolvedTrialSettings>;
   loop(input: Record<string, unknown>): Promise<{
     outcome: string;
     inserted: number;
@@ -121,6 +131,10 @@ export async function materializeHandler(
   // I na znacce: znacku muze uzivatel prepsat, manifest ne. Viz rozhodnuti A1 planu P16.
   const sampleContactIds = await deps.sampleContactIds();
 
+  // Zkusebni rezim se cte JEDNOU pred smyckou, ze stejneho duvodu jako ukazkove
+  // kontakty: je to jedna hodnota na projekt a beh materializace ma jedno publikum.
+  const trial = await deps.trialSettings();
+
   const where = await deps.compileAudience({
     campaignId,
     asOf,
@@ -137,6 +151,7 @@ export async function materializeHandler(
     where,
     renderPlan,
     sampleContactIds,
+    trial,
     // Undo okno spocital startMaterialization ve stejnem UPDATE, ktery zabral kampan.
     // Drive tahle hodnota prisla z deps.config, ktery nikdo nikdy nenaplnil, takze
     // release_at bylo vzdy null a okno na zruseni fakticky neexistovalo.

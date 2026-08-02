@@ -62,17 +62,26 @@ export function toCamel(code: string): string {
  * spočítat sám: dvě obrazovky nad týmž segmentem se dřív rozcházely o 24 lidí
  * a rozdíl byl právě na tlačítku, které spouští nevratnou akci.
  */
+/**
+ * Pruh zkušebního režimu. Čísla jsou hotová z `trialAudienceNotice()` v jádru,
+ * obrazovka si je nedopočítává: kdyby si je spočítala sama, rozešla by se
+ * s tím, co při odeslání opravdu projde branou `canSendInTrial`.
+ */
+export type TrialNotice = { audience: number; willReceive: number };
+
 export function ReadinessChecklist({
   preflight,
   campaignName,
   fromLine,
   subject,
+  trialNotice,
   onSend,
 }: {
   preflight: Preflight;
   campaignName: string;
   fromLine: string;
   subject: string;
+  trialNotice?: TrialNotice | null;
   onSend?: (recipientCount: number) => Promise<{ status: 'success' | 'error'; code?: string }>;
 }) {
   const t = useTranslations('campaigns');
@@ -116,6 +125,21 @@ export function ReadinessChecklist({
       <h2 id="readiness-title" className="text-lg font-semibold">
         {t('send.checklistTitle')}
       </h2>
+
+      {/*
+        Riziko z 8.2.9: uživatel postaví kampaň na 20 000 lidí a teprve při odeslání
+        zjistí, že je ve zkušebním režimu. Obecné varování to nezmírní, proto je pruh
+        HNED NAHOŘE a nese OBĚ čísla, kolik lidí je v publiku a kolika se opravdu
+        odešle. Bez čísel by věta zněla stejně u dvou ověřených adres jako u nuly.
+      */}
+      {trialNotice && (
+        <Alert tone="warning" data-testid="trial-mode-audience-notice">
+          {t('trial.banner', {
+            audience: format.number(trialNotice.audience),
+            verified: trialNotice.willReceive,
+          })}
+        </Alert>
+      )}
 
       <dl className="grid gap-2" data-testid="send-summary">
         <div className="flex gap-2">

@@ -37,6 +37,12 @@
     "tooLargeShort": "Soubor je větší než {limit}."
   },
   "detected": "Rozpoznali jsme kódování {encoding} a oddělovač {delimiter}.",
+  "previewFailed": {
+    "title": "Náhled souboru se nepodařilo načíst",
+    "nextStep": "Zkuste to prosím znovu. Když to bude trvat, nahrajte soubor ještě jednou. Technický detail: {detail}",
+    "retry": "Zkusit znovu",
+    "loading": "Načítáme náhled souboru…"
+  },
   "fileCheck": {
     "title": "Zkontrolujte, jestli soubor čteme správně",
     "encoding": "Kódování",

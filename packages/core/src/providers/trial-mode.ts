@@ -6,6 +6,33 @@ export type TrialSettings = {
 };
 
 /**
+ * Nastavení, ve kterém už `trial_mode` NENÍ nepovinné.
+ *
+ * Existuje kvůli jedné pasti. Uložená hodnota `trial_mode` chybí u každého čerstvého
+ * projektu a `resolveTrialMode` z ní dělá ZAPNUTO, dokud není ověřená doména. Kdyby
+ * brána brala syrové `TrialSettings`, chybějící klíč by se přečetl jako „vypnuto"
+ * a zkušební režim by u nového projektu nechránil právě tam, kde chrání nejvíc.
+ *
+ * Typ je proto povinný na vstupu materializace: kdo bránu volá, musí hodnotu nejdřív
+ * rozhodnout přes `resolveTrialSettings`, jinak se to NEZKOMPILUJE.
+ */
+export type ResolvedTrialSettings = TrialSettings & { trial_mode: boolean };
+
+/**
+ * Rozhodne platnou hodnotu přepínače.
+ *
+ * Výchozí hodnota je ZAPNUTO, dokud projekt nemá ověřenou doménu. Jakmile se uživatel
+ * vyjádří, rozhoduje jeho hodnota. Je to táž úvaha, na které stojí `resolveTrialMode`
+ * v aplikační vrstvě; ta ji odsud volá, aby pravidlo nebylo na dvou místech.
+ */
+export function resolveTrialSettings(
+  settings: TrialSettings,
+  input: { hasVerifiedDomain: boolean },
+): ResolvedTrialSettings {
+  return { ...settings, trial_mode: settings.trial_mode ?? !input.hasVerifiedDomain };
+}
+
+/**
  * Zkušební režim se ukládá do workspaces.settings.campaigns, nezakládá tabulku
  * (rozhodnutí D15): je to nejvýše deset adres a jeden přepínač na projekt.
  */

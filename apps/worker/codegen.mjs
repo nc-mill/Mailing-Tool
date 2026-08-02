@@ -18,12 +18,39 @@ const TARGET = path.join(ROOT, 'apps/worker/src/handlers.generated.ts');
 function findHandlerModules() {
   const coreSrc = path.join(ROOT, 'packages/core/src');
   if (!fs.existsSync(coreSrc)) return [];
-  return fs
-    .readdirSync(coreSrc, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .filter((domain) => fs.existsSync(path.join(coreSrc, domain, 'jobs/queue-handlers.ts')))
-    .sort();
+
+  /**
+   * Hledá se i VE DRUHÉ ÚROVNI, ne jen v přímých podadresářích.
+   *
+   * Původně se procházely jen `packages/core/src/<domena>/jobs/`, takže
+   * `contacts/export/jobs` a `contacts/import/jobs` codegen nikdy neviděl,
+   * přestože soubor i klíč v `exports` mapě měly. Fronty importu a exportu
+   * kontaktů se tedy zaregistrovaly BEZ OBSLUHY: úloha se zařadila, nikdo si ji
+   * nevyzvedl a import prostě nikdy neskončil.
+   *
+   * Nic přitom nespadlo. Worker při startu vypíše seznam front bez handleru,
+   * ale nikdo ten řádek nečte, a uživatel vidí import, který se tváří, že běží.
+   *
+   * Hloubka je omezená na dvě úrovně schválně: dál by se hledaly `jobs`
+   * adresáře i tam, kde nemají co dělat, a jméno domény by přestalo odpovídat
+   * prefixu jména fronty, podle kterého se odvozuje.
+   */
+  const nalezene = [];
+  for (const uroven1 of fs.readdirSync(coreSrc, { withFileTypes: true })) {
+    if (!uroven1.isDirectory()) continue;
+    if (fs.existsSync(path.join(coreSrc, uroven1.name, 'jobs/queue-handlers.ts'))) {
+      nalezene.push(uroven1.name);
+      continue;
+    }
+    const vnoreno = path.join(coreSrc, uroven1.name);
+    for (const uroven2 of fs.readdirSync(vnoreno, { withFileTypes: true })) {
+      if (!uroven2.isDirectory()) continue;
+      if (fs.existsSync(path.join(vnoreno, uroven2.name, 'jobs/queue-handlers.ts'))) {
+        nalezene.push(`${uroven1.name}/${uroven2.name}`);
+      }
+    }
+  }
+  return nalezene.sort();
 }
 
 /**

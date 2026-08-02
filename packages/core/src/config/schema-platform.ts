@@ -12,6 +12,20 @@ import {
   envUrl,
 } from './primitives';
 
+/**
+ * Absolutní cesta. Kontroluje se úvodním lomítkem, ne `path.isAbsolute()`:
+ * ten by do modulu vrátil `node:path` a s ním i to, kvůli čemu se tahle
+ * kontrola zavádí.
+ */
+function absolutePath() {
+  return z
+    .string()
+    .min(1)
+    .refine((value) => value.startsWith('/'), {
+      message: 'musí být absolutní cesta začínající lomítkem, například /data',
+    });
+}
+
 /** Část 1, kapitola 4.9, hlavní tabulka. Legenda "Kdo": W = web, K = worker, S = sender. */
 export const platformShape = {
   APP_URL: envUrl(),
@@ -38,9 +52,29 @@ export const platformShape = {
   SESSION_IDLE_TTL_DAYS: envInt(1, 365).default(14),
   MIGRATE_ON_START: envBool().prefault('true'),
   MIGRATE_LOCK_TIMEOUT_SECONDS: envInt(10, 3600).default(300),
-  DATA_DIR: z.string().min(1).default('/data'),
-  UPLOADS_DIR: z.string().min(1).optional(),
-  BACKUP_DIR: z.string().min(1).optional(),
+  /**
+   * Datové adresáře musí být ABSOLUTNÍ cesty.
+   *
+   * Dřív se relativní cesta dopočítávala v `loadConfig` přes `path.resolve()`.
+   * Turbopack takový výraz neumí vyhodnotit a hlásil
+   *
+   *   Encountered unexpected file in NFT list
+   *   A file was traced that indicates that the whole project was traced
+   *   unintentionally.
+   *
+   * takže do serverového výstupu vystopoval celý projekt. Naměřeno: po
+   * odstranění `path.resolve` z `load.ts` varování zmizelo a `.next/server`
+   * klesl ze 73 na 71 MB. Ta velikost roste s projektem, takže je to spíš
+   * netěsnost než jednorázová ztráta.
+   *
+   * Nikoho to neomezuje: v kontejneru je `/data`, v CI i ve vývoji se používají
+   * absolutní cesty. Relativní cesta u datového adresáře navíc znamená, že
+   * obsah instalace závisí na tom, odkud se proces spustil, což je past sama
+   * o sobě.
+   */
+  DATA_DIR: absolutePath().default('/data'),
+  UPLOADS_DIR: absolutePath().optional(),
+  BACKUP_DIR: absolutePath().optional(),
   BACKUP_TARGET: z.enum(['local']).default('local'),
   BACKUP_SCHEDULE_CRON: envCron().default('0 3 * * *'),
   BACKUP_RETENTION_DAYS: envInt(1, 3650).default(14),

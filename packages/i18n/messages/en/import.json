@@ -37,6 +37,12 @@
     "tooLargeShort": "The file is larger than {limit}."
   },
   "detected": "We detected {encoding} encoding and {delimiter} as the separator.",
+  "previewFailed": {
+    "title": "We could not load the file preview",
+    "nextStep": "Please try again. If it keeps failing, upload the file once more. Technical detail: {detail}",
+    "retry": "Try again",
+    "loading": "Loading the file preview…"
+  },
   "fileCheck": {
     "title": "Check that we are reading the file correctly",
     "encoding": "Encoding",

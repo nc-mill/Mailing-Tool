@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { z } from 'zod';
 import { applyFileSecrets } from './file-secrets';
 import { ConfigSchema, configVariableNames, type MlainConfig } from './schema';
@@ -81,12 +80,16 @@ export function loadConfig(rawEnv: Record<string, string | undefined> = process.
   const config = parsed.data as MlainConfig;
 
   // Odvozené hodnoty. Musí být až po parsování, protože závisí na jiných polích.
-  const dataDir = path.resolve(config.DATA_DIR);
+  // Cesty se NENORMALIZUJÍ přes `path.resolve()`. Schéma vyžaduje absolutní
+  // cestu, takže není co dopočítávat, a `path.resolve` s proměnnou navíc mate
+  // stopovač souborů Nextu: hlásil „whole project was traced unintentionally"
+  // a nafukoval serverový výstup.
+  const dataDir = config.DATA_DIR;
   const derived: MlainConfig = {
     ...config,
     DATA_DIR: dataDir,
-    UPLOADS_DIR: path.resolve(config.UPLOADS_DIR ?? path.join(dataDir, 'uploads')),
-    BACKUP_DIR: path.resolve(config.BACKUP_DIR ?? path.join(dataDir, 'backups')),
+    UPLOADS_DIR: config.UPLOADS_DIR ?? `${dataDir}/uploads`,
+    BACKUP_DIR: config.BACKUP_DIR ?? `${dataDir}/backups`,
     DATABASE_URL_SENDER: config.DATABASE_URL_SENDER ?? deriveSenderUrl(config.DATABASE_URL),
     // Celá adresa VČETNĚ schématu, ne holý host, přestože se proměnná jmenuje
     // „doména". Původně to bylo `new URL(config.APP_URL).host`, což vyrábělo

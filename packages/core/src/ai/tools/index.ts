@@ -42,7 +42,17 @@ export type ToolContext = {
     logoAssetId: string | null;
     warnings: string[];
   }>;
-  composeTemplate: (input: unknown) => Promise<{ templateDraftId: string; preview: unknown }>;
+  /**
+   * Kromě shrnutí vrací i celý dokument v blokovém modelu. Panel asistenta ho
+   * z výstupu nástroje čte (`draftFromToolOutput`) a vkládá do editoru; bez
+   * něj by uživatel viděl kroky generování a pak prázdné plátno. Do
+   * `ai_messages` se ukládá jen shrnutí, o to se stará `compactToolResult`.
+   */
+  composeTemplate: (input: unknown) => Promise<{
+    templateDraftId: string;
+    preview: unknown;
+    document?: unknown;
+  }>;
   writeCopy: (input: unknown) => Promise<{ text: string } | { items: string[] }>;
   suggestSubject: (input: unknown) => Promise<{
     variants: Array<{ subject: string; preheader: string; rationale: string }>;

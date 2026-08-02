@@ -4,11 +4,15 @@ import { useState } from 'react';
 import { useRouter } from '@mlain/i18n/navigation';
 import { AddProviderDialog } from './add-provider-dialog';
 import { SendingSettings, type DomainView, type ProviderView } from './sending-settings';
+import { TrialModePanel, type TrialView } from './trial-mode-panel';
 import type { GuardLimits, GuardSettings } from './guard-thresholds';
 import {
+  addTrialAddressAction,
   createProviderAction,
+  removeTrialAddressAction,
   saveGuardsAction,
   setDefaultProviderAction,
+  setTrialModeAction,
   testProviderAction,
 } from './actions';
 
@@ -18,6 +22,7 @@ export function SendingScreen({
   domains,
   guards,
   limits,
+  trial,
   basePath,
   workspaceId,
 }: {
@@ -25,6 +30,7 @@ export function SendingScreen({
   domains: DomainView[];
   guards: GuardSettings;
   limits: GuardLimits;
+  trial: TrialView;
   basePath: string;
   workspaceId: string;
 }) {
@@ -56,6 +62,31 @@ export function SendingScreen({
           return result;
         }}
       />
+
+      {/* Zkušební režim patří na tuhle obrazovku, ne na vlastní: rozhoduje o tom,
+          komu se odešle, stejně jako odesílací účet a doména nad ním. */}
+      <div className="mt-10">
+        <TrialModePanel
+          trial={trial}
+          onToggle={async (enabled) => {
+            const result = await setTrialModeAction({ workspaceId, enabled });
+            // Bez obnovy by odznak stavu i popisek tlačítka zůstaly na staré hodnotě:
+            // stav přichází ze serveru, komponenta si ho nedrží.
+            if (result.status === 'success') router.refresh();
+            return result;
+          }}
+          onAddAddress={async (email) => {
+            const result = await addTrialAddressAction({ workspaceId, email });
+            if (result.status === 'success') router.refresh();
+            return result;
+          }}
+          onRemoveAddress={async (email) => {
+            const result = await removeTrialAddressAction({ workspaceId, email });
+            if (result.status === 'success') router.refresh();
+            return result;
+          }}
+        />
+      </div>
 
       {addingProvider && (
         <AddProviderDialog

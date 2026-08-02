@@ -53,3 +53,13 @@ export const DELEGATION_TTL_DAYS = 14;
 /** Zkusebni rezim: nejvyse 10 overenych adres a 50 zprav za 24 hodin (cast 6, 8.2.8). */
 export const TRIAL_MAX_VERIFIED_ADDRESSES = 10;
 export const TRIAL_MAX_MESSAGES_PER_DAY = 50;
+
+/**
+ * Platnost potvrzovaciho odkazu na overovanou adresu.
+ *
+ * DOPLNEK NAD PLÁN: plán zkusebni rezim popisuje, ale zivotnost odkazu nikde nerika.
+ * Tyden je kompromis mezi „prisel jsem k tomu az v pondeli" a tim, ze odkaz je
+ * bezstavovy (rozhodnuti D15 zakazuje vlastni tabulku), takze ho nejde odvolat jinak
+ * nez vyprsenim nebo rotaci klice.
+ */
+export const TRIAL_VERIFY_TTL_DAYS = 7;

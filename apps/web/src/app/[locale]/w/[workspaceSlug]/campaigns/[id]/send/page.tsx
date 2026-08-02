@@ -3,8 +3,10 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api-client/fetch';
 import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
+import { trialAudienceNotice } from '@mlain/core/providers';
 import { SendScreen } from '@/features/campaigns/send-screen';
 import type { Preflight } from '@/features/campaigns/readiness-checklist';
+import type { TrialView } from '@/features/sending/trial-mode-panel';
 
 /**
  * Stránka závisí na přihlášeném uživateli, takže se NEPŘEDRENDEROVÁVÁ.
@@ -46,12 +48,29 @@ export default async function SendPage({ params }: PageProps) {
   if (!access.ok) notFound();
   const workspaceId = access.data.workspace.id;
 
-  const [campaign, preflight] = await Promise.all([
+  const [campaign, preflight, trial] = await Promise.all([
     apiFetch<CampaignDetail>(`/api/v1/campaigns/${id}`, { workspaceId }),
     apiFetch<Preflight>(`/api/v1/campaigns/${id}/preflight`, { workspaceId }),
+    apiFetch<TrialView>('/api/v1/settings/trial', { workspaceId }),
   ]);
 
   if (!campaign.ok || !preflight.ok) notFound();
+
+  /*
+   * Čísla do pruhu skládá `trialAudienceNotice()` z jádra, ne stránka. Je to
+   * tatáž funkce, kterou pokrývají jednotkové testy zkušebního režimu, takže
+   * se text na obrazovce nemůže rozejít s tím, co doména tvrdí.
+   *
+   * Zkušební režim vypnutý znamená `null`, tedy žádný pruh: varování, které visí
+   * pořád, přestane být varováním.
+   */
+  const trialNotice =
+    trial.ok && trial.data.trial_mode
+      ? trialAudienceNotice({
+          audienceSize: preflight.data.audience_estimate,
+          verifiedCount: trial.data.verified_count,
+        })
+      : null;
 
   const fromLine =
     campaign.data.from_name === ''
@@ -66,6 +85,11 @@ export default async function SendPage({ params }: PageProps) {
       fromLine={fromLine}
       subject={campaign.data.subject}
       preflight={preflight.data}
+      trialNotice={
+        trialNotice === null
+          ? null
+          : { audience: trialNotice.audience, willReceive: trialNotice.willReceive }
+      }
       basePath={`/w/${workspaceSlug}`}
     />
   );

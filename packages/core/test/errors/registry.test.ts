@@ -44,10 +44,10 @@ describe('registr chybových kódů', () => {
     expect(PROBLEM_CODES).toHaveLength(123);
     expect(FINDING_CODES).toHaveLength(18);
     expect(VALIDATION_CODES).toHaveLength(94);
-    expect(MESSAGE_CODES).toHaveLength(33);
+    expect(MESSAGE_CODES).toHaveLength(34);
     expect(IMPORT_ROW_CODES).toHaveLength(32);
     expect(OPERATIONAL_CODES).toHaveLength(23);
-    expect(ALL_REGISTERED_CODES.size).toBe(300);
+    expect(ALL_REGISTERED_CODES.size).toBe(301);
   });
 
   it('používá lower_snake_case bez výjimky (konvence 3.11)', () => {

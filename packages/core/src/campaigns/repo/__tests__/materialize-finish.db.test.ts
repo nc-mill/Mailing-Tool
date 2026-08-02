@@ -11,6 +11,13 @@ import { resumeTarget, shouldRunFinish } from '../../materialize/finish';
 import { startMaterialization, finishMaterialization, getProgress } from '../audience-progress';
 import { materializeBatch, type RenderPlan } from '../outbox';
 import { getCampaign } from '../campaign';
+import type { ResolvedTrialSettings } from '../../../providers/trial-mode';
+
+/**
+ * Vypnuty zkusebni rezim. Brana `canSendInTrial` je od teto zmeny POVINNY vstup
+ * materializace, takze si ji kazdy test musi vyslovne rozhodnout.
+ */
+const TRIAL_OFF: ResolvedTrialSettings = { trial_mode: false };
 
 const EMPTY_RENDER_PLAN: RenderPlan = {
   usedPaths: [],
@@ -37,6 +44,7 @@ describe('krok 3 materializace', () => {
       renderPlan: EMPTY_RENDER_PLAN,
       sampleContactIds: [],
       releaseAt: null,
+      trial: TRIAL_OFF,
     });
     await finishMaterialization(ctx.workspace, id, audienceBuiltAt!);
 
@@ -60,6 +68,7 @@ describe('krok 3 materializace', () => {
       renderPlan: EMPTY_RENDER_PLAN,
       sampleContactIds: [],
       releaseAt: null,
+      trial: TRIAL_OFF,
     });
     await finishMaterialization(ctx.workspace, id, audienceBuiltAt!);
     expect((await getCampaign(ctx.workspace, id))!.total_count).toBe(3);

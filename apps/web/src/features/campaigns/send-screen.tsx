@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from '@mlain/i18n/navigation';
-import { ReadinessChecklist, type Preflight } from './readiness-checklist';
+import { ReadinessChecklist, type Preflight, type TrialNotice } from './readiness-checklist';
 import { sendCampaignAction } from './actions';
 
 /**
@@ -16,6 +16,7 @@ export function SendScreen({
   fromLine,
   subject,
   preflight,
+  trialNotice,
   basePath,
 }: {
   workspaceId: string;
@@ -24,6 +25,7 @@ export function SendScreen({
   fromLine: string;
   subject: string;
   preflight: Preflight;
+  trialNotice: TrialNotice | null;
   basePath: string;
 }) {
   const router = useRouter();
@@ -34,6 +36,7 @@ export function SendScreen({
       campaignName={campaignName}
       fromLine={fromLine}
       subject={subject}
+      trialNotice={trialNotice}
       onSend={async (recipientCount) => {
         const result = await sendCampaignAction({
           workspaceId,

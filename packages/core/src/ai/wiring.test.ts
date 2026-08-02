@@ -133,6 +133,63 @@ describe('ochrany jsou zapojené, ne jen napsané', () => {
     expect(uses.some((line) => line.includes('instrumentation.ts'))).toBe(true);
   });
 
+  /**
+   * Skládání šablony bylo hotové, otestované a NIKDO HO NEVOLAL: nástroj
+   * `compose_template` vracel `ai_tool_unavailable`, takže panel asistenta byl
+   * formulář bez následku. Uživatel odeslal zadání, viděl kroky generování
+   * a pak nic. Tatáž třída vady jako I71, o patro níž.
+   */
+  it('composeTemplateDraft má produkčního volajícího, ne jen testy', () => {
+    const uses = productionUses('composeTemplateDraft(', 'packages/core/src/ai/compose.ts');
+    expect(
+      uses.length,
+      'skládání šablony nikdo nevolá, panel asistenta by nic nevygeneroval',
+    ).toBeGreaterThan(0);
+    expect(uses.some((line) => line.includes('api/internal/ai/chat/route.ts'))).toBe(true);
+  });
+
+  /**
+   * Druhá polovina téhož. Kdyby `composeTemplateDraft` někdo volal jinde, ale
+   * nástroj by dál hlásil nedostupnost, byl by test výš zelený a asistent by
+   * pořád nefungoval.
+   */
+  it('nástroj compose_template už nehlásí nedostupnost', () => {
+    let out = '';
+    try {
+      out = execFileSync(
+        'grep',
+        ['-rn', '--include=*.ts', "unavailableTool('compose_template')", 'apps/web/src'],
+        { cwd: ROOT, encoding: 'utf8' },
+      );
+    } catch {
+      out = '';
+    }
+    expect(out, 'compose_template je pořád zaslepený, i když implementace existuje').toBe('');
+  });
+
+  /**
+   * Bez tohohle se do `ai_messages` ukládal celý návrh šablony, tedy desítky
+   * kilobajtů na jednu zprávu. Funkce existovala, jen se z jejího modulu bralo
+   * pouze `MAX_RAW_OUTPUT_CHARS`, takže modul v grafu byl a rozhodnutí v něm ne.
+   */
+  it('compactToolResult se opravdu použije při ukládání zprávy', () => {
+    const uses = productionUses(
+      'compactToolResult(',
+      'packages/core/src/ai/conversation-service.ts',
+    );
+    expect(uses.length, 'výsledky nástrojů se ukládají celé').toBeGreaterThan(0);
+    expect(uses.some((line) => line.includes('api/internal/ai/chat/route.ts'))).toBe(true);
+  });
+
+  it('truncateRawOutput se opravdu použije, surová odpověď se nikam nevejde celá', () => {
+    const uses = productionUses(
+      'truncateRawOutput(',
+      'packages/core/src/ai/conversation-service.ts',
+    );
+    expect(uses.length, 'surová odpověď modelu se nikde nezkracuje').toBeGreaterThan(0);
+    expect(uses.some((line) => line.includes('src/ai/compose.ts'))).toBe(true);
+  });
+
   it('měřený fetch se v produkci opravdu používá, klíč tedy neteče do logu', () => {
     const uses = productionUses('createMeteredFetch(', 'metered-fetch.ts');
     expect(uses.length, 'odchozí volání jde mimo měřený fetch').toBeGreaterThan(0);

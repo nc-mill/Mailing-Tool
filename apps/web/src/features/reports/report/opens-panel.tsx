@@ -40,15 +40,23 @@ export function OpensPanel({
         {t('report.opens.heading')}
       </h2>
 
+      {/*
+       * Čtyři stavy metriky rozhoduje `metricDisplay` v jádře, ne tenhle
+       * soubor. Stav `not_measured` je vyřízený větví výš, kde má panel celou
+       * vlastní podobu; tady zbývá míra, míra z malého vzorku a pomlčka.
+       */}
       <p className="text-3xl font-semibold">
         {format.number(view.headlineCount ?? 0)}
-        {view.rate === null ? null : (
+        {view.display.kind === 'dash' || view.display.kind === 'not_measured' ? null : (
           <span className="ml-2 text-base">
-            {format.number(view.rate, { style: 'percent', maximumFractionDigits: 1 })}
+            {format.number(view.display.rate, { style: 'percent', maximumFractionDigits: 1 })}
           </span>
         )}
       </p>
       <p className="text-xs text-text-muted">{t(view.denominatorKey)}</p>
+      {view.display.kind === 'absolute' ? (
+        <p className="text-xs text-text-muted">{t('report.states.smallSample')}</p>
+      ) : null}
       {view.badgeKey === null ? null : (
         <p className="mt-1 inline-block rounded bg-warning-surface px-2 py-1 text-xs text-warning-text">
           {t(view.badgeKey)}

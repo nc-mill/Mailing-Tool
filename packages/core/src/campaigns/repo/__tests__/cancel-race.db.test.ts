@@ -9,6 +9,13 @@ import { readCampaignStatus } from '../campaign';
 import { withWorkspace } from '../../../tx';
 import { rawSql } from '../raw-sql';
 import type { KnownCampaignStatus } from '../../types';
+import type { ResolvedTrialSettings } from '../../../providers/trial-mode';
+
+/**
+ * Vypnuty zkusebni rezim. Brana `canSendInTrial` je od teto zmeny POVINNY vstup
+ * materializace, takze si ji kazdy test musi vyslovne rozhodnout.
+ */
+const TRIAL_OFF: ResolvedTrialSettings = { trial_mode: false };
 
 const EMPTY_RENDER_PLAN: RenderPlan = {
   usedPaths: [],
@@ -127,6 +134,7 @@ async function runOnce(
       renderPlan: EMPTY_RENDER_PLAN,
       sampleContactIds: [],
       releaseAt: null,
+      trial: TRIAL_OFF,
     },
   );
 

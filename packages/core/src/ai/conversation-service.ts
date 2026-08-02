@@ -1,8 +1,16 @@
 export const MAX_RAW_OUTPUT_CHARS = 4000;
 
-export function nextSeq(existing: readonly { seq: number }[]): number {
-  return existing.reduce((max, row) => Math.max(max, row.seq), 0) + 1;
-}
+/*
+ * SMAZANÁ FUNKCE `nextSeq`, ZÁMĚRNĚ A NATRVALO. Plán P15 (úkol 12) počítal
+ * s tím, že se pořadí zprávy dopočítá v aplikaci z už načtených řádků. Tak se
+ * to ale nedělá: `repo.appendMessage` dosazuje `seq` poddotazem uvnitř téhož
+ * `INSERT`, protože dva dotazy za sebou by při souběžných zprávách spadly na
+ * unikátním indexu `uq_ai_messages__ws_conversation_seq`.
+ *
+ * Nebylo to tedy zapomenuté zapojení, ale funkce, kterou produkce vědomě
+ * nahradila lepším řešením. Kdyby ji někdo zapojil, aby přestala být mrtvým
+ * kódem, vrátil by tím souběhovou vadu.
+ */
 
 export type CompactedToolResult = {
   type: 'tool-result';

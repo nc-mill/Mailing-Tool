@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { RenderPlan } from '../../repo/outbox';
 import { runMaterializeLoop, type LoopDeps } from '../loop';
+import type { ResolvedTrialSettings } from '../../../providers/trial-mode';
+
+/**
+ * Vypnuty zkusebni rezim. Brana `canSendInTrial` je od teto zmeny POVINNY vstup
+ * materializace, takze si ji kazdy test musi vyslovne rozhodnout.
+ */
+const TRIAL_OFF: ResolvedTrialSettings = { trial_mode: false };
 
 /**
  * Plán tuhle konstantu ve svém snippetu používal, ale nedefinoval. Šablona bez merge
@@ -33,6 +40,7 @@ const base = {
   renderPlan: EMPTY_RENDER_PLAN,
   sampleContactIds: [],
   releaseAt: null,
+  trial: TRIAL_OFF,
 };
 
 describe('smycka materializace', () => {

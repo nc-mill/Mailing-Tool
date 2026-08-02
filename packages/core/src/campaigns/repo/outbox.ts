@@ -9,6 +9,7 @@ import { buildRenderData } from '../audience/render-data';
 // sám reexportuje. Konstanta se bere přímo z modulu, kde je definovaná.
 import { CANCEL_CLEANUP_BATCH_SIZE } from '../constants';
 import { SAMPLE_SOURCE_REF_PATTERN } from '../audience/sample-guard';
+import { canSendInTrial, type ResolvedTrialSettings } from '../../providers/trial-mode';
 import { rawSql } from './raw-sql';
 
 /**
@@ -38,6 +39,16 @@ export type MaterializeBatchInput = {
   sampleContactIds: readonly string[];
   /** Undo okno. Kdyz je null, zpravy jsou k odeslani okamzite. */
   releaseAt: string | null;
+  /**
+   * Zkusebni rezim projektu s UZ ROZHODNUTYM prepinacem (`resolveTrialSettings`).
+   *
+   * POLE JE POVINNE A JE TO ZAMER. Bylo napsane, otestovane a NIKDO ho nevolal:
+   * zapnuty zkusebni rezim kampan nezastavil a rozeslal ji vsem, zatimco obrazovka
+   * slibovala „z 12 480 prijemcu se odesle jen 2 overenym adresam". Nepovinne pole
+   * s vychozi hodnotou by tutez diru otevrelo pri prvnim dalsim volajicim, ktery
+   * ho zapomene predat. Takhle se to bez nej NEZKOMPILUJE.
+   */
+  trial: ResolvedTrialSettings;
   statementTimeoutMs?: number;
 };
 
@@ -46,6 +57,8 @@ export type MaterializeBatchResult = {
   inserted: number;
   /** Radky, ktere prekrocily strop render_data a vznikly rovnou jako skipped. */
   skippedOversize: number;
+  /** Radky, ktere zastavil zkusebni rezim. Cislo pro pruh na obrazovce publika. */
+  skippedTrial: number;
   nextCursor: string | null;
 };
 
@@ -108,17 +121,21 @@ export async function materializeBatch(
      ORDER BY c.id
      LIMIT $5`;
 
+  // `error_code` je v seznamu sloupcu ZAMERNE, i kdyz u vetsiny radku vychazi NULL.
+  // Bez nej vznikaly radky se stavem skipped a PRAZDNYM duvodem, takze z outboxu
+  // neslo poznat, jestli zpravu zastavil strop render_data, nebo zkusebni rezim.
+  // Prazdny retezec se prevadi na NULL, aby v pending radcich nezustal zadny kod.
   const INSERT_SQL = `
     INSERT INTO messages (
       workspace_id, campaign_id, contact_id, kind, email,
-      render_data, status, next_attempt_at, created_at
+      render_data, status, error_code, next_attempt_at, created_at
     )
     SELECT $1, $2, x.contact_id, 'campaign', x.email,
-           x.render_data, x.status,
+           x.render_data, x.status, nullif(x.error_code, ''),
            COALESCE($4::timestamptz, $3::timestamptz),
            $3::timestamptz
-      FROM unnest($5::uuid[], $6::text[], $7::jsonb[], $8::text[])
-        AS x(contact_id, email, render_data, status)
+      FROM unnest($5::uuid[], $6::text[], $7::jsonb[], $8::text[], $9::text[])
+        AS x(contact_id, email, render_data, status, error_code)
     ON CONFLICT (campaign_id, contact_id, created_at) DO NOTHING
     RETURNING contact_id`;
 
@@ -142,7 +159,7 @@ export async function materializeBatch(
     );
     const rows = candidates.rows;
     if (rows.length === 0) {
-      return { scanned: 0, inserted: 0, skippedOversize: 0, nextCursor: null };
+      return { scanned: 0, inserted: 0, skippedOversize: 0, skippedTrial: 0, nextCursor: null };
     }
 
     // Faze 2: priprava dat pro render. TOHLE je misto, kde vznika koren `_present`.
@@ -150,9 +167,36 @@ export async function materializeBatch(
     const emails: string[] = [];
     const renderData: string[] = [];
     const statuses: string[] = [];
+    const errorCodes: string[] = [];
     let skippedOversize = 0;
+    let skippedTrial = 0;
 
     for (const row of rows) {
+      const email = row.email.toLowerCase();
+
+      /**
+       * BRANA ZKUSEBNIHO REZIMU.
+       *
+       * Stoji PRED skladanim render_data ze dvou duvodu. Za prve je to totez misto,
+       * kde uz vypadava suppression (ta o kus vyse v obalce publika): zkusebni rezim
+       * je taz trida kontroly, tedy „tahle adresa nesmi dostat postu", a patri k ni.
+       * Za druhe se do outboxu neulozi ani snapshot osobnich udaju cloveka, kteremu
+       * se stejne nic neposle.
+       *
+       * Radek se ZAKLADA, nezahazuje se. Zahozeny radek by z rozpadu zmizel a
+       * uzivatel by nezjistil, koho zkusebni rezim zastavil; takhle je v outboxu
+       * skipped s duvodem a sender ho nikdy neclaimne, protoze claim bere pending.
+       */
+      if (!canSendInTrial(email, input.trial)) {
+        skippedTrial += 1;
+        contactIds.push(row.id);
+        emails.push(email);
+        renderData.push('{}');
+        statuses.push('skipped');
+        errorCodes.push('trial_not_verified');
+        continue;
+      }
+
       // Krok 1: snapshot hodnot kontaktu podle `usedPaths` a strop 8 kB.
       const snapshot = buildRenderData(row, input.renderPlan.usedPaths);
       if (snapshot.tooLarge) {
@@ -160,9 +204,12 @@ export async function materializeBatch(
         // daty, aby jedna patologicka hodnota atributu nenafoukla cely outbox.
         skippedOversize += 1;
         contactIds.push(row.id);
-        emails.push(row.email.toLowerCase());
+        emails.push(email);
         renderData.push('{}');
         statuses.push('skipped');
+        // Duvod se zapisuje az ted. Drive vznikal radek se stavem skipped a PRAZDNYM
+        // error_code, takze v outboxu nesel odlisit od zpravy zastavene necim jinym.
+        errorCodes.push('render_data_too_large');
         continue;
       }
 
@@ -172,9 +219,10 @@ export async function materializeBatch(
       const prepared = prepareRenderData(snapshot.data, input.renderPlan.preparedSchema);
 
       contactIds.push(row.id);
-      emails.push(row.email.toLowerCase());
+      emails.push(email);
       renderData.push(JSON.stringify(prepared));
       statuses.push('pending');
+      errorCodes.push('');
     }
 
     const inserted = await tx.execute<{ contact_id: string }>(
@@ -187,6 +235,7 @@ export async function materializeBatch(
         emails, // $6
         renderData, // $7
         statuses, // $8
+        errorCodes, // $9
       ]),
     );
 
@@ -194,8 +243,46 @@ export async function materializeBatch(
       scanned: rows.length,
       inserted: inserted.rows.length,
       skippedOversize,
+      skippedTrial,
       nextCursor: rows[rows.length - 1]!.id,
     };
+  });
+}
+
+/**
+ * Okamzita cesta zkusebniho rezimu.
+ *
+ * Materializace bere zkusebni rezim, jaky platil na zacatku behu. Kdyz ho uzivatel
+ * zapne AZ POTOM, uz vlozene pending radky by odesly, protoze o prepnuti nikdo nevi.
+ * Je to presne ta situace, kterou u suppression resi `revokePending`: zablokovana
+ * adresa taky vznikne az po materializaci a cekajici zpravy se pro ni rusi hned.
+ *
+ * `status = 'pending'` je zasadni ze stejneho duvodu jako tam: claimnuta zprava se
+ * NERUSI, protoze ji sender muze mit prave v ruce. Zbytek dobehne sender sam.
+ *
+ * Prazdny seznam potvrzenych adres je BEZNY stav, ne chyba: zapnout zkusebni rezim
+ * a nemit jeste zadnou potvrzenou adresu znamena zrusit vsechny cekajici zpravy,
+ * a presne to je ta ochrana.
+ */
+export async function revokePendingOutsideTrial(
+  ctx: WorkspaceContext,
+  verifiedEmails: readonly string[],
+): Promise<{ revoked: number }> {
+  return withWorkspace(ctx, async (tx) => {
+    const r = await tx.execute(
+      rawSql(
+        `UPDATE messages m
+            SET status = 'skipped',
+                error_code = 'trial_not_verified',
+                error_detail = 'revoked by trial mode',
+                updated_at = now()
+          WHERE m.workspace_id = $1
+            AND m.status = 'pending'
+            AND NOT (lower(m.email) = ANY($2::text[]))`,
+        [ctx.workspaceId, verifiedEmails.map((e) => e.toLowerCase())],
+      ),
+    );
+    return { revoked: r.rowCount ?? 0 };
   });
 }
 

@@ -1,7 +1,17 @@
 'use client';
 
 import { useFormatter, useTranslations } from 'next-intl';
+import type { DisabledReason } from '@mlain/core/reports/metrics/display';
 import { headlineTiles, type StatsPayload } from './report-model';
+
+/**
+ * Jediné místo, kde se z důvodu vypnutého měření stává text. Klíče existují
+ * oba, protože „nemá se z čeho počítat" u otevření a u prokliků není totéž.
+ */
+const NOT_MEASURED_KEY: Record<DisabledReason, string> = {
+  opens_disabled: 'report.states.trackingOffOpens',
+  clicks_disabled: 'report.states.trackingOffClicks',
+};
 
 export function HeadlineTiles({ payload }: { payload: StatsPayload }) {
   const t = useTranslations('reports');
@@ -23,21 +33,43 @@ export function HeadlineTiles({ payload }: { payload: StatsPayload }) {
           <h3 id={`tile-${tile.key}`} className="text-sm text-text-muted">
             {t(tile.labelKey)}
           </h3>
-          <p
-            className={
-              tile.size === 'primary' ? 'text-5xl font-semibold' : 'text-3xl font-semibold'
-            }
-          >
-            {format.number(tile.count)}
-          </p>
-          {tile.rate === null ? (
-            <p className="text-sm text-text-muted">{'–'}</p>
+
+          {/*
+           * VYPNUTÉ MĚŘENÍ NIKDY NEVYPADÁ JAKO NULA (3.16 části 5). Dřív se
+           * velké číslo vykreslovalo vždycky, takže kampaň s vypnutými prokliky
+           * hlásila „0", což znamená „nikdo neklikl", tedy úplně jinou věc.
+           * O tom, který ze čtyř stavů to je, rozhoduje `metricDisplay`
+           * v jádře, ne tahle komponenta.
+           */}
+          {tile.display.kind === 'not_measured' ? (
+            <p className="text-sm text-text-muted">{t(NOT_MEASURED_KEY[tile.display.reason])}</p>
           ) : (
-            <p className="text-sm">
-              {format.number(tile.rate, { style: 'percent', maximumFractionDigits: 1 })}
-            </p>
+            <>
+              <p
+                className={
+                  tile.size === 'primary' ? 'text-5xl font-semibold' : 'text-3xl font-semibold'
+                }
+              >
+                {format.number(tile.count)}
+              </p>
+              {tile.display.kind === 'dash' ? (
+                <p className="text-sm text-text-muted">{'–'}</p>
+              ) : (
+                <p className="text-sm">
+                  {format.number(tile.display.rate, {
+                    style: 'percent',
+                    maximumFractionDigits: 1,
+                  })}
+                </p>
+              )}
+              {/* Procento z malého vzorku se ukáže, ale s výhradou hned u něj. */}
+              {tile.display.kind === 'absolute' ? (
+                <p className="text-xs text-text-muted">{t('report.states.smallSample')}</p>
+              ) : null}
+              <p className="text-xs text-text-muted">{t(tile.denominatorKey)}</p>
+            </>
           )}
-          <p className="text-xs text-text-muted">{t(tile.denominatorKey)}</p>
+
           {tile.hintKey === null ? null : (
             <p className="mt-2 text-xs text-text-muted">{t(tile.hintKey)}</p>
           )}

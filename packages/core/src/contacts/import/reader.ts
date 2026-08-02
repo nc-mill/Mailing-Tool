@@ -54,6 +54,20 @@ export async function* readRows(path: string, opts: ReadOptions): AsyncGenerator
     }),
   );
 
+  /*
+   * `.pipe()` chybu ZDROJE cíli NEPŘEDÁVÁ. Bez tohohle řádku skončí chybějící
+   * nebo nečitelný soubor tak, že parser nedostane ani data, ani konec, takže
+   * `for await` níž čeká navždy. Změřeno: požadavek na náhled visel do
+   * vypršení a v logu po sobě nenechal nic.
+   *
+   * Selhat nahlas je jediné správné chování: chybějící soubor je porucha,
+   * ne prázdný soubor.
+   */
+  const sources: NodeJS.EventEmitter[] = stream === decoded ? [stream] : [stream, decoded];
+  for (const source of sources) {
+    source.on('error', (error: Error) => parser.destroy(error));
+  }
+
   const expected = opts.dialect.columnCount;
   let rowNumber = opts.startRowNumber ?? 0;
   let headerSeen = start > 0 || !opts.dialect.hasHeader;

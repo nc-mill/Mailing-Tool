@@ -77,5 +77,6 @@ export async function changePassword(input: ChangePasswordInput): Promise<void> 
     to: input.email,
     locale: user.locale,
     data: { changed_at: new Date().toISOString() },
+    userId: input.userId,
   });
 }

@@ -122,6 +122,7 @@ export async function createInvitation(
     to: email,
     locale: cfg().DEFAULT_LOCALE,
     data: { url: `${cfg().APP_URL}/invitations/accept?token=${token}` },
+    workspaceId: ctx.workspaceId,
   });
 
   return {

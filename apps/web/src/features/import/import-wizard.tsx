@@ -22,7 +22,12 @@ type ApiPreview = {
   delimiter: string;
   has_header: boolean;
   header: string[];
-  mapping: Record<string, unknown>;
+  mapping: Record<string, { target?: string } | undefined>;
+  /** Počet DATOVÝCH řádků celého souboru, bez hlavičky. */
+  total_rows: number;
+  total_rows_approximate: boolean;
+  /** Prvních pár řádků v surové podobě, ve stejném pořadí sloupců jako `header`. */
+  sample_rows: string[][];
   rows: {
     row_number: number;
     email: string | null;
@@ -35,6 +40,44 @@ type ApiPreview = {
   }[];
   mapping_warnings: string[];
 };
+
+/**
+ * Stav načtení náhledu. Čtyři hodnoty, ne `ApiPreview | null`, a je to
+ * podstatné: `null` nedokáže odlišit „ještě se to nenačetlo" od „načtení
+ * SELHALO". Průvodce pak selhání vykresloval jako výchozí hodnoty, tedy
+ * středník a nula kontaktů, přestože server měl v databázi správně
+ * detekovanou čárku a padesát řádků. Uživatel z toho usoudil, že se nahrálo
+ * málo řádků a špatný oddělovač, a šel opravovat nastavení, které bylo
+ * v pořádku. Prázdné číslo se nikdy nesmí tvářit jako výsledek (nález I72).
+ */
+type PreviewState =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'ready'; data: ApiPreview }
+  | { kind: 'failed'; detail: string };
+
+/**
+ * Převod mapování z podoby obrazovky do podoby API.
+ *
+ * Krok Mapování drží volby pod NÁZVEM sloupce a jako holý řetězec
+ * (`{ "email": "email" }`), kdežto server bere INDEX sloupce a objekt
+ * (`{ "1": { "target": "email" } }`) a jiný tvar odmítne s 422. Průvodce
+ * dřív posílal svou podobu rovnou a odpověď zahazoval, takže se mapování
+ * nikdy neuložilo a krok Náhled pracoval s návrhem serveru, ne s tím, co
+ * uživatel vybral. Neprojevilo se to ničím: obrazovka šla dál jako by se
+ * uložilo.
+ */
+function toApiMapping(
+  header: string[],
+  chosen: Record<string, string>,
+): Record<string, { target: string }> {
+  const out: Record<string, { target: string }> = {};
+  header.forEach((name, index) => {
+    const target = chosen[name];
+    out[String(index)] = { target: target === undefined || target === '' ? 'ignore' : target };
+  });
+  return out;
+}
 
 export type ImportWizardProps = {
   workspaceId: string;
@@ -75,57 +118,74 @@ export function ImportWizard({
   const step = current as Step;
 
   const [importId, setImportId] = useState<string | null>(initialImportId);
-  const [preview, setPreview] = useState<ApiPreview | null>(null);
+  const [preview, setPreview] = useState<PreviewState>({ kind: 'idle' });
   const [mapping, setMapping] = useState<Record<string, string>>({});
 
+  /**
+   * Selhání se MUSÍ projevit. Dřív tu stálo `if (!res.ok) return;`, takže
+   * pětistovka z náhledu neudělala vůbec nic: `preview` zůstal `null`,
+   * obrazovka vykreslila výchozí hodnoty a nikde, ani v konzoli, po tom
+   * nezůstala stopa.
+   */
   const loadPreview = useCallback(async () => {
     if (importId === null) return;
-    const res = await fetch(`/api/v1/contacts/imports/${importId}/preview`, {
-      headers: { 'X-Workspace-Id': workspaceId },
-    });
-    if (!res.ok) return;
-    setPreview((await res.json()) as ApiPreview);
+    setPreview({ kind: 'loading' });
+    try {
+      const res = await fetch(`/api/v1/contacts/imports/${importId}/preview`, {
+        headers: { 'X-Workspace-Id': workspaceId },
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        console.error(`Náhled importu ${importId} selhal: HTTP ${res.status}`, body);
+        setPreview({ kind: 'failed', detail: `HTTP ${res.status}` });
+        return;
+      }
+      setPreview({ kind: 'ready', data: (await res.json()) as ApiPreview });
+    } catch (error) {
+      console.error(`Náhled importu ${importId} se nepodařilo načíst.`, error);
+      setPreview({ kind: 'failed', detail: String(error) });
+    }
   }, [importId, workspaceId]);
+
+  /** Kroky, které bez odpovědi serveru nemají co zobrazit. */
+  const needsPreview = step === 'fileCheck' || step === 'mapping' || step === 'preview';
 
   useEffect(() => {
     if (step === 'fileCheck' || step === 'mapping' || step === 'preview') void loadPreview();
   }, [loadPreview, step]);
 
-  const sample: string[][] = preview
-    ? [
-        preview.header,
-        ...preview.rows
-          .slice(0, 2)
-          .map((row) => [row.email ?? '', row.first_name ?? '', row.last_name ?? '']),
-      ]
+  const data = preview.kind === 'ready' ? preview.data : null;
+
+  /**
+   * Ukázka v kroku Kontrola souboru jsou SUROVÉ buňky souboru, ne výsledná
+   * pole. Skládat řádek z e-mailu, jména a příjmení dávalo tabulku, jejíž
+   * sloupce nesedí na hlavičku, takže i správně přečtený soubor vypadal
+   * rozsypaně, což je přesně ta otázka, na kterou se ten krok ptá.
+   */
+  const sample: string[][] = data
+    ? data.has_header
+      ? [data.header, ...data.sample_rows]
+      : data.sample_rows
     : [];
 
   /**
-   * Ukázka u sloupce je HODNOTA, kterou ten sloupec vyrobil, ne n-tá hodnota
-   * prvního řádku. Indexování `Object.values(row)[index]` vypadá, že funguje,
-   * ale řadí se podle pořadí klíčů odpovědi, takže u sloupce s e-mailem
-   * ukazovalo číslo řádku. Odhalilo to teprve proklikání v prohlížeči.
+   * Mapování je od serveru klíčované INDEXEM sloupce („0", „1"), ne jeho
+   * názvem. Čtení `mapping[name]` proto vracelo vždycky `undefined` a krok
+   * Mapování měl u každého sloupce vybráno „Nepoužívat", i když si server
+   * sloupce správně rozpoznal sám.
+   *
+   * Ukázka u sloupce je hodnota TOHO sloupce z prvního datového řádku, takže
+   * sedí i u sloupců, které se nikam nemapují.
    */
-  const first = preview?.rows[0];
-  const sampleFor = (target: string): string => {
-    if (first === undefined) return '';
-    if (target === 'email') return first.email ?? '';
-    if (target === 'first_name') return first.first_name ?? '';
-    if (target === 'last_name') return first.last_name ?? '';
-    if (target === 'title_prefix') return first.title_prefix ?? '';
-    if (target === 'full_name')
-      return [first.first_name, first.last_name].filter(Boolean).join(' ');
-    return '';
-  };
-
-  const columns: MappingColumn[] = preview
-    ? preview.header.map((name) => {
-        const target = String((preview.mapping as Record<string, string>)[name] ?? 'ignore');
-        return { name, sample: sampleFor(target), target };
-      })
+  const columns: MappingColumn[] = data
+    ? data.header.map((name, index) => ({
+        name,
+        sample: data.sample_rows[0]?.[index] ?? '',
+        target: data.mapping[String(index)]?.target ?? 'ignore',
+      }))
     : [];
 
-  const previewRows: PreviewRow[] = (preview?.rows ?? []).map((row) => ({
+  const previewRows: PreviewRow[] = (data?.rows ?? []).map((row) => ({
     rowNumber: row.row_number,
     email: row.email,
     titlePrefix: row.title_prefix,
@@ -136,22 +196,35 @@ export function ImportWizard({
     state: row.state ?? 'ok',
   }));
 
-  const fileCheck: FileCheckPreview = {
-    encoding: preview?.encoding ?? 'utf-8',
-    delimiter: preview?.delimiter ?? ';',
-    hasHeader: preview?.has_header ?? true,
-    totalRows: previewRows.length,
+  /**
+   * Všechno ze serveru, nic z výchozích hodnot. `total_rows` je počet
+   * DATOVÝCH řádků, kdežto věta v kroku mluví o řádcích souboru („51 řádků,
+   * z toho 1 hlavička, tedy 50 kontaktů"), takže se hlavička přičítá zpátky.
+   */
+  const fileCheck: FileCheckPreview | null = data && {
+    encoding: data.encoding,
+    delimiter: data.delimiter,
+    hasHeader: data.has_header,
+    totalRows: data.total_rows + (data.has_header ? 1 : 0),
     sample,
   };
 
-  async function patch(body: Record<string, unknown>) {
-    if (importId === null) return;
-    await fetch(`/api/v1/contacts/imports/${importId}`, {
+  /** Vrací, jestli se uložilo. Průvodce na neuložené změně nesmí jít dál. */
+  async function patch(body: Record<string, unknown>): Promise<boolean> {
+    if (importId === null) return false;
+    const res = await fetch(`/api/v1/contacts/imports/${importId}`, {
       method: 'PATCH',
       headers: { 'X-Workspace-Id': workspaceId, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+    if (!res.ok) {
+      const detail = await res.text();
+      console.error(`Uložení nastavení importu ${importId} selhalo: HTTP ${res.status}`, detail);
+      setPreview({ kind: 'failed', detail: `HTTP ${res.status}` });
+      return false;
+    }
     await loadPreview();
+    return true;
   }
 
   return (
@@ -168,6 +241,27 @@ export function ImportWizard({
       {pending ? <p>{t('wizard.resumeBanner', { filename: pending.filename })}</p> : null}
       <p>{t('wizard.resumeExpiry')}</p>
 
+      {/*
+        Porucha čtení náhledu má vlastní hlášku s cestou ven. Kroky, které na
+        náhledu stojí, se v tu chvíli NEVYKRESLÍ: obrazovka s výchozím
+        oddělovačem a nulou kontaktů je horší než chybová hláška, protože
+        vypadá jako výsledek a svede uživatele přepsat nastavení, které je
+        v pořádku.
+      */}
+      {preview.kind === 'failed' && needsPreview ? (
+        <div role="alert" className="flex flex-col items-start gap-2">
+          <p>{t('previewFailed.title')}</p>
+          <p>{t('previewFailed.nextStep', { detail: preview.detail })}</p>
+          <button type="button" onClick={() => void loadPreview()}>
+            {t('previewFailed.retry')}
+          </button>
+        </div>
+      ) : null}
+
+      {preview.kind === 'loading' && needsPreview ? (
+        <p role="status">{t('previewFailed.loading')}</p>
+      ) : null}
+
       {step === 'upload' ? (
         <StepUpload
           workspaceId={workspaceId}
@@ -178,37 +272,40 @@ export function ImportWizard({
         />
       ) : null}
 
-      {step === 'fileCheck' ? (
+      {step === 'fileCheck' && fileCheck !== null ? (
         <StepFileCheck
           preview={fileCheck}
           onConfirm={async (result) => {
-            await patch({ encoding: result.encoding, delimiter: result.delimiter });
+            if (!(await patch({ encoding: result.encoding, delimiter: result.delimiter }))) return;
             goToStep('mapping');
           }}
         />
       ) : null}
 
-      {step === 'mapping' ? (
+      {step === 'mapping' && data !== null ? (
         <StepMapping
           preview={{ columns }}
           onNext={async (next) => {
             setMapping(next);
-            await patch({ mapping: next });
+            if (!(await patch({ mapping: toApiMapping(data.header, next) }))) return;
             goToStep('preview');
           }}
         />
       ) : null}
 
-      {step === 'preview' ? (
+      {step === 'preview' && data !== null ? (
         <StepPreview
           preview={{ rows: previewRows }}
           estimate={{
-            totalRows: previewRows.length,
+            // Celkový počet je o CELÉM souboru, `shown` o vykreslených řádcích.
+            // Dosazovat na obě místa délku náhledu znamenalo tvrdit, že soubor
+            // má dvacet řádků, ať měl kolik chtěl.
+            totalRows: data.total_rows,
             shown: previewRows.length,
             reviewRows: previewRows.filter((row) => row.gender === null).length,
             noEmailRows: previewRows.filter((row) => row.email === null || row.email === '').length,
             duplicateRows: previewRows.filter((row) => row.state === 'duplicate').length,
-            approximate: false,
+            approximate: data.total_rows_approximate,
           }}
           onNext={() => goToStep('options')}
         />
@@ -217,13 +314,14 @@ export function ImportWizard({
       {step === 'options' ? (
         <StepOptions
           estimate={{
-            totalRows: previewRows.length,
+            totalRows: data?.total_rows ?? 0,
             errorRows: previewRows.filter((row) => row.state === 'error').length,
             duplicates: previewRows.filter((row) => row.state === 'duplicate').length,
           }}
           lists={lists}
           onSubmit={async (value) => {
-            await patch({ options: { on_conflict: value.onConflict, tag: value.tag } });
+            if (!(await patch({ options: { on_conflict: value.onConflict, tag: value.tag } })))
+              return;
             if (importId !== null) {
               await fetch(`/api/v1/contacts/imports/${importId}/confirm`, {
                 method: 'POST',

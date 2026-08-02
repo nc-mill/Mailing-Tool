@@ -1,5 +1,11 @@
 import { composeSchema, formatZodIssues, type ComposeOutput } from './compose-schema';
-import { MAX_RAW_OUTPUT_CHARS } from './conversation-service';
+/*
+ * Zkracování surové odpovědi dělá `truncateRawOutput`, ne `.slice()` na třech
+ * místech. Dřív se odsud brala jen konstanta `MAX_RAW_OUTPUT_CHARS` a limit se
+ * aplikoval ručně; byla to druhá implementace téhož pravidla vedle funkce,
+ * kterou nikdo nevolal.
+ */
+import { truncateRawOutput } from './conversation-service';
 
 export type ComposeParams = {
   variant: 'newsletter' | 'announcement' | 'transactional' | 'reengagement';
@@ -106,7 +112,8 @@ export async function composeTemplateDraft(
               basePrompt,
               '',
               'Tvoje předchozí odpověď neprošla validací. Tady je, co jsi vrátil:',
-              (rawOutput ?? '').slice(0, MAX_RAW_OUTPUT_CHARS),
+              // Zkrácené je už při přiřazení, druhý ořez by byl jen zdvojení.
+              rawOutput ?? '',
               '',
               'Konkrétní chyby:',
               issues ?? '(neuvedeno)',
@@ -119,14 +126,14 @@ export async function composeTemplateDraft(
     } catch (error) {
       if (!deps.isNoObjectGenerated(error)) throw error;
       const typed = error as { text?: string };
-      rawOutput = typed.text ?? null;
+      rawOutput = truncateRawOutput(typed.text);
       issues = 'Odpověď nešla naparsovat jako JSON nebo neodpovídala schématu.';
       continue;
     }
 
     const parsed = composeSchema.safeParse(candidate);
     if (!parsed.success) {
-      rawOutput = JSON.stringify(candidate).slice(0, MAX_RAW_OUTPUT_CHARS);
+      rawOutput = truncateRawOutput(JSON.stringify(candidate));
       issues = formatZodIssues(parsed.error);
       continue;
     }
@@ -146,7 +153,7 @@ export async function composeTemplateDraft(
     const documentCheck = deps.validateDocument(document);
     const liquidCheck = deps.validateLiquid(document);
     if (!documentCheck.ok || !liquidCheck.ok) {
-      rawOutput = JSON.stringify(candidate).slice(0, MAX_RAW_OUTPUT_CHARS);
+      rawOutput = truncateRawOutput(JSON.stringify(candidate));
       issues = JSON.stringify([...documentCheck.errors, ...liquidCheck.errors]).slice(0, 2000);
       continue;
     }

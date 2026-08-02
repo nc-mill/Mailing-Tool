@@ -3,6 +3,7 @@ import { loadConfig, ConfigError } from '@mlain/core/config';
 import { createLogger } from '@mlain/core/logging';
 import { createShutdownController } from '@mlain/core/shutdown';
 import { aiKeyLeakCheck, type Check } from '@mlain/core/health';
+import { installSystemMailer } from '@mlain/core/platform/system-mail-runtime';
 import { registerQueues } from './boss';
 import { startHealthServer } from './health-server';
 import { HANDLERS } from './handlers.generated';
@@ -58,6 +59,15 @@ async function main(): Promise<void> {
   boss.on('stopped', () => {
     bossStopped = true;
   });
+
+  /**
+   * Kompoziční kořen systémové pošty. Ve workeru je potřeba stejně jako ve webu:
+   * upozornění na vypnutý webhook posílá `platform.webhook_deliver`, tedy job,
+   * který běží tady. Zapojení jen ve webu by znamenalo, že část systémové pošty
+   * chodí a část mizí, a to se hledá hůř než když nechodí nic.
+   */
+  installSystemMailer();
+  logger.info({}, 'systémová pošta je zapojená');
 
   await boss.start();
   await registerQueues(boss as never, HANDLERS, {

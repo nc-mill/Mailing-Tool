@@ -4768,3 +4768,222 @@ kampaň, ověřit adresa ani zapnout zkušební režim.
 Poučení: nepovinný callback dává smysl u komponenty, která má bez něj smysl.
 U jediné akce prázdného stavu je povinný, protože prázdný stav bez cesty ven
 není stav, ale slepá ulička.
+
+### I77. Vypnuté měření se zobrazovalo jako nula
+
+- **Našel:** hlavní agent hledáním nezapojených modulů
+- **Uzavřeno:** 2026-08-02, `metricDisplay()` zapojena do modelu reportu
+
+`packages/core/src/reports/metrics/display.ts` rozlišuje čtyři stavy metriky:
+míru, absolutní číslo u malého vzorku, pomlčku a „neměří se". V jeho hlavičce
+stojí přímo:
+
+> Vypnutý tracking nikdy nesmí vypadat jako nula (3.16 části 5).
+> Nula znamená „nikdo neotevřel", což je úplně jiná informace.
+
+Funkci ale **nikdo nevolal**. `headlineTiles()` počítalo pole
+`disabled: !payload.track_clicks`, které žádná komponenta nečetla, a dlaždice
+vykreslovala `format.number(tile.count)` vždycky. Kampaň s vypnutým měřením
+prokliků tedy hlásila velkou **nulu**. `small_sample` se v dlaždicích
+neuplatňoval vůbec.
+
+Vedle toho existovala druhá, částečná implementace téhož rozhodnutí
+v `opensView()`. Byla věcně správná, ale byla to druhá kopie, takže se obě
+mohly rozejít.
+
+Je to nejzávažnější z nálezů o nezapojených modulech, protože se neprojeví
+chybou: číslo tam je, vypadá věrohodně a znamená něco jiného. Uživatel podle
+něj může usoudit, že kampaň nikoho nezaujala, přestože se prokliky vůbec
+neměřily.
+
+Nalezeno skriptem, který prošel všechny doménové moduly s testy a ověřil, jestli
+je někdo volá. Za tentýž den to byl už čtvrtý případ tohohle tvaru (I71, I72,
+zkušební režim, tenhle), proto to hledání vzniklo.
+
+Poučení: zelený jednotkový test říká, že funkce počítá správně. O tom, jestli
+ji někdo volá, neříká nic. Vyplatí se to hledat strojově, protože ručně se to
+nepozná: v kódu nic nechybí, jen se nic neděje.
+
+### I78. Asistent nabídl skládání šablony a nedodal nic
+
+- **Našel:** hlavní agent hledáním nezapojených modulů
+- **Uzavřeno:** 2026-08-02, nástroj `compose_template` zapojen
+
+`composeTemplateDraft()` skládá návrh šablony ze zadání. Obrazovka asistenta
+byla přitom celá hotová: formulář se zadáním, tónem, jazykem a délkou, kroky
+generování i rozhodnutí nad návrhem se zálohou dokumentu.
+
+Chyběl jediný článek. Trasa chatu měla
+`composeTemplate: async () => unavailableTool('compose_template')`
+s komentářem, že čeká na barrel `@mlain/core/templates`. Ten barrel mezitím
+vznikl a nikdo se k tomu řádku nevrátil.
+
+Uživatel tedy vyplnil zadání, viděl kroky generování a nedostal nic.
+
+Poučení: zástupná implementace s poznámkou „čeká na X" potřebuje test, který
+zčervená, jakmile X existuje. Jinak čeká dál i potom, co dorazilo, a nikdo se
+to nedozví, protože to nikde nespadne.
+
+### I79. Funkce, kterou je správné smazat, ne zapojit
+
+- **Našel:** hlavní agent hledáním nezapojených modulů
+- **Uzavřeno:** 2026-08-02, `nextSeq` smazána i s testem
+
+Mezi nezapojenými funkcemi byla i `nextSeq` z `conversation-service.ts`, která
+počítá pořadové číslo zprávy v konverzaci.
+
+Nebylo to zapomenuté zapojení. Produkce ji vědomě nahradila lepším řešením:
+`repo.appendMessage` dosazuje pořadí poddotazem uvnitř téhož `INSERT`, protože
+dva dotazy za sebou by při souběžných zprávách spadly na porušení unikátního
+indexu. **Zapojit ji zpátky by znamenalo vrátit souběhovou vadu.**
+
+Smazána i s testem, na jejím místě je komentář, proč se nemá vracet.
+
+Poučení stojí vedle nálezu I77, ne proti němu: nezapojený modul je podezřelý,
+ne automaticky vadný. U každého je potřeba rozhodnout, jestli chybí zapojení,
+nebo jestli ho něco lepšího nahradilo. Mrtvý kód s testem vypadá jako hotová
+funkce a svádí k tomu ho někam připojit.
+
+### I80. Codegen hledal obsluhy jen o patro níž, import kontaktů nefungoval
+
+- **Našel:** agent při zapojování systémové pošty, dohledáno hlavním agentem
+- **Uzavřeno:** 2026-08-02, codegen prochází i druhou úroveň
+
+`apps/worker/codegen.mjs` procházel jen přímé podadresáře
+`packages/core/src/<domena>/jobs/`. Domény `contacts/export` a `contacts/import`
+jsou ale o úroveň hlouběji, takže je codegen **nikdy neviděl**, přestože obě
+měly `queue-handlers.ts` i explicitní klíč v `exports` mapě.
+
+Fronty importu a exportu kontaktů se tedy registrovaly BEZ OBSLUHY: úloha se
+zařadila, nikdo si ji nevyzvedl a import prostě nikdy neskončil. Uživatel vidí
+import, který se tváří, že běží.
+
+Nic nespadlo. Worker při startu vypisuje počet front a z nich těch s obsluhou
+(`queues: 61, with_handler: 10`), ale ten rozdíl nikoho netrkne, protože část
+front obsluhu opravdu mít nemá.
+
+Po opravě je `with_handler: 13`.
+
+Hloubka je omezená na dvě úrovně schválně. Dál by se hledaly adresáře `jobs`
+i tam, kde nemají co dělat, a jméno domény by přestalo odpovídat prefixu jména
+fronty, podle kterého se odvozuje.
+
+Poučení: automatické objevování souborů podle konvence je pohodlné a tiché.
+Když konvenci někdo poruší o jednu úroveň, nic nespadne, jen se něco přestane
+dít. Patří k němu kontrola, že každá deklarovaná fronta má obsluhu.
+
+### I81. Sedm hotových obsluh kampaní nikdo neregistroval
+
+- **Našel:** agent při zapojování systémové pošty
+- **Uzavřeno:** 2026-08-02 (zadáno), chybí `campaigns/jobs/queue-handlers.ts`
+
+`packages/core/src/campaigns/jobs/` obsahuje sedm hotových a otestovaných
+obsluh: materializace, plánovač, hlídač, obnova po kvótě, rekontrola domény,
+obnova kvóty a rekonciliace. Registr front na ně má jména.
+
+Chybí ale soubor `queue-handlers.ts`, který codegen hledá, takže o nich neví
+a fronty se registrují bez obsluhy. **Kampaň se tedy nikdy neodešle**: úloha
+`campaign.materialize` se zařadí a nikdo si ji nevyzvedne.
+
+Je to už pátý případ téže třídy za jediný den (I71, I72, I77, I80, tenhle):
+kód napsaný, otestovaný, nezapojený. Tady navíc v nejdražším možném místě,
+protože odeslání kampaně je hlavní funkce produktu.
+
+Komplikace, kterou to má: všech sedm obsluh bere injektované závislosti a žádná
+továrna na ně v repu není. Je to tatáž překážka jako u `content.brand_extract`
+a `ai.cleanup_conversations`, které jsou proto zaregistrované přes
+`needsDependencies()`, tedy jako obsluha, která při první úloze hlasitě řekne,
+co chybí.
+
+Poučení: mezi „logika je hotová a otestovaná" a „produkt to umí" je krok, který
+neměří žádný jednotkový test. V tomhle repu se na něm dnes zaseklo pětkrát,
+pokaždé v jiné doméně, takže to není nedbalost jednoho člověka, ale chybějící
+kontrola. Test, že každá deklarovaná fronta má obsluhu, je levný.
+
+### I82. Worker nemá čím číst napříč projekty, pět úloh proto nemůže fungovat
+
+- **Našel:** agent při zapojování obsluh front kampaní
+- **Stav:** OTEVŘENO, vyžaduje rozhodnutí o modelu oprávnění
+
+Pět systémových úloh potřebuje výčet NAPŘÍČ projekty: plánovač kampaní
+(`listWorkspaces`), hlídač běžících (`listRunning`), obnova po kvótě
+(`listPaused`), rekonciliace outboxu a rekontrola domén (`listDue`).
+
+Worker běží pod `DATABASE_URL`, tedy jako `mlain_app`, a ta bez nastaveného
+`mlain.workspace_id` nevidí nic. Ověřeno spuštěním proti čerstvě zmigrované
+databázi: `SELECT count(*) FROM workspaces` i `FROM campaigns` vrátí **nulu**,
+přestože řádky existují.
+
+Není to chybějící továrna, ale chybějící rozhodnutí. Migrace 0004 dává
+`workspaces` jen politiky vázané na kontext, a cross-workspace čtení má
+výhradně `mlain_sender` přes `sender_bypass`, který je pro ten účel napsaný
+vědomě a dobře zdokumentovaný.
+
+**Dopad:** naplánovaná kampaň se nikdy nespustí, protože ji plánovač nenajde.
+Okamžité odeslání funguje, materializace je zapojená a ověřená.
+
+Táž příčina stojí i za tím, že `platform.purge_workspaces` je zapojený, ale
+nemaže nic: `DELETE FROM workspaces` pod `withoutContext` zasáhne nula řádků.
+Ověřeno s projektem smazaným před 60 dny, vrátilo `DELETE 0`. Retence tedy
+běží a tváří se, že uklízí.
+
+**Doporučené řešení, až na to dojde:** vlastní role pro systémové skeny, tvarem
+podle `sender_bypass`, tedy politika `USING (true)` na jmenovaný seznam tabulek
+pro roli s vlastním připojením (`DATABASE_URL_MAINTENANCE`). Role
+`mlain_maintenance` už existuje, ale má bypass jen na `web_events`.
+
+`ALTER ROLE ... BYPASSRLS` se nepoužívá ze stejného důvodu jako u senderu: je
+hrubší, platí na všechno včetně tabulek, kam worker nemá co sahat, a vyžaduje
+superuživatele.
+
+Do zapojení té role jsou dotčené úlohy zaregistrované přes `needsDependencies`,
+takže při první úloze hlasitě řeknou, co chybí, místo aby tiše ležely ve frontě.
+Rozdíl je vidět: `retry` s vysvětlením proti `created`, kterého si nikdo
+nevšimne.
+
+### I83. Dopočítávání cest nafukovalo image o 4 MB
+
+- **Našel:** hlavní agent, změřeno P16 v hotové image
+- **Uzavřeno:** 2026-08-02, schéma vyžaduje absolutní cesty
+
+`packages/core/src/config/load.ts` dopočítával datové adresáře přes
+`path.resolve()`. Turbopack ten výraz neumí vyhodnotit a hlásil:
+
+```
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced
+unintentionally.
+```
+
+Vystopoval tedy do serverového výstupu celý projekt. Řetěz vedl přes trasu
+pro potvrzení adresy a službu zkušebního režimu, tedy přes nový kód; do té doby
+se ten výraz do grafu žádné trasy nedostal.
+
+Změřeno v hotové image, ne v builderu:
+
+```
+                   před        po        rozdíl
+image celkem      246,0 MB   242,0 MB   −4,0 MB
+/app/apps          33,6 MB    28,8 MB   −4,8 MB
+  .next/server     21,0 MB    19,0 MB   −2,0 MB
+varování NFT       2x         0x
+```
+
+Rezerva proti limitu 250 MB je tím dvojnásobná, 8 MB místo 4.
+
+Za pozornost stojí, že se úspora nerozdělila rovnoměrně: `.next/server` ubral
+2 MB, ale celý `/app/apps` 4,8 MB. Ten zbytek byly soubory, které vystopování
+zatáhlo mimo `.next`, tedy přesně to „vystopoval celý projekt".
+
+Oprava je věcná, ne obcházka: schéma konfigurace vyžaduje u `DATA_DIR`,
+`UPLOADS_DIR` a `BACKUP_DIR` absolutní cestu, takže není co dopočítávat.
+Relativní cesta u datového adresáře navíc znamená, že obsah instalace závisí
+na tom, odkud se proces spustil, což je past sama o sobě.
+
+Kontrola je `value.startsWith('/')`, ne `path.isAbsolute()`: ten by do modulu
+vrátil `node:path` a s ním přesně to, kvůli čemu se zavádí.
+
+Poučení k měření, ne k Turbopacku: úsporu ohlásil až `du` uvnitř hotové image.
+Předchozí pokus u `sharp` vycházel na 122 MB měřeno na výstupu buildu a v image
+neušetřil nic, protože se tam ty soubory nikdy nedostaly (nález o měření
+v mezivrstvě, viz I56). Měřit se musí tam, o čem je řeč.

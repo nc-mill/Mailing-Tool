@@ -31,6 +31,65 @@ export async function saveGuardsAction(input: {
   return { status: 'success' };
 }
 
+/**
+ * Zapnutí a vypnutí zkušebního režimu. Rozhoduje uložená hodnota, ne stav domény:
+ * jakmile se uživatel vyjádří, platí jeho volba (viz `resolveTrialMode` v jádru).
+ */
+export async function setTrialModeAction(input: {
+  workspaceId: string;
+  enabled: boolean;
+}): Promise<ActionResult> {
+  const result = await apiMutate<unknown>('/api/v1/settings/trial', {
+    method: 'PATCH',
+    workspaceId: input.workspaceId,
+    body: { trial_mode: input.enabled },
+  });
+  if (!result.ok) return { status: 'error', code: result.problem.code };
+  revalidatePath(SENDING_PATH, 'page');
+  return { status: 'success' };
+}
+
+export type AddTrialAddressResult =
+  | { status: 'success'; verificationUrl: string | null }
+  | { status: 'error'; code: string; detail: string };
+
+/**
+ * Přidání ověřované adresy. Adresa vzniká jako NEPOTVRZENÁ; ověřenou se stane až
+ * tím, že někdo otevře odkaz z e-mailu. `verificationUrl` přichází ze serveru jen
+ * mimo produkci, aby šel režim dokončit i bez zapojené odesílací pipeline.
+ */
+export async function addTrialAddressAction(input: {
+  workspaceId: string;
+  email: string;
+}): Promise<AddTrialAddressResult> {
+  const result = await apiMutate<{ verification_url: string | null }>(
+    '/api/v1/settings/trial/addresses',
+    { method: 'POST', workspaceId: input.workspaceId, body: { email: input.email } },
+  );
+  if (!result.ok) {
+    return { status: 'error', code: result.problem.code, detail: result.problem.detail };
+  }
+  revalidatePath(SENDING_PATH, 'page');
+  return { status: 'success', verificationUrl: result.data.verification_url };
+}
+
+/**
+ * Odebrání adresy ze seznamu. Adres je nejvýš deset, takže bez odebrání by projekt
+ * po deseti pokusech neměl kam přidat další.
+ */
+export async function removeTrialAddressAction(input: {
+  workspaceId: string;
+  email: string;
+}): Promise<ActionResult> {
+  const result = await apiMutate<unknown>(
+    `/api/v1/settings/trial/addresses/${encodeURIComponent(input.email)}`,
+    { method: 'DELETE', workspaceId: input.workspaceId },
+  );
+  if (!result.ok) return { status: 'error', code: result.problem.code };
+  revalidatePath(SENDING_PATH, 'page');
+  return { status: 'success' };
+}
+
 /** Kontrola DNS na jedno kliknutí. Rychlejší opakování než jednou za 30 s vrací 429. */
 export async function checkDomainAction(input: {
   workspaceId: string;

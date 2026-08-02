@@ -138,6 +138,7 @@ export async function applyDeliveryOutcome(input: DeliveryOutcomeInput): Promise
         to: recipient.email,
         locale: recipient.locale,
         data: { endpoint_id: input.endpointId, reason },
+        workspaceId: input.workspaceId,
       });
     }
   });

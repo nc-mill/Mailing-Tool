@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { compactToolResult, nextSeq, truncateRawOutput } from './conversation-service';
+import { compactToolResult, truncateRawOutput } from './conversation-service';
 
+/*
+ * Test na `nextSeq` je pryč spolu s funkcí, ne omylem. Pořadí zprávy dosazuje
+ * poddotaz uvnitř `INSERT` v `repo.appendMessage`; počítat ho v aplikaci
+ * z načtených řádků by při souběhu spadlo na unikátním indexu. Zdůvodnění je
+ * v `conversation-service.ts` na místě, kde funkce bývala.
+ */
 describe('ukládání zpráv konverzace', () => {
-  it('pořadí zpráv je hustá řada od jedničky', () => {
-    expect(nextSeq([])).toBe(1);
-    expect(nextSeq([{ seq: 1 }, { seq: 2 }])).toBe(3);
-  });
-
   it('výsledek compose_template se neukládá celý, jen shrnutí', () => {
     const compacted = compactToolResult('composeTemplate', {
       templateDraftId: 'd1',

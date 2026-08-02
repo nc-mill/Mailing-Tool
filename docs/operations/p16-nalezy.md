@@ -21,17 +21,52 @@ práce na úkolech 28 až 36.
 
 | # | Vada | Stav |
 |---|---|---|
-| A1 | lockfile vs. `packages/emails/package.json` | **opraveno**, ověřeno buildem |
-| A2 | doména `<x>/jobs` nejde vyřešit kvůli vzorům v `exports` | **opakuje se**; `platform` opravená, `ai` padá |
-| A3 | `apps/cli` bundluje nativní `.node` | **otevřené**, blokuje image |
-| A4 | chybějící export `handlers` | **opraveno**, ověřeno buildem |
+| A1 | lockfile vs. `packages/emails/package.json` | **opraveno** |
+| A2 | doména `<x>/jobs` nejde vyřešit kvůli vzorům v `exports` | **opraveno**, vzor zrušený a hlídá ho codegen |
+| A3 | `apps/cli` bundluje nativní `.node` | **opraveno** |
+| A4 | chybějící `export const handlers` ve třech doménách | **opraveno** |
 | A5 | `mlain migrate` není implementovaný | **opraveno** |
-| A6 | readiness vrátí 200 na instalaci bez schématu | **otevřené**, maskovalo A5 |
+| A6 | readiness vrátí 200 na instalaci bez schématu | **opraveno**, chybějící schéma je teď `fail` |
 | A7 | `apps/cli` nedeklaruje `@mlain/db` | **opraveno** |
-| A8 | vývojářský `.env.local` v build kontextu | **otevřené** |
-| A9 | `next build` vyžaduje běhovou konfiguraci | **otevřené**, shodí i CI |
-| A10 | `@node-rs/argon2` chybí v runtime image | **otevřené**, kontejner nenaskočí |
-| A11 | brána velikosti image hlásí překročení a skončí nulou | **otevřené** |
+| A8 | vývojářský `.env.local` v build kontextu | **opraveno**, `.dockerignore` |
+| A9 | `next build` vyžaduje běhovou konfiguraci | **opraveno**, `rateLimitRules()` je líná |
+| A10 | `@node-rs/argon2` chybí v runtime image | **opraveno**, kontrola je i v runtime vrstvě |
+| A11 | brána velikosti image | **planý poplach**, viz níž |
+| A12 | image nad limitem 250 MB | **opraveno**, 244 MB |
+
+### A11 nebyla vada, byl to artefakt měření
+
+`tools/ci/image-size.mjs` návratový kód vrací správně. Nula vyjde jedině tehdy,
+když se výstup prožene rourou:
+
+```
+node tools/ci/image-size.mjs <image>              EXIT=1
+node tools/ci/image-size.mjs <image> | tail -1    EXIT=0   <- kód `tail`, ne skriptu
+```
+
+V `ci.yml` se skript volá přímo, takže job spadne. Zapsáno proto, že to stálo
+tři zprávy a příště se to nemá opakovat: exit kód se měří bez roury, nebo se
+zapne `set -o pipefail`.
+
+### A12 velikost image: 9 MB map zdrojů
+
+Naměřeno v hotové image:
+
+```
+/app/apps/cli/dist/main.js.map      5,1 MB
+/app/apps/worker/dist/main.js.map   4,0 MB
+```
+
+Pět největších vrstev pro srovnání: základ `node:24.18.1-alpine` 148 MB,
+`.next/standalone` 54,7 MB, binárka senderu 21 MB, kořen Alpine 8,66 MB,
+`apps/cli/dist` 8,27 MB. Základ Node je 157 MB a ten se zmenšit nedá.
+
+Dvě stopy, které se NEPOTVRDILY a nemá cenu je zkoušet znovu:
+`postgresql18-client` má 3,8 MB, mapy ve `.next/standalone` jen 244 kB.
+
+Mapy se ořezávají ve fázi **builderu**, ne v runtime vrstvě. Vrstvy jsou
+přírůstkové, takže smazání souboru v pozdější vrstvě ho z image neodstraní,
+jen ho skryje, a velikost by zůstala stejná.
 
 **Image se po opravách A1 až A5 a A7 poprvé postavila celá** (`BUILD_EXIT=0`,
 265 MB), takže A8 až A11 jsou vady, které se do té doby nemohly ukázat.
@@ -352,7 +387,133 @@ image, a **to je porušení podmínek distribuce**, ne kosmetika. Plný text lic
 v repozitáři už je: `LICENSES/LGPL-3.0.txt`, 7 652 bajtů, staženo z
 `https://www.gnu.org/licenses/lgpl-3.0.txt`.
 
-### B4. Obrazovky, které zlatá cesta potřebuje a které v aplikaci nejsou
+### B4. Zkušební režim nemá API ani obrazovku
+
+| | |
+|---|---|
+| Adresát | P13 |
+| Doloží | `golden-path.spec.ts` a `trial-mode.spec.ts` |
+
+Doménová logika HOTOVÁ JE. `packages/core/src/providers/trial-mode.ts` má
+`canSendInTrial()`, `trialAudienceNotice()` i `addTrialAddress()`, tedy přesně
+to, co potřebuje jak zapnutí režimu, tak pruh na publiku podle 8.2.9.
+
+Chybí nad tím všechno ostatní:
+
+```
+grep -rln "trial" apps/web/src --include='*.tsx'      -> ani jeden soubor
+grep -rn  "trial" packages/core/src/providers/api/*.ts -> žádná trasa
+```
+
+Na obrazovce odesílání není nic o zkušebním režimu ani o ověřených adresách,
+jsou tam jen účty, domény a brzdy doručitelnosti.
+
+**Blokuje to celý zbytek zlaté cesty**, protože zkušební režim je podle
+kapitoly 0.5 plánu odpověď na rozpor R2: doména se v testu ani v živém demu
+neověřuje, protože DNS propagace trvá minuty až hodiny. Bez něj nejde ověřit
+adresu, poslat testovací e-mail ani odeslat kampaň, a nedá se ověřit rozhraní
+I→P13.2.
+
+Je to potřetí za jeden den táž třída vady: **logika napsaná a otestovaná,
+nikdo ji nezapojil.** Jednotkové testy `trial-mode.ts` jsou zelené a o tom, že
+se k té funkci nikdo nedostane, nevědí nic.
+
+### B5. Systémová pošta se nikdy nezapojila, e-maily se tiše zahazují
+
+| | |
+|---|---|
+| Adresát | P13, start procesu |
+| Doloží | `golden-path.spec.ts`, krok ověření adresy |
+
+**Dopad je mimo zlatou cestu:** z instalace neodejde ŽÁDNÝ transakční e-mail.
+Ověření adresy, obnova hesla, pozvánka do týmu, potvrzení odběru. Uživatel
+vidí „potvrzení odesláno" a čeká na zprávu, která nikdy nepřijde.
+
+Doslovně z logu běžící produkční image:
+
+```
+{"level":40,"template":"trial_address_verification","to":"overena@firma.cz",
+ "locale":"cs","msg":"system_mail_not_configured"}
+```
+
+V pasti `total: 0`, ve frontě pg-boss žádná úloha; nic se ani nepokusilo doručit.
+
+Výchozí implementace v `packages/core/src/platform/system-mail.ts` je
+`LoggingSystemMailer`, která zprávu **jen zaloguje a zahodí**. Hned pod ní stojí
+
+```ts
+/** Skutečnou implementaci zapojí P13 při startu procesu. */
+export function setSystemMailer(next: SystemMailer): void {
+```
+
+a tu funkci **nikdo nevolá**:
+
+```
+grep -rn "setSystemMailer" --include='*.ts' apps packages | grep -v system-mail.ts
+packages/core/src/platform/system-mail.test.ts:31   <- jediné volání, a to v testu
+```
+
+V produkci se navíc neloguje ani odkaz, takže se to nedá obejít ani ručně.
+
+**Ověření po opravě nesmí být „hláška zmizela".** Důkaz je, že
+`curl http://localhost:8125/api/v1/messages` po žádosti o ověření vrátí
+`total: 1` a ve zprávě je odkaz na potvrzení.
+
+### B6. Průvodce importem: obrazovka odporuje serveru
+
+| | |
+|---|---|
+| Adresát | P07, `apps/web/src/features/import/**` |
+| Doloží | `golden-path.spec.ts`, krok 3 |
+
+Krok 2 průvodce („Kontrola souboru") u `contacts-50.csv` ukazuje:
+
+```
+paragraph: Žádný řádek, z toho 1 hlavička, tedy žádný kontakt
+combobox "Oddělovač": option "Středník" [selected]
+```
+
+Server má přitom uloženo něco jiného, doslovně z tabulky `imports`:
+
+```
+filename:   contacts-50.csv     byte_size: 2779        <- celý soubor
+delimiter:  ,                   <- ČÁRKA, detekovaná správně
+encoding:   utf-8               has_header: t
+mapping:    {"0":{"target":"first_name"},"1":{"target":"email"}, …}
+status:     previewing          total_rows: (prázdné)
+```
+
+Dvě vady, každá zvlášť blokující:
+
+1. **Obrazovka nečte stav importu ze serveru.** Ukazuje výchozí „Středník"
+   a nulový počet, přestože v databázi je `,`. Uživatel podle toho sáhne na
+   nastavení, které je správně, a rozbije si ho.
+2. **Import uvízne ve stavu `previewing`** a `total_rows` zůstane prázdné.
+   Ruční přepnutí oddělovače na „Čárka" s tím nepohne, ověřeno.
+
+Je to táž rodina jako panel onboardingu, jen horší: data na serveru jsou
+v pořádku a obrazovka místo prázdna ukazuje **nesprávná čísla**.
+
+**Příčina, dohledaná v `apps/web/src/features/import/import-wizard.tsx`,
+funkce `loadPreview`:**
+
+```ts
+const res = await fetch(`/api/v1/contacts/imports/${importId}/preview`, …);
+if (!res.ok) return;          // <- tichý přeskok
+setPreview(await res.json());
+```
+
+Když `/preview` selže, `preview` zůstane `null` a obrazovka ukáže výchozí
+hodnoty, tedy středník a nulu. Nikde se to neukáže ani nezaloguje.
+
+**Ověření po opravě:** krok 2 musí u `contacts-50.csv` ukázat 50 kontaktů
+a mít vybranou „Čárku", tedy to, co má server.
+
+Cestou se ukázalo, že průvodce má **šest kroků**, ne čtyři jako v plánu:
+Nahrání, Kontrola souboru, Mapování, Náhled, Volby, Spuštění. V kroku Volby
+je navíc povinné zaškrtnutí právního důvodu, se kterým plán nepočítal.
+
+### B7. Obrazovky, které zlatá cesta potřebuje a které v aplikaci nejsou
 
 | | |
 |---|---|

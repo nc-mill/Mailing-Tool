@@ -5,6 +5,15 @@ import type { EstimateContext } from './estimate';
 export type PreviewRow = {
   rowNumber: number;
   state: 'ok' | 'error' | 'suppressed';
+  /**
+   * SUROVÉ buňky řádku, v pořadí sloupců souboru.
+   *
+   * Krok „Kontrola souboru" se ptá, jestli je text rozsypaný, a to jde poznat
+   * jedině na tom, co v souboru doopravdy stojí. Skládat ukázku z výsledných
+   * polí (e-mail, jméno, příjmení) dává tabulku, jejíž sloupce nesedí na
+   * hlavičku, takže vypadá poškozeně i u souboru, který je v pořádku.
+   */
+  fields: string[];
   email: string;
   title_prefix: string | null;
   first_name: string | null;
@@ -41,6 +50,7 @@ export async function buildPreview(
       rows.push({
         rowNumber: raw.rowNumber,
         state: 'error',
+        fields: raw.fields,
         email: raw.fields[0] ?? '',
         title_prefix: null,
         first_name: null,
@@ -55,6 +65,7 @@ export async function buildPreview(
       rows.push({
         rowNumber: raw.rowNumber,
         state: 'suppressed',
+        fields: raw.fields,
         email: raw.fields[0] ?? '',
         title_prefix: null,
         first_name: null,
@@ -69,6 +80,7 @@ export async function buildPreview(
       rows.push({
         rowNumber: raw.rowNumber,
         state: 'ok',
+        fields: raw.fields,
         email: processed.email,
         title_prefix: c.titlePrefix ?? null,
         first_name: c.firstName ?? null,

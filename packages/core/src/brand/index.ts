@@ -43,7 +43,13 @@ export type { BrandAnalysis, BrandAsset } from './extract/analyze';
 export { inferTone, toneSchema } from './extract/tone';
 export type { BrandTone } from './extract/tone';
 
-export { findBrandProfile, findDefaultBrandProfile, listBrandProfiles } from './repo/profiles.repo';
+export {
+  DEFAULT_PALETTE,
+  DEFAULT_TYPOGRAPHY,
+  findBrandProfile,
+  findDefaultBrandProfile,
+  listBrandProfiles,
+} from './repo/profiles.repo';
 export type { BrandPalette, BrandProfileSummary, BrandTypography } from './repo/profiles.repo';
 
 export {
