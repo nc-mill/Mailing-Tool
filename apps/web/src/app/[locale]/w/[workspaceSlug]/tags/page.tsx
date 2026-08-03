@@ -43,5 +43,5 @@ export default async function TagsPage({ params }: PageProps) {
   });
   if (!response.ok) return <ContactsProblem problem={response.problem} />;
 
-  return <TagsTable tags={response.data.data} />;
+  return <TagsTable workspaceId={access.data.workspace.id} tags={response.data.data} />;
 }

@@ -272,6 +272,44 @@ describe('zakázané přechody', () => {
     if (!result.allowed) return;
     expect(result.next).toBe('confirmed');
   });
+
+  /**
+   * Zkratka se zavírá i tehdy, když řádek v seznamu ještě neexistuje. Globální odhlášení
+   * se do stavu KONKRÉTNÍHO seznamu nepromítne, takže bez kontroly suppression by API
+   * s prohlášením vyrobilo potvrzené přihlášení a udělený souhlas člověku, který se
+   * odhlásil ze všeho. Prohlášení je tvrzení volajícího, ne projev vůle příjemce.
+   */
+  it('prohlášení neotevře zkratku adrese na živém suppression listu', () => {
+    const result = transition('none', {
+      kind: 'subscribe',
+      optIn: 'double',
+      source: 'api',
+      skipConfirmation: true,
+      declaration: true,
+      suppression: { reason: 'global_unsubscribe', createdAt: now, removedAt: null },
+      now,
+    });
+    expect(result.allowed).toBe(true);
+    if (!result.allowed) return;
+    expect(result.next).toBe('pending');
+    expect(result.effects).toContain('send_confirmation');
+    expect(result.effects).not.toContain('grant_consent');
+  });
+
+  it('odebraná blokace zkratku zase otevírá', () => {
+    const result = transition('none', {
+      kind: 'subscribe',
+      optIn: 'double',
+      source: 'api',
+      skipConfirmation: true,
+      declaration: true,
+      suppression: { reason: 'manual', createdAt: now, removedAt: now },
+      now,
+    });
+    expect(result.allowed).toBe(true);
+    if (!result.allowed) return;
+    expect(result.next).toBe('confirmed');
+  });
 });
 
 describe('úplnost automatu', () => {

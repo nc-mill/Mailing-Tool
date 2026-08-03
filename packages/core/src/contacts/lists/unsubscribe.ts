@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../../identity/types';
 import { emitWebhookEvent } from '../../platform/webhooks/emit';
 import { withWorkspace } from '../../tx';
+import { writeAudit } from '../audit';
 import { revokePendingMessages } from '../campaigns-port';
 import { recordConsent } from '../repo/consents';
 import { addSuppression } from '../repo/suppressions';
@@ -153,5 +154,43 @@ export async function snooze(
        WHERE contact_id = ${input.contactId}::uuid AND workspace_id = ${ctx.workspaceId}::uuid
          AND (${input.listId}::uuid IS NULL OR list_id = ${input.listId}::uuid)
     `);
+  });
+}
+
+/**
+ * Zrušení pozastavení. Protějšek `snooze`, který v produktu do téhle chvíle CHYBĚL:
+ * pozastavit odběr uměla stránka předvoleb i správce, zrušit ho neuměl nikdo, takže
+ * kontakt pozastavený na 90 dní byl 90 dní nedosažitelný a nešlo s tím nic dělat.
+ *
+ * Vrací počet dotčených přihlášení, ne void. Rozhraní podle něj pozná rozdíl mezi
+ * "pauza zrušena" a "žádná pauza tam nebyla", a nemusí to hádat z toho, že nic nespadlo.
+ *
+ * Zápis je podmíněný na `snooze_until IS NOT NULL`, takže druhý běh nemá co měnit
+ * a nezvedne `updated_at` řádkům, kterých se netýká.
+ */
+export async function cancelSnooze(
+  ctx: WorkspaceContext,
+  input: { contactId: string; listId: string | null },
+): Promise<{ cleared: number }> {
+  return withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<{ list_id: string }>(sql`
+      UPDATE list_subscriptions
+         SET snooze_until = NULL, updated_at = now()
+       WHERE contact_id = ${input.contactId}::uuid AND workspace_id = ${ctx.workspaceId}::uuid
+         AND (${input.listId}::uuid IS NULL OR list_id = ${input.listId}::uuid)
+         AND snooze_until IS NOT NULL
+      RETURNING list_id
+    `);
+
+    if (rows.length > 0) {
+      await writeAudit(tx, ctx, {
+        action: 'contact.snooze_cancelled',
+        targetType: 'contact',
+        targetId: input.contactId,
+        metadata: { list_id: input.listId, cleared: rows.length },
+      });
+    }
+
+    return { cleared: rows.length };
   });
 }

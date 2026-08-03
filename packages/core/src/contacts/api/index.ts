@@ -49,6 +49,7 @@ export const contactsApi = new OpenAPIHono<ContactsEnv>({ defaultHook: validatio
  * berou jen TYP prostředí (`import type`), takže cyklus za běhu nevzniká.
  */
 import { registerConsentRoutes } from './consents.routes';
+import { registerContactEditRoutes } from './contact-edit.routes';
 import { registerContactFieldRoutes } from './contact-fields.routes';
 import { registerContactRoutes } from './contacts.routes';
 import { registerGdprRoutes } from './gdpr.routes';
@@ -69,6 +70,10 @@ registerGdprRoutes(contactsApi);
 registerRetentionRoutes(contactsApi);
 registerVocativeReviewRoutes(contactsApi);
 registerNameOverrideRoutes(contactsApi);
+// Až za `registerContactRoutes`: PUT /contacts/{id} je jiná metoda,
+// /contacts/{id}/cancel-snooze má o segment navíc a /name-preview je vlastní kořen,
+// takže tady na pořadí nezáleží. Zdůvodnění je u definic v contact-edit.routes.ts.
+registerContactEditRoutes(contactsApi);
 
 /**
  * Registrace do hlavní aplikace. Stejný tvar jako `registerApiKeyRoutes` a spol., aby

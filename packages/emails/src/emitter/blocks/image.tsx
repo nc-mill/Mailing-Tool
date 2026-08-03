@@ -3,7 +3,7 @@ import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import type { AssetRef } from '../../compile/types';
 import type { ImageBlock } from '../../document/types';
 import { assetUrl, pickVariant } from '../assets';
-import { useEmitter } from '../ctx';
+import type { EmitterProps } from '../ctx';
 import { px } from '../style';
 import { BlockFrame } from './frame';
 
@@ -17,13 +17,14 @@ function Picture({
   block,
   displayWidth,
   className,
+  emitter,
 }: {
   asset: AssetRef;
   block: ImageBlock;
   displayWidth: number;
   className?: string | undefined;
-}): ReactElement {
-  const { assetBaseUrl, theme } = useEmitter();
+} & EmitterProps): ReactElement {
+  const { assetBaseUrl, theme } = emitter;
   const radius = block.props.borderRadius ?? theme.radius;
   return (
     <Img
@@ -49,11 +50,12 @@ function Picture({
 export function ImageBlockView({
   block,
   width,
+  emitter,
 }: {
   block: ImageBlock;
   width: number;
-}): ReactElement | null {
-  const { assets, linkHref } = useEmitter();
+} & EmitterProps): ReactElement | null {
+  const { assets, linkHref } = emitter;
   const asset = assets[block.props.assetId];
   // Chybějící asset zastaví validátor pravidlem S6. Kdyby přesto prošel,
   // je lepší obrázek vynechat než odeslat rozbitý <img> bez rozměrů.
@@ -72,18 +74,19 @@ export function ImageBlockView({
           { display: 'none', maxHeight: 0, overflow: 'hidden', msoHide: 'all' } as CSSProperties
         }
       >
-        <Picture asset={darkAsset} block={block} displayWidth={displayWidth} />
+        <Picture asset={darkAsset} block={block} displayWidth={displayWidth} emitter={emitter} />
       </div>
       <div className="ml-logo-light">
-        <Picture asset={asset} block={block} displayWidth={displayWidth} />
+        <Picture asset={asset} block={block} displayWidth={displayWidth} emitter={emitter} />
       </div>
     </>
   ) : (
-    <Picture asset={asset} block={block} displayWidth={displayWidth} />
+    <Picture asset={asset} block={block} displayWidth={displayWidth} emitter={emitter} />
   );
 
   return (
     <BlockFrame
+      emitter={emitter}
       padding={block.props.padding}
       backgroundColor={block.props.backgroundColor}
       hideOnMobile={block.props.hideOnMobile}

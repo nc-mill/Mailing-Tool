@@ -152,7 +152,11 @@ describe('POST /contacts', () => {
   });
 
   it('vytvořený kontakt vrací 201, hlavičku Location a normalizovanou adresu', async () => {
-    write.upsertContactFromApi.mockResolvedValue({ contact: CONTACT, created: true });
+    write.upsertContactFromApi.mockResolvedValue({
+      contact: CONTACT,
+      created: true,
+      warnings: [],
+    });
     const res = await app().request('/contacts', {
       method: 'POST',
       headers: JSON_HEADERS,
@@ -167,13 +171,35 @@ describe('POST /contacts', () => {
   });
 
   it('aktualizovaný kontakt vrací 200', async () => {
-    write.upsertContactFromApi.mockResolvedValue({ contact: CONTACT, created: false });
+    write.upsertContactFromApi.mockResolvedValue({
+      contact: CONTACT,
+      created: false,
+      warnings: [],
+    });
     const res = await app().request('/contacts', {
       method: 'POST',
       headers: JSON_HEADERS,
       body: JSON.stringify({ email: 'jan@example.cz' }),
     });
     expect(res.status).toBe(200);
+    // Bez přeskoku se pole varování v těle vůbec neobjeví. Prázdné pole v každé odpovědi
+    // by klienty naučilo ho ignorovat, a přesně tohle pole ignorovat nemají.
+    expect(await res.json()).not.toHaveProperty('warnings');
+  });
+
+  it('přeskočený seznam se ohlásí v těle, ne mlčením', async () => {
+    write.upsertContactFromApi.mockResolvedValue({
+      contact: CONTACT,
+      created: false,
+      warnings: ['suppressed_skipped'],
+    });
+    const res = await app().request('/contacts', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ email: 'jan@example.cz' }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).warnings).toEqual(['suppressed_skipped']);
   });
 
   it('neplatná adresa vrací 422 s kódem invalid_email', async () => {

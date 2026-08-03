@@ -173,7 +173,16 @@ export async function requestExtraction(
     status: 'pending',
   });
 
-  await deps.enqueue('content.brand_extract', { extractionId: inserted.id });
+  /*
+   * `workspaceId` v nákladu není nadbytečný údaj, ale podmínka zpracování:
+   * obsluha čte i zapisuje pod RLS a bez projektu nemá pod čím otevřít
+   * transakci. Přečíst si ho z řádku nemůže, protože ten řádek se bez kontextu
+   * projektu nedá načíst. Registr front P01 ho v `payloadFields` uvádí.
+   */
+  await deps.enqueue('content.brand_extract', {
+    workspaceId: params.workspaceId,
+    extractionId: inserted.id,
+  });
 
   // Každý pokus se zapisuje do audit logu. Je to jedno ze tří zmírnění
   // zbytkového rizika binárního orákula, které přiznáváme.

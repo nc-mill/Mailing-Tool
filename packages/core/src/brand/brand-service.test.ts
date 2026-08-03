@@ -104,7 +104,12 @@ describe('rate limit', () => {
       d,
     );
     expect(result).toMatchObject({ ok: true, id: 'e1', status: 202 });
-    expect(d.enqueue).toHaveBeenCalledWith('content.brand_extract', { extractionId: 'e1' });
+    // Projekt v nákladu je podmínka zpracování, ne ozdoba: obsluha bez něj
+    // nemá pod čím otevřít transakci a řádek pod RLS by nenačetla.
+    expect(d.enqueue).toHaveBeenCalledWith('content.brand_extract', {
+      workspaceId: 'w1',
+      extractionId: 'e1',
+    });
     expect(d.writeAuditLog).toHaveBeenCalledTimes(1);
   });
 });

@@ -36,7 +36,7 @@ export {
   discoverEncryptedColumns,
   unregisteredEncryptedColumns,
 } from './encrypted-columns';
-export { rotateCredentials } from './rotate-credentials';
+export { enqueueRefingerprint, rotateCredentials } from './rotate-credentials';
 export type { RotateReport } from './rotate-credentials';
 export { MIN_PASSWORD_LENGTH, resetPassword, UserNotFoundError } from './reset-password';
 export { rebuildEngagement } from './rebuild-engagement';

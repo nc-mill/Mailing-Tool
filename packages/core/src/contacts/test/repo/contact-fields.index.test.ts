@@ -22,9 +22,18 @@ describe('prověrka dotazovatelnosti vlastního pole', () => {
     const { id } = await createContactField(ctx, { key: 'city', type: 'text', label: { en: 'C' } });
     await requestFieldIndex(ctx, id);
     expect((await getContactField(ctx, id)).indexState).toBe('building');
+    const enqueued = await enqueuedJobNames(ctx);
+    expect(enqueued.filter((n) => n === 'contact_fields.verify_index')).toHaveLength(1);
+
+    // Jméno, pod kterým se úloha SKUTEČNĚ zařadila, musí být v registru front.
+    // Rozešlo se to už jednou: producent zařazoval 'contact_fields.verify_index',
+    // registr znal 'contact_fields.build_index', fronta se založila bez obsluhy
+    // a index vlastních polí se tiše nepřestavoval. Nic přitom nespadlo.
+    const { QUEUE_REGISTRY } = await import('../../../queues/index');
     expect(
-      (await enqueuedJobNames(ctx)).filter((n) => n === 'contact_fields.verify_index'),
-    ).toHaveLength(1);
+      QUEUE_REGISTRY.map((q) => q.name),
+      'producent zařazuje úlohu pod jménem, které registr front nezná',
+    ).toContain('contact_fields.verify_index');
   });
 
   it('devátá žádost se odmítne, i když předchozí ještě běží', async () => {

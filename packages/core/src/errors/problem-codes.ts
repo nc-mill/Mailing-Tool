@@ -619,6 +619,22 @@ export const PROBLEM_CODES: readonly ProblemCodeEntry[] = [
     source: 'spec',
   },
   {
+    // Doplněno pro trasy šablon. Plán P08 (Task 42) ho vyžaduje doslova, jak
+    // v mapování chyb, tak ve svém testu („returns 409, not 500, when a name
+    // collides"), a `duplicateTemplate` v `templates/service.ts` ho hází jako
+    // doménovou chybu. V registru přesto nebyl, takže by kolize jména skončila
+    // pětistovkou: `ApiError` neregistrovaný kód odmítne vyrobit.
+    //
+    // Jde vědomě o `template_name_conflict`, ne o obecný `already_exists`.
+    // Uživatel musí poznat, že si má jméno změnit, ne že šablona existuje.
+    code: 'template_name_conflict',
+    status: 409,
+    title: 'Template name already exists',
+    retryable: false,
+    domain: 'content',
+    source: 'derived',
+  },
+  {
     code: 'content_too_many_blocks',
     status: 413,
     title: 'Too many blocks in document',

@@ -11,7 +11,7 @@ import { useContactsTableLabels } from './table-labels';
 
 export type TagRow = { id: string; name: string; contact_count: number };
 
-export function TagsTable({ tags }: { tags: TagRow[] }) {
+export function TagsTable({ workspaceId, tags }: { workspaceId: string; tags: TagRow[] }) {
   const t = useTranslations('contacts');
   const router = useRouter();
   const toast = useToast();
@@ -70,7 +70,7 @@ export function TagsTable({ tags }: { tags: TagRow[] }) {
                 <Button
                   variant="secondary"
                   onClick={async () => {
-                    const result = await deleteTagAction({ id: row.id });
+                    const result = await deleteTagAction({ workspaceId, id: row.id });
                     if (result.status === 'success') {
                       toast.undoable({
                         message: t('tags.deleted', { name: row.name }),

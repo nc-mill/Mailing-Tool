@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { blockDefaults, DEFAULT_THEME } from '../../../src/document/defaults';
 import { resolveTheme } from '../../../src/theme/resolve';
 import { RawSlotSink } from '../../../src/normalize/slots';
-import { EmitterProvider } from '../../../src/emitter/ctx';
+import type { EmitterState } from '../../../src/emitter/ctx';
 import { applyRawSlots } from '../../../src/compile/apply-slots';
 import { ButtonBlockView } from '../../../src/emitter/blocks/button';
 import { inlineToHtmlString } from '../../../src/emitter/inline-html';
@@ -13,7 +13,7 @@ const MARKER = 'https://track.mlain.invalid/c/2f1a9c40-0000-5000-8000-0000000000
 
 async function renderButton(props: Record<string, unknown>) {
   const sink = new RawSlotSink('ab12cd34ef');
-  const state = {
+  const state: EmitterState = {
     theme: resolveTheme(DEFAULT_THEME),
     raw: sink,
     assets: {},
@@ -29,11 +29,7 @@ async function renderButton(props: Record<string, unknown>) {
     type: 'button' as const,
     props: { ...blockDefaults('button'), href: 'https://shop.cz/akce', ...props },
   } as ButtonBlock;
-  const html = await render(
-    <EmitterProvider value={state}>
-      <ButtonBlockView block={block} width={552} />
-    </EmitterProvider>,
-  );
+  const html = await render(<ButtonBlockView block={block} width={552} emitter={state} />);
   return applyRawSlots(html, sink);
 }
 

@@ -101,6 +101,7 @@ describe('VocativeReview', () => {
     const group = screen.getAllByTestId('vocative-group')[0]!;
     await user.click(within(group).getByRole('button', { name: 'Potvrdit návrh' }));
     expect(confirmGroup).toHaveBeenCalledWith({
+      workspaceId: 'w-1',
       groups: [
         {
           name_key: 'nikola',
@@ -136,6 +137,17 @@ describe('VocativeReview', () => {
     ).toHaveAttribute('data-recommended', 'true');
     expect(banner).toHaveTextContent('140 skupin');
     expect(within(banner).getByRole('button', { name: 'Přesto projít ručně' })).toBeInTheDocument();
+  });
+
+  it('„Přesto projít ručně" doporučující blok zavře a frontu nechá být', async () => {
+    // Tlačítko do téhle chvíle nemělo `onClick` a nedělalo nic, takže z bloku
+    // s doporučením nevedla jiná cesta než hromadná volba.
+    const user = userEvent.setup();
+    renderReview({ totals: { groups: 140, uncertainContacts: 900, totalContacts: 100000 } });
+    await user.click(screen.getByRole('button', { name: 'Přesto projít ručně' }));
+    expect(screen.queryByTestId('vocative-soft-limit')).toBeNull();
+    expect(neutralAll).not.toHaveBeenCalled();
+    expect(screen.getAllByTestId('vocative-group').length).toBeGreaterThan(0);
   });
 
   it('nad desetinou kontaktů nabídne totéž a uvede podíl v procentech', () => {

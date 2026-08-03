@@ -3,7 +3,22 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool, type PoolConfig } from 'pg';
 import * as schema from './schema/index';
 
-export type PoolKind = 'app' | 'readOnly';
+/**
+ * `maintenance` je pool role `mlain_maintenance`, tedy systémových úloh, které
+ * čtou napříč projekty. Chová se jako `app`, jen jede pod jinou rolí; vlastní
+ * hodnota je tu proto, aby se dalo v logu i v `pg_stat_activity` poznat, které
+ * spojení má výjimku z izolace projektů.
+ *
+ * `gdpr` je pool role `mlain_gdpr`, tedy jediné role s právem `DELETE`
+ * na `consents`. Aplikační roli ho migrace 0006 odebírá, protože souhlas je
+ * append only důkaz o zákonnosti zpracování; bez téhle hodnoty tedy produkční
+ * cesta k výmazu podle článku 17 neexistuje a `DELETE FROM consents` skončí
+ * na 42501 při KAŽDÉM výmazu v režimu `anonymize`, což je výchozí režim.
+ * Na rozdíl od `maintenance` tohle spojení výjimku z izolace projektů NEMÁ:
+ * `consents` má jen politiku `ws_isolation`, takže obálka `withGdpr` nastavuje
+ * `mlain.workspace_id` úplně stejně jako aplikační cesta.
+ */
+export type PoolKind = 'app' | 'readOnly' | 'maintenance' | 'gdpr';
 
 /**
  * Časová zóna se vynucuje NA KAŽDÉM SPOJENÍ, ne jen na databázi.

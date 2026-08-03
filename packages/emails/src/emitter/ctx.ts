@@ -1,8 +1,15 @@
-import { createContext, useContext } from 'react';
 import type { AssetRef } from '../compile/types';
 import type { RawSlotSink } from '../normalize/slots';
 import type { ResolvedTheme } from '../theme/resolve';
 
+/**
+ * Stav skládání e-mailu. Prochází stromem jako obyčejná vlastnost `emitter`,
+ * ne React kontextem: emitter je serverový šablonovací nástroj a `createContext`
+ * je v Nextu klientské API, takže by ho serverová trasa nesměla vtáhnout.
+ * Explicitní vlastnost navíc nemůže propadnout mezi souběžnými rendery,
+ * což by u modulového zásobníku hrozilo (`render` z react-emailu je proudový
+ * a strom se skládá až v pozdější úloze smyčky událostí).
+ */
 export type EmitterState = {
   theme: ResolvedTheme;
   raw: RawSlotSink;
@@ -17,12 +24,7 @@ export type EmitterState = {
   t: (key: string) => string;
 };
 
-const EmitterContext = createContext<EmitterState | null>(null);
-
-export const EmitterProvider = EmitterContext.Provider;
-
-export function useEmitter(): EmitterState {
-  const value = useContext(EmitterContext);
-  if (!value) throw new Error('Emitter components must be rendered inside EmitterProvider.');
-  return value;
-}
+/** Vlastnost, kterou nese každá komponenta emitteru. */
+export type EmitterProps = {
+  emitter: EmitterState;
+};

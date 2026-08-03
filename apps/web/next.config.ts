@@ -62,6 +62,13 @@ const config: NextConfig = {
   allowedDevOrigins: ['127.0.0.1', 'localhost'],
   // Balíčky @mlain/* jsou zdrojové, bez vlastního buildu.
   transpilePackages: ['@mlain/ui', '@mlain/i18n'],
+  // `sharp` je NATIVNÍ modul (libvips) a bundler ho zabalit nesmí: `.node`
+  // binárku by buď nenašel, nebo by ji zkopíroval bez odpovídajících
+  // platformních variant `@img/sharp-*`. Projeví se to až za běhu, a to
+  // hláškou „Could not load the sharp module using the darwin-arm64 runtime",
+  // tedy na nahrání obrázku, ne na buildu. Zpracování obrázků běží v procesu
+  // web (`POST /api/v1/assets`), takže se to týká i této aplikace, nejen workeru.
+  serverExternalPackages: ['sharp'],
   experimental: {
     // Ikony se importují jmenovitě, aby se nikdy nezabalil celý balík (14.3).
     optimizePackageImports: ['lucide-react'],

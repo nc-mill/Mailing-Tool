@@ -34,13 +34,20 @@ function findHandlerModules() {
    * Hloubka je omezená na dvě úrovně schválně: dál by se hledaly `jobs`
    * adresáře i tam, kde nemají co dělat, a jméno domény by přestalo odpovídat
    * prefixu jména fronty, podle kterého se odvozuje.
+   *
+   * OBĚ ÚROVNĚ SE PROCHÁZEJÍ VŽDY, i když první uspěje. Dřívější znění tady po
+   * nálezu na první úrovni skočilo na další adresář (`continue`), takže ve chvíli,
+   * kdy doména `contacts` dostala vlastní `contacts/jobs/queue-handlers.ts`,
+   * PŘESTALY se hledat `contacts/export/jobs` a `contacts/import/jobs`. Obsluhy
+   * importu a exportu kontaktů by z generovaného souboru tiše zmizely: nic by
+   * nespadlo, jen by import kontaktů znovu nikdy neskončil. Přesně ta vada, kvůli
+   * které se druhá úroveň prohledává.
    */
   const nalezene = [];
   for (const uroven1 of fs.readdirSync(coreSrc, { withFileTypes: true })) {
     if (!uroven1.isDirectory()) continue;
     if (fs.existsSync(path.join(coreSrc, uroven1.name, 'jobs/queue-handlers.ts'))) {
       nalezene.push(uroven1.name);
-      continue;
     }
     const vnoreno = path.join(coreSrc, uroven1.name);
     for (const uroven2 of fs.readdirSync(vnoreno, { withFileTypes: true })) {

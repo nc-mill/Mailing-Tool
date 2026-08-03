@@ -45,55 +45,96 @@ cd apps/web && pnpm exec next dev --port 3100
 curl http://localhost:3100/api/health
 ```
 
-## Ověřený stav
+## Stav k 2026-08-02, druhá vlna oprav
 
-Změřeno v databázi po migracích, souhlasí s plánem na kus:
-75 tabulek, 9 partitionovaných, 84 RLS politik, RLS na 67 tabulkách,
-7 migrací v ledgeru. Poslední čtyři politiky (`api_key_lookup`, `api_key_touch`,
-`ws_api_key_lookup`, `invitation_token_lookup`) doplňují požadavky P04→P03.5
-a P04→P03.6, tedy ověření API klíče a přijetí pozvánky bez workspace kontextu.
+**Práce NENÍ zacommitovaná.** Poslední commit je `11e0b10`, v pracovním stromu
+leží kolem 185 souborů.
 
-Aplikace odpovídá: `/api/health` 200, `/api/health/ready` 200 se čtyřmi zelenými
-kontrolami proti reálné databázi, `/` přesměruje na `/login`.
+### Kompletní série je celá zelená
 
-| Balíček | Testy |
-|---|---|
-| `packages/ui` | 358 |
-| `packages/core` | 251 |
-| `packages/db` | 184 proti reálnému PostgreSQL 18 |
-| `packages/contracts` | 235 |
-| `packages/emails` | 99 |
-| `apps/web` | 89 |
-| `tools/ci` | 79 |
-| `packages/i18n` | 36 |
-| `packages/config` | 24 |
-| `apps/worker` | 11 |
+```
+typecheck            15 z 15 balíčků
+test:unit            13 z 13 balíčků, 6278 testů
 
-## Vlny
+  @mlain/core        3902 (+1 přeskočený)
+  @mlain/web         1297 (+10 přeskočených)
+  @mlain/ui           366
+  @mlain/emails       342
+  @mlain/contracts    107
+  tools/ci             85
+  @mlain/worker        58
+  @mlain/i18n          46
+  apps/cli             37
+  @mlain/config        24
+  @mlain/db            14
 
-| Vlna | Plány | Stav |
-|---|---|---|
-| 0a | P01 kostra, provoz, CI | hotovo až na závěrečné ověření série |
-| 0b | P02 kontrakty | hotovo až na normativní SQL (běží) a Go runnery (čekají na P09) |
-| 0b | P05 design systém | komponenty hotové, napojení stylů na aplikaci běží |
-| 0c | P03 databáze | hotovo, doplňují se politiky pro `api_keys` a `invitations` |
-| 0d | P04 jádro API a identita | úkoly 1 až 22 hotové, 23 až 41 běží, 42 až 46 čekají |
-| 1 | P08 šablony | úkoly 1 až 13 hotové, zbytek čeká |
-| 1 | P06, P07, P09, P10 | čeká |
-| 2 | P11, P12, P13 | čeká |
-| 3 | P14, P15, P16 | čeká |
+brány                8 z 8 (i18n-check, openapi-drift, contracts-golden,
+                     contracts-fixtures-schema, contracts-schema,
+                     migration-lint, migrations-check, licenses-node)
+eslint, prettier     čisté
+```
 
-## Co zbývá k prokliknutelnému MVP
+`contracts-schema` a `migrations-check` se odmítají spustit bez databáze a je to
+tak správně navržené. Ověřeny proti vlastní zahozené databázi, ne přeskočeny.
 
-1. Napojit design systém na aplikaci, dnes se galerie vykresluje bez stylů.
-2. P04 úkoly 42 až 46 (OpenAPI, mount, kompletní série).
-3. P06: obrazovky `/setup`, `/login` a nastavení projektu. Bez nich není kam kliknout.
-4. P07: kontakty, aspoň seznam a detail.
-5. P16: ukázková data, aby v seznamech něco bylo.
+### Co se v téhle vlně dodělalo
 
-## Známé díry
+- **Suppression list se vymáhá** na všech zápisových cestách, ne jen na jedné.
+  Podle pravidla 4.1.2 se požadavek neodmítá, přeskok nese varování v odpovědi
+  a zápis do auditu. Odvolání souhlasu prochází vždy, blokuje se jen udělení.
+- **Výmaz podle článku 17 doběhne.** Přibylo `DATABASE_URL_GDPR` a produkční
+  kompoziční kořen; test hlídá SKUTEČNÉ VOLÁNÍ `installConsentEraser()`.
+- **Denní retence maže.** Cronový tik rozešle úlohu po projektech s rozprostřením
+  do tří hodin. Jedna úloha na projekt, aby pád jednoho nesebral retenci ostatním.
+- **Extrakce značky funguje.** Doména dostala zápisovou část, továrnu závislostí
+  i kompoziční kořen. Záměrně červený `ai/wiring.test.ts` zezelenal SÁM, jeho
+  tvrzení se nezmírňovala (ověřeno diffem: mimo komentáře beze změny).
+- **Všechny fronty domény kontaktů mají obsluhu.**
+- **Chybějící projekt v serverových akcích** je uzavřený jako třída, hlídá to
+  test s meta-tvrzením, že jeho výčet pokrývá všechny exportované akce.
+- **Vypínač brzd přihlašování pro vývoj**, viz níž.
+- Obě dřív červené brány spraveny (I93).
 
-- `test:db` v `packages/core` a `apps/web` neexistuje, CI job `test-db` tam nic nespustí.
-- Go runnery kontraktů čekají na produkční balíčky z P09.
-- `config.schema.json` neodpovídá tvaru manifestu konfigurace a nic to nevaliduje.
-</content>
+### Vývojářský vypínač brzd přihlašování
+
+```
+LOGIN_THROTTLING_DISABLED=true
+```
+
+Do `apps/web/.env.local`, pak restart dev serveru. Vypíná TŘI mechanismy:
+limity přihlašovacích cest, zamykání účtu po neúspěších a časovou podlahu
+odpovědi. Ověřování hesla se NEDOTÝKÁ.
+
+Pojistky: výchozí hodnota je vypnuto, v produkčním režimu se aplikace se
+zapnutým vypínačem NESPUSTÍ (chyba konfigurace, exit 78, ověřeno měřením)
+a při každém startu se o něm píše varování do logu.
+
+## Co zbývá dodělat
+
+1. **Brána proti driftu OpenAPI negarantuje nic** (I95). Porovnává dva soubory
+   na disku a sama negeneruje, takže při zapomenutém generování jsou zastaralé
+   oba a brána hlásí OK. Zuby má jen `apps/web/test/api/openapi.test.ts`, který
+   sahá na živě sloužený dokument. Brána má generovat sama, nebo to musí CI
+   udělat před ní.
+2. **Krok brány spouští neexistující test** (I96). `contracts-golden` volá
+   `go test -run TestGolden`, jenže žádný test se tak nejmenuje, takže vždycky
+   projde s „no tests to run" a Go reporty se NEGENERUJÍ. Ty v repozitáři jsou
+   zmrazené artefakty.
+3. **Tvar fixtures se rozchází s generátorem** (I96). `packages/contracts/fixtures/`
+   je v `.prettierignore`, takže kanonický tvar má určovat generátor, jenže
+   commitnutý tvar se od jeho výstupu liší jen formátováním. Každé spuštění
+   generátoru proto rozbije paritu.
+4. **`outbox.reconcile` zůstává bez obsluhy.** Sken projektů existuje, ale
+   `revokePending` pracuje nad kampaní, ne nad projektem. Doplnit znamená
+   rozhodnout, které kampaně projektu se rekonciliují a v jakém pořadí.
+5. **Fronty jiných domén** bez modulu jobu: P08 obsah a šablony, P10 tracking,
+   P11 segmenty, P13 outbox a provideři, P09 sender. Vedou se i s důvodem
+   v `apps/worker/test/handler-coverage.test.ts`.
+6. **Zlatá cesta v prohlížeči** (P16 E2E) nebyla po těchhle změnách dojetá celá.
+7. **Produkční image** se po téhle vlně nestavěla ani neměřila.
+
+## Dev data, na která pozor
+
+Kontakty `petr.novy@example.cz` a `jana.test2b@example.cz` ve vývojové databázi
+mají prázdné oslovení. Vznikly při testování ještě před opravou I91. Stačí je
+otevřít a uložit.

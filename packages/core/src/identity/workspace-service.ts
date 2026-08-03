@@ -6,6 +6,11 @@ import { loadConfig, type MlainConfig } from '../config';
 import { ApiError, validationFailed } from '../errors/api-error';
 import { writeAuditLog } from '../audit/write';
 import { diffForAudit } from '../audit/redact';
+// Transakční zařazení jobu vlastní doména kontaktů. Je to import PŘES DOMÉNU
+// uvnitř téhož balíčku, tedy táž hrana, jakou už používají `ai/repo.ts`,
+// `segments` i `templates`. Vlastní zapisovač do `pgboss.job` by byl druhá
+// implementace téhož a nesl by konfiguraci fronty odjinud než z registru.
+import { enqueue as enqueueContactsJob } from '../contacts/jobs/enqueue';
 import { IdentityAuditActions } from './audit';
 import { slugify } from './setup';
 import { verifyPassword } from './password';
@@ -246,6 +251,28 @@ export async function updateWorkspace(
   if (!row) throw new ApiError('not_found');
 
   const after = toPublicWorkspace(row);
+
+  // Změna vykání a tykání musí přepočítat oslovení VŠECH kontaktů projektu.
+  //
+  // `contacts.greeting` je odvozená hodnota: skládá se ze jména, uloženého
+  // vokativu a nastavení projektu. Přepočítává se při každém zápisu kontaktu,
+  // jenže změna nastavení žádný zápis kontaktu nevyvolá. Bez tohohle zařazení by
+  // projekt, který přepnul na tykání, viděl novou volbu v nastavení a rozeslal
+  // příští kampaň se starým oslovením; nic by přitom neselhalo.
+  //
+  // Zařazuje se v TÉŽE transakci jako změna sloupce, aby po odvolání transakce
+  // nezůstala úloha, která přepočítá oslovení podle nastavení, které se nakonec
+  // neuložilo. `singletonKey` je ID projektu, protože dvojí souběžný přepočet
+  // nad jedním projektem je jen dvojí práce.
+  if (before.address_form !== after.address_form) {
+    await enqueueContactsJob(
+      tx,
+      'contacts.recompute_greeting',
+      { workspaceId: ctx.workspaceId },
+      { singletonKey: ctx.workspaceId },
+    );
+  }
+
   await writeAuditLog(tx, {
     action: IdentityAuditActions['workspace.updated'],
     workspaceId: ctx.workspaceId,

@@ -10,8 +10,18 @@ export type ContactStateInput = {
   restriction_requested_at: string | null;
 };
 
+/**
+ * Akce, které detail kontaktu nabízí.
+ *
+ * `sendEmail` tu ZÁMĚRNĚ NENÍ. Tlačítko „Poslat jednorázový e-mail" se dřív vykreslilo,
+ * dalo se zmáčknout a nedělalo nic, protože pro jednorázové odeslání jednomu kontaktu
+ * v produktu neexistuje žádná trasa: testovací odeslání v editoru je vázané na šablonu
+ * kampaně a odesílá na zadané adresy, ne na kontakt. Nabízet akci, která nemá co zavolat,
+ * je horší než ji nenabízet, protože si uživatel myslí, že e-mail odešel.
+ * Až odesílání jednorázových zpráv vznikne, přidá se sem řádek zpátky.
+ */
 export type ContactAction =
-  | 'sendEmail'
+  | 'edit'
   | 'unsubscribe'
   | 'delete'
   | 'export'
@@ -68,10 +78,11 @@ export function describeContactState(contact: ContactStateInput): ContactStateVi
   }
 
   if (!readOnly) {
-    // Jednorázový e-mail nesmí odejít kontaktu s omezeným zpracováním. Kdyby akce jen
-    // spadla na chybu ze serveru, uživatel by nevěděl proč; proto se nenabízí vůbec
-    // a místo ní je vysvětlující blok.
-    if (!contact.processing_restricted) actions.push('sendEmail');
+    // Upravit jde každý kontakt, který není smazaný ani anonymizovaný, včetně toho
+    // s omezeným zpracováním: omezení se týká rozesílky a profilování, ne opravy
+    // překlepu ve jméně. Formulář na smazaném kontaktu by naopak skončil chybou
+    // ze serveru, proto je uvnitř téhle větve.
+    actions.push('edit');
     if (contact.status === 'active' || contact.status === 'unconfirmed') {
       actions.push('unsubscribe');
     }

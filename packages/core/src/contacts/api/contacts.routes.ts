@@ -1,7 +1,12 @@
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import { ApiError } from '../../errors/api-error';
 import { assertPermission } from '../../identity/permissions';
-import { deleteContact, restoreContact, changeContactEmail } from '../repo/contacts';
+import {
+  bulkDeleteContacts,
+  deleteContact,
+  restoreContact,
+  changeContactEmail,
+} from '../repo/contacts';
 import { batchUpsertFromApi, patchContact, upsertContactFromApi } from '../repo/contacts-api';
 import {
   countContacts,
@@ -67,6 +72,13 @@ const DeleteQuery = z.object({
   mode: z.enum(['soft', 'anonymize', 'purge']).default('soft'),
 });
 
+/**
+ * Varování k zápisu, který prošel, ale ne celý. Dnes jediná hodnota: kontakt je na
+ * suppression listu, takže se seznam ani udělený souhlas nezapsaly (pravidlo 4 z 4.1.2).
+ * Slovník je společný s importem, aby klient nemusel řešit, kterým kanálem řádek přišel.
+ */
+const WarningsSchema = z.array(z.enum(['suppressed_skipped'])).optional();
+
 const BatchResultSchema = z.object({
   results: z.array(
     z.object({
@@ -74,8 +86,58 @@ const BatchResultSchema = z.object({
       status: z.enum(['created', 'updated', 'skipped', 'error']),
       id: Uuid.optional(),
       error: z.object({ code: z.string() }).optional(),
+      warnings: WarningsSchema,
     }),
   ),
+});
+
+/**
+ * Rozsah hromadného mazání. Tvar těla přesně odpovídá tomu, co posílá
+ * `apps/web/src/features/contacts/actions.ts`: `{ ids }` u výběru na stránce,
+ * `{ filter }` u volby "vše, co odpovídá filtru".
+ *
+ * `filter` je TÝŽ objekt jako query GET /contacts/count, ne jeho opis. Kdyby měl vlastní
+ * definici, rozešel by se s ním po první změně filtrů a uživatel by smazal jinou množinu,
+ * než jakou mu obrazovka spočítala.
+ *
+ * Prázdný `filter: {}` je POVOLENÝ a znamená všechny kontakty projektu. Je to legitimní
+ * volba "označit vše" bez zapnutého filtru; potvrzuje se dialogem úrovně N3 se zaškrtnutím
+ * a nabídkou exportu (6.2 části 6), ne tím, že by ji server odmítal.
+ */
+const BulkDeleteBody = z
+  .object({
+    ids: z.array(Uuid).min(1).max(10000).optional(),
+    filter: CountQuery.strict().optional(),
+  })
+  .strict()
+  .refine((value) => (value.ids === undefined) !== (value.filter === undefined), {
+    message: 'required_field_missing',
+    path: ['ids'],
+  })
+  .openapi('BulkDeleteRequest');
+
+const bulkDeleteRoute = createRoute({
+  method: 'post',
+  path: '/contacts/bulk-delete',
+  tags: [TAG],
+  summary: 'Hromadné měkké smazání kontaktů',
+  security: [{ bearerAuth: ['contacts:write'] }],
+  request: {
+    headers: IdempotencyHeaderSchema,
+    body: { content: { 'application/json': { schema: BulkDeleteBody } } },
+  },
+  responses: {
+    202: {
+      description: 'Mazání zařazeno do fronty contacts.bulk_delete',
+      content: { 'application/json': { schema: z.object({ mode: z.literal('queued') }) } },
+    },
+    400: problemResponse('validation_failed'),
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    422: problemResponse('validation_failed'),
+    429: problemResponse('rate_limited'),
+  },
 });
 
 const listRoute = createRoute({
@@ -186,11 +248,19 @@ const createContactRoute = createRoute({
   responses: {
     200: {
       description: 'Kontakt aktualizován',
-      content: { 'application/json': { schema: z.object({ data: ContactResponseSchema }) } },
+      content: {
+        'application/json': {
+          schema: z.object({ data: ContactResponseSchema, warnings: WarningsSchema }),
+        },
+      },
     },
     201: {
       description: 'Kontakt vytvořen',
-      content: { 'application/json': { schema: z.object({ data: ContactResponseSchema }) } },
+      content: {
+        'application/json': {
+          schema: z.object({ data: ContactResponseSchema, warnings: WarningsSchema }),
+        },
+      },
     },
     401: problemResponse('unauthenticated'),
     403: problemResponse('forbidden', 'insufficient_scope'),
@@ -239,7 +309,11 @@ const patchRoute = createRoute({
   responses: {
     200: {
       description: 'Kontakt upraven',
-      content: { 'application/json': { schema: z.object({ data: ContactResponseSchema }) } },
+      content: {
+        'application/json': {
+          schema: z.object({ data: ContactResponseSchema, warnings: WarningsSchema }),
+        },
+      },
     },
     401: problemResponse('unauthenticated'),
     403: problemResponse('forbidden', 'insufficient_scope'),
@@ -316,10 +390,28 @@ const changeEmailRoute = createRoute({
 
 /**
  * Pořadí registrace není kosmetika. Cesty se statickým posledním segmentem (count, lookup,
- * batch) musí být zaregistrované dřív než /contacts/{id}, jinak by je router poslal do
- * parametru a klient by dostal invalid_uuid místo odpovědi.
+ * batch, bulk-delete) musí být zaregistrované dřív než /contacts/{id}, jinak by je router
+ * poslal do parametru a klient by dostal invalid_uuid místo odpovědi.
  */
 export function registerContactRoutes(app: OpenAPIHono<ContactsEnv>): void {
+  app.openapi(bulkDeleteRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    // Oprávnění se ověřuje tady i v `bulkDeleteContacts`. Není to duplicita zbytečně:
+    // doménovou funkci volá i CLI a job, takže bránu nesmí držet jen route vrstva.
+    assertPermission(ctx, 'contacts:write');
+    const body = c.req.valid('json');
+
+    // Mazání VŽDY jde do fronty, i pro tři id, a odpověď je 202. Rozhraní na tom staví:
+    // hlásí "mažeme", ne "smazáno". Viz komentář u `bulkDeleteContacts`.
+    await bulkDeleteContacts(
+      ctx,
+      body.ids === undefined
+        ? { mode: 'filter', filter: body.filter ?? {} }
+        : { mode: 'ids', ids: body.ids },
+    );
+    return c.json({ mode: 'queued' as const }, 202);
+  });
+
   app.openapi(countRoute, async (c) => {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'contacts:read');
@@ -374,9 +466,14 @@ export function registerContactRoutes(app: OpenAPIHono<ContactsEnv>): void {
   app.openapi(createContactRoute, async (c) => {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'contacts:write');
-    const { contact, created } = await upsertContactFromApi(ctx, c.req.valid('json'));
+    const { contact, created, warnings } = await upsertContactFromApi(ctx, c.req.valid('json'));
     if (created) c.header('Location', `/api/v1/contacts/${contact.id}`);
-    return c.json({ data: contact }, created ? 201 : 200);
+    // Varování se do těla dává jen když nějaké je: prázdné pole v každé odpovědi by
+    // klienty naučilo ho ignorovat, a přesně tohle pole ignorovat nemají.
+    return c.json(
+      { data: contact, ...(warnings.length > 0 ? { warnings } : {}) },
+      created ? 201 : 200,
+    );
   });
 
   app.openapi(detailRoute, async (c) => {
@@ -393,7 +490,10 @@ export function registerContactRoutes(app: OpenAPIHono<ContactsEnv>): void {
     assertPermission(ctx, 'contacts:write');
     const row = await patchContact(ctx, c.req.valid('param').id, c.req.valid('json'));
     if (row === null) throw new ApiError('not_found');
-    return c.json({ data: row }, 200);
+    return c.json(
+      { data: row.contact, ...(row.warnings.length > 0 ? { warnings: row.warnings } : {}) },
+      200,
+    );
   });
 
   app.openapi(deleteRoute, async (c) => {

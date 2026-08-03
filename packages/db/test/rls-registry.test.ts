@@ -108,12 +108,16 @@ describe('registr RLS proti skutečnému stavu', () => {
     }
   });
 
-  it('celkem existuje 84 politik', async () => {
+  it('celkem existuje 88 politik', async () => {
     const { rows } = await h
       .as('mlain_migrator')
       .query<{ n: number }>(
         `SELECT count(*)::int AS n FROM pg_policies WHERE schemaname = 'public'`,
       );
-    expect(rows[0].n).toBe(84);
+    // 84 → 88: migrace 0009 přidala čtyři politiky pro systémové skeny napříč
+    // projekty (`maintenance_scan` na workspaces, campaigns a sender_domains,
+    // `maintenance_purge` na workspaces). Exaktní číslo je pojistka proti
+    // politice, kterou někdo přidá bez záznamu v registru.
+    expect(rows[0].n).toBe(88);
   });
 });

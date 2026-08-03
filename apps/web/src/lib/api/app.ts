@@ -240,14 +240,25 @@ export function createApiApp() {
         ? c.req.raw.body !== null
         : Number(declaredContentLength) > 0;
     const pathname = new URL(c.req.url).pathname;
-    if (hasBody && ![...CONTENT_TYPE_EXEMPT_PREFIXES].some((p) => pathname.startsWith(p))) {
+    const exempt = [...CONTENT_TYPE_EXEMPT_PREFIXES].some((p) => pathname.startsWith(p));
+    if (hasBody && !exempt) {
       const declared = c.req.header('Content-Type') ?? '';
       if (declared.split(';')[0]?.trim() !== 'application/json') {
         throw new ApiError('unsupported_media_type');
       }
     }
+    // Strop na velikost těla platí pro tělo JSON, tedy pro endpointy, kterých
+    // se týká i kontrola typu výš. Výjimka je ZÁMĚRNĚ TÁŽ MNOŽINA cest, protože
+    // je to táž vlastnost: endpoint, který nebere JSON, si podle komentáře
+    // u `MAX_JSON_BODY_BYTES` deklaruje vlastní limit.
+    //
+    // Bez tohohle propojení byl `CONTENT_TYPE_EXEMPT_PREFIXES` k ničemu:
+    // nahrání kontaktů i obrázku prošlo kontrolou typu a hned nato spadlo na
+    // `payload_too_large` u čehokoli nad 1 MiB, tedy u skoro každého souboru,
+    // kvůli kterému ta výjimka vůbec vznikla. Skutečný limit hlídá doména
+    // (`ASSET_MAX_UPLOAD_MB`, `IMPORT_MAX_FILE_MB`) a umí říct, jaký je.
     const declaredLength = Number(declaredContentLength ?? '0');
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BODY_BYTES) {
+    if (!exempt && Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BODY_BYTES) {
       throw new ApiError('payload_too_large');
     }
     await next();

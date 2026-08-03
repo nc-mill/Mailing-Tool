@@ -19,6 +19,14 @@ export type CampaignRow = {
 export type CampaignListState = 'loading' | 'empty' | 'error' | 'data';
 
 /**
+ * Stavy, ve kterých se kampaň ještě dodělává. Shodné s bránou v `PATCH /campaigns/{id}`.
+ *
+ * Řádek v takovém stavu vede na NASTAVENÍ, ne na průběh: průběh u rozepsané
+ * kampaně ukazuje samé nuly a nenabízí místo, kde se dá kampaň dokončit.
+ */
+const DRAFT_STATUSES = new Set(['draft', 'schedule_missed']);
+
+/**
  * Čtyři stavy obrazovky (S1, S3, S4 a data). Prázdný stav vysvětluje pojem a nabízí
  * akci, stav načítání ukazuje kostru řádků místo kolečka a chybový stav nabízí
  * zopakování, ne jen hlášku.
@@ -147,7 +155,14 @@ export function CampaignList({
       ]}
       pagination={{ hasMore: false, canGoBack: false, onPrevious: () => {}, onNext: () => {} }}
       {...(basePath
-        ? { onRowActivate: (row: CampaignRow) => router.push(`${basePath}/${row.id}/progress`) }
+        ? {
+            onRowActivate: (row: CampaignRow) =>
+              router.push(
+                DRAFT_STATUSES.has(row.status)
+                  ? `${basePath}/${row.id}`
+                  : `${basePath}/${row.id}/progress`,
+              ),
+          }
         : {})}
     />
   );

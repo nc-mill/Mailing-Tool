@@ -1,5 +1,21 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Harness, startHarness } from './helpers/container';
+
+/**
+ * Počet migrací se ČTE Z ŽURNÁLU, ne píše natvrdo.
+ *
+ * Natvrdo tu bylo číslo 7 a bylo zastaralé o tři migrace, takže test padal
+ * i bez jediné změny v tomhle souboru a nikdo z toho nepoznal, jestli se
+ * rozbil downgrade guard, nebo jen přibyla migrace. Jméno testu přitom říká
+ * „rovné počtu migrací", tak ať to opravdu měří.
+ */
+function migrationCount(): number {
+  const journal = fileURLToPath(new URL('../migrations/meta/_journal.json', import.meta.url));
+  const parsed = JSON.parse(readFileSync(journal, 'utf8')) as { entries: unknown[] };
+  return parsed.entries.length;
+}
 
 let h: Harness;
 beforeAll(async () => {
@@ -32,7 +48,7 @@ describe('system_settings', () => {
       .query<{ schema_version: number }>(
         'SELECT schema_version FROM system_settings WHERE id = true',
       );
-    expect(rows[0].schema_version).toBe(7);
+    expect(rows[0].schema_version).toBe(migrationCount());
   });
 
   it('aplikační role NESMÍ přepsat schema_version ani řádek smazat', async () => {

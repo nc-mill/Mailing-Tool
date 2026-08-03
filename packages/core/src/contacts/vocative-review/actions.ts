@@ -76,13 +76,15 @@ type MemberRow = {
 };
 
 /**
- * Operace nad celou skupinou fronty. Do pěti tisíc kontaktů běží synchronně v jedné
- * transakci, nad ně se zařadí job s ukazatelem průběhu.
+ * Kontrola vstupu, kterou musí projít OBĚ cesty, tedy synchronní i ta přes frontu.
+ *
+ * Je to samostatná funkce, protože job `contacts.bulk_vocative_review` je druhý
+ * vstupní bod téhle operace a náklad úlohy může být starší než dnešní podoba
+ * rozhraní. Prázdný vokativ by u akce `set_vocative` zamkl celé skupině prázdnou
+ * hodnotu, a to je přesně ten tichý zásah do oslovení, kterému se celá doména
+ * vyhýbá.
  */
-export async function applyGroupAction(
-  ctx: WorkspaceContext,
-  input: GroupActionInput,
-): Promise<{ mode: 'sync' | 'queued'; affected: number }> {
+export function assertGroupActionInput(input: GroupActionInput): void {
   if (input.action === 'set_vocative' && (input.vocative ?? '').trim() === '') {
     throw new ApiError('validation_failed', {
       errors: [
@@ -90,6 +92,17 @@ export async function applyGroupAction(
       ],
     });
   }
+}
+
+/**
+ * Operace nad celou skupinou fronty. Do pěti tisíc kontaktů běží synchronně v jedné
+ * transakci, nad ně se zařadí job s ukazatelem průběhu.
+ */
+export async function applyGroupAction(
+  ctx: WorkspaceContext,
+  input: GroupActionInput,
+): Promise<{ mode: 'sync' | 'queued'; affected: number }> {
+  assertGroupActionInput(input);
 
   const size = await countGroup(ctx, input.nameKey, input.kind);
 
@@ -98,6 +111,33 @@ export async function applyGroupAction(
     return { mode: 'queued', affected: size };
   }
 
+  const affected = await applyGroupActionBatch(ctx, input, VOCATIVE_REVIEW_SYNC_LIMIT);
+  return { mode: 'sync', affected };
+}
+
+/**
+ * JEDNA dávka skupiny v JEDNÉ transakci. Vrací počet dotčených kontaktů.
+ *
+ * Vzniklo rozdělením `applyGroupAction`, ne opsáním: velké skupiny vyřizuje job
+ * `contacts.bulk_vocative_review` a ten potřebuje TUTÉŽ logiku po dávkách. Druhá
+ * kopie by se v tichosti rozešla přesně v těch místech, na kterých tahle funkce
+ * stojí (přepočet vokativu po řádcích u `set_gender`, přepočet oslovení v téže
+ * transakci, zápis přepisu jména).
+ *
+ * VOLAT PŘÍMO SMÍ JEN JOB. Cesta z rozhraní jde přes `applyGroupAction`, protože
+ * ta zároveň rozhoduje, jestli se operace vejde do jedné transakce. Job naopak
+ * `applyGroupAction` volat NESMÍ: nad pěti tisíci by si sám sebe zařadil znovu
+ * a fronta by se plnila donekonečna.
+ *
+ * Ukončení cyklu drží samotný zápis: dávka nastaví dotčeným řádkům
+ * `vocative_locked = true` a výběr bere jen `vocative_locked = false`, takže
+ * příští dávka dostane jiné řádky a nakonec žádné.
+ */
+export async function applyGroupActionBatch(
+  ctx: WorkspaceContext,
+  input: GroupActionInput,
+  limit: number,
+): Promise<number> {
   return withWorkspace(ctx, async (tx) => {
     const column = input.kind === 'first' ? sql`first_name_vocative` : sql`last_name_vocative`;
     const keyColumn = input.kind === 'first' ? sql`first_name_key` : sql`last_name_key`;
@@ -112,9 +152,11 @@ export async function applyGroupAction(
          AND ${keyColumn} = ${input.nameKey}
          AND vocative_locked = false
          AND deleted_at IS NULL
+       ORDER BY id
+       LIMIT ${limit}
        FOR UPDATE
     `);
-    if (members.length === 0) return { mode: 'sync' as const, affected: 0 };
+    if (members.length === 0) return 0;
 
     const first = members[0]!;
     const group = {
@@ -225,7 +267,7 @@ export async function applyGroupAction(
       },
     });
 
-    return { mode: 'sync' as const, affected: ids.length };
+    return ids.length;
   });
 }
 

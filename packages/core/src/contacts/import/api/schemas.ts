@@ -16,7 +16,19 @@ export const ImportResponse = z
     byte_size: z.number().int(),
     total_rows: z.number().int().nullable(),
     checkpoint_row: z.number().int(),
+    /**
+     * Rozpad výsledku. Bez něj nemá výsledková obrazovka odkud vzít čísla:
+     * hledala je v `options` a ukazovala samé nuly i po úspěšném importu.
+     * Rozlišení „nových / doplněných / přeskočených / chybných" je celý smysl
+     * té obrazovky, takže patří do odpovědi, ne do dopočtu na klientovi.
+     */
+    created_rows: z.number().int(),
+    updated_rows: z.number().int(),
+    suppressed_rows: z.number().int(),
+    warning_rows: z.number().int(),
+    review_rows: z.number().int(),
     error_rows: z.number().int(),
+    error_summary: z.record(z.string(), z.number().int()),
     failure_detail: z.string().nullable(),
   })
   .openapi('Import');

@@ -21,4 +21,28 @@ describe('handlers.generated.ts', () => {
     const file = path.join(ROOT, 'apps/worker/src/handlers.generated.ts');
     expect(fs.readFileSync(file, 'utf8')).toContain('nikdy neslučuje ručně');
   });
+
+  /**
+   * Doména, která má rejstřík na první i na druhé úrovni, musí být v generovaném
+   * souboru CELÁ.
+   *
+   * Codegen dřív po nálezu `contacts/jobs/queue-handlers.ts` přeskočil zbytek
+   * adresáře, takže `contacts/export/jobs` a `contacts/import/jobs` z mapy tiše
+   * vypadly. Nic by nespadlo: fronty by se dál zakládaly, jen by import kontaktů
+   * nikdy neskončil. Test je tady proto, že se ta vada v tomhle repozitáři
+   * v přesně téhle podobě už jednou stala.
+   */
+  it('obsahuje rejstřík z první i druhé úrovně téže domény', () => {
+    const generated = fs.readFileSync(
+      path.join(ROOT, 'apps/worker/src/handlers.generated.ts'),
+      'utf8',
+    );
+    for (const module of [
+      '@mlain/core/contacts/jobs',
+      '@mlain/core/contacts/export/jobs',
+      '@mlain/core/contacts/import/jobs',
+    ]) {
+      expect(generated, `codegen zapomněl na ${module}`).toContain(`from '${module}';`);
+    }
+  });
 });

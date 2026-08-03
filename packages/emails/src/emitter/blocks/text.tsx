@@ -1,17 +1,21 @@
 import type { ReactElement } from 'react';
 import type { TextBlock } from '../../document/types';
-import { useEmitter } from '../ctx';
+import type { EmitterProps } from '../ctx';
 import { RichTextView } from '../rich-text';
 import { lineHeightStyle, px } from '../style';
 import { BlockFrame } from './frame';
 
-export function TextBlockView({ block }: { block: TextBlock }): ReactElement {
-  const { theme } = useEmitter();
+export function TextBlockView({
+  block,
+  emitter,
+}: { block: TextBlock } & EmitterProps): ReactElement {
+  const { theme } = emitter;
   const props = block.props;
   const size = props.fontSize ?? theme.baseFontSize;
   const lineHeight = props.lineHeight ?? theme.baseLineHeight;
   return (
     <BlockFrame
+      emitter={emitter}
       padding={props.padding}
       backgroundColor={props.backgroundColor}
       hideOnMobile={props.hideOnMobile}
@@ -24,6 +28,7 @@ export function TextBlockView({ block }: { block: TextBlock }): ReactElement {
       }}
     >
       <RichTextView
+        emitter={emitter}
         rich={props.content}
         color={theme.light.color(props.color)}
         linkColor={theme.light.color(props.linkColor)}

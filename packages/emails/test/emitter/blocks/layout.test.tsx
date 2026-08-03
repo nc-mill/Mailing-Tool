@@ -3,30 +3,28 @@ import { describe, expect, it } from 'vitest';
 import { blockDefaults, DEFAULT_THEME } from '../../../src/document/defaults';
 import { resolveTheme } from '../../../src/theme/resolve';
 import { RawSlotSink } from '../../../src/normalize/slots';
-import { EmitterProvider } from '../../../src/emitter/ctx';
+import type { EmitterState } from '../../../src/emitter/ctx';
 import { applyRawSlots } from '../../../src/compile/apply-slots';
 import { SectionBlockView } from '../../../src/emitter/blocks/section';
 import type { SectionBlock } from '../../../src/document/types';
 
+function emitterState(sink: RawSlotSink, skippedBlockIds = new Set<string>()): EmitterState {
+  return {
+    theme: resolveTheme(DEFAULT_THEME),
+    raw: sink,
+    assets: {},
+    assetBaseUrl: 'https://assets.test',
+    language: 'cs',
+    skippedBlockIds,
+    trackClicks: true,
+    linkHref: (href: string) => href,
+    t: (key: string) => key,
+  };
+}
+
 async function renderSection(block: SectionBlock) {
   const sink = new RawSlotSink('ab12cd34ef');
-  const html = await render(
-    <EmitterProvider
-      value={{
-        theme: resolveTheme(DEFAULT_THEME),
-        raw: sink,
-        assets: {},
-        assetBaseUrl: 'https://assets.test',
-        language: 'cs',
-        skippedBlockIds: new Set<string>(),
-        trackClicks: true,
-        linkHref: (href: string) => href,
-        t: (key: string) => key,
-      }}
-    >
-      <SectionBlockView block={block} />
-    </EmitterProvider>,
-  );
+  const html = await render(<SectionBlockView block={block} emitter={emitterState(sink)} />);
   return applyRawSlots(html, sink);
 }
 
@@ -127,32 +125,19 @@ describe('dispatch', () => {
   it('skips a block listed as skipped', async () => {
     const sink = new RawSlotSink('ab12cd34ef');
     const html = await render(
-      <EmitterProvider
-        value={{
-          theme: resolveTheme(DEFAULT_THEME),
-          raw: sink,
-          assets: {},
-          assetBaseUrl: 'https://assets.test',
-          language: 'cs',
-          skippedBlockIds: new Set(['b_000000000002']),
-          trackClicks: true,
-          linkHref: (href: string) => href,
-          t: (key: string) => key,
-        }}
-      >
-        <SectionBlockView
-          block={section([
-            {
-              id: 'b_000000000002',
-              type: 'text',
-              props: {
-                ...blockDefaults('text'),
-                content: [{ t: 'p', children: [{ t: 's', v: 'hidden' }] }],
-              },
+      <SectionBlockView
+        emitter={emitterState(sink, new Set(['b_000000000002']))}
+        block={section([
+          {
+            id: 'b_000000000002',
+            type: 'text',
+            props: {
+              ...blockDefaults('text'),
+              content: [{ t: 'p', children: [{ t: 's', v: 'hidden' }] }],
             },
-          ])}
-        />
-      </EmitterProvider>,
+          },
+        ])}
+      />,
     );
     expect(applyRawSlots(html, sink)).not.toContain('hidden');
   });

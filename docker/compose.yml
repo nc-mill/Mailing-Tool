@@ -16,6 +16,28 @@ services:
       # nemá runner z 3.13 čím se připojit.
       DATABASE_URL_MIGRATOR: ${DATABASE_URL_MIGRATOR:-postgres://mlain_migrator:${POSTGRES_PASSWORD:-mlain}@postgres:5432/mlain}
       DATABASE_URL_SENDER: ${DATABASE_URL_SENDER:-postgres://mlain_sender:mlain@postgres:5432/mlain}
+      # Systémové úlohy, které čtou napříč projekty (plánovač kampaní, hlídač
+      # běžících, obnova po kvótě, rekonciliace outboxu, rekontrola domén)
+      # a úklid projektů po uplynutí lhůty na obnovu. Role mlain_maintenance má
+      # výjimku z izolace jen na workspaces, campaigns a sender_domains, viz
+      # migrace 0009.
+      #
+      # Výchozí hodnota je tu proto, že u zabaleného Postgresu roli zakládá
+      # docker/initdb se stejným heslem jako ostatní. U externího Postgresu
+      # proměnnou vyplňte v .env; když ji necháte prázdnou, aplikace naběhne
+      # a jen tyhle úlohy odmítnou běžet s vysvětlením. NAPLÁNOVANÁ kampaň se
+      # pak neodešle.
+      DATABASE_URL_MAINTENANCE: ${DATABASE_URL_MAINTENANCE:-postgres://mlain_maintenance:mlain@postgres:5432/mlain}
+      # Výmaz osobních údajů podle článku 17. Souhlasy jsou append only a smazat
+      # je smí jedině role mlain_gdpr; aplikační role to právo nemá ani mít
+      # nesmí. Role výjimku z izolace projektů NEMÁ, maže v kontextu jednoho
+      # projektu jako každá jiná operace nad osobními údaji.
+      #
+      # Výchozí hodnota platí pro zabalený Postgres, kde roli zakládá
+      # docker/initdb se stejným heslem jako ostatní. U externího Postgresu
+      # proměnnou vyplňte v .env; když ji necháte prázdnou, aplikace naběhne,
+      # ale ŽÁDOST O VÝMAZ SE NEVYŘÍDÍ a úloha gdpr.erase skončí v chybě.
+      DATABASE_URL_GDPR: ${DATABASE_URL_GDPR:-postgres://mlain_gdpr:mlain@postgres:5432/mlain}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY je povinná, vygenerujte ji příkazem mlain genkey}
       # Doména pro odkazy /t/o/, /t/c/ a /u/, které staví SENDER.
       #

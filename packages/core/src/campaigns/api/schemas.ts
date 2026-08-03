@@ -143,6 +143,15 @@ export const AudienceBreakdownSchema = z
     excluded_invalid_email: z.number().int(),
     excluded_deleted: z.number().int(),
     excluded_sample: z.number().int(),
+    /**
+     * Rozdíl, o který vylučující výběr zmenšil publikum. Ve schématu dřív chyběl,
+     * i když ho `PreflightBreakdown` vrací vždycky a `EMPTY_BREAKDOWN` ho má taky.
+     *
+     * Za běhu se to neprojevilo, protože odpovědi se proti schématu nevalidují,
+     * jenže generovaný klient tohle pole neznal. Kontrolní seznam připravenosti
+     * ho sčítá do řádku „Vyloučeno", takže by součet přes klienta vyšel `NaN`.
+     */
+    excluded_by_selection: z.number().int(),
     duplicates_removed: z.number().int(),
   })
   .openapi('CampaignAudienceBreakdown');

@@ -1,4 +1,4 @@
-import { desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import * as schema from '@mlain/db/schema';
 import type { Tx } from '../../tx';
 
@@ -13,6 +13,13 @@ export type ExtractionStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 
 
 export type ExtractionRow = {
   id: string;
+  /**
+   * Projekt, kterému řádek patří. Nevybírá se proto, aby se jím dalo filtrovat
+   * (to dělá RLS), ale proto, aby job mohl ověřit, že náklad úlohy míří tam,
+   * kde ho zpracovává. Do veřejného tvaru nejde, `toPublicExtraction` skládá
+   * odpověď po polích.
+   */
+  workspaceId: string;
   inputUrl: string;
   normalizedUrl: string;
   status: ExtractionStatus;
@@ -34,6 +41,7 @@ export type PublicExtraction = {
 
 const COLUMNS = {
   id: schema.brandExtractions.id,
+  workspaceId: schema.brandExtractions.workspaceId,
   inputUrl: schema.brandExtractions.inputUrl,
   normalizedUrl: schema.brandExtractions.normalizedUrl,
   status: schema.brandExtractions.status,
@@ -46,6 +54,7 @@ const COLUMNS = {
 
 function toRow(row: {
   id: string;
+  workspaceId: string;
   inputUrl: string;
   normalizedUrl: string;
   status: string;
@@ -89,6 +98,86 @@ export async function countExtractionsInLastHour(tx: Tx): Promise<number> {
     .from(schema.brandExtractions)
     .where(gte(schema.brandExtractions.createdAt, since));
   return rows[0]?.count ?? 0;
+}
+
+/**
+ * Převzetí běhu jobem. Podmínka na `pending` je v dotazu, ne jen v
+ * `assertTransition` na straně jobu: pg-boss doručí úlohu i podruhé, když
+ * worker spadne po převzetí a před potvrzením, a dvě souběžná stahování téhož
+ * webu by si přepsala výsledek. Kdo řádek nepřevzal, dostane `false` a nemá
+ * pokračovat.
+ */
+export async function markRunning(tx: Tx, extractionId: string): Promise<boolean> {
+  const updated = await tx
+    .update(schema.brandExtractions)
+    .set({ status: 'running' })
+    .where(
+      and(
+        eq(schema.brandExtractions.id, extractionId),
+        eq(schema.brandExtractions.status, 'pending'),
+      ),
+    )
+    .returning({ id: schema.brandExtractions.id });
+  return updated.length > 0;
+}
+
+export type FinishExtractionInput = {
+  id: string;
+  status: ExtractionStatus;
+  errorCode: string | null;
+  /** Jen třída adresy, nikdy syrová IP. Skládá ho `safeFetch`, ne tenhle modul. */
+  hopSummary: unknown;
+  bytesFetched: number;
+  durationMs: number;
+  result: unknown;
+  brandProfileId: string | null;
+};
+
+/**
+ * Koncový zápis. Stav se mění jen z `running`, protože koncový stav se podle
+ * `assertTransition` nikdy nepřepisuje: opakovaný pokus zakládá nový řádek.
+ */
+export async function finishExtraction(tx: Tx, input: FinishExtractionInput): Promise<void> {
+  await tx
+    .update(schema.brandExtractions)
+    .set({
+      status: input.status,
+      errorCode: input.errorCode,
+      hopSummary: input.hopSummary as never,
+      bytesFetched: input.bytesFetched,
+      durationMs: input.durationMs,
+      result: input.result as never,
+      brandProfileId: input.brandProfileId,
+      finishedAt: new Date(),
+    })
+    .where(
+      and(eq(schema.brandExtractions.id, input.id), eq(schema.brandExtractions.status, 'running')),
+    );
+}
+
+/**
+ * Úklid po pádu workeru: běh zaseknutý v `running` se po limitu uzavře.
+ *
+ * Mezníkem je `created_at`, protože tabulka nemá sloupec s časem převzetí
+ * (schéma vlastní P03 a je zmrazené). U fronty s `retryLimit: 0` a expirací
+ * pět minut je rozdíl mezi založením a převzetím zanedbatelný.
+ */
+export async function failStaleExtractions(
+  tx: Tx,
+  cutoff: Date,
+  errorCode: string,
+): Promise<number> {
+  const updated = await tx
+    .update(schema.brandExtractions)
+    .set({ status: 'failed', errorCode, finishedAt: new Date() })
+    .where(
+      and(
+        eq(schema.brandExtractions.status, 'running'),
+        lt(schema.brandExtractions.createdAt, cutoff),
+      ),
+    )
+    .returning({ id: schema.brandExtractions.id });
+  return updated.length;
 }
 
 /**

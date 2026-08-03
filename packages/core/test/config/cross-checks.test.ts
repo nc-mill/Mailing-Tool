@@ -122,6 +122,53 @@ describe('křížové kontroly konfigurace', () => {
     expect(text).toContain('TRACKING_GEOIP_DB_PATH');
   });
 
+  /**
+   * Pojistka kolem vývojářského vypínače brzd přihlašování. Kdyby přestala
+   * platit, dala by se vypnutá ochrana proti hádání hesel protáhnout do
+   * produkce jedním řádkem v prostředí, a nikdo by si toho nemusel všimnout.
+   */
+  it('LOGIN_THROTTLING_DISABLED=true v produkci nenastartuje', () => {
+    const text = messagesFor({
+      ...MINIMAL(),
+      MIGRATE_ON_START: 'false',
+      NODE_ENV: 'production',
+      LOGIN_THROTTLING_DISABLED: 'true',
+    });
+    expect(text).toContain('LOGIN_THROTTLING_DISABLED');
+    // Hláška musí říct, co se vypíná, ne jen že je hodnota špatně.
+    expect(text).toContain('zamykání účtu');
+    expect(text).toMatch(/jen mimo produkci/);
+  });
+
+  it('LOGIN_THROTTLING_DISABLED=true mimo produkci projde', () => {
+    const config = loadConfig({
+      ...MINIMAL(),
+      MIGRATE_ON_START: 'false',
+      NODE_ENV: 'development',
+      LOGIN_THROTTLING_DISABLED: 'true',
+    });
+    expect(config.LOGIN_THROTTLING_DISABLED).toBe(true);
+  });
+
+  it('bez proměnné jsou brzdy zapnuté i v produkci', () => {
+    const config = loadConfig({
+      ...MINIMAL(),
+      MIGRATE_ON_START: 'false',
+      NODE_ENV: 'production',
+    });
+    expect(config.LOGIN_THROTTLING_DISABLED).toBe(false);
+  });
+
+  it('LOGIN_THROTTLING_DISABLED=false v produkci projde', () => {
+    const config = loadConfig({
+      ...MINIMAL(),
+      MIGRATE_ON_START: 'false',
+      NODE_ENV: 'production',
+      LOGIN_THROTTLING_DISABLED: 'false',
+    });
+    expect(config.LOGIN_THROTTLING_DISABLED).toBe(false);
+  });
+
   it('LOG_FORMAT=pretty v produkci je chyba', () => {
     const text = messagesFor({
       ...MINIMAL(),

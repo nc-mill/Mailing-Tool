@@ -6,6 +6,7 @@ import { buildConsentEvidence, consentTextEvidence } from '../consents/evidence'
 import { storeIpEnabled } from '../privacy';
 import { getContactById } from '../repo/contacts-query';
 import { listConsents, recordConsent, type ConsentRow } from '../repo/consents';
+import { checkSingleSuppression } from '../repo/suppressions';
 import type { ContactsEnv } from './index';
 import { ConsentInput, IsoDateTime, Uuid, problemResponse, toIsoRequired } from './schemas';
 
@@ -88,6 +89,8 @@ const recordRoute = createRoute({
     401: problemResponse('unauthenticated'),
     403: problemResponse('forbidden', 'insufficient_scope'),
     404: problemResponse('not_found'),
+    // Udělený souhlas pro adresu na suppression listu, detail `contact_suppressed`.
+    409: problemResponse('conflict'),
     422: problemResponse('validation_failed'),
   },
 });
@@ -106,9 +109,23 @@ export function registerConsentRoutes(app: OpenAPIHono<ContactsEnv>): void {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'contacts:write');
     const contactId = c.req.valid('param').contact_id;
-    if ((await getContactById(ctx, contactId)) === null) throw new ApiError('not_found');
+    const contact = await getContactById(ctx, contactId);
+    if (contact === null) throw new ApiError('not_found');
 
     const body = c.req.valid('json');
+
+    // Pravidlo 4 z 4.1.2: adresa na suppression listu nedostane udělený souhlas. Tady se
+    // ODMÍTÁ, ne přeskakuje: obsahem požadavku je právě ten souhlas, takže 201 s tichým
+    // zahozením by klientovi tvrdilo, že souhlas existuje, a on by se na něj spoléhal.
+    // Odvolání souhlasu prochází vždy, míří stejným směrem jako blokace.
+    if (body.status === 'granted') {
+      const suppression = await checkSingleSuppression(ctx, contact.email);
+      if (suppression !== null) {
+        throw new ApiError('conflict', {
+          params: { detail: 'contact_suppressed', reason: suppression.reason },
+        });
+      }
+    }
     // Evidence prochází `buildConsentEvidence`, protože ta respektuje přepínač
     // workspaces.settings.privacy.store_ip (rozhodnutí R8). Kdyby se zapsala syrově,
     // uložila by se IP i v projektu, který si to vypnul.

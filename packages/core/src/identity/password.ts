@@ -1,7 +1,15 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2';
 import { validationFailed } from '../errors/api-error';
+/**
+ * Seznam se importuje jako JSON modul, nečte se ze souboru. Dřív to byl
+ * `fileURLToPath(new URL('./data/common-passwords.txt', import.meta.url))`,
+ * jenže z takového zápisu udělá Turbopack odkaz na statický asset s vlastní
+ * třídou URL a `fileURLToPath` ho odmítne, takže produkční build spadl už při
+ * vyhodnocení modulu. Stejný vzor jako u `caniemail.json` v balíčku emails.
+ * Hodnoty jsou uložené oříznuté a malými písmeny, porovnává se s nimi
+ * `password.toLowerCase()`.
+ */
+import COMMON_PASSWORDS from './data/common-passwords.json' with { type: 'json' };
 
 /**
  * Odchylka od plánu: plán importoval `Algorithm` z @node-rs/argon2 a psal
@@ -74,19 +82,10 @@ export function needsRehash(phc: string): boolean {
   );
 }
 
-const BLOCKLIST_PATH = fileURLToPath(new URL('./data/common-passwords.txt', import.meta.url));
-
 let blocklist: Set<string> | null = null;
 
 function commonPasswords(): Set<string> {
-  if (!blocklist) {
-    blocklist = new Set(
-      readFileSync(BLOCKLIST_PATH, 'utf8')
-        .split('\n')
-        .map((l) => l.trim().toLowerCase())
-        .filter((l) => l.length > 0),
-    );
-  }
+  if (!blocklist) blocklist = new Set(COMMON_PASSWORDS);
   return blocklist;
 }
 

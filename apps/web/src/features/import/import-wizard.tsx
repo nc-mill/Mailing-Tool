@@ -282,6 +282,21 @@ export function ImportWizard({
         />
       ) : null}
 
+      {/*
+        Varování k mapování se MUSÍ zobrazit. `full_name_ignored` znamená, že
+        volba „Celé jméno" nemá žádný účinek, protože soubor má zároveň sloupec
+        se jménem nebo příjmením. Bez téhle hlášky vypadá obrazovka po
+        přemapování stejně jako před ním a uživatel nemá jak poznat, že se jeho
+        volba zahodila.
+      */}
+      {(step === 'mapping' || step === 'preview') && data !== null
+        ? data.mapping_warnings.map((warning) => (
+            <p key={warning} role="alert">
+              {t(`mapping.warnings.${warning}`)}
+            </p>
+          ))
+        : null}
+
       {step === 'mapping' && data !== null ? (
         <StepMapping
           preview={{ columns }}

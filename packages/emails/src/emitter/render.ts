@@ -6,7 +6,7 @@ import { applyRawSlots } from '../compile/apply-slots';
 import type { NormalizedDocument } from '../normalize/index';
 import { RawSlotSink } from '../normalize/slots';
 import { SectionBlockView } from './blocks/section';
-import { EmitterProvider, type EmitterState } from './ctx';
+import type { EmitterState } from './ctx';
 import { EmailShell } from './shell';
 
 export type RenderOptions = {
@@ -43,19 +43,18 @@ export async function renderDocumentHtml(options: RenderOptions): Promise<string
     t: (key: string) => PRODUCT_TEXTS[normalized.language]?.[key] ?? PRODUCT_TEXTS.en![key] ?? key,
   };
 
+  // Stav prochází stromem jako vlastnost `emitter`, ne React kontextem.
+  // Důvod je v komentáři u `EmitterState`.
   const tree = createElement(
-    EmitterProvider,
-    { value: state },
-    createElement(
-      EmailShell,
-      {
-        language: normalized.doc.meta.language,
-        title: normalized.doc.meta.name,
-        preheader: options.preheader ?? normalized.doc.meta.previewText,
-      },
-      ...normalized.doc.blocks.map((section) =>
-        createElement(SectionBlockView, { key: section.id, block: section }),
-      ),
+    EmailShell,
+    {
+      emitter: state,
+      language: normalized.doc.meta.language,
+      title: normalized.doc.meta.name,
+      preheader: options.preheader ?? normalized.doc.meta.previewText,
+    },
+    ...normalized.doc.blocks.map((section) =>
+      createElement(SectionBlockView, { key: section.id, block: section, emitter: state }),
     ),
   );
 

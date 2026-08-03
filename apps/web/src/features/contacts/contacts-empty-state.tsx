@@ -15,10 +15,38 @@ import { contactsHref, type ContactListFilters, type FilterNames } from './filte
  * ne jako odkazy v children. Tři cesty ven jsou proto tlačítka, která navigují routerem,
  * a jejich vysvětlující věty jdou do `description` téže akce, ne do samostatného seznamu.
  */
-export function ContactsEmptyState({ basePath }: { basePath: string }) {
+export function ContactsEmptyState({
+  basePath,
+  workspaceId,
+}: {
+  basePath: string;
+  /** Bez něj vrací `POST /api/v1/demo-data` 404, viz `lib/api/authenticate.ts`. */
+  workspaceId: string;
+}) {
   const t = useTranslations('contacts');
   const router = useRouter();
   const workspacePath = basePath.replace(/\/contacts$/, '');
+
+  /**
+   * Čtvrtá cesta ven: ukázková data.
+   *
+   * Katalog pro ni měl znění (`contacts.list.emptySample`) od začátku, ale
+   * NIKDO ho nepoužíval: `grep -rn "emptySample" apps/web/src` nevracelo nic.
+   * Nahrát ukázková data tedy z rozhraní nešlo vůbec, přestože
+   * `POST /api/v1/demo-data` existuje a dialog o jejich odstranění uživateli
+   * slibuje „Ukázková data si můžete kdykoli nahrát znovu."
+   *
+   * Banner na přehledu to neřešil: ten se vykresluje jedině tehdy, když už
+   * ukázková data v projektu JSOU (`if (!state.present) return null`), takže
+   * uměl jen odstranit, ne nahrát.
+   */
+  async function loadDemoData() {
+    const response = await fetch('/api/v1/demo-data', {
+      method: 'POST',
+      headers: { 'X-Workspace-Id': workspaceId },
+    });
+    if (response.ok) router.refresh();
+  }
 
   return (
     <EmptyState
@@ -41,6 +69,11 @@ export function ContactsEmptyState({ basePath }: { basePath: string }) {
           label: t('list.emptyManualAction'),
           onClick: () => router.push(`${basePath}/new`),
           description: t('list.emptyManualHint'),
+        },
+        {
+          label: t('list.emptySample'),
+          onClick: () => void loadDemoData(),
+          description: t('list.emptySampleHint'),
         },
       ]}
     />

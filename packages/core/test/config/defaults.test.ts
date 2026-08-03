@@ -62,10 +62,16 @@ describe('výchozí hodnoty prošly transformací', () => {
     ]);
   });
 
-  it('schéma má právě 179 proměnných (registr je uzavřený, uzávěr S12)', () => {
+  it('schéma má právě 182 proměnných (registr je uzavřený, uzávěr S12)', () => {
     // Exaktní číslo je záměr. Doménový plán proměnnou nezakládá, takže každá
     // změna musí projít změnou plánu P01, ne commitem z jiné větve.
-    expect(configVariableNames()).toHaveLength(179);
+    //
+    // Ze 179 na 180: DATABASE_URL_MAINTENANCE, připojení pro systémové skeny
+    // napříč projekty (nález I82). Bez něj se naplánovaná kampaň neodešle.
+    // Ze 180 na 181: DATABASE_URL_GDPR.
+    // Ze 181 na 182: LOGIN_THROTTLING_DISABLED, vývojářský vypínač brzd
+    // přihlašování. V produkci ho `cross-checks.ts` odmítá, viz tam.
+    expect(configVariableNames()).toHaveLength(182);
   });
 
   it('zná proměnné, které si vyžádal plán P10', () => {

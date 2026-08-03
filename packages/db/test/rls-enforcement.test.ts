@@ -146,7 +146,7 @@ describe('ws_isolation pod mlain_app', () => {
     }
   });
 
-  it('všech 84 politik čte kontext přes NULLIF, žádná holým current_setting', async () => {
+  it('všech 88 politik čte kontext přes NULLIF, žádná holým current_setting', async () => {
     // Katalogová pojistka nad VŠEMI politikami naráz. Behaviorální testy výš
     // pokrývají jednotlivé cesty, tahle kontrola pokrývá i ty, které dnes
     // vlastní test nemají, a novou politiku bez NULLIF zachytí hned.
@@ -157,7 +157,7 @@ describe('ws_isolation pod mlain_app', () => {
                 coalesce(qual, '') || ' ' || coalesce(with_check, '') AS expr
            FROM pg_policies WHERE schemaname = 'public'`,
       );
-    expect(rows).toHaveLength(84);
+    expect(rows).toHaveLength(88);
     const spatne: string[] = [];
     for (const row of rows) {
       // Každý výskyt current_setting musí být obalený NULLIF(...). Počty se

@@ -15,7 +15,9 @@ import { readContactsSettings } from '../settings';
 import { suppressedExistsSql } from '../suppression/predicate';
 import type { ContactStatus, UpsertMode } from '../types';
 import { applyWriteRules } from '../write';
+import { enqueue } from '../jobs/enqueue';
 import { byteaArrayLiteral } from './bytea';
+import type { ContactBulkFilter } from './contacts-query';
 import { checkSuppression } from './suppressions';
 
 export type { UpsertMode };
@@ -119,6 +121,21 @@ async function upsertRows(
   // Režim `create` nemá existující kontakt měnit, což je z hlediska aktualizace totéž
   // jako `skip`. Liší se až v tom, co hlásí volajícímu, a to řeší vrstva nad ním.
   const skip = input.mode === 'skip' || input.mode === 'create';
+
+  /**
+   * „Příchozí řádek neuvádí jméno a režim ho proto nemá čím přepsat."
+   *
+   * Je to TATÁŽ podmínka, kterou dole používá `coalesce(nullif(excluded.first_name, ''), …)`
+   * u sloupců first_name a last_name, jen vytažená zvlášť, aby ji mohly použít i sloupce
+   * odvozené od jména. Bez ní zůstane jméno staré a vokativ s oslovením se vynulují,
+   * takže kontakt má v databázi jméno a přesto se oslovuje „Dobrý den".
+   *
+   * V režimu `overwrite` je prázdné jméno pokyn „smaž ho", takže se predikát neuplatní.
+   */
+  const nameMissing = sql`NOT ${overwrite}
+    AND nullif(excluded.first_name, '') IS NULL
+    AND nullif(excluded.last_name, '') IS NULL
+    AND nullif(excluded.middle_name, '') IS NULL`;
 
   const { rows: written } = await tx.execute<UpsertResult>(sql`
       INSERT INTO contacts (
@@ -236,21 +253,44 @@ async function upsertRows(
           WHEN ${skip} THEN contacts.gender_source
           WHEN excluded.gender = 'unknown' AND NOT ${overwrite} THEN contacts.gender_source
           ELSE excluded.gender_source END,
+        -- ODVOZENÉ SLOUPCE MUSÍ SLEDOVAT JMÉNO, ZE KTERÉHO VZNIKLY.
+        --
+        -- Sloupce first_name a last_name se v režimu update prázdnou hodnotou nepřepisují
+        -- (coalesce(nullif(...)) výš). Vokativ, oslovení a jistota rozdělení se ale
+        -- přepisovaly vždycky, a to je nekonzistence, která TIŠE NIČÍ HLAVNÍ FUNKCI
+        -- PRODUKTU: každý zápis bez jména nechal jméno být a odvozené hodnoty vynuloval.
+        --
+        -- Naměřeno v prohlížeči na živé databázi: kontakt „Jana Nováková" s oslovením
+        -- „Dobrý den, Jano" se po POST /lists/{id}/subscribe (které v těle nese jen adresu)
+        -- oslovoval „Dobrý den" a ve sloupci first_name pořád stálo „Jana". Týká se to
+        -- všech cest, kde se přihlašuje podle adresy: veřejného formuláře, stránky
+        -- předvoleb, opakovaného odeslání potvrzení i přihlášení z detailu kontaktu.
+        --
+        -- Režim overwrite je z podmínky vyjmutý schválně: tam je prázdné jméno pokyn
+        -- „smaž ho", takže se odvozené hodnoty smazat MUSÍ.
         first_name_vocative = CASE
           WHEN ${skip} OR contacts.vocative_locked THEN contacts.first_name_vocative
+          WHEN ${nameMissing} THEN contacts.first_name_vocative
           ELSE excluded.first_name_vocative END,
         last_name_vocative = CASE
           WHEN ${skip} OR contacts.vocative_locked THEN contacts.last_name_vocative
+          WHEN ${nameMissing} THEN contacts.last_name_vocative
           ELSE excluded.last_name_vocative END,
         vocative_confidence = CASE
           WHEN ${skip} OR contacts.vocative_locked THEN contacts.vocative_confidence
+          WHEN ${nameMissing} THEN contacts.vocative_confidence
           ELSE excluded.vocative_confidence END,
         greeting = CASE
-          WHEN ${skip} THEN contacts.greeting ELSE excluded.greeting END,
+          WHEN ${skip} THEN contacts.greeting
+          WHEN ${nameMissing} THEN contacts.greeting
+          ELSE excluded.greeting END,
         greeting_neutral = CASE
-          WHEN ${skip} THEN contacts.greeting_neutral ELSE excluded.greeting_neutral END,
+          WHEN ${skip} THEN contacts.greeting_neutral
+          WHEN ${nameMissing} THEN contacts.greeting_neutral
+          ELSE excluded.greeting_neutral END,
         name_split_confidence = CASE
           WHEN ${skip} THEN contacts.name_split_confidence
+          WHEN ${nameMissing} THEN contacts.name_split_confidence
           ELSE excluded.name_split_confidence END,
         -- jsonb_strip_nulls je POVINNÉ, ne kosmetika. Samotné || ponechá klíč s hodnotou
         -- JSON null, takže "vymazání pole" v režimu overwrite by pole nevymazalo:
@@ -293,9 +333,27 @@ export type WriteContactInput = {
   mode?: UpsertMode;
 };
 
+/**
+ * Co smí volající po zápisu kontaktu ještě dopsat.
+ *
+ * Rozhodnutí NEPATŘÍ volajícímu: počítá ho `applyWriteRules` z jediného pravidla 4
+ * (4.1.2 části 2) a `writeContact` ho jen podává dál. Kdyby si každý kanál sahal na
+ * suppression sám, byla by to pátá kopie téhož pravidla a lišily by se v detailech.
+ */
+export type WriteContactPermissions = {
+  /** Smí vzniknout přihlášení do seznamu? U živé suppression ne, ať je důvod jakýkoliv. */
+  allowSubscriptions: boolean;
+  /** Štítky projdou vždy, kromě tvrdé blokace: jsou to naše interní značky, ne projev vůle. */
+  allowTags: boolean;
+  /** Smí vzniknout UDĚLENÝ souhlas? Odvolání souhlasu se neblokuje nikdy, viz `contacts-api.ts`. */
+  allowConsents: boolean;
+  /** Důvod živé blokace, nebo null. Jde do auditu a do vysvětlení v odpovědi. */
+  suppressionReason: string | null;
+};
+
 export type WriteContactResult =
-  | { rejected: 'suppressed'; id: null; inserted: false }
-  | { rejected: null; id: string; inserted: boolean };
+  | ({ rejected: 'suppressed'; id: null; inserted: false } & WriteContactPermissions)
+  | ({ rejected: null; id: string; inserted: boolean } & WriteContactPermissions);
 
 /**
  * Zápis JEDNOHO kontaktu se všemi šesti pravidly a s dopočítaným oslovením.
@@ -303,6 +361,10 @@ export type WriteContactResult =
  * VOKATIV SE POČÍTÁ TADY, PŘI ZÁPISU, ne při odesílání. Sender má hodnoty hotové ve
  * sloupcích a na tabulku kontaktů nesahá; kdyby se počítaly až při rozesílce, platila by
  * se cena za každou zprávu znovu a nejisté případy by nešlo zkontrolovat předem.
+ *
+ * Výsledek nese kromě ID i to, CO SE JEŠTĚ SMÍ dopsat. Bez toho by pravidlo 4 skončilo
+ * u zápisu kontaktu a seznamy se souhlasy by se zapsaly odhlášenému člověku, protože
+ * volající nemá jak se dozvědět, že je na suppression listu.
  */
 export async function writeContact(
   ctx: WorkspaceContext,
@@ -333,8 +395,16 @@ export async function writeContact(
       suppression: suppressed === null ? null : { reason: suppressed.reason },
     });
 
+    // Rozhodnutí pravidla 4 se vytáhne ven jednou a všechny tři výstupy ho nesou stejné.
+    const permissions: WriteContactPermissions = {
+      allowSubscriptions: decision.allowSubscriptions,
+      allowTags: decision.allowTags,
+      allowConsents: decision.allowConsents,
+      suppressionReason: suppressed?.reason ?? null,
+    };
+
     if (decision.rejected === 'suppressed') {
-      return { rejected: 'suppressed', id: null, inserted: false };
+      return { rejected: 'suppressed', id: null, inserted: false, ...permissions };
     }
 
     const settings = await readContactsSettings(tx, ctx);
@@ -424,7 +494,7 @@ export async function writeContact(
          WHERE workspace_id = ${ctx.workspaceId}::uuid AND email = ${email}::citext
            AND deleted_at IS NULL
       `);
-      return { rejected: null, id: rows[0]!.id, inserted: false };
+      return { rejected: null, id: rows[0]!.id, inserted: false, ...permissions };
     }
 
     await writeAudit(tx, ctx, {
@@ -434,7 +504,7 @@ export async function writeContact(
       metadata: { source: input.source ?? 'api' },
     });
 
-    return { rejected: null, id: written.id, inserted: written.inserted };
+    return { rejected: null, id: written.id, inserted: written.inserted, ...permissions };
   });
 }
 
@@ -568,6 +638,69 @@ export async function deleteContact(
       metadata: { mode },
     });
   });
+}
+
+/**
+ * Rozsah hromadného mazání. Buď výčet id (výběr na stránce), nebo filtr
+ * ("vše, co odpovídá filtru"). Přesně dvě možnosti, které umí `bulk-actions.tsx`.
+ */
+export type BulkDeleteScope =
+  { mode: 'ids'; ids: string[] } | { mode: 'filter'; filter: ContactBulkFilter };
+
+/**
+ * Hromadné mazání kontaktů. Je to TOTÉŽ co `deleteContact(ctx, id, 'soft')`, jen dávkově:
+ * `deleted_at`, status `deleted`, adresa zůstane a kontakt jde 30 dní obnovit. Anonymizace
+ * ani fyzické smazání se hromadně nedělá, protože obojí je nevratné a jde přes žádost
+ * v `gdpr_requests`, která nese lhůtu a doklad o provedení.
+ *
+ * VŽDY se zařazuje do fronty, i pro tři id. Sousední `bulkTagContacts` má pod limitem
+ * synchronní větev, protože přiřazení štítku je vratné a odpověď o něm smí lhát nanejvýš
+ * o rychlosti. Mazání vratné není a rozhraní (`bulk-actions.tsx`) na 202 spoléhá: hlásí
+ * "mažeme", ne "smazáno". Synchronní větev by znamenala dvě různá chování téhož tlačítka
+ * podle počtu vybraných řádků a jednu z nich by nikdo netestoval.
+ *
+ * `singletonKey` je `workspaceId` podle `WORKSPACE_SINGLETON_QUEUES`: dvě hromadná mazání
+ * nad týmž projektem nemají běžet souběžně. Fronty se zakládají s výchozí politikou
+ * `standard`, u které pg-boss nad `singleton_key` žádný unikátní index nemá, takže druhé
+ * zařazení se NEZAHODÍ ani neshodí zápis; jen se zpracuje po prvním.
+ */
+export async function bulkDeleteContacts(
+  ctx: WorkspaceContext,
+  scope: BulkDeleteScope,
+): Promise<{ mode: 'queued' }> {
+  assertPermission(ctx, 'contacts:write');
+
+  const payload =
+    scope.mode === 'ids'
+      ? { workspaceId: ctx.workspaceId, contactIds: scope.ids }
+      : { workspaceId: ctx.workspaceId, filter: scope.filter };
+
+  await withWorkspace(ctx, async (tx) => {
+    await enqueue(
+      tx,
+      'contacts.bulk_delete',
+      { ...payload, requestedBy: auditActorId(ctx) },
+      { singletonKey: ctx.workspaceId },
+    );
+  });
+
+  return { mode: 'queued' };
+}
+
+/**
+ * Kdo mazání objednal. Job běží pod systémovým kontextem, takže bez tohohle údaje by
+ * v auditu stálo jen "contacts.bulk_delete" a nešlo by dohledat člověka, který tlačítko
+ * zmáčkl. Jde o identifikátor, ne o e-mail: audit osobní údaje nenese.
+ */
+function auditActorId(ctx: WorkspaceContext): string {
+  switch (ctx.actor.type) {
+    case 'user':
+      return ctx.actor.userId;
+    case 'api_key':
+      return `api_key:${ctx.actor.apiKeyId}`;
+    case 'system':
+      return ctx.actor.job;
+  }
 }
 
 /**

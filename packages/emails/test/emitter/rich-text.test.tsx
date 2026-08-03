@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_THEME } from '../../src/document/defaults';
 import { resolveTheme } from '../../src/theme/resolve';
 import { RawSlotSink } from '../../src/normalize/slots';
-import { EmitterProvider } from '../../src/emitter/ctx';
+import type { EmitterState } from '../../src/emitter/ctx';
 import { RichTextView, varOutput } from '../../src/emitter/rich-text';
 import type { RichText } from '../../src/document/types';
 
-const state = () => ({
+const state = (): EmitterState => ({
   theme: resolveTheme(DEFAULT_THEME),
   raw: new RawSlotSink('ab12cd34ef'),
   assets: {},
@@ -22,11 +22,9 @@ const state = () => ({
 
 const renderRich = (rich: RichText) =>
   render(
-    <EmitterProvider value={state()}>
-      <div>
-        <RichTextView rich={rich} color="#111827" linkColor="#1d4ed8" />
-      </div>
-    </EmitterProvider>,
+    <div>
+      <RichTextView rich={rich} color="#111827" linkColor="#1d4ed8" emitter={state()} />
+    </div>,
   );
 
 describe('varOutput', () => {

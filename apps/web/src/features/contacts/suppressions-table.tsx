@@ -4,13 +4,20 @@ import { useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { Dialog, DialogBody, DialogFooter, DialogTitle } from '@mlain/ui/components/dialog';
+import { Input } from '@mlain/ui/components/input';
+import { Label } from '@mlain/ui/components/label';
 // K1 z 13.1 části 6: kurzorové stránkování bez čísel stránek, výběr přežije přestránkování.
 import { DataTable } from '@mlain/ui/patterns/data-table';
 import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
-import { EmptyState, FilteredEmptyState } from '@mlain/ui/patterns/states';
+import { Alert, EmptyState, FilteredEmptyState } from '@mlain/ui/patterns/states';
 import { useToast } from '@mlain/ui/patterns/toast';
 import { useConfirmDialogLabels } from '@/lib/feedback/confirm-labels';
-import { removeSuppressionAction, revealSuppressionEmailAction } from './actions';
+import {
+  addSuppressionAction,
+  removeSuppressionAction,
+  revealSuppressionEmailAction,
+} from './actions';
 import { useContactsTableLabels } from './table-labels';
 import {
   bulkRemovalSummary,
@@ -21,6 +28,8 @@ import {
 
 export type SuppressionsTableProps = {
   basePath: string;
+  /** Projekt pro odebrání a odkrytí adresy. Bez něj server vrátí 404 na existující řádek. */
+  workspaceId: string;
   rows: SuppressionRow[];
   role: WorkspaceRole;
   now?: Date;
@@ -44,6 +53,7 @@ function href(basePath: string, filters: { reason?: string; q?: string }, cursor
 
 export function SuppressionsTable({
   basePath,
+  workspaceId,
   rows,
   role,
   now,
@@ -62,11 +72,76 @@ export function SuppressionsTable({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   const [removing, setRemoving] = useState<SuppressionRow | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [addEmail, setAddEmail] = useState('');
+  const [addDetail, setAddDetail] = useState('');
+  const [addPending, setAddPending] = useState(false);
+  const [addFailed, setAddFailed] = useState(false);
+
+  async function submitAdd() {
+    setAddPending(true);
+    setAddFailed(false);
+    const result = await addSuppressionAction({
+      workspaceId,
+      email: addEmail,
+      ...(addDetail === '' ? {} : { detail: addDetail }),
+    });
+    setAddPending(false);
+    if (result.status !== 'success') {
+      setAddFailed(true);
+      return;
+    }
+    toast.success(t('suppressions.added', { email: addEmail }));
+    setAdding(false);
+    setAddEmail('');
+    setAddDetail('');
+    router.refresh();
+  }
+
+  /**
+   * Dialog ručního zablokování. Prázdný stav i tabulka na něj sahají stejně,
+   * protože adresu člověk přidává v obou stavech stejně často.
+   */
+  const addDialog = (
+    <Dialog open={adding} onOpenChange={setAdding}>
+      <DialogTitle>{t('suppressions.addTitle')}</DialogTitle>
+      <DialogBody>
+        <p className="mb-4 text-text-muted">{t('suppressions.addBody')}</p>
+        <div className="mb-4">
+          <Label htmlFor="suppression-email">{t('suppressions.addEmail')}</Label>
+          <Input
+            id="suppression-email"
+            type="email"
+            value={addEmail}
+            onChange={(event) => setAddEmail(event.target.value)}
+          />
+        </div>
+        <div className="mb-4">
+          <Label htmlFor="suppression-detail">{t('suppressions.addDetail')}</Label>
+          <Input
+            id="suppression-detail"
+            value={addDetail}
+            onChange={(event) => setAddDetail(event.target.value)}
+          />
+          <p className="mt-1 text-sm text-text-muted">{t('suppressions.addDetailHint')}</p>
+        </div>
+        {addFailed ? <Alert tone="error" title={t('suppressions.addFailed')} /> : null}
+      </DialogBody>
+      <DialogFooter
+        retreat={<Button onClick={() => setAdding(false)}>{t('suppressions.addCancel')}</Button>}
+        confirm={
+          <Button variant="primary" pending={addPending} onClick={() => void submitAdd()}>
+            {t('suppressions.addConfirm')}
+          </Button>
+        }
+      />
+    </Dialog>
+  );
 
   const summary = bulkRemovalSummary(rows, new Set(selectedIds), role, now);
 
   async function reveal(row: SuppressionRow) {
-    const result = await revealSuppressionEmailAction({ id: row.id });
+    const result = await revealSuppressionEmailAction({ workspaceId, id: row.id });
     if (result.status === 'success' && result.email !== undefined) {
       const email = result.email;
       setRevealed((current) => ({ ...current, [row.id]: email }));
@@ -110,19 +185,32 @@ export function SuppressionsTable({
         onClearFilters={() => router.push(basePath)}
       />
     ) : (
-      <EmptyState
-        variant="first"
-        title={t('suppressions.emptyTitle')}
-        explanation={t('suppressions.emptyBody')}
-        actions={[{ label: t('suppressions.emptyAction'), onClick: () => router.push(basePath) }]}
-      />
+      <>
+        {/* Akce dřív volala `router.push(basePath)`, tedy navigaci na tutéž
+            stránku: kliknutí nedělalo nic, ani chybu v konzoli. Text pod
+            nadpisem přitom slibuje „Přidat si sem adresu můžete i ručně."
+            a endpoint `POST /api/v1/suppressions` existoval celou dobu. */}
+        <EmptyState
+          variant="first"
+          title={t('suppressions.emptyTitle')}
+          explanation={t('suppressions.emptyBody')}
+          actions={[{ label: t('suppressions.emptyAction'), onClick: () => setAdding(true) }]}
+        />
+        {addDialog}
+      </>
     );
   }
 
   return (
     <section className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold text-text">{t('suppressions.title')}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-text">{t('suppressions.title')}</h1>
+        <Button variant="secondary" onClick={() => setAdding(true)}>
+          {t('suppressions.emptyAction')}
+        </Button>
+      </div>
       <p>{t('suppressions.lead')}</p>
+      {addDialog}
 
       <DataTable
         tableId="suppressions"
@@ -146,7 +234,7 @@ export function SuppressionsTable({
                 // Hromadné odebrání jde jen u toho, co matice dovoluje. Zbytek se nezahrne
                 // a uživatel to ví dopředu z věty pod tlačítkem, ne z chyby po kliknutí.
                 for (const id of summary.removableIds) {
-                  await removeSuppressionAction({ id, note: '' });
+                  await removeSuppressionAction({ workspaceId, id, note: '' });
                 }
                 setSelectedIds([]);
                 router.refresh();
@@ -218,7 +306,7 @@ export function SuppressionsTable({
         labels={confirmLabels}
         onConfirm={async () => {
           if (!removing) return;
-          const result = await removeSuppressionAction({ id: removing.id, note: '' });
+          const result = await removeSuppressionAction({ workspaceId, id: removing.id, note: '' });
           if (result.status === 'success') {
             toast.success(t('suppressions.removed', { email: removing.masked_email }));
             setRemoving(null);

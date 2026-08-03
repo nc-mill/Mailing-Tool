@@ -1,0 +1,79 @@
+-- mlain:timeout=120
+
+-- ===========================================================================
+-- Veřejný výdej obrázku: dohledání assetu podle public_id bez kontextu projektu.
+--
+-- PROČ VŮBEC. Specifikace 3.14.4 dává adrese obrázku tvar
+--
+--     GET <ASSET_BASE_URL>/a/<public_id>/<variant>.<ext>
+--
+-- a určuje, že je VEŘEJNÁ: bez podpisu, bez expirace, bez přihlášení. Není to
+-- pohodlí, je to jediná možná varianta. Obrázek v e-mailu si vyžádá poštovní
+-- klient PŘÍJEMCE, ne přihlášený uživatel; e-mail leží v cizí schránce roky
+-- a Gmail obrázky proxuje a cachuje. Cokoli s expirací nebo autentizací by
+-- přestalo fungovat právě u klientů, na kterých nejvíc záleží.
+--
+-- Jenže `assets` má od migrace 0004 politiku `ws_isolation` a mlain_app bez
+-- nastaveného `mlain.workspace_id` na ní nevidí ani řádek. Trasa výdeje přitom
+-- workspace nemá odkud vzít: v adrese je jen public_id a to je podle
+-- `ck_assets__public_id` 22 znaků base62, do kterých se projekt nevejde ani
+-- schovaně. Bez téhle migrace vrací `/a/<cokoli>/orig.png` VŽDY 404 a nedá se
+-- to poznat od neexistujícího obrázku.
+--
+-- TVAR ŘEŠENÍ je opsaný z `invitation_token_lookup` v migraci 0004, tedy
+-- z jiné veřejné cesty, která musí najít řádek dřív, než kontext existuje.
+-- Tamní odůvodnění platí i tady doslova: „Únik je nulový: jediný filtr, který
+-- volající má, je token_hash s unikátním indexem."
+--
+-- TADY JE TO JEŠTĚ PŘÍSNĚJŠÍ, a to je jediná odchylka od vzoru. Politika
+-- pozvánky pouští každý živý řádek a spoléhá na to, že se aplikace ptá jen
+-- podle token_hash. Politika níž nespoléhá na nic: podmínka porovnává
+-- `public_id` s hodnotou v `mlain.asset_public_id`, kterou volající MUSÍ
+-- nastavit, takže
+--
+--   * `SELECT * FROM assets` bez nastavené proměnné vrátí NULA ŘÁDKŮ,
+--   * `SELECT * FROM assets` s nastavenou proměnnou vrátí PRÁVĚ TEN JEDEN,
+--     jehož 22znakový identifikátor už volající zná.
+--
+-- Vyjmenovat se tedy nedá nic, ani při chybě v aplikaci. Znalost public_id je
+-- přitom podle 3.14.4 celý bezpečnostní model veřejné adresy (~130 bitů
+-- entropie z kryptograficky bezpečného generátoru), takže politika nepřidává
+-- žádnou schopnost, kterou by držitel adresy neměl.
+--
+-- PROČ NE mlain_maintenance. Nabízelo by se přidat `assets` mezi tabulky
+-- s politikou `maintenance_scan` z migrace 0009 a číst přes ni. Nejde to,
+-- a ne kvůli čistotě: `DATABASE_URL_MAINTENANCE` je VOLITELNÁ proměnná
+-- (docker/initdb/10-roles.sql to říká výslovně) a `maintenancePool()` bez ní
+-- hází výjimku. Instalace bez toho připojení by tím ztratila obrázky ve všech
+-- odeslaných e-mailech, přestože jinak funguje. Obrázek v newsletteru nesmí
+-- záviset na nepovinné proměnné prostředí.
+--
+-- PROČ SE PŘESTO ČTE JEN workspace_id. Trasa výdeje si přes tuhle politiku
+-- vytáhne workspace_id a HNED přepne na `withWorkspace` v systémovém kontextu
+-- toho projektu; teprve tam čte `storage_key` a varianty. Je to totéž pravidlo,
+-- jaké má migrace 0009 napsané pro skeny: přes výjimku se zjistí projekt,
+-- všechno ostatní pokračuje pod běžnou izolací.
+-- ===========================================================================
+CREATE POLICY asset_public_lookup ON assets FOR SELECT TO mlain_app
+  USING (NULLIF(current_setting('mlain.workspace_id', true), '') IS NULL
+         AND NULLIF(current_setting('mlain.user_id', true), '') IS NULL
+         -- Uklizený asset se nevydává. Soubor na disku není, takže by odpověď
+         -- stejně skončila chybou čtení; 404 je pravdivější než 500.
+         AND purged_at IS NULL
+         AND public_id = NULLIF(current_setting('mlain.asset_public_id', true), ''));
+--> statement-breakpoint
+
+-- ---------------------------------------------------------------------------
+-- OBDOBNÁ POLITIKA NA `asset_variants` TU ZÁMĚRNĚ NENÍ a je to podstatné.
+--
+-- Nabízelo by se přečíst asset i variantu jedním JOINem, jenže RLS se
+-- vyhodnocuje na KAŽDÉ relaci v plánu zvlášť, takže by JOIN potřeboval druhou
+-- výjimku a veřejná cesta by četla úložné klíče úplně mimo izolaci projektů.
+--
+-- Trasa výdeje to dělá jinak, na dva kroky: přes politiku výš zjistí POUZE
+-- `workspace_id`, a variantu i `storage_key` čte až v druhé transakci pod
+-- `withWorkspace` v systémovém kontextu toho projektu, tedy pod běžnou
+-- `ws_isolation`. Je to totéž pravidlo, jaké má napsané migrace 0009 pro
+-- systémové skeny. Výjimka z izolace tím zůstává na jediném sloupci jediné
+-- tabulky; kdo ji bude chtít rozšířit, musí sem napsat proč.
+-- ---------------------------------------------------------------------------

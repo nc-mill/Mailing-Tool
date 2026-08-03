@@ -1,7 +1,10 @@
 import { sql } from 'drizzle-orm';
+import { loadConfig } from '../../config/index';
 import { createSystemContext } from '../../identity/context';
 import { withWorkspace, type Tx } from '../../tx';
 import type { WorkspaceContext } from '../../identity/types';
+import { auditImport } from '../import/audit';
+import { createFileExportStorage, exportStorageKey, type ExportStorage } from '../export/storage';
 import { buildReadme, toCsv } from '../gdpr/export';
 import { createZip } from '../gdpr/zip';
 
@@ -19,35 +22,122 @@ export type SubjectDataProviders = {
   trackingData?: (contactId: string) => Promise<{ webEvents: unknown[] }>;
 };
 
-/**
- * Úložiště souborů dodává P11 (`@mlain/core/storage`). Dokud ho nemá, job archiv sestaví
- * a vrátí ho volajícímu; uložení a jednorázový odkaz doplní P11 jedním adaptérem.
- */
-export type ExportStorage = {
-  put(key: string, content: Buffer): Promise<void>;
+export type SubjectExportResult = {
+  requestId: string;
+  exportId: string;
+  files: number;
+  bytes: number;
+  storageKey: string;
 };
 
 /**
- * Sestaví ZIP s daty subjektu.
+ * Sestaví ZIP s daty subjektu a ULOŽÍ HO.
  *
- * Idempotence: výsledek se váže na gdpr_requests.export_id, takže druhý běh existující
- * export přepíše místo aby založil druhý.
+ * Uložení není volitelné a `storage` v `deps` je jen vstup pro testy. Dřív se archiv
+ * bez úložiště tiše zahodil, žádost se uzavřela a subjekt dostal potvrzení bez souboru.
+ * Výchozí hodnota je proto skutečné úložiště, ne `undefined`.
+ *
+ * Archiv se váže na řádek v `exports`, tedy na tutéž tabulku a tutéž cestu ke stažení
+ * jako export kontaktů: jednorázový token (uložený jen jako SHA-256), `expires_at`
+ * a retence, která po vypršení smaže soubor i řádek. Vlastní cesta pro tenhle jeden
+ * druh souboru by znamenala druhé místo, na které musí myslet zálohy a výmaz.
+ *
+ * Idempotence: výsledek se váže na `gdpr_requests.export_id`, takže druhý běh existující
+ * export PŘEPÍŠE místo aby založil druhý. Fronta má `retryLimit` 3, takže druhý běh
+ * je běžný stav, ne výjimka.
  */
 export async function exportSubjectData(
   payload: GdprExportPayload,
   deps: SubjectDataProviders & { storage?: ExportStorage } = {},
-): Promise<{ requestId: string; files: number; bytes: number; stored: boolean }> {
+): Promise<SubjectExportResult> {
   const ctx = createSystemContext(payload.workspaceId, 'gdpr.export_subject');
   const archive = await buildSubjectArchive(ctx, payload.requestId, deps);
   const zip = createZip(archive);
+  const storage = deps.storage ?? createFileExportStorage();
 
-  let stored = false;
-  if (deps.storage !== undefined) {
-    await deps.storage.put(`gdpr/${payload.workspaceId}/${payload.requestId}.zip`, zip);
-    stored = true;
-  }
+  const exportId = await openSubjectExport(ctx, payload.requestId);
+  const storageKey = exportStorageKey(ctx.workspaceId, exportId, 'zip');
+  const { byteSize } = await storage.put(storageKey, zip);
+  await finishSubjectExport(ctx, { exportId, storageKey, byteSize });
 
-  return { requestId: payload.requestId, files: archive.size, bytes: zip.length, stored };
+  return {
+    requestId: payload.requestId,
+    exportId,
+    files: archive.size,
+    bytes: byteSize,
+    storageKey,
+  };
+}
+
+/**
+ * Založí (nebo znovu otevře) řádek v `exports` a naváže ho na žádost.
+ *
+ * Řádek vzniká PŘED zápisem souboru, protože jméno souboru je odvozené od jeho `id`.
+ * Stav je do dokončení `running`, takže `verifyDownloadToken` takový export nevydá:
+ * kdyby worker mezi založením řádku a zápisem souboru spadl, nesmí být ke stažení
+ * odkaz na soubor, který neexistuje.
+ *
+ * `format` zůstává `csv`, protože `ck_exports__format` jinou hodnotu než `csv` nebo
+ * `ndjson` nepustí a rozšíření toho výčtu je migrace, tedy změna schématu, které vlastní
+ * P03. Že je obsahem ZIP, pozná čtecí strana podle `kind = 'gdpr_subject'`; archiv sám
+ * je stejně směs CSV a JSON.
+ */
+async function openSubjectExport(ctx: WorkspaceContext, requestId: string): Promise<string> {
+  const ttlDays = loadConfig().GDPR_EXPORT_TTL_DAYS;
+
+  return withWorkspace(ctx, async (tx) => {
+    const { rows: existing } = await tx.execute<{ export_id: string | null }>(sql`
+      SELECT e.id AS export_id
+        FROM gdpr_requests r JOIN exports e ON e.id = r.export_id
+       WHERE r.id = ${requestId}::uuid AND r.workspace_id = ${ctx.workspaceId}::uuid
+         AND e.workspace_id = ${ctx.workspaceId}::uuid
+    `);
+    const reused = existing[0]?.export_id;
+    if (reused !== undefined && reused !== null) {
+      await tx.execute(sql`
+        UPDATE exports
+           SET status = 'running', finished_at = NULL, failure_code = NULL,
+               expires_at = now() + make_interval(days => ${ttlDays})
+         WHERE id = ${reused}::uuid AND workspace_id = ${ctx.workspaceId}::uuid`);
+      return reused;
+    }
+
+    const { rows } = await tx.execute<{ id: string }>(sql`
+      INSERT INTO exports (id, workspace_id, kind, filter, columns, format, status, expires_at)
+      VALUES (uuidv7(), ${ctx.workspaceId}::uuid, 'gdpr_subject', '{}'::jsonb, '[]'::jsonb,
+              'csv', 'running', now() + make_interval(days => ${ttlDays}))
+      RETURNING id`);
+    const row = rows[0];
+    if (row === undefined) throw new Error('INSERT do exports nevrátil řádek.');
+
+    await tx.execute(sql`
+      UPDATE gdpr_requests SET export_id = ${row.id}::uuid
+       WHERE id = ${requestId}::uuid AND workspace_id = ${ctx.workspaceId}::uuid`);
+    await auditImport(tx, ctx, 'export.created', row.id, {
+      kind: 'gdpr_subject',
+      requestId,
+    });
+    return row.id;
+  });
+}
+
+/**
+ * Teprve tenhle zápis dělá export stažitelným: `verifyDownloadToken` chce `completed`.
+ *
+ * `row_count` zůstává NULL schválně. Archiv nemá řádky, má soubory, a zapsat sem jejich
+ * počet by znamenalo, že obrazovka exportů ukáže u žádosti subjektu „10 řádků".
+ */
+async function finishSubjectExport(
+  ctx: WorkspaceContext,
+  input: { exportId: string; storageKey: string; byteSize: number },
+): Promise<void> {
+  await withWorkspace(ctx, (tx) =>
+    tx.execute(sql`
+      UPDATE exports
+         SET status = 'completed', storage_key = ${input.storageKey},
+             byte_size = ${input.byteSize}, finished_at = now()
+       WHERE id = ${input.exportId}::uuid AND workspace_id = ${ctx.workspaceId}::uuid`),
+  );
 }
 
 /**

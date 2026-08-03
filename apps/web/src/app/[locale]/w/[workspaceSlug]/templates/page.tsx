@@ -40,10 +40,15 @@ export default async function TemplatesPage({
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold">{t('list.title')}</h1>
-        {templates.length > 0 ? <CreateTemplateButton workspaceSlug={workspaceSlug} /> : null}
+        {templates.length > 0 ? (
+          <CreateTemplateButton
+            workspaceSlug={workspaceSlug}
+            workspaceId={access.data.workspace.id}
+          />
+        ) : null}
       </div>
       {templates.length === 0 ? (
-        <TemplatesEmpty workspaceSlug={workspaceSlug} />
+        <TemplatesEmpty workspaceSlug={workspaceSlug} workspaceId={access.data.workspace.id} />
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {templates.map((template) => (

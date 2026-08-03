@@ -65,6 +65,35 @@ export async function createExport(
   });
 }
 
+/**
+ * Vydá NOVÝ jednorázový odkaz k hotovému exportu a vrátí token právě jednou.
+ *
+ * PROČ TO EXISTUJE. `createExport` vrací token jen tomu, kdo export založil. Archiv
+ * s daty subjektu ale zakládá JOB, ne člověk: bez tohohle by token neměl komu vzniknout
+ * a hotový soubor by nešel stáhnout nikomu. Uložený je zase jen SHA-256, takže druhé
+ * zavolání vyrobí nový token a ten předchozí přestane platit.
+ *
+ * Nevydává se k rozpracovanému ani vypršelému exportu: podmínka je táž jako v ověření,
+ * jinak by odkaz ukazoval na soubor, který ještě nevznikl nebo už je smazaný.
+ */
+export async function issueExportDownloadToken(
+  ctx: WorkspaceContext,
+  exportId: string,
+): Promise<string> {
+  const token = randomBytes(32).toString('base64url');
+  const tokenHash = createHash('sha256').update(token).digest();
+
+  return inWorkspaceTx(ctx, async (tx) => {
+    const { rows } = await tx.execute<{ id: string }>(sql`
+      UPDATE exports SET download_token_hash = ${tokenHash}
+       WHERE id = ${exportId}::uuid AND workspace_id = ${ctx.workspaceId}::uuid
+         AND status = 'completed' AND storage_key IS NOT NULL AND expires_at > now()
+      RETURNING id`);
+    if (rows[0] === undefined) notFoundImport('export_not_found', exportId);
+    return token;
+  });
+}
+
 /** Jednorázový token: po ověření se hash smaže, takže druhý pokus selže. */
 export async function verifyDownloadToken(
   ctx: WorkspaceContext,

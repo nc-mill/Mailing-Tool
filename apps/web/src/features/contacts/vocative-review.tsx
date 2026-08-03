@@ -57,6 +57,12 @@ export function VocativeReview({ basePath, workspaceId, groups, totals }: Vocati
   // a čtení při prvním renderu by způsobilo neshodu serverového a klientského HTML.
   const [deferred, setDeferred] = useState<Set<string>>(() => new Set());
   const [showDeferred, setShowDeferred] = useState(false);
+  /**
+   * „Přesto projít ručně" je odmítnutí doporučení, ne akce na serveru: fronta zůstane,
+   * jak je, jen zmizí blok, který nad ní radí. Do téhle chvíle tlačítko nemělo `onClick`
+   * a nedělalo nic, takže jediná cesta dál vedla přes doporučenou hromadnou volbu.
+   */
+  const [softLimitDismissed, setSoftLimitDismissed] = useState(false);
   useEffect(() => setDeferred(readDeferred(workspaceId)), [workspaceId]);
 
   const verdict = exceedsManualReviewLimit(totals);
@@ -81,7 +87,7 @@ export function VocativeReview({ basePath, workspaceId, groups, totals }: Vocati
     : groups.filter((group) => !deferred.has(`${group.kind}:${group.name_key}`));
 
   async function apply(command: VocativeReviewCommand) {
-    const result = await vocativeReviewAction({ groups: [command] });
+    const result = await vocativeReviewAction({ workspaceId, groups: [command] });
     if (result.status === 'success') {
       // Vyřízená skupina se z odložených odstraní, jinak by ji přepínač
       // „Zobrazit odložené" ukazoval navždy jako odloženou, i když už není ve frontě.
@@ -108,7 +114,7 @@ export function VocativeReview({ basePath, workspaceId, groups, totals }: Vocati
       <p>{t('vocative.lead')}</p>
       <p role="status">{t('vocative.reviewBanner', { count: totals.uncertainContacts })}</p>
 
-      {verdict.exceeded ? (
+      {verdict.exceeded && !softLimitDismissed ? (
         <aside
           data-testid="vocative-soft-limit"
           className="flex flex-col gap-2 rounded-[var(--radius-surface)] border border-border bg-surface-muted p-4"
@@ -130,13 +136,15 @@ export function VocativeReview({ basePath, workspaceId, groups, totals }: Vocati
               variant="primary"
               data-recommended="true"
               onClick={async () => {
-                const result = await vocativeNeutralAllAction({});
+                const result = await vocativeNeutralAllAction({ workspaceId });
                 if (result.status === 'success') router.refresh();
               }}
             >
               {t('vocative.softLimitAction')}
             </Button>
-            <Button variant="secondary">{t('vocative.softLimitContinue')}</Button>
+            <Button variant="secondary" onClick={() => setSoftLimitDismissed(true)}>
+              {t('vocative.softLimitContinue')}
+            </Button>
           </div>
           <p className="text-sm text-text-muted">{t('vocative.softLimitActionHint')}</p>
         </aside>

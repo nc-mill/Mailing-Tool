@@ -5,6 +5,7 @@ import { ApiError } from '../../../errors/api-error';
 import { assertPermission } from '../../../identity/permissions';
 import { problemResponse } from '../../../identity/api/schemas';
 import { createExport, loadExport, verifyDownloadToken } from '../service';
+import { createFileExportStorage } from '../storage';
 import type { ExportsEnv } from './index';
 import { CreateExportRequest, ExportResponse, Uuid } from './schemas';
 
@@ -119,9 +120,21 @@ export function registerExportRoutes(app: OpenAPIHono<ExportsEnv>): void {
     if (!ok) throw new ApiError('not_found');
     const row = await loadExport(ctx, id);
     if (row.storage_key === null) throw new ApiError('not_found');
-    const contentType = row.format === 'ndjson' ? 'application/x-ndjson' : 'text/csv';
-    c.header('content-type', `${contentType}; charset=${row.encoding}`);
-    c.header('content-disposition', `attachment; filename="${row.kind}-${id}.${row.format}"`);
-    return c.body(Readable.toWeb(createReadStream(row.storage_key)) as ReadableStream);
+    // `storage_key` je cesta RELATIVNÍ k DATA_DIR (tak ji zapisuje job), ne absolutní.
+    // Bez tohohle spojení se soubor hledal vůči pracovnímu adresáři procesu, takže
+    // stažení skončilo ENOENT u každého hotového exportu.
+    const path = createFileExportStorage().resolve(row.storage_key);
+    // Archiv subjektu údajů je ZIP, ne CSV. Sloupec `format` to říct neumí, protože
+    // `ck_exports__format` pouští jen `csv` a `ndjson`; druh exportu ano.
+    const zipped = row.kind === 'gdpr_subject';
+    const contentType = zipped
+      ? 'application/zip'
+      : row.format === 'ndjson'
+        ? 'application/x-ndjson'
+        : 'text/csv';
+    c.header('content-type', zipped ? contentType : `${contentType}; charset=${row.encoding}`);
+    const extension = zipped ? 'zip' : row.format;
+    c.header('content-disposition', `attachment; filename="${row.kind}-${id}.${extension}"`);
+    return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream);
   });
 }

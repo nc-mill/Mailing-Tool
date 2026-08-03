@@ -67,5 +67,7 @@ export default async function ListDetailPage({ params }: PageProps) {
     archived: detail.data.data.archived_at !== null,
   };
 
-  return <ListDetail basePath={`/w/${workspaceSlug}/lists`} list={list} />;
+  return (
+    <ListDetail basePath={`/w/${workspaceSlug}/lists`} workspaceId={workspaceId} list={list} />
+  );
 }

@@ -103,6 +103,7 @@ export default async function TemplateEditorPage({
   return (
     <EditorClient
       templateId={templateId}
+      workspaceId={access.data.workspace.id}
       assistant={
         <AiAssistantPanel
           templateId={templateId}

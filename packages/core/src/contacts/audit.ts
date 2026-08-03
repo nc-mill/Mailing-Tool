@@ -21,6 +21,13 @@ export const CONTACTS_AUDIT_ACTIONS = [
   'contact.bulk_deleted',
   'contact.vocative_lock_released',
   'contact.vocative_bulk_confirmed',
+  // Zrušení pozastavení odběru. Je to zásah správce do rozhodnutí, které za sebe
+  // udělal sám kontakt na stránce předvoleb, takže musí být dohledatelný.
+  'contact.snooze_cancelled',
+  // Zápis prošel, ale seznam nebo souhlas se kvůli živé suppression nezapsal (pravidlo 4).
+  // Tiché zahození bez stopy je u projevu vůle příjemce nepřijatelné: kdo se ptá, proč
+  // se člověk po importu neobjevil v seznamu, musí najít odpověď, ne mlčení.
+  'contact.suppressed_write_skipped',
   'contact.processing_restricted',
   'contact.processing_restriction_lifted',
   'field.created',

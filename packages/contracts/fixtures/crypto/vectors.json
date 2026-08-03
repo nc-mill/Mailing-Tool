@@ -9,7 +9,10 @@
       "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
       "nonce_hex": "000102030405060708090a0b",
       "plaintext": "{\"access_key_id\":\"AKIAEXAMPLE\",\"secret_access_key\":\"s3cr3t\",\"region\":\"eu-central-1\"}",
-      "sides": ["ts", "go"],
+      "sides": [
+        "ts",
+        "go"
+      ],
       "expected_header_hex": "01011073656e64696e675f70726f7669646572",
       "expected_aad_hex": "6d61696c65722f637265642f763101011073656e64696e675f70726f76696465720192f3a01c2d7e409a1b2c3d4e5f6071",
       "expected_ciphertext_hex": "fae5c57114c84c4ec01591b018af427e916c8c3c557225764cf65a3051382d8128c6de1ac3e38c79c5e2d42b5dc41388e567310ccf2aefcb6251a2dfe3f944983da3c3481b0bfd18beb9a930aa089a1231c84ed1",
@@ -25,7 +28,10 @@
       "context": "sending_provider",
       "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
       "expected_error": "crypto_auth_failed",
-      "sides": ["ts", "go"]
+      "sides": [
+        "ts",
+        "go"
+      ]
     },
     {
       "id": "CR-N2",
@@ -33,7 +39,10 @@
       "context": "webhook_secret",
       "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
       "expected_error": "crypto_auth_failed",
-      "sides": ["ts", "go"]
+      "sides": [
+        "ts",
+        "go"
+      ]
     },
     {
       "id": "CR-N3",
@@ -41,7 +50,10 @@
       "context": "webhook_secret",
       "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
       "expected_error": "crypto_context_mismatch",
-      "sides": ["ts", "go"]
+      "sides": [
+        "ts",
+        "go"
+      ]
     },
     {
       "id": "CR-N4",
@@ -49,7 +61,10 @@
       "context": "sending_provider",
       "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
       "expected_error": "crypto_unsupported_version",
-      "sides": ["ts", "go"]
+      "sides": [
+        "ts",
+        "go"
+      ]
     },
     {
       "id": "CR-N5",
@@ -57,7 +72,10 @@
       "context": "sending_provider",
       "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
       "expected_error": "crypto_unknown_key",
-      "sides": ["ts", "go"]
+      "sides": [
+        "ts",
+        "go"
+      ]
     },
     {
       "id": "CR-N6",
@@ -65,7 +83,10 @@
       "context": "sending_provider",
       "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
       "expected_error": "crypto_envelope_malformed",
-      "sides": ["ts", "go"]
+      "sides": [
+        "ts",
+        "go"
+      ]
     },
     {
       "id": "CR-N7",
@@ -73,7 +94,10 @@
       "context": "sending_provider",
       "workspace_id": "0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071",
       "expected_error": "crypto_auth_failed",
-      "sides": ["ts", "go"]
+      "sides": [
+        "ts",
+        "go"
+      ]
     },
     {
       "id": "CR-N8",
@@ -81,7 +105,10 @@
       "context": "sending_provider",
       "workspace_id": "0192f3a0-1c2d-7e47-9a1b-2c3d4e5f6099",
       "expected_error": "crypto_auth_failed",
-      "sides": ["ts", "go"]
+      "sides": [
+        "ts",
+        "go"
+      ]
     }
   ]
 }

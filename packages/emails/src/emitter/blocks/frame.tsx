@@ -1,10 +1,10 @@
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import type { ColorRef, Padding, VisibilityCondition } from '../../document/types';
-import { useEmitter } from '../ctx';
+import type { EmitterProps } from '../ctx';
 import { paddingStyle } from '../style';
 import { Visible } from '../visibility';
 
-export type FrameProps = {
+export type FrameProps = EmitterProps & {
   padding: Padding;
   backgroundColor: ColorRef | null;
   hideOnMobile: boolean;
@@ -20,7 +20,7 @@ export type FrameProps = {
  * Word engine `padding` na `<div>` ignoruje a `margin` je v něm nespolehlivý.
  */
 export function BlockFrame(props: FrameProps): ReactElement {
-  const { theme } = useEmitter();
+  const { theme } = props.emitter;
   const background = props.backgroundColor ? theme.light.color(props.backgroundColor) : undefined;
   return (
     <Visible when={props.visibleWhen}>

@@ -1,4 +1,4 @@
-import { needsDependencies } from '../../queues';
+import { brandExtractHandler } from '../../brand/jobs/brand-extract-handler';
 
 /**
  * Fronta se jmenuje `content.brand_extract`, takže codegen workeru (P01,
@@ -15,15 +15,17 @@ import { needsDependencies } from '../../queues';
  * jménem se soubor přeloží a testy projdou, ale bundle workeru spadne až
  * při buildu image.
  */
-// Obsluhy, které potřebují injektované závislosti, se registrují přes
-// `needsDependencies`: funkce existují a mají testy, ale továrnu jejich `deps`
-// v repu nikdo nedodal, takže se nedají složit. Fronta se zaregistruje a při
-// první úloze řekne nahlas, co chybí.
+// Obsluha DŘÍV visela na `needsDependencies`, protože továrnu `BrandExtractDeps`
+// nikdo nedodal: repozitář značky uměl jen číst, zápisy `markRunning`, `finish`
+// ani `failStaleExtractions` neexistovaly a `createBrandRuntime` mělo nula
+// volajících. Extrakce značky tedy nešla ven vůbec.
 //
-// Ostatní obsluhy se obalují `perJob`: pg-boss volá handler s DÁVKOU úloh,
-// kdežto tyhle funkce berou jednu. Bez obalu by dostaly pole, sáhly na `.data`
-// a dostaly `undefined`. Fronty by se přitom zaregistrovaly a worker naběhl,
-// takže by se to poznalo teprve na první skutečně zpracované úloze.
+// Chybějící řetěz držel zafixovaný záměrně červený test v `ai/wiring.test.ts`.
+// Zezelenal sám tím, že volající vznikl; jeho tvrzení se nezmírňovalo.
+//
+// `brandExtractHandler` už je hotový `QueueHandler` včetně obalu `perJob`,
+// takže se tu jen připojuje. Ten obal je povinný: pg-boss volá obsluhu
+// s DÁVKOU úloh, kdežto `runBrandExtraction` bere jednu.
 export const handlers = {
-  'content.brand_extract': needsDependencies('content.brand_extract', 'BrandExtractDeps'),
+  'content.brand_extract': brandExtractHandler,
 } as const;

@@ -20,12 +20,18 @@ const RUN_TIMEOUT_MS = 30 * 60 * 1000;
 /**
  * Načte politiky projektu a doplní chybějící z výchozích hodnot.
  *
+ * EXPORTOVANÁ SCHVÁLNĚ. Druhý čtenář je `cleanup-pending.ts`: úklid nepotvrzených
+ * odběrů se řídí lhůtou z politiky `unconfirmed_subscriptions`, a kdyby si ji četl
+ * po svém, byly by ve dvou souborech dvě definice téže lhůty. Ta druhá by se
+ * s první rozešla první změnou výchozích hodnot a poznalo by se to tím, že se
+ * osobní údaje mažou o jiné době, než co má projekt nastavené.
+ *
  * TADY SE POTKÁVAJÍ DVA NÁZVY TÉŽE VĚCI. Sloupec ve schématu se jmenuje `retain_days`,
  * doménový typ `RetentionPolicy` má pole `days`. Mapování je jednosměrné a děje se
  * výhradně tady. Bez něj by byl `policy.days` `undefined` a interval by skončil chybou,
  * tedy retence by spadla na prvním cíli, každou noc.
  */
-async function loadPolicies(
+export async function loadRetentionPolicies(
   ctx: WorkspaceContext,
 ): Promise<Record<RetentionTarget, RetentionPolicy>> {
   const rows = await withWorkspace(ctx, async (tx) => {
@@ -71,7 +77,7 @@ export async function runRetention(
 ): Promise<{ status: 'completed' | 'partial' | 'failed' }> {
   const ctx = createSystemContext(payload.workspaceId, 'retention.run');
   const startedAt = Date.now();
-  const policies = await loadPolicies(ctx);
+  const policies = await loadRetentionPolicies(ctx);
   let status: 'completed' | 'partial' | 'failed' = 'completed';
 
   for (const target of RETENTION_TARGETS) {

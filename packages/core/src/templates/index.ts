@@ -36,6 +36,15 @@ export {
   type TemplateKind,
   type TemplateRow,
 } from './repository';
+export {
+  sendTemplateTest,
+  TestSendError,
+  TEST_SEND_MAX_PER_WINDOW,
+  TEST_SEND_MAX_RECIPIENTS,
+  TEST_SEND_WINDOW_SECONDS,
+  type TestSendInput,
+  type TestSendResult,
+} from './test-send';
 export { validateTemplateDocument, type ValidateContext, type ValidationResult } from './validate';
 export {
   createVersion,

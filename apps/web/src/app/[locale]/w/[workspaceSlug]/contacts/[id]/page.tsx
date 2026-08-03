@@ -34,7 +34,13 @@ type ContactApiDetail = {
   processing_restricted: boolean;
   anonymized_at?: string | null;
   updated_at: string;
-  lists: { list_id: string; name: string; subscribed_at: string; snooze_until: string | null }[];
+  lists: {
+    list_id: string;
+    name: string;
+    status: string;
+    subscribed_at: string;
+    snooze_until: string | null;
+  }[];
   tags: { id: string; name: string }[];
   attributes: Record<string, unknown>;
   source: string;
@@ -102,7 +108,11 @@ export default async function ContactDetailPage({ params }: PageProps) {
     anonymized_at: payload.anonymized_at ?? null,
     status_changed_at: payload.updated_at,
     restriction_requested_at: null,
-    lists: payload.lists.map((list) => ({ id: list.list_id, name: list.name })),
+    lists: payload.lists.map((list) => ({
+      id: list.list_id,
+      name: list.name,
+      status: list.status,
+    })),
     tags: payload.tags,
     attributes: Object.entries(payload.attributes).map(([key, value]) => ({
       key,
@@ -118,6 +128,7 @@ export default async function ContactDetailPage({ params }: PageProps) {
     <ContactDetail
       basePath={`/w/${workspaceSlug}/contacts`}
       workspacePath={`/w/${workspaceSlug}`}
+      workspaceId={workspaceId}
       contact={data}
     />
   );

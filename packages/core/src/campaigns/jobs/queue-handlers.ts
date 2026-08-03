@@ -1,6 +1,10 @@
-import { needsDependencies, perJob } from '../../queues';
+import { needsDependencies, once, perJob } from '../../queues';
 import { materializeDeps } from './deps';
 import { materializeHandler, type MaterializeJobPayload } from './materialize';
+import { resumeOnQuotaHandler } from './resume-on-quota';
+import { schedulerHandler } from './scheduler';
+import { watchdogHandler } from './watchdog';
+import { systemResumeOnQuotaDeps, systemSchedulerDeps, systemWatchdogDeps } from './system-deps';
 
 /**
  * Vstupní bod, který hledá codegen workeru (P01, rozhodnutí D4).
@@ -37,26 +41,25 @@ import { materializeHandler, type MaterializeJobPayload } from './materialize';
  * vysvětlila sama sebe; `needsDependencies` úlohu shodí nahlas, místo aby
  * fronta tiše stála.
  *
- * 1. PĚT CRONOVÝCH JOBŮ POTŘEBUJE VÝČET PROJEKTŮ NAPŘÍČ INSTALACÍ a ten pod
- *    aplikační rolí NEEXISTUJE. `campaign.scheduler` a `outbox.reconcile` mají
- *    `listWorkspaces()`, `campaign.watchdog` má `listRunning()`,
- *    `campaign.resume_on_quota` má `listPaused()` a `domain.recheck` má
- *    `listDue()`; všechny čtou přes hranici projektu.
+ * 1. VÝČET PROJEKTŮ NAPŘÍČ INSTALACÍ. Tohle rozhodnutí PADLO a tři ze čtyř
+ *    cronových jobů téhle domény už na něm stojí: čte se rolí
+ *    `mlain_maintenance` přes `DATABASE_URL_MAINTENANCE` (migrace 0009).
+ *    Role má jmenovitou výjimku z izolace jen na `workspaces`, `campaigns`
+ *    a `sender_domains`, a i tam vrací POUZE identifikátory. Jakmile má úloha
+ *    ID projektu, pokračuje pod `mlain_app` v systémovém kontextu toho
+ *    projektu a dopadá na ni RLS stejně jako na požadavek z API. Továrny jsou
+ *    v `system-deps.ts`, izolaci hlídá `platform/__tests__/maintenance-scan.db.test.ts`.
  *
- *    Ověřeno spuštěním proti čerstvě zmigrované databázi: pod `mlain_app` bez
- *    nastaveného `mlain.workspace_id` vrátí `SELECT count(*) FROM workspaces`
- *    NULA a `SELECT count(*) FROM campaigns` taky NULA, přestože oba řádky
- *    v databázi jsou. Migrace 0004 dává `workspaces` jen politiky
- *    `ws_isolation_self` (podle `mlain.workspace_id`), `ws_member_visibility`
- *    (podle `mlain.user_id`) a `ws_insert_bootstrap`; `withoutContext` tedy
- *    nesplní ani jednu. Cross-workspace čtení má v migraci VÝHRADNĚ role
- *    `mlain_sender` přes `sender_bypass`, a tu worker nepoužívá.
+ *    Proč to nešlo pod `mlain_app`, ať se k tomu nikdo nevrací: ověřeno proti
+ *    čerstvě zmigrované databázi, že bez nastaveného `mlain.workspace_id` vrátí
+ *    `SELECT count(*) FROM workspaces` NULA a `campaigns` taky NULA, přestože
+ *    oba řádky v databázi jsou. Migrace 0004 dává `workspaces` jen politiky
+ *    `ws_isolation_self`, `ws_member_visibility` a `ws_insert_bootstrap`;
+ *    `withoutContext` nesplní ani jednu, a ticho je horší než chyba.
  *
- *    Sken se strážcem podle vzoru `contacts/import/jobs/recover-stale.ts` by tu
- *    byl HORŠÍ než nedodaná obsluha: vypadal by jako zapojený job a při každém
- *    tiku by spadl na `cross_workspace_scan_blocked`, tedy na jiné příčině, než
- *    jaká to doopravdy je. Chybí rozhodnutí, kterou rolí smí worker číst napříč
- *    projekty; to je změna modelu oprávnění, ne dopsání továrny.
+ *    Nezapojená zůstává `outbox.reconcile` (viz níž) a `domain.recheck`, jejíž
+ *    sken `listDueDomains` sice hotový je, ale obsluha patří do jiného
+ *    adresáře, takže ji tenhle rejstřík stejně nevezme.
  *
  * 2. `provider.refresh_quota` má náklad s `workspaceId`, takže na výčet projektů
  *    nenaráží. Naráží na `ProviderSignals`: `deriveProviderStatus` chce osm
@@ -70,9 +73,6 @@ import { materializeHandler, type MaterializeJobPayload } from './materialize';
  *    odmítal každé odeslání. Načtení kvóty samotné (`refreshQuota`
  *    v `providers/api/service.ts`) hotové je; chybí ta jedna mapovací funkce.
  */
-const CROSS_WORKSPACE_SCAN =
-  'výčet projektů napříč instalací (RLS pustí jen mlain_sender přes sender_bypass, worker jede pod mlain_app)';
-
 export const handlers = {
   /**
    * Jediná fronta téhle domény, které se dá závislosti složit poctivě: náklad
@@ -88,16 +88,41 @@ export const handlers = {
     await materializeHandler(materializeDeps(job.data), job.data);
   }),
 
-  'campaign.scheduler': needsDependencies(
-    'campaign.scheduler',
-    `SchedulerDeps.listWorkspaces, tedy ${CROSS_WORKSPACE_SCAN}`,
-  ),
-  'campaign.watchdog': needsDependencies(
-    'campaign.watchdog',
-    `WatchdogDeps.listRunning, tedy ${CROSS_WORKSPACE_SCAN}`,
-  ),
-  'campaign.resume_on_quota': needsDependencies(
-    'campaign.resume_on_quota',
-    `ResumeOnQuotaDeps.listPaused, tedy ${CROSS_WORKSPACE_SCAN}`,
+  /**
+   * Tři cronové skeny nad rolí `mlain_maintenance`.
+   *
+   * `once`, NE `perJob`, a je to podstatné. Všechny tři jedou z cronu
+   * s prázdným nákladem, takže víc úloh v dávce znamená víc TIKŮ, ne víc práce.
+   * `perJob` by sken spustil tolikrát, kolik je úloh v dávce, a druhý průchod
+   * by nenašel nic; vypadalo by to jako správný běh, jen s trojnásobkem dotazů.
+   */
+  'campaign.scheduler': once(() => schedulerHandler(systemSchedulerDeps())),
+  'campaign.watchdog': once(() => watchdogHandler(systemWatchdogDeps())),
+  'campaign.resume_on_quota': once(() => resumeOnQuotaHandler(systemResumeOnQuotaDeps())),
+
+  /**
+   * `outbox.reconcile` má jiný prefix než zbytek téhle mapy, a je to schválně.
+   * Obsluha `reconcileHandler` leží v `campaigns/jobs/reconcile.ts`, tedy v týhle
+   * doméně; `handlerModulePath` by ji podle prefixu jména poslala do
+   * `src/outbox/jobs`, což je adresář, který neexistuje a existovat nemá.
+   * O umístění rozhoduje glob codegenu přes adresáře, ne jméno fronty, takže
+   * klíč patří sem.
+   *
+   * Zapsaný je proto, aby se o něm vědělo NAHLAS: dřív byl vedený jen v
+   * `handler-coverage.test.ts`, takže se cronový tik každou minutu zařadil do
+   * fronty, ze které nikdo nečetl, a nikde se to neprojevilo.
+   *
+   * DŮVOD SE ZMĚNIL a stojí za to ho číst pozorně. Výčet projektů už chybějící
+   * není, `systemReconcileScan()` ho pod rolí `mlain_maintenance` umí. Chybí
+   * DRUHÁ polovina: `reconcile(workspaceId)`. Ta se nedá složit, protože
+   * `revokePending` pracuje nad KAMPANÍ, ne nad projektem, takže mezi „mám ID
+   * projektu" a „mám co odsouhlasit" zeje krok, který nikdo nenapsal. Doplnit
+   * ho znamená rozhodnout, které kampaně projektu se rekonciliují a v jakém
+   * pořadí, a to je návrh, ne dopsání továrny.
+   */
+  'outbox.reconcile': needsDependencies(
+    'outbox.reconcile',
+    'ReconcileDeps.reconcile(workspaceId); sken projektů už hotový je ' +
+      '(systemReconcileScan), ale revokePending pracuje nad kampaní, ne nad projektem',
   ),
 } as const;

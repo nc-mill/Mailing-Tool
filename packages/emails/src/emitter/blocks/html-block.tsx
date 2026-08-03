@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import sanitizeHtml from 'sanitize-html';
 import type { HtmlBlock } from '../../document/types';
+import type { EmitterProps } from '../ctx';
 import { Raw } from '../raw';
 import { BlockFrame } from './frame';
 
@@ -73,10 +74,14 @@ export const HTML_BLOCK_SANITIZE: sanitizeHtml.IOptions = {
   disallowedTagsMode: 'discard',
 };
 
-export function HtmlBlockView({ block }: { block: HtmlBlock }): ReactElement {
+export function HtmlBlockView({
+  block,
+  emitter,
+}: { block: HtmlBlock } & EmitterProps): ReactElement {
   const safe = sanitizeHtml(block.props.code, HTML_BLOCK_SANITIZE);
   return (
     <BlockFrame
+      emitter={emitter}
       padding={block.props.padding}
       backgroundColor={block.props.backgroundColor}
       hideOnMobile={block.props.hideOnMobile}
@@ -84,7 +89,7 @@ export function HtmlBlockView({ block }: { block: HtmlBlock }): ReactElement {
     >
       {/* Odkazy uvnitř tohohle bloku se vědomě netrackují (4.1.4): hledat v cizím
           markupu href by znamenalo ho parsovat, čemuž se celý kontrakt vyhýbá. */}
-      <Raw html={safe} />
+      <Raw html={safe} emitter={emitter} />
     </BlockFrame>
   );
 }

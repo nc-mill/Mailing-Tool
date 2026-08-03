@@ -112,6 +112,24 @@ export function crossChecks(config: MlainConfig): ConfigIssue[] {
     });
   }
 
+  /**
+   * Pojistka proti tomu, aby vývojářský vypínač brzd přihlašování přežil do
+   * produkce. Vypnuté brzdy znamenají, že hádání hesel nic nezpomaluje ani
+   * nezastavuje, takže tichý start s touhle hodnotou by byl zranitelnost.
+   * Proto se nespouští běh, ne že by se hodnota potichu ignorovala: potichu
+   * opravená konfigurace se nikdy neopraví doopravdy.
+   */
+  if (config.NODE_ENV === 'production' && config.LOGIN_THROTTLING_DISABLED) {
+    issues.push({
+      variable: 'LOGIN_THROTTLING_DISABLED',
+      message:
+        'hodnota true je povolená jen mimo produkci. Vypíná limity přihlašovacích cest, ' +
+        'zamykání účtu po neúspěších i časovou podlahu odpovědi, takže v produkci nechává ' +
+        'hádání hesel bez jakékoliv brzdy. Proměnnou z produkčního prostředí odeberte, ' +
+        'nebo ji nastavte na false.',
+    });
+  }
+
   if (config.NODE_ENV === 'production' && config.LOG_FORMAT === 'pretty') {
     issues.push({
       variable: 'LOG_FORMAT',

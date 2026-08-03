@@ -156,6 +156,17 @@ export const campaigns = pgTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
     name: text().notNull(),
+    /**
+     * `'campaign'` je kampaň, kterou založil uživatel. `'system'` je skrytá
+     * kampaň, kterou si vyrobila aplikace, aby měla kam zavěsit testovací
+     * odeslání šablony (migrace 0010).
+     *
+     * Systémová kampaň se NESMÍ objevit v seznamu kampaní, v postupu
+     * onboardingu, v dopadové analýze polí ani v reportech. Filtruje se
+     * sloupcem, ne jménem: filtr podle jména by musel být v každém dotazu
+     * a stačí ho v jednom vynechat. Týž vzor jako `messages.kind`.
+     */
+    kind: text().$type<'campaign' | 'system'>().notNull().default('campaign'),
     status: text().notNull().default('draft'),
     subject: text().notNull().default(''),
     preheader: text().notNull().default(''),
@@ -224,6 +235,7 @@ export const campaigns = pgTable(
     deletedAt: timestamp({ withTimezone: true }),
   },
   (t) => [
+    check('ck_campaigns__kind', sql`${t.kind} IN ('campaign','system')`),
     check(
       'ck_campaigns__status',
       sql`${t.status} IN (
@@ -246,6 +258,11 @@ export const campaigns = pgTable(
     index('idx_campaigns__running')
       .on(t.workspaceId)
       .where(sql`${t.status} IN ('queueing','sending') AND ${t.deletedAt} IS NULL`),
+    // Dohledání skryté kampaně šablony. Bez částečného indexu by to byl sken
+    // všech kampaní projektu.
+    index('idx_campaigns__system_template')
+      .on(t.workspaceId, t.templateId)
+      .where(sql`${t.kind} = 'system' AND ${t.deletedAt} IS NULL`),
   ],
 );
 

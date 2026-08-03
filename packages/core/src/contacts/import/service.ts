@@ -36,7 +36,20 @@ export type ImportRow = {
   total_rows: number | null;
   checkpoint_row: number;
   checkpoint_byte: number;
+  /**
+   * Rozpad výsledku. Jsou to SLOUPCE tabulky, ne klíče v `options`, a `SELECT *`
+   * je načítal odjakživa, jen je typ nedeklaroval. Výsledková obrazovka je proto
+   * hledala v `options`, kde nikdy nebyly, a po importu 50 kontaktů hlásila
+   * „Naimportováno žádný kontakt" a čtyři nuly v rozpadu. Ověřeno v prohlížeči
+   * proti produkční image.
+   */
+  created_rows: number;
+  updated_rows: number;
+  suppressed_rows: number;
+  warning_rows: number;
+  review_rows: number;
   error_rows: number;
+  error_summary: Record<string, number>;
   failure_detail: string | null;
 };
 
@@ -156,10 +169,26 @@ export async function detectAndPreview(
   const encoding = detectEncoding(head, limits.sniffBytes);
   const sample = decodeSampleFor(head, encoding);
   const dialect = detectDialect(sample);
-  const header = dialect.hasHeader
-    ? (sample.split(/\r\n|\n|\r/)[0] ?? '').split(dialect.delimiter)
-    : [];
-  const mapping = Object.keys(row.mapping ?? {}).length > 0 ? row.mapping : suggestMapping(header);
+  const lines = sample.split(/\r\n|\n|\r/);
+  const header = dialect.hasHeader ? (lines[0] ?? '').split(dialect.delimiter) : [];
+  /*
+   * Ukázkové HODNOTY, ne jen hlavička. Návrh mapování na nich pozná, jestli
+   * sloupec „Jméno" nese „Jana", nebo „Jana Nováková"; z názvu sloupce to poznat
+   * nejde, protože v českých exportech znamená obojí.
+   *
+   * Řádky se dělí stejně naivně jako hlavička o řádek výš, tedy prostým
+   * `split(delimiter)`. Je to schválně: obojí musí rozpadnout řádek na TYTÉŽ
+   * indexy, jinak by se ukázka přiřadila k jinému sloupci, než ke kterému patří.
+   *
+   * Poslední řádek se zahazuje, když sonda nekončí koncem řádku: `readHead()`
+   * čte jen prvních pár kilobajtů, takže poslední záznam bývá useknutý uprostřed
+   * a jeho hodnoty by lhaly.
+   */
+  const dataLines = lines.slice(dialect.hasHeader ? 1 : 0).filter((line) => line.trim().length > 0);
+  const complete = /[\r\n]$/.test(sample) ? dataLines : dataLines.slice(0, -1);
+  const sampleRows = complete.slice(0, 50).map((line) => line.split(dialect.delimiter));
+  const mapping =
+    Object.keys(row.mapping ?? {}).length > 0 ? row.mapping : suggestMapping(header, sampleRows);
 
   await inWorkspaceTx(ctx, (tx) =>
     tx.execute(sql`

@@ -18,7 +18,7 @@ describe('describeContactState, devět podob z 8.8.1 části 6', () => {
     const view = describeContactState(contact());
     expect(view.badges.map((badge) => badge.labelKey)).toEqual(['status.active']);
     expect(view.notes).toEqual([]);
-    expect(view.actions).toEqual(['sendEmail', 'unsubscribe', 'delete', 'export']);
+    expect(view.actions).toEqual(['edit', 'unsubscribe', 'delete', 'export']);
     expect(view.readOnly).toBe(false);
   });
 
@@ -64,9 +64,14 @@ describe('describeContactState, devět podob z 8.8.1 části 6', () => {
     expect(view.actions).toContain('showRestriction');
   });
 
-  it('omezené zpracování zakáže odeslání jednorázového e-mailu', () => {
+  it('omezené zpracování nebrání opravě údajů, jen rozesílce', () => {
     const view = describeContactState(contact({ processing_restricted: true }));
-    expect(view.actions).not.toContain('sendEmail');
+    expect(view.actions).toContain('edit');
+    expect(view.actions).toContain('showRestriction');
+  });
+
+  it('smazaný kontakt se needituje', () => {
+    expect(describeContactState(contact({ status: 'deleted' })).actions).not.toContain('edit');
   });
 
   it('pozastavení nese datum a nabídne zrušení pauzy', () => {

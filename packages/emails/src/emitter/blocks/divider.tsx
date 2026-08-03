@@ -1,13 +1,17 @@
 import type { ReactElement } from 'react';
 import type { DividerBlock } from '../../document/types';
-import { useEmitter } from '../ctx';
+import type { EmitterProps } from '../ctx';
 import { BlockFrame } from './frame';
 
-export function DividerBlockView({ block }: { block: DividerBlock }): ReactElement {
-  const { theme } = useEmitter();
+export function DividerBlockView({
+  block,
+  emitter,
+}: { block: DividerBlock } & EmitterProps): ReactElement {
+  const { theme } = emitter;
   const p = block.props;
   return (
     <BlockFrame
+      emitter={emitter}
       padding={p.padding}
       backgroundColor={p.backgroundColor}
       hideOnMobile={p.hideOnMobile}

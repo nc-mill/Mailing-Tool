@@ -2,6 +2,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { withWorkspace, type Tx } from '../../tx';
 import type { WorkspaceContext } from '../../identity/types';
 import { BULK_BATCH_SIZE } from '../constants';
+import { createFileExportStorage } from '../export/storage';
 import { anonymizeContact } from '../gdpr/erase';
 import { registerHandler, type RetentionHandler } from './registry';
 
@@ -144,8 +145,66 @@ const inactiveContacts: RetentionHandler = async ({ ctx, policy }) => {
   return { scanned: candidates.length, affected: candidates.length };
 };
 
+/**
+ * Hotové exporty: podle tabulky ve 4.15 se maže SOUBOR I ŘÁDEK.
+ *
+ * Jde o jedinou kopii osobních údajů, která leží mimo databázi, a u archivu subjektu
+ * údajů je to rovnou celý jeho profil v jednom souboru. Dokud tenhle handler chyběl,
+ * cíl `exports` se v každém běhu jen přeskočil se zápisem do `error_detail`, takže
+ * archivy zůstávaly na disku navždy, přestože odkaz na ně dávno vypršel.
+ *
+ * Pořadí je schválně soubor a teprve pak řádek. Opačně by pád mezi oběma kroky nechal
+ * na disku soubor, o kterém už nikde není záznam, tedy osiřelá osobní data, která nikdo
+ * příště nenajde. Takhle se v nejhorším případě zopakuje mazání souboru, který už není,
+ * a to je u `rm --force` prázdná operace.
+ *
+ * Podmínka má obě větve: `expires_at` je platnost odkazu (24 hodin u kontaktů, 7 dní
+ * u archivu subjektu), politika je horní strop pro řádky, které expiraci z jakéhokoli
+ * důvodu nemají v minulosti.
+ */
+const expiredExports: RetentionHandler = async ({ ctx, policy }) => {
+  const storage = createFileExportStorage();
+  let affected = 0;
+
+  for (;;) {
+    const rows = await withWorkspace(ctx, async (tx: Tx) => {
+      const result = await tx.execute<{ id: string; storage_key: string | null }>(sql`
+        SELECT id, storage_key FROM exports
+         WHERE workspace_id = ${ctx.workspaceId}::uuid
+           AND (expires_at < now() OR ${olderThan('created_at', policy.days)})
+         LIMIT ${BULK_BATCH_SIZE}
+      `);
+      return result.rows;
+    });
+    if (rows.length === 0) break;
+
+    for (const row of rows) {
+      if (row.storage_key !== null) await storage.remove(row.storage_key);
+    }
+
+    // Seznam se skládá přes `sql.join`, ne jako pole do `= ANY($2)`. Ovladač pošle
+    // JS pole jako čárkami oddělený text a PostgreSQL ho odmítne s 22P02 „malformed
+    // array literal", takže by retence spadla na první dávce.
+    const ids = sql.join(
+      rows.map((row) => sql`${row.id}::uuid`),
+      sql`, `,
+    );
+    await withWorkspace(ctx, async (tx: Tx) => {
+      await tx.execute(sql`
+        DELETE FROM exports
+         WHERE workspace_id = ${ctx.workspaceId}::uuid AND id IN (${ids})`);
+    });
+
+    affected += rows.length;
+    await new Promise((resolve) => setTimeout(resolve, BATCH_PAUSE_MS));
+  }
+
+  return { scanned: affected, affected };
+};
+
 registerHandler('import_errors', importErrors);
 registerHandler('form_submissions', formSubmissions);
 registerHandler('inbound_deliveries', inboundDeliveries);
 registerHandler('unconfirmed_subscriptions', unconfirmedSubscriptions);
 registerHandler('inactive_contacts', inactiveContacts);
+registerHandler('exports', expiredExports);

@@ -9,6 +9,7 @@ import { listContactFields } from '../repo/contact-fields';
 import { recordConsent } from '../repo/consents';
 import { assertActiveForm, publicFormRef, recordSubmission, type PublicForm } from '../repo/forms';
 import { writeContact } from '../repo/contacts';
+import { checkSingleSuppression } from '../repo/suppressions';
 import { addTagsToContact } from '../repo/tags';
 import { readContactsSettings } from '../settings';
 import { formFieldName } from './definition';
@@ -218,8 +219,17 @@ export async function submitForm(
     await addTagsToContact(ctx, contactId, active.tagIds);
   }
 
+  // Pravidlo 4 na souhlas z formuláře. Přihlášení do seznamu hlídá `subscribeToList`,
+  // tenhle souhlas ale vzniká mimo něj, takže by se blokované adrese zapsal bez ohledu
+  // na suppression. Kontrola je zvlášť, protože adresa sem doteče oběma větvemi.
+  //
+  // Odhlášený člověk se tím z formuláře vrátit může, ale POUZE přes dvojí potvrzení:
+  // souhlas mu vznikne až kliknutím na odkaz (4.8.1), ne odesláním formuláře.
+  const consentAllowed =
+    contactId === null || (await checkSingleSuppression(ctx, validation.email)) === null;
+
   await withWorkspace(ctx, async (tx) => {
-    if (contactId !== null && active.consentText !== null) {
+    if (contactId !== null && active.consentText !== null && consentAllowed) {
       await recordConsent(ctx, {
         contactId,
         purpose: 'email_marketing',

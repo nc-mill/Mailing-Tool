@@ -28,6 +28,7 @@ export {
   ImportMappingSchema,
   MAPPING_TARGETS,
   assertMappingValid,
+  collectMappingWarnings,
   guessFieldType,
   suggestMapping,
   type GuessedType,

@@ -19,11 +19,17 @@
 // P04 cesty do Next.js nenamontuje, vrací proxy P05 přesměrování na /login
 // a assertovat proti němu by znamenalo měřit přesměrování. V tom případě se
 // blok přeskočí a důvod se vypíše; jakmile cesty přibudou, odemkne se sám.
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { ERROR_CODES } from '@mlain/core/errors';
 
 const BASE = process.env['PREFLIGHT_BASE_URL'] ?? 'http://localhost:3100';
 const ORIGIN = BASE;
+
+/** Prázdná proměnná prostředí je totéž co nenastavená, ne platná hodnota. */
+function fromEnv(name: string): string | undefined {
+  const value = process.env[name];
+  return value !== undefined && value !== '' ? value : undefined;
+}
 
 const SETUP = {
   email: 'p06-preflight@example.com',
@@ -32,6 +38,36 @@ const SETUP = {
   workspace_name: 'Preflight Projekt',
   locale: 'cs',
 };
+
+/**
+ * Účet, pod kterým preflight mluví s API.
+ *
+ * Na ČERSTVÉ instanci si ho založí sám přes `/api/v1/setup`. Jenže setup je
+ * jednorázový: na instanci, která už nastavená je, vrátí 409 a účet
+ * `p06-preflight@example.com` nevznikne nikdy. Původní verze přesto
+ * bezpodmínečně vyžadovala 200 z přihlášení, takže proti běžícímu vývojovému
+ * serveru padala vždycky a z `pnpm run test:unit` dělala běh závislý na tom,
+ * jestli někdo instalaci mezitím dokončil. `expect([201, 409])` tolerovalo dvě
+ * výchozí situace, ale zbytek testu se podle nich nezachoval.
+ *
+ * Oprava má dvě části. Údaje jdou předat prostředím (`PREFLIGHT_EMAIL`
+ * a `PREFLIGHT_PASSWORD`, případně `E2E_EMAIL` a `E2E_PASSWORD`, které se
+ * v repozitáři k témuž účelu už používají), takže proti nastavené instanci se
+ * preflight pustí pod existujícím účtem. A když se přihlásit nedaří, blok se
+ * PŘESKOČÍ s důvodem v NÁZVU, stejně jako u sondy `apiIsMounted`. Nic se
+ * netoleruje mlčky: zelený běh, ze kterého není poznat, že se neověřilo nic,
+ * je horší než červený.
+ *
+ * Preflight ZAPISUJE (E6 zakládá API klíč), takže patří proti vývojové
+ * instanci, ne proti ostrému provozu.
+ */
+const CREDENTIALS = {
+  email: fromEnv('PREFLIGHT_EMAIL') ?? fromEnv('E2E_EMAIL') ?? SETUP.email,
+  password: fromEnv('PREFLIGHT_PASSWORD') ?? fromEnv('E2E_PASSWORD') ?? SETUP.password,
+};
+
+/** Bez údajů z prostředí jede preflight na účtu, který si zakládá sám. */
+const OWN_ACCOUNT = CREDENTIALS.email === SETUP.email;
 
 type Json = Record<string, unknown>;
 
@@ -81,42 +117,101 @@ async function apiIsMounted(): Promise<{ mounted: boolean; reason: string }> {
   }
 }
 
+type Session =
+  | { ready: true; cookie: string; csrfToken: string; workspaceId: string }
+  | { ready: false; reason: string };
+
+/**
+ * Přihlásí preflight a zjistí, do kterého projektu míří. Každý neúspěch nese
+ * důvod, protože z něj vzniká jméno přeskočeného bloku.
+ */
+async function openSession(): Promise<Session> {
+  try {
+    if (OWN_ACCOUNT) {
+      const setup = await request('/api/v1/setup', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: ORIGIN },
+        body: JSON.stringify(SETUP),
+      });
+      // 201 = instalace byla čerstvá a účet právě vznikl, 409 = instalace už
+      // je nastavená a účet preflightu neexistuje. Cokoli jiného znamená, že
+      // se setup chová jinak, než P06 čeká, a to se nesmí zamlčet.
+      if (setup.status !== 201 && setup.status !== 409) {
+        return {
+          ready: false,
+          reason: `POST /api/v1/setup vrátil ${setup.status}, čeká se 201 (čerstvá instalace) nebo 409 (už nastavená)`,
+        };
+      }
+    }
+
+    const login = await request('/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: ORIGIN },
+      body: JSON.stringify({ email: CREDENTIALS.email, password: CREDENTIALS.password }),
+    });
+    if (login.status !== 200) {
+      const hint = OWN_ACCOUNT
+        ? `; instalace na ${BASE} už je nastavená, takže se účet preflightu nezaložil. Předej existující účet v PREFLIGHT_EMAIL a PREFLIGHT_PASSWORD (nebo E2E_EMAIL a E2E_PASSWORD), nebo pusť preflight proti čerstvé instanci`
+        : '';
+      return {
+        ready: false,
+        reason: `přihlášení účtu ${CREDENTIALS.email} vrátilo ${login.status}${hint}`,
+      };
+    }
+
+    const setCookie = login.headers.get('set-cookie');
+    if (setCookie === null) {
+      return { ready: false, reason: 'přihlášení vrátilo 200 bez hlavičky set-cookie' };
+    }
+    const cookie = setCookie.split(';')[0]!;
+
+    const me = await request('/api/v1/auth/me', { headers: { cookie } });
+    if (me.status !== 200) {
+      return { ready: false, reason: `GET /api/v1/auth/me po přihlášení vrátil ${me.status}` };
+    }
+    const mine = await body(me);
+    const memberships = (mine['memberships'] ?? []) as Array<Json>;
+    const first = memberships[0];
+    if (first === undefined) {
+      return {
+        ready: false,
+        reason: `účet ${CREDENTIALS.email} nemá členství v žádném projektu, takže preflight nemá kam mířit`,
+      };
+    }
+
+    return {
+      ready: true,
+      cookie,
+      // csrf_token dnes v odpovědi P04 chybí, což je nález testu E1. Session
+      // se na tom nezastaví, jinak by se místo červeného E1 přeskočilo všechno.
+      csrfToken: String(mine['csrf_token'] ?? ''),
+      workspaceId: String(first['workspace_id']),
+    };
+  } catch (cause) {
+    return { ready: false, reason: `příprava relace selhala: ${String(cause)}` };
+  }
+}
+
 const probe = await apiIsMounted();
+const session: Session = probe.mounted
+  ? await openSession()
+  : { ready: false, reason: `${probe.reason}; cesty /api/v1 vlastní P04, kapitola 2.1` };
+
+if (session.ready) {
+  cookie = session.cookie;
+  csrfToken = session.csrfToken;
+  workspaceId = session.workspaceId;
+}
 
 // Důvod přeskočení patří do JMÉNA bloku, ne do console.warn: výpis na
 // standardní chybový výstup se v souhrnu ztratí, kdežto jméno přeskočeného
 // bloku reportér vypíše. Zelený běh, ze kterého není poznat, že se
 // neověřilo nic, je horší než červený.
-const PREFLIGHT_TITLE = probe.mounted
+const PREFLIGHT_TITLE = session.ready
   ? 'P06 preflight vůči P04'
-  : `P06 preflight vůči P04 [PŘESKOČENO, předpoklad neplatí: ${probe.reason}; cesty /api/v1 vlastní P04, kapitola 2.1]`;
+  : `P06 preflight vůči P04 [PŘESKOČENO, předpoklad neplatí: ${session.reason}]`;
 
-describe.skipIf(!probe.mounted)(PREFLIGHT_TITLE, () => {
-  beforeAll(async () => {
-    const setup = await request('/api/v1/setup', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', origin: ORIGIN },
-      body: JSON.stringify(SETUP),
-    });
-    expect([201, 409]).toContain(setup.status);
-
-    const login = await request('/api/v1/auth/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', origin: ORIGIN },
-      body: JSON.stringify({ email: SETUP.email, password: SETUP.password }),
-    });
-    expect(login.status).toBe(200);
-    const setCookie = login.headers.get('set-cookie');
-    expect(setCookie).toBeTruthy();
-    cookie = setCookie!.split(';')[0]!;
-
-    const me = await request('/api/v1/auth/me', { headers: { cookie } });
-    const mine = await body(me);
-    csrfToken = String(mine['csrf_token'] ?? '');
-    const memberships = mine['memberships'] as Array<Json>;
-    workspaceId = String(memberships[0]!['workspace_id']);
-  });
-
+describe.skipIf(!session.ready)(PREFLIGHT_TITLE, () => {
   it('E1: /auth/me vrací uživatele, členství se slugem a csrf_token', async () => {
     const response = await request('/api/v1/auth/me', { headers: { cookie } });
     expect(response.status).toBe(200);

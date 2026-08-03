@@ -59,7 +59,13 @@ describe('nonce', () => {
 
   it('pozměněný nonce neprojde', () => {
     const nonce = issueNonce(keyring, { formId: 'f1', ip: '1.2.3.4' });
-    const tampered = `${nonce.value.slice(0, -1)}X`;
+    // Poslední znak se mění na JINÝ, ne natvrdo na 'X'. Nonce je base64url
+    // náhodných bajtů, takže zhruba jednou za 64 běhů končil na 'X' už sám
+    // a "pozměněná" hodnota byla shodná s původní. Test pak spadl, přestože
+    // ověření fungovalo správně; hledala by se příčina v podpisu nonce.
+    const last = nonce.value.slice(-1);
+    const tampered = `${nonce.value.slice(0, -1)}${last === 'X' ? 'Y' : 'X'}`;
+    expect(tampered).not.toBe(nonce.value);
     expect(verifyNonce(keyring, tampered, { formId: 'f1', ip: '1.2.3.4' }).ok).toBe(false);
   });
 

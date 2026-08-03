@@ -67,6 +67,47 @@ describe('navigace nesmí skrývat hotové obrazovky', () => {
   });
 
   /**
+   * Opačný směr téže vady, a horší z těch dvou.
+   *
+   * Skrytá položka nikoho neoklame, jen ji uživatel nevidí. Zobrazená položka
+   * bez obrazovky ale **slibuje funkci, kterou produkt nemá**, a klik na ni
+   * skončí čtyřistačtyřkou. Naměřeno v prohlížeči na čtyřech položkách naráz:
+   *
+   *   Kontrola oslovení  /greeting-queue          404 (obrazovka je jinde)
+   *   Statistiky         /statistics              404 (obrazovka je jinde)
+   *   Formuláře          /forms                   404 (obrazovka neexistuje)
+   *   Naplánované        /campaigns/scheduled     404 (obrazovka neexistuje)
+   *
+   * Dvě z nich měly obrazovku na jiné cestě, dvě ji neměly vůbec. Brána proto
+   * nutí rozhodnout: buď cestu srovnat, nebo položku schovat.
+   */
+  it('žádná zobrazená položka nevede na neexistující obrazovku', () => {
+    const root = repoRoot();
+    const zobrazene = flatten(NAVIGATION).filter(
+      (item) =>
+        item['mvp0'] === true &&
+        item['reservedFor'] === undefined &&
+        typeof item['path'] === 'string' &&
+        (item['path'] as string) !== '',
+    );
+
+    const mrtve: string[] = [];
+    for (const item of zobrazene) {
+      const path = item['path'] as string;
+      const soubor = join(root, 'apps/web/src/app/[locale]/w/[workspaceSlug]', path, 'page.tsx');
+      if (!existsSync(soubor)) mrtve.push(`${String(item['id'])} -> ${path}`);
+    }
+
+    expect(
+      mrtve,
+      'Položka navigace je vidět, ale obrazovka pro ni neexistuje, takže klik ' +
+        'skončí na 404. Buď cestu srovnejte na skutečnou obrazovku, nebo ' +
+        'položku schovejte příznakem `mvp0: false`.\n\n' +
+        mrtve.join('\n'),
+    ).toEqual([]);
+  });
+
+  /**
    * Druhá polovina téže vady: položka odkazuje na oprávnění, které neexistuje.
    * Kontrola pak nikdy neprojde a položka se nezobrazí nikomu, aniž by cokoli
    * selhalo. Přesně tak zmizelo nastavení AI, které mělo `ai:read` místo

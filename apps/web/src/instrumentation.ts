@@ -33,4 +33,13 @@ export async function register(): Promise<void> {
   const { installSystemMailer } = await import('@mlain/core/platform/system-mail-runtime');
   installSystemMailer();
   logger.info({}, 'systémová pošta je zapojená');
+
+  /**
+   * Vývojářský vypínač brzd přihlašování se hlásí při KAŽDÉM startu, ne až
+   * u prvního přihlášení. Vypnutá ochrana, o které se mlčí, je horší než žádná.
+   * Volání je idempotentní, takže druhé místo (konstrukce registru limiterů)
+   * log nezdvojí.
+   */
+  const { warnIfLoginThrottlingDisabled } = await import('@mlain/core/identity/throttle');
+  warnIfLoginThrottlingDisabled(logger, config);
 }

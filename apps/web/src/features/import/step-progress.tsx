@@ -9,6 +9,14 @@ export type Progress = { processed: number; total: number | null; status: string
 const MILESTONES = [25, 50, 75, 100];
 
 /**
+ * Stavy, po kterých už import nikam nepokročí. Musí být na obou cestách,
+ * na SSE i na dotazování: kdyby je znala jen jedna, druhá by uživatele nechala
+ * viset na obrazovce průběhu i po dokončení. Shodné se seznamem v
+ * `packages/core/src/contacts/import/api/events.routes.ts`.
+ */
+const TERMINAL_STATUSES = new Set(['completed', 'completed_with_errors', 'failed', 'cancelled']);
+
+/**
  * Krok 6. Průběh přes SSE, po třech neúspěších přechod na dotazování.
  *
  * Do `aria-live` se hlásí jen 25, 50, 75 a 100 procent. Čtečka, která předčítá
@@ -64,13 +72,28 @@ export function StepProgress({
           .then((res) => res.json())
           .then((row: { checkpoint_row: number; total_rows: number | null; status: string }) => {
             apply({ processed: row.checkpoint_row, total: row.total_rows, status: row.status });
+            // Konec importu musí poznat i tahle větev. Dřív ho poznávalo jenom
+            // SSE, takže při dotazování zůstal uživatel na „Importujeme
+            // kontakty" navždy, přestože počítadlo ukazovalo 50 z 50 a 100 %.
+            // Naměřeno na produkční image: 250 vteřin dotazování po tom, co
+            // worker zapsal `import finished`, a výsledek se neukázal.
+            if (TERMINAL_STATUSES.has(row.status)) {
+              if (poll) clearInterval(poll);
+              poll = null;
+              onDone?.(row.status);
+            }
           })
           .catch(() => undefined);
       }, 5000);
     };
 
     const connect = () => {
-      source = new EventSource(`/api/v1/contacts/imports/${importId}/events`);
+      // Reference na projekt jde v query, protože `EventSource` neumí nastavit
+      // hlavičku `X-Workspace-Id`. Bez ní vracelo API 404 a živý průběh byl
+      // v prohlížeči trvale nedostupný, viz `lib/api/authenticate.ts`.
+      source = new EventSource(
+        `/api/v1/contacts/imports/${importId}/events?workspace_id=${encodeURIComponent(workspaceId)}`,
+      );
       source.addEventListener('progress', (event) => {
         failures = 0;
         const data = JSON.parse((event as MessageEvent<string>).data) as Progress & {

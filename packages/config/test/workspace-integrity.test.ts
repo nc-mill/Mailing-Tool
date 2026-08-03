@@ -92,15 +92,29 @@ describe('integrita workspace', () => {
     );
   });
 
-  it('@mlain/core nemá kořenový export, ale má zástupné znaky na podcesty', () => {
+  /**
+   * Tenhle test si DŘÍV PROTIŘEČIL s `packages/core/src/ai/preflight.test.ts`:
+   * zástupný vzor na podcestu `jobs` jeden vyžadoval a druhý zakazoval.
+   * V odevzdaném stromu proto jeden z nich padal vždycky, podle toho, co kdo
+   * naposledy upravil.
+   *
+   * Rozhoduje nález I35 a rozhoduje ve prospěch ZÁKAZU. Node ani esbuild neberou
+   * v potaz pořadí klíčů, rozhoduje délka základu vzoru. Jakmile doména dostala
+   * vlastní vzor se svým jménem (`"./ai/*"`, `"./platform/*"`), přebil ten
+   * obecný a `@mlain/core/ai/jobs` se rozvinul na soubor, který neexistuje.
+   * Vystřelilo to dvakrát a pokaždé až při stavbě produkční image.
+   *
+   * Klíče se proto vypisují jmenovitě. Že žádná doména s frontami nechybí,
+   * hlídá `ai/preflight.test.ts`, a druhou pojistku má `apps/worker/codegen.mjs`.
+   */
+  it('@mlain/core nemá kořenový export, ale má zástupný znak na doménu', () => {
     const exportsMap = manifest('@mlain/core')['exports'] as Record<string, string>;
     expect(exportsMap['.'], 'kořenový export by obešel uzávěr S11').toBeUndefined();
-    // Bez těchhle dvou pravidel si musí každý doménový plán přidat řádek do
-    // package.json cizího balíčku a codegen workeru vyrobí neimportovatelný soubor.
     expect(exportsMap['./*'], 'chybí zástupný export podcesty domény').toBe('./src/*/index.ts');
-    expect(exportsMap['./*/jobs'], 'chybí zástupný export handlerů front').toBe(
-      './src/*/jobs/queue-handlers.ts',
-    );
+    expect(
+      exportsMap['./*/jobs'],
+      'zástupný vzor na handlery front je zrušený, viz I35',
+    ).toBeUndefined();
   });
 
   it('adresáře, na které míří Dockerfile, existují', () => {

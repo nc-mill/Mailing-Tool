@@ -66,6 +66,7 @@ export default async function SuppressionsPage({ params, searchParams }: PagePro
   return (
     <SuppressionsTable
       basePath={`/w/${workspaceSlug}/suppressions`}
+      workspaceId={access.data.workspace.id}
       rows={page.data.data}
       // Rozhraní roli používá jen k tomu, aby nenabízelo akci, která by na serveru
       // skončila 403. Skutečné rozhodnutí dělá assertPermission v API.

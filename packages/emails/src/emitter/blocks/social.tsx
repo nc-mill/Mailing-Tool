@@ -2,7 +2,7 @@ import { Img } from '@react-email/components';
 import type { ReactElement } from 'react';
 import type { SocialBlock } from '../../document/types';
 import { socialIconUrl } from '../assets';
-import { useEmitter } from '../ctx';
+import type { EmitterProps } from '../ctx';
 import { px } from '../style';
 import { BlockFrame } from './frame';
 
@@ -21,11 +21,15 @@ const NETWORK_LABELS: Record<string, string> = {
   email: 'E-mail',
 };
 
-export function SocialBlockView({ block }: { block: SocialBlock }): ReactElement {
-  const { assetBaseUrl, linkHref } = useEmitter();
+export function SocialBlockView({
+  block,
+  emitter,
+}: { block: SocialBlock } & EmitterProps): ReactElement {
+  const { assetBaseUrl, linkHref } = emitter;
   const p = block.props;
   return (
     <BlockFrame
+      emitter={emitter}
       padding={p.padding}
       backgroundColor={p.backgroundColor}
       hideOnMobile={p.hideOnMobile}

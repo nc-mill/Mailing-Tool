@@ -73,6 +73,9 @@
     "duplicateTarget": "Do pole {field} míří dva sloupce: {columns}. Vyberte jeden.",
     "unknownDateFormat": "V sloupci {column} jsme nerozpoznali formát u {count, plural, =0 {žádného řádku} one {# řádku} few {# řádků} many {# řádku} other {# řádků}}, například {example}.",
     "next": "Zobrazit náhled",
+    "warnings": {
+      "full_name_ignored": "Sloupec „Celé jméno\" nepoužijeme: soubor má vlastní sloupec se jménem nebo příjmením a ten má přednost. Když chcete jméno rozdělit z jednoho sloupce, nastavte ostatní jmenné sloupce na „Nepoužívat\"."
+    },
     "targets": {
       "email": "E-mail",
       "first_name": "Jméno",

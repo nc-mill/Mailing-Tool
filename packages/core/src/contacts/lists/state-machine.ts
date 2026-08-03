@@ -158,7 +158,19 @@ function onSubscribe(
 
   // Import a API smí potvrzení přeskočit jen s doloženým prohlášením o existujícím souhlasu.
   // Bez prohlášení se přechod do 'confirmed' na double opt-in seznamu nikdy nesmí stát.
-  if (event.skipConfirmation === true && event.declaration === true && from !== 'unsubscribed') {
+  //
+  // ŽIVÁ SUPPRESSION zkratku zavírá, ať je důvod jakýkoliv (pravidlo 4 z 4.1.2). Je to
+  // jediné místo, kde volající API vyrobí potvrzené přihlášení A UDĚLENÝ SOUHLAS, aniž by
+  // příjemce cokoliv udělal. Řádek v seznamu chybět může (globální odhlášení se do stavu
+  // konkrétního seznamu nepromítne), takže bez téhle podmínky by se odhlášený člověk vrátil
+  // rovnou do rozesílky. Cesta zpět zůstává: níž se propadne na pending s potvrzovacím
+  // odkazem, tedy na projev vůle příjemce.
+  if (
+    event.skipConfirmation === true &&
+    event.declaration === true &&
+    from !== 'unsubscribed' &&
+    !hasLiveSuppression(event)
+  ) {
     return {
       allowed: true,
       next: 'confirmed',
@@ -182,6 +194,12 @@ function onSubscribe(
   // 'none' i 'pending' i 'bounced' s odebranou suppression končí ve stejném stavu.
   // U 'pending' je to opakované odeslání potvrzení; limity hlídá volající (úkol 27).
   return { allowed: true, next: 'pending', effects: ['issue_token', 'send_confirmation'] };
+}
+
+/** Blokace, která PRÁVĚ TEĎ platí. Měkce odebraný řádek (removed_at) už neplatí. */
+function hasLiveSuppression(event: Extract<SubscriptionEvent, { kind: 'subscribe' }>): boolean {
+  const suppression = event.suppression ?? null;
+  return suppression !== null && suppression.removedAt === null;
 }
 
 function bounceSubscribeAllowed(event: Extract<SubscriptionEvent, { kind: 'subscribe' }>): boolean {

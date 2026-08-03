@@ -34,8 +34,16 @@ BEGIN
     CREATE ROLE mlain_gdpr LOGIN PASSWORD 'mlain';
   END IF;
 
-  -- mlain_maintenance: retenční mazání web_events, ze stejného důvodu oddělené
-  -- od aplikační role.
+  -- mlain_maintenance: úlohy, které běží NAPŘÍČ projekty a workspace kontext
+  -- nemají odkud vzít. Retenční mazání web_events, úklid projektů po uplynutí
+  -- lhůty na obnovu a systémové skeny plánovače, hlídače a rekontroly domén.
+  -- Od aplikační role je oddělená proto, že mlain_app na tyhle věci právo mít
+  -- nesmí: cross-workspace čtení je výjimka z izolace projektů a patří na
+  -- jmenovaný seznam tabulek, ne na běžný provoz. Které to jsou, určují
+  -- politiky maintenance_* v migracích 0004 a 0009.
+  --
+  -- Aplikaci se předává proměnnou DATABASE_URL_MAINTENANCE. Je VOLITELNÁ:
+  -- instalace bez ní naběhne, jen tyhle úlohy odmítnou běžet a řeknou proč.
   IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'mlain_maintenance') THEN
     CREATE ROLE mlain_maintenance LOGIN PASSWORD 'mlain';
   END IF;

@@ -64,6 +64,27 @@
       "when": 1785601000000,
       "tag": "0008_campaigns_compile_meta",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785602000000,
+      "tag": "0009_maintenance_scan",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785603000000,
+      "tag": "0010_test_send_unblock",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785604000000,
+      "tag": "0011_asset_public_lookup",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { CONTACTS_CSV } from '../fixtures/test-data';
-import { button, chooseOption } from './controls';
+import { button } from './controls';
 
 export class ImportPage {
   constructor(
@@ -28,18 +28,12 @@ export class ImportPage {
 
     // Krok 2, Kontrola souboru.
     //
-    // ODDĚLOVAČ SE NASTAVUJE VÝSLOVNĚ a je to obejití vady, ne vrtoch.
-    // U souboru odděleného ČÁRKAMI si průvodce vybere „Středník" a přečte
-    // z něj nula kontaktů:
-    //
-    //   paragraph: Žádný řádek, z toho 1 hlavička, tedy žádný kontakt
-    //   combobox "Oddělovač": option "Středník" [selected]
-    //
-    // Kdyby se to nechalo na automatice, test by od téhle chvíle měřil prázdný
-    // import a všechno další by prošlo naprázdno. Zapsáno jako nález.
+    // Oddělovač se UŽ NENASTAVUJE ručně. Dřív to bylo nutné, protože průvodce
+    // u souboru odděleného čárkami vybral „Středník" a přečetl nula kontaktů;
+    // za tím byly tři nezávislé vady v náhledu importu. Po jejich opravě si
+    // čárku vybere sám, takže test měří detekci, ne obcházku kolem ní.
     await expect(this.page.getByRole('heading', { name: /Kontrola souboru/ })).toBeVisible();
-    await chooseOption(this.page, 'Oddělovač', 'Čárka');
-    await expect(this.page.getByText(/50/).first()).toBeVisible();
+    await expect(this.page.getByText(/50 kontaktů/)).toBeVisible();
     await button(this.page, 'Pokračovat').click();
 
     // Krok 3, Mapování.
@@ -71,11 +65,27 @@ export class ImportPage {
     await this.page.getByRole('checkbox', { name: /Potvrzuji/ }).check();
     await button(this.page, 'Pokračovat').click();
 
-    // Krok 6, Spuštění.
-    await this.page
-      .getByRole('button', { name: /Naimportovat|Spustit import/ })
-      .first()
-      .click();
-    await expect(this.page.getByText(/dokončen/).first()).toBeVisible({ timeout: 60_000 });
+    // Krok 6, Průběh.
+    //
+    // ŽÁDNÉ tlačítko „Naimportovat" tu není a nemá být: import se spouští
+    // potvrzením kroku Volby (`POST /confirm`) a šestý krok už jen ukazuje
+    // postup. Dřívější znění na to tlačítko čekalo a běh na něm skončil
+    // vypršením celého testu:
+    //   Error: locator.click: Test timeout of 360000ms exceeded.
+    //     waiting for getByRole('button', { name: /Naimportovat|Spustit import/ })
+    // Přitom import v tu chvíli dávno doběhl, doslovně z logu instalace:
+    //   {"mode":"worker","importId":"…","processed":50,"errorRows":0,
+    //    "msg":"import finished"}
+    // Objekt obrazovky se ohýbá podle produktu, ne naopak.
+    await expect(this.page.getByRole('heading', { name: 'Importujeme kontakty' })).toBeVisible();
+
+    // Hotový import odveze obrazovku na výsledek. Čeká se na nadpis výsledku,
+    // ne na text v průběhu: průběh ukáže „50 z 50“ ještě dřív, než worker
+    // uzavře import, a test by pokračoval nad nehotovými daty.
+    await expect(this.page.getByRole('heading', { name: /Naimportováno 50 kontaktů/ })).toBeVisible(
+      {
+        timeout: 60_000,
+      },
+    );
   }
 }

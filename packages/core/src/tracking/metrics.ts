@@ -157,8 +157,11 @@ export function recordTokenInvalid(code: TokenErrorCode): void {
   trackingMetrics.tokenInvalid.inc({ code });
 }
 
+// `contact_not_found` je doplněk proti plánu: `bindIdentity` ho vrací, když
+// kontakt z tokenu mezitím zmizel, a bez labelu by takový případ v metrice
+// nebyl vidět vůbec.
 export type IdentityBindResult =
-  'created' | 'bound' | 'unchanged' | 'rebound' | 'restricted' | 'shared';
+  'created' | 'bound' | 'unchanged' | 'rebound' | 'restricted' | 'shared' | 'contact_not_found';
 
 export function recordIdentityBind(result: IdentityBindResult): void {
   trackingMetrics.identityBind.inc({ result });

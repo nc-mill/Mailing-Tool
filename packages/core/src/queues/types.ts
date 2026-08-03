@@ -61,6 +61,26 @@ export function perJob<TData>(run: (job: { data: TData }) => Promise<unknown>): 
 }
 
 /**
+ * Obsluha úlohy BEZ nákladu: proběhne jednou za dávku, ne jednou za úlohu.
+ *
+ * Přesně takhle vypadají cronové úlohy (plánovač kampaní, hlídač běžících,
+ * obnova po kvótě, úklidy platformy): pg-boss jim doručí prázdný objekt a víc
+ * jich v dávce znamená jen to, že se natikalo víc prázdných úloh, ne víc práce.
+ * S `perJob` by takový sken proběhl tolikrát, kolik je úloh v dávce, a druhý
+ * průchod by nenašel nic. Škodilo by to hlavně u plánovače, kde se mezi
+ * průchody nestihne nic změnit, takže by šlo o čistou zátěž navíc.
+ *
+ * Bydlí tady, ne v `platform/jobs`, kde vzniklo. Doména platformy ho měla jako
+ * lokální funkci a doména kampaní by ho musela opsat; dvě kopie by se lišily
+ * v tom, jestli se výsledek čeká.
+ */
+export function once(run: () => Promise<unknown>): QueueHandler {
+  return async () => {
+    await run();
+  };
+}
+
+/**
  * Obsluha, která potřebuje injektované závislosti, jenže je nikdo nedodává.
  *
  * Týká se `content.brand_extract` a `ai.cleanup_conversations`: obě funkce
@@ -73,10 +93,21 @@ export function perJob<TData>(run: (job: { data: TData }) => Promise<unknown>): 
  * `undefined` v datech nebo od fronty, do které nikdo nekouká.
  */
 export function needsDependencies(queue: string, missing: string): QueueHandler {
-  return async () => {
+  const handler: QueueHandler = async () => {
     throw new Error(
       `Fronta ${queue} nemá zapojené závislosti: ${missing} nikdo nedodává. ` +
         'Obsluha existuje, ale nedá se složit, takže se úloha nezpracuje.',
     );
   };
+  // Značka pro testy pokrytí front. Bez ní se nedodaná obsluha nedá odlišit od
+  // složené: obě jsou `function` a obě se v mapě `handlers` tváří stejně, takže
+  // by `typeof HANDLERS[name] === 'function'` propustilo i frontu, která každou
+  // úlohu shodí. Spustit obsluhu naprázdno jako rozlišovač nestačí, `once`
+  // by přitom udělal skutečnou práci.
+  return Object.assign(handler, { missingDependencies: missing });
+}
+
+/** Vrátí důvod, proč obsluha není složená, nebo `undefined` u složené obsluhy. */
+export function missingDependenciesOf(handler: QueueHandler): string | undefined {
+  return (handler as { missingDependencies?: string }).missingDependencies;
 }

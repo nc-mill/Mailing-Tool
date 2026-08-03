@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { blockDefaults, DEFAULT_THEME } from '../../../src/document/defaults';
 import { resolveTheme } from '../../../src/theme/resolve';
 import { RawSlotSink } from '../../../src/normalize/slots';
-import { EmitterProvider } from '../../../src/emitter/ctx';
+import type { EmitterState } from '../../../src/emitter/ctx';
 import { applyRawSlots } from '../../../src/compile/apply-slots';
 import { DividerBlockView } from '../../../src/emitter/blocks/divider';
 import { SpacerBlockView } from '../../../src/emitter/blocks/spacer';
@@ -18,25 +18,20 @@ import type {
   SpacerBlock,
 } from '../../../src/document/types';
 
-async function renderBlock(node: React.ReactElement) {
+async function renderBlock(make: (emitter: EmitterState) => React.ReactElement) {
   const sink = new RawSlotSink('ab12cd34ef');
-  const html = await render(
-    <EmitterProvider
-      value={{
-        theme: resolveTheme(DEFAULT_THEME),
-        raw: sink,
-        assets: {},
-        assetBaseUrl: 'https://assets.test',
-        language: 'cs',
-        skippedBlockIds: new Set<string>(),
-        trackClicks: true,
-        linkHref: (href: string) => href,
-        t: (key: string) => key,
-      }}
-    >
-      {node}
-    </EmitterProvider>,
-  );
+  const emitter: EmitterState = {
+    theme: resolveTheme(DEFAULT_THEME),
+    raw: sink,
+    assets: {},
+    assetBaseUrl: 'https://assets.test',
+    language: 'cs',
+    skippedBlockIds: new Set<string>(),
+    trackClicks: true,
+    linkHref: (href: string) => href,
+    t: (key: string) => key,
+  };
+  const html = await render(make(emitter));
   return applyRawSlots(html, sink);
 }
 
@@ -47,7 +42,9 @@ describe('divider', () => {
       type: 'divider' as const,
       props: { ...blockDefaults('divider'), thickness: 2 as const, style: 'dashed' as const },
     } as DividerBlock;
-    const html = await renderBlock(<DividerBlockView block={block} />);
+    const html = await renderBlock((emitter) => (
+      <DividerBlockView block={block} emitter={emitter} />
+    ));
     expect(html).toContain('border-top:2px dashed');
     expect(html).not.toContain('<hr');
   });
@@ -60,7 +57,9 @@ describe('spacer', () => {
       type: 'spacer' as const,
       props: { ...blockDefaults('spacer'), height: 40 },
     } as SpacerBlock;
-    const html = await renderBlock(<SpacerBlockView block={block} />);
+    const html = await renderBlock((emitter) => (
+      <SpacerBlockView block={block} emitter={emitter} />
+    ));
     expect(html).toContain('height:40px');
     expect(html).toContain('line-height:40px');
     expect(html).toContain('font-size:0');
@@ -78,7 +77,7 @@ describe('html block', () => {
         code: '<p onclick="x()">Ahoj {{ contact.first_name }}</p><script>alert(1)</script>',
       },
     } as HtmlBlock;
-    const html = await renderBlock(<HtmlBlockView block={block} />);
+    const html = await renderBlock((emitter) => <HtmlBlockView block={block} emitter={emitter} />);
     expect(html).toContain('Ahoj {{ contact.first_name }}');
     expect(html).not.toContain('onclick');
     expect(html).not.toContain('<script');
@@ -90,7 +89,7 @@ describe('html block', () => {
       type: 'html' as const,
       props: { ...blockDefaults('html'), code: '<style>p{color:red}</style><p>x</p>' },
     } as HtmlBlock;
-    const html = await renderBlock(<HtmlBlockView block={block} />);
+    const html = await renderBlock((emitter) => <HtmlBlockView block={block} emitter={emitter} />);
     expect(html).not.toContain('<style');
     expect(html).toContain('<p>x</p>');
   });
@@ -109,7 +108,9 @@ describe('social', () => {
         ],
       },
     } as SocialBlock;
-    const html = await renderBlock(<SocialBlockView block={block} />);
+    const html = await renderBlock((emitter) => (
+      <SocialBlockView block={block} emitter={emitter} />
+    ));
     expect(html).toContain('/a/social/facebook-color@2x.png');
     expect(html).toContain('/a/social/bluesky-color@2x.png');
     expect(html).toContain('alt="Bluesky"');
@@ -124,7 +125,9 @@ describe('footer', () => {
       type: 'footer' as const,
       props: blockDefaults('footer'),
     } as FooterBlock;
-    const html = await renderBlock(<FooterBlockView block={block} />);
+    const html = await renderBlock((emitter) => (
+      <FooterBlockView block={block} emitter={emitter} />
+    ));
     expect(html).toContain('{{ workspace.sender_address }}');
   });
 
@@ -134,7 +137,9 @@ describe('footer', () => {
       type: 'footer' as const,
       props: blockDefaults('footer'),
     } as FooterBlock;
-    const html = await renderBlock(<FooterBlockView block={block} />);
+    const html = await renderBlock((emitter) => (
+      <FooterBlockView block={block} emitter={emitter} />
+    ));
     expect(html).toContain('href="{{ unsubscribe_url }}"');
     expect(html).toContain('href="{{ preferences_url }}"');
     expect(html).toContain('href="{{ webview_url }}"');
@@ -147,7 +152,9 @@ describe('footer', () => {
       type: 'footer' as const,
       props: { ...blockDefaults('footer'), showPreferences: false, showWebview: false },
     } as FooterBlock;
-    const html = await renderBlock(<FooterBlockView block={block} />);
+    const html = await renderBlock((emitter) => (
+      <FooterBlockView block={block} emitter={emitter} />
+    ));
     expect(html).toContain('{{ unsubscribe_url }}');
     expect(html).not.toContain('{{ preferences_url }}');
   });
@@ -158,6 +165,8 @@ describe('footer', () => {
       type: 'footer' as const,
       props: blockDefaults('footer'),
     } as FooterBlock;
-    expect(await renderBlock(<FooterBlockView block={block} />)).toContain('ml-muted');
+    expect(
+      await renderBlock((emitter) => <FooterBlockView block={block} emitter={emitter} />),
+    ).toContain('ml-muted');
   });
 });

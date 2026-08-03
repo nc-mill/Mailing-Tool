@@ -4,12 +4,38 @@ import { createHttpPorts } from './http-ports';
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+const WORKSPACE_ID = '019fbf52-d8b9-7b0d-b67e-528e8026a383';
+
 describe('http ports', () => {
+  /**
+   * Bez `X-Workspace-Id` vrací middleware 404 dřív, než se handler spustí,
+   * takže z prohlížeče nešlo šablonu ani založit, ani uložit. Naměřeno na
+   * produkční image:
+   *   {"route":"/api/v1/templates","status":404,"workspace_id":null}
+   */
+  it('posílá X-Workspace-Id v každém volání', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json({ id: 't1' }, 201));
+    const ports = createHttpPorts({
+      workspaceId: WORKSPACE_ID,
+      baseUrl: '/api/v1',
+      fetch: fetchMock,
+    });
+
+    await ports.createTemplate({ name: 'Nová', document: { blocks: [] } as never });
+
+    const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>;
+    expect(headers['X-Workspace-Id']).toBe(WORKSPACE_ID);
+  });
+
   it('uloží dokument s optimistickým zámkem', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(json({ design_hash: 'h2', updated_at: '2026-07-31T12:00:00Z' }));
-    const ports = createHttpPorts({ baseUrl: '/api/v1', fetch: fetchMock });
+    const ports = createHttpPorts({
+      workspaceId: WORKSPACE_ID,
+      baseUrl: '/api/v1',
+      fetch: fetchMock,
+    });
     const result = await ports.save({
       templateId: 't1',
       document: { blocks: [] } as never,
@@ -28,7 +54,11 @@ describe('http ports', () => {
       .mockResolvedValue(
         json({ code: 'precondition_failed', design: { blocks: [] }, design_hash: 'h9' }, 412),
       );
-    const ports = createHttpPorts({ baseUrl: '/api/v1', fetch: fetchMock });
+    const ports = createHttpPorts({
+      workspaceId: WORKSPACE_ID,
+      baseUrl: '/api/v1',
+      fetch: fetchMock,
+    });
     const result = await ports.save({
       templateId: 't1',
       document: { blocks: [] } as never,
@@ -51,7 +81,11 @@ describe('http ports', () => {
       .fn()
       .mockResolvedValueOnce(json({ code: 'precondition_failed', detail: 'changed' }, 412))
       .mockResolvedValueOnce(json({ design: { blocks: ['cizi'] }, design_hash: 'h9' }, 200));
-    const ports = createHttpPorts({ baseUrl: '/api/v1', fetch: fetchMock });
+    const ports = createHttpPorts({
+      workspaceId: WORKSPACE_ID,
+      baseUrl: '/api/v1',
+      fetch: fetchMock,
+    });
     const result = await ports.save({
       templateId: 't1',
       document: { blocks: [] } as never,
@@ -68,7 +102,11 @@ describe('http ports', () => {
 
   it('vytvoření šablony pošle jméno i dokument a vrátí id', async () => {
     const fetchMock = vi.fn().mockResolvedValue(json({ id: 'tmpl-9', name: 'Nová šablona' }, 201));
-    const ports = createHttpPorts({ baseUrl: '/api/v1', fetch: fetchMock });
+    const ports = createHttpPorts({
+      workspaceId: WORKSPACE_ID,
+      baseUrl: '/api/v1',
+      fetch: fetchMock,
+    });
     const result = await ports.createTemplate({
       name: 'Nová šablona',
       document: { blocks: [] } as never,
@@ -87,7 +125,11 @@ describe('http ports', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(json({ code: 'rate_limited', retry_after: 900 }, 429));
-    const ports = createHttpPorts({ baseUrl: '/api/v1', fetch: fetchMock });
+    const ports = createHttpPorts({
+      workspaceId: WORKSPACE_ID,
+      baseUrl: '/api/v1',
+      fetch: fetchMock,
+    });
     const result = await ports.testSend({
       templateId: 't1',
       recipients: ['a@b.cz'],
@@ -108,7 +150,11 @@ describe('http ports', () => {
       .mockResolvedValue(
         json({ code: 'teapot', detail: 'Nefunguje to.', request_id: 'req-1' }, 500),
       );
-    const ports = createHttpPorts({ baseUrl: '/api/v1', fetch: fetchMock });
+    const ports = createHttpPorts({
+      workspaceId: WORKSPACE_ID,
+      baseUrl: '/api/v1',
+      fetch: fetchMock,
+    });
     await expect(
       ports.preview({ templateId: 't1', previewData: { type: 'sample' } }),
     ).rejects.toMatchObject({ code: 'teapot', detail: 'Nefunguje to.', requestId: 'req-1' });

@@ -14,13 +14,16 @@ const EditorShell = dynamic(
   },
 );
 
-type Props = Omit<EditorShellProps, 'ports'>;
+type Props = Omit<EditorShellProps, 'ports'> & {
+  /** Bez něj chodí volání editoru bez `X-Workspace-Id` a API vrací 404. */
+  workspaceId: string;
+};
 
 /**
  * Klientská validace se tady nesestavuje. Skládá si ji `useValidation` uvnitř
  * skořápky z katalogu polí, který stejně dostává propem, takže obal nemá co předávat.
  */
-export function EditorClient(props: Props) {
-  const ports = useMemo(() => createHttpPorts({}), []);
+export function EditorClient({ workspaceId, ...props }: Props) {
+  const ports = useMemo(() => createHttpPorts({ workspaceId }), [workspaceId]);
   return <EditorShell {...props} ports={ports} />;
 }

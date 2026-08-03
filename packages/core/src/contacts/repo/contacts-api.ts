@@ -3,6 +3,7 @@ import { ApiError } from '../../errors/api-error';
 import type { WorkspaceContext } from '../../identity/types';
 import { withWorkspace } from '../../tx';
 import type { ContactResponse } from '../api/schemas';
+import { writeAudit } from '../audit';
 import { recordConsent, type ConsentPurpose } from './consents';
 import { writeContact } from './contacts';
 import { getContactById } from './contacts-query';
@@ -61,10 +62,22 @@ function sourceOf(raw: string | undefined): string {
   return raw !== undefined && ALLOWED_SOURCES.has(raw) ? raw : 'api';
 }
 
+/**
+ * Varování v odpovědi. Slovník je společný s importem (`import/row-pipeline.ts`), aby
+ * klient nemusel rozlišovat, kterým kanálem řádek přišel.
+ */
+export type ContactWriteWarning = 'suppressed_skipped';
+
+export type UpsertFromApiResult = {
+  contact: ContactResponse;
+  created: boolean;
+  warnings: ContactWriteWarning[];
+};
+
 export async function upsertContactFromApi(
   ctx: WorkspaceContext,
   body: ContactUpsertBody,
-): Promise<{ contact: ContactResponse; created: boolean }> {
+): Promise<UpsertFromApiResult> {
   const result = await writeContact(ctx, {
     email: body.email,
     fullName: body.full_name ?? null,
@@ -93,7 +106,19 @@ export async function upsertContactFromApi(
     await addTagsToContact(ctx, contactId, await ensureTags(ctx, body.tags));
   }
 
-  if (body.lists !== undefined && body.lists.length > 0) {
+  // DRUHÁ POLOVINA PRAVIDLA 4, a ta zrádnější. Kontakt na suppression listu z mírnějšího
+  // důvodu (odraz, odhlášení, ruční blokace) se zapíše, ale NESMÍ dostat přihlášení
+  // do seznamu ani udělený souhlas. Odhlášený člověk by se jinak vrátil do rozesílky
+  // jedním voláním API a nic by o tom nevědělo.
+  //
+  // Požadavek se NEODMÍTÁ: spec 4.1.2 pravidlo 4 říká „kontakt se zapíše, ale nevznikne
+  // přihlášení ani souhlas", ne „zápis skončí chybou". Odmítnutí by navíc rozbilo běžnou
+  // synchronizaci z CRM, kde je jeden blokovaný člověk mezi tisícem v pořádku.
+  // Přeskok proto NENÍ tichý: nese se varováním v odpovědi a zápisem do auditu.
+  const skippedLists = result.allowSubscriptions ? [] : (body.lists ?? []).map((l) => l.list_id);
+  let skippedConsents = 0;
+
+  if (result.allowSubscriptions && body.lists !== undefined && body.lists.length > 0) {
     await withWorkspace(ctx, async (tx) => {
       for (const item of body.lists ?? []) {
         await writeSubscriptionIn(tx, ctx, {
@@ -108,6 +133,12 @@ export async function upsertContactFromApi(
   }
 
   for (const consent of body.consent ?? []) {
+    // Blokuje se jen UDĚLENÍ souhlasu. Odvolání míří stejným směrem jako suppression
+    // a zahodit ho by znamenalo zahodit projev vůle, který chceme mít doložený.
+    if (!result.allowConsents && consent.status === 'granted') {
+      skippedConsents += 1;
+      continue;
+    }
     await recordConsent(ctx, {
       contactId,
       purpose: consent.purpose,
@@ -120,9 +151,27 @@ export async function upsertContactFromApi(
     });
   }
 
+  const warnings: ContactWriteWarning[] = [];
+  if (skippedLists.length > 0 || skippedConsents > 0) {
+    warnings.push('suppressed_skipped');
+    await withWorkspace(ctx, async (tx) => {
+      await writeAudit(tx, ctx, {
+        action: 'contact.suppressed_write_skipped',
+        targetType: 'contact',
+        targetId: contactId,
+        metadata: {
+          channel: 'api',
+          reason: result.suppressionReason,
+          lists_skipped: skippedLists.length,
+          consents_skipped: skippedConsents,
+        },
+      });
+    });
+  }
+
   const contact = await getContactById(ctx, contactId);
   if (contact === null) throw new ApiError('not_found');
-  return { contact, created: result.inserted };
+  return { contact, created: result.inserted, warnings };
 }
 
 /**
@@ -133,7 +182,7 @@ export async function patchContact(
   ctx: WorkspaceContext,
   contactId: string,
   body: Omit<ContactUpsertBody, 'email' | 'on_conflict'>,
-): Promise<ContactResponse | null> {
+): Promise<{ contact: ContactResponse; warnings: ContactWriteWarning[] } | null> {
   const current = await withWorkspace(ctx, async (tx) => {
     const { rows } = await tx.execute<{ email: string }>(sql`
       SELECT email::text AS email FROM contacts
@@ -144,12 +193,12 @@ export async function patchContact(
   });
   if (current === null) return null;
 
-  const { contact } = await upsertContactFromApi(ctx, {
+  const { contact, warnings } = await upsertContactFromApi(ctx, {
     ...body,
     email: current.email,
     on_conflict: 'update',
   });
-  return contact;
+  return { contact, warnings };
 }
 
 export type BatchItemResult = {
@@ -157,6 +206,8 @@ export type BatchItemResult = {
   status: 'created' | 'updated' | 'skipped' | 'error';
   id?: string;
   error?: { code: string };
+  /** Položka prošla, ale něco se z ní kvůli suppression nezapsalo. */
+  warnings?: ContactWriteWarning[];
 };
 
 /**
@@ -171,8 +222,13 @@ export async function batchUpsertFromApi(
 
   for (const [index, item] of items.entries()) {
     try {
-      const { contact, created } = await upsertContactFromApi(ctx, item);
-      results.push({ index, status: created ? 'created' : 'updated', id: contact.id });
+      const { contact, created, warnings } = await upsertContactFromApi(ctx, item);
+      results.push({
+        index,
+        status: created ? 'created' : 'updated',
+        id: contact.id,
+        ...(warnings.length > 0 ? { warnings } : {}),
+      });
     } catch (error) {
       const code =
         error instanceof ApiError

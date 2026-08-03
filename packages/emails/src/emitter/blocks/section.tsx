@@ -1,15 +1,18 @@
 import type { ReactElement } from 'react';
 import type { ColumnsBlock, SectionBlock } from '../../document/types';
 import { assetUrl } from '../assets';
-import { useEmitter } from '../ctx';
+import type { EmitterProps } from '../ctx';
 import { Raw } from '../raw';
 import { paddingStyle, px } from '../style';
 import { Visible } from '../visibility';
 import { ColumnsBlockView } from './columns';
 import { ContentBlockView } from './dispatch';
 
-export function SectionBlockView({ block }: { block: SectionBlock }): ReactElement {
-  const { theme, assets, assetBaseUrl } = useEmitter();
+export function SectionBlockView({
+  block,
+  emitter,
+}: { block: SectionBlock } & EmitterProps): ReactElement {
+  const { theme, assets, assetBaseUrl } = emitter;
   const p = block.props;
   const innerWidth = theme.contentWidth - p.padding.left - p.padding.right;
   const outer = p.outerBackgroundColor
@@ -53,9 +56,15 @@ export function SectionBlockView({ block }: { block: SectionBlock }): ReactEleme
                   key={child.id}
                   block={child as ColumnsBlock}
                   innerWidth={innerWidth}
+                  emitter={emitter}
                 />
               ) : (
-                <ContentBlockView key={child.id} block={child} width={innerWidth} />
+                <ContentBlockView
+                  key={child.id}
+                  block={child}
+                  width={innerWidth}
+                  emitter={emitter}
+                />
               ),
             )}
           </td>
@@ -92,6 +101,7 @@ export function SectionBlockView({ block }: { block: SectionBlock }): ReactEleme
             >
               {backgroundSrc ? (
                 <Raw
+                  emitter={emitter}
                   html={
                     `<!--[if gte mso 9]><v:rect xmlns:v="urn:schemas-microsoft-com:vml" ` +
                     `fill="true" stroke="false" style="width:${theme.contentWidth}px;">` +
@@ -101,7 +111,10 @@ export function SectionBlockView({ block }: { block: SectionBlock }): ReactEleme
               ) : null}
               {content}
               {backgroundSrc ? (
-                <Raw html="<!--[if gte mso 9]></v:textbox></v:rect><![endif]-->" />
+                <Raw
+                  html="<!--[if gte mso 9]></v:textbox></v:rect><![endif]-->"
+                  emitter={emitter}
+                />
               ) : null}
             </td>
           </tr>

@@ -86,7 +86,13 @@ export const NAVIGATION: NavigationItem[] = [
         labelKey: 'common.nav.contactsForms',
         path: '/forms',
         permission: 'contacts:read',
-        mvp0: true,
+        // Správa formulářů zatím neexistuje: v `apps/web/src/app` je jen veřejná
+        // strana (`(public)/f/[slug]`), kam se odesílá přihlášení, žádná
+        // obrazovka pro jejich zakládání. Odkaz vracel 404, ověřeno v prohlížeči.
+        // Skryté je lepší než mrtvé: mrtvý odkaz slibuje funkci, kterou produkt
+        // nemá. Až obrazovka vznikne, brána `registry-screens.test.ts` si
+        // vynutí přepnutí zpátky.
+        mvp0: false,
       },
       {
         id: 'contacts-suppressions',
@@ -98,7 +104,11 @@ export const NAVIGATION: NavigationItem[] = [
       {
         id: 'contacts-greeting-queue',
         labelKey: 'common.nav.contactsGreetingQueue',
-        path: '/greeting-queue',
+        // Obrazovka leží na `/contacts/vocative-review`, ne na `/greeting-queue`.
+        // Odkaz „Kontrola oslovení" v hlavní navigaci vracel 404, ověřeno
+        // v prohlížeči. Na tutéž cestu míří i odkaz z výsledku importu
+        // (`features/import/import-result.tsx`), takže zdroj pravdy je ona.
+        path: '/contacts/vocative-review',
         permission: 'contacts:write',
         mvp0: true,
       },
@@ -123,7 +133,9 @@ export const NAVIGATION: NavigationItem[] = [
         labelKey: 'common.nav.campaignsScheduled',
         path: '/campaigns/scheduled',
         permission: 'campaigns:read',
-        mvp0: true,
+        // Samostatný seznam naplánovaných kampaní neexistuje, odkaz vracel 404.
+        // Naplánované kampaně jsou zatím vidět v hlavním seznamu podle stavu.
+        mvp0: false,
       },
     ],
   },
@@ -153,21 +165,28 @@ export const NAVIGATION: NavigationItem[] = [
   {
     id: 'statistics',
     labelKey: 'common.nav.statistics',
-    path: '/statistics',
+    // Celá sekce mířila pod `/statistics/**`, kde v aplikaci není ani jedna
+    // stránka; „Statistiky" v hlavní navigaci proto vracely 404. Dvě z těch
+    // obrazovek přitom existují, jen leží jinde, ověřeno v prohlížeči:
+    //   /deliverability   → „Doručitelnost"
+    //   /stats/campaigns  → „Vývoj v čase"
+    // Sekce se tedy neschovává, jen se srovnávají cesty na skutečnost.
+    // Rodičovská položka vede na první podpoložku, jako u ostatních sekcí.
+    path: '/deliverability',
     mvp0: true,
     permission: 'reports:read',
     children: [
       {
         id: 'statistics-deliverability',
         labelKey: 'common.nav.statisticsDeliverability',
-        path: '/statistics/deliverability',
+        path: '/deliverability',
         permission: 'reports:read',
         mvp0: true,
       },
       {
         id: 'statistics-over-time',
         labelKey: 'common.nav.statisticsOverTime',
-        path: '/statistics/over-time',
+        path: '/stats/campaigns',
         permission: 'reports:read',
         mvp0: true,
       },
@@ -176,7 +195,8 @@ export const NAVIGATION: NavigationItem[] = [
         labelKey: 'common.nav.statisticsContacts',
         path: '/statistics/contacts',
         permission: 'reports:read',
-        mvp0: true,
+        // Jediná ze tří, která nikde neexistuje. Skrytá, ne mrtvá.
+        mvp0: false,
       },
     ],
   },

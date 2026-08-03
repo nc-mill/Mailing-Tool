@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import type { ContentBlock, SectionChild } from '../../document/types';
-import { useEmitter } from '../ctx';
+import type { EmitterProps } from '../ctx';
 import { ButtonBlockView } from './button';
 import { DividerBlockView } from './divider';
 import { FooterBlockView } from './footer';
@@ -18,11 +18,12 @@ import { TextBlockView } from './text';
 export function ContentBlockView({
   block,
   width,
+  emitter,
 }: {
   block: SectionChild;
   width: number;
-}): ReactElement | null {
-  const { skippedBlockIds } = useEmitter();
+} & EmitterProps): ReactElement | null {
+  const { skippedBlockIds } = emitter;
   if (skippedBlockIds.has(block.id)) return null;
   // `SectionChild` obsahuje i `UnknownBlock` s indexovou signaturou, takže zúžení
   // podle `type` z něj samo o sobě nikdy neodejde. Neznámý typ sem stejně nedojde,
@@ -30,23 +31,23 @@ export function ContentBlockView({
   const known = block as ContentBlock;
   switch (known.type) {
     case 'heading':
-      return <HeadingBlockView block={known} />;
+      return <HeadingBlockView block={known} emitter={emitter} />;
     case 'text':
-      return <TextBlockView block={known} />;
+      return <TextBlockView block={known} emitter={emitter} />;
     case 'image':
-      return <ImageBlockView block={known} width={width} />;
+      return <ImageBlockView block={known} width={width} emitter={emitter} />;
     case 'button':
-      return <ButtonBlockView block={known} width={width} />;
+      return <ButtonBlockView block={known} width={width} emitter={emitter} />;
     case 'divider':
-      return <DividerBlockView block={known} />;
+      return <DividerBlockView block={known} emitter={emitter} />;
     case 'spacer':
-      return <SpacerBlockView block={known} />;
+      return <SpacerBlockView block={known} emitter={emitter} />;
     case 'html':
-      return <HtmlBlockView block={known} />;
+      return <HtmlBlockView block={known} emitter={emitter} />;
     case 'social':
-      return <SocialBlockView block={known} />;
+      return <SocialBlockView block={known} emitter={emitter} />;
     case 'footer':
-      return <FooterBlockView block={known} />;
+      return <FooterBlockView block={known} emitter={emitter} />;
     default:
       return null;
   }

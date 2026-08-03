@@ -95,24 +95,24 @@ describe('ochrany jsou zapojené, ne jen napsané', () => {
   });
 
   /**
-   * TENHLE TEST JE ČERVENÝ A JE TO SPRÁVNÁ ODPOVĚĎ, ne nedodělek testu.
+   * TENHLE TEST BYL ČERVENÝ A ZEZELENAL TÍM, ŽE CHYBĚJÍCÍ ŘETĚZ VZNIKL,
+   * ne tím, že by se změkčilo jeho tvrzení. Tvrzení je doslova totéž jako
+   * v době, kdy padal.
    *
-   * `createBrandRuntime` v repozitáři nemá jediného volajícího. Není to
-   * kosmetika: bez něj nikdo nesestaví DNS resolver ani přenos, takže by
-   * extrakce značky nešla ven vůbec. Chybí celý řetěz pod ním, ne jeden řádek:
+   * Co chybělo a co to nahradilo:
    *
-   * - `runBrandExtraction` taky nikdo nevolá. Handler fronty `content.brand_extract`
-   *   má podpis `(job: { data, deps })`, kdežto `QueueHandler` z registru front
-   *   je `(jobs: readonly QueueJob[]) => Promise<void>`. Worker tedy handleru
-   *   `deps` nemá jak předat a `apps/worker` na tom padá i typovou kontrolou.
-   * - Továrna `BrandExtractDeps` neexistuje a nedá se složit: `repo/extractions.repo.ts`
-   *   umí jen číst (`findExtraction`, `listRecentExtractions`), zápisy
-   *   `markRunning`, `finish` ani `failStaleExtractions` v repozitáři nejsou,
-   *   a `repo/profiles.repo.ts` neumí profil značky uložit.
+   * - Zápisová část repozitáře. `repo/extractions.repo.ts` uměl jen číst;
+   *   dnes má `markRunning`, `finishExtraction` a `failStaleExtractions`
+   *   a `repo/profiles.repo.ts` má `insertBrandProfile`.
+   * - Továrna `BrandExtractDeps`. Skládá ji `brand/jobs/brand-extract-deps.ts`
+   *   a je to jediné místo, kde vzniká skutečný resolver a skutečný přenos:
+   *   volá `createBrandRuntime`, takže tenhle test měří právě ji.
+   * - Obsluha fronty se srovnaným podpisem. `brand/jobs/brand-extract-handler.ts`
+   *   vystavuje `QueueHandler` složený přes `perJob`; dřívější `handler`
+   *   s podpisem `(job: { data, deps })` neměl worker čím zavolat.
    *
-   * Dopsat sem volajícího jen proto, aby test zezelenal, by bylo přesně to
-   * divadlo, kvůli kterému tenhle soubor vznikl. Zůstává červený, dokud
-   * zápisová část domény značky nevznikne.
+   * Kdyby test spadl znovu, znamená to, že někdo ten řetěz rozpojil.
+   * NEUPRAVUJ HO, oprav zapojení.
    */
   it('kompoziční kořen značky má volajícího v aplikaci', () => {
     const brand = productionUses('createBrandRuntime', 'packages/core/src/brand/runtime.ts');

@@ -139,10 +139,30 @@ export async function claimDueCampaigns(
   ctx: WorkspaceContext,
   opts: { catchupHours: number; limit: number },
 ): Promise<string[]> {
+  return (await claimDueCampaignRows(ctx, opts)).map((row) => row.id);
+}
+
+/**
+ * Totez, ale i s casem, na ktery byla kampan naplanovana.
+ *
+ * Planovac z nej pocita zpozdeni: nad SCHEDULE_DELAY_NOTIFY_SECONDS zapisuje
+ * `campaign.schedule_delayed` do auditu a hlasi udalost, protoze kampan typu
+ * "dnesni poledni menu" nema odejit vecer bez upozorneni. Bez `scheduled_at`
+ * by tu vetev nemel z ceho vyhodnotit.
+ *
+ * Je to NADSTAVBA, ne druhy dotaz: `claimDueCampaigns` vraci vysledek teto
+ * funkce zuzeny na identifikatory. Dve kopie podminky catch-up okna by se
+ * rozesly prvni upravou a poznalo by se to az tim, ze se kampan odeslala,
+ * ackoli merlo okno davno uplynout.
+ */
+export async function claimDueCampaignRows(
+  ctx: WorkspaceContext,
+  opts: { catchupHours: number; limit: number },
+): Promise<Array<{ id: string; scheduledAt: Date }>> {
   return withWorkspace(ctx, async (tx) => {
-    const r = await tx.execute<{ id: string }>(
+    const r = await tx.execute<{ id: string; scheduled_at: string | Date }>(
       rawSql(
-        `SELECT id FROM campaigns
+        `SELECT id, scheduled_at FROM campaigns
         WHERE workspace_id = $1
           AND status = 'scheduled'
           AND deleted_at IS NULL
@@ -154,7 +174,7 @@ export async function claimDueCampaigns(
         [ctx.workspaceId, String(opts.catchupHours)],
       ),
     );
-    return r.rows.map((x) => x.id);
+    return r.rows.map((x) => ({ id: x.id, scheduledAt: new Date(x.scheduled_at) }));
   });
 }
 
@@ -166,18 +186,39 @@ export async function markScheduleMissed(
   ctx: WorkspaceContext,
   opts: { catchupHours: number },
 ): Promise<number> {
+  return (await markScheduleMissedIds(ctx, opts)).length;
+}
+
+/**
+ * Totez, ale vraci identifikatory prave prevedenych kampani.
+ *
+ * Planovac za kazdou z nich hlasi udalost `campaign.schedule_missed` a zapisuje
+ * audit, takze samotny POCET mu je k nicemu. Pocitat se neda ani zpetnym
+ * dotazem: ten by vratil i kampane prevedene minulym tikem a uzivatel by dostal
+ * tutez udalost pri kazdem behu.
+ *
+ * `rowCount` se ZAMERNE nepouziva, pocet vychazi z delky RETURNING. Jsou to dve
+ * cisla, ktera se u UPDATE muzou lisit jen tehdy, kdyz nejaky radek neprojde
+ * politikami pro cteni, a v tom pripade je spravne to mensi: nahlasit se da jen
+ * kampan, kterou opravdu vidime.
+ */
+export async function markScheduleMissedIds(
+  ctx: WorkspaceContext,
+  opts: { catchupHours: number },
+): Promise<string[]> {
   return withWorkspace(ctx, async (tx) => {
-    const r = await tx.execute(
+    const r = await tx.execute<{ id: string }>(
       rawSql(
         `UPDATE campaigns
           SET status = 'schedule_missed', updated_at = now()
         WHERE workspace_id = $1
           AND status = 'scheduled'
           AND deleted_at IS NULL
-          AND scheduled_at <= now() - ($2 || ' hours')::interval`,
+          AND scheduled_at <= now() - ($2 || ' hours')::interval
+      RETURNING id`,
         [ctx.workspaceId, String(opts.catchupHours)],
       ),
     );
-    return r.rowCount ?? 0;
+    return r.rows.map((x) => x.id);
   });
 }

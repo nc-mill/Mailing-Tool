@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import type { HexColor, InlineNode, RichText, VarInline } from '../document/types';
 import { filterSlotMarker } from '../normalize/slots';
-import { useEmitter } from './ctx';
+import type { EmitterProps } from './ctx';
 
 /**
  * Vyrobí Liquid výstup z uzlu `var`. Argument filtru se vkládá záměnou přesně
@@ -29,8 +29,12 @@ function marks(node: Extract<InlineNode, { t: 's' }>): ReactNode {
   return out;
 }
 
-function Inline({ nodes, linkColor }: { nodes: InlineNode[]; linkColor: HexColor }): ReactElement {
-  const { linkHref } = useEmitter();
+function Inline({
+  nodes,
+  linkColor,
+  emitter,
+}: { nodes: InlineNode[]; linkColor: HexColor } & EmitterProps): ReactElement {
+  const { linkHref } = emitter;
   return (
     <>
       {nodes.map((node, index) => {
@@ -44,7 +48,7 @@ function Inline({ nodes, linkColor }: { nodes: InlineNode[]; linkColor: HexColor
             href={linkHref(node.href, node.trackable !== false)}
             style={{ color: linkColor, textDecoration: 'underline' }}
           >
-            <Inline nodes={node.children} linkColor={linkColor} />
+            <Inline nodes={node.children} linkColor={linkColor} emitter={emitter} />
           </a>
         );
       })}
@@ -58,13 +62,14 @@ export function RichTextView({
   linkColor,
   style,
   align,
+  emitter,
 }: {
   rich: RichText;
   color: HexColor;
   linkColor: HexColor;
   style?: CSSProperties;
   align?: 'left' | 'center' | 'right' | 'justify';
-}): ReactElement {
+} & EmitterProps): ReactElement {
   const paragraph: CSSProperties = { margin: 0, color, textAlign: align ?? 'left', ...style };
   return (
     <>
@@ -76,7 +81,7 @@ export function RichTextView({
               className="ml-text"
               style={{ ...paragraph, textAlign: node.align ?? paragraph.textAlign }}
             >
-              <Inline nodes={node.children} linkColor={linkColor} />
+              <Inline nodes={node.children} linkColor={linkColor} emitter={emitter} />
             </p>
           );
         }
@@ -85,7 +90,7 @@ export function RichTextView({
           <List key={index} className="ml-text" style={{ ...paragraph, paddingLeft: '24px' }}>
             {node.items.map((item, itemIndex) => (
               <li key={itemIndex} style={{ color }}>
-                <Inline nodes={item} linkColor={linkColor} />
+                <Inline nodes={item} linkColor={linkColor} emitter={emitter} />
               </li>
             ))}
           </List>

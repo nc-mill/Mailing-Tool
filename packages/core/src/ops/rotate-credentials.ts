@@ -2,6 +2,8 @@ import { sql } from 'drizzle-orm';
 import { decryptEnvelope, encryptEnvelope, envelopeKeyId } from '@mlain/contracts/crypto';
 import { currentKeyId, parseKeyring } from '@mlain/contracts/keyring';
 import { writeAuditLog } from '../audit/write';
+import { enqueue } from '../contacts/jobs/enqueue';
+import { withoutContext } from '../tx';
 import { OPS_AUDIT_ACTIONS } from './audit';
 import { withAdminTx } from './db';
 import { ENCRYPTED_COLUMNS, unregisteredEncryptedColumns } from './encrypted-columns';
@@ -136,4 +138,36 @@ export async function rotateCredentials(input: RotateInput): Promise<RotateRepor
   });
 
   return { rotated, alreadyCurrent, failed, notice: NOTICE };
+}
+
+/**
+ * Zařadí doplnění otisků adres pod novým pokolením klíče.
+ *
+ * PROČ TO NEDĚLÁ `rotateCredentials` SÁM. Rotace běží pod `DATABASE_URL_MIGRATOR`
+ * a její transakce sahá výhradně do tabulek s obálkami. Fronta pg-boss je jiné
+ * schéma, jiná role a hlavně jiná záruka: přešifrování tajemství musí projít
+ * i tam, kde worker nikdy neběžel, a tedy ani schéma fronty neexistuje. Zařazení
+ * je proto samostatný krok, který volá příkaz CLI po úspěšné rotaci a jehož
+ * selhání se hlásí zvlášť.
+ *
+ * `singletonKey` je `global`, protože rotace je operace nad celou instalací
+ * a dvě souběžné úlohy by procházely tytéž kontakty.
+ *
+ * Otisky suppression řádků tudy NEJDOU a jít nemůžou: adresa vymazaného člověka
+ * po výmazu podle článku 17 neexistuje, takže se její otisk nedá přepočítat.
+ * Právě proto se staré pokolení ze SECRET_KEY_PREVIOUS nikdy neodebírá.
+ *
+ * Pokolení se DOPOČÍTÁVÁ TADY z předaného keyringu, nebere se parametrem. Příkaz
+ * CLI by na jeho spočítání potřeboval `@mlain/contracts/keyring`, a `apps/cli`
+ * na kontrakty podle grafu závislostí sahat nesmí. Vstup je proto týž objekt,
+ * jaký příkaz předává do `rotateCredentials`, takže se obojí nemůže rozejít.
+ */
+export async function enqueueRefingerprint(keys: {
+  secretKey: string;
+  secretKeyPrevious: string;
+}): Promise<void> {
+  const keyId = currentKeyId(parseKeyring(keys));
+  await withoutContext(async (tx) => {
+    await enqueue(tx, 'contacts.refingerprint', { keyId }, { singletonKey: 'global' });
+  });
 }

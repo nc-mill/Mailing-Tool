@@ -73,6 +73,9 @@
     "duplicateTarget": "Two columns point at {field}: {columns}. Pick one.",
     "unknownDateFormat": "In column {column} we did not recognise the format in {count, plural, =0 {no rows} one {# row} few {# rows} many {# rows} other {# rows}}, for example {example}.",
     "next": "Show preview",
+    "warnings": {
+      "full_name_ignored": "We will not use the „Full name\" column: the file has its own first or last name column and that one wins. To split the name from a single column, set the other name columns to „Do not use\"."
+    },
     "targets": {
       "email": "Email",
       "first_name": "First name",

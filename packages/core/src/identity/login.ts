@@ -5,6 +5,7 @@ import { ApiError } from '../errors/api-error';
 import { writeAuditLog } from '../audit/write';
 import { DUMMY_PASSWORD_HASH, hashPassword, needsRehash, verifyPassword } from './password';
 import { AUTH_MIN_RESPONSE_MS, withConstantTime } from './constant-time';
+import { loginThrottlingDisabled } from './throttle';
 import { createSession } from './session';
 import { IdentityAuditActions } from './audit';
 import type { Role } from './types';
@@ -101,13 +102,19 @@ async function recordFailedLogin(input: {
 }): Promise<void> {
   await withoutContext(async (tx) => {
     if (input.userId) {
+      // S vypnutými brzdami (LOGIN_THROTTLING_DISABLED) se čítač dál počítá,
+      // jen se z něj nikdy nestane zámek. Čítač je informace, zámek je brzda,
+      // a vypínač vypíná brzdy.
+      const lockClause = loginThrottlingDisabled()
+        ? sql`locked_until`
+        : sql`CASE
+                 WHEN failed_login_count + 1 >= ${LOGIN_MAX_FAILURES}
+                 THEN now() + interval '${sql.raw(String(LOGIN_LOCK_MINUTES))} minutes'
+                 ELSE locked_until END`;
       await tx.execute(sql`
         UPDATE users
            SET failed_login_count = failed_login_count + 1,
-               locked_until = CASE
-                 WHEN failed_login_count + 1 >= ${LOGIN_MAX_FAILURES}
-                 THEN now() + interval '${sql.raw(String(LOGIN_LOCK_MINUTES))} minutes'
-                 ELSE locked_until END,
+               locked_until = ${lockClause},
                updated_at = now()
          WHERE id = ${input.userId}::uuid
       `);
@@ -129,7 +136,10 @@ async function recordFailedLogin(input: {
  * o sobě nestačí: existující účet má navíc dotazy a zápisy.
  */
 export function login(input: LoginInput): Promise<LoginResult> {
-  return withConstantTime(AUTH_MIN_RESPONSE_MS, () => performLogin(input));
+  // S vypnutými brzdami je podlaha nula, takže se jen nedospává. Kritérium 16
+  // tím padá, ale to je celý smysl vypínače a mimo produkci nikoho neohrožuje.
+  const floorMs = loginThrottlingDisabled() ? 0 : AUTH_MIN_RESPONSE_MS;
+  return withConstantTime(floorMs, () => performLogin(input));
 }
 
 async function performLogin(input: LoginInput): Promise<LoginResult> {
@@ -169,7 +179,10 @@ async function performLogin(input: LoginInput): Promise<LoginResult> {
     user.lockedUntil = null;
   }
 
-  if (user.lockedUntil) {
+  // Zámek z dřívějška se s vypnutými brzdami ignoruje, jinak by vypínač
+  // nepomohl právě tomu, kdo se už zamknout stihl. Sloupec se nemaže,
+  // vynuluje ho první úspěšné přihlášení níž.
+  if (user.lockedUntil && !loginThrottlingDisabled()) {
     const retryAfter = Math.max(
       1,
       Math.ceil((new Date(user.lockedUntil).getTime() - Date.now()) / 1000),

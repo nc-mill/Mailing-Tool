@@ -4,6 +4,8 @@ import { createLogger } from '@mlain/core/logging';
 import { createShutdownController } from '@mlain/core/shutdown';
 import { aiKeyLeakCheck, type Check } from '@mlain/core/health';
 import { installSystemMailer } from '@mlain/core/platform/system-mail-runtime';
+import { installConsentEraser } from '@mlain/core/contacts';
+import { gdprConfigured, maintenanceConfigured } from '@mlain/core/tx/index';
 import { registerQueues } from './boss';
 import { startHealthServer } from './health-server';
 import { HANDLERS } from './handlers.generated';
@@ -68,6 +70,63 @@ async function main(): Promise<void> {
    */
   installSystemMailer();
   logger.info({}, 'systémová pošta je zapojená');
+
+  /**
+   * Kompoziční kořen výmazu podle článku 17.
+   *
+   * Souhlasy smí smazat jedině role `mlain_gdpr` a do téhle chvíle ji
+   * registrovaly POUZE testy, takže úloha `gdpr.erase` v režimu `anonymize`,
+   * tedy ve výchozím režimu, selhala pokaždé. Zapojení patří sem, protože
+   * anonymizaci volá jen worker: úloha `gdpr.erase` a retenční cíl
+   * `inactive_contacts`. Web ji nevolá vůbec.
+   */
+  installConsentEraser();
+  logger.info({}, 'mazač souhlasů pod rolí mlain_gdpr je zapojený');
+
+  /**
+   * Hlasité upozornění na chybějící `DATABASE_URL_MAINTENANCE`.
+   *
+   * Proměnná je volitelná, takže instalace bez ní naběhne a běžný provoz
+   * funguje. Bez ní ale nemají systémové skeny čím číst napříč projekty a
+   * NAPLÁNOVANÁ KAMPAŇ SE NEODESLE. Řeklo by to i každé jednotlivé selhání
+   * úlohy, jenže do fronty se nikdo nedívá; tenhle řádek je na začátku logu,
+   * kam se dívá každý.
+   */
+  if (!maintenanceConfigured()) {
+    logger.warn(
+      {
+        variable: 'DATABASE_URL_MAINTENANCE',
+        jobs: [
+          'campaign.scheduler',
+          'campaign.watchdog',
+          'campaign.resume_on_quota',
+          'outbox.reconcile',
+          'domain.recheck',
+          'platform.purge_workspaces',
+        ],
+      },
+      'chybí připojení pod rolí mlain_maintenance: úlohy, které čtou napříč projekty, ' +
+        'poběží do chyby. Naplánovaná kampaň se neodešle a smazané projekty se neuklidí.',
+    );
+  }
+
+  /**
+   * Totéž pro `DATABASE_URL_GDPR`, a je to o stupeň horší případ: bez téhle
+   * proměnné nedoběhne VÝMAZ OSOBNÍCH ÚDAJŮ podle článku 17, tedy zákonná
+   * povinnost se lhůtou. Úloha skončí v chybě, žádost subjektu zůstane ve
+   * stavu `verified` a nic po sobě nenechá; hlášku proto worker říká hned
+   * při startu, ne až u první žádosti.
+   */
+  if (!gdprConfigured()) {
+    logger.warn(
+      {
+        variable: 'DATABASE_URL_GDPR',
+        jobs: ['gdpr.erase', 'retention.run'],
+      },
+      'chybí připojení pod rolí mlain_gdpr: souhlasy nemá kdo smazat, takže výmaz podle ' +
+        'článku 17 v režimu anonymize se ZRUŠÍ CELÝ. Týká se i retenčního cíle inactive_contacts.',
+    );
+  }
 
   await boss.start();
   await registerQueues(boss as never, HANDLERS, {

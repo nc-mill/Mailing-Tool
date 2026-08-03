@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api-client/fetch';
 import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
 import { trialAudienceNotice } from '@mlain/core/providers';
 import { SendScreen } from '@/features/campaigns/send-screen';
+import { PreflightProblem } from '@/features/campaigns/preflight-problem';
 import type { Preflight } from '@/features/campaigns/readiness-checklist';
 import type { TrialView } from '@/features/sending/trial-mode-panel';
 
@@ -54,7 +55,40 @@ export default async function SendPage({ params }: PageProps) {
     apiFetch<TrialView>('/api/v1/settings/trial', { workspaceId }),
   ]);
 
-  if (!campaign.ok || !preflight.ok) notFound();
+  /*
+   * Čtyřistačtyřka patří JEN kampani, která opravdu není. Dřív sem spadlo
+   * i selhání předodeslací kontroly, takže uživatel dostal „stránka nenalezena"
+   * nad kampaní, kterou měl v seznamu. Vypršelá relace i nedostupný odesílací
+   * účet vypadaly stejně jako smazaná kampaň a nešlo je rozeznat.
+   */
+  if (!campaign.ok) {
+    /*
+     * `validation_failed` je tu taky čtyřistačtyřka, ne chybový blok. `GET` kampaně
+     * nemá tělo, takže jediné, co může neprojít validací, je identifikátor v adrese.
+     * Zkomolené id v odkazu znamená „taková kampaň není", ne „něco se pokazilo".
+     * Naměřeno v prohlížeči: adresa s nesprávně tvarovaným UUID vracela 422 a
+     * obrazovka na ni tvrdila „Kampaň existuje".
+     */
+    if (campaign.problem.code === 'not_found' || campaign.problem.code === 'validation_failed') {
+      notFound();
+    }
+    return (
+      <PreflightProblem
+        problem={campaign.problem}
+        occurredAt={new Date().toISOString()}
+        settingsHref={`/w/${workspaceSlug}/campaigns/${id}`}
+      />
+    );
+  }
+  if (!preflight.ok) {
+    return (
+      <PreflightProblem
+        problem={preflight.problem}
+        occurredAt={new Date().toISOString()}
+        settingsHref={`/w/${workspaceSlug}/campaigns/${id}`}
+      />
+    );
+  }
 
   /*
    * Čísla do pruhu skládá `trialAudienceNotice()` z jádra, ne stránka. Je to

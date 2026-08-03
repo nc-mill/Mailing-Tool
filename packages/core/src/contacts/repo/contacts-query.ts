@@ -239,6 +239,21 @@ function filters(ctx: WorkspaceContext, query: ContactListQuery): SQL[] {
   return conditions;
 }
 
+/** Filtr bez stránkování, tedy to, co popisuje MNOŽINU kontaktů, ne jednu její stránku. */
+export type ContactBulkFilter = Omit<ContactListQuery, 'limit' | 'cursor' | 'order'>;
+
+/**
+ * Tytéž podmínky filtru pro hromadné operace nad výsledkem filtru (job contacts.bulk_delete).
+ *
+ * Vystavuje se jedna funkce, ne druhá kopie skládání WHERE. Kdyby si hromadné mazání
+ * stavělo podmínky samo, mazalo by po první změně filtru jinou množinu, než jakou
+ * uživatel viděl v seznamu a než jakou mu spočítal `countContacts`. U nevratné operace
+ * je to rozdíl mezi "smazalo se to, co jsem vybral" a tichou ztrátou dat.
+ */
+export function contactFilterConditions(ctx: WorkspaceContext, filter: ContactBulkFilter): SQL[] {
+  return filters(ctx, { ...filter, limit: 0, order: 'created_at.desc' });
+}
+
 export async function listContacts(
   ctx: WorkspaceContext,
   query: ContactListQuery,

@@ -19,7 +19,7 @@ import { createHttpPorts } from '@/features/editor/ports/http-ports';
  * `EmptyState` z P05 bere akce jako `{ label, onClick }`, což přes hranici
  * serverové komponenty poslat nejde. Proto je celý prázdný stav tady.
  */
-function useCreateTemplate(workspaceSlug: string) {
+function useCreateTemplate(workspaceSlug: string, workspaceId: string) {
   const locale = useLocale();
   const router = useRouter();
   const t = useTranslations('editor');
@@ -30,7 +30,9 @@ function useCreateTemplate(workspaceSlug: string) {
     setFailed(false);
     startTransition(async () => {
       try {
-        const ports = createHttpPorts({});
+        // `workspaceId` je povinný: bez hlavičky `X-Workspace-Id` vrací
+        // `POST /api/v1/templates` 404 a tlačítko je mrtvé.
+        const ports = createHttpPorts({ workspaceId });
         const created = await ports.createTemplate({
           name: t('list.newName'),
           document: emptyDocument(locale),
@@ -45,8 +47,14 @@ function useCreateTemplate(workspaceSlug: string) {
   return { create, pending, failed, t };
 }
 
-export function CreateTemplateButton({ workspaceSlug }: { workspaceSlug: string }) {
-  const { create, pending, failed, t } = useCreateTemplate(workspaceSlug);
+export function CreateTemplateButton({
+  workspaceSlug,
+  workspaceId,
+}: {
+  workspaceSlug: string;
+  workspaceId: string;
+}) {
+  const { create, pending, failed, t } = useCreateTemplate(workspaceSlug, workspaceId);
   return (
     <div className="flex items-center gap-2">
       {failed ? <Alert tone="error" title={t('list.createFailed')} /> : null}
@@ -64,8 +72,14 @@ export function CreateTemplateButton({ workspaceSlug }: { workspaceSlug: string 
   );
 }
 
-export function TemplatesEmpty({ workspaceSlug }: { workspaceSlug: string }) {
-  const { create, failed, t } = useCreateTemplate(workspaceSlug);
+export function TemplatesEmpty({
+  workspaceSlug,
+  workspaceId,
+}: {
+  workspaceSlug: string;
+  workspaceId: string;
+}) {
+  const { create, failed, t } = useCreateTemplate(workspaceSlug, workspaceId);
   return (
     <>
       {failed ? <Alert tone="error" title={t('list.createFailed')} /> : null}

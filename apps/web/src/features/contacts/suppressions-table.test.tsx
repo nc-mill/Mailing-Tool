@@ -12,9 +12,12 @@ vi.mock('@mlain/i18n/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }));
 
+const addSuppression = vi.fn().mockResolvedValue({ status: 'success' });
+
 vi.mock('./actions', () => ({
   removeSuppressionAction: vi.fn().mockResolvedValue({ status: 'success' }),
   revealSuppressionEmailAction: (...args: unknown[]) => reveal(...args),
+  addSuppressionAction: (...args: unknown[]) => addSuppression(...args),
 }));
 
 const rows: SuppressionRow[] = [
@@ -54,6 +57,7 @@ function renderTable(props: Partial<React.ComponentProps<typeof SuppressionsTabl
   return renderWithProviders(
     <SuppressionsTable
       basePath="/w/eshop/suppressions"
+      workspaceId="w-1"
       rows={rows}
       role="owner"
       now={new Date('2026-07-31T12:00:00.000Z')}
@@ -119,7 +123,7 @@ describe('SuppressionsTable', () => {
         name: 'Zobrazit celou adresu',
       }),
     );
-    expect(reveal).toHaveBeenCalledWith({ id: '1' });
+    expect(reveal).toHaveBeenCalledWith({ workspaceId: 'w-1', id: '1' });
     expect(await screen.findByText('alena@seznam.cz')).toBeInTheDocument();
     expect(screen.getByText('Zobrazení celé adresy zapíšeme do auditu.')).toBeInTheDocument();
   });
@@ -152,5 +156,30 @@ describe('SuppressionsTable', () => {
       screen.getByRole('heading', { name: 'Zatím tu není žádná blokovaná adresa' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Přidat adresu' })).toBeInTheDocument();
+  });
+
+  /**
+   * Tlačítko dřív volalo `router.push(basePath)`, tedy navigaci na tutéž
+   * stránku. Kliknutí nedělalo nic, ani chybu v konzoli; ověřeno v prohlížeči.
+   * Text pod nadpisem přitom slibuje „Přidat si sem adresu můžete i ručně."
+   */
+  it('z prázdného stavu jde adresu opravdu zablokovat', async () => {
+    const user = userEvent.setup();
+    renderTable({ rows: [] });
+
+    await user.click(screen.getByRole('button', { name: 'Přidat adresu' }));
+    await user.type(screen.getByLabelText('E-mailová adresa'), 'spam@firma.cz');
+    await user.click(screen.getByRole('button', { name: 'Zablokovat adresu' }));
+
+    expect(addSuppression).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'spam@firma.cz' }),
+    );
+  });
+
+  it('adresu jde zablokovat i tehdy, když už seznam něco obsahuje', async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await user.click(screen.getByRole('button', { name: 'Přidat adresu' }));
+    expect(screen.getByLabelText('E-mailová adresa')).toBeInTheDocument();
   });
 });

@@ -34,6 +34,44 @@ export const platformShape = {
   DATABASE_URL: envPostgresUrl(),
   DATABASE_URL_MIGRATOR: envPostgresUrl().optional(),
   DATABASE_URL_SENDER: envPostgresUrl().optional(),
+  /**
+   * Připojení pro systémové úlohy, které čtou NAPŘÍČ projekty (role
+   * `mlain_maintenance`, politiky `maintenance_*` z migrace 0009).
+   *
+   * VOLITELNÁ ZÁMĚRNĚ a nedopočítává se výměnou uživatele v URL, na rozdíl od
+   * `DATABASE_URL_SENDER`. Odvození by vyrobilo připojení s heslem aplikační
+   * role, které pro `mlain_maintenance` neplatí, takže by instalace bez téhle
+   * proměnné selhávala na autentizaci, tedy na jiné příčině, než jaká to
+   * doopravdy je. Nenastavená proměnná znamená „skeny nepoběží", a to musí být
+   * vidět z hlášky, ne z chyby přihlášení k databázi.
+   *
+   * Co se stane bez ní: aplikace naběhne, běžný provoz včetně okamžitého
+   * odeslání kampaně funguje, ale plánovač, hlídač běžících kampaní, obnova po
+   * kvótě, rekonciliace outboxu, rekontrola domén a úklid smazaných projektů
+   * odmítnou běžet. Každá při prvním tiku řekne nahlas proč (viz
+   * `withMaintenance` v `core/tx`), takže úloha skončí v chybě a jde dohledat.
+   */
+  DATABASE_URL_MAINTENANCE: envPostgresUrl().optional(),
+  /**
+   * Připojení pro výmaz podle článku 17 (role `mlain_gdpr`).
+   *
+   * Souhlasy jsou append only: migrace 0006 odebírá `mlain_app` právo `UPDATE`
+   * i `DELETE` na `consents` a migrace 0005 dává `DELETE` jedině téhle roli.
+   * Bez téhle proměnné tedy anonymizace kontaktu, tedy VÝCHOZÍ režim výmazu,
+   * nedoběhne: poslední krok skončí chybou a celá transakce se zruší, takže
+   * po žádosti subjektu nezůstane ani polovina anonymizovaného kontaktu.
+   *
+   * VOLITELNÁ ZÁMĚRNĚ a NEDOPOČÍTÁVÁ se výměnou uživatele v URL, ze stejného
+   * důvodu jako `DATABASE_URL_MAINTENANCE`: odvozené připojení by neslo heslo
+   * aplikační role a instalace by padala na autentizaci, tedy na jiné příčině,
+   * než jaká to doopravdy je. Nenastavená proměnná znamená „výmaz nepoběží",
+   * a to musí být vidět z hlášky, ne z chyby přihlášení k databázi.
+   *
+   * Role výjimku z izolace projektů NEMÁ. `consents` má jen politiku
+   * `ws_isolation`, takže obálka `withGdpr` nastavuje `mlain.workspace_id`
+   * stejně jako aplikační cesta a mimo svůj projekt nesmaže nic.
+   */
+  DATABASE_URL_GDPR: envPostgresUrl().optional(),
   DATABASE_POOL_MAX: envInt(1, 100).default(10),
   DATABASE_STATEMENT_TIMEOUT_MS: envInt(1000, 600000).default(30000),
   MODE: z.enum(['web', 'worker', 'sender', 'all']).default('all'),
@@ -91,6 +129,25 @@ export const platformShape = {
   // v kódu limiteru, takže by tam byla hodnota undefined.
   RATE_LIMIT_IDENTIFY_IP: envInt(1, 10000000).default(30),
   RATE_LIMIT_TRACK_ANON: envInt(1, 10000000).default(600),
+  /**
+   * VYPÍNAČ BRZD PŘIHLAŠOVÁNÍ, VÝHRADNĚ PRO VÝVOJ.
+   *
+   * Ruční testování naráží na to, že brzdy proti hádání hesel jsou nastavené
+   * na skutečný útok, ne na člověka, který se za minutu přihlásí desetkrát:
+   * pravidlo `login_ip_email` pustí 5 pokusů za 300 sekund a po deseti
+   * neúspěších se účet zamkne v databázi na 15 minut. Čekat tolik po každé
+   * překlepnuté zkoušce nejde.
+   *
+   * Při `true` se vypnou VÝHRADNĚ ty brzdy, tedy limity přihlašovacích cest,
+   * zamykání účtu a časová podlaha odpovědi. Ověření hesla, platnost relace
+   * ani cokoliv jiného z autentizace se nemění.
+   *
+   * Výchozí hodnota je `false`, tedy plná ochrana: chybějící proměnná se chová
+   * přesně jako dosud. V produkci (`NODE_ENV=production`) je hodnota `true`
+   * chyba konfigurace a aplikace odmítne nastartovat, viz `cross-checks.ts`.
+   * Když je zapnutá, hlásí to `warnIfLoginThrottlingDisabled` při každém startu.
+   */
+  LOGIN_THROTTLING_DISABLED: envBool().prefault('false'),
   WORKER_CONCURRENCY: envInt(1, 50).default(5),
   PGBOSS_SCHEMA: z
     .string()

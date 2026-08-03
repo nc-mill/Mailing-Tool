@@ -20,6 +20,15 @@
     "src/**/*.tsx",
     "test/**/*.ts",
     "next-env.d.ts",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    // Týž důvod, jaký je zapsaný v `packages/core/tsconfig.json`.
+    // `@mlain/emails` se vystavuje jako ZDROJOVÉ .ts a .tsx bez buildu, takže od
+    // chvíle, kdy aplikace mountuje trasy šablon, vstupuje do programu tsc celý
+    // emitter. Ten deklaruje `html-to-text` (od verze 9 bez vlastních typů)
+    // ambientním souborem, který se do programu dostane JEN přes `include`.
+    // Bez tohohle řádku spadne typecheck aplikace na TS7016
+    // v `packages/emails/src/text/emit.ts`, přestože `apps/web`
+    // `html-to-text` nikdy nezmíní.
+    "../../packages/emails/src/external/*.d.ts"
   ]
 }

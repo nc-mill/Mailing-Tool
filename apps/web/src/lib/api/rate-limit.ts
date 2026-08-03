@@ -5,7 +5,12 @@ import {
 } from 'rate-limiter-flexible';
 import pg from 'pg';
 import { ApiError } from '@mlain/core/errors/api-error';
-import { getConfig } from '../runtime';
+import {
+  LOGIN_THROTTLE_RULE_NAMES,
+  loginThrottlingDisabled,
+  warnIfLoginThrottlingDisabled,
+} from '@mlain/core/identity/throttle';
+import { getConfig, getLogger } from '../runtime';
 
 export type RuleName =
   | 'login_ip'
@@ -115,7 +120,17 @@ export function createLimiterRegistry(opts: {
       ? new pg.Pool({ connectionString: getConfig().DATABASE_URL, max: 2 })
       : undefined;
 
+  /**
+   * Vývojářský vypínač `LOGIN_THROTTLING_DISABLED` (viz `@mlain/core/identity/throttle`).
+   * Pravidla přihlašovacích cest se prostě NEZAREGISTRUJÍ, takže `consumeAll`
+   * je přeskočí svou existující větví `if (!limiter) continue`. Zbytek katalogu,
+   * tedy API klíče, import kontaktů a odesílání kampaní, platí dál.
+   */
+  const skipLoginRules = loginThrottlingDisabled(getConfig());
+  if (skipLoginRules) warnIfLoginThrottlingDisabled(getLogger(), getConfig());
+
   for (const [name, rule] of Object.entries(rateLimitRules()) as Array<[RuleName, Rule]>) {
+    if (skipLoginRules && LOGIN_THROTTLE_RULE_NAMES.includes(name)) continue;
     limiters.set(
       name,
       opts.backend === 'postgres'

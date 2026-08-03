@@ -28,12 +28,24 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t('wizard.title') };
 }
 
+/**
+ * Rozpad výsledku chodí ve vlastních polích odpovědi, ne v `options`.
+ * `options` jsou VOLBY importu zadané uživatelem (co dělat s duplicitami,
+ * do jakého seznamu zařadit), počty tam nikdy nebyly. Dřívější znění je odtud
+ * četlo, takže obrazovka po importu padesáti kontaktů hlásila
+ * „Naimportováno žádný kontakt" a čtyři nuly v rozpadu.
+ */
 type ApiImport = {
   id: string;
   status: string;
   total_rows: number | null;
   checkpoint_row: number;
+  created_rows: number;
+  updated_rows: number;
+  suppressed_rows: number;
+  review_rows: number;
   error_rows: number;
+  error_summary: Record<string, number>;
   failure_detail: string | null;
   options: Record<string, unknown>;
 };
@@ -51,7 +63,6 @@ export default async function ImportResultPage({ params }: PageProps) {
   if (!found.ok) notFound();
 
   const raw = found.data;
-  const summary = (raw.options['error_summary'] ?? {}) as Record<string, number>;
   const status = (KNOWN as readonly string[]).includes(raw.status)
     ? (raw.status as ImportResultRow['status'])
     : 'failed';
@@ -60,13 +71,13 @@ export default async function ImportResultPage({ params }: PageProps) {
     id: raw.id,
     status,
     totalRows: raw.total_rows ?? 0,
-    createdRows: Number(raw.options['created_rows'] ?? 0),
-    updatedRows: Number(raw.options['updated_rows'] ?? 0),
-    suppressedRows: Number(raw.options['suppressed_rows'] ?? 0),
+    createdRows: raw.created_rows,
+    updatedRows: raw.updated_rows,
+    suppressedRows: raw.suppressed_rows,
     errorRows: raw.error_rows,
     checkpointRow: raw.checkpoint_row,
-    reviewRows: Number(raw.options['review_rows'] ?? 0),
-    errorSummary: summary,
+    reviewRows: raw.review_rows,
+    errorSummary: raw.error_summary,
     failureDetail: raw.failure_detail,
   };
 

@@ -15,8 +15,10 @@ export {
   type FixedColumn,
 } from './columns';
 export { guardCsvCell } from './csv-injection';
+export { createFileExportStorage, exportStorageKey, type ExportStorage } from './storage';
 export {
   createExport,
+  issueExportDownloadToken,
   loadExport,
   verifyDownloadToken,
   type CreateExportInput,

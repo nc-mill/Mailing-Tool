@@ -55,8 +55,15 @@ import { getContainerRuntimeClient } from 'testcontainers';
 import { Client } from 'pg';
 import { inject } from 'vitest';
 import { runMigrations } from '@mlain/db/migrate';
+import { PGBOSS_RECIPE, installPgBoss } from './pgboss';
 
-/** Role z `docker/initdb`. Migrace 0004 a 0005 je potřebují všechny. */
+/**
+ * Role z `docker/initdb`. Migrace 0004, 0005 a 0009 je potřebují všechny.
+ *
+ * `mlain_maintenance` je tu dvakrát podstatná: kromě retence `web_events` pod ní
+ * od migrace 0009 běží systémové skeny napříč projekty. Kdyby v harnessu
+ * chyběla, spadla by migrace na neexistující roli, ne až testy izolace.
+ */
 export const HARNESS_ROLES = [
   'mlain_migrator',
   'mlain_app',
@@ -100,6 +107,23 @@ export type PgHarness = {
   appUrl: string;
   /** URL pod rolí `mlain_migrator`, tedy `DATABASE_URL_MIGRATOR`. */
   migratorUrl: string;
+  /**
+   * URL pod rolí `mlain_maintenance`, tedy `DATABASE_URL_MAINTENANCE`.
+   *
+   * Bez něj by se nedaly otestovat systémové skeny napříč projekty ani to, že
+   * ta výjimka z izolace platí JEN na tabulky, na které ji migrace 0009 dala.
+   * Testy izolace potřebují obě spojení současně: pod `mlain_app` bez kontextu
+   * nesmí být vidět nic, pod `mlain_maintenance` právě ty tři tabulky.
+   */
+  maintenanceUrl: string;
+  /**
+   * URL pod rolí `mlain_gdpr`, tedy `DATABASE_URL_GDPR`.
+   *
+   * Bez něj se nedá otestovat PRODUKČNÍ cesta výmazu podle článku 17. Do téhle
+   * chvíle si testy stavěly spojení pod tou rolí samy (`phase-c.ts`), takže
+   * ověřovaly obcházku, ne to, co poběží u zákazníka.
+   */
+  gdprUrl: string;
   host: string;
   port: number;
   stop: () => Promise<void>;
@@ -246,12 +270,29 @@ async function waitForServer(server: PgServer, timeoutMs = 120_000): Promise<voi
 }
 
 /**
- * Jméno šablony odvozené z OBSAHU migrací.
+ * Jméno šablony odvozené z toho, CO V NÍ JE: obsah migrací plus recept na
+ * schéma fronty.
  *
  * Kontejner přežívá mezi běhy a migrace se podle rozhodnutí R39 upravují na
  * místě. Šablona s pevným jménem by tedy po úpravě staré migrace zůstala
  * neaktuální a testy by běžely nad starým schématem, aniž by cokoli spadlo.
- * S otiskem v názvu vznikne po každé změně migrací šablona nová.
+ * S otiskem v názvu vznikne po každé změně šablona nová a ta stará se uklidí
+ * jako osiřelá.
+ *
+ * `PGBOSS_RECIPE` je v otisku ze stejného důvodu jako migrace: tabulky fronty
+ * nestaví SQL migrace, ale knihovna, a jejich obsah (výčet front z registru)
+ * se mění nezávisle na migracích. Bez něj by šablona postavená před přidáním
+ * fronty zůstala ležet a zařazení do té nové fronty by padalo na cizí klíč.
+ *
+ * DO OTISKU PATŘÍ I ZDROJ `pgboss.ts`, ne jenom recept, a stálo to jeden
+ * proběhlý omyl. Recept nese DATA (výčet front), kdežto to, jestli se tabulky
+ * fronty vůbec postaví, je LOGIKA. Když do harnessu přibylo volání
+ * `installPgBoss`, výčet front se nezměnil, otisk zůstal týž a testy dál
+ * dostávaly starou šablonu BEZ tabulek fronty. Projevilo se to na cizím místě:
+ * `PATCH /api/v1/workspaces/{id}` vracel 500 s „relation pgboss.job does not
+ * exist", protože uložení nastavení zařazuje přepočet oslovení v téže
+ * transakci. Šablona je cache a cache se musí invalidovat podle VŠEHO, co
+ * ovlivňuje její obsah.
  */
 export function templateDatabase(): string {
   const digest = createHash('sha256');
@@ -262,6 +303,8 @@ export function templateDatabase(): string {
     digest.update(file);
     digest.update(readFileSync(join(MIGRATIONS_DIR, file)));
   }
+  digest.update(PGBOSS_RECIPE);
+  digest.update(readFileSync(join(import.meta.dirname, 'pgboss.ts')));
   return `${TEMPLATE_DB_PREFIX}${digest.digest('hex').slice(0, 12)}`;
 }
 
@@ -329,11 +372,16 @@ async function ensureBootstrap(server: PgServer): Promise<void> {
     }
 
     // Migrace se pouští JEDNOU do šablony, ne v každém souboru ani běhu.
-    await runMigrations({
-      url: `postgres://mlain_migrator:mlain_migrator@${server.host}:${server.port}/${template}`,
-      ensurePartitions: true,
-      logger: () => {},
-    });
+    const migratorUrl = `postgres://mlain_migrator:mlain_migrator@${server.host}:${server.port}/${template}`;
+    await runMigrations({ url: migratorUrl, ensurePartitions: true, logger: () => {} });
+
+    // A hned za nimi tabulky fronty, protože přesně tohle dělá `mlain migrate`:
+    // SQL migrace zakládají jen SCHÉMA `pgboss`, tabulky staví knihovna sama.
+    // Bez tohohle kroku se šablona lišila od produkčního schématu v tom, na čem
+    // stojí TRANSAKČNÍ zařazování úloh: doménová změna, která si zařazuje job
+    // v téže transakci, spadla na „relation pgboss.job does not exist".
+    // Ve vývojové databázi tabulka je, takže to shodilo jenom testy.
+    await installPgBoss(migratorUrl);
 
     // Až tady je šablona použitelná. Do tohohle okamžiku ji nikdo neklonuje,
     // protože `templateReady()` se ptá právě na tenhle příznak.
@@ -507,10 +555,12 @@ function harnessUrls(
   host: string,
   port: number,
   database: string,
-): { appUrl: string; migratorUrl: string } {
+): { appUrl: string; migratorUrl: string; maintenanceUrl: string; gdprUrl: string } {
   return {
     migratorUrl: `postgres://mlain_migrator:mlain_migrator@${host}:${port}/${database}`,
     appUrl: `postgres://mlain_app:mlain_app@${host}:${port}/${database}`,
+    maintenanceUrl: `postgres://mlain_maintenance:mlain_maintenance@${host}:${port}/${database}`,
+    gdprUrl: `postgres://mlain_gdpr:mlain_gdpr@${host}:${port}/${database}`,
   };
 }
 
@@ -562,7 +612,12 @@ async function giveSchemaToMigrator(server: PgServer, database: string): Promise
  * `NODE_ENV` jde přes `Object.assign`, protože ho `@types/node` deklaruje
  * jako readonly a přímé přiřazení neprojde typovou kontrolou.
  */
-export function applyHarnessEnv(urls: { appUrl: string; migratorUrl: string }): void {
+export function applyHarnessEnv(urls: {
+  appUrl: string;
+  migratorUrl: string;
+  maintenanceUrl?: string;
+  gdprUrl?: string;
+}): void {
   process.env['APP_URL'] ??= 'https://mlain.test';
   process.env['SECRET_KEY'] ??= `1:${Buffer.alloc(32, 7).toString('base64url')}`;
   process.env['DATA_DIR'] ??= '/tmp';
@@ -570,4 +625,17 @@ export function applyHarnessEnv(urls: { appUrl: string; migratorUrl: string }): 
   Object.assign(process.env, { NODE_ENV: 'test' });
   process.env['DATABASE_URL'] = urls.appUrl;
   process.env['DATABASE_URL_MIGRATOR'] = urls.migratorUrl;
+  // Systémové skeny napříč projekty. Nastavuje se VŽDY, když ho harness zná:
+  // testy, které bez něj mají fungovat, si ho musí smazat samy, protože opačný
+  // výchozí stav by znamenal, že se skeny netestují nikde.
+  if (urls.maintenanceUrl !== undefined) {
+    process.env['DATABASE_URL_MAINTENANCE'] = urls.maintenanceUrl;
+  }
+  // Výmaz podle článku 17. Platí pro něj totéž co pro skeny: nastavuje se vždy,
+  // když ho harness zná, a test, který má běžet BEZ té role, si ho musí smazat
+  // sám. Opačný výchozí stav by znamenal, že produkční cestu výmazu netestuje
+  // nikdo a zůstane u testovací obcházky, jako to bylo doteď.
+  if (urls.gdprUrl !== undefined) {
+    process.env['DATABASE_URL_GDPR'] = urls.gdprUrl;
+  }
 }

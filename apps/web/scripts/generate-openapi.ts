@@ -11,10 +11,15 @@ import { buildApp, buildOpenApiDocument } from '../src/lib/api/openapi';
  *
  * Plán počítal jen s commitnutým `openapi.json`. Job `openapi-drift`
  * (`tools/ci/openapi-drift.mjs`, vlastní P01) ale porovnává commitnutý soubor
- * s `openapi.generated.json`, který si v CI vyrábí `pnpm contracts:generate`.
- * Kdyby ho nikdo negeneroval, job by od chvíle, kdy `openapi.json` vznikne,
- * padal na „openapi.generated.json chybí". Bez přepínače by zas obě verze
- * vznikaly z jednoho běhu a porovnání by nemohlo odchylku najít nikdy.
+ * s `openapi.generated.json`, tedy s čerstvým výstupem tohohle skriptu.
+ * Bez přepínače by obě verze vznikaly z jednoho běhu a porovnání by nemohlo
+ * odchylku najít nikdy.
+ *
+ * KDO GENERUJE (nález I95): `openapi.generated.json` si vyrábí SAMA brána tím,
+ * že si zavolá `contracts:generate`. Dřív se na to spoléhalo přes samostatný
+ * krok ve workflow, jenže turbo úloha mohla skončit zásahem cache, generátor
+ * neproběhl a brána pak porovnávala dva stejně zastaralé soubory a hlásila
+ * zelenou. Kdo tenhle skript přepojí jinam, musí přepojit i bránu.
  *
  *   pnpm --filter @mlain/web generate:openapi     zapíše openapi.json
  *   pnpm --filter @mlain/web contracts:generate   zapíše openapi.generated.json

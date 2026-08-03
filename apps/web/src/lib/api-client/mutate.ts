@@ -34,7 +34,12 @@ async function forwardSetCookies(headers: Headers): Promise<void> {
 }
 
 export type MutateOptions = {
-  method: 'POST' | 'PATCH' | 'DELETE';
+  /**
+   * PUT je tu kvůli editačním formulářům. Rozdíl proti PATCH není kosmetický:
+   * PATCH nechává vynechané pole být, PUT ho vymaže. Formulář, který posílá celý
+   * stav obrazovky, potřebuje druhý význam, jinak by smazání hodnoty tiše neprošlo.
+   */
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   workspaceId?: string;
   /** Povinný u endpointů z výčtu 4.4 části 1. Bere se ze skrytého pole formuláře. */

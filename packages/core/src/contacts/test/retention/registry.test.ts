@@ -47,29 +47,30 @@ describe('registr retenčních cílů', () => {
     expect(RETENTION_DEFAULTS.inactive_contacts.enabled).toBe(false);
   });
 
-  it('handler pro pět cílů této domény existuje', () => {
+  it('handler pro šest cílů této domény existuje', () => {
     for (const target of [
       'import_errors',
       'form_submissions',
       'inbound_deliveries',
       'unconfirmed_subscriptions',
       'inactive_contacts',
+      // Přibyl s úložištěm exportů: maže soubor archivu i řádek v `exports`.
+      'exports',
     ] as const) {
       expect(getHandler(target)).toBeDefined();
     }
   });
 
-  it('cíle vyžadující úložiště souborů handler zatím nemají, dodá je P11', () => {
+  it('cíl import_files handler zatím nemá', () => {
     expect(getHandler('import_files')).toBeUndefined();
-    expect(getHandler('exports')).toBeUndefined();
   });
 
   it('registrace doplní handler bez zásahu do registru', () => {
     const handler = async () => ({ scanned: 0, affected: 0 });
-    registerHandler('exports', handler);
-    expect(getHandler('exports')).toBe(handler);
-    unregisterHandler('exports');
-    expect(getHandler('exports')).toBeUndefined();
+    registerHandler('import_files', handler);
+    expect(getHandler('import_files')).toBe(handler);
+    unregisterHandler('import_files');
+    expect(getHandler('import_files')).toBeUndefined();
   });
 });
 

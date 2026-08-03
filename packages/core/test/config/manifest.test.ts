@@ -10,7 +10,10 @@ describe('manifest konfigurace', () => {
     expect(committed).toBe(`${JSON.stringify(buildConfigManifest(), null, 2)}\n`);
   });
 
-  it('obsahuje právě 179 proměnných', () => {
-    expect(buildConfigManifest().variables.length).toBe(179);
+  it('obsahuje právě 182 proměnných', () => {
+    // 180 + LOGIN_THROTTLING_DISABLED (vypínač brzd přihlašování pro vývoj)
+    // + DATABASE_URL_GDPR (připojení pod rolí mlain_gdpr, bez kterého nedoběhne
+    // výmaz podle článku 17).
+    expect(buildConfigManifest().variables.length).toBe(182);
   });
 });

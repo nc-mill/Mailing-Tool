@@ -4,11 +4,14 @@
 import type { QueueHandler } from '@mlain/core/queues';
 import { handlers as h0 } from '@mlain/core/ai/jobs';
 import { handlers as h1 } from '@mlain/core/campaigns/jobs';
-import { handlers as h2 } from '@mlain/core/contacts/export/jobs';
-import { handlers as h3 } from '@mlain/core/contacts/import/jobs';
-import { handlers as h4 } from '@mlain/core/content/jobs';
-import { handlers as h5 } from '@mlain/core/platform/jobs';
-import { handlers as h6 } from '@mlain/core/segments/jobs';
+import { handlers as h2 } from '@mlain/core/contacts/jobs';
+import { handlers as h3 } from '@mlain/core/contacts/export/jobs';
+import { handlers as h4 } from '@mlain/core/contacts/import/jobs';
+import { handlers as h5 } from '@mlain/core/content/jobs';
+import { handlers as h6 } from '@mlain/core/ops/jobs';
+import { handlers as h7 } from '@mlain/core/platform/jobs';
+import { handlers as h8 } from '@mlain/core/segments/jobs';
+import { handlers as h9 } from '@mlain/core/tracking/jobs';
 
 export const HANDLERS: Record<string, QueueHandler> = {
   ...h0,
@@ -18,4 +21,7 @@ export const HANDLERS: Record<string, QueueHandler> = {
   ...h4,
   ...h5,
   ...h6,
+  ...h7,
+  ...h8,
+  ...h9,
 };

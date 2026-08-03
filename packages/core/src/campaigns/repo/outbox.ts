@@ -92,8 +92,15 @@ type ContactRow = {
  *
  * Pozor na ctyri veci, ktere vypadaji jako detail a nejsou:
  *  - created_at se zapisuje EXPLICITNE hodnotou audience_built_at, nikdy DEFAULT now().
- *  - ON CONFLICT musi uvest VSECHNY TRI sloupce indexu. Uvedeni jen dvou neni ticha
- *    chyba, ale tvrdy ERROR a materializace by neprobehla vubec.
+ *  - ON CONFLICT musi uvest VSECHNY TRI sloupce indexu A JEHO PREDIKAT. Od migrace
+ *    0010 je `uq_messages__campaign_contact` castecny (`WHERE kind = 'campaign'`),
+ *    protoze testovaci odeslani ma jeden dohledany contact_id na vsechny adresy
+ *    a plny index by druhou adresu shodil na 23505. Castecny index se ale neda
+ *    odvodit bez uvedeni tehoz predikatu v ON CONFLICT: bez nej skonci prikaz
+ *    chybou 42P10 „there is no unique or exclusion constraint matching the
+ *    ON CONFLICT specification" a materializace neprobehne vubec. Overeno
+ *    spustenim, chytil to test trial-gate.db.test.ts.
+ *    Uvedeni jen dvou sloupcu neni ticha chyba, ale rovnez tvrdy ERROR.
  *  - id se v seznamu sloupcu nevyskytuje schvalne, doplni ho DEFAULT uuidv7().
  *  - obe faze bezi v JEDNE transakci, takze kandidat vybrany fazi 1 nemuze mezitim zmizet.
  */
@@ -136,7 +143,7 @@ export async function materializeBatch(
            $3::timestamptz
       FROM unnest($5::uuid[], $6::text[], $7::jsonb[], $8::text[], $9::text[])
         AS x(contact_id, email, render_data, status, error_code)
-    ON CONFLICT (campaign_id, contact_id, created_at) DO NOTHING
+    ON CONFLICT (campaign_id, contact_id, created_at) WHERE kind = 'campaign' DO NOTHING
     RETURNING contact_id`;
 
   return withWorkspace(ctx, async (tx) => {

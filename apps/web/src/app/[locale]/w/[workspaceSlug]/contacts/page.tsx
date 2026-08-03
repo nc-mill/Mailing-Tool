@@ -119,6 +119,7 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
   return (
     <ContactsTable
       basePath={basePath}
+      workspaceId={workspaceId}
       rows={page.data.data.map(toRow)}
       pagination={page.data.pagination}
       total={count.ok ? { count: count.data.count, precision: count.data.precision } : null}

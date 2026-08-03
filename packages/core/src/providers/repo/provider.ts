@@ -249,6 +249,35 @@ export async function deleteProvider(ctx: WorkspaceContext, id: string): Promise
         params: { reason: 'Odesílací účet má rozpracovanou kampaň.', providerId: id },
       });
     }
+    // Skryté systémové kampaně (testovací odeslání šablony, migrace 0010) se
+    // uklidí PŘED smazáním účtu. Bez toho spadne mazání na cizím klíči
+    // `campaigns.provider_id` s ON DELETE RESTRICT (chyba 23001) a uživatel
+    // dostane hlášku o kampani, kterou v seznamu nevidí a nemá jak smazat.
+    // Ověřeno spuštěním: měkké smazání NESTAČÍ, RESTRICT se dívá na existenci
+    // řádku, ne na `deleted_at`.
+    //
+    // Maže se natvrdo i s čekajícími testovacími zprávami, a je to správně:
+    // obojí je jednorázová věc bez historické hodnoty a bez odesílacího účtu
+    // by ty zprávy stejně nikdy neodešly. Zprávy musí jít první, jinak by po
+    // kampani zůstaly viset s odkazem na neexistující kampaň a sender by je
+    // claimoval donekonečna naprázdno.
+    await tx.execute(
+      rawSql(
+        `DELETE FROM messages
+          WHERE workspace_id = $1 AND kind = 'test'
+            AND campaign_id IN (SELECT id FROM campaigns
+                                 WHERE workspace_id = $1 AND provider_id = $2
+                                   AND kind = 'system')`,
+        [ctx.workspaceId, id],
+      ),
+    );
+    await tx.execute(
+      rawSql(
+        `DELETE FROM campaigns
+          WHERE workspace_id = $1 AND provider_id = $2 AND kind = 'system'`,
+        [ctx.workspaceId, id],
+      ),
+    );
     await tx.execute(
       rawSql(`DELETE FROM sending_providers WHERE id = $1 AND workspace_id = $2`, [
         id,

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Link, useRouter } from '@mlain/i18n/navigation';
+import { Button } from '@mlain/ui/components/button';
 // K1 z 13.1 části 6: výběr přežije přestránkování a je vidět jeho velikost, kurzorové
 // stránkování bez čísel stránek, virtualizace od 100 řádků, sticky hlavička.
 import { DataTable } from '@mlain/ui/patterns/data-table';
@@ -35,6 +36,8 @@ export type ContactRow = {
 
 export type ContactsTableProps = {
   basePath: string;
+  /** Projekt pro hromadné akce. Bez něj běží jejich požadavky mimo kontext projektu. */
+  workspaceId: string;
   rows: ContactRow[];
   pagination: {
     next_cursor: string | null;
@@ -68,6 +71,7 @@ export type Selection =
 
 export function ContactsTable({
   basePath,
+  workspaceId,
   rows,
   pagination,
   total,
@@ -90,7 +94,7 @@ export function ContactsTable({
     return hasAnyFilter(filters) ? (
       <ContactsFilteredEmptyState basePath={basePath} filters={filters} names={names} />
     ) : (
-      <ContactsEmptyState basePath={basePath} />
+      <ContactsEmptyState basePath={basePath} workspaceId={workspaceId} />
     );
   }
 
@@ -104,7 +108,20 @@ export function ContactsTable({
 
   return (
     <section className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold text-text">{t('list.title')}</h1>
+      {/* Cesty, jak sem dostat kontakty, patří nad tabulku, ne jen do prázdného stavu.
+          Prázdný stav vidí uživatel jednou; potřebu přidat jeden kontakt ručně má
+          i potom, a do téhle chvíle na to na neprázdném seznamu nebylo tlačítko. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-text">{t('list.title')}</h1>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="primary" onClick={() => router.push(`${basePath}/new`)}>
+            {t('list.addContact')}
+          </Button>
+          <Button variant="secondary" onClick={() => router.push(`${basePath}/import`)}>
+            {t('list.import')}
+          </Button>
+        </div>
+      </div>
 
       <DataTable
         tableId="contacts"
@@ -123,7 +140,13 @@ export function ContactsTable({
         // funkci `renderBulkActions` by ze serverové komponenty nešlo předat, protože
         // přes hranici React Server Components projdou jen serializovatelné hodnoty.
         bulkActions={
-          <ContactsBulkActions selection={selection} filters={filters} names={names} tags={tags} />
+          <ContactsBulkActions
+            workspaceId={workspaceId}
+            selection={selection}
+            filters={filters}
+            names={names}
+            tags={tags}
+          />
         }
         onRowActivate={(row) => router.push(`${basePath}/${row.id}`)}
         virtualizeFrom={100}

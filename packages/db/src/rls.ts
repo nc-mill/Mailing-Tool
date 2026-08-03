@@ -75,6 +75,28 @@ export const SENDER_BYPASS_TABLES: readonly string[] = [
  *  tiše neprovedla, což je ta nejhorší varianta selhání, jakou tahle tabulka má. */
 export const MAINTENANCE_BYPASS_TABLES: readonly string[] = ['web_events'];
 
+/**
+ * Tabulky, na které má mlain_maintenance výjimku kvůli SYSTÉMOVÝM SKENŮM
+ * napříč projekty (migrace 0009). Politika se jmenuje `maintenance_scan`,
+ * ne `maintenance_bypass`, a je to rozdíl v podstatě, ne v názvu: bypass je
+ * `USING (true)` pro všechny příkazy, kdežto scan je `FOR SELECT` a nic víc.
+ *
+ * Proč zrovna tyhle tři:
+ *   workspaces     ... plánovač kampaní a rekonciliace outboxu potřebují výčet
+ *                      projektů; bez něj se naplánovaná kampaň NEODEŠLE
+ *   campaigns      ... hlídač běžících a obnova po vyčerpané kvótě
+ *   sender_domains ... rekontrola odesílacích domén
+ *
+ * Nic dalšího tu být nesmí. Jakmile úloha zná ID projektu, pokračuje pod
+ * aplikační rolí v kontextu toho projektu a dopadá na ni RLS jako na cokoli
+ * jiného.
+ */
+export const MAINTENANCE_SCAN_TABLES: readonly string[] = [
+  'workspaces',
+  'campaigns',
+  'sender_domains',
+];
+
 const WS_ISOLATION_TABLES = [
   // identita a platforma
   'memberships',
@@ -176,6 +198,13 @@ export const RLS_REGISTRY: readonly TablePolicy[] = [
       // právě pustila, a každý požadavek s Bearer klíčem by skončil na
       // `unauthenticated`, aniž by kde spadl.
       'ws_api_key_lookup',
+      // Systémové skeny napříč projekty (migrace 0009). Čtení je oddělené od
+      // mazání schválně: `maintenance_scan` je FOR SELECT, kdežto
+      // `maintenance_purge` je FOR DELETE a pouští jen projekty, které UŽ JSOU
+      // měkce smazané. Jedna politika `USING (true)` pro obojí by roli dala
+      // právo smazat živý projekt se všemi daty.
+      'maintenance_scan',
+      'maintenance_purge',
     ],
   },
 ];
@@ -194,6 +223,9 @@ export const EXTRA_POLICIES: Readonly<Record<string, readonly string[]>> = {
   // je repo/audit-global.ts nespustitelné.
   audit_log: ['user_own_global_audit'],
   web_events: ['maintenance_bypass'],
+  // Systémové skeny napříč projekty (migrace 0009), jen pro čtení.
+  campaigns: ['maintenance_scan'],
+  sender_domains: ['maintenance_scan'],
 };
 
 /** Úplný seznam očekávaných politik na tabulce, včetně těch doplňkových. */

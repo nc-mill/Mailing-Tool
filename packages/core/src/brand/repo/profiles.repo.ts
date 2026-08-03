@@ -86,6 +86,50 @@ function toTypography(value: unknown): BrandTypography {
   };
 }
 
+export type NewBrandProfile = {
+  /**
+   * Vyplňuje se, přestože RLS projekt vybírá sama: `workspace_id` je NOT NULL
+   * bez DEFAULT, takže vynechání skončí chybou 23502, ne tichým doplněním
+   * z kontextu.
+   */
+  workspaceId: string;
+  name: string;
+  sourceUrl: string | null;
+  logoAssetId: string | null;
+  logoDarkAssetId: string | null;
+  /** `palette` i `typography` jsou NOT NULL bez DEFAULT, obojí. */
+  palette: unknown;
+  typography: unknown;
+  tone?: unknown;
+};
+
+/**
+ * Založení profilu extrakcí značky.
+ *
+ * `defaultProfile` se ZÁMĚRNĚ nenastavuje. Nad tabulkou je částečný unikátní
+ * index `uq_brand_profiles__workspace_default`, takže druhá extrakce v témž
+ * projektu by na něm spadla a celý běh by skončil jako `failed`, přestože se
+ * značka stáhla i analyzovala. Výchozí značku volí uživatel; dokud žádnou
+ * nezvolil, `findDefaultBrandProfile` vrací nejnovější profil.
+ */
+export async function insertBrandProfile(tx: Tx, row: NewBrandProfile): Promise<{ id: string }> {
+  const inserted = await tx
+    .insert(schema.brandProfiles)
+    .values({
+      workspaceId: row.workspaceId,
+      name: row.name,
+      sourceUrl: row.sourceUrl,
+      logoAssetId: row.logoAssetId,
+      logoDarkAssetId: row.logoDarkAssetId,
+      palette: row.palette as never,
+      typography: row.typography as never,
+      tone: (row.tone ?? {}) as never,
+      extractedAt: new Date(),
+    })
+    .returning({ id: schema.brandProfiles.id });
+  return inserted[0]!;
+}
+
 export async function listBrandProfiles(tx: Tx): Promise<BrandProfileSummary[]> {
   const table = schema.brandProfiles;
   const rows = await tx

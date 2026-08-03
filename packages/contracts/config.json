@@ -287,6 +287,16 @@
       "hasDefault": false
     },
     {
+      "name": "DATABASE_URL_GDPR",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "DATABASE_URL_MAINTENANCE",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
       "name": "DATABASE_URL_MIGRATOR",
       "optional": true,
       "hasDefault": true
@@ -438,6 +448,11 @@
     },
     {
       "name": "INBOUND_MAX_BODY_BYTES",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
+      "name": "LOGIN_THROTTLING_DISABLED",
       "optional": true,
       "hasDefault": true
     },

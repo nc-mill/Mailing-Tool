@@ -184,8 +184,16 @@ export async function sweepStaleExtractions(
   return { failed };
 }
 
-/** Tenký obal pro frontu `content.brand_extract`. Fronta je v registru P01. */
-export const handler = async (job: {
-  data: { extractionId: string };
-  deps: BrandExtractDeps;
-}): Promise<void> => runBrandExtraction({ extractionId: job.data.extractionId }, job.deps);
+/*
+ * Obsluha fronty tady SCHVÁLNĚ NENÍ.
+ *
+ * Dřív tu stál `handler` s podpisem `(job: { data, deps })`, jenže `QueueHandler`
+ * z registru front je `(jobs: readonly QueueJob[]) => Promise<void>`: pg-boss
+ * doručuje dávku a žádné `deps` s ní nepředává. Takovou obsluhu neměl worker
+ * čím zavolat, takže se fronta nedala zaregistrovat a extrakce zůstávala
+ * v `pending`.
+ *
+ * Skutečná obsluha je v `brand-extract-handler.ts`, závislosti skládá
+ * `brand-extract-deps.ts`. Tenhle modul zůstává čistý: nemá jediný import
+ * z databáze ani ze sítě, takže jde otestovat bez obojího.
+ */

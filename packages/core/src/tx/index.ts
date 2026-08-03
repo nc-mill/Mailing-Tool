@@ -58,6 +58,8 @@ function config(): MlainConfig {
 
 let appPoolSingleton: Pool | null = null;
 let readOnlyPoolSingleton: Pool | null = null;
+let maintenancePoolSingleton: Pool | null = null;
+let gdprPoolSingleton: Pool | null = null;
 
 /** Aplikační pool. Vzniká při prvním použití, aby import modulu neotvíral spojení. */
 export function appPool(): Pool {
@@ -71,11 +73,116 @@ export function readOnlyPool(): Pool {
   return readOnlyPoolSingleton;
 }
 
-/** Zavře oba pooly. Volá se při vypnutí procesu a v afterAll databázových testů. */
+/**
+ * Je připojení pro systémové skeny nastavené?
+ *
+ * Ptá se na to worker při startu, aby uměl ohlásit, že cronové úlohy napříč
+ * projekty poběží naprázdno. Bez toho by se to poznalo teprve při prvním tiku,
+ * a u plánovače kampaní až tím, že se naplánovaná kampaň neodeslala.
+ */
+export function maintenanceConfigured(): boolean {
+  return config().DATABASE_URL_MAINTENANCE !== undefined;
+}
+
+/**
+ * Pool role `mlain_maintenance`. Malý schválně: přes tohle spojení jdou jen
+ * skeny, které vrátí seznam ID, a všechna práce nad projektem pokračuje pod
+ * aplikační rolí.
+ */
+export function maintenancePool(): Pool {
+  const url = config().DATABASE_URL_MAINTENANCE;
+  if (url === undefined) {
+    throw new Error(
+      'DATABASE_URL_MAINTENANCE není nastavená, takže systémové skeny napříč projekty ' +
+        'nemají čím číst. Týká se plánovače kampaní, hlídače běžících, obnovy po vyčerpané ' +
+        'kvótě, rekonciliace outboxu, rekontroly odesílacích domén a úklidu smazaných projektů. ' +
+        'Aplikační role mlain_app bez kontextu projektu nevidí ani řádek a NEOHLÁSÍ to; ' +
+        'nastavte připojení pod rolí mlain_maintenance (viz .env.example).',
+    );
+  }
+  maintenancePoolSingleton ??= createPool(url, 'maintenance', 3);
+  return maintenancePoolSingleton;
+}
+
+/**
+ * Transakce pod rolí `mlain_maintenance`, tedy JEDINÁ cesta, jak v aplikaci
+ * číst napříč projekty.
+ *
+ * NEJSOU to zadní vrátka a nedá se přes ni obejít izolace: role vidí výhradně
+ * tabulky, na které jí migrace 0009 dala politiku `maintenance_*`
+ * (`workspaces`, `campaigns`, `sender_domains`), a zapisovat smí jedinou věc,
+ * totiž smazat už měkce smazaný projekt. Cokoli jiného skončí na `permission
+ * denied`, ne na prázdném výsledku. Kontakty, zprávy ani souhlasy tudy přečíst
+ * NELZE.
+ *
+ * Pravidlo pro volající: přes tohle spojení se zjistí JEN ID projektu. Všechno
+ * ostatní pokračuje přes `withWorkspace` v systémovém kontextu toho projektu,
+ * takže na to dopadá RLS stejně jako na požadavek z API.
+ */
+export function withMaintenance<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return dbWithoutContext(maintenancePool(), fn);
+}
+
+/**
+ * Je připojení pro výmaz podle článku 17 nastavené?
+ *
+ * Ptá se na to worker při startu, ze stejného důvodu jako u údržby: bez téhle
+ * proměnné se žádost subjektu o výmaz NEPROVEDE a poznalo by se to teprve tím,
+ * že úloha `gdpr.erase` skončí v chybě, do které se nikdo nedívá.
+ */
+export function gdprConfigured(): boolean {
+  return config().DATABASE_URL_GDPR !== undefined;
+}
+
+/**
+ * Pool role `mlain_gdpr`. Malý schválně: jde přes něj JEDINÝ příkaz celého
+ * produktu, totiž smazání souhlasů jednoho kontaktu.
+ */
+export function gdprPool(): Pool {
+  const url = config().DATABASE_URL_GDPR;
+  if (url === undefined) {
+    throw new Error(
+      'DATABASE_URL_GDPR není nastavená, takže výmaz podle článku 17 nemá čím smazat souhlasy. ' +
+        'Tabulka consents je append only: migrace 0006 odebírá mlain_app právo DELETE a migrace ' +
+        '0005 ho dává jedině roli mlain_gdpr. Bez toho připojení se anonymizace kontaktu, tedy ' +
+        'VÝCHOZÍ režim výmazu, zruší celá a žádost subjektu zůstane nevyřízená; ' +
+        'nastavte připojení pod rolí mlain_gdpr (viz .env.example).',
+    );
+  }
+  gdprPoolSingleton ??= createPool(url, 'gdpr', 2);
+  return gdprPoolSingleton;
+}
+
+/**
+ * Transakce pod rolí `mlain_gdpr`, tedy jediná cesta, jak smazat souhlasy.
+ *
+ * NENÍ to výjimka z izolace projektů a nejde přes ni číst napříč instalací:
+ * `consents` má jedinou politiku `ws_isolation`, takže se `mlain.workspace_id`
+ * nastavuje úplně stejně jako u aplikační cesty a mimo svůj projekt tahle role
+ * nesmaže ani řádek. Grant má na jednu jedinou tabulku (`SELECT`, `DELETE`
+ * na `consents`); `SELECT` tam musí být, protože `DELETE ... WHERE contact_id`
+ * čte sloupec v podmínce.
+ *
+ * Pravidlo pro volající: přes tohle spojení jde POUZE výmaz souhlasů. Zbytek
+ * anonymizace patří pod `withWorkspace`, aby na něj dopadala táž pravidla
+ * jako na požadavek z API.
+ */
+export function withGdpr<T>(ctx: WorkspaceContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return dbWithWorkspace(gdprPool(), ctx, fn);
+}
+
+/** Zavře pooly. Volá se při vypnutí procesu a v afterAll databázových testů. */
 export async function closePools(): Promise<void> {
-  const pools = [appPoolSingleton, readOnlyPoolSingleton].filter((p): p is Pool => p !== null);
+  const pools = [
+    appPoolSingleton,
+    readOnlyPoolSingleton,
+    maintenancePoolSingleton,
+    gdprPoolSingleton,
+  ].filter((p): p is Pool => p !== null);
   appPoolSingleton = null;
   readOnlyPoolSingleton = null;
+  maintenancePoolSingleton = null;
+  gdprPoolSingleton = null;
   configSingleton = null;
   await Promise.all(pools.map((p) => p.end()));
 }

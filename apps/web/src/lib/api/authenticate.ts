@@ -23,13 +23,38 @@ export function bearerFromHeader(value: string | undefined | null): string | nul
 /**
  * 3.6: workspaceId aktéra typu user pochází ze segmentu cesty /w/{slug} v UI
  * nebo z hlavičky X-Workspace-Id u API se session. Nikdy z těla requestu.
+ *
+ * TŘETÍ ZDROJ: query parametr `workspace_id`, a to VÝHRADNĚ u bezpečných metod
+ * (GET, HEAD). Není to změkčení pravidla, je to jediná cesta pro `EventSource`.
+ * Prohlížečové API pro SSE neumí nastavit vlastní hlavičku, takže požadavek na
+ * `/api/v1/contacts/imports/{id}/events` přišel bez `X-Workspace-Id` a cesta
+ * segment `/w/` nemá. Doslovně z logu produkční image:
+ *
+ *   {"route":"/api/v1/contacts/imports/…/events","status":404,
+ *    "workspace_id":null,"actor_type":null}
+ *
+ * Živý průběh importu tím byl v prohlížeči trvale mrtvý a obrazovka padala na
+ * dotazování; hlášku „Živé aktualizace se nedaří" viděl uživatel VŽDY.
+ *
+ * Bezpečnostně je to rovnocenné se segmentem `/w/{slug}`: reference sama o sobě
+ * nedává žádné právo, členství ověřuje `createWorkspaceContext` proti relaci.
+ * U zápisů se query NEČTE, aby se plocha pro požadavky vyvolané cizí stránkou
+ * nerozšiřovala ani teoreticky.
  */
 export function workspaceRefFrom(input: {
   header: string | undefined;
   path: string;
+  query?: string | undefined;
+  method?: string | undefined;
 }): string | null {
   if (input.header && input.header.length > 0) return input.header;
-  return input.path.match(/^\/w\/([^/]+)/)?.[1] ?? null;
+  const fromPath = input.path.match(/^\/w\/([^/]+)/)?.[1];
+  if (fromPath !== undefined) return fromPath;
+  const method = (input.method ?? 'GET').toUpperCase();
+  if (input.query && input.query.length > 0 && (method === 'GET' || method === 'HEAD')) {
+    return input.query;
+  }
+  return null;
 }
 
 const WRITE_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
@@ -140,7 +165,12 @@ export function authenticate(): MiddlewareHandler<ApiEnv> {
     ]);
     for (const [k, v] of Object.entries(headers)) c.header(k, v);
 
-    const ref = workspaceRefFrom({ header: c.req.header('X-Workspace-Id'), path });
+    const ref = workspaceRefFrom({
+      header: c.req.header('X-Workspace-Id'),
+      path,
+      query: c.req.query('workspace_id'),
+      method: c.req.method,
+    });
     // Bez reference na projekt není co izolovat; pro aktéra projekt neexistuje.
     if (!ref) throw new ApiError('not_found');
 

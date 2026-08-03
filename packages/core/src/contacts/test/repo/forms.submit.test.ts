@@ -362,3 +362,55 @@ describe('kód k vložení', () => {
     expect(snippets.html).not.toContain('<script');
   });
 });
+
+/**
+ * Pravidlo 4 na souhlas z formuláře.
+ *
+ * Přihlášení do seznamu hlídá `subscribeToList`, souhlas s textem z definice formuláře
+ * ale vzniká mimo něj. Bez vlastní kontroly by se zapsal i adrese na suppression listu,
+ * takže by odesláním formuláře šlo vyrobit doklad o souhlasu člověka, který se odhlásil.
+ *
+ * Cesta zpět zůstává: kontakt se dostane do stavu pending a souhlas mu vznikne až
+ * kliknutím na potvrzovací odkaz, tedy jeho vlastním úkonem.
+ */
+describe('formulář a suppression list', () => {
+  const withConsent = {
+    consent_text: 'Souhlasím se zasíláním novinek.',
+    legal_basis: 'consent',
+  };
+
+  async function grantedConsents(ctx: WorkspaceContext, email: string): Promise<number> {
+    const { rows } = await asMigrator().query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM consents c JOIN contacts k ON k.id = c.contact_id
+        WHERE c.workspace_id = $1 AND k.email = $2 AND c.status = 'granted'`,
+      [ctx.workspaceId, email],
+    );
+    return Number(rows[0]?.count ?? '0');
+  }
+
+  it('blokované adrese nezapíše udělený souhlas', async () => {
+    const ctx = await testContext();
+    const form = await formWithList(ctx, withConsent);
+    const contact = await createActiveContact(ctx, 'odhlaseny@x.cz');
+    await addSuppression(ctx, {
+      email: 'odhlaseny@x.cz',
+      reason: 'global_unsubscribe',
+      source: 'test',
+    });
+
+    const result = await send(form.ref, submission(form.id, 'odhlaseny@x.cz'));
+
+    expect(result.response).toEqual(UNIFORM);
+    expect(await grantedConsents(ctx, 'odhlaseny@x.cz')).toBe(0);
+    expect(await subscriptionStatus(ctx, contact.id, form.listId)).toBe('pending');
+  }, 60_000);
+
+  it('adrese bez blokace souhlas zapíše', async () => {
+    const ctx = await testContext();
+    const form = await formWithList(ctx, withConsent);
+
+    await send(form.ref, submission(form.id, 'cisty@x.cz'));
+
+    expect(await grantedConsents(ctx, 'cisty@x.cz')).toBe(1);
+  }, 60_000);
+});

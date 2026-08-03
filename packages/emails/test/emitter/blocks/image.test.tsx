@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { blockDefaults, DEFAULT_THEME } from '../../../src/document/defaults';
 import { resolveTheme } from '../../../src/theme/resolve';
 import { RawSlotSink } from '../../../src/normalize/slots';
-import { EmitterProvider } from '../../../src/emitter/ctx';
+import type { EmitterState } from '../../../src/emitter/ctx';
 import { assetUrl, pickVariant } from '../../../src/emitter/assets';
 import { ImageBlockView } from '../../../src/emitter/blocks/image';
 import type { AssetRef } from '../../../src/compile/types';
@@ -34,7 +34,7 @@ const gif: AssetRef = {
   variants: [{ variant: 'orig', width: 600, height: 300 }],
 };
 
-const state = (assets: Record<string, AssetRef>) => ({
+const state = (assets: Record<string, AssetRef>): EmitterState => ({
   theme: resolveTheme(DEFAULT_THEME),
   raw: new RawSlotSink('ab12cd34ef'),
   assets,
@@ -47,8 +47,10 @@ const state = (assets: Record<string, AssetRef>) => ({
   t: (key: string) => key,
 });
 
-const wrap = (node: React.ReactElement, assets: Record<string, AssetRef>) =>
-  render(<EmitterProvider value={state(assets)}>{node}</EmitterProvider>);
+const wrap = (
+  make: (emitter: EmitterState) => React.ReactElement,
+  assets: Record<string, AssetRef>,
+) => render(make(state(assets)));
 
 describe('asset urls', () => {
   it('builds the public url from the base, the public id and the variant', () => {
@@ -86,7 +88,10 @@ describe('image block', () => {
     }) as ImageBlock;
 
   it('emits width and height attributes and display block', async () => {
-    const html = await wrap(<ImageBlockView block={block()} width={600} />, { [photo.id]: photo });
+    const html = await wrap(
+      (emitter) => <ImageBlockView block={block()} width={600} emitter={emitter} />,
+      { [photo.id]: photo },
+    );
     expect(html).toContain('width="600"');
     expect(html).toContain('height="300"');
     expect(html).toContain('display:block');
@@ -95,7 +100,13 @@ describe('image block', () => {
 
   it('always emits an alt attribute, even empty for decorative images', async () => {
     const html = await wrap(
-      <ImageBlockView block={block({ decorative: true, alt: '' })} width={600} />,
+      (emitter) => (
+        <ImageBlockView
+          block={block({ decorative: true, alt: '' })}
+          width={600}
+          emitter={emitter}
+        />
+      ),
       {
         [photo.id]: photo,
       },
@@ -106,7 +117,13 @@ describe('image block', () => {
 
   it('wraps a linked image in the tracking marker', async () => {
     const html = await wrap(
-      <ImageBlockView block={block({ href: 'https://shop.cz/akce' })} width={600} />,
+      (emitter) => (
+        <ImageBlockView
+          block={block({ href: 'https://shop.cz/akce' })}
+          width={600}
+          emitter={emitter}
+        />
+      ),
       { [photo.id]: photo },
     );
     expect(html).toContain(
@@ -121,7 +138,13 @@ describe('image block', () => {
       publicId: 'darkdarkdarkdarkdarkda',
     };
     const html = await wrap(
-      <ImageBlockView block={block({ darkVariantAssetId: dark.id })} width={600} />,
+      (emitter) => (
+        <ImageBlockView
+          block={block({ darkVariantAssetId: dark.id })}
+          width={600}
+          emitter={emitter}
+        />
+      ),
       { [photo.id]: photo, [dark.id]: dark },
     );
     expect(html).toContain('ml-logo-light');
@@ -130,7 +153,10 @@ describe('image block', () => {
   });
 
   it('renders nothing when the asset is missing instead of emitting a broken img', async () => {
-    const html = await wrap(<ImageBlockView block={block()} width={600} />, {});
+    const html = await wrap(
+      (emitter) => <ImageBlockView block={block()} width={600} emitter={emitter} />,
+      {},
+    );
     expect(html).not.toContain('<img');
   });
 });

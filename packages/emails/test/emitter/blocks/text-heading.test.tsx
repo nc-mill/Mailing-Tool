@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { blockDefaults, DEFAULT_THEME } from '../../../src/document/defaults';
 import { resolveTheme } from '../../../src/theme/resolve';
 import { RawSlotSink } from '../../../src/normalize/slots';
-import { EmitterProvider } from '../../../src/emitter/ctx';
+import type { EmitterState } from '../../../src/emitter/ctx';
 import { HeadingBlockView } from '../../../src/emitter/blocks/heading';
 import { TextBlockView } from '../../../src/emitter/blocks/text';
 
-const state = () => ({
+const state = (): EmitterState => ({
   theme: resolveTheme(DEFAULT_THEME),
   raw: new RawSlotSink('ab12cd34ef'),
   assets: {},
@@ -19,8 +19,7 @@ const state = () => ({
   t: (key: string) => key,
 });
 
-const wrap = (node: React.ReactElement) =>
-  render(<EmitterProvider value={state()}>{node}</EmitterProvider>);
+const wrap = (make: (emitter: EmitterState) => React.ReactElement) => render(make(state()));
 
 describe('heading block', () => {
   it('renders the semantic level and the derived size', async () => {
@@ -33,7 +32,7 @@ describe('heading block', () => {
         content: [{ t: 'p' as const, children: [{ t: 's' as const, v: 'Vítejte' }] }],
       },
     };
-    const html = await wrap(<HeadingBlockView block={block} />);
+    const html = await wrap((emitter) => <HeadingBlockView block={block} emitter={emitter} />);
     expect(html).toContain('<h1');
     expect(html).toContain('font-size:31px');
     expect(html).toContain('class="ml-h1');
@@ -46,7 +45,9 @@ describe('heading block', () => {
       type: 'heading' as const,
       props: { ...blockDefaults('heading'), content: [{ t: 'p' as const, children: [] }] },
     };
-    expect(await wrap(<HeadingBlockView block={block} />)).toContain('Segoe UI');
+    expect(await wrap((emitter) => <HeadingBlockView block={block} emitter={emitter} />)).toContain(
+      'Segoe UI',
+    );
   });
 
   it('emits an exact pixel line height with the mso rule', async () => {
@@ -59,7 +60,7 @@ describe('heading block', () => {
         content: [{ t: 'p' as const, children: [] }],
       },
     };
-    const html = await wrap(<HeadingBlockView block={block} />);
+    const html = await wrap((emitter) => <HeadingBlockView block={block} emitter={emitter} />);
     expect(html).toContain('mso-line-height-rule:exactly');
     expect(html).toContain('line-height:31px');
   });
@@ -75,7 +76,7 @@ describe('text block', () => {
         content: [{ t: 'p' as const, children: [{ t: 's' as const, v: 'Ahoj' }] }],
       },
     };
-    const html = await wrap(<TextBlockView block={block} />);
+    const html = await wrap((emitter) => <TextBlockView block={block} emitter={emitter} />);
     expect(html).toContain('<table');
     expect(html).toContain('role="presentation"');
     expect(html).toContain('padding-right:24px');
@@ -89,7 +90,7 @@ describe('text block', () => {
       visibleWhen: { field: 'contact.city', op: 'present' as const },
       props: { ...blockDefaults('text'), content: [{ t: 'p' as const, children: [] }] },
     };
-    const html = await wrap(<TextBlockView block={block} />);
+    const html = await wrap((emitter) => <TextBlockView block={block} emitter={emitter} />);
     expect(html).toContain('{% if _present.contact__city %}');
     expect(html).toContain('{% endif %}');
   });
@@ -100,9 +101,13 @@ describe('text block', () => {
       type: 'text' as const,
       props: { ...blockDefaults('text'), content: [] },
     };
-    expect(await wrap(<TextBlockView block={off} />)).not.toContain('ml-hide-m');
+    expect(await wrap((emitter) => <TextBlockView block={off} emitter={emitter} />)).not.toContain(
+      'ml-hide-m',
+    );
     const on = { ...off, props: { ...off.props, hideOnMobile: true } };
-    expect(await wrap(<TextBlockView block={on} />)).toContain('ml-hide-m');
+    expect(await wrap((emitter) => <TextBlockView block={on} emitter={emitter} />)).toContain(
+      'ml-hide-m',
+    );
   });
 
   it('paints an explicit background instead of leaving it transparent', async () => {
@@ -111,6 +116,8 @@ describe('text block', () => {
       type: 'text' as const,
       props: { ...blockDefaults('text'), backgroundColor: 'surface.subtle' as const, content: [] },
     };
-    expect(await wrap(<TextBlockView block={block} />)).toContain('background-color:#e5e7eb');
+    expect(await wrap((emitter) => <TextBlockView block={block} emitter={emitter} />)).toContain(
+      'background-color:#e5e7eb',
+    );
   });
 });

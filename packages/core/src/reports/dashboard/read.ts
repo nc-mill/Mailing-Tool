@@ -157,6 +157,7 @@ async function readTotals(tx: Tx, ctx: WorkspaceContext, from: Date, to: Date): 
       LEFT JOIN sending_providers p ON p.id = c.provider_id AND p.workspace_id = c.workspace_id
      WHERE c.workspace_id = ${ctx.workspaceId}
        AND c.deleted_at IS NULL
+       AND c.kind = 'campaign'
        AND c.started_at >= ${from}
        AND c.started_at <  ${to}
   `);
@@ -224,6 +225,7 @@ async function readRecentCampaigns(
       LEFT JOIN sending_providers p ON p.id = c.provider_id AND p.workspace_id = c.workspace_id
      WHERE c.workspace_id = ${ctx.workspaceId}
        AND c.deleted_at IS NULL
+       AND c.kind = 'campaign'
        AND c.started_at IS NOT NULL
        AND c.started_at >= ${from}
        AND c.started_at <  ${to}
@@ -267,6 +269,7 @@ async function readRunningCampaign(tx: Tx, ctx: WorkspaceContext): Promise<Runni
       LEFT JOIN campaign_stats s ON s.campaign_id = c.id AND s.workspace_id = c.workspace_id
      WHERE c.workspace_id = ${ctx.workspaceId}
        AND c.deleted_at IS NULL
+       AND c.kind = 'campaign'
        AND c.status IN ('sending', 'queueing')
      ORDER BY c.started_at DESC NULLS LAST
      LIMIT 1

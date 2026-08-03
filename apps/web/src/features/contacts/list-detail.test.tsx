@@ -28,7 +28,7 @@ const list: ListDetailData = {
 
 function renderDetail(overrides: Partial<ListDetailData> = {}) {
   return renderWithProviders(
-    <ListDetail basePath="/w/eshop/lists" list={{ ...list, ...overrides }} />,
+    <ListDetail basePath="/w/eshop/lists" workspaceId="w-1" list={{ ...list, ...overrides }} />,
   );
 }
 
@@ -67,7 +67,7 @@ describe('ListDetail', () => {
     const user = userEvent.setup();
     renderDetail();
     await user.click(screen.getByRole('radio', { name: 'Kliknutím a potvrzením na stránce' }));
-    expect(setMode).toHaveBeenCalledWith({ id: 'l-1', mode: 'two_step' });
+    expect(setMode).toHaveBeenCalledWith({ workspaceId: 'w-1', id: 'l-1', mode: 'two_step' });
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Platí pro potvrzovací e-maily odeslané od teď.',
     );

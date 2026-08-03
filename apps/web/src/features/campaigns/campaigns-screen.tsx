@@ -32,7 +32,10 @@ export function CampaignsScreen({
   function create() {
     startTransition(async () => {
       const result = await createCampaignAction({ workspaceId, name: t('list.emptyAction') });
-      if (result.status === 'success') router.push(`${basePath}/campaigns/${result.id}/send`);
+      // Založená kampaň vede na NASTAVENÍ, ne rovnou na kontrolní seznam odeslání.
+      // Ten umí jen vypsat, co chybí; předmět, publikum ani šablonu na něm vyplnit
+      // nejde, takže uživatel skončil na obrazovce, ze které se nedalo pokračovat.
+      if (result.status === 'success') router.push(`${basePath}/campaigns/${result.id}`);
       else setFailure(result.code);
     });
   }

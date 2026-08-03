@@ -26,6 +26,19 @@ function run(
   }
 }
 
+/** Podstrčí na PATH libovolný falešný nástroj. Tělo je shell skript bez shebangu. */
+function fakeBin(sandbox: string, name: string, body: string): void {
+  const bin = path.join(sandbox, 'bin');
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`);
+  fs.chmodSync(path.join(bin, name), 0o755);
+}
+
+/** Prostředí, ve kterém mají podstrčené nástroje přednost před skutečnými. */
+function withFakeBin(sandbox: string): Record<string, string> {
+  return { PATH: `${path.join(sandbox, 'bin')}:${process.env['PATH'] ?? ''}` };
+}
+
 /** Podstrčí na PATH falešné `pnpm`, které zapíše svoje argumenty a vrátí dané JSON. */
 function fakePnpm(sandbox: string, inventory: Record<string, { licenses: string }>): string {
   const bin = path.join(sandbox, 'bin');
@@ -81,18 +94,65 @@ describe('i18n-check', () => {
 });
 
 describe('openapi-drift', () => {
+  /**
+   * Strom, na kterém brána pozná generátor: commitnutý dokument a apps/web
+   * se skriptem, který ho umí vyrobit. Co podstrčené `pnpm` zapíše, určuje
+   * každý test sám, protože jádro nálezu I95 je právě v tom, JESTLI se
+   * generuje, ne jestli si dva soubory na disku odpovídají.
+   */
+  function driftTree(committed: string, scripts: Record<string, string>): string {
+    const dir = path.join(sandbox, 'packages/contracts');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'openapi.json'), committed);
+    fs.mkdirSync(path.join(sandbox, 'apps/web'), { recursive: true });
+    fs.writeFileSync(
+      path.join(sandbox, 'apps/web/package.json'),
+      JSON.stringify({ name: '@mlain/web', scripts }),
+    );
+    return path.join(dir, 'openapi.generated.json');
+  }
+
   it('bez packages/contracts hlásí SKIP a vrací 0', () => {
     expect(run('openapi-drift.mjs', sandbox).code).toBe(0);
   });
 
-  it('spadne, když se commitnutý soubor liší od vygenerovaného', () => {
-    const dir = path.join(sandbox, 'packages/contracts');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'openapi.json'), '{"openapi":"3.1.0"}');
-    fs.writeFileSync(path.join(dir, 'openapi.generated.json'), '{"openapi":"3.1.0","paths":{}}');
+  it('spadne, když apps/web nemá skript contracts:generate', () => {
+    driftTree('{"openapi":"3.1.0"}', {});
     const result = run('openapi-drift.mjs', sandbox);
     expect(result.code).not.toBe(0);
     expect(result.out).toContain('contracts:generate');
+  });
+
+  it('spadne, když se commitnutý soubor liší od právě vygenerovaného', () => {
+    const generated = driftTree('{"openapi":"3.1.0"}\n', { 'contracts:generate': 'x' });
+    fakeBin(sandbox, 'pnpm', `printf '%s' '{"openapi":"3.1.0","paths":{}}' > ${generated}`);
+    const result = run('openapi-drift.mjs', sandbox, withFakeBin(sandbox));
+    expect(result.code).not.toBe(0);
+    expect(result.out).toContain('liší');
+  });
+
+  /**
+   * Jádro nálezu I95. Generátor skončí nulou, ale nic nezapíše, a na disku
+   * přitom leží zastaralý `openapi.generated.json` shodný s commitnutým.
+   * Dřívější znění brány porovnalo dva soubory, našlo shodu a hlásilo OK,
+   * i když byly zastaralé oba. Krok, který má něco VYROBIT, se nikdy
+   * neověřuje jen návratovým kódem.
+   */
+  it('spadne, když generátor doběhne, ale výstup je z dřívějška', () => {
+    const generated = driftTree('{"openapi":"3.1.0"}\n', { 'contracts:generate': 'x' });
+    fs.writeFileSync(generated, '{"openapi":"3.1.0"}\n');
+    fs.utimesSync(generated, new Date(2020, 0, 1), new Date(2020, 0, 1));
+    fakeBin(sandbox, 'pnpm', 'exit 0');
+    const result = run('openapi-drift.mjs', sandbox, withFakeBin(sandbox));
+    expect(result.code, 'shoda dvou zastaralých souborů není důkaz').not.toBe(0);
+    expect(result.out).toContain('z dřívějška');
+  });
+
+  it('projde, když generátor vyrobí bajt po bajtu totéž, co je commitnuté', () => {
+    const generated = driftTree('{"openapi":"3.1.0"}\n', { 'contracts:generate': 'x' });
+    fakeBin(sandbox, 'pnpm', `printf '{"openapi":"3.1.0"}\\n' > ${generated}`);
+    const result = run('openapi-drift.mjs', sandbox, withFakeBin(sandbox));
+    expect(result.code, result.out).toBe(0);
   });
 });
 
@@ -131,6 +191,100 @@ describe('migration-lint', () => {
     );
     const result = run('migration-lint.mjs', sandbox);
     expect(result.code).not.toBe(0);
+  });
+
+  // Pravidlo se dřív ptalo CELÉHO SOUBORU, takže jediný DEFAULT now() kdekoli
+  // v migraci zlegalizoval všechna ostatní volání. Datová migrace, jejíž
+  // výsledek závisí na okamžiku spuštění, tak prošla bez jediného slova.
+  it('chytí now() v datovém příkazu i v souboru, kde je jinde DEFAULT now()', () => {
+    const dir = path.join(sandbox, 'packages/db/migrations');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '0005_data.sql'),
+      'CREATE TABLE t (id uuid PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now());\n' +
+        '--> statement-breakpoint\n' +
+        'INSERT INTO t (id, created_at) VALUES (gen_random_uuid(), now());\n',
+    );
+    const result = run('migration-lint.mjs', sandbox);
+    expect(result.code).not.toBe(0);
+    expect(result.out).toContain('INSERT INTO t');
+    expect(result.out).toContain('konvence 2.4');
+  });
+
+  it('chytí i current_timestamp a CURRENT_DATE mimo DEFAULT', () => {
+    const dir = path.join(sandbox, 'packages/db/migrations');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '0006_hodiny.sql'),
+      'UPDATE t SET seen_at = current_timestamp WHERE seen_at IS NULL;\n' +
+        '--> statement-breakpoint\n' +
+        "DELETE FROM t WHERE day < CURRENT_DATE - interval '30 days';\n",
+    );
+    const result = run('migration-lint.mjs', sandbox);
+    expect(result.code).not.toBe(0);
+    expect(result.out).toContain('UPDATE t');
+    expect(result.out).toContain('DELETE FROM t');
+  });
+
+  // Konvence 2.4 míří na SQL, jehož VÝSLEDEK by závisel na okamžiku spuštění.
+  // Predikát politiky se vyhodnocuje při každém dotazu, ne při migraci, takže
+  // `expires_at > now()` u pozvánky je jediný způsob, jak politiku napsat.
+  // Přesně na tomhle padala 0004_rls_policies.sql, která nemá ani jeden DEFAULT.
+  it('pustí now() v predikátu politiky i v souboru bez jediného DEFAULT', () => {
+    const dir = path.join(sandbox, 'packages/db/migrations');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '0007_policies.sql'),
+      'CREATE POLICY invitation_token_lookup ON invitations FOR SELECT\n' +
+        '  USING (accepted_at IS NULL AND expires_at > now());\n' +
+        '--> statement-breakpoint\n' +
+        'CREATE POLICY api_key_touch ON api_keys FOR UPDATE\n' +
+        "  WITH CHECK (last_used_at >= now() - interval '1 minute');\n",
+    );
+    const result = run('migration-lint.mjs', sandbox);
+    expect(result.code).toBe(0);
+  });
+
+  // Politika je výjimka, ne bianko šek pro celý soubor: datový příkaz vedle ní
+  // pravidlo pořád chytá.
+  it('výjimka pro politiku nelegalizuje zbytek souboru', () => {
+    const dir = path.join(sandbox, 'packages/db/migrations');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '0008_mix.sql'),
+      'CREATE POLICY p ON t FOR SELECT USING (expires_at > now());\n' +
+        '--> statement-breakpoint\n' +
+        'UPDATE t SET touched_at = now();\n',
+    );
+    const result = run('migration-lint.mjs', sandbox);
+    expect(result.code).not.toBe(0);
+    expect(result.out).toContain('UPDATE t');
+  });
+
+  // DO blok z 0004 má uvnitř pět středníků a řetězec s uvozovkami. Dělení
+  // podle ';' by z něj udělalo útržky a pravidlo by hádalo, jaký příkaz čte.
+  it('nerozseká DO $$ blok na útržky a now() v něm chytí', () => {
+    const dir = path.join(sandbox, 'packages/db/migrations');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '0009_do.sql'),
+      'DO $$\nBEGIN\n  PERFORM 1;\n  EXECUTE format($f$UPDATE t SET x = now()$f$);\nEND $$;\n',
+    );
+    const result = run('migration-lint.mjs', sandbox);
+    expect(result.code).not.toBe(0);
+    expect(result.out).toContain('DO $$');
+  });
+
+  it('chytí DROP TABLE bez IF EXISTS i vedle správně napsaného DROP TABLE', () => {
+    const dir = path.join(sandbox, 'packages/db/migrations');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '0010_drop.sql'),
+      'DROP TABLE IF EXISTS stary;\n--> statement-breakpoint\nDROP TABLE novy;\n',
+    );
+    const result = run('migration-lint.mjs', sandbox);
+    expect(result.code).not.toBe(0);
+    expect(result.out).toContain('DROP TABLE novy');
   });
 
   it('projde na správně napsané migraci', () => {
@@ -279,6 +433,69 @@ describe('contracts joby', () => {
     expect(result.code).not.toBe(0);
     expect(result.out).toContain('test:golden');
     expect(result.out).toContain('P02');
+  });
+
+  /**
+   * Strom, na kterém contracts-golden dojde až ke Go straně: obě strany
+   * existují a podstrčené `pnpm` zapíše reporty TypeScript strany.
+   */
+  function goldenTree(): void {
+    contractsPackage({ 'test:golden': 'x', 'test:parity': 'x' });
+    fs.mkdirSync(path.join(sandbox, 'apps/sender/internal/contracts'), { recursive: true });
+    const reports = path.join(sandbox, 'packages/contracts/reports');
+    fakeBin(
+      sandbox,
+      'pnpm',
+      `case "$*" in\n` +
+        `  *test:golden*) mkdir -p ${reports} && printf '{}' > ${reports}/ts-golden-token.json ;;\n` +
+        `esac\nexit 0\n`,
+    );
+  }
+
+  /**
+   * Jádro nálezu I96. Go krok skončí nulou a nezapíše nic, protože filtr -run
+   * neodpovídá žádnému testu. Brána to nesmí vzít jako úspěch, jinak se reporty
+   * Go strany negenerují nikdy a parita se porovnává proti zmrazeným artefaktům.
+   */
+  it('contracts-golden spadne, když Go krok skončí nulou, ale nezapíše report', () => {
+    goldenTree();
+    fakeBin(sandbox, 'go', 'echo "[no tests to run]"\nexit 0');
+    const result = run('contracts-golden.mjs', sandbox, withFakeBin(sandbox));
+    expect(result.code, 'nula bez výrobku není úspěch').not.toBe(0);
+    expect(result.out).toContain('go-golden');
+  });
+
+  it('contracts-golden spadne, když Go strana vyrobí jinou množinu sekcí než TypeScript', () => {
+    goldenTree();
+    const reports = path.join(sandbox, 'packages/contracts/reports');
+    fakeBin(sandbox, 'go', `printf '{}' > ${reports}/go-golden-crypto.json\nexit 0`);
+    const result = run('contracts-golden.mjs', sandbox, withFakeBin(sandbox));
+    expect(result.code).not.toBe(0);
+    expect(result.out).toContain('chybí na Go straně: token');
+  });
+
+  it('contracts-golden zahodí reporty z dřívějších běhů, než cokoliv spustí', () => {
+    contractsPackage({ 'test:golden': 'x', 'test:parity': 'x' });
+    fs.mkdirSync(path.join(sandbox, 'apps/sender/internal/contracts'), { recursive: true });
+    const reports = path.join(sandbox, 'packages/contracts/reports');
+    fs.mkdirSync(reports, { recursive: true });
+    fs.writeFileSync(path.join(reports, 'ts-golden-token.json'), '{}');
+    fs.writeFileSync(path.join(reports, 'go-golden-token.json'), '{}');
+    // Ani jeden krok nic nezapíše. Kdyby brána staré reporty nezahodila,
+    // našla by obě strany kompletní a prošla by, aniž by cokoliv proběhlo.
+    fakeBin(sandbox, 'pnpm', 'exit 0');
+    fakeBin(sandbox, 'go', 'exit 0');
+    const result = run('contracts-golden.mjs', sandbox, withFakeBin(sandbox));
+    expect(result.code, 'zmrazené reporty nesmí projít jako čerstvý běh').not.toBe(0);
+    expect(result.out).toContain('ts-golden');
+  });
+
+  it('contracts-golden projde, když obě strany vyrobí tytéž sekce', () => {
+    goldenTree();
+    const reports = path.join(sandbox, 'packages/contracts/reports');
+    fakeBin(sandbox, 'go', `printf '{}' > ${reports}/go-golden-token.json\nexit 0`);
+    const result = run('contracts-golden.mjs', sandbox, withFakeBin(sandbox));
+    expect(result.code, result.out).toBe(0);
   });
 
   it('contracts-fixtures-schema spadne, když chybí skript test:fixtures-schema', () => {

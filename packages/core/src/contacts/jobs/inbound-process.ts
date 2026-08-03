@@ -99,7 +99,7 @@ async function applyContactChange(
   });
   if (written.rejected === 'suppressed') return null;
 
-  await attachListsAndTags(ctx, written.id, mapped);
+  await attachListsAndTags(ctx, written.id, mapped, written.allowConsents);
   return written.id;
 }
 
@@ -114,6 +114,7 @@ async function attachListsAndTags(
   ctx: WorkspaceContext,
   contactId: string,
   mapped: MappedDelivery,
+  allowConsents: boolean,
 ): Promise<void> {
   for (const listId of mapped.listIds) {
     await subscribeToList(ctx, {
@@ -128,7 +129,10 @@ async function attachListsAndTags(
     await addTagsToContact(ctx, contactId, tagIds);
   }
 
-  if (mapped.consent !== undefined) {
+  // Pravidlo 4: adresa na suppression listu nedostane udělený souhlas ani z webhooku.
+  // Přihlášení do seznamu hlídá `subscribeToList` vlastní branou, souhlas nikdo, takže
+  // bez téhle podmínky by odhlášený člověk dostal z e-shopu nový souhlas při každém nákupu.
+  if (mapped.consent !== undefined && allowConsents) {
     await recordConsent(ctx, {
       contactId,
       purpose: mapped.consent.purpose as ConsentPurpose,

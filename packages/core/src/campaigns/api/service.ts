@@ -89,6 +89,9 @@ export async function listCampaigns(
         `SELECT ${COLUMNS} FROM campaigns
           WHERE workspace_id = $1
             AND deleted_at IS NULL
+            -- Skryté systémové kampaně (testovací odeslání šablony, migrace 0010)
+            -- do seznamu nepatří: uživatel je nezaložil a nemůže s nimi nic dělat.
+            AND kind = 'campaign'
             AND ($2::text IS NULL OR status = $2)
             AND ($3::uuid IS NULL OR id < $3)
           ORDER BY updated_at DESC, id DESC
@@ -108,7 +111,10 @@ export async function getCampaignFull(
   return withWorkspace(ctx, async (tx) => {
     const r = await tx.execute<CampaignRowFull>(
       rawSql(
-        `SELECT ${COLUMNS} FROM campaigns WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL`,
+        // `kind = 'campaign'` je tu proto, aby se systémová kampaň nedala načíst
+        // ani přímo podle identifikátoru, a tedy ani upravit cestou PATCH.
+        `SELECT ${COLUMNS} FROM campaigns
+          WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND kind = 'campaign'`,
         [id, ctx.workspaceId],
       ),
     );
@@ -274,7 +280,7 @@ export async function duplicateCampaign(
                 from_name, from_email, reply_to, template_id, design, audience, provider_id,
                 sender_domain_id, unsubscribe_list_id, track_opens, track_clicks, created_by
            FROM campaigns
-          WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
+          WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND kind = 'campaign'
          RETURNING ${COLUMNS}`,
         [id, ctx.workspaceId],
       ),

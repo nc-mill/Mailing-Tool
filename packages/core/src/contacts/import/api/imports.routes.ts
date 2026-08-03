@@ -55,7 +55,16 @@ function present(row: ImportRow): z.infer<typeof ImportResponse> {
     byte_size: Number(row.byte_size),
     total_rows: row.total_rows === null ? null : Number(row.total_rows),
     checkpoint_row: Number(row.checkpoint_row),
+    // `Number()` tu není zdvořilost: počty jsou v Postgresu `bigint` a ovladač
+    // je vrací jako řetězec, takže bez převodu by ve výsledku byly „50" místo 50
+    // a schéma `z.number().int()` by odpověď odmítlo.
+    created_rows: Number(row.created_rows),
+    updated_rows: Number(row.updated_rows),
+    suppressed_rows: Number(row.suppressed_rows),
+    warning_rows: Number(row.warning_rows),
+    review_rows: Number(row.review_rows),
     error_rows: Number(row.error_rows),
+    error_summary: row.error_summary ?? {},
     failure_detail: row.failure_detail,
   };
 }

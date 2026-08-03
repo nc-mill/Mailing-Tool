@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import type { FooterBlock } from '../../document/types';
-import { useEmitter } from '../ctx';
+import type { EmitterProps } from '../ctx';
 import { RichTextView } from '../rich-text';
 import { lineHeightStyle, px } from '../style';
 import { BlockFrame } from './frame';
@@ -11,8 +11,11 @@ import { BlockFrame } from './frame';
  * Systémové adresy zůstávají Liquid výrazem: sender je interpoluje z podepsaného
  * tokenu, kompilace o nich neví nic víc než jejich jméno.
  */
-export function FooterBlockView({ block }: { block: FooterBlock }): ReactElement {
-  const { theme } = useEmitter();
+export function FooterBlockView({
+  block,
+  emitter,
+}: { block: FooterBlock } & EmitterProps): ReactElement {
+  const { theme } = emitter;
   const p = block.props;
   const color = theme.light.color(p.color);
   const links: Array<{ label: string; href: string }> = [];
@@ -22,6 +25,7 @@ export function FooterBlockView({ block }: { block: FooterBlock }): ReactElement
 
   return (
     <BlockFrame
+      emitter={emitter}
       padding={p.padding}
       backgroundColor={p.backgroundColor}
       hideOnMobile={false}
@@ -35,6 +39,7 @@ export function FooterBlockView({ block }: { block: FooterBlock }): ReactElement
     >
       <div className="ml-muted" style={{ color, textAlign: 'center' }}>
         <RichTextView
+          emitter={emitter}
           rich={p.senderInfo}
           color={color}
           linkColor={color}

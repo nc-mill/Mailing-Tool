@@ -4903,7 +4903,34 @@ kontrola. Test, že každá deklarovaná fronta má obsluhu, je levný.
 ### I82. Worker nemá čím číst napříč projekty, pět úloh proto nemůže fungovat
 
 - **Našel:** agent při zapojování obsluh front kampaní
-- **Stav:** OTEVŘENO, vyžaduje rozhodnutí o modelu oprávnění
+- **Stav:** VYŘEŠENO migrací `0009_maintenance_scan`
+
+**Jak se to vyřešilo.** Rozšířila se role `mlain_maintenance`, nezaložila se
+nová: dosavadní definice („úlohy napříč projekty, které workspace kontext
+nemají odkud vzít") na tenhle případ sedí a druhá role by znamenala druhé
+volitelné připojení a druhou sadu politik téhož tvaru, aniž by zmenšila dosah
+chyby, protože obě spojení drží tentýž proces workeru.
+
+Politiky jsou jmenovité, ne plošné: `maintenance_scan` `FOR SELECT` na
+`workspaces`, `campaigns` a `sender_domains`, plus `maintenance_purge`
+`FOR DELETE` na `workspaces` omezená na už měkce smazané projekty. Připojení
+nese nová VOLITELNÁ proměnná `DATABASE_URL_MAINTENANCE`; bez ní instalace
+naběhne, worker to při startu hlásí varováním a dotčené úlohy skončí chybou
+s vysvětlením.
+
+Skeny vrací pouze IDENTIFIKÁTORY (`packages/core/src/platform/maintenance-scan.ts`,
+jediné místo v aplikaci, které čte napříč projekty); další práce běží pod
+`mlain_app` v systémovém kontextu projektu. Továrny závislostí jsou
+v `packages/core/src/campaigns/jobs/system-deps.ts`.
+
+**Vedlejší nález, který se přitom našel a je vážnější, než vypadá.** Politiky
+`ws_member_visibility` a `ws_api_key_lookup` na `workspaces` byly psané pro
+PUBLIC a mají uvnitř poddotaz do `memberships`, respektive `api_keys`.
+Jakákoli jiná role tedy na `SELECT ... FROM workspaces` dostala
+`permission denied for table memberships`, a NESPOLEHLIVĚ: záviselo to na tvaru
+dotazu (`SELECT id ... WHERE deleted_at IS NULL` prošel, `SELECT count(*)`
+spadl). Migrace 0009 je zužuje `ALTER POLICY ... TO mlain_app`. Je to
+zpřísnění modelu, ne ústupek.
 
 Pět systémových úloh potřebuje výčet NAPŘÍČ projekty: plánovač kampaní
 (`listWorkspaces`), hlídač běžících (`listRunning`), obnova po kvótě
@@ -4987,3 +5014,654 @@ Poučení k měření, ne k Turbopacku: úsporu ohlásil až `du` uvnitř hotov�
 Předchozí pokus u `sharp` vycházel na 122 MB měřeno na výstupu buildu a v image
 neušetřil nic, protože se tam ty soubory nikdy nedostaly (nález o měření
 v mezivrstvě, viz I56). Měřit se musí tam, o čem je řeč.
+
+### I84. Producent zařazoval úlohu pod jménem, které registr neznal
+
+- **Našel:** agent při dodělávání front, zadáno uživatelem
+- **Uzavřeno:** 2026-08-02, jména srovnána na `contact_fields.verify_index`
+
+Platformový registr P01 znal frontu `contact_fields.build_index`. Producent
+(`contacts/repo/contact-fields.ts` a `contact-fields.routes.ts`) ale zařazoval
+úlohu pod jménem `contact_fields.verify_index`. Logika existovala
+(`verify-field-index.ts`) a byla otestovaná.
+
+Úloha se tedy poctivě zařadila do fronty, kterou registr neznal. Index nad
+vlastními poli se **nikdy nepřestavěl** a `index_state` zůstal viset. Nic
+nespadlo.
+
+Zvlášť zrádné bylo, že rozpor byl ZAPSANÝ jako známý: test
+`contacts/test/queues.test.ts` měl výjimku `KNOWN_MISSING_IN_P01` s komentářem,
+že přejmenování patří do P01. Vada tak vypadala jako zaevidovaná a vyřešená,
+přestože se s ní celou dobu nic nedělo.
+
+Sjednoceno na `verify_index`, protože to odpovídá skutečnosti: job žádné DDL
+nedělá, jen prověřuje dotazovatelnost (rozhodnutí R14). Výjimka v testu
+odstraněna.
+
+Poučení: zapsaná výjimka není totéž co vyřešený rozpor. Výjimka bez termínu
+a bez vlastníka je jen tišší podoba té samé vady.
+
+### I85. Tlačítko, dialog i potvrzení existovaly, koncový bod ne
+
+- **Našel:** agent při zapojování front
+- **Uzavřeno:** 2026-08-02, dodána logika, job i trasa
+
+`contacts.bulk_delete` neměla v repozitáři NIC: ani modul jobu, ani
+repozitářovou funkci, ani koncový bod. `apps/web/src/features/contacts/actions.ts`
+přitom volal `POST /api/v1/contacts/bulk-delete`.
+
+Z pohledu uživatele: tlačítko je vidět, dialog se otevře, vyjmenuje následky,
+uživatel potvrdí hromadné smazání a dostane 404 pod hláškou „pracuje se na tom".
+Úloha se ani nezařadila.
+
+Byla to nejhorší díra z celé mapy front, a ne kvůli frontě samotné. U ostatních
+nezapojených front chyběl jen konzument. Tady chyběla celá cesta, a přesto měla
+hotové rozhraní včetně dialogu úrovně N3 se seznamem následků.
+
+Trasa je zaregistrovaná PŘED `/contacts/{id}`. V opačném pořadí by ji vzor
+`{id}` pohltil a `bulk-delete` by se choval jako identifikátor kontaktu.
+
+### I86. Archiv se sestavil a zahodil, subjekt dostal potvrzení
+
+- **Našel:** agent při zapojování front
+- **Uzavřeno:** 2026-08-02, dodáno `ExportStorage`
+
+`gdpr.export_subject` měla hotovou logiku, ale nebylo kam uložit výsledek.
+Archiv se sestavil v paměti a zahodil. Subjekt údajů dostal potvrzení, že se
+export udělal, a žádný soubor.
+
+Je to horší než chyba: navenek to vypadá jako splněná zákonná lhůta podle
+článku 20 GDPR. Selhání by se poznalo teprve tehdy, až by se někdo ptal, kde
+ten soubor je, tedy typicky při stížnosti nebo kontrole.
+
+Úložiště je schválně TOTÉŽ jako u exportu kontaktů: tabulka `exports`,
+jednorázový token uložený jen jako SHA-256, `expires_at`, retence maže soubor
+i řádek. Vlastní cesta pro tenhle jeden druh souboru by znamenala druhé místo,
+na které musí myslet zálohy i výmaz, a na jedno z nich by se zapomnělo.
+
+### I87. Klíč v mapě `exports` mířil na soubor, který neexistoval
+
+- **Našel:** hlavní agent při slepování registrací
+- **Uzavřeno:** 2026-08-02, založen `tracking/jobs/queue-handlers.ts`
+
+`identity.merge` neměla obsluhu ani logiku a v doméně `tracking` nebyla
+k tabulce `identity_merges` jediná funkce. Návštěvník se prokázal e-mailem
+(klik v kampani, odeslaný formulář, přihlášení) a jeho dosavadní web události
+zůstaly navždy viset na `anonymous_id`. V časové ose kontaktu chyběla celá část
+historie a nikde se to neohlásilo.
+
+Slepá stopa, na kterou je potřeba dát pozor: `reports/timeline/merge.ts` NENÍ
+ono. Ta funkce slévá seřazené větve časové osy pro čtení a se slučováním
+identit nemá společného nic. Hlavní agent na ni napoprvé ukázal špatně.
+
+Nad rámec toho se ukázalo, že `packages/core/package.json` už měl klíč
+`./tracking/jobs` mířící na `queue-handlers.ts`, který NEEXISTOVAL. Codegen
+proto doménu vůbec neviděl. Rozpor mezi mapou `exports` a skutečnými soubory
+se přitom neprojeví při testech ani při typové kontrole, ale až při stavbě
+produkční image, tedy hodně daleko od příčiny.
+
+Díra je zacelená z obou stran: doplněn i producent (`tracking/identity/bind.ts`).
+Zapojit jen konzumenta by vyrobilo cestu, po které stejně nic nepřijde.
+
+### I88. Úprava kontaktu chybí v plánu, ne jen v kódu
+
+- **Našel:** uživatel („je to základ")
+- **Stav:** zadáno 2026-08-02
+
+Plán P07 má 21 úkolů na obrazovky kontaktů a ANI JEDEN na úpravu nebo ruční
+založení kontaktu. Úkol 62 se jmenuje „Detail kontaktu a jeho devět podob"
+a jeho tři akceptační kritéria jsou čistě zobrazovací: devět stavů, blok
+o omezeném zpracování, dialog smazání.
+
+Není to opomenutí při implementaci, je to díra ve specifikaci. Kontakt se
+v hotovém produktu nedá upravit ani ručně založit; vzniká jen importem,
+formulářem nebo přes API.
+
+API to přitom umí a je promyšlené: `POST /contacts`, `PATCH /contacts/{id}`
+(s e-mailem VÝSLOVNĚ vyloučeným ze schématu) a samostatná trasa
+`POST /contacts/{id}/change-email`, protože změna adresy sahá na souhlasy
+a potvrzení. Chybí jen obrazovka. Ve webu ty trasy nevolá nikdo.
+
+Poučení: kontrola „je hotové, co plán žádá" nenajde to, co plán nežádá.
+Úplnost plánu je potřeba ověřovat proti produktu, ne proti plánu.
+
+### I89. Čtyři tlačítka a jeden odkaz na detailu nedělaly nic
+
+- **Našel:** hlavní agent při kontrole podnětu uživatele
+- **Stav:** zadáno 2026-08-02
+
+Na detailu kontaktu se vykreslují tlačítka, která jdou zmáčknout a neudělají
+nic, protože nemají `onClick`:
+
+| tlačítko | místo |
+|---|---|
+| Poslat e-mail | `contact-detail.tsx:190` |
+| Poslat znovu potvrzení | `contact-detail.tsx:211` |
+| Znovu přihlásit | `contact-detail.tsx:215` |
+| Zrušit odklad | `contact-detail.tsx:224` |
+
+Odhlášení, smazání a export akci mají, takže obrazovka působí funkčně.
+
+Navíc `contact-detail.tsx:118` odkazuje na `/w/{slug}/contacts/{id}/greeting`,
+a **ta stránka v repozitáři neexistuje**. Ruční nastavení oslovení jednoho
+kontaktu se dneska dá udělat jen oklikou přes frontu ke kontrole, která pracuje
+nad SKUPINAMI stejných jmen, ne nad jednotlivcem.
+
+Backend přitom z větší části existuje: `POST /lists/{id}/resend-confirmation`,
+`POST /lists/{id}/subscribe`. Chybí jen adminská trasa na zrušení odkladu;
+funkce `snooze` existuje, opačná k ní ne.
+
+### I90. Zápisové pravidlo je otestované a nikdo ho nečte
+
+- **Našel:** průzkumný agent, ověřeno hlavním agentem
+- **Stav:** ZADÁNO K DODĚLÁNÍ 2026-08-02, NEOPRAVENO
+
+`applyWriteRules` v `contacts/write.ts` vrací u kontaktu na měkkém suppression
+listu `allowSubscriptions: false` a `allowConsents: false`. Rozlišuje přitom
+správně dvě úrovně: tvrdá blokace (`complaint`, `gdpr_erasure`) kontakt vůbec
+nezapíše a vrátí 409, měkká (bounce, manual, unsubscribe, import, invalid)
+kontakt zapíše, ale nemá pustit seznamy ani souhlasy.
+
+Ty tři příznaky nečte v produkčním kódu NIKDO:
+
+```
+allowSubscriptions / allowTags / allowConsents
+  vyrábí:  contacts/write.ts
+  čte:     contacts/test/write.test.ts   (jen test)
+           nikde jinde
+```
+
+`upsertContactFromApi` (`repo/contacts-api.ts`) po zápisu kontaktu volá
+`writeSubscriptionIn` i `recordConsent` bez jakékoli kontroly. Kontakt, který
+se odhlásil nebo tvrdě odrazil, tedy přes API znovu dostane přihlášení
+k seznamu i zaznamenaný souhlas.
+
+Tohle je nejzrádnější podoba vzoru „napsáno, otestováno, nezapojeno", který se
+v tomhle repozitáři opakuje. Zelený test tvrdí, že pravidlo platí. Vypadá to
+jako pokryté místo, a přitom je nechráněné.
+
+Poučení: test čisté funkce dokazuje, že funkce počítá správně. Nedokazuje, že
+ji někdo volá a že se jejím výsledkem někdo řídí. U pravidel, která něco
+ZAKAZUJÍ, musí existovat test na CESTĚ, ne jen na funkci.
+
+### I91. Přihlášení do seznamu mazalo oslovení
+
+- **Našel:** agent při ověřování formuláře v prohlížeči
+- **Uzavřeno:** 2026-08-02, ochrana rozšířena na vokativ a oslovení
+
+Kontakt „Jana Nováková" s oslovením „Dobrý den, Jano" se po přihlášení do
+seznamu oslovoval „Dobrý den". Ve sloupci `first_name` přitom pořád stálo
+„Jana", takže z dat nebylo poznat, že se něco ztratilo.
+
+Příčina byla v SQL upsertu v `contacts/repo/contacts.ts`. Sloupce `first_name`
+a `last_name` měly ochranu proti přepsání prázdnou hodnotou, ale
+`first_name_vocative`, `greeting` a `vocative_confidence` ji NEMĚLY. Zápis, který
+nese jen e-mail (přihlášení do seznamu), tedy jméno nechal a odvozené hodnoty
+přepsal prázdnem.
+
+Rozsah je větší, než na kolik to vypadá. Netýkalo se to jen formuláře v aplikaci,
+ale i VEŘEJNÉHO přihlašovacího formuláře, stránky předvoleb a opakovaného
+odeslání potvrzení, tedy cest, po kterých projde běžný návštěvník.
+
+Na produktu, jehož hlavní odlišností je správné české oslovení, to tiše likviduje
+tu jedinou funkci, kvůli které si ho někdo koupí. A likviduje ji na kontaktech,
+které se právě přihlásily, tedy na těch nejcennějších.
+
+Poučení: ochrana proti přepsání prázdnou hodnotou musí platit i pro ODVOZENÉ
+sloupce, ne jen pro ty, ze kterých se odvozují. Tady byla ochrana zavedená
+u zdroje a u výsledku chyběla, takže data zůstala v pořádku a jejich odvozenina
+ne.
+
+### I92. Serverové akce neposílají projekt, API vrátí 404 na existující kontakt
+
+- **Našel:** agent při zapojování tlačítek
+- **Stav:** ZADÁNO K DODĚLÁNÍ 2026-08-02, NEOPRAVENO
+
+`deleteContactAction`, `unsubscribeContactAction` a `exportContactAction`
+v `apps/web/src/features/contacts/actions.ts` volají `apiMutate` BEZ
+`workspaceId`, takže požadavku chybí hlavička `X-Workspace-Id`. Běží tedy mimo
+kontext projektu a RLS nevrátí ani řádek. Uživatel dostane 404 na kontakt, který
+má otevřený na obrazovce.
+
+Ve stejné rodině: `contact-detail.tsx:221` odkazuje na
+`/w/{slug}/contacts/{id}/consents`, což je stránka, která v aplikaci
+NEEXISTUJE. API pro historii souhlasů hotové je, obrazovka ne. Je to třetí mrtvý
+odkaz na téže obrazovce; `/greeting` byl při té příležitosti přesměrován na
+editaci.
+
+### I93. Dvě brány CI jsou červené v odevzdaném stromu
+
+- **Našel:** hlavní agent při kompletní sérii před pozastavením
+- **Uzavřeno:** 2026-08-02, obojí opraveno a ověřeno spuštěním
+
+Obojí je STARŠÍ než práce z 2026-08-02: dotčené soubory ani nástroje se ten den
+neměnily (ověřeno přes `git status`).
+
+**1. `ci:migration-lint` padá na `0004_rls_policies.sql`** s hláškou „volání
+`now()` mimo DEFAULT je zakázané (konvence 2.4)". Pravidlo v
+`tools/ci/migration-lint.mjs` je vyhodnocované PO SOUBORECH, ne po výskytech:
+stačí, aby soubor obsahoval kdekoli `DEFAULT now()`, a všechna ostatní volání
+projdou. Proto `0001` a `0003` procházejí a `0004`, které je složené jen
+z politik, ne.
+
+Věcně má pravdu migrace, ne pravidlo. Konvence míří na DATOVÉ migrace, kde by
+výsledek závisel na okamžiku spuštění. V predikátu RLS politiky se ale `now()`
+vyhodnocuje při KAŽDÉM dotazu a je tam nutné (`expires_at > now()` u tokenů).
+Zakázat ho znamená politiku nenapsat.
+
+CI tuhle bránu spouští (`.github/workflows/ci.yml:37`), takže je červená i tam.
+
+**2. `apps/web/test/p06/preflight.test.ts` padá na 401 při přihlášení.** Test
+v `beforeAll` volá `/api/v1/setup` a přijímá `201` i `409`, ale pak
+BEZPODMÍNEČNĚ vyžaduje `200` z přihlášení. Na instanci, která už je
+nainstalovaná, vrátí setup `409`, účet `p06-preflight@example.com` se nikdy
+nezaloží a přihlášení nemůže projít. Ověřeno dotazem do vývojové databáze:
+uživatelé jsou tam jen `dev@mlain.test`, preflight účet 0 řádků.
+
+Test tedy projde jen proti čerstvé instanci. Proti běžícímu vývojovému prostředí
+spadne vždy, což z `pnpm run test:unit` dělá běh závislý na vnějším stavu.
+
+Poučení: `expect([201, 409])` je tolerance k prostředí, jenže zbytek testu na ni
+nenavazuje. Když test připustí dvě různé výchozí situace, musí se podle nich
+i zachovat, jinak jednu z nich jen tiše prohlásí za chybu.
+
+**Oprava 1.** Pravidlo v `tools/ci/migration-lint.mjs` se vyhodnocuje PO
+PŘÍKAZECH, ne po souborech, a povoluje dvě věci, u kterých se výraz při migraci
+nevyhodnocuje: `DEFAULT now()` a predikát politiky (`CREATE`/`ALTER POLICY`).
+Všechno ostatní chytá, nově včetně `current_timestamp` a `CURRENT_DATE`, které
+konvence 2.4 jmenuje vedle `now()`. Znění konvence dohledáno ve specifikaci,
+část 1, kapitola 2.4: míří na SQL kompilované z uživatelské definice, kde čas
+dodává povinný parametr `asOf`.
+
+Při té příležitosti vyšly najevo dvě další vady téhož pravidla. Regulární výraz
+měl `\b` ZA `now()`, takže po uzavírací závorce hranice slova nikdy nenastala
+a pravidlo `now()` nechytalo VŮBEC NIKDE; padalo jen na souborech bez
+`DEFAULT now()`, tedy na tom, co bylo v hlášce navíc. A kontrola `DROP TABLE`
+bez `IF EXISTS` měla stejnou díru po souborech jako `now()`. Obojí opraveno.
+
+Dělení na příkazy respektuje řetězce, uvozené identifikátory, komentáře
+a dollar-quoting, protože `split(';')` by z `DO $$ ... END $$` v `0004` udělalo
+pět útržků, u kterých už nejde poznat, jaký příkaz to byl.
+
+Doloženo šesti novými testy v `tools/ci/test/ci-scripts.test.ts` a dočasnou
+migrací, která konvenci porušuje čtyřmi způsoby (`INSERT` s `now()`, `UPDATE`
+s `current_timestamp`, částečný index s `CURRENT_DATE`, `DROP TABLE` bez
+`IF EXISTS`): lint na ní spadl na všech čtyřech a po smazání zase prošel.
+Kontrolní běh s vypnutou výjimkou pro politiky ukázal, že `0004` prochází
+opravdu kvůli ní, ne omylem.
+
+**Oprava 2.** Preflight bere přihlašovací údaje z `PREFLIGHT_EMAIL`
+a `PREFLIGHT_PASSWORD` (jinak z `E2E_EMAIL` a `E2E_PASSWORD`) a bez nich jede
+na účtu, který si zakládá sám. Když se přihlásit nedaří, blok se PŘESKOČÍ
+a důvod je v JEHO NÁZVU, včetně návodu, co nastavit, stejně jako to soubor už
+dělal u sondy `apiIsMounted`. Bezpodmínečné `expect(login.status).toBe(200)`
+zmizelo, `beforeAll` taky: relace se otevírá před `describe`, protože rozhodnutí
+o přeskočení musí padnout dřív než jméno bloku.
+
+Ověřeno třemi běhy proti běžícímu dev serveru na portu 3100: bez údajů
+9 přeskočených s důvodem v názvu, s `PREFLIGHT_EMAIL=dev@mlain.test`
+11 prošlých, proti nedostupnému portu přeskočení s hláškou o nedosažitelné
+instanci.
+
+### I94. Dva testy si protiřečily, jeden z nich padal vždycky
+
+- **Našel:** hlavní agent při kompletní sérii před pozastavením
+- **Uzavřeno:** 2026-08-02, rozhodnuto ve prospěch zákazu podle I35
+
+`packages/config/test/workspace-integrity.test.ts` VYŽADOVAL v mapě `exports`
+balíčku `@mlain/core` zástupný vzor na podcestu `jobs`.
+`packages/core/src/ai/preflight.test.ts` ho ZAKAZOVAL.
+
+Splnit se nedaly obě podmínky naráz. V odevzdaném stromu proto jeden z těch
+dvou testů padal vždycky, podle toho, co kdo upravil naposledy.
+
+Nejhorší na tom bylo, jak se to projevovalo: kdo pustil jen jeden balíček, viděl
+zeleno a měl důvod si myslet, že je hotovo. Rozpor vyplaval teprve při běhu přes
+celý workspace, a i tam vypadal jako běžná chyba k opravě, ne jako spor dvou
+pravidel.
+
+Sám jsem do té pasti šlápl: viděl jsem padat `@mlain/config`, doplnil zástupný
+vzor, a tím jsem rozbil `@mlain/core`. Teprve druhý pád ukázal, že jde o spor.
+
+Rozhodl nález I35 a rozhodl ve prospěch ZÁKAZU. Node ani esbuild neberou v potaz
+pořadí klíčů, rozhoduje délka základu vzoru. Jakmile doména dostala vlastní vzor
+se svým jménem (`"./ai/*"`), přebil ten obecný a `@mlain/core/ai/jobs` se
+rozvinul na soubor, který neexistuje. Vystřelilo to dvakrát a pokaždé až při
+stavbě produkční image. Test v `@mlain/config` byl tedy ten zastaralý; drží se
+pravidla, které bylo zrušené, a nikdo ho po zrušení nesrovnal.
+
+Vedlejší past, do které jsem šlápl při opravě: sekvence `*/` uvnitř blokového
+komentáře ho ukončí. Zápis vzoru s hvězdičkou lomítkem do vysvětlujícího
+komentáře rozbil parser a soubor se ani nenačetl.
+
+Poučení: když se pravidlo zruší, musí se dohledat VŠECHNA místa, která ho
+vymáhají. Zrušené pravidlo, které dál hlídá jiný balíček, nevytvoří chybu
+hlášku, ale trvale červený test, který si každý vyloží jako rozdělanou práci.
+
+### I95. Brána proti driftu OpenAPI porovnávala dva zastaralé soubory
+
+- **Našel:** hlavní agent při kompletní sérii
+- **Stav:** ZADÁNO K DODĚLÁNÍ 2026-08-02, artefakty srovnány, BRÁNA NEOPRAVENA
+
+Situace, která to odhalila: agent přidal do odpovědi pole `warnings` s hodnotou
+`suppressed_skipped`. Pak nastalo tohle:
+
+```
+pnpm run ci:openapi-drift                        OK: shodný s vygenerovaným
+apps/web/test/api/openapi.test.ts                FAIL, dokument se liší
+```
+
+Dvě kontroly nad týmž artefaktem si protiřečily a **pravdu měl ten test**.
+
+Příčina je v tom, co která z nich měří. `tools/ci/openapi-drift.mjs` porovnává
+DVA SOUBORY NA DISKU, `packages/contracts/openapi.json` proti
+`openapi.generated.json`, a sám nic negeneruje. Když po změně tras nikdo
+generátor nepustí, jsou zastaralé oba, jsou si navzájem rovné a brána hlásí OK.
+Chytí tedy jedinou situaci: někdo generoval a zapomněl výsledek zkopírovat.
+
+Test naopak porovnává ŽIVĚ SLOUŽENÝ dokument proti commitnutému souboru, takže
+sáhne na skutečný stav aplikace. Zuby má jen on.
+
+Past navíc, kvůli které se to špatně opravuje: `pnpm contracts:generate` píše
+POUZE `openapi.generated.json` (skript `apps/web` má přepínač `--generated`).
+Commitovaný dokument vzniká během `tsx scripts/generate-openapi.ts` BEZ toho
+přepínače. Kdo spustí jen `contracts:generate`, ty dva soubory naopak rozejde
+a brána začne padat, přestože „generoval".
+
+Artefakty jsou srovnané (143 cest, 189 operací). Samotná brána opravená NENÍ:
+měla by generovat sama, nebo musí CI spustit generátor před ní. Dokud se to
+nestane, platí, že zelená brána driftu negarantuje nic.
+
+Poučení, stejné jako u I94: dvě kontroly nad týmž artefaktem se musí shodovat
+na tom, co je pravda. Když jedna měří disk a druhá běžící aplikaci, zelená
+u té slabší uspí ostražitost přesně v okamžiku, kdy je potřeba.
+
+### I96. Krok brány spouštěl neexistující test a hlásil úspěch
+
+- **Našel:** hlavní agent při kompletní sérii
+- **Stav:** ZADÁNO K DODĚLÁNÍ 2026-08-02, NEOPRAVENO
+
+`tools/ci/contracts-golden.mjs` má jako třetí krok „Go strana vyrobí
+`reports/go-golden.json`" a spouští:
+
+```
+go test ./internal/contracts/... -run TestGolden
+```
+
+V balíčku `apps/sender/internal/contracts` se ale **žádný test tak nejmenuje**.
+Jsou tam `TestFixturesDigestNezavisiNaPoradiAReagujeNaZmenu`,
+`TestCheckTokenGoldenOdhaliRozchod`, `TestCheckCryptoGoldenOdhaliTichyUspech`
+a další, jenže filtr `-run TestGolden` neodpovídá ani jednomu.
+
+Go proto pokaždé vypíše `[no tests to run]`, skončí s návratovým kódem 0, brána
+to vezme jako úspěch a jde dál. Reporty na straně Go se tedy **negenerují
+nikdy**; ty v repozitáři jsou zmrazené artefakty z dřívějška a parita se
+porovnává proti nim.
+
+Odhalilo se to oklikou. Pustil jsem `pnpm contracts:generate`, ten přepsal
+soubory ve `fixtures/` (jen formátováním, obsah týž), tím se změnil jejich
+otisk a parita začala hlásit „report je z jiného běhu". Kdyby ten krok
+doopravdy běžel, reporty by se přegenerovaly a nikdo by si ničeho nevšiml.
+Zastaralost byla vidět jedině proto, že se vstup změnil.
+
+Formátovací přepis fixtures jsem vrátil, protože byl bezobsažný. Zůstává tedy
+druhá věc k rozhodnutí: `packages/contracts/fixtures/` je v `.prettierignore`,
+takže kanonický tvar má určovat generátor, jenže commitnutý tvar se od jeho
+výstupu liší. Jedno z toho je zastaralé a dokud se to nesrovná, každé spuštění
+generátoru rozbije paritu.
+
+Poučení, potřetí v tomhle rejstříku (viz I94 a I95): kontrola, která nic
+nespustí, je k nerozeznání od kontroly, která prošla. U kroků, které mají něco
+VYROBIT, musí brána ověřit, že to skutečně vzniklo, ne jen že příkaz skončil
+nulou.
+
+#### Dodatek k I95 a I96: ostatní brány prověřeny, další díra není
+
+Aby se to nemuselo procházet znovu, tady je rozsah kontroly a její výsledek.
+Prošlo se po řádcích všech osm zbývajících skriptů v `tools/ci/`, knihovna
+`tools/ci/lib/report.mjs` a celý `.github/workflows/ci.yml`. Každé podezření se
+ověřilo proti skutečnosti, ne úvahou: existence cílových skriptů v
+`package.json`, skutečné shody globů proti souborům na disku, přítomnost
+grepovaných řetězců ve zdrojích.
+
+**Další instance vzoru „brána hlásí úspěch bez ověření" se nenašla.**
+
+Dvě místa vypadají podezřele a podezřelá NEJSOU:
+
+1. `continue-on-error: true` u kroku `security-audit` je vědomé rozhodnutí
+   (kapitola 3.15): zranitelnost v cizí závislosti nesmí zablokovat vydání
+   bezpečnostní opravy. Samotné `pnpm audit` i `govulncheck` běží naplno.
+2. Úlohy `typecheck` a `test:unit` mají v `turbo.json` zapnutou cache, jenže
+   workflow `.turbo/` mezi běhy neuchovává a runnery jsou jednorázové. Cache je
+   tedy v CI vždy prázdná a tiché přeskočení z cache nehrozí.
+
+Pomocná funkce `delegate()` má správnou nesymetrickou polaritu: chybějící
+balíček se přeskočí, ale balíček BEZ očekávaného skriptu selže. To je přesný
+opak vzoru, který I95 a I96 popisují.
+
+#### Uzavření I95 a I96: obě brány opraveny a ověřeny podvrhem
+
+`openapi-drift` si dokument nově GENERUJE SÁM a teprve pak porovnává, takže už
+nemůže nastat stav, kdy jsou zastaralé oba soubory a brána hlásí shodu.
+
+U `contracts-golden` byla skutečná příčina jinde, než jak to vypadalo. Testy
+`TestGolden*` v repozitáři EXISTUJÍ, jenže leží v balíčcích `internal/token`,
+`internal/outbox`, `internal/markers`, `internal/mimebuild` a `internal/liquidx`,
+kdežto brána je hledala jen v `./internal/contracts/...`, kde není ani jeden.
+Filtr je nově `./internal/...` a přibylo `-count=1`, aby výsledek nemohl přijít
+z cache Go.
+
+Obojí je ověřené PODVRHEM, ne přečtením kódu:
+
+```
+openapi.json s podvrženým title   → drift SPADL, po vrácení OK
+expected_token s jedním znakem navíc → contracts-golden SPADL, po vrácení OK
+```
+
+Jedna věc, která podvrh PŘEŽILA, a je to správně: přejmenování `id` u testovacího
+případu bránu neshodí. Identifikátor je štítek, ne tvrzení, a obě strany ho vidí
+stejně, takže parita mezi TypeScriptem a Go platí dál. Právě paritu ta kontrola
+měří, ne neměnnost fixtures.
+
+Zůstává poznámka k té třetí části I96: fixtures se přegenerovaly, takže jejich
+tvar teď odpovídá výstupu generátoru a spuštění generátoru už paritu nerozbije.
+
+### I97. API šablon v aplikaci vůbec neexistovalo
+
+- **Našel:** agent při dojíždění zlaté cesty
+- **Uzavřeno:** 2026-08-03, doplněno 9 cest a 13 operací
+
+Produkt na rozesílání e-mailů, ve kterém se nedala vytvořit šablona. Změřeno:
+
+```
+GET /api/v1/openapi.json  → 143 cest, z toho se slovem „template": 0
+POST /api/v1/templates    → 404
+```
+
+Doména byla přitom HOTOVÁ a otestovaná: `templates/service.ts` má `createTemplate`,
+`saveDesign`, `duplicateTemplate`, `deleteTemplate`, `restoreTemplateVersion`.
+Chyběly jen trasy. Je to potřetí táž třída, kterou tenhle rejstřík sbírá.
+
+Zlatá cesta na tom padala na kroku 4 s hláškou „Šablonu se nepodařilo vytvořit",
+a nikdo to nezachytil dřív, protože jednotkové testy domény byly celou dobu
+zelené. Doména se testovala, cesta k ní ne.
+
+Po doplnění: 152 cest, 202 operací. Součástí nálezu je i to, že
+`template_name_conflict` NEBYL v registru chyb, přestože ho `duplicateTemplate`
+dávno hází, takže kolize jména šablony končila pětistovkou. Uživatel dostal za
+vlastní překlep „vnitřní chybu serveru".
+
+### I98. Obrazovka nastavení kampaně chybí v plánu, ne jen v kódu
+
+- **Našel:** agent při dojíždění zlaté cesty, doloženo průzkumem plánu P13
+- **Stav:** ZADÁNO 2026-08-03
+
+`/w/{slug}/campaigns/{id}` vrací 404. „Vytvořit kampaň" založí kampaň a přejde
+rovnou na `/campaigns/{id}/send`, ta správně vypíše, co chybí (publikum, předmět,
+šablona, odesílací účet), a **první tři z toho nejde nikde vyplnit**.
+`PATCH /api/v1/campaigns/{id}` přitom existuje a přijímá patnáct polí.
+
+Je to obrácená podoba I97: tam chybělo API nad hotovou obrazovkou, tady chybí
+obrazovka nad hotovým API.
+
+Průzkum plánu P13 (14 474 řádků) zjistil, že soubor
+`campaigns/[id]/page.tsx` je v mapě souborů (kapitola 6) a ve vlastnictví
+(kapitola 9.3), ale **nemá úkol, testy, i18n klíče ani akceptační kritérium**.
+Fáze L má pět úkolů a ani jeden není tenhle. Stejnou dírou trpí
+`settings/sending/new/page.tsx`.
+
+To je táž systematická slabina jako u I88 (úprava kontaktu). Obrazovka
+vyjmenovaná v mapě souborů, pro kterou nikdo nenapsal úkol, se neimplementuje
+a nikomu nechybí, protože kontrola „je hotové, co plán žádá" ji nehledá.
+
+**Nedourčený vztah `template_id` a `design`.** Kompilace čte `campaign.design`,
+kdežto `template_id` je v celém plánu dvakrát zmíněná reference, kterou nikdo
+neobsluhuje. Rozhodnuto: výběr šablony její dokument do `campaigns.design`
+ZKOPÍRUJE a `template_id` zůstane záznamem o původu. Odkaz by měnil minulost,
+protože úprava šablony po odeslání by změnila obsah odeslané kampaně.
+
+### I99. Testovací odeslání blokoval cizí klíč, sender ho přitom uměl
+
+- **Našel:** agent při psaní testovacího odeslání
+- **Uzavřeno:** 2026-08-03, migrace 0010
+
+Go sender testovací odeslání UMÍ a volá ho každý tik: `StmtClaimTestBatch`
+v `apps/sender/internal/outbox/statements.go`, s komentářem, že schválně
+nekontroluje stav kampaně, protože test musí fungovat i u draftu.
+
+Blokovala to databáze. Sender claimuje test jen když `campaign_id IS NOT NULL`,
+jenže `fk_messages__campaign_audience` odkazuje na `campaigns (id, audience_built_at)`
+a skrytá kampaň má `audience_built_at = NULL`. Naměřeno spuštěním:
+
+```
+SQLSTATE 23503: insert or update on table "messages_y2026m08" violates
+foreign key constraint "fk_messages__campaign_audience"
+```
+
+Komentář nad tím omezením přitom tvrdí opak: „zprávy s `campaign_id IS NULL`
+(testovací odeslání) cizí klíč nekontroluje". Ten předpoklad je nepravdivý.
+
+P13 tuhle vadu předpověděl jako požadavek R-P03.7 a agent naměřil přesně to,
+co plán popisuje. Druhá překážka, kterou R-P03.7 NEŘEŠÍ a je to samostatný
+nález: `uq_messages__campaign_contact` není částečný, takže druhý příjemce
+téhož testu spadne na 23505.
+
+**Proč se sáhlo na zmrazený kontrakt:** kontrakt zakazuje měnit omezení, aby se
+nerozešel TypeScript s Go senderem. Tady se ale sbližují. Hotová funkce senderu
+ležela ladem kvůli omezení psanému za nepravdivého předpokladu.
+
+### I100. React kontext v emitteru rozbil produkční build
+
+- **Našel:** hlavní agent reprodukcí, po hlášení od agenta na zlaté cestě
+- **Uzavřeno:** 2026-08-03, kontext z emitteru odstraněn
+
+Po zapojení tras šablon přestal jít postavit produkční build:
+
+```
+./packages/emails/src/emitter/ctx.tsx:1:10
+You're importing a module that depends on `createContext` into a React Server
+Component module. This API is only available in Client Components.
+```
+
+Řetěz: trasa `/templates/{id}/compile` → `templates/compile.ts` →
+`compile/compile.ts` → `emitter/render.ts` → `emitter/ctx.tsx`.
+
+Příčina byla jinde, než kam mířila importní stopa. Emitter používá React jako
+SERVEROVÝ ŠABLONOVACÍ NÁSTROJ pro skládání e-mailového HTML, což je legitimní,
+jenže `createContext` je v Nextu klientské API a serverový modul ho nesmí
+vtáhnout. Vada nebyla v novém API šablon, to ji jen odhalilo.
+
+**Zakázaná oprava, která se nabízí:** přidat `"use client"`. Build by zezelenal
+a produkt by TIŠE PŘESTAL UMĚT SKLÁDAT E-MAILY, protože z modulu by se stala
+klientská reference a funkce by se serverově nespustily. Přesně ta třída
+„opravy", kterou tenhle rejstřík celý den popisuje.
+
+Vyřešeno odstraněním React kontextu z emitteru (`ctx.tsx` → `ctx.ts`).
+
+### I101. Částečný index tiše rozbil materializaci všech kampaní
+
+- **Našel:** agent sám, vlastním testem, hned po zavedení
+- **Uzavřeno:** 2026-08-03
+
+Migrace 0010 udělala `uq_messages__campaign_contact` částečným
+(`WHERE kind = 'campaign'`), aby druhý příjemce testovacího odeslání nespadl na
+23505. Tím ale přestala platit klauzule `ON CONFLICT` v materializaci kampaní:
+
+```
+SQLSTATE 42P10: there is no unique or exclusion constraint matching
+the ON CONFLICT specification
+  packages/core/src/campaigns/repo/outbox.ts:228
+```
+
+Částečný index se nedá odvodit bez uvedení TÉHOŽ predikátu, takže `ON CONFLICT`
+musí nově nést `WHERE kind = 'campaign'`.
+
+**Dosah, kdyby to nikdo nechytil: neproběhla by materializace ŽÁDNÉ kampaně**,
+tedy produkt by přestal odesílat úplně, a poznalo by se to teprve tím, že by
+uživatelům nic nechodilo. Změna vypadala jako lokální úprava kvůli testovacímu
+odeslání a zasáhla hlavní odesílací cestu.
+
+Poučení: u částečných indexů se musí projít VŠECHNA místa, která na ně spoléhají
+přes `ON CONFLICT`. Postgres ohlásí rozpor až za běhu, typová kontrola ani lint
+ho nevidí.
+
+### I102. `ON DELETE RESTRICT` nezajímá měkké smazání
+
+- **Našel:** agent při psaní testovacího odeslání
+- **Uzavřeno:** 2026-08-03
+
+Skrytá systémová kampaň drží `provider_id`. Měkké smazání (nastavení
+`deleted_at`) na uvolnění odesílacího účtu NESTAČÍ, protože omezení se dívá na
+existenci řádku:
+
+```
+error: update or delete on table "sending_providers" violates RESTRICT setting
+of foreign key constraint "campaigns_provider_id_sending_providers_id_fk"
+```
+
+Uživatel by tedy nemohl smazat odesílací účet, aniž by chápal proč: brání mu
+v tom kampaň, kterou nikdy neviděl a která v seznamu není.
+
+Vyřešeno tvrdým smazáním skrytých kampaní a jejich čekajících testovacích zpráv
+při rušení účtu, v tomhle pořadí (zprávy první, jinak by zůstaly viset
+s odkazem na neexistující kampaň). Obojí je jednorázová věc bez historické
+hodnoty.
+
+Poučení: měkké mazání a cizí klíče se nedoplňují automaticky. Kde je
+`RESTRICT`, tam `deleted_at` nic neuvolní.
+
+### I103. Projekt nemá výchozí odesílací identitu
+
+- **Našel:** agent při psaní testovacího odeslání
+- **Stav:** ZADÁNO K DODĚLÁNÍ 2026-08-03, NEOPRAVENO
+
+Nikde v projektu není uložená výchozí odesílací adresa: `workspaces.settings`
+nese jen okno pro vrácení a zkušební režim, konfigurace providera adresu
+neobsahuje a `sender_domains` zná doménu, ne celou adresu.
+
+Testovací odeslání proto bere identitu z POSLEDNÍ uživatelské kampaně projektu,
+která má vyplněného providera i adresu. Když žádná není, odmítne se to jako 422
+`test_sending_not_configured` s návodem.
+
+**Důsledek:** kdo si rozepíše šablonu dřív, než založí první kampaň, nemůže si
+ji poslat na zkoušku.
+
+Vymyslet lokální část (`test@`, `no-reply@`) by bylo horší: pošta by odešla
+z adresy, kterou nikdo nezaložil, nejspíš by neprošla SPF, a **selhalo by to až
+u příjemce**, tedy nejdál od místa, kde vznikla chyba. Hlasitá degradace
+s návodem je správná, ale mezera zůstává. Doplnění je výměna jedné funkce
+v `templates/test-send.ts`.
+
+### I104. Strop velikosti těla ignoroval vlastní výjimky
+
+- **Našel:** agent při stavbě domény assetů
+- **Uzavřeno:** 2026-08-03
+
+`apps/web/src/lib/api/app.ts` odmítal každé tělo nad 1 MiB bez ohledu na
+`CONTENT_TYPE_EXEMPT_PREFIXES`. Ta množina cest tam tedy ležela **nefunkční od
+začátku**: netýkala se jen nahrávání obrázků, ale i importu kontaktů, tedy
+funkce, která je v produktu od začátku a soubory nad megabajt je u ní běžný stav.
+
+Poučení: výjimka, kterou nikdo nevynucuje, vypadá v kódu stejně jako výjimka,
+která platí. Ke každé patří test, který doloží, že cesta ze seznamu skutečně
+projde s větším tělem.

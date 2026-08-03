@@ -15,6 +15,11 @@ import type { ContactListFilters, FilterNames } from './filters';
 import type { Selection } from './contacts-table';
 
 export type ContactsBulkActionsProps = {
+  /**
+   * Projekt pro serverové akce. Bez něj jde požadavek bez hlavičky `X-Workspace-Id`,
+   * RLS nevrátí ani řádek a hromadné smazání i export skončí na 404.
+   */
+  workspaceId: string;
   selection: Selection;
   filters: ContactListFilters;
   names: FilterNames;
@@ -23,6 +28,7 @@ export type ContactsBulkActionsProps = {
 };
 
 export function ContactsBulkActions({
+  workspaceId,
   selection,
   filters,
   names,
@@ -49,12 +55,14 @@ export function ContactsBulkActions({
   async function addTag(tagId: string, tagName: string) {
     // Přidání štítku je vratné a bez vnějšího dopadu (5.6 části 6), proto se hlásí
     // oznámením s odpočtem a nabídkou vrácení, ne dialogem.
-    const result = await bulkTagContactsAction({ scope, add: [tagId] });
+    const result = await bulkTagContactsAction({ workspaceId, scope, add: [tagId] });
     if (result.status === 'success') {
       toast.undoable({
         message: t('bulk.tagAdded', { tag: tagName }),
         onUndo: () => {
-          void bulkTagContactsAction({ scope, remove: [tagId] }).then(() => router.refresh());
+          void bulkTagContactsAction({ workspaceId, scope, remove: [tagId] }).then(() =>
+            router.refresh(),
+          );
         },
       });
       router.refresh();
@@ -89,9 +97,9 @@ export function ContactsBulkActions({
         onOpenChange={setDeleteOpen}
         selection={selection}
         filterDescription={filterDescription}
-        onExport={() => exportContactsAction({ scope })}
+        onExport={() => exportContactsAction({ workspaceId, scope })}
         onConfirm={async () => {
-          const result = await bulkDeleteContactsAction({ scope });
+          const result = await bulkDeleteContactsAction({ workspaceId, scope });
           if (result.status === 'success') {
             // Hromadné smazání běží v jobu contacts.bulk_delete, takže se nehlásí „hotovo",
             // ale „mažeme". Lhát o dokončení by znamenalo, že uživatel obnoví stránku

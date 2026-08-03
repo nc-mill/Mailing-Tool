@@ -1,9 +1,9 @@
 import { Body, Head, Html } from '@react-email/components';
 import { OPEN_PIXEL_MARKER } from '@mlain/contracts/markers';
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
-import { useEmitter } from './ctx';
+import type { EmitterProps } from './ctx';
 import { buildHeadCss, MSO_HEAD_BLOCK } from './head-css';
-import { Raw, useRaw } from './raw';
+import { Raw, rawText } from './raw';
 
 const MSO_NAMESPACES = {
   'xmlns:v': 'urn:schemas-microsoft-com:vml',
@@ -21,6 +21,7 @@ export function EmailShell({
   title,
   preheader,
   children,
+  emitter,
 }: {
   language: string;
   title: string;
@@ -28,9 +29,8 @@ export function EmailShell({
   // Nepovinné kvůli `createElement`: sekce se předávají variadickými argumenty,
   // které typová signatura `createElement` do objektu props nezapočítá.
   children?: ReactNode;
-}): ReactElement {
-  const { theme } = useEmitter();
-  const raw = useRaw();
+} & EmitterProps): ReactElement {
+  const { theme } = emitter;
   const scheme = theme.darkModeEnabled ? 'light dark' : 'light';
   return (
     <Html lang={language} {...MSO_NAMESPACES}>
@@ -41,14 +41,14 @@ export function EmailShell({
         <meta name="color-scheme" content={scheme} />
         <meta name="supported-color-schemes" content={scheme} />
         <title>{title}</title>
-        <Raw html={MSO_HEAD_BLOCK} />
+        <Raw html={MSO_HEAD_BLOCK} emitter={emitter} />
         {/* Obsah <style> jde raw slotem: React text uvnitř <style> escapuje
             a `"Segoe UI"` by se rozpadlo na `&quot;`, což prohlížeč uvnitř
             stylu nedekóduje a font stack by přestal platit.
-            Odchylka od plánu: žeton se sem vkládá jako řetězec přes `useRaw`,
+            Odchylka od plánu: žeton se sem vkládá jako řetězec přes `rawText`,
             ne komponentou `<Raw/>`. React 19 má `<style>` zvlášť ošetřený a
             element mezi jeho potomky zploští na `[object Object]`. */}
-        <style>{raw(buildHeadCss(theme))}</style>
+        <style>{rawText(emitter, buildHeadCss(theme))}</style>
       </Head>
       <Body
         id="body"

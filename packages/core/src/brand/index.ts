@@ -30,6 +30,15 @@ export { runBrandExtraction, sweepStaleExtractions } from './jobs/brand-extract'
 export type { BrandExtractDeps } from './jobs/brand-extract';
 
 /**
+ * Kompoziční kořen extrakce a obsluha fronty. Reexportují se, aby bylo z jednoho
+ * místa vidět, že doména má i zápisovou půlku: bez `createBrandExtractDeps` má
+ * `createBrandRuntime` nula volajících a extrakce by nešla ven vůbec.
+ */
+export { createBrandExtractDeps, createBrandSweepDeps } from './jobs/brand-extract-deps';
+export { brandExtractHandler } from './jobs/brand-extract-handler';
+export type { BrandExtractJobData } from './jobs/brand-extract-handler';
+
+/**
  * Analýza stažené stránky. Vrací se jen `analyzePage`, ne jednotlivé kroky:
  * volající venku nemá důvod skládat paletu z kandidátů sám.
  *
@@ -48,14 +57,28 @@ export {
   DEFAULT_TYPOGRAPHY,
   findBrandProfile,
   findDefaultBrandProfile,
+  insertBrandProfile,
   listBrandProfiles,
 } from './repo/profiles.repo';
-export type { BrandPalette, BrandProfileSummary, BrandTypography } from './repo/profiles.repo';
+export type {
+  BrandPalette,
+  BrandProfileSummary,
+  BrandTypography,
+  NewBrandProfile,
+} from './repo/profiles.repo';
 
 export {
   countExtractionsInLastHour,
+  failStaleExtractions,
   findExtraction,
+  finishExtraction,
   listRecentExtractions,
+  markRunning,
   toPublicExtraction,
 } from './repo/extractions.repo';
-export type { ExtractionRow, ExtractionStatus, PublicExtraction } from './repo/extractions.repo';
+export type {
+  ExtractionRow,
+  ExtractionStatus,
+  FinishExtractionInput,
+  PublicExtraction,
+} from './repo/extractions.repo';

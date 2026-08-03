@@ -12,7 +12,24 @@ import { PortError } from './types';
 
 type Json = Record<string, unknown>;
 
+/**
+ * `workspaceId` je povinný pro každé volání z prohlížeče.
+ *
+ * Middleware `apps/web/src/lib/api/authenticate.ts` bere referenci na projekt
+ * z hlavičky `X-Workspace-Id` nebo ze segmentu `/w/{slug}` V CESTĚ POŽADAVKU.
+ * Cesty editoru začínají `/api/v1/`, takže bez hlavičky nemá požadavek projekt
+ * a middleware vrací 404 ještě před handlerem. Doslovně z logu produkční image
+ * při kroku „vytvoření šablony" zlaté cesty:
+ *
+ *   {"route":"/api/v1/templates","status":404,
+ *    "workspace_id":null,"actor_type":null,"actor_id":null}
+ *
+ * Tlačítko „Vytvořit šablonu" tím bylo v prohlížeči úplně mrtvé: chytil se
+ * `catch` a ukázala se obecná hláška o nezdaru. Parametr je proto povinný,
+ * ne volitelný. Volitelný by se zase někde zapomněl.
+ */
 export function createHttpPorts(options: {
+  workspaceId: string;
   baseUrl?: string;
   fetch?: typeof globalThis.fetch;
 }): EditorPorts {
@@ -22,7 +39,11 @@ export function createHttpPorts(options: {
   const call = async (path: string, init: RequestInit): Promise<{ status: number; body: Json }> => {
     const response = await doFetch(`${baseUrl}${path}`, {
       ...init,
-      headers: { 'content-type': 'application/json', ...init.headers },
+      headers: {
+        'content-type': 'application/json',
+        'X-Workspace-Id': options.workspaceId,
+        ...init.headers,
+      },
     });
     const body = (await response.json().catch(() => ({}))) as Json;
     return { status: response.status, body };
@@ -146,32 +167,62 @@ export function createHttpPorts(options: {
         method: 'GET',
       });
       if (status >= 400) fail(body, status);
-      return ((body.data as Json[]) ?? []).map((item) => ({
-        id: String(item.id),
-        url: String(item.url),
-        name: String(item.file_name ?? ''),
-        width: Number(item.width ?? 0),
-        height: Number(item.height ?? 0),
-      }));
+      return ((body.data as Json[]) ?? []).map(toAsset);
     },
 
     async uploadAsset(file: File): Promise<AssetSummary> {
       const form = new FormData();
       form.append('file', file);
-      const response = await doFetch(`${baseUrl}/assets`, { method: 'POST', body: form });
+      /*
+       * `call` se tu použít NEDÁ a hlavička se proto skládá ručně.
+       *
+       * `call` nastavuje `content-type: application/json`, jenže tělo je
+       * `FormData`. Kdyby se hlavička nastavila, prohlížeč by NEDOPLNIL
+       * `boundary=` a server by multipart nerozebral: dostal by tělo, které
+       * podle hlavičky je JSON a podle obsahu není. `fetch` si správnou
+       * hlavičku doplní sám, jen když se do ní nesahá.
+       *
+       * `X-Workspace-Id` tu ale být MUSÍ. Dřív tu volání běželo přes holý
+       * `doFetch` úplně bez hlaviček, takže middleware
+       * `apps/web/src/lib/api/authenticate.ts` neměl z čeho vzít projekt
+       * a vracel 404 ještě před handlerem. Je to přesně ta vada, kterou
+       * popisuje komentář v hlavičce tohohle souboru u `createHttpPorts`,
+       * jen o jednu operaci vedle.
+       */
+      const response = await doFetch(`${baseUrl}/assets`, {
+        method: 'POST',
+        headers: { 'X-Workspace-Id': options.workspaceId },
+        body: form,
+      });
       const body = (await response.json().catch(() => ({}))) as Json;
       if (response.status >= 400) fail(body, response.status);
-      return {
-        id: String(body.id),
-        url: String(body.url),
-        name: String(body.file_name ?? file.name),
-        width: Number(body.width ?? 0),
-        height: Number(body.height ?? 0),
-      };
+      return toAsset(body);
     },
   };
 
   return ports;
+}
+
+/**
+ * Odpověď `/assets` na tvar, který zná knihovna v editoru.
+ *
+ * `url` je adresa varianty `orig`, ne miniatury: blok obrázku v dokumentu si
+ * variantu vybírá sám podle šířky (`pickVariant` v emitteru) a knihovna má
+ * ukazovat, co se nahrálo. Náhled v mřížce jede přes `thumbnail_url`, který
+ * `AssetSummary` dnes nenese; až ho bude nést, přidá se sem.
+ *
+ * Jméno se bere z `original_filename`. Dřív se četlo `file_name`, což je klíč,
+ * který API nikdy nevracelo, takže by měl každý obrázek v knihovně prázdný
+ * popisek a nešel by najít hledáním.
+ */
+function toAsset(item: Json): AssetSummary {
+  return {
+    id: String(item.id),
+    url: String(item.url),
+    name: String(item.original_filename ?? ''),
+    width: Number(item.width ?? 0),
+    height: Number(item.height ?? 0),
+  };
 }
 
 function toContact(item: Json): ContactSummary {

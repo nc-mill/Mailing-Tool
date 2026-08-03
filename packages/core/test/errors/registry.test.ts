@@ -41,13 +41,25 @@ describe('registr chybových kódů', () => {
     // Exaktní čísla jsou záměr. Doménový plán kód nezakládá, takže každá změna
     // musí projít změnou plánu P01, ne commitem z jiné větve. Test zároveň
     // chrání proti opačné chybě: proti tichému ubrání kódu při refaktoru.
-    expect(PROBLEM_CODES).toHaveLength(123);
+    //
+    // 123 → 124 (a 301 → 302): přibyl `template_name_conflict`. Nebyl to
+    // rozmar doménového plánu. P08 (Task 42) ten kód předepisuje jak
+    // v mapování chyb, tak ve vlastním testu („returns 409, not 500, when
+    // a name collides"), a `duplicateTemplate` v `templates/service.ts` ho
+    // dávno hází jako doménovou chybu. V registru přesto nebyl, takže kolize
+    // jména při zakládání šablony končila pětistovkou: `ApiError`
+    // neregistrovaný kód odmítne vyrobit. Rozpor mezi P01 a P08 se musel
+    // rozhodnout na jednu stranu a plán trasy je konkrétnější než počet
+    // v testu. Obecný `already_exists` by uživateli neřekl, že si má změnit
+    // jméno. Zbytek pojistky platí dál: každá DALŠÍ změna registru se tady
+    // zase zastaví.
+    expect(PROBLEM_CODES).toHaveLength(124);
     expect(FINDING_CODES).toHaveLength(18);
     expect(VALIDATION_CODES).toHaveLength(94);
     expect(MESSAGE_CODES).toHaveLength(34);
     expect(IMPORT_ROW_CODES).toHaveLength(32);
     expect(OPERATIONAL_CODES).toHaveLength(23);
-    expect(ALL_REGISTERED_CODES.size).toBe(301);
+    expect(ALL_REGISTERED_CODES.size).toBe(302);
   });
 
   it('používá lower_snake_case bez výjimky (konvence 3.11)', () => {

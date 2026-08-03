@@ -1,5 +1,4 @@
 import { Pool } from 'pg';
-import { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll } from 'vitest';
 import { createWorkspaceAsUser } from '@mlain/db';
 import * as schema from '@mlain/db/schema';
@@ -23,19 +22,13 @@ import { writeContact } from '../../repo/contacts';
  * a aplikační spojení pod `mlain_app`.
  *
  * Druhá odchylka je pg-boss. Testy zařazení jobů se ptají tabulky `pgboss.job`, jenže
- * schéma pg-boss zakládá až worker při startu. Harness ho proto nainstaluje sám a založí
- * fronty, které tahle doména plní. Bez toho by `enqueue` spadlo na chybějící tabulku
- * a test by nedokázal rozlišit "job se nezařadil" od "schéma neexistuje".
+ * SQL migrace zakládají jen schéma a tabulky staví až knihovna. Dřív si je tenhle soubor
+ * instaloval sám a k tomu vyjmenovával fronty, které doména plní; dnes je má rovnou
+ * ŠABLONA harnessu (`test-support/pgboss.ts`), a to celý registr front, stejně jako je
+ * v produkci zakládá `mlain migrate` a `registerQueues`. Výčet front tady tedy zanikl
+ * schválně: byl to seznam, který se musel ručně dopisovat u každého nového producenta,
+ * a jeho zapomenutí se projevilo až chybou cizího klíče uvnitř nesouvisejícího testu.
  */
-
-/** Fronty, do kterých tahle doména zařazuje joby. Musí existovat, `job.name` má cizí klíč. */
-const QUEUES_USED = [
-  'contacts.strip_attribute',
-  'contacts.bulk_tag',
-  'contact_fields.verify_index',
-  'content.revalidate_templates',
-  'segments.mark_invalid',
-];
 
 let harness: PgHarness | null = null;
 let migratorPool: Pool | null = null;
@@ -49,8 +42,6 @@ beforeAll(async () => {
 
   migratorPool = new Pool({ connectionString: harness.migratorUrl, max: 4 });
   appRolePool = new Pool({ connectionString: harness.appUrl, max: 4 });
-
-  await installPgBoss(harness.migratorUrl, migratorPool);
 
   const passwordHash = await hashPassword('dostatecne-dlouhe-heslo');
   seedUserId = await withoutContext(async (tx) => {
@@ -74,25 +65,6 @@ afterAll(async () => {
   await harness?.stop();
   harness = null;
 }, 120_000);
-
-async function installPgBoss(url: string, migrator: Pool): Promise<void> {
-  const boss = new PgBoss({
-    connectionString: url,
-    schema: 'pgboss',
-    supervise: false,
-    schedule: false,
-  });
-  await boss.start();
-  for (const name of QUEUES_USED) await boss.createQueue(name);
-  await boss.stop({ graceful: false });
-
-  // Aplikační role musí do fronty smět zapsat. V produkci to řeší grant v initdb;
-  // harness ho dělá tady, aby test běžel pod TOU ROLÍ, pod kterou běží produkce.
-  await migrator.query(`GRANT USAGE ON SCHEMA pgboss TO mlain_app`);
-  await migrator.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA pgboss TO mlain_app`,
-  );
-}
 
 function h(): PgHarness {
   if (harness === null) throw new Error('harness není nastartovaný; chybí import support/db.js');

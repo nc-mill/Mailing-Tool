@@ -28,7 +28,15 @@ const COMPOSE_ARGS = [
  * Log kontejneru se ukládá vždycky, i po zeleném běhu. Bez něj se pád zlaté
  * cesty v CI vyšetřuje z toho, co je vidět v prohlížeči, a příčina bývá
  * v logu aplikace.
+ *
+ * NE do `playwright-report-golden/`, ačkoli tam mířilo dřívější znění. Ten
+ * adresář vlastní HTML reporter, který ho při generování reportu vysype, a to
+ * se děje AŽ PO teardownu. Log se tedy pokaždé zapsal a vzápětí zmizel:
+ * po prvním pádu zlaté cesty v něm zbyly jen `index.html`, `data` a `trace`,
+ * takže jediný důkaz o tom, co dělal server, byl pryč. Ověřeno výpisem
+ * adresáře po běhu.
  */
+const LOG_DIR = 'test-results';
 export default async function globalTeardown(): Promise<void> {
   if (process.env.MLAIN_E2E_SKIP_COMPOSE === '1') return;
 
@@ -38,8 +46,8 @@ export default async function globalTeardown(): Promise<void> {
     env: COMPOSE_ENV,
   }).catch((err: Error) => ({ stdout: `logy se nepodařilo přečíst: ${err.message}` }));
 
-  await mkdir('playwright-report-golden', { recursive: true });
-  await writeFile('playwright-report-golden/compose-logs.txt', logs.stdout, 'utf8');
+  await mkdir(LOG_DIR, { recursive: true });
+  await writeFile(`${LOG_DIR}/compose-logs.txt`, logs.stdout, 'utf8');
 
   await run(
     'docker',

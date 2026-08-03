@@ -17,7 +17,16 @@ export type ListDetailData = {
   archived: boolean;
 };
 
-export function ListDetail({ basePath, list }: { basePath: string; list: ListDetailData }) {
+export function ListDetail({
+  basePath,
+  workspaceId,
+  list,
+}: {
+  basePath: string;
+  /** Projekt pro změnu režimu potvrzení a archivaci. Bez něj API vrátí 404. */
+  workspaceId: string;
+  list: ListDetailData;
+}) {
   const t = useTranslations('contacts');
   const router = useRouter();
   const [mode, setMode] = useState(list.confirmation_mode);
@@ -25,7 +34,7 @@ export function ListDetail({ basePath, list }: { basePath: string; list: ListDet
 
   async function changeMode(next: 'one_step' | 'two_step') {
     setMode(next);
-    const result = await setConfirmationModeAction({ id: list.id, mode: next });
+    const result = await setConfirmationModeAction({ workspaceId, id: list.id, mode: next });
     if (result.status === 'success') {
       setSaved(true);
       router.refresh();
@@ -93,7 +102,7 @@ export function ListDetail({ basePath, list }: { basePath: string; list: ListDet
           <Button
             variant="secondary"
             onClick={async () => {
-              await archiveListAction({ id: list.id });
+              await archiveListAction({ workspaceId, id: list.id });
               router.push(basePath);
             }}
           >

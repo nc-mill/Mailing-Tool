@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import type { ButtonBlock } from '../../document/types';
-import { useEmitter } from '../ctx';
+import type { EmitterProps } from '../ctx';
 import { escapeHtml, richToSingleLineHtml, visibleLength } from '../inline-html';
 import { Raw } from '../raw';
 import { BlockFrame } from './frame';
@@ -8,11 +8,12 @@ import { BlockFrame } from './frame';
 export function ButtonBlockView({
   block,
   width,
+  emitter,
 }: {
   block: ButtonBlock;
   width: number;
-}): ReactElement {
-  const { theme, linkHref } = useEmitter();
+} & EmitterProps): ReactElement {
+  const { theme, linkHref } = emitter;
   const p = block.props;
   const href = linkHref(p.href, p.trackable);
   const background = theme.light.color(p.backgroundColor);
@@ -61,14 +62,15 @@ export function ButtonBlockView({
 
   return (
     <BlockFrame
+      emitter={emitter}
       padding={p.padding}
       backgroundColor={null}
       hideOnMobile={p.hideOnMobile}
       visibleWhen={block.visibleWhen}
       align={p.align}
     >
-      <Raw html={vml} />
-      <Raw html={tableHtml} />
+      <Raw html={vml} emitter={emitter} />
+      <Raw html={tableHtml} emitter={emitter} />
     </BlockFrame>
   );
 }

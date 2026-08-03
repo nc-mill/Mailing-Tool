@@ -100,6 +100,11 @@ export { issueUnsubscribeToken, readPublicToken, ENDPOINT_TOKEN_TYPES } from './
 // Odstřižení vazeb po výmazu podle článku 17. Volá ho worker, dopadá na P10 a P13.
 export { severContactLinks } from './jobs/gdpr-sever-links';
 
+// Zapojení mazače souhlasů pod rolí mlain_gdpr. Volá se JEDNOU při startu procesu,
+// který spouští úlohu gdpr.erase nebo retenci, tedy ve workeru. Bez toho volání
+// se výmaz podle článku 17 v režimu anonymize zruší celý, viz gdpr/consents-role.ts.
+export { installConsentEraser } from './gdpr/consents-role-runtime';
+
 // Port na zrušení čekajících zpráv. P13 sem při startu procesu zaregistruje svou
 // implementaci; do té doby je volání bez efektu, viz campaigns-port.ts.
 export { registerRevokePendingMessages, type RevokePendingMessagesInput } from './campaigns-port';

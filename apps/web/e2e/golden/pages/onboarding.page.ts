@@ -13,6 +13,30 @@ export class OnboardingPage {
     await this.page.goto(`/w/${this.slug}`);
   }
 
+  /**
+   * Id projektu pro volání API mimo prohlížeč.
+   *
+   * Bere se z `/api/v1/auth/me`, protože ta cesta je v `CONTEXT_FREE_PREFIXES`,
+   * takže jako jediná projektovou hlavičku nepotřebuje a nevznikne slepice
+   * s vejcem. Ostatní cesty `/api/v1/**` bez `X-Workspace-Id` vracejí 404.
+   */
+  async workspaceId(): Promise<string> {
+    const response = await this.page.request.get('/api/v1/auth/me');
+    // Pole se jmenuje `memberships` a id projektu v něm je `workspace_id`.
+    // `workspaces` s klíčem `id` vrací POUZE odpověď přihlášení, ne `/me`.
+    const body = (await response.json()) as {
+      memberships?: { workspace_id: string; slug: string }[];
+    };
+    const found = body.memberships?.find((m) => m.slug === this.slug) ?? body.memberships?.[0];
+    if (found === undefined) {
+      throw new Error(
+        `Projekt ${this.slug} nemá id. /api/v1/auth/me vrátilo ${response.status()}: ` +
+          `${JSON.stringify(body).slice(0, 200)}`,
+      );
+    }
+    return found.workspace_id;
+  }
+
   get panel(): Locator {
     return this.page.getByRole('region', { name: 'Vaše první kampaň' });
   }
@@ -50,8 +74,19 @@ export class OnboardingPage {
     return this.page.getByText('V projektu jsou ukázková data.');
   }
 
+  /**
+   * Nahrání ukázkových dat z prázdného stavu kontaktů.
+   *
+   * ODCHYLKA OD PLÁNU, vynucená skutečnou obrazovkou. Plán čekal nabídku
+   * v panelu onboardingu na přehledu („klikni odkaz Ukázková, pak tlačítko").
+   * Panel takovou nabídku nemá a banner ukázkových dat se vykresluje JEDINĚ
+   * tehdy, když už ukázková data v projektu jsou, takže uměl výhradně mazat.
+   * Jediné místo, kde se dají nahrát, je čtvrtá cesta v prázdném stavu
+   * kontaktů; do produktu ji bylo potřeba doplnit, protože znění pro ni
+   * v katalogu leželo nepoužité (`contacts.list.emptySample`).
+   */
   async loadDemoData(): Promise<void> {
-    await this.page.getByRole('link', { name: 'Ukázková' }).click();
+    await this.page.goto(`/w/${this.slug}/contacts`);
     await this.page.getByRole('button', { name: 'Nahrát ukázková data' }).click();
   }
 

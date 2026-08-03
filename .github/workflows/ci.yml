@@ -241,7 +241,11 @@ jobs:
           node-version: "24.18.1"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm contracts:generate
+      # Generátor se tu SCHVÁLNĚ nepouští samostatným krokem. Pouštěl se, ale
+      # `pnpm contracts:generate` je turbo úloha, takže při zásahu cache
+      # neproběhla a job pak porovnával dva stejně zastaralé soubory a hlásil
+      # zelenou (nález I95). Dokument si teď vyrábí sama brána a rovnou ověří,
+      # že soubor vznikl a je čerstvý.
       - run: node tools/ci/openapi-drift.mjs
 
   # ---------------------------------------------------------- 11. i18n-check --

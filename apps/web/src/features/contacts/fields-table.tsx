@@ -25,9 +25,12 @@ export type ContactFieldRow = {
 };
 
 export function FieldsTable({
+  workspaceId,
   fields,
   limits,
 }: {
+  /** Projekt pro archivaci, smazání a načtení dopadu. Bez něj API vrátí 404. */
+  workspaceId: string;
   fields: ContactFieldRow[];
   limits: { fields: number; indexed: number };
 }) {
@@ -47,7 +50,7 @@ export function FieldsTable({
   async function openDelete(field: ContactFieldRow) {
     // Dopad se načítá až při otevření dialogu. Načítat ho u každého řádku dopředu
     // by znamenalo tolik dotazů, kolik je polí, a uživatel ho u většiny nikdy neuvidí.
-    const result = await loadFieldImpactAction({ id: field.id });
+    const result = await loadFieldImpactAction({ workspaceId, id: field.id });
     if (result.status === 'success') setDeleting({ field, impact: result.impact });
   }
 
@@ -114,7 +117,7 @@ export function FieldsTable({
                 <Button
                   variant="secondary"
                   onClick={async () => {
-                    await archiveFieldAction({ id: row.id });
+                    await archiveFieldAction({ workspaceId, id: row.id });
                     router.refresh();
                   }}
                 >
@@ -164,7 +167,7 @@ export function FieldsTable({
               variant="secondary"
               onClick={async () => {
                 if (!deleting) return;
-                await archiveFieldAction({ id: deleting.field.id });
+                await archiveFieldAction({ workspaceId, id: deleting.field.id });
                 setDeleting(null);
                 router.refresh();
               }}
@@ -177,12 +180,12 @@ export function FieldsTable({
         onConfirm={async () => {
           if (!deleting) return;
           if (blockedByCampaign) {
-            await archiveFieldAction({ id: deleting.field.id });
+            await archiveFieldAction({ workspaceId, id: deleting.field.id });
             setDeleting(null);
             router.refresh();
             return;
           }
-          const result = await deleteFieldAction({ id: deleting.field.id });
+          const result = await deleteFieldAction({ workspaceId, id: deleting.field.id });
           if (result.status === 'success') {
             setDeleting(null);
             router.refresh();

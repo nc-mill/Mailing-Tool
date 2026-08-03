@@ -1,3 +1,4 @@
+import { collectMappingWarnings } from './mapping';
 import { readRows } from './reader';
 import { processRow } from './row-pipeline';
 import type { EstimateContext } from './estimate';
@@ -93,5 +94,13 @@ export async function buildPreview(
     }
     if (rows.length >= limit) break;
   }
-  return { rows, mappingWarnings: [] };
+  /*
+   * Varování se POČÍTAJÍ, nevrací se prázdné pole.
+   *
+   * Dřív tu stálo `mappingWarnings: []` natvrdo, takže `full_name_ignored`
+   * nikdy neopustilo `assertMappingValid()`. Uživatel, který ručně přemapoval
+   * sloupec na „Celé jméno" v souboru, kde je zároveň sloupec s příjmením,
+   * dostal obrazovku bez jediné poznámky a jeho volba se mlčky neprojevila.
+   */
+  return { rows, mappingWarnings: collectMappingWarnings(ctx.mapping) };
 }

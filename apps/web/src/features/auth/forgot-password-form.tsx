@@ -65,6 +65,23 @@ export function ForgotPasswordForm({ action, initialState }: ForgotPasswordFormP
         </div>
         <SubmitButton label={t('forgot.submit')} pendingLabel={t('forgot.submitting')} />
       </form>
+
+      {/*
+        Požadavek U→1.8: cesta zpět do instalace i tehdy, když e-mail nemůže
+        dorazit. Na čerstvé instalaci to není okrajový případ, ale VÝCHOZÍ stav:
+        odesílání se nastavuje až po prvním přihlášení, takže kdo zapomene heslo
+        dřív, nemá se jak dostat dovnitř. Příkaz `mlain reset-password` přitom
+        existuje a `first-run.spec.ts` ho ověřuje; nikde v produktu se ale
+        nezmiňoval, `grep -rn "reset-password" packages/i18n/messages` nevracelo
+        ani jeden zásah.
+      */}
+      <section className="mt-8 border-t border-border pt-4">
+        <h2 className="font-semibold text-text">{t('forgot.cliTitle')}</h2>
+        <p className="mt-1 text-sm text-text-muted">{t('forgot.cliBody')}</p>
+        <pre className="mt-2 overflow-x-auto rounded-[var(--radius-surface)] bg-surface-muted p-3 text-sm">
+          <code>{t('forgot.cliCommand')}</code>
+        </pre>
+      </section>
     </AuthCard>
   );
 }

@@ -7,7 +7,11 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Harness, startHarness } from './helpers/container';
-import { MAINTENANCE_BYPASS_TABLES, SENDER_BYPASS_TABLES } from '../src/rls';
+import {
+  MAINTENANCE_BYPASS_TABLES,
+  MAINTENANCE_SCAN_TABLES,
+  SENDER_BYPASS_TABLES,
+} from '../src/rls';
 import { ROLES } from './global-setup';
 import { seedTwoWorkspaces } from './helpers/fixtures';
 import { unsafeWorkspaceContext } from '../src/unsafe-context';
@@ -134,21 +138,51 @@ describe('granty proti politikám, obojí z katalogu', () => {
     expect([...withPolicy].sort()).toEqual([...SENDER_BYPASS_TABLES].sort());
   });
 
-  it('každá tabulka s grantem pro mlain_maintenance má politiku maintenance_bypass', async () => {
+  /**
+   * Grant bez politiky je u téhle role ta nejhorší kombinace: dotaz projde,
+   * vrátí prázdno a NEOHLÁSÍ NIC. Test proto páruje obojí z katalogu.
+   *
+   * Politiky jsou dvě rodiny a nejde je slučovat:
+   *   maintenance_bypass ... retence `web_events`, tedy i mazání
+   *   maintenance_scan   ... systémové skeny napříč projekty, jen čtení
+   *                          (+ maintenance_purge na workspaces pro úklid
+   *                          projektů po uplynutí lhůty na obnovu)
+   */
+  it('každá tabulka s grantem pro mlain_maintenance má politiku maintenance_*', async () => {
     const granted = await grantsOf('mlain_maintenance');
-    const { rows } = await h.as('mlain_migrator').query<{ tablename: string }>(
-      `SELECT tablename FROM pg_policies
-          WHERE schemaname = 'public' AND policyname = 'maintenance_bypass'`,
+    const { rows } = await h.as('mlain_migrator').query<{ tablename: string; policyname: string }>(
+      `SELECT tablename, policyname FROM pg_policies
+          WHERE schemaname = 'public' AND policyname LIKE 'maintenance!_%' ESCAPE '!'`,
     );
     const withPolicy = new Set(rows.map((r) => r.tablename));
     for (const table of granted.keys()) {
       expect(
         withPolicy.has(table),
-        `mlain_maintenance má grant na ${table} bez politiky, takže DELETE ` +
-          `ovlivní nula řádků a NEVRÁTÍ CHYBU`,
+        `mlain_maintenance má grant na ${table} bez politiky, takže dotaz ` +
+          `vrátí nula řádků a NEVRÁTÍ CHYBU`,
       ).toBe(true);
     }
-    expect([...withPolicy].sort()).toEqual([...MAINTENANCE_BYPASS_TABLES].sort());
+    expect([...withPolicy].sort()).toEqual(
+      [...new Set([...MAINTENANCE_BYPASS_TABLES, ...MAINTENANCE_SCAN_TABLES])].sort(),
+    );
+
+    // A opačně: politika bez grantu je mrtvý kód.
+    for (const table of withPolicy) {
+      expect(granted.has(table), `${table} má politiku maintenance_*, ale roli chybí grant`).toBe(
+        true,
+      );
+    }
+
+    // Zapisovat smí tahle role jen na dvou místech a obě jsou vyjmenovaná.
+    // Kdyby se objevilo třetí, je to rozšíření výjimky z izolace projektů
+    // a musí projít revizí, ne commitem.
+    for (const [table, privileges] of granted) {
+      const writes = [...privileges].filter((p) => p !== 'SELECT').sort();
+      const expected = table === 'web_events' || table === 'workspaces' ? ['DELETE'] : [];
+      expect(writes, `mlain_maintenance smí na ${table} zapisovat nečekaným způsobem`).toEqual(
+        expected,
+      );
+    }
   });
 
   it('mlain_gdpr má na consents SELECT i DELETE, ne jen DELETE', async () => {

@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { expect, test } from '@playwright/test';
 import { COMPOSE_ENV, REPO_ROOT } from '../fixtures/test-data';
+import { freshInstallation } from '../fixtures/installation';
 import { SetupPage } from '../pages/setup.page';
 import { OnboardingPage } from '../pages/onboarding.page';
 
@@ -43,11 +44,28 @@ test.describe('zálohy proti běžící instalaci', () => {
   test('kritéria 9 a 10: záloha má tři soubory, sedící počet a projde ověřením', async ({
     page,
   }) => {
+    // První test skupiny zakládá účet a nahrává ukázková data, ze kterých
+    // se pak počítají kontakty v záloze. Cizí data z jiného scénáře by to
+    // číslo rozbila, takže se začíná na čisté instalaci.
+    await freshInstallation();
+
     const setup = new SetupPage(page);
     await setup.open();
     const slug = await setup.createAdminAndProject();
-    await new OnboardingPage(page, slug).openDashboard();
-    await page.request.post('/api/v1/demo-data');
+    const onboarding = new OnboardingPage(page, slug);
+    await onboarding.openDashboard();
+
+    // `X-Workspace-Id` je povinná: middleware bere referenci na projekt z téhle
+    // hlavičky nebo ze segmentu `/w/{slug}` V CESTĚ POŽADAVKU, a `/api/v1/...`
+    // segment `/w/` nemá. Bez ní vrátilo volání 404, ukázková data se nenahrála
+    // a záloha pak hlásila „Kontaktů v záloze: 0" místo padesáti. V logu
+    // instalace to bylo vidět jako jediná čtyřstačtyřka celého běhu:
+    //   {"route":"/api/v1/demo-data","status":404,"workspace_id":null}
+    const workspaceId = await onboarding.workspaceId();
+    const demo = await page.request.post('/api/v1/demo-data', {
+      headers: { 'X-Workspace-Id': workspaceId },
+    });
+    expect(demo.ok(), `nahrání ukázkových dat selhalo: ${demo.status()}`).toBe(true);
 
     const backup = await mlain(['backup']);
     expect(backup.code).toBe(0);

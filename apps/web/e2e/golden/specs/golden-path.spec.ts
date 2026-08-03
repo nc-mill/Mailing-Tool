@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { clearMailbox, extractLink, extractOpenPixel, waitForMessage } from '../fixtures/mailpit';
+import { freshInstallation } from '../fixtures/installation';
 import { CAMPAIGN, VERIFIED_RECIPIENT } from '../fixtures/test-data';
 import { SetupPage } from '../pages/setup.page';
 import { OnboardingPage } from '../pages/onboarding.page';
@@ -21,6 +22,9 @@ import { ReportPage } from '../pages/report.page';
  */
 test('zlatá cesta od instalace k reportu', async ({ page }) => {
   test.slow();
+  // Krok 1 zlaté cesty JE instalace, takže musí začít na panenské:
+  // s obsazenou by průvodce prvním spuštěním neměl co založit.
+  await freshInstallation();
   await clearMailbox();
 
   // 1. Instalace: průvodce vytvoří správce a první projekt.

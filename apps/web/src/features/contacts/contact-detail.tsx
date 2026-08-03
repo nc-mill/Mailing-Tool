@@ -10,6 +10,12 @@ import { ReadOnlyBanner } from '@mlain/ui/patterns/states';
 import { useToast } from '@mlain/ui/patterns/toast';
 import { useConfirmDialogLabels } from '@/lib/feedback/confirm-labels';
 import { deleteContactAction, exportContactAction, unsubscribeContactAction } from './actions';
+import {
+  cancelSnoozeAction,
+  resendConfirmationAction,
+  resubscribeAction,
+  type ContactActionResult,
+} from './edit-actions';
 import { describeContactState } from './contact-state';
 import { ContactStatusBadges } from './status-badges';
 import type { ContactStatus } from './filters';
@@ -27,7 +33,13 @@ export type ContactDetailData = {
   anonymized_at: string | null;
   status_changed_at: string;
   restriction_requested_at: string | null;
-  lists: { id: string; name: string }[];
+  /**
+   * Seznamy kontaktu VČETNĚ STAVU přihlášení. Stav tu není navíc: bez něj se nedá určit,
+   * ve kterém seznamu má smysl poslat potvrzení znovu (jen tam, kde je přihlášení
+   * `pending`) a do kterého se dá přihlásit zpět (jen tam, kde je `unsubscribed`).
+   * Dokud tu stav nebyl, obě tlačítka neměla kam mířit.
+   */
+  lists: { id: string; name: string; status: string }[];
   tags: { id: string; name: string }[];
   attributes: { key: string; label: string; value: string }[];
   source: string;
@@ -44,11 +56,18 @@ const GENDER_KEY = {
 export function ContactDetail({
   basePath,
   workspacePath,
+  workspaceId,
   contact,
 }: {
   basePath: string;
   /** Kořen projektu, tedy `/w/{slug}`. Odkazy mimo kontakty se skládají z něj. */
   workspacePath: string;
+  /**
+   * Identifikátor projektu pro serverové akce. Není to duplicita `workspacePath`:
+   * z něj jde slug, ale API chce hlavičku `X-Workspace-Id` s identifikátorem, a bez ní
+   * odpoví 404 na kontakt, který existuje.
+   */
+  workspaceId: string;
   contact: ContactDetailData;
 }) {
   const t = useTranslations('contacts');
@@ -60,6 +79,29 @@ export function ContactDetail({
 
   const state = describeContactState(contact);
   const displayName = contact.name ?? contact.email;
+
+  // Seznamy, ve kterých má daná akce co dělat. Prázdné pole znamená, že se tlačítko
+  // nenabídne vůbec: „Poslat potvrzení znovu" u kontaktu bez čekajícího přihlášení
+  // nemá co poslat a skončilo by chybou ze serveru.
+  const pendingLists = contact.lists.filter((list) => list.status === 'pending');
+  const unsubscribedLists = contact.lists.filter((list) => list.status === 'unsubscribed');
+  // Seznamy, ze kterých je z čeho odhlašovat. Odhlášení míří na `DELETE
+  // /lists/{id}/subscribe`, takže potřebuje jejich identifikátory.
+  const subscribedLists = contact.lists.filter((list) => list.status !== 'unsubscribed');
+
+  /**
+   * Společné vyhodnocení výsledku akce. Chyba se ukáže, ne spolkne, a nese kód:
+   * `resend_throttled` a `already_confirmed` vypadají zvenčí jako úspěch (server na ně
+   * odpovídá 200) a bez kódu by uživatel nepoznal, že se nic neodeslalo.
+   */
+  function report(result: ContactActionResult, successMessage: string): void {
+    if (result.status === 'success') {
+      toast.success(successMessage);
+      router.refresh();
+      return;
+    }
+    toast.error(t('detail.actionFailed', { code: result.code }));
+  }
 
   return (
     <article className="flex flex-col gap-6">
@@ -115,9 +157,12 @@ export function ContactDetail({
                   </span>
                 </Tooltip>
               ) : null}
-              <Link href={`${basePath}/${contact.id}/greeting`}>
-                {t('detail.addressingChange')}
-              </Link>
+              {/* Míří na editaci, ne na `/greeting`. Obrazovka `/greeting` v aplikaci
+                  NEEXISTUJE (v `app/.../contacts/[id]/` je jen `page.tsx` a `timeline/`),
+                  takže tenhle odkaz do téhle chvíle vracel 404. Oslovení se navíc počítá
+                  ze jména a rodu, a obojí se mění právě ve formuláři, kde je hned vedle
+                  vidět náhled výsledku. */}
+              <Link href={`${basePath}/${contact.id}/edit`}>{t('detail.addressingChange')}</Link>
             </dd>
 
             <dt className="text-sm font-medium text-text">{t('detail.gender')}</dt>
@@ -186,14 +231,25 @@ export function ContactDetail({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {state.actions.includes('sendEmail') ? (
-              <Button variant="primary">{t('detail.actionSendEmail')}</Button>
+            {state.actions.includes('edit') ? (
+              <Button
+                variant="primary"
+                onClick={() => router.push(`${basePath}/${contact.id}/edit`)}
+              >
+                {t('detail.actionEdit')}
+              </Button>
             ) : null}
-            {state.actions.includes('unsubscribe') ? (
+            {state.actions.includes('unsubscribe') && subscribedLists.length > 0 ? (
               <Button
                 variant="secondary"
                 onClick={async () => {
-                  const result = await unsubscribeContactAction({ id: contact.id });
+                  // Odhlašuje se ze VŠECH seznamů, ve kterých kontakt ještě je.
+                  // Odhlášení je v API operace nad seznamem, ne nad kontaktem.
+                  const result = await unsubscribeContactAction({
+                    workspaceId,
+                    email: contact.email,
+                    listIds: subscribedLists.map((list) => list.id),
+                  });
                   if (result.status === 'success') {
                     // Ruční odhlášení bývá omyl, proto má vrácení s odpočtem 10 s (6.6 části 6).
                     toast.undoable({
@@ -207,21 +263,72 @@ export function ContactDetail({
                 {t('detail.actionUnsubscribe')}
               </Button>
             ) : null}
-            {state.actions.includes('resendConfirmation') ? (
-              <Button variant="secondary">{t('statusAction.resendConfirmation')}</Button>
-            ) : null}
-            {state.actions.includes('resubscribe') ? (
-              <Tooltip content={t('statusAction.resubscribeNote')}>
-                <Button variant="secondary">{t('statusAction.resubscribe')}</Button>
-              </Tooltip>
-            ) : null}
+            {/* Jedno tlačítko na seznam, ne jedno na kontakt. Potvrzení se posílá
+                za konkrétní přihlášení a kontakt jich může mít víc naráz; jedno
+                tlačítko by muselo hádat, které z nich uživatel myslel. Když je
+                čekající přihlášení jediné, jméno seznamu se do popisku nepíše. */}
+            {state.actions.includes('resendConfirmation')
+              ? pendingLists.map((list) => (
+                  <Button
+                    key={list.id}
+                    variant="secondary"
+                    onClick={async () => {
+                      report(
+                        await resendConfirmationAction({
+                          workspaceId,
+                          listId: list.id,
+                          contactId: contact.id,
+                        }),
+                        t('detail.confirmationResent'),
+                      );
+                    }}
+                  >
+                    {pendingLists.length === 1
+                      ? t('statusAction.resendConfirmation')
+                      : t('statusAction.resendConfirmationIn', { list: list.name })}
+                  </Button>
+                ))
+              : null}
+            {state.actions.includes('resubscribe')
+              ? unsubscribedLists.map((list) => (
+                  <Tooltip key={list.id} content={t('statusAction.resubscribeNote')}>
+                    <Button
+                      variant="secondary"
+                      onClick={async () => {
+                        report(
+                          await resubscribeAction({
+                            workspaceId,
+                            listId: list.id,
+                            email: contact.email,
+                          }),
+                          t('detail.resubscribeSent'),
+                        );
+                      }}
+                    >
+                      {unsubscribedLists.length === 1
+                        ? t('statusAction.resubscribe')
+                        : t('statusAction.resubscribeIn', { list: list.name })}
+                    </Button>
+                  </Tooltip>
+                ))
+              : null}
             {state.actions.includes('openSuppressions') ? (
               <Link href={`${workspacePath}/suppressions?q=${encodeURIComponent(contact.email)}`}>
                 {t('statusAction.openSuppressions')}
               </Link>
             ) : null}
             {state.actions.includes('cancelSnooze') ? (
-              <Button variant="secondary">{t('statusAction.cancelSnooze')}</Button>
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  report(
+                    await cancelSnoozeAction({ workspaceId, id: contact.id }),
+                    t('detail.snoozeCancelled'),
+                  );
+                }}
+              >
+                {t('statusAction.cancelSnooze')}
+              </Button>
             ) : null}
             {state.actions.includes('delete') ? (
               <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
@@ -230,7 +337,7 @@ export function ContactDetail({
             ) : null}
             <Button
               variant="secondary"
-              onClick={() => void exportContactAction({ id: contact.id })}
+              onClick={() => void exportContactAction({ workspaceId, id: contact.id })}
             >
               {t('detail.actionExport')}
             </Button>
@@ -264,7 +371,10 @@ export function ContactDetail({
           t('detail.deleteConsequenceSuppression'),
         ]}
         extraAction={
-          <Button variant="secondary" onClick={() => void exportContactAction({ id: contact.id })}>
+          <Button
+            variant="secondary"
+            onClick={() => void exportContactAction({ workspaceId, id: contact.id })}
+          >
             {t('detail.deleteExport')}
           </Button>
         }
@@ -272,7 +382,7 @@ export function ContactDetail({
         cancelLabel={t('detail.deleteCancel')}
         labels={confirmLabels}
         onConfirm={async () => {
-          const result = await deleteContactAction({ id: contact.id });
+          const result = await deleteContactAction({ workspaceId, id: contact.id });
           if (result.status === 'success') router.push(basePath);
         }}
       />

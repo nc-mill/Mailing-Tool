@@ -137,42 +137,42 @@ describe('retenční běh', () => {
 
   it('chybějící handler cíl přeskočí a běh doběhne se stavem partial', async () => {
     const ctx = await testContext();
-    await onlyTarget(ctx, 'exports', 7);
+    await onlyTarget(ctx, 'import_files', 30);
 
     const result = await runRetention({ workspaceId: ctx.workspaceId });
     expect(result.status).toBe('partial');
 
     const run = await one<{ status: string; error_detail: string }>(
       `SELECT status, error_detail FROM retention_runs
-        WHERE workspace_id = $1 AND target = 'exports'`,
+        WHERE workspace_id = $1 AND target = 'import_files'`,
       [ctx.workspaceId],
     );
     expect(run.status).toBe('partial');
-    expect(run.error_detail).toContain('exports');
+    expect(run.error_detail).toContain('import_files');
   });
 
   it('doplněný handler se použije a běh je completed', async () => {
     const ctx = await testContext();
-    await onlyTarget(ctx, 'exports', 7);
-    registerHandler('exports', async () => ({ scanned: 3, affected: 2 }));
+    await onlyTarget(ctx, 'import_files', 30);
+    registerHandler('import_files', async () => ({ scanned: 3, affected: 2 }));
 
     try {
       const result = await runRetention({ workspaceId: ctx.workspaceId });
       expect(result.status).toBe('completed');
       const run = await one<{ affected: string }>(
-        `SELECT affected FROM retention_runs WHERE workspace_id = $1 AND target = 'exports'`,
+        `SELECT affected FROM retention_runs WHERE workspace_id = $1 AND target = 'import_files'`,
         [ctx.workspaceId],
       );
       expect(Number(run.affected)).toBe(2);
     } finally {
-      unregisterHandler('exports');
+      unregisterHandler('import_files');
     }
   });
 
   it('selhání jednoho cíle běh nezastaví a zapíše se do error_detail', async () => {
     const ctx = await testContext();
-    await onlyTarget(ctx, 'exports', 7);
-    registerHandler('exports', async () => {
+    await onlyTarget(ctx, 'import_files', 30);
+    registerHandler('import_files', async () => {
       throw new Error('úložiště není dostupné');
     });
 
@@ -181,13 +181,13 @@ describe('retenční běh', () => {
       expect(result.status).toBe('failed');
       const run = await one<{ status: string; error_detail: string }>(
         `SELECT status, error_detail FROM retention_runs
-          WHERE workspace_id = $1 AND target = 'exports'`,
+          WHERE workspace_id = $1 AND target = 'import_files'`,
         [ctx.workspaceId],
       );
       expect(run.status).toBe('failed');
       expect(run.error_detail).toContain('úložiště není dostupné');
     } finally {
-      unregisterHandler('exports');
+      unregisterHandler('import_files');
     }
   });
 

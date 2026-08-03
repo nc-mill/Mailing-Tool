@@ -16,8 +16,13 @@ import csSettings from '../../../../../packages/i18n/messages/cs/settings.json';
  */
 export const MESSAGES = { campaigns: csCampaigns, common: csCommon, settings: csSettings };
 
-export function renderWithProviders(ui: ReactElement): RenderResult {
-  return render(
+/**
+ * Obal s poskytovateli zvlášť, protože `rerender` z testing-library nahrazuje
+ * CELÝ strom. Bez obalu by se při něm ztratil katalog i formáty a komponenta
+ * by spadla na chybějícím kontextu, ne na tvrzení testu.
+ */
+export function withProviders(ui: ReactElement): ReactElement {
+  return (
     <NextIntlClientProvider
       locale="cs"
       messages={MESSAGES}
@@ -25,6 +30,10 @@ export function renderWithProviders(ui: ReactElement): RenderResult {
       timeZone="Europe/Prague"
     >
       <TooltipProvider>{ui}</TooltipProvider>
-    </NextIntlClientProvider>,
+    </NextIntlClientProvider>
   );
+}
+
+export function renderWithProviders(ui: ReactElement): RenderResult {
+  return render(withProviders(ui));
 }

@@ -13,6 +13,8 @@ import { registerOnboardingRoutes } from '@mlain/core/onboarding/api';
 import { registerDemoDataRoutes } from '@mlain/core/demo/api';
 import { registerBackupRoutes } from '@mlain/core/ops/api';
 import { registerSegmentApiRoutes } from '@mlain/core/segments/api';
+import { registerTemplateApiRoutes } from '@mlain/core/templates/api';
+import { registerAssetApiRoutes } from '@mlain/core/assets/api';
 import { registerCampaignApiRoutes } from '@mlain/core/campaigns/api';
 import { registerProviderApiRoutes } from '@mlain/core/providers/api';
 import { registerAiApiRoutes } from '@mlain/core/ai/api';
@@ -129,6 +131,28 @@ export function buildApp(): OpenAPIHono<ApiEnv> {
   // Doména segmentů (P11). Stejný tvar jako u kontaktů: router si skládá
   // `packages/core/src/segments/api/index.ts`, tady se jen mountuje pod /api/v1.
   registerSegmentApiRoutes(app);
+  // Doména šablon (P08). Bez ní se v produktu na rozesílání e-mailů nedá
+  // vytvořit šablona: doména `packages/core/src/templates` byla hotová
+  // a otestovaná, ale trasy k ní neexistovaly, takže `POST /api/v1/templates`
+  // vracelo 404 a zlatá cesta padala na kroku „vytvoření šablony".
+  //
+  // Pořadí uvnitř domény hlídá `templates.routes.ts`: `/templates/field-usage`
+  // se registruje PŘED `/templates/{id}`, jinak by ho vzor parametru pohltil.
+  registerTemplateApiRoutes(app);
+  // Doména assetů (P08, kapitola 3.14). Bez ní jsou v editoru šablon mrtvé dvě
+  // z devíti operací, „nahrát obrázek" a „vypsat knihovnu", protože porty
+  // `apps/web/src/features/editor/ports/http-ports.ts` volají `/assets`
+  // a `POST /assets`, které do teď neexistovaly.
+  //
+  // Pořadí uvnitř domény: `GET /assets` se registruje před `GET /assets/{id}`,
+  // takže se žádná konkrétní cesta o vzor s parametrem neotře. Kdo sem bude
+  // přidávat `/assets/<neco>`, musí to zaregistrovat PŘED `/assets/{id}`.
+  //
+  // Veřejný výdej souboru tady NENÍ a být nemá: `<ASSET_BASE_URL>/a/{public_id}/
+  // {variant}.{ext}` nestojí pod `/api/v1`, protože ho otevírá poštovní klient
+  // příjemce bez přihlášení. Obsluhuje ho trasa Next.js
+  // `apps/web/src/app/a/[[...path]]/route.ts`, stejným vzorem jako `/t/**`.
+  registerAssetApiRoutes(app);
   // Doména kampaní a nastavení odesílání (P13). Týž tvar jako u kontaktů a segmentů:
   // definice cest leží v packages/core, mount je tady.
   registerCampaignApiRoutes(app);
@@ -143,6 +167,12 @@ export function buildApp(): OpenAPIHono<ApiEnv> {
   // tělo je surový proud (nebo multipart), aby server nikdy nedržel 200 MB
   // v paměti. Bez téhle výjimky by výchozí kontrola typu vrátila 415.
   CONTENT_TYPE_EXEMPT_PREFIXES.add('/api/v1/contacts/imports');
+  // Nahrání obrázku je `multipart/form-data` a smí mít až ASSET_MAX_UPLOAD_MB
+  // (výchozí 10 MiB), tedy víc než výchozí strop 1 MiB na tělo JSON. Skutečný
+  // limit hlídá `uploadAsset` podle konfigurace a vrací `payload_too_large`
+  // s vysvětlením; bez téhle výjimky by ho ale předběhl obecný middleware
+  // a odmítl každý obrázek nad 1 MiB, tedy skoro každou fotku.
+  CONTENT_TYPE_EXEMPT_PREFIXES.add('/api/v1/assets');
 
   // 4.7: endpoint servíruje TEN SAMÝ commitnutý soubor, ne dokument generovaný
   // za běhu, aby se produkce chovala stejně jako repozitář.
@@ -202,6 +232,7 @@ export function buildOpenApiDocument(app: OpenAPIHono<ApiEnv>): OpenApiDocument 
       { name: 'Retention' },
       { name: 'Vocative review' },
       { name: 'Name overrides' },
+      { name: 'Templates' },
       { name: 'Campaigns' },
       { name: 'Sending' },
     ],

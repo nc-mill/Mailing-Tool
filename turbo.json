@@ -36,8 +36,8 @@
     },
     "contracts:generate": {
       "dependsOn": [],
-      "outputs": ["packages/contracts/fixtures/**", "packages/contracts/openapi.json"],
-      "cache": true
+      "outputs": [],
+      "cache": false
     }
   }
 }

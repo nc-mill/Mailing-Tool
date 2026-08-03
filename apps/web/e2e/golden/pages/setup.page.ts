@@ -44,7 +44,34 @@ export class SetupPage {
 
     await button(this.page, /Založit účet a projekt|Vytvořit projekt/).click();
 
-    await this.page.waitForURL(/\/w\/[^/]+$/);
+    /*
+     * Obsazená instalace se pozná HNED, ne až vypršením limitu.
+     *
+     * Dřívější znění tu mělo holé `waitForURL`, takže scénář na instalaci, kde
+     * už účet existoval, čekal celých 360 sekund na přesměrování, které nemohlo
+     * přijít, a spadl na vypršení testu bez jediné stopy po příčině. Čtyři
+     * scénáře v jednom běhu, dohromady přes 24 minut čekání na informaci, která
+     * byla na obrazovce po vteřině.
+     *
+     * Závod mezi „přesměrovalo se" a „instalace je obsazená" proto rozhoduje
+     * to, co nastane dřív. Je to táž třída jako brána, která mlčí: kdo umí
+     * poznat chybu hned, nesmí čekat na limit.
+     */
+    const redirected = this.page.waitForURL(/\/w\/[^/]+$/).then(() => 'ok' as const);
+    const alreadySetUp = this.page
+      .getByText(/Instalace už je nastavená/)
+      .waitFor({ state: 'visible' })
+      .then(() => 'taken' as const);
+
+    const outcome = await Promise.race([redirected, alreadySetUp]);
+    if (outcome === 'taken') {
+      throw new Error(
+        'Instalace už má účet správce, takže průvodce prvním spuštěním nemohl projít. ' +
+          'Scénář, který zakládá účet, musí začít voláním `freshInstallation()`; ' +
+          'viz `e2e/golden/fixtures/installation.ts`.',
+      );
+    }
+
     const slug = this.page.url().match(/\/w\/([^/]+)/)?.[1];
     if (slug === undefined) throw new Error('Po vytvoření projektu se nečekaně změnila adresa.');
     return slug;

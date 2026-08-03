@@ -59,4 +59,52 @@ describe('workspaceRefFrom', () => {
   it('bez obojího vrací null', () => {
     expect(workspaceRefFrom({ header: undefined, path: '/api/v1/api-keys' })).toBeNull();
   });
+
+  /**
+   * Query parametr existuje kvůli `EventSource`, které vlastní hlavičku poslat
+   * neumí. Bez něj vracel průběh importu v prohlížeči vždycky 404 a živé
+   * aktualizace byly trvale mrtvé.
+   */
+  it('u GET přijme referenci z query parametru workspace_id', () => {
+    expect(
+      workspaceRefFrom({
+        header: undefined,
+        path: '/api/v1/contacts/imports/abc/events',
+        query: 'muj-projekt',
+        method: 'GET',
+      }),
+    ).toBe('muj-projekt');
+  });
+
+  it('u zápisu se query parametr ignoruje', () => {
+    for (const method of ['POST', 'PATCH', 'PUT', 'DELETE']) {
+      expect(
+        workspaceRefFrom({
+          header: undefined,
+          path: '/api/v1/contacts',
+          query: 'muj-projekt',
+          method,
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it('hlavička i cesta mají přednost před query', () => {
+    expect(
+      workspaceRefFrom({
+        header: 'z-hlavicky',
+        path: '/api/v1/x',
+        query: 'z-query',
+        method: 'GET',
+      }),
+    ).toBe('z-hlavicky');
+    expect(
+      workspaceRefFrom({
+        header: undefined,
+        path: '/w/z-cesty/x',
+        query: 'z-query',
+        method: 'GET',
+      }),
+    ).toBe('z-cesty');
+  });
 });

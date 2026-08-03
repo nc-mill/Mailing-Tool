@@ -43,7 +43,12 @@ const fields: ContactFieldRow[] = [
 
 function renderFields(props: Partial<React.ComponentProps<typeof FieldsTable>> = {}) {
   return renderWithProviders(
-    <FieldsTable fields={fields} limits={{ fields: 100, indexed: 8 }} {...props} />,
+    <FieldsTable
+      workspaceId="w-1"
+      fields={fields}
+      limits={{ fields: 100, indexed: 8 }}
+      {...props}
+    />,
   );
 }
 
@@ -83,7 +88,7 @@ describe('FieldsTable', () => {
     const user = userEvent.setup();
     renderFields();
     await user.click(screen.getAllByRole('button', { name: 'Smazat' })[0]!);
-    expect(loadImpact).toHaveBeenCalledWith({ id: 'f-1' });
+    expect(loadImpact).toHaveBeenCalledWith({ workspaceId: 'w-1', id: 'f-1' });
     expect(await screen.findByText(/8\s210 kontaktů/)).toBeInTheDocument();
     expect(screen.getByText(/1 šablona pole používá/)).toBeInTheDocument();
     expect(screen.getByText(/2 segmenty na pole odkazují/)).toBeInTheDocument();

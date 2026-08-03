@@ -108,6 +108,20 @@ export const messages = pgTable(
     campaignId: uuid(), // NULL = nekampáňová zpráva, rezerva pro MVP 1
     contentVariantId: uuid(), // NULL = obsah ze sloupců kampaně, rezerva pro MVP 1
     kind: text().$type<'campaign' | 'test'>().notNull().default('campaign'),
+    /**
+     * GENEROVANÝ (migrace 0010, požadavek R-P03.7 plánu P13). Nikdo do něj
+     * nezapisuje, PostgreSQL ho počítá jako
+     * `CASE WHEN kind = 'campaign' THEN campaign_id END`.
+     *
+     * Nese ho cizí klíč `fk_messages__campaign_audience`, dřív vedený přímo přes
+     * `campaign_id`. U testovací zprávy je hodnota NULL, takže se kontrola podle
+     * MATCH SIMPLE přeskočí a test jde odeslat i ze skryté kampaně, která žádné
+     * materializované publikum nemá. Pro `kind = 'campaign'` se cizí klíč chová
+     * beze změny, takže invariant I1 platí dál.
+     */
+    audienceCampaignId: uuid().generatedAlwaysAs(
+      sql`CASE WHEN kind = 'campaign' THEN campaign_id END`,
+    ),
     contactId: uuid().notNull(),
     email: text().notNull(), // text, ne citext: Go nemá pro citext nativní typ
     renderData: jsonb().notNull().default({}),

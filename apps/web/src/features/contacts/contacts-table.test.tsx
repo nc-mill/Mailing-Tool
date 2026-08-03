@@ -47,6 +47,7 @@ function renderTable(props: Partial<React.ComponentProps<typeof ContactsTable>> 
   return renderWithProviders(
     <ContactsTable
       basePath="/w/eshop/contacts"
+      workspaceId="w-1"
       rows={rows}
       pagination={{ next_cursor: 'c2', prev_cursor: null, has_more: true, limit: 50 }}
       total={{ count: 12480, precision: 'estimated' }}
