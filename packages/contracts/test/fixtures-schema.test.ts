@@ -43,13 +43,16 @@ describe('schémata fixtures', () => {
     expect(result.errors).toEqual([]);
     // Součet podle skutečného obsahu adresářů, ne odhad. Přepočítáno
     // příkazem `for d in fixtures/*/; do find "$d" -name '*.json' | wc -l; done`:
-    //   liquid 55, compiled 18, markers 10, token 1, crypto 1, message-id 1,
-    //   outbox 1, plus columns.json = 88.
+    //   liquid 57, compiled 18, markers 10, token 1, crypto 1, message-id 1,
+    //   outbox 1, plus columns.json = 90.
     //
     // Osmnáct fixtur `CT-*` v `compiled` dodal až P08, protože jako jediné má
     // blokový model a renderer, tedy jako jediné je umí vyrobit (rozhodnutí R3).
     // Do té doby jich tu bylo nula a součet byl 70.
-    expect(result.validated).toBe(88);
+    //
+    // Liquid fixtur bylo 55; LQ-704 a LQ-705 přidal kořen `data` z transakčního
+    // volání. Žádná stávající fixture se nezměnila.
+    expect(result.validated).toBe(90);
   });
 
   it('fixture s neznámým polem neprojde', async () => {

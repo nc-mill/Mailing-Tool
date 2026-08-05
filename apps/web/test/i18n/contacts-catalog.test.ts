@@ -34,7 +34,15 @@ const en = flatten(load('en'));
  * „=0 {dnů}" je text pro nulu, ne argument. Bez tohohle odstranění by test hlásil rozdíl
  * mezi jazyky pokaždé, když se česká a anglická nulová varianta liší jedním slovem.
  */
-const ICU_CATEGORY = /(=\d+|zero|one|two|few|many|other|male|female)\s*\{[^{}]*\}/g;
+/*
+ * Pohled dozadu je nutný, ne opatrnost navíc. Bez něj se jméno kategorie chytne
+ * i UVNITŘ slova a odstřihne kus věty i se slotem: v anglickém „Done {processed}
+ * of {total}." sedí `one {processed}` na konec slova „Done", takže slot
+ * `processed` z výsledku zmizel a test hlásil rozdíl mezi jazyky tam, kde žádný
+ * nebyl. Kategorie ICU stojí vždy na začátku slova, po čárce, mezeře nebo `{`.
+ */
+const ICU_CATEGORY =
+  /(?<![\p{L}\p{N}])(=\d+|zero|one|two|few|many|other|male|female)\s*\{[^{}]*\}/gu;
 
 /** Sloty ve zprávě, tedy {name}, {count, plural, ...} a {gender, select, ...}. */
 function slots(message: string): string[] {

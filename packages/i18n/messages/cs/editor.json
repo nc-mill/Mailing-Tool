@@ -7,18 +7,29 @@
   },
   "header": {
     "back": "Zpět na šablony",
+    "save": "Uložit",
     "saved": "Uloženo v {time}",
     "saving": "Ukládáme…",
     "saveFailed": "Nepodařilo se uložit, zkoušíme to znovu",
+    "saveInvalid": "Zatím nejde uložit, opravte prosím chyby výš",
     "unsaved": "Neuložené změny",
     "preview": "Náhled",
     "edit": "Zpět k úpravám",
     "testSend": "Poslat test",
-    "rename": "Název šablony"
+    "rename": "Název šablony",
+    "name": {
+      "empty": "Název nesmí být prázdný.",
+      "tooLong": "Název může mít nejvýš {max} znaků.",
+      "conflict": "Šablona s tímhle jménem už v projektu je. Zvolte jiný.",
+      "failed": "Název se nepodařilo uložit. Technický detail: {code}"
+    },
+    "campaignContent": "Obsah kampaně",
+    "backToCampaign": "Uložit a zpět do kampaně"
   },
   "palette": {
     "title": "Bloky",
     "hint": "Blok přidáte tlačítkem plus mezi bloky nebo přetažením.",
+    "dragHint": "Blok přetáhněte tam, kam patří, i dovnitř sloupce. Kliknutím se vloží za vybraný blok.",
     "group": {
       "content": "Obsah",
       "layout": "Rozvržení"
@@ -230,6 +241,7 @@
     "color": {
       "none": "Průhledné",
       "custom": "Vlastní barva",
+      "paletteLabel": "Barvy motivu",
       "brand": {
         "primary": "Hlavní barva značky",
         "secondary": "Doplňková barva značky",
@@ -278,7 +290,8 @@
     "escape": "Zrušit výběr"
   },
   "insert": {
-    "after": "Přidat blok za {block}"
+    "after": "Přidat blok za {block}",
+    "intoEmpty": "Přidat blok sem"
   },
   "a11y": {
     "announcements": "Oznámení editoru",
@@ -338,14 +351,19 @@
     },
     "longTextHint": "Odřádkování se v e-mailu neprojeví.",
     "unknownField": "Pole v tomto projektu neexistuje.",
-    "suggestion": "Nejspíš chcete {suggestion}."
+    "suggestion": "Nejspíš chcete {suggestion}.",
+    "greetingHint": "Hotová věta i s 5. pádem, například „Dobrý den, Petře“. U kontaktu bez jména se sama zkrátí na „Dobrý den“, takže nikdy nevznikne visící čárka.",
+    "fragmentWarning": "Tohle je jen jméno, ne oslovení. Když před něj napíšete „Dobrý den,“, u kontaktu bez jména vznikne „Dobrý den,“ s visící čárkou a u kontaktu v jazyce bez 5. pádu se jméno neskloní. Na oslovení použijte pole Oslovení."
   },
   "personalization": {
     "search": "Hledat pole",
     "empty": "Žádné pole neodpovídá.",
     "groupSystem": "Systémové odkazy",
     "groupContact": "Údaje kontaktu",
-    "groupCustom": "Vlastní pole"
+    "groupCustom": "Vlastní pole",
+    "groupGreeting": "Oslovení v 5. pádu",
+    "greetingHint": "Doporučeno. Vloží celou větu i s 5. pádem.",
+    "fragmentHint": "Jen jméno. Oslovení z něj neskládejte."
   },
   "field": {
     "unsubscribeUrl": "Odkaz na odhlášení",
@@ -386,12 +404,22 @@
     "web": "Web",
     "email": "E-mail"
   },
+  "canvas": {
+    "imagePick": "Klepnutím vyberte obrázek",
+    "imageMissing": "Tenhle obrázek už v knihovně není. Vyberte jiný.",
+    "assistantToggle": "Zobrazit nebo skrýt AI asistenta",
+    "emptyColumn": "Prázdný sloupec",
+    "emptySection": "Prázdná sekce",
+    "assistantOpen": "AI asistent",
+    "assistantHide": "Skrýt AI asistenta"
+  },
   "asset": {
     "title": "Obrázky",
     "pick": "Vybrat obrázek",
     "change": "Změnit obrázek",
     "remove": "Odebrat",
-    "upload": "Nahrát obrázek"
+    "upload": "Nahrát obrázek",
+    "uploadFailed": "Obrázek se nepodařilo nahrát."
   },
   "link": {
     "schemeForbidden": "Odkaz musí začínat https, http, mailto nebo tel.",
@@ -407,8 +435,8 @@
   "issues": {
     "title": "Nálezy v šabloně",
     "errorCount": "{count, plural, =0 {žádná chyba} one {# chyba} few {# chyby} many {# chyby} other {# chyb}}",
-    "warningCount": "{count, plural, =0 {žádné varování} one {# varování} few {# varování} many {# varování} other {# varování}}",
-    "goToBlock": "Přejít na blok"
+    "goToBlock": "Přejít na blok",
+    "stale": "Zjištěno před vaší poslední úpravou, po uložení se přepočítá."
   },
   "preview": {
     "desktop": "Počítač",
@@ -423,14 +451,19 @@
     "noNameContact": "Kontakt bez jména",
     "sampleData": "Vzorová data",
     "sizeKb": "Velikost {size} kB",
-    "failed": "Náhled se nepodařilo vytvořit."
+    "failed": "Náhled se nepodařilo vytvořit.",
+    "tokens": "Značky",
+    "linkOnSend": "(odkaz vznikne až při odeslání)",
+    "searchContact": "Najít kontakt podle jména",
+    "viewAsHint": "Volba se promítne do plátna i do náhledu. Do e-mailu jde vždy značka.",
+    "readOnlyView": "{mode}: tady se needituje, jen se čte.",
+    "backToCanvas": "Zpět k úpravám"
   },
   "testSend": {
     "title": "Testovací e-mail",
     "recipients": "Adresy",
     "submit": "Poslat test",
     "recipientsHint": "Nejvýš {max} adres oddělených čárkou.",
-    "prefix": "Přidat do předmětu značku TEST",
     "explain": "Testovací e-mail se nepočítá do statistik a nesleduje otevření ani prokliky.",
     "noRecipients": "Zadejte aspoň jednu adresu.",
     "tooMany": "Najednou jde poslat nejvýš pět adres.",
@@ -454,7 +487,8 @@
     "notFoundBody": "Mohla ji smazat jiná osoba, nebo je adresa překlepnutá.",
     "backToList": "Zpět na seznam šablon",
     "forbiddenBody": "K otevření šablony je potřeba oprávnění templates:read. Vaše role ho nemá.",
-    "forbiddenWhoCanHelp": "Roli vám může změnit vlastník projektu."
+    "forbiddenWhoCanHelp": "Roli vám může změnit vlastník projektu.",
+    "returnFailed": "Obsah se do kampaně nepodařilo převzít ({code}). Změny zůstaly uložené v editoru."
   },
   "list": {
     "title": "Šablony",
@@ -464,7 +498,46 @@
     "open": "Otevřít",
     "loadFailed": "Šablony se nepodařilo načíst.",
     "createFailed": "Šablonu se nepodařilo vytvořit.",
-    "newName": "Nová šablona"
+    "newName": "Nová šablona",
+    "newTransactionalName": "Nový transakční e-mail",
+    "category": {
+      "legend": "Kategorie",
+      "all": "Vše",
+      "campaign": "Kampaně a newslettery",
+      "form": "E-maily z formulářů",
+      "transactional": "Transakční e-maily",
+      "badgeForm": "E-mail z formuláře",
+      "badgeTransactional": "Transakční e-mail",
+      "empty": "V téhle kategorii zatím žádná šablona není.",
+      "emptyAction": "Zobrazit všechny šablony"
+    },
+    "usage": {
+      "form": "Rozesílá formulář „{name}“.",
+      "listConfirmation": "Potvrzuje přihlášení do seznamu „{name}“.",
+      "listWelcome": "Vítá nové kontakty v seznamu „{name}“.",
+      "locked": "Dokud je takhle zapojená, nejde smazat."
+    },
+    "createTransactional": "Nový transakční e-mail",
+    "createKind": {
+      "campaign": "Kampaň nebo newsletter"
+    },
+    "delete": {
+      "action": "Smazat",
+      "title": "Smazat šablonu „{name}“?",
+      "consequenceLibrary": "Šablona zmizí z knihovny, kde ji vidí všichni v projektu.",
+      "consequenceCampaigns": "Kampaně, které z ní vznikly, zůstanou beze změny. Obsah mají ve vlastní kopii.",
+      "consequenceVersions": "Historie verzí i záznamy o testovacím odeslání zůstanou uložené.",
+      "consequenceUndo": "Hned po smazání nabídneme Vrátit zpět.",
+      "confirm": "Smazat šablonu",
+      "failed": "Šablonu se nepodařilo smazat. Technický detail: {code}",
+      "starterImmutable": "Tohle je dodávaná šablona, kterou smazat nejde. Můžete si z ní udělat kopii a upravit ji.",
+      "inUse": "Tuhle šablonu rozesílá formulář nebo seznam. Nejdřív ji tam odpojte, pak půjde smazat.",
+      "done": "Šablona „{name}“ je smazaná.",
+      "undo": "Vrátit zpět",
+      "undoFailed": "Šablonu se nepodařilo vrátit zpět. Technický detail: {code}",
+      "undoConflict": "Jméno „{name}“ mezitím zabrala jiná šablona, takže tuhle vrátit nejde. Přejmenujte tu novou a zkuste to znovu.",
+      "restored": "Šablona „{name}“ je zpátky v knihovně."
+    }
   },
   "issue": {
     "content_asset_not_found": "Obrázek už v knihovně není.",
@@ -486,6 +559,7 @@
     "content_reserved_marker": "Text obsahuje vyhrazenou značku, kterou doplňuje odesílání.",
     "content_too_many_blocks": "Šablona má nejvýš 300 bloků, tenhle limit je vyčerpaný.",
     "content_too_many_links": "Odkazů je moc, sledování prokliků by přestalo dávat smysl.",
+    "link_variable_not_tracked": "Odkaz s personalizací se do statistiky prokliků nedostane.",
     "liquid_comparison_operator_not_supported": "Tenhle operátor v podmínce použít nejde.",
     "liquid_contains_not_allowed": "Podmínka „obsahuje\" tady použít nejde.",
     "liquid_date_format_not_allowed": "Tenhle formát data povolený není.",

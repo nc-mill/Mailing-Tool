@@ -1,5 +1,9 @@
 import { sql } from 'drizzle-orm';
+import { contactExistsForJoinSql } from '../../contacts/existence';
 import type { Tx, WorkspaceContext } from '../../tx';
+import { isDeliveredKnown, resolveDeliveredSource } from '../campaign-stats/read';
+import { countsFromRow } from '../metrics/counts';
+import { deliveredEffective } from '../metrics/rates';
 import type { Tile, TileCache } from './cache';
 
 export const DASHBOARD_PERIODS = [7, 30, 90] as const;
@@ -12,17 +16,37 @@ export const COMPLAINT_WARN = 0.001;
 const STATS_TTL_MS = 60_000;
 const WEB_TTL_MS = 300_000;
 
+/**
+ * Kolik kampaní období stojí mimo míry, protože u nich neznáme doručenost.
+ *
+ * Nese to KAŽDÁ dlaždice s mírou, ne jedna společná poznámka pod obrazovkou.
+ * Uživatel se dívá na jedno číslo a musí u něj vidět, z čeho vzniklo; poznámka
+ * o kus dál se přečte jako komentář k něčemu jinému.
+ */
+export type UnknownDelivery = { campaigns: number; sent: number };
+
 export type DashboardResponse = {
   periodDays: DashboardPeriod;
   computedAt: string;
   tiles: {
     sent: Tile<{ value: number }>;
-    click_rate: Tile<{ rate: number | null; delta: number | null }>;
-    open_rate: Tile<{ rate: number | null; machineShare: number | null }>;
+    click_rate: Tile<{
+      rate: number | null;
+      delta: number | null;
+      clicks: number;
+      unknown: UnknownDelivery;
+    }>;
+    open_rate: Tile<{
+      rate: number | null;
+      machineShare: number | null;
+      opens: number;
+      unknown: UnknownDelivery;
+    }>;
     problems: Tile<{
       bounceRate: number | null;
       complaintRate: number | null;
-      level: 'ok' | 'warn' | 'bad';
+      level: 'ok' | 'warn' | 'bad' | 'unknown';
+      unknown: UnknownDelivery;
     }>;
     web_active: Tile<{ contacts: number }>;
     recent_campaigns: Tile<{ items: RecentCampaign[] }>;
@@ -44,6 +68,16 @@ export type RecentCampaign = {
   status: string;
   startedAt: string | null;
   clickRate: number | null;
+  /**
+   * Víme u téhle kampaně, kolik zpráv dorazilo?
+   *
+   * Bez toho příznaku počítá každý konzument dlaždice míry z `deliveredEffective`,
+   * aniž by tušil, že je to u tiché odesílací služby dopočtená hodnota, ne
+   * měření. Obrazovka Statistiky z toho kreslila „Doručeno 100 %" u kampaně,
+   * o jejíž doručenosti nevíme vůbec nic. Stejný příznak nese
+   * `/campaigns/{id}/stats` jako `delivered_known`.
+   */
+  deliveredKnown: boolean;
   sent: number;
   delivered: number;
   deliveredEffective: number;
@@ -60,14 +94,43 @@ export type RunningCampaign = {
   total: number;
 };
 
+/**
+ * Součty období rozdělené podle toho, jestli u kampaně VÍME, kolik zpráv došlo.
+ *
+ * Rozdělení je jádro téhle opravy. Přehled dřív sčítal všechno dohromady
+ * a kampani bez jediné události od odesílací služby dopočítal doručenost jako
+ * „odesláno minus odrazy". U poskytovatele, od kterého žádné události nechodí
+ * (na vývojové instalaci Amazon SNS, protože odběr na `localhost` se nepotvrdí),
+ * je to ale ODHAD, ne měření: odrazy taky neznáme, takže se od odeslaných nic
+ * neodečte a jmenovatel vyjde jako počet odeslaných. Otevření se přitom měří
+ * pixelem, tedy nezávisle na poskytovateli, a klidně jich je víc než odeslaných
+ * zpráv. Přehled pak ukázal „Otevřelo 185,7 %".
+ *
+ * Pravidlo je JEDNO pro celý produkt a bydlí v `campaign-stats/read.ts`:
+ * `resolveDeliveredSource` + `isDeliveredKnown`. Report kampaně podle něj píše
+ * „Zatím nevíme", přehled podle něj teď míru vůbec nespočítá.
+ *
+ * Absolutní počty (odesláno, otevření, prokliky) se sčítají přes VŠECHNY
+ * kampaně, protože ty naměřené jsou. Vypadnou jen MÍRY, u kterých chybí
+ * jmenovatel. Uživatel tak nepřijde o čísla, jen se z nich přestane počítat
+ * podíl, který by nic neznamenal.
+ */
 type Totals = {
   sent: number;
-  deliveredEffective: number;
-  bounced: number;
-  complained: number;
   opensUnique: number;
   opensApple: number;
   clicksHuman: number;
+  /** Podmnožina kampaní se známou doručeností. Jediný podklad pro míry. */
+  known: {
+    campaigns: number;
+    sent: number;
+    deliveredEffective: number;
+    bounced: number;
+    complained: number;
+    opensUnique: number;
+    clicksHuman: number;
+  };
+  unknown: UnknownDelivery;
 };
 
 export async function readDashboard(
@@ -105,17 +168,30 @@ export async function readDashboard(
     tiles: {
       sent: mapTile(current, (t) => ({ value: t.sent })),
       click_rate: mapTile(current, (t) => ({
-        rate: ratio(t.clicksHuman, t.deliveredEffective),
+        rate: ratio(t.known.clicksHuman, t.known.deliveredEffective),
         delta: deltaOf(current, previous),
+        clicks: t.clicksHuman,
+        unknown: t.unknown,
       })),
       open_rate: mapTile(current, (t) => ({
-        rate: ratio(t.opensUnique, t.deliveredEffective),
+        rate: ratio(t.known.opensUnique, t.known.deliveredEffective),
+        // Podíl automatických otevření má jmenovatel z TÉHOŽ měření jako
+        // čitatel, takže na doručenosti nestojí a počítá se přes vše.
         machineShare: ratio(t.opensApple, t.opensUnique),
+        opens: t.opensUnique,
+        unknown: t.unknown,
       })),
       problems: mapTile(current, (t) => {
-        const bounceRate = ratio(t.bounced, t.sent);
-        const complaintRate = ratio(t.complained, t.deliveredEffective);
-        return { bounceRate, complaintRate, level: severity(bounceRate, complaintRate) };
+        // Odrazy se dělí ODESLANÝMI, ne doručenými: odražená zpráva z definice
+        // doručená není. Stejný jmenovatel má `computeRates` v reportu.
+        const bounceRate = ratio(t.known.bounced, t.known.sent);
+        const complaintRate = ratio(t.known.complained, t.known.deliveredEffective);
+        return {
+          bounceRate,
+          complaintRate,
+          level: severity(bounceRate, complaintRate, t),
+          unknown: t.unknown,
+        };
       }),
       web_active: webActive,
       recent_campaigns: recent,
@@ -139,19 +215,25 @@ export async function readDashboard(
  * dvakrát: jednou proti chybějícímu řádku, podruhé proti prázdné množině.
  */
 async function readTotals(tx: Tx, ctx: WorkspaceContext, from: Date, to: Date): Promise<Totals> {
+  /*
+   * Řádek na kampaň, součet až v TypeScriptu.
+   *
+   * Sečíst to rovnou v SQL by znamenalo napsat `CASE WHEN p.type = 'smtp' OR …`
+   * podruhé, tentokrát v jazyce, ve kterém se to nedá otestovat vedle původního
+   * pravidla. Přesně tak vznikla vada, kterou tahle změna opravuje: přehled měl
+   * vlastní `CASE` a report vlastní funkci, obojí o téže věci, a jen jedno z toho
+   * se opravilo. Klasifikace proto zůstává na jednom místě
+   * (`resolveDeliveredSource`, `isDeliveredKnown`, `deliveredEffective`)
+   * a dotaz vrací jen syrové čítače.
+   *
+   * Cena je jeden řádek na kampaň období místo jednoho řádku celkem. Kampaní je
+   * i za devadesát dní řádově desítky, řádek je pár čísel a dlaždice má cache
+   * na minutu; sousední dotaz `readRecentCampaigns` čte z téže tabulky totéž.
+   */
   const { rows } = await tx.execute<Record<string, unknown>>(sql`
-    SELECT coalesce(sum(coalesce(s.sent, 0)), 0)   AS sent,
-           coalesce(sum(
-             CASE WHEN p.type = 'smtp' OR coalesce(s.delivered, 0) = 0
-                  THEN greatest(coalesce(s.sent, 0) - coalesce(s.bounced_hard, 0)
-                                - coalesce(s.bounced_soft, 0) - coalesce(s.failed, 0), 0)
-                  ELSE s.delivered END
-           ), 0)                                   AS delivered_effective,
-           coalesce(sum(coalesce(s.bounced_hard, 0) + coalesce(s.bounced_soft, 0)), 0) AS bounced,
-           coalesce(sum(coalesce(s.complained, 0)), 0)          AS complained,
-           coalesce(sum(coalesce(s.opens_unique, 0)), 0)        AS opens_unique,
-           coalesce(sum(coalesce(s.opens_unique_apple, 0)), 0)  AS opens_apple,
-           coalesce(sum(coalesce(s.clicks_unique_human, 0)), 0) AS clicks_human
+    SELECT p.type AS provider_type,
+           s.sent, s.delivered, s.failed, s.bounced_hard, s.bounced_soft, s.complained,
+           s.opens_unique, s.opens_unique_apple, s.clicks_unique_human
       FROM campaigns c
       LEFT JOIN campaign_stats s ON s.campaign_id = c.id AND s.workspace_id = c.workspace_id
       LEFT JOIN sending_providers p ON p.id = c.provider_id AND p.workspace_id = c.workspace_id
@@ -161,16 +243,50 @@ async function readTotals(tx: Tx, ctx: WorkspaceContext, from: Date, to: Date): 
        AND c.started_at >= ${from}
        AND c.started_at <  ${to}
   `);
-  const row = rows[0] ?? {};
-  return {
-    sent: Number(row['sent'] ?? 0),
-    deliveredEffective: Number(row['delivered_effective'] ?? 0),
-    bounced: Number(row['bounced'] ?? 0),
-    complained: Number(row['complained'] ?? 0),
-    opensUnique: Number(row['opens_unique'] ?? 0),
-    opensApple: Number(row['opens_apple'] ?? 0),
-    clicksHuman: Number(row['clicks_human'] ?? 0),
+
+  const totals: Totals = {
+    sent: 0,
+    opensUnique: 0,
+    opensApple: 0,
+    clicksHuman: 0,
+    known: {
+      campaigns: 0,
+      sent: 0,
+      deliveredEffective: 0,
+      bounced: 0,
+      complained: 0,
+      opensUnique: 0,
+      clicksHuman: 0,
+    },
+    unknown: { campaigns: 0, sent: 0 },
   };
+
+  for (const row of rows) {
+    const counts = countsFromRow(row);
+    totals.sent += counts.sent;
+    totals.opensUnique += counts.opensUnique;
+    totals.opensApple += counts.opensUniqueApple;
+    totals.clicksHuman += counts.clicksUniqueHuman;
+
+    const source = resolveDeliveredSource(
+      typeof row['provider_type'] === 'string' ? row['provider_type'] : null,
+      counts,
+    );
+    if (!isDeliveredKnown(counts, source)) {
+      totals.unknown.campaigns += 1;
+      totals.unknown.sent += counts.sent;
+      continue;
+    }
+    totals.known.campaigns += 1;
+    totals.known.sent += counts.sent;
+    totals.known.deliveredEffective += deliveredEffective(counts, source);
+    totals.known.bounced += counts.bouncedHard + counts.bouncedSoft;
+    totals.known.complained += counts.complained;
+    totals.known.opensUnique += counts.opensUnique;
+    totals.known.clicksHuman += counts.clicksUniqueHuman;
+  }
+
+  return totals;
 }
 
 /**
@@ -188,16 +304,24 @@ async function readTotals(tx: Tx, ctx: WorkspaceContext, from: Date, to: Date): 
  *
  * Dolní mez `received_at` má minutovou rezervu, protože `ck_web_events__lag`
  * povoluje `received_at` až o minutu před `occurred_at`.
+ *
+ * Dlaždice počítá LIDI, ne události, takže se ptá i na to, jestli ten člověk
+ * v projektu ještě je. Události smazaného kontaktu v `web_events` zůstávají a bez
+ * téhle podmínky by přehled hlásil aktivní návštěvníky, které uživatel den předtím
+ * smazal. Podmínka je až za `contact_id IS NOT NULL`, aby se z indexu
+ * `idx_web_events__contact_occurred` četlo dál a existence se ověřovala jen
+ * u nalezených id.
  */
 async function readWebActive(tx: Tx, ctx: WorkspaceContext): Promise<number> {
   const { rows } = await tx.execute<Record<string, unknown>>(sql`
-    SELECT count(DISTINCT contact_id) AS contacts
-      FROM web_events
-     WHERE workspace_id = ${ctx.workspaceId}
-       AND contact_id IS NOT NULL
-       AND occurred_at >= now() - interval '24 hours'
-       AND received_at >= now() - interval '24 hours' - interval '60 seconds'
-       AND received_at <  now() + interval '7 days'
+    SELECT count(DISTINCT we.contact_id) AS contacts
+      FROM web_events we
+     WHERE we.workspace_id = ${ctx.workspaceId}
+       AND we.contact_id IS NOT NULL
+       AND we.occurred_at >= now() - interval '24 hours'
+       AND we.received_at >= now() - interval '24 hours' - interval '60 seconds'
+       AND we.received_at <  now() + interval '7 days'
+       AND ${sql.raw(contactExistsForJoinSql('we'))}
   `);
   return Number(rows[0]?.['contacts'] ?? 0);
 }
@@ -219,7 +343,10 @@ async function readRecentCampaigns(
   const { rows } = await tx.execute<Record<string, unknown>>(sql`
     SELECT c.id, c.name, c.status, c.started_at, p.type AS provider_type,
            s.clicks_unique_human, s.delivered, s.sent, s.bounced_hard, s.bounced_soft,
-           s.failed, s.opens_unique, s.opens_unique_apple, s.unsubscribed
+           -- complained tu není zbytečně: rozhoduje o tom, jestli o osudu
+           -- zpráv vůbec něco víme (isDeliveredKnown). Kampaň, ze které
+           -- přišly jen stížnosti, doručenost měřenou má.
+           s.complained, s.failed, s.opens_unique, s.opens_unique_apple, s.unsubscribed
       FROM campaigns c
       LEFT JOIN campaign_stats s ON s.campaign_id = c.id AND s.workspace_id = c.workspace_id
       LEFT JOIN sending_providers p ON p.id = c.provider_id AND p.workspace_id = c.workspace_id
@@ -233,16 +360,17 @@ async function readRecentCampaigns(
      LIMIT ${RECENT_CAMPAIGNS_LIMIT}
   `);
   return rows.map((row) => {
-    const delivered = Number(row['delivered'] ?? 0);
-    const derived = Math.max(
-      Number(row['sent'] ?? 0) -
-        Number(row['bounced_hard'] ?? 0) -
-        Number(row['bounced_soft'] ?? 0) -
-        Number(row['failed'] ?? 0),
-      0,
+    // Tatáž klasifikace jako v readTotals a v reportu kampaně. Dřív tu stálo
+    // vlastní `provider_type === 'smtp' || delivered === 0 ? derived : delivered`,
+    // což je jiné pravidlo pro totéž a právě z něj vznikalo „Doručeno 100 %"
+    // u kampaně, o jejíž doručenosti nevíme nic.
+    const counts = countsFromRow(row);
+    const source = resolveDeliveredSource(
+      typeof row['provider_type'] === 'string' ? row['provider_type'] : null,
+      counts,
     );
-    // Stejné pravidlo jako v readTotals: SMTP provider události doručení neposílá.
-    const base = row['provider_type'] === 'smtp' || delivered === 0 ? derived : delivered;
+    const known = isDeliveredKnown(counts, source);
+    const base = deliveredEffective(counts, source);
     return {
       campaignId: String(row['id']),
       name: String(row['name']),
@@ -250,14 +378,15 @@ async function readRecentCampaigns(
       startedAt: row['started_at']
         ? new Date(row['started_at'] as string | Date).toISOString()
         : null,
-      clickRate: ratio(Number(row['clicks_unique_human'] ?? 0), base),
-      sent: Number(row['sent'] ?? 0),
-      delivered,
+      clickRate: known ? ratio(counts.clicksUniqueHuman, base) : null,
+      deliveredKnown: known,
+      sent: counts.sent,
+      delivered: counts.delivered,
       deliveredEffective: base,
-      opens: Number(row['opens_unique'] ?? 0),
-      opensApple: Number(row['opens_unique_apple'] ?? 0),
-      clicks: Number(row['clicks_unique_human'] ?? 0),
-      unsubscribed: Number(row['unsubscribed'] ?? 0),
+      opens: counts.opensUnique,
+      opensApple: counts.opensUniqueApple,
+      clicks: counts.clicksUniqueHuman,
+      unsubscribed: counts.unsubscribed,
     };
   });
 }
@@ -291,13 +420,28 @@ function mapTile<T, U>(tile: Tile<T>, project: (value: T) => U): Tile<U> {
 
 function deltaOf(current: Tile<Totals>, previous: Tile<Totals>): number | null {
   if (current.status !== 'ok' || previous.status !== 'ok') return null;
-  const now = ratio(current.data.clicksHuman, current.data.deliveredEffective);
-  const before = ratio(previous.data.clicksHuman, previous.data.deliveredEffective);
+  const now = ratio(current.data.known.clicksHuman, current.data.known.deliveredEffective);
+  const before = ratio(previous.data.known.clicksHuman, previous.data.known.deliveredEffective);
   if (now === null || before === null) return null;
   return now - before;
 }
 
-function severity(bounceRate: number | null, complaintRate: number | null): 'ok' | 'warn' | 'bad' {
+/**
+ * „Nevíme" je vlastní stupeň, ne „v pořádku".
+ *
+ * Odrazy a stížnosti se dozvíme JEN od odesílací služby. Když od ní nedorazila
+ * ani jedna událost, jsou obě čísla nula, jenže ta nula neříká „nic se
+ * nestalo", nýbrž „nic jsme se nedozvěděli". Zelené „v pořádku" nad takovou
+ * nulou je tvrzení, které produkt nemá čím podložit.
+ *
+ * Prázdný projekt zůstává v pořádku: kde se nic neodeslalo, není co hlídat.
+ */
+function severity(
+  bounceRate: number | null,
+  complaintRate: number | null,
+  totals: Totals,
+): 'ok' | 'warn' | 'bad' | 'unknown' {
+  if (totals.known.sent === 0 && totals.unknown.sent > 0) return 'unknown';
   if ((bounceRate ?? 0) > BOUNCE_WARN || (complaintRate ?? 0) > COMPLAINT_WARN) return 'bad';
   if ((bounceRate ?? 0) > BOUNCE_WARN / 2 || (complaintRate ?? 0) > COMPLAINT_WARN / 2)
     return 'warn';

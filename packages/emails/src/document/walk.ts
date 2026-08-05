@@ -71,6 +71,31 @@ export function richTextFieldsOf(block: AnyBlock): Array<{ rich: RichText; key: 
     .map((key) => ({ rich: props[key] as RichText, key }));
 }
 
+/**
+ * Všechna URL pole bloku, tedy místa, kam autor píše odkaz.
+ *
+ * Existuje kvůli sběrači proměnných: `richTextFieldsOf` vrací jen bohatý text,
+ * takže `{{ data.reset_url }}` v poli `href` do `usedPaths` nikdy nedoteklo
+ * a tlačítko odešlo s prázdným odkazem, tiše. Inline uzly `a` tady nejsou,
+ * ty se sbírají průchodem bohatého textu.
+ */
+export function urlFieldsOf(block: AnyBlock): Array<{ href: string; pointer: string }> {
+  const props = (block as { props?: Record<string, unknown> }).props ?? {};
+  if (block.type === 'button' || block.type === 'image') {
+    const href = props['href'];
+    return typeof href === 'string' ? [{ href, pointer: '/props/href' }] : [];
+  }
+  if (block.type === 'social') {
+    const items = Array.isArray(props['items'])
+      ? (props['items'] as Array<{ href?: unknown }>)
+      : [];
+    return items.flatMap((item, i) =>
+      typeof item.href === 'string' ? [{ href: item.href, pointer: `/props/items/${i}/href` }] : [],
+    );
+  }
+  return [];
+}
+
 /** Tečková notace pro pole `errors[].path` na hranici API (konvence části 1, 4.2). */
 export function pointerToDotted(pointer: string): string {
   return pointer.replace(/^\//, '').split('/').join('.');

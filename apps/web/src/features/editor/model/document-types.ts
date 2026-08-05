@@ -64,6 +64,18 @@ export type EditorIssue = {
   blockId?: string;
   params?: Record<string, string | number>;
   message?: string;
+  /**
+   * Nález ze SERVERU, který platí o starší verzi dokumentu.
+   *
+   * Serverová validace umí navíc předodesílací kontrolu (kódy `precheck_*`),
+   * jenže běží jednorázově, kdežto dokument se pod ní mění. Po úpravě se takový
+   * nález NEZAHAZUJE, protože pak by chyba mizela pokaždé, když uživatel napíše
+   * písmeno, ale ani se netváří jako čerstvý: může mluvit o obsahu, který mezitím
+   * někdo opravil. Příznak si nese kvůli tomu, aby to pruh mohl říct nahlas.
+   *
+   * Zmizí sám, jakmile doběhne další serverová validace, tedy po uložení.
+   */
+  stale?: boolean;
 };
 
 export const CONTENT_TYPES = [
@@ -98,13 +110,49 @@ export function isKnownType(type: string): boolean {
  * i `children`, přičemž obojí má `additionalProperties: false`. Výchozí hodnoty
  * proto pocházejí z P08, ne z ruční kopie.
  */
-export function emptyDocument(language: string): EditorDocument {
+export function emptyDocument(language: string, name = 'Nová šablona'): EditorDocument {
+  /*
+   * `meta.name` NESMÍ být prázdný řetězec.
+   *
+   * Dřívější znění tu mělo `name: ''` a komentář nad funkcí přitom slibuje
+   * „nejmenší dokument, který projde schématem". Neprošel: `document.v1.schema.json`
+   * má u `meta.name` `minLength: 1`, takže server odpověděl 422 a šablonu
+   * nešlo z rozhraní založit vůbec. Doslovně z instalace:
+   *
+   *   POST /api/v1/templates → 422 template_document_invalid
+   *   findings: [{ code: 'schema_minLength', path: 'meta.name',
+   *                params: { message: '/meta/name must NOT have fewer than 1 characters' } }]
+   *
+   * Uživatel viděl jen „Šablonu se nepodařilo vytvořit." Výchozí jméno se
+   * proto bere z volajícího, aby `meta.name` odpovídalo názvu šablony.
+   *
+   * PATIČKA JE POVINNÁ, a to hned od založení.
+   *
+   * Po opravě `meta.name` padal dokument dál, na doménovém pravidle S4:
+   *
+   *   POST /api/v1/templates → 422 template_document_invalid
+   *   findings: [{ code: 'content_missing_unsubscribe' }]
+   *
+   * Odhlašovací odkaz je podmínka platnosti dokumentu, ne kontrola před
+   * odesláním, takže se nedá odložit „na později": šablona bez něj by se dala
+   * navrhnout, uložit i zavřít a teprve odesílání by řeklo, že je nepoužitelná.
+   *
+   * Patička je DÍTĚ SEKCE, ne blok nejvyšší úrovně. Nahoře smí být jen sekce;
+   * pokus vložit `footer` vedle ní skončí na `/blocks/1/type must be equal to
+   * constant`. Stejné uspořádání má i každá ukázková šablona, viz
+   * `packages/core/src/demo/dataset.ts`.
+   */
   return {
     schemaVersion: 1,
-    meta: { name: '', previewText: '', language },
+    meta: { name, previewText: '', language },
     theme: DEFAULT_THEME,
     blocks: [
-      { id: newBlockId(), type: 'section', props: { ...blockDefaults('section') }, children: [] },
+      {
+        id: newBlockId(),
+        type: 'section',
+        props: { ...blockDefaults('section') },
+        children: [{ id: newBlockId(), type: 'footer', props: { ...blockDefaults('footer') } }],
+      },
     ],
   } as EditorDocument;
 }

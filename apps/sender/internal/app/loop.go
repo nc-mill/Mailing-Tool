@@ -16,20 +16,20 @@ type Job struct {
 	Revision int32
 }
 
-// Claimer je část store, kterou smyčka potřebuje. Rozhraní existuje kvůli
+// Claimer je část store, kterou smyčky potřebují. Rozhraní existuje kvůli
 // testovatelnosti bez databáze.
 type Claimer interface {
 	ActiveCampaigns(ctx context.Context) ([]outbox.ActiveCampaign, error)
 	ClaimBatch(ctx context.Context, campaignID uuid.UUID, batchSize, ttlSeconds int) ([]outbox.Message, error)
-	ClaimTestBatch(ctx context.Context, batchSize, ttlSeconds int) ([]outbox.Message, error)
+	ClaimNonCampaignBatch(ctx context.Context, batchSize, ttlSeconds int) ([]outbox.Message, error)
 }
 
 // ClaimOptions konfigurují smyčku.
 type ClaimOptions struct {
 	BatchSize       int
 	ClaimTTLSeconds int
-	// TestBatchSize je velikost přednostní dávky testovacích odeslání.
-	TestBatchSize int
+	// NonCampaignBatchSize je velikost dávky zpráv mimo kampaň.
+	NonCampaignBatchSize int
 	// FilterBatch prochází celou claimnutou dávkou ještě před krokem D0.
 	// Tudy se pouští DÁVKOVÁ kontrola suppression: jeden dotaz na dávku,
 	// ne jeden na zprávu, a odfiltrované zprávy si zapíše sám filtr.
@@ -52,8 +52,8 @@ type ClaimLoop struct {
 
 // NewClaimLoop vytvoří smyčku.
 func NewClaimLoop(c Claimer, opts ClaimOptions) *ClaimLoop {
-	if opts.TestBatchSize <= 0 {
-		opts.TestBatchSize = 20
+	if opts.NonCampaignBatchSize <= 0 {
+		opts.NonCampaignBatchSize = 20
 	}
 	return &ClaimLoop{
 		claimer:   c,
@@ -63,9 +63,14 @@ func NewClaimLoop(c Claimer, opts ClaimOptions) *ClaimLoop {
 	}
 }
 
-// Tick provede jeden průchod: obnoví seznam kampaní, přednostně vezme testovací
-// odeslání a pak jede round robin přes běžící kampaně, dokud všechny nevyčerpají
-// splatné zprávy.
+// Tick provede jeden průchod: obnoví seznam kampaní a jede round robin přes
+// běžící kampaně, dokud všechny nevyčerpají splatné zprávy.
+//
+// Zprávy mimo kampaň tady SCHVÁLNĚ nejsou. Dřív se claimovaly na začátku
+// tohohle tiku, jenže tik trvá tak dlouho, jak dlouho se odesílají dávky všech
+// běžících kampaní: claimer se blokuje na kanálu jobs. Reset hesla vložený
+// uprostřed rozesílky 10 000 zpráv proto čekal desítky minut. Má vlastní
+// smyčku NonCampaignLoop s vlastním krátkým intervalem.
 //
 // handle se volá pro každou claimnutou zprávu. Volající si řídí souběh sám.
 func (l *ClaimLoop) Tick(ctx context.Context, handle func(context.Context, Job)) error {
@@ -76,20 +81,6 @@ func (l *ClaimLoop) Tick(ctx context.Context, handle func(context.Context, Job))
 	l.rotation.Set(campaigns)
 	for _, c := range campaigns {
 		l.revisions[c.ID] = c.Revision
-	}
-
-	// Testovací odeslání se claimuje samostatně a přednostně, na začátku tiku.
-	// Bez toho by test čekal za probíhající kampaní.
-	tests, err := l.claimer.ClaimTestBatch(ctx, l.opts.TestBatchSize, l.opts.ClaimTTLSeconds)
-	if err != nil {
-		return err
-	}
-	tests, err = l.filter(ctx, tests)
-	if err != nil {
-		return err
-	}
-	for _, m := range tests {
-		handle(ctx, Job{Message: m, Revision: l.revisions[m.CampaignID]})
 	}
 
 	for {
@@ -132,3 +123,59 @@ func (l *ClaimLoop) filter(ctx context.Context, msgs []outbox.Message) ([]outbox
 // Campaigns vrací počet kampaní v poslední rotaci. Používá se v logu při startu
 // a při ladění.
 func (l *ClaimLoop) Campaigns() int { return l.rotation.Len() }
+
+// NonCampaignLoop claimuje zprávy mimo kampaň: testovací odeslání, transakční
+// poštu a uzly automatizace.
+//
+// Existuje samostatně, protože běží na VLASTNÍM krátkém intervalu a vlastní
+// goroutině. Transakční endpoint, který za provozu doručuje reset hesla za
+// dvacet minut, je horší než žádný endpoint: zákazník ho nasadí a zjistí to
+// až na svých uživatelích.
+//
+// Revizi nosné kampaně nese claim v samotné zprávě, protože skrytá kampaň
+// zůstává ve stavu draft a v seznamu běžících kampaní tedy nikdy není.
+type NonCampaignLoop struct {
+	claimer Claimer
+	opts    ClaimOptions
+}
+
+// NewNonCampaignLoop vytvoří smyčku pro zprávy mimo kampaň.
+func NewNonCampaignLoop(c Claimer, opts ClaimOptions) *NonCampaignLoop {
+	if opts.NonCampaignBatchSize <= 0 {
+		opts.NonCampaignBatchSize = 20
+	}
+	return &NonCampaignLoop{claimer: c, opts: opts}
+}
+
+// Tick claimuje jednu dávku. Vrací počet předaných zpráv, aby volající poznal,
+// jestli má jít hned znovu, nebo počkat na další tik.
+func (l *NonCampaignLoop) Tick(ctx context.Context, handle func(context.Context, Job)) (int, error) {
+	batch, err := l.claimer.ClaimNonCampaignBatch(ctx, l.opts.NonCampaignBatchSize, l.opts.ClaimTTLSeconds)
+	if err != nil {
+		return 0, err
+	}
+	claimed := len(batch)
+	if claimed == 0 {
+		return 0, nil
+	}
+	// Suppression se filtruje týmž filtrem jako u kampaně. Transakční proud
+	// sice odhlášení z marketingu ctít nemá, ale to je rozhodnutí filtru,
+	// ne smyčky: jedno místo, jedna pravda.
+	kept, err := l.filter(ctx, batch)
+	if err != nil {
+		return 0, err
+	}
+	for _, m := range kept {
+		handle(ctx, Job{Message: m, Revision: m.Revision})
+	}
+	// Vrací se počet CLAIMNUTÝCH, ne propuštěných. Dávka plná potlačených adres
+	// je pořád práce a smyčka má jít hned pro další.
+	return claimed, nil
+}
+
+func (l *NonCampaignLoop) filter(ctx context.Context, msgs []outbox.Message) ([]outbox.Message, error) {
+	if l.opts.FilterBatch == nil || len(msgs) == 0 {
+		return msgs, nil
+	}
+	return l.opts.FilterBatch(ctx, msgs)
+}

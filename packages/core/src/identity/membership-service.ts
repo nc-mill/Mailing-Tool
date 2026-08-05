@@ -37,13 +37,22 @@ export async function listMembers(tx: Tx, ctx: WorkspaceContext): Promise<Member
  * 3.3, invariant 1: každý workspace má právě jednoho ownera. Vynucuje se
  * v aplikační transakci, ne indexem, protože při předání vlastnictví musí
  * na okamžik existovat dva a index by to zablokoval.
+ *
+ * SMAZANÍ UŽIVATELÉ SE NEPOČÍTAJÍ, ani mezi vlastníky, ani jako cíl. Členství
+ * po měkce smazaném účtu zůstává (viz `user-delete.ts`), a bez tohohle spojení
+ * s `users` by se počítalo jako plnohodnotný vlastník: projekt by měl podle
+ * čísla dva vlastníky, `listMembers` by ukázal jednoho, a odebrat toho živého
+ * by šlo, protože „druhý přece zůstane". Duch by přitom neexistoval a projekt
+ * by zůstal bez vlastníka. Táž podmínka je i v `listMembers`.
  */
 async function assertNotLastOwner(tx: Tx, ctx: WorkspaceContext, userId: string): Promise<void> {
   const { rows } = await tx.execute<{ owners: string; role: string | null }>(sql`
-    SELECT (SELECT count(*) FROM memberships
-             WHERE workspace_id = ${ctx.workspaceId}::uuid AND role = 'owner') AS owners,
-           (SELECT role FROM memberships
-             WHERE workspace_id = ${ctx.workspaceId}::uuid AND user_id = ${userId}::uuid) AS role
+    SELECT (SELECT count(*) FROM memberships m JOIN users u ON u.id = m.user_id
+             WHERE m.workspace_id = ${ctx.workspaceId}::uuid AND m.role = 'owner'
+               AND u.deleted_at IS NULL) AS owners,
+           (SELECT m.role FROM memberships m JOIN users u ON u.id = m.user_id
+             WHERE m.workspace_id = ${ctx.workspaceId}::uuid AND m.user_id = ${userId}::uuid
+               AND u.deleted_at IS NULL) AS role
   `);
   const row = rows[0];
   if (!row || row.role === null) throw new ApiError('not_found');

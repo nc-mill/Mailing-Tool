@@ -20,6 +20,12 @@ export type TrialView = {
   verified_count: number;
   max_addresses: number;
   has_verified_domain: boolean;
+  /**
+   * Drží Amazon účet v testovacím režimu? Je to DRUHÝ důvod, proč může být
+   * zkušební režim zapnutý, a bez něj vypadal zapnutý přepínač u ověřené domény
+   * jako chyba nástroje.
+   */
+  provider_sandbox?: boolean | null;
 };
 
 /** Kontrola v prohlížeči je pohodlí, rozhoduje `z.email()` na serveru. */
@@ -147,7 +153,27 @@ export function TrialModePanel({
         )}
       </div>
 
-      <p className="text-text-muted">{t('explanation')}</p>
+      {/*
+        ROZPOR, KTERÝ TENHLE ŘÁDEK ODSTRAŇUJE. Do teď tu stála jediná věta:
+        „Ověření domény čeká na propagaci DNS, což trvá minuty až hodiny."
+        Stála tam VŽDYCKY, tedy i na obrazovce, kde o kus výš svítilo
+        „brevio.cz, Amazon: ověřeno". Dvě tvrzení o téže doméně, obě natvrdo,
+        a uživatel nemá jak poznat, které platí. Věta se proto vybírá podle
+        toho, jestli ověřenou doménu OPRAVDU má.
+      */}
+      <p className="text-text-muted" data-testid="trial-explanation">
+        {trial.has_verified_domain ? t('explanationVerified') : t('explanationWaiting')}
+      </p>
+      {/*
+        Proč je režim zapnutý, když mám ověřenou doménu? Protože ho drží Amazon.
+        Bez téhle věty vypadá zapnutý přepínač u ověřené domény jako chyba
+        nástroje a uživatel ho vypne, načež mu Amazon odmítne celou kampaň.
+      */}
+      {trial.provider_sandbox === true && (
+        <Alert tone="warning" data-testid="trial-sandbox-reason">
+          {t('sandboxReason')}
+        </Alert>
+      )}
       {failure && <Alert tone="error">{failure}</Alert>}
 
       <div className="flex flex-wrap items-center justify-between gap-3">

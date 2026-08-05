@@ -3,8 +3,14 @@ import { materializeDeps } from './deps';
 import { materializeHandler, type MaterializeJobPayload } from './materialize';
 import { resumeOnQuotaHandler } from './resume-on-quota';
 import { schedulerHandler } from './scheduler';
+import { stallWatchHandler } from './stall-watch';
 import { watchdogHandler } from './watchdog';
-import { systemResumeOnQuotaDeps, systemSchedulerDeps, systemWatchdogDeps } from './system-deps';
+import {
+  systemResumeOnQuotaDeps,
+  systemSchedulerDeps,
+  systemStallWatchDeps,
+  systemWatchdogDeps,
+} from './system-deps';
 
 /**
  * Vstupní bod, který hledá codegen workeru (P01, rozhodnutí D4).
@@ -120,6 +126,21 @@ export const handlers = {
    * ho znamená rozhodnout, které kampaně projektu se rekonciliují a v jakém
    * pořadí, a to je návrh, ne dopsání továrny.
    */
+  /**
+   * Hlídač zaseknutých dávek. Prefix `outbox.` je tu ze stejného důvodu jako
+   * u `outbox.reconcile` níž: obsluha bydlí v `campaigns/jobs/stall-watch.ts`,
+   * a o umístění rozhoduje adresář, ne jméno fronty.
+   *
+   * `once`, ne `perJob`: cron s prázdným nákladem, takže víc úloh v dávce
+   * znamená víc tiků, ne víc práce. `perJob` by sken pustil tolikrát, kolik je
+   * úloh v dávce, a druhý průchod by nahlásil tytéž kampaně znovu.
+   *
+   * Na rozdíl od `outbox.reconcile` se tahle složit dá celá: výčet projektů
+   * i běžících kampaní `platform/maintenance-scan.ts` umí a zbytek je jeden
+   * dotaz nad `messages` v kontextu jednoho projektu.
+   */
+  'outbox.stall_watch': once(() => stallWatchHandler(systemStallWatchDeps())),
+
   'outbox.reconcile': needsDependencies(
     'outbox.reconcile',
     'ReconcileDeps.reconcile(workspaceId); sken projektů už hotový je ' +

@@ -114,14 +114,41 @@ export async function createContact(
 
 export async function createList(
   ctx: WorkspaceContext,
-  input: { name: string; confirmationMode?: 'one_step' | 'two_step' },
+  input: {
+    name: string;
+    confirmationMode?: 'one_step' | 'two_step';
+    /** Nabízí se ve veřejném centru předvoleb? Výchozí je NE, stejně jako v produkci. */
+    publicVisible?: boolean;
+    publicName?: string | null;
+    publicDescription?: string | null;
+  },
 ): Promise<string> {
   const { rows } = await asMigrator().query<{ id: string }>(
-    `INSERT INTO lists (workspace_id, name, opt_in, confirmation_mode)
-     VALUES ($1, $2, 'double', $3) RETURNING id`,
-    [ctx.workspaceId, input.name, input.confirmationMode ?? 'two_step'],
+    `INSERT INTO lists (workspace_id, name, opt_in, confirmation_mode,
+                        public_visible, public_name, public_description)
+     VALUES ($1, $2, 'double', $3, $4, $5, $6) RETURNING id`,
+    [
+      ctx.workspaceId,
+      input.name,
+      input.confirmationMode ?? 'two_step',
+      input.publicVisible ?? false,
+      input.publicName ?? null,
+      input.publicDescription ?? null,
+    ],
   );
   return rows[0]!.id;
+}
+
+/** Přepne nastavení projektu `settings.contacts.public_preference_center`. */
+export async function setPreferenceCenter(ctx: WorkspaceContext, enabled: boolean): Promise<void> {
+  await asMigrator().query(
+    `UPDATE workspaces
+        SET settings = jsonb_set(coalesce(settings, '{}'::jsonb), '{contacts}',
+              coalesce(settings -> 'contacts', '{}'::jsonb)
+                || jsonb_build_object('public_preference_center', $2::boolean), true)
+      WHERE id = $1`,
+    [ctx.workspaceId, enabled],
+  );
 }
 
 export async function subscribe(
@@ -181,6 +208,38 @@ export async function contactRow(
     [ctx.workspaceId, contactId],
   );
   return rows[0]!;
+}
+
+/**
+ * Odeslaná zpráva jedné kampaně, se zkompilovaným tělem a s daty pro personalizaci.
+ * Pro stránku „Zobrazit v prohlížeči", která z těch dvou skládá výsledek.
+ *
+ * `fk_messages__campaign_audience` je složený cizí klíč (campaign_id, created_at) na
+ * (campaigns.id, campaigns.audience_built_at), takže `created_at` zprávy MUSÍ být rovné
+ * `audience_built_at` kampaně. Hodnota se proto čte poddotazem a nejde přes JavaScript:
+ * `timestamptz` má mikrosekundy, `Date` jen milisekundy, a po zaokrouhlení by cizí klíč
+ * spadl.
+ */
+export async function seedSentMessage(
+  ctx: WorkspaceContext,
+  input: { contactId: string; email: string; html: string; renderData: Record<string, unknown> },
+): Promise<{ messageId: string; createdAt: Date }> {
+  const { rows: campaignRows } = await asMigrator().query<{ id: string }>(
+    `INSERT INTO campaigns (workspace_id, name, status, subject, compiled_html, audience_built_at)
+     VALUES ($1, 'Kampaň', 'sent', 'Předmět', $2, now()) RETURNING id`,
+    [ctx.workspaceId, input.html],
+  );
+  const campaignId = campaignRows[0]!.id;
+
+  const { rows } = await asMigrator().query<{ id: string; created_at: Date }>(
+    `INSERT INTO messages (workspace_id, campaign_id, contact_id, email, render_data, status,
+                           created_at)
+     VALUES ($1, $2, $3, $4, $5::jsonb, 'sent',
+             (SELECT audience_built_at FROM campaigns WHERE id = $2))
+     RETURNING id, created_at`,
+    [ctx.workspaceId, campaignId, input.contactId, input.email, JSON.stringify(input.renderData)],
+  );
+  return { messageId: rows[0]!.id, createdAt: new Date(rows[0]!.created_at) };
 }
 
 export async function latestConsent(

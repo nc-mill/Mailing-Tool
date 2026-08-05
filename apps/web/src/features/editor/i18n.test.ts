@@ -67,7 +67,10 @@ describe('katalog editor', () => {
   });
 
   it('počty používají ICU plural včetně kategorie =0, kritérium 72 části 6', () => {
-    for (const key of ['issues.errorCount', 'issues.warningCount', 'block.socialCount']) {
+    // `issues.warningCount` tu byl do chvíle, než se z editoru vyhodila
+    // varování. Klíč nemá volajícího, takže by hlídal text, který se nikde
+    // neukáže, a v katalogu by zůstal jako balast.
+    for (const key of ['issues.errorCount', 'block.socialCount']) {
       const message = key
         .split('.')
         .reduce<never>((value, part) => (value as never)[part], cs as never) as unknown as string;

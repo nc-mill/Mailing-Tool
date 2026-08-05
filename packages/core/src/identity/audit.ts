@@ -11,12 +11,16 @@ export const IdentityAuditActions = defineAuditActions([
   'user.password_changed',
   'user.password_reset_requested',
   'user.password_reset_completed',
+  // Účet smazaný správcem z rozhraní. Měkce, viz `user-delete.ts`.
+  'user.deleted',
   'workspace.created',
   'workspace.updated',
   'workspace.deleted',
   'workspace.restored',
   'workspace.ownership_transferred',
   'member.invited',
+  // Člen založený správcem rovnou, s heslem, bez pozvánky e-mailem.
+  'member.created',
   'member.invitation_revoked',
   'member.joined',
   'member.role_changed',

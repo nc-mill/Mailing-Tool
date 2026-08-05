@@ -5,6 +5,7 @@ import { Tooltip, TooltipProvider } from '@mlain/ui/components/tooltip';
 import { useTranslations } from 'next-intl';
 import type { ReactElement } from 'react';
 import { useId } from 'react';
+import type { ValidationProfile } from '@mlain/emails/document/profile';
 import type { PropDescriptor } from '../../descriptors/types';
 import type { EditorBlock } from '../../model/document-types';
 import type { FieldCatalog } from '../../model/field-catalog';
@@ -38,6 +39,12 @@ export type ControlProps = {
   canWriteHtml: boolean;
   fieldCatalog: FieldCatalog;
   ports: EditorPorts | null;
+  /**
+   * Profil kontroly dokumentu. Dnes ho čte jen `LinkControl`, a to kvůli
+   * jediné otázce: je proměnná v poli odkazu chyba, nebo normální stav?
+   * V transakční šabloně se odkazy nesledují, takže je to normální stav.
+   */
+  templateKind: ValidationProfile;
   autoFocus?: boolean;
 };
 

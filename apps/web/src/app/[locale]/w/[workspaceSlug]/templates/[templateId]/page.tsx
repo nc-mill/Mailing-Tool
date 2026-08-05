@@ -4,7 +4,9 @@ import { notFound } from 'next/navigation';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { getProvider } from '@mlain/core/ai';
 import { AiAssistantPanel } from '@/features/ai/assistant-panel';
+import { validationProfileFor, type TemplateKind } from '@mlain/emails/document/profile';
 import { loadEditorData } from '@/features/editor/ports/server-ports';
+import { TemplateDetailActions } from '@/features/templates/template-detail-actions';
 import {
   aiWorkspaceContext,
   fetchBrandProfiles,
@@ -34,12 +36,32 @@ export const dynamic = 'force-dynamic';
  * dodává P06 a používá je každá obrazovka pod `/w/{slug}`. Vlastní varianta by se
  * s nimi rozešla v tom, co dělá nečlen, a to je bezpečnostní rozhodnutí, ne detail.
  */
+/**
+ * Návrat do kampaně.
+ *
+ * Adresa se bere z parametru `return_to`, ale POUZE tehdy, když míří do TOHOTO
+ * projektu. Otevřené přesměrování je jinak učebnicová díra: `?return_to=https://…`
+ * by z editoru udělalo odrazový můstek na cizí web pod naší doménou. Kontroluje
+ * se proto celý začátek cesty, ne jen „začíná lomítkem".
+ */
+function safeReturnTo(raw: string | undefined, workspaceSlug: string): string | null {
+  if (!raw) return null;
+  const prefix = `/w/${workspaceSlug}/`;
+  if (!raw.startsWith(prefix)) return null;
+  // Dvojí lomítko na začátku je adresa s protokolem bez schématu (`//zlo.cz`).
+  if (raw.startsWith('//')) return null;
+  return raw;
+}
+
 export default async function TemplateEditorPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string; workspaceSlug: string; templateId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { workspaceSlug, templateId } = await params;
+  const query = await searchParams;
   const t = await getTranslations('editor');
 
   // `NotFoundState` a `ForbiddenState` mají povinné `body` i `backLink`, respektive
@@ -100,13 +122,77 @@ export default async function TemplateEditorPage({
       ? undefined
       : format.number(usage.estimatedCostUsd, { style: 'currency', currency: 'USD' });
 
-  return (
+  /*
+   * KONTRAKT PRO KAMPANĚ (úkol 3 zadání).
+   *
+   * Kampaň si otevře editor odkazem
+   *   /w/{slug}/templates/{id}?return_to=/w/{slug}/campaigns/{campaignId}&apply_to={campaignId}
+   * a editor pak nabídne tlačítko „Uložit a zpět do kampaně". To po uložení
+   * převezme obsah do kampaně (`POST /campaigns/{id}/apply-template`) a vrátí
+   * uživatele zpátky. Tím odpadá berlička „Načíst obsah ze šablony“, kterou
+   * dnes musí uživatel v kampani zmáčknout ručně, a hlavně past, kdy odejde
+   * bez ní a odešle prázdný e-mail.
+   *
+   * `apply_to` je nepovinné: bez něj se editor jen vrátí, obsah nepřevezme.
+   * Oba parametry vyplňuje strana kampaní, editor si je nevymýšlí.
+   */
+  const returnHref = safeReturnTo(
+    typeof query.return_to === 'string' ? query.return_to : undefined,
+    workspaceSlug,
+  );
+  const applyTo = typeof query.apply_to === 'string' ? query.apply_to : undefined;
+  const returnTo = returnHref
+    ? {
+        href: returnHref,
+        label: t('header.backToCampaign'),
+        ...(applyTo === undefined ? {} : { campaignId: applyTo }),
+      }
+    : undefined;
+
+  /*
+   * SMAZÁNÍ PATŘÍ JEN K SAMOSTATNÉ ŠABLONĚ.
+   *
+   * Když se sem uživatel proklikl z kampaně (`returnTo`), je pod editorem
+   * pracovní obsah TÉ kampaně, ne šablona z knihovny. Smazat ho odsud by
+   * kampani vzalo obsah cestou, kterou nikdo nečeká, takže se tlačítko
+   * v tom případě vůbec nenabízí.
+   */
+  const canDelete = returnTo === undefined && hasPermission(access.data, 'templates:write');
+
+  const editor = (
     <EditorClient
       templateId={templateId}
       workspaceId={access.data.workspace.id}
+      /*
+       * Profil kontroly dokumentu. Skládá ho stránka, editor si ho nevymýšlí,
+       * a odvozuje se TOUŽ funkcí, jakou používá server (`validationProfileFor`),
+       * aby si obě strany nemohly o téže šabloně myslet každá něco jiného.
+       *
+       * Bez toho editor kontroloval transakční šablonu kampaňovými pravidly:
+       * proměnná v odkazu tlačítka je v transakčním profilu normální stav,
+       * kdežto v kampaňovém je to chyba `liquid_in_trackable_href`. Uživatel
+       * tak v editoru neuložil obsah, který server přijme.
+       */
+      templateKind={validationProfileFor(data.kind as TemplateKind)}
+      {...(returnTo === undefined ? {} : { returnTo })}
+      // Obsah kampaně se v editoru nesmí tvářit jako obecná šablona. Poznáme
+      // to podle toho, že se sem uživatel proklikl z kampaně.
+      contentKind={returnTo === undefined ? 'template' : 'campaign'}
+      /*
+       * NÁZEV SE DÁ UPRAVIT JEN U SKUTEČNÉ ŠABLONY.
+       *
+       * Rozhoduje `kind`, ne `returnTo`. Pracovní obsah kampaně (`system`) je
+       * řádek, který si vyrobila aplikace, v knihovně se neukazuje a jméno má
+       * odvozené od kampaně. Přejmenovat ho by znamenalo změnit něco, co
+       * uživatel nikde neuvidí. `returnTo` by na to nestačilo: na tentýž řádek
+       * se dá dostat i přímou adresou bez návratového parametru a pole by se
+       * objevilo.
+       */
+      {...(data.kind === 'system' ? {} : { templateName: data.name })}
       assistant={
         <AiAssistantPanel
           templateId={templateId}
+          workspaceId={access.data.workspace.id}
           hasCredential={credentials.length > 0}
           brandName={defaultBrand?.name ?? null}
           {...(providerLabel === undefined ? {} : { providerLabel })}
@@ -125,5 +211,19 @@ export default async function TemplateEditorPage({
       canWriteHtml={hasPermission(access.data, 'templates:write')}
       readOnly={!hasPermission(access.data, 'templates:write')}
     />
+  );
+
+  if (!canDelete) return editor;
+
+  return (
+    <>
+      <TemplateDetailActions
+        workspaceSlug={workspaceSlug}
+        workspaceId={access.data.workspace.id}
+        templateId={templateId}
+        name={data.name}
+      />
+      {editor}
+    </>
   );
 }

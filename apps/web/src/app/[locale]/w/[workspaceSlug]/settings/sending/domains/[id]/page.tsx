@@ -23,7 +23,14 @@ export const dynamic = 'force-dynamic';
 type PageProps = { params: Promise<{ locale: string; workspaceSlug: string; id: string }> };
 
 type DomainResponse = {
-  domain: { id: string; domain: string; checked_at: string | null };
+  domain: {
+    id: string;
+    domain: string;
+    checked_at: string | null;
+    /** Verdikt poskytovatele. Zdroj pravdy o ověření, ne naše kontrola DNS. */
+    ses_verification_status: string | null;
+    verified_at: string | null;
+  };
   records: DnsRecord[];
   checks: DomainChecks;
 };
@@ -51,6 +58,9 @@ export default async function DomainPage({ params }: PageProps) {
       records={result.data.records}
       checks={result.data.checks}
       checkedAt={result.data.domain.checked_at}
+      sesStatus={result.data.domain.ses_verification_status ?? null}
+      verifiedAt={result.data.domain.verified_at ?? null}
+      basePath={`/w/${workspaceSlug}`}
     />
   );
 }

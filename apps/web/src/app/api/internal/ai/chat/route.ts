@@ -13,6 +13,7 @@ import {
   DEFAULT_TYPOGRAPHY,
   findBrandProfile,
   findDefaultBrandProfile,
+  listBrandProfiles,
 } from '@mlain/core/brand';
 /*
  * Podcesta, ne barrel `@mlain/core/templates`. Ten reexportuje i `compile`,
@@ -32,6 +33,7 @@ import {
   composeTemplateDraft,
   createMeteredFetch,
   decryptApiKey,
+  mapProviderError,
   prepareConversation,
   recordUsage,
 } from '@mlain/core/ai';
@@ -39,12 +41,13 @@ import {
   factories,
   generateStructured,
   isNoObjectGenerated,
+  outputIssuesOf,
   streamConversation,
   toSdkTools,
 } from '@mlain/core/ai/sdk';
 import { problemResponseFor } from '@/lib/api/app';
 import { authenticate } from '@/lib/api/authenticate';
-import { getConfig } from '@/lib/runtime';
+import { getConfig, getLogger } from '@/lib/runtime';
 
 /**
  * `POST /api/internal/ai/chat` je záměrně MIMO veřejné API. Je to streamovaný
@@ -84,6 +87,56 @@ function unavailableTool(name: string): never {
   });
 }
 
+/**
+ * Zaloguje selhání nástroje a chybu pošle dál beze změny.
+ *
+ * Bez tohohle je selhání nástroje NEVIDITELNÉ: `safely` z `buildTools` ho
+ * schválně převede na `{ error: <kód> }`, aby se z něj model zotavil sám, takže
+ * do proudu ani do logu nedojde nic. Naměřeno klikáním 3. 8. 2026: nástroj
+ * `composeTemplate` spadl, uživatel dostal jen větu od modelu, a jediná stopa
+ * po chybě byla zkrácená v `ai_messages`.
+ */
+function loggedTool<I, O>(name: string, run: (input: I) => Promise<O>): (input: I) => Promise<O> {
+  return async (input: I) => {
+    try {
+      return await run(input);
+    } catch (error) {
+      /*
+       * Když chyba nenese náš kód, je to chyba od poskytovatele a musí projít
+       * `mapProviderError`, jinak zůstane v logu jen bezobsažné `tool_failed`
+       * a stavový kód, podle kterého se to dá dohledat, se ztratí.
+       */
+      const tagged = (error as { code?: string } | null)?.code;
+      const mapped = tagged === undefined ? mapProviderError(error) : null;
+      getLogger().error(
+        {
+          route: PATH,
+          tool: name,
+          code: tagged ?? mapped?.code ?? 'tool_failed',
+          provider_status: mapped?.providerStatus ?? null,
+          err_name: error instanceof Error ? error.name : 'unknown',
+        },
+        'ai_tool_failed',
+      );
+      throw error;
+    }
+  };
+}
+
+/**
+ * Nálezy do logu: `cesta=kód`, nic víc.
+ *
+ * Dřív se kódy dolovaly ze zformátovaného řetězce a u nejčastější větve
+ * (odpověď neprošla schématem) vycházelo prázdné pole, takže v logu stálo
+ * `issue_codes: []` a příčina zůstala neznámá. Teď nálezy chodí strojově
+ * z `composeTemplateDraft` a hádat se nemusí.
+ *
+ * Hodnoty polí se NELOGUJÍ. V nich je text e-mailu, tedy obsah uživatele.
+ */
+function issueCodesOf(list: readonly { path: string; code: string }[]): string[] {
+  return list.map((issue) => `${issue.path}=${issue.code}`);
+}
+
 /** Vstup nástroje `compose_template` po validaci schématem `composeTemplateInput`. */
 type ComposeToolInput = {
   kind: 'newsletter' | 'announcement' | 'transactional' | 'reengagement';
@@ -106,7 +159,31 @@ type ComposeToolInput = {
  * - validace dokumentu a Liquidu, protože strukturovaný výstup zaručuje tvar
  *   odpovědi, ne to, že model nenapsal `{% assign %}` do textu.
  */
-function buildComposeTool(ctx: WorkspaceContext, model: unknown) {
+function buildComposeTool(
+  ctx: WorkspaceContext,
+  model: unknown,
+  /**
+   * Zápis spotřeby za skládání. Skládání je SAMOSTATNÉ volání modelu vedle
+   * proudu konverzace, takže jeho tokeny `onFinish` níž nevidí. Dokud se
+   * nezapisovaly, chyběla v přehledu spotřeby celá nejdražší část práce
+   * asistenta: jeden návrh e-mailu je násobně dražší než odpověď v chatu.
+   */
+  recordComposeUsage: (usage: {
+    inputTokens: number;
+    outputTokens: number;
+    /**
+     * Co o skládání hlásí poskytovatel: skutečná účtovaná částka a tokeny
+     * mezipaměti. U poskytovatele, který nic nehlásí, jsou tu samá `null`
+     * a do databáze se v těch sloupcích nezapíše nic. Nula by z „nevíme"
+     * udělala „bylo to zadarmo".
+     */
+    reported: {
+      cost: number | null;
+      cacheReadTokens: number | null;
+      cacheWriteTokens: number | null;
+    };
+  }) => Promise<void>,
+) {
   return async (raw: unknown) => {
     const input = raw as ComposeToolInput;
 
@@ -118,17 +195,28 @@ function buildComposeTool(ctx: WorkspaceContext, model: unknown) {
 
     /*
      * Chybějící profil zastaví skládání JEN tehdy, když si ho model vyžádal
-     * jménem: to znamená, že si identifikátor vymyslel, a tiše skládat s cizí
-     * značkou by bylo horší než chyba.
+     * jménem A projekt nějaké profily má: pak si model identifikátor vymyslel
+     * a tiše složit e-mail s jinou značkou téhož projektu by bylo horší než
+     * chyba.
      *
-     * Když si o profil nikdo neřekl a projekt žádný nemá, skládá se
-     * s neutrální výchozí paletou. Extrakce značky zatím nemá kompoziční kořen
-     * (viz `wiring.test.ts`), takže PRÁZDNÁ TABULKA PROFILŮ JE BĚŽNÝ STAV, ne
-     * výjimka. Kdyby se na ní skládání zastavilo, byl by asistent zapojený
-     * a přesto by nikdy nic nevygeneroval, což je přesně nález I72.
+     * KDYŽ PROJEKT NEMÁ ANI JEDEN PROFIL, ŽÁDNÁ ZÁMĚNA HROZIT NEMŮŽE a skládá
+     * se s neutrální výchozí paletou, přesně jako když si o profil nikdo
+     * neřekne. Naměřeno klikáním 3. 8. 2026: model si na prázdné tabulce
+     * vymyslel `brandProfileId: "00000000-0000-0000-0000-000000000000"`,
+     * nástroj spadl na `ai_brand_profile_missing`, asistent odpověděl větou
+     * „Pro vytvoření e-mailu potřebuji nejprve dostupný brand profil projektu"
+     * a panel se beze slova vrátil na prázdný formulář. Extrakce značky zatím
+     * nemá kompoziční kořen (viz `wiring.test.ts`), takže PRÁZDNÁ TABULKA
+     * PROFILŮ JE BĚŽNÝ STAV; kdyby na ní skládání padalo, byl by asistent
+     * zapojený a přesto by nikdy nic nevygeneroval, což je nález I72.
      */
     if (profile === null && input.brandProfileId !== undefined) {
-      throw Object.assign(new Error('brand profile missing'), { code: 'ai_brand_profile_missing' });
+      const existing = await withWorkspace(ctx, (tx) => listBrandProfiles(tx));
+      if (existing.length > 0) {
+        throw Object.assign(new Error('brand profile missing'), {
+          code: 'ai_brand_profile_missing',
+        });
+      }
     }
     const brand = {
       palette: profile?.palette ?? DEFAULT_PALETTE,
@@ -176,20 +264,66 @@ function buildComposeTool(ctx: WorkspaceContext, model: unknown) {
       {
         generateStructured,
         isNoObjectGenerated,
+        // Konkrétní důvody neshody se schématem. Jdou do opravného kola
+        // i do logu; bez nich obojí jen hádá.
+        outputIssuesOf,
         buildBaseTemplate: (params) =>
           buildBaseTemplate(params as Parameters<typeof buildBaseTemplate>[0]),
+        /*
+         * SKLÁDÁNÍ ZASTAVÍ JEN NÁLEZ SE ZÁVAŽNOSTÍ `error`, ne varování.
+         *
+         * Dokud se počítala i varování, nemohl asistent uspět v projektu bez
+         * značky: `buildBaseTemplate` složí neutrální paletu, ta má na dvou
+         * místech nízký kontrast, validátor to hlásí jako `content_low_contrast`
+         * se `severity: "warning"` a skládání na tom padalo. Naměřeno 3. 8. 2026
+         * deterministicky, bez modelu: `DEFAULT_PALETTE` plus `buildBaseTemplate`
+         * dá dva nálezy, oba varování, oba na barvě textu.
+         *
+         * Varování patří do lišty nálezů v editoru, kde je uživatel uvidí
+         * a rozhodne se. Zahodit kvůli nim hotový návrh znamená nevygenerovat
+         * nikdy nic, a to je horší než návrh, který si žádá doladit barvu.
+         */
         validateDocument: (doc) => {
-          const errors = issuesOf(doc).filter((issue) => !issue.code.startsWith('liquid_'));
+          const errors = issuesOf(doc).filter(
+            (issue) => !issue.code.startsWith('liquid_') && issue.severity === 'error',
+          );
           return { ok: errors.length === 0, errors };
         },
         validateLiquid: (doc) => {
-          const errors = issuesOf(doc).filter((issue) => issue.code.startsWith('liquid_'));
+          const errors = issuesOf(doc).filter(
+            (issue) => issue.code.startsWith('liquid_') && issue.severity === 'error',
+          );
           return { ok: errors.length === 0, errors };
         },
       },
     );
 
+    /*
+     * Zapisuje se PŘED rozhodnutím o úspěchu. Neúspěšné skládání spálí tokeny
+     * v obou kolech úplně stejně jako úspěšné a poskytovatel je vyfakturuje;
+     * kdyby se zapisovalo až po `if (!result.ok)`, mizela by z přehledu právě
+     * ta spotřeba, která uživateli nic nepřinesla.
+     */
+    await recordComposeUsage(result.usage);
+
     if (!result.ok) {
+      /*
+       * Kódy nálezů z naší vlastní validace. Bez nich je `ai_invalid_output`
+       * v logu slepá ulička: ví se, že to neprošlo, ale ne co konkrétně model
+       * napsal špatně, a bez toho nejde ani opravit prompt, ani schéma.
+       *
+       * Logují se JEN kódy nálezů, ne jejich texty: v textech jsou úryvky
+       * odpovědi modelu, tedy obsah e-mailu.
+       */
+      getLogger().error(
+        {
+          route: PATH,
+          tool: 'compose_template',
+          code: result.code,
+          issue_codes: issueCodesOf(result.issueList),
+        },
+        'ai_compose_invalid_output',
+      );
       throw Object.assign(new Error('compose_template produced invalid output'), {
         code: result.code,
       });
@@ -239,7 +373,31 @@ function compactResponseMessages(messages: unknown): unknown {
 
 const app = new Hono<ApiEnv>();
 
-app.onError((err, c) => problemResponseFor(c, err));
+/**
+ * KAŽDÉ selhání téhle cesty musí být v logu, ne jen chyby 5xx.
+ *
+ * Tenhle Hono app nemá pozorovací middleware, který `/api/v1/**` řádek
+ * `msg:"request"` zapisuje, a `problemResponseFor` loguje až od stavu 500.
+ * Skutečná vada tím byla neviditelná: požadavek končil na 404 z `authenticate()`
+ * (chyběla hlavička `X-Workspace-Id`) a v logu po něm nezbyl jediný řádek,
+ * takže se příčina hledala v adaptéru k poskytovateli.
+ */
+app.onError((err, c) => {
+  const known = err instanceof ApiError ? err : null;
+  // Syrová chyba se sem NEPÍŠE: u chyb 5xx ji pod týmž request_id zaloguje
+  // `problemResponseFor` a u chyb od poskytovatele nese tělo odpovědi, které
+  // může obsahovat kusy promptu. Stačí kód a stav.
+  getLogger().error(
+    {
+      route: PATH,
+      code: known?.code ?? 'internal_error',
+      status: known?.status ?? 500,
+      err_name: err instanceof Error ? err.name : 'unknown',
+    },
+    'ai_chat_failed',
+  );
+  return problemResponseFor(c, err);
+});
 
 app.use('*', authenticate());
 
@@ -323,12 +481,34 @@ app.post(PATH, async (c) => {
     language: 'cs',
     userUrls,
     fieldCatalog,
-    startBrandExtraction: async () => unavailableTool('extract_brand'),
+    startBrandExtraction: loggedTool('extract_brand', async () => unavailableTool('extract_brand')),
     // Skládá se z modelu téže konverzace, ne z druhého klíče: kritérium 7b
     // platí i pro nástroje, ne jen pro hlavní odpověď.
-    composeTemplate: buildComposeTool(ctx, prepared.handle.model),
-    writeCopy: async () => unavailableTool('write_copy'),
-    suggestSubject: async () => unavailableTool('suggest_subject'),
+    composeTemplate: loggedTool(
+      'compose_template',
+      buildComposeTool(ctx, prepared.handle.model, (usage) =>
+        withWorkspace(ctx, (tx) =>
+          recordUsage(
+            {
+              workspaceId: ctx.workspaceId,
+              provider: prepared.handle.providerId,
+              model: prepared.handle.modelId,
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              failed: false,
+              day: new Date().toISOString().slice(0, 10),
+              // Skládání je samostatné volání modelu, takže má i vlastní
+              // účtovanou částku. Jednotku k ní přiřadí `recordUsage` podle
+              // poskytovatele; tady se o měně nerozhoduje.
+              reported: usage.reported,
+            },
+            { upsertDailyUsage: (input) => repo.upsertDailyUsage(tx, input) },
+          ),
+        ),
+      ),
+    ),
+    writeCopy: loggedTool('write_copy', async () => unavailableTool('write_copy')),
+    suggestSubject: loggedTool('suggest_subject', async () => unavailableTool('suggest_subject')),
   });
 
   // Konverzace vzniká až tady: kdyby se založila dřív, zůstal by po neúspěšné
@@ -357,6 +537,68 @@ app.post(PATH, async (c) => {
     { role: 'user' as const, content: incomingText },
   ];
 
+  /*
+   * DOHLEDATELNOST SELHÁNÍ. Bez tohohle skončí chyba jen v proudu ke klientovi:
+   * v logu serveru po ní nezbyde nic a `ai_provider_credentials.last_error_code`
+   * zůstane prázdný, takže ani obrazovka nastavení AI o problému neví a klíč
+   * se tam tváří jako v pořádku.
+   *
+   * Do logu jde NÁŠ kód a číslo stavového kódu od poskytovatele. Tělo odpovědi
+   * poskytovatele nikoliv: může nést kusy promptu nebo identifikátory účtu,
+   * a `mapProviderError` ho proto do výsledku vůbec nepouští.
+   */
+  const codeOfFailure = (error: unknown): string => mapProviderError(error).code;
+
+  const noteFailure = async (error: unknown): Promise<void> => {
+    const mapped = mapProviderError(error);
+    getLogger().error(
+      {
+        route: PATH,
+        code: mapped.code,
+        provider_status: mapped.providerStatus ?? null,
+        provider: prepared.handle.providerId,
+        model: prepared.handle.modelId,
+        credential_id: prepared.credentialId,
+        workspace_id: ctx.workspaceId,
+        // Jméno a hláška chyby, NE celý objekt: ten u chyb poskytovatele nese
+        // `responseBody`, a v něm mohou být kusy promptu nebo účet uživatele.
+        err_name: error instanceof Error ? error.name : 'unknown',
+      },
+      'ai_request_failed',
+    );
+    try {
+      await withWorkspace(ctx, (tx) =>
+        repo.markCredentialError(tx, prepared.credentialId, mapped.code),
+      );
+      await withWorkspace(ctx, (tx) =>
+        recordUsage(
+          {
+            workspaceId: ctx.workspaceId,
+            provider: prepared.handle.providerId,
+            model: prepared.handle.modelId,
+            inputTokens: 0,
+            outputTokens: 0,
+            failed: true,
+            day: new Date().toISOString().slice(0, 10),
+            /*
+             * U SELHÁNÍ SE ŽÁDNÁ ČÁSTKA NEVYMÝŠLÍ. Požadavek, který skončil
+             * chybou, poskytovatel buď neúčtoval vůbec, nebo jeho odpověď
+             * vůbec nedorazila, takže o ceně nevíme nic. Zapsat sem nulu by
+             * znamenalo tvrdit „stálo to nula", což je jiné tvrzení než
+             * „nevíme", a v součtu za den by to navíc přebilo NULL a udělalo
+             * ze dne s chybou den s doloženou nulovou fakturou.
+             */
+            reported: undefined,
+          },
+          { upsertDailyUsage: (input) => repo.upsertDailyUsage(tx, input) },
+        ),
+      );
+    } catch (writeError) {
+      // Zápis stavu klíče nesmí přebít původní chybu. Zůstane aspoň v logu.
+      getLogger().error({ route: PATH, err: writeError }, 'ai_failure_note_failed');
+    }
+  };
+
   const result = streamConversation({
     model: prepared.handle.model,
     // `WorkspaceContext` nese jen `workspaceId` a aktéra, jméno projektu ne.
@@ -368,6 +610,11 @@ app.post(PATH, async (c) => {
     maxRetries: 2,
     stepLimit: MAX_TOOL_STEPS,
     abortSignal: c.req.raw.signal,
+    onError: async (event) => {
+      // Přerušení uživatelem není selhání klíče a nesmí ho označit za vadný.
+      if (c.req.raw.signal.aborted) return;
+      await noteFailure(event.error);
+    },
     onFinish: async (event) => {
       // Rozepsaná zpráva se uloží i při přerušení, aby konverzace dávala smysl.
       const finishReason = c.req.raw.signal.aborted ? 'aborted' : event.finishReason;
@@ -390,6 +637,12 @@ app.post(PATH, async (c) => {
             outputTokens: event.usage.outputTokens,
             failed: false,
             day: new Date().toISOString().slice(0, 10),
+            /*
+             * Skutečná účtovaná částka a tokeny mezipaměti, sečtené přes
+             * všechny kroky agentní smyčky. Vytáhl je adaptér nad AI SDK,
+             * protože jen on smí sáhnout na `providerMetadata`.
+             */
+            reported: event.reported,
           },
           { upsertDailyUsage: (input) => repo.upsertDailyUsage(tx, input) },
         );
@@ -397,7 +650,12 @@ app.post(PATH, async (c) => {
     },
   });
 
-  return result.toUIMessageStreamResponse();
+  /*
+   * Klientovi jde NÁŠ kód chyby, ne výchozí věta AI SDK „An error occurred.".
+   * Z té panel nepozná nic a spadl by na obecnou hlášku, tedy přesně na to,
+   * co tahle oprava odstraňuje.
+   */
+  return result.toUIMessageStreamResponse({ onError: codeOfFailure });
 });
 
 export const POST = handle(app);

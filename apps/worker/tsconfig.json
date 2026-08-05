@@ -1,5 +1,21 @@
 {
   "extends": "@mlain/config/tsconfig/node.json",
-  "compilerOptions": { "rootDir": "." },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  // `jsx` je tu proto, že worker skrz fronty vtahuje `@mlain/emails`, a ten
+  // skládá e-mailové HTML pomocí JSX. Sám worker žádné JSX nepíše a psát nebude.
+  //
+  // Odhalilo se to až ve chvíli, kdy do rejstříku obsluh přibyly fronty domény
+  // assetů a značky: do té doby se `packages/emails/src/text/emit.ts` do grafu
+  // workeru nedostal a chyba TS6142 („Module was resolved to .tsx, but --jsx is
+  // not set") nevznikla. Není to tedy nová vada, jen nově dosažitelná.
+  //
+  // Alternativa, rozdělit `rich-text.tsx` na čistou a JSX část, tady NEDÁVÁ
+  // smysl: `varOutput` s vykreslováním souvisí a dělit soubor kvůli nastavení
+  // spotřebitele znamená ohýbat návrh podle konfigurace. U `ctx` a `visibility`
+  // se dělilo proto, že tam React vůbec nepatřil.
+  "compilerOptions": { "rootDir": ".", "jsx": "react-jsx" },
+  // Ambientní deklarace pro `html-to-text` ze stejného důvodu jako v `apps/web`:
+  // `@mlain/emails` se vystavuje jako ZDROJOVÉ .ts a .tsx bez buildu, takže jeho
+  // závislosti bez typů padají na TS7016 v každém spotřebiteli zvlášť. Do
+  // programu se ten soubor dostane jedině přes `include`.
+  "include": ["src/**/*.ts", "test/**/*.ts", "../../packages/emails/src/external/*.d.ts"]
 }

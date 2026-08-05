@@ -63,6 +63,7 @@ export {
 export { pauseCampaign, pauseAllForProvider } from './control/pause';
 export { resumeCampaign } from './control/resume';
 export { cancelCampaign } from './control/cancel';
+export { releaseCampaignNow } from './control/release-now';
 export { resolveUndoWindow, computeReleaseAt, undoState, type UndoState } from './control/undo';
 export {
   schedulerHandler,
@@ -96,6 +97,30 @@ export {
 
 // Datová vrstva. Vystavuje se schválně: doménové služby ostatních plánů (P07 při
 // odhlášení, P11 při výmazu) ji volají místo vlastního UPDATE nad `messages`.
+// Fáze J: kompilace kampaně. Jediná cesta, kterou vzniká `compiled_html`,
+// `compiled_text`, `compile_meta` a `campaign_links`.
+export {
+  computeCompiledHash,
+  normalizeCompileOutput,
+  assertCompileMetaMatches,
+  renderPlanFrom,
+  isStoredCompileMeta,
+  type StoredCompileMeta,
+  type CampaignCompilation,
+} from './compile';
+export {
+  compileCampaign,
+  renderPlanForCampaign,
+  assertCompilationCurrent,
+} from './compile-service';
+export { applyTemplateToCampaign, type ApplyTemplateResult } from './template-apply';
+export {
+  replaceCampaignLinks,
+  listCampaignLinks,
+  type CompiledLink,
+  type CampaignLinkRow,
+} from './repo/links';
+
 export { rawSql } from './repo/raw-sql';
 export {
   getCampaign,
@@ -113,6 +138,12 @@ export {
   reconcileDeliveryCounters,
   isOutboxDrained,
 } from './repo/counters';
+export {
+  readLiveHandover,
+  readLiveDelivery,
+  type LiveHandover,
+  type LiveDelivery,
+} from './repo/live-progress';
 export { countWithTimeout, sampleAudience } from './repo/audience';
 export {
   startMaterialization,

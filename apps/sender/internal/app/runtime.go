@@ -10,6 +10,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/mail"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/nc-mill/mlain/apps/sender/internal/retry"
 	"github.com/nc-mill/mlain/apps/sender/internal/throttle"
 	"github.com/nc-mill/mlain/apps/sender/internal/token"
+	"github.com/nc-mill/mlain/apps/sender/internal/version"
 )
 
 // ErrProviderNotSending znamená, že provider je v databázi zablokovaný nebo
@@ -53,8 +55,10 @@ type App struct {
 	breaker   *breaker.Breaker
 	inflight  *Inflight
 	loop      *ClaimLoop
-	metrics   *obs.Metrics
-	httpSrv   *http.Server
+	// nonCampaignLoop běží ve vlastní goroutině a vlastním krátkém intervalu.
+	nonCampaignLoop *NonCampaignLoop
+	metrics         *obs.Metrics
+	httpSrv         *http.Server
 
 	renderers chan *Renderer
 	credFails sync.Map
@@ -133,11 +137,14 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 		Build:      a.buildDispatcher,
 	})
 
-	a.loop = NewClaimLoop(store, ClaimOptions{
-		BatchSize:       cfg.BatchSize,
-		ClaimTTLSeconds: cfg.ClaimTTLSeconds,
-		FilterBatch:     a.filterSuppressed,
-	})
+	claimOpts := ClaimOptions{
+		BatchSize:            cfg.BatchSize,
+		ClaimTTLSeconds:      cfg.ClaimTTLSeconds,
+		NonCampaignBatchSize: cfg.NonCampaignBatchSize,
+		FilterBatch:          a.filterSuppressed,
+	}
+	a.loop = NewClaimLoop(store, claimOpts)
+	a.nonCampaignLoop = NewNonCampaignLoop(store, claimOpts)
 
 	// Jedna sada rendererů na worker, ne na kampaň.
 	a.renderers = make(chan *Renderer, cfg.Concurrency)
@@ -277,6 +284,23 @@ func fingerprint(plain []byte) string {
 // Run odbaví životní cyklus procesu a vrátí exit kód. Ten je při řízeném
 // ukončení vždycky 0.
 func (a *App) Run(ctx context.Context) int {
+	// Startovní řádek je POVINNÝ, ne ozdoba. Bez něj byl log běžícího senderu
+	// prázdný soubor, takže z něj nešlo poznat ani to, jestli proces vůbec
+	// naběhl, jestli má správnou databázi a jestli si vyzvedává zprávy. Přesně
+	// tenhle stav stál čtyři dny hledání, proč neodešel jediný e-mail.
+	// Do řádku jde jen konfigurace, nikdy žádné tajemství.
+	a.log.Info("sender startuje",
+		"version", version.Get(),
+		"sender_id", a.cfg.SenderID,
+		"concurrency", a.cfg.Concurrency,
+		"batch_size", a.cfg.BatchSize,
+		"poll_interval", a.cfg.PollInterval().String(),
+		"claim_ttl_seconds", a.cfg.ClaimTTLSeconds,
+		"max_attempts", a.cfg.MaxAttempts,
+		"health_port", a.cfg.HealthPort,
+		"tracking_domain", a.cfg.TrackingDomain,
+	)
+
 	// Recovery pass běží jednorázově při startu, PŘED spuštěním claimeru.
 	// O své předchozí inkarnaci sender ví jistě, že je mrtvá.
 	if n, err := a.store.RecoveryPass(ctx); err != nil {
@@ -287,6 +311,10 @@ func (a *App) Run(ctx context.Context) int {
 
 	workCtx, cancelWork := context.WithCancel(ctx)
 	jobs := make(chan Job, 2*a.cfg.Concurrency)
+	// Zprávy mimo kampaň mají VLASTNÍ kanál a vlastní workery. Sdílený kanál
+	// by problém nevyřešil: má kapacitu 2*Concurrency a při běžící rozesílce je
+	// trvale plný, takže by se na něm reset hesla blokoval za kampaňovou dávkou.
+	priority := make(chan Job, 2*a.cfg.NonCampaignConcurrency)
 	var workers sync.WaitGroup
 
 	for i := 0; i < a.cfg.Concurrency; i++ {
@@ -298,12 +326,22 @@ func (a *App) Run(ctx context.Context) int {
 			}
 		}()
 	}
+	for i := 0; i < a.cfg.NonCampaignConcurrency; i++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for job := range priority {
+				a.process(workCtx, job)
+			}
+		}()
+	}
 
 	var background sync.WaitGroup
-	background.Add(3)
+	background.Add(4)
 	go func() { defer background.Done(); a.runReaper(workCtx) }()
 	go func() { defer background.Done(); a.runHeartbeat(workCtx) }()
 	go func() { defer background.Done(); a.runClaimer(ctx, jobs) }()
+	go func() { defer background.Done(); a.runNonCampaignClaimer(ctx, priority) }()
 
 	<-ctx.Done()
 	a.log.Info("přišel signál, začíná řízené ukončení")
@@ -347,6 +385,37 @@ func (a *App) runClaimer(ctx context.Context, jobs chan<- Job) {
 		}); err != nil && ctx.Err() == nil {
 			a.log.Error("claim selhal", "error", err.Error())
 			a.metrics.DBErrors.WithLabelValues("claim").Inc()
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// runNonCampaignClaimer je samostatná smyčka pro zprávy mimo kampaň.
+//
+// Interval je vlastní a krátký. Když dávka nebyla prázdná, jde se hned znovu
+// bez čekání: nakupené transakční zprávy se tím rozeberou tempem odesílání,
+// ne tempem tikeru.
+func (a *App) runNonCampaignClaimer(ctx context.Context, jobs chan<- Job) {
+	defer close(jobs)
+	ticker := time.NewTicker(a.cfg.NonCampaignPollInterval())
+	defer ticker.Stop()
+	for {
+		claimed, err := a.nonCampaignLoop.Tick(ctx, func(c context.Context, job Job) {
+			select {
+			case jobs <- job:
+			case <-c.Done():
+			}
+		})
+		if err != nil && ctx.Err() == nil {
+			a.log.Error("claim zpráv mimo kampaň selhal", "error", err.Error())
+			a.metrics.DBErrors.WithLabelValues("claim_non_campaign").Inc()
+		}
+		if claimed > 0 && ctx.Err() == nil {
+			continue
 		}
 		select {
 		case <-ctx.Done():
@@ -628,6 +697,14 @@ func (a *App) writeSent(ctx context.Context, msg outbox.Message, providerMessage
 		log.Warn("claim_lost_after_dispatch")
 		return
 	}
+	// Úspěch se loguje na Info. Bez tohohle řádku nešlo z logu poznat rozdíl
+	// mezi „sender nic nedělá" a „sender odesílá a všechno prochází".
+	// Adresa příjemce se NIKDY neloguje, jen její otisk.
+	log.Info("zpráva odeslána",
+		"provider_kind", kind,
+		"provider_message_id", providerMessageID,
+		"recipient_hash", obs.HashEmail(msg.Email),
+	)
 	a.metrics.MessagesDispatched.WithLabelValues(kind, "sent").Inc()
 }
 
@@ -668,14 +745,71 @@ func (a *App) applyVerdict(ctx context.Context, msg outbox.Message,
 		limiter.Throttled()
 		a.metrics.ThrottleEvents.WithLabelValues(resolved.Kind).Inc()
 	}
+
+	// Odmítnutí providerem se MUSÍ objevit v logu, ne jen ve sloupci error_code.
+	// Dokud tenhle řádek chyběl, sender zamítal každou zprávu a jeho log zůstával
+	// prázdný, takže jedinou stopou byl řádek v databázi, do kterého se nikdo
+	// nedíval. `explain` je věta pro člověka, `provider_code` doslovná odpověď
+	// provideru; podle obojího se pozná, co konkrétně opravit.
+	logResult := log.Warn
+	if outcome == OutcomeFatal {
+		logResult = log.Error
+	}
+	logResult("odeslání zprávy neprošlo",
+		"outcome", outcome.String(),
+		"code", code,
+		"class", v.Class.String(),
+		"provider_kind", resolved.Kind,
+		"provider_code", v.ProviderCode,
+		// Věta od provideru s zamaskovanými adresami. U SES je často jediné místo,
+		// kde stojí, KTERÁ identita neprošla a ve KTERÉM regionu.
+		"provider_detail", v.ProviderDetail,
+		"explain", errcatalog.Explain(code),
+	)
+
 	a.writeResult(ctx, msg, outcome, code, v.ProviderCode, log)
 	a.metrics.MessagesDispatched.WithLabelValues(resolved.Kind, outcome.String()).Inc()
 
 	if outcome == OutcomeFatal && a.breaker.Fatal(msg.CampaignID) {
 		pauseCode := errcatalog.PauseCode(v.Code)
-		a.pause(ctx, msg.CampaignID, pauseCode, v.Code+": "+v.ProviderCode, log)
+		a.pause(ctx, msg.CampaignID, pauseCode, pauseDetail(v.Code, v.ProviderCode, v.ProviderDetail), log)
 		a.metrics.CircuitBreakerTrip.WithLabelValues(pauseCode).Inc()
 	}
+}
+
+// pauseDetail složí důvod pauzy tak, aby ho přečetl ČLOVĚK.
+//
+// Registr pause_reason.code je schválně hrubý (viz errcatalog.PauseCode): kód
+// řídí chování a konkrétní příčina patří do detailu. Jenže detail se dosud
+// skládal jako "kód: odpověď provideru", tedy `provider_event_config_missing:
+// NotFoundException`, a to uživateli neřekne nic. Kampaň se přitom v rozhraní
+// ukáže pod hrubým kódem `provider_unavailable` s větou „odesílací služba
+// neodpovídá", což je u téhle příčiny rovnou nepravda: Amazon odpověděl,
+// jen v účtu chybí konfigurační sada.
+//
+// Pořadí je vysvětlení, pak technická stopa v závorce. Vysvětlení je to, co
+// uživatel potřebuje; stopa je to, co potřebuje podpora. Neznámý kód vysvětlení
+// nemá, takže zůstane původní tvar a nic se nevymýšlí.
+func pauseDetail(code, providerCode, providerDetail string) string {
+	explain := errcatalog.Explain(code)
+	if explain == "" {
+		explain = code
+	}
+
+	// Věta od provideru má PŘEDNOST před obecným vysvětlením kódu, protože mluví
+	// o konkrétním případu: „identita ***@brevio.cz neprošla v regionu EU-WEST-1"
+	// je něco jiného než „adresa nejspíš není ověřená". Obecné vysvětlení zůstává
+	// za ní, aby si uživatel tu konkrétní větu měl podle čeho přeložit.
+	parts := []string{explain}
+	if providerDetail != "" {
+		parts = []string{explain, "Provider odpověděl: " + providerDetail}
+	}
+
+	stopa := code
+	if providerCode != "" {
+		stopa = code + ", " + providerCode
+	}
+	return strings.Join(parts, " ") + " (" + stopa + ")"
 }
 
 // pause pozastaví kampaň a zapomene ji v cache i v pojistce.

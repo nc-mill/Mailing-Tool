@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it, vi } from 'vitest';
 import csAuth from '../../../../../packages/i18n/messages/cs/auth.json';
-import type { ActionState } from '@/lib/feedback/action-result';
+import type { ActionFailure, ActionState } from '@/lib/feedback/action-result';
 import { LoginForm } from './login-form';
 
 const messages = { auth: csAuth };
@@ -15,7 +15,7 @@ function problemState(
   code: string,
   status: number,
   extra: Record<string, unknown> = {},
-): ActionState {
+): ActionFailure {
   return {
     status: 'error',
     channel: 'inlineBlock',
@@ -79,6 +79,30 @@ describe('LoginForm', () => {
   it('chybový blok drží kód v data-error-code', () => {
     const { container } = renderForm(problemState('invalid_credentials', 401));
     expect(container.querySelector('[data-error-code="invalid_credentials"]')).not.toBeNull();
+  });
+
+  /** Tatáž vada jako u průvodce: po chybné hlášce nesmí zmizet e-mail. */
+  it('po chybě nechá e-mail vyplněný a heslo vyprázdní', async () => {
+    const action = vi.fn(
+      async (_previous: ActionState, formData: FormData): Promise<ActionState> => ({
+        ...problemState('invalid_credentials', 401),
+        values: { email: String(formData.get('email') ?? '') },
+      }),
+    );
+
+    render(
+      <NextIntlClientProvider locale="cs" messages={messages} timeZone="Europe/Prague">
+        <LoginForm action={action} />
+      </NextIntlClientProvider>,
+    );
+
+    await userEvent.type(screen.getByLabelText('E-mail'), 'petr@example.com');
+    await userEvent.type(screen.getByLabelText('Heslo'), 'spatne-heslo');
+    await userEvent.click(screen.getByRole('button', { name: 'Přihlásit se' }));
+
+    await screen.findByText('E-mail nebo heslo nesedí');
+    expect(screen.getByLabelText('E-mail')).toHaveValue('petr@example.com');
+    expect(screen.getByLabelText('Heslo')).toHaveValue('');
   });
 
   it('u neznámého kódu ukáže detail ze serveru, ne prázdno', async () => {

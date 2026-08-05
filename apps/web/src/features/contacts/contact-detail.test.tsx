@@ -12,6 +12,31 @@ vi.mock('@mlain/i18n/navigation', () => ({
   useRouter: () => ({ push, refresh, replace: vi.fn(), back: vi.fn() }),
 }));
 
+/**
+ * Serverová akce potvrzení se musí podvrhnout, i když se v testech nevolá.
+ * `ConfirmContactButton` ji importuje, s ní se natáhne HTTP klient a v něm
+ * `import 'server-only'`, které v testovém prostředí shodí CELÝ soubor ještě
+ * před prvním testem („This module cannot be imported from a Client Component
+ * module"). Padá tedy import, ne tvrzení, a chybová hláška na skutečnou
+ * příčinu vůbec neukazuje. Stejný mock má z téhož důvodu `contacts-table.test.tsx`.
+ */
+const confirmContactsAction = vi.fn().mockResolvedValue({
+  status: 'success',
+  outcomes: [
+    {
+      id: 'c-1',
+      fromStatus: 'unsubscribed',
+      changed: true,
+      listsConfirmed: 1,
+      suppressionBlocking: null,
+    },
+  ],
+});
+
+vi.mock('./confirm-actions', () => ({
+  confirmContactsAction: (input: unknown) => confirmContactsAction(input),
+}));
+
 const deleteContactAction = vi.fn().mockResolvedValue({ status: 'success' });
 const unsubscribeContactAction = vi.fn().mockResolvedValue({ status: 'success' });
 const exportContactAction = vi.fn().mockResolvedValue({ status: 'success' });
@@ -23,13 +48,23 @@ vi.mock('./actions', () => ({
 }));
 
 const resendConfirmationAction = vi.fn().mockResolvedValue({ status: 'success' });
-const resubscribeAction = vi.fn().mockResolvedValue({ status: 'success' });
 const cancelSnoozeAction = vi.fn().mockResolvedValue({ status: 'success' });
 
 vi.mock('./edit-actions', () => ({
   resendConfirmationAction: (input: unknown) => resendConfirmationAction(input),
-  resubscribeAction: (input: unknown) => resubscribeAction(input),
   cancelSnoozeAction: (input: unknown) => cancelSnoozeAction(input),
+}));
+
+// Serverové akce oslovení se musí odstínit taky, jinak se přes ně načte
+// `@/lib/api-client/mutate` s importem `server-only`, který v testu vyhodí
+// „This module cannot be imported from a Client Component module" a shodí
+// celý soubor ještě před prvním testem.
+const setGreetingAction = vi.fn().mockResolvedValue({ status: 'success' });
+const clearGreetingAction = vi.fn().mockResolvedValue({ status: 'success' });
+
+vi.mock('./greeting-actions', () => ({
+  setGreetingAction: (input: unknown) => setGreetingAction(input),
+  clearGreetingAction: (input: unknown) => clearGreetingAction(input),
 }));
 
 const base: ContactDetailData = {
@@ -38,6 +73,14 @@ const base: ContactDetailData = {
   name: 'Jana Nováková',
   greeting: 'Jano',
   greeting_locked: true,
+  greeting_status: {
+    greeting: 'Jano',
+    first_name: 'Jana',
+    first_name_vocative: 'Jano',
+    vocative_confidence: 'high',
+    vocative_locked: true,
+    locale: 'cs',
+  },
   gender: 'female',
   status: 'active',
   processing_restricted: false,
@@ -57,7 +100,7 @@ beforeEach(() => {
   push.mockClear();
   refresh.mockClear();
   resendConfirmationAction.mockClear();
-  resubscribeAction.mockClear();
+  confirmContactsAction.mockClear();
   cancelSnoozeAction.mockClear();
   deleteContactAction.mockClear();
   unsubscribeContactAction.mockClear();
@@ -71,6 +114,7 @@ function renderDetail(overrides: Partial<ContactDetailData> = {}) {
       workspacePath="/w/eshop"
       workspaceId="w-1"
       contact={{ ...base, ...overrides }}
+      workspaceLocale="cs"
     />,
   );
 }
@@ -84,7 +128,37 @@ describe('ContactDetail', () => {
     const block = screen.getByTestId('contact-restricted');
     expect(block).toHaveTextContent('Tenhle kontakt má omezené zpracování');
     expect(block).toHaveTextContent('vypadl ze všech segmentů');
-    expect(screen.getByRole('link', { name: 'Zobrazit žádost' })).toBeInTheDocument();
+  });
+
+  /**
+   * Blok o omezeném zpracování odkazoval na `settings/privacy`, což je obrazovka,
+   * která v aplikaci není a nechystá se: souhlasy a GDPR jsou odložené. Odkaz proto
+   * vracel 404 a sliboval funkci, kterou produkt nemá (zrušit omezení nejde ani přes
+   * API, ani přes CLI). Místo něj je věta o tom, co s tím uživatel může udělat.
+   */
+  it('u omezeného zpracování neslibuje neexistující obrazovku, ale řekne, co dělat', () => {
+    renderDetail({
+      processing_restricted: true,
+      restriction_requested_at: '2026-07-18T08:00:00.000Z',
+    });
+    const block = screen.getByTestId('contact-restricted');
+    expect(block).toHaveTextContent('Zrušit omezení zatím v aplikaci nejde');
+    expect(screen.queryByRole('link', { name: 'Zobrazit žádost' })).toBeNull();
+    expect(
+      block.querySelector('a[href*="/settings/privacy"]'),
+      'odkaz na settings/privacy vede na 404, ta obrazovka neexistuje',
+    ).toBeNull();
+  });
+
+  it('u omezeného zpracování odkazuje do auditu na záznam o tomhle kontaktu', () => {
+    renderDetail({
+      processing_restricted: true,
+      restriction_requested_at: '2026-07-18T08:00:00.000Z',
+    });
+    expect(screen.getByRole('link', { name: 'Zobrazit záznam v auditu' })).toHaveAttribute(
+      'href',
+      '/w/eshop/settings/audit?target_id=c-1',
+    );
   });
 
   it('bez omezeného zpracování žádný takový blok není', () => {
@@ -116,9 +190,90 @@ describe('ContactDetail', () => {
   it('u zamčeného oslovení vysvětlí zámek slovem, ne jen ikonou', () => {
     renderDetail();
     expect(screen.getByText('Jano')).toBeInTheDocument();
-    expect(
-      screen.getByLabelText('Oslovení potvrdil člověk, nástroj ho nepřepíše.'),
-    ).toBeInTheDocument();
+    // Visací zámek nahradil odznak se slovem a celou větou. Ikona sama říkala jen
+    // „někdo to potvrdil"; neuměla rozlišit odhad od tvaru ze slovníku ani ohlásit,
+    // že jazyk kontaktu 5. pád vůbec nemá.
+    expect(screen.getByText('Potvrzeno ručně')).toBeInTheDocument();
+    expect(screen.getByText(/Tvar potvrdil člověk/)).toBeInTheDocument();
+  });
+
+  it('u odhadnutého oslovení nabídne cestu do fronty Kontrola oslovení', () => {
+    renderDetail({
+      greeting_status: {
+        greeting: 'Dobrý den, Nikolo',
+        first_name: 'Nikola',
+        first_name_vocative: 'Nikolo',
+        vocative_confidence: 'low',
+        vocative_locked: false,
+        locale: 'cs',
+      },
+    });
+    expect(screen.getByText('Odhad')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Zkontrolovat nejistá oslovení' })).toHaveAttribute(
+      'href',
+      '/w/eshop/contacts/vocative-review',
+    );
+  });
+
+  /** Přesně ten stav, který uživatel nahlásil: uložený tvar je 1. pád, a nebylo to vidět. */
+  it('u kontaktu v jazyce bez 5. pádu to řekne rovnou', () => {
+    renderDetail({
+      greeting_status: {
+        greeting: 'Hello Petr',
+        first_name: 'Petr',
+        first_name_vocative: 'Petr',
+        vocative_confidence: 'high',
+        vocative_locked: false,
+        locale: 'en',
+      },
+    });
+    expect(screen.getByText('Bez 5. pádu')).toBeInTheDocument();
+    expect(screen.getByText(/ve kterém se 5. pád nepoužívá/)).toBeInTheDocument();
+  });
+
+  /**
+   * DRUHÁ HLÁŠENÁ VADA: „když ho uložím a zamknu, tak se mi tam zobrazí Oslovujeme
+   * 'Hello Petře'." Odznak v tu chvíli říká „Potvrzeno ručně" a rozdíl jazyků,
+   * kvůli kterému je v české větě anglické „Hello", není odnikud vidět.
+   */
+  it('rozdíl mezi jazykem kontaktu a jazykem projektu vysvětlí i u zamknutého tvaru', () => {
+    renderDetail({
+      greeting: 'Hello Petře',
+      greeting_locked: true,
+      greeting_status: {
+        greeting: 'Hello Petře',
+        first_name: 'Petr',
+        first_name_vocative: 'Petře',
+        vocative_confidence: 'high',
+        vocative_locked: true,
+        locale: 'en',
+      },
+    });
+    const mismatch = screen.getByTestId('greeting-locale-mismatch');
+    expect(mismatch).toHaveTextContent(/angličtin/i);
+    expect(mismatch).toHaveTextContent(/češtin/i);
+    expect(screen.getByRole('link', { name: 'Sjednotit jazyk kontaktů' })).toHaveAttribute(
+      'href',
+      '/w/eshop/settings/general',
+    );
+  });
+
+  it('u kontaktu se stejným jazykem jako projekt se o jazyku nic nepíše', () => {
+    renderDetail();
+    expect(screen.queryByTestId('greeting-locale-mismatch')).not.toBeInTheDocument();
+  });
+
+  it('nabídne ruční přepis tvaru a uloží ho zamknutý', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    await user.click(screen.getByRole('button', { name: 'Upravit oslovení' }));
+    const field = screen.getByLabelText('Jméno v 5. pádu');
+    await user.clear(field);
+    await user.type(field, 'Janičko');
+    await user.click(screen.getByRole('button', { name: 'Uložit a zamknout' }));
+    expect(setGreetingAction).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'c-1', firstNameVocative: 'Janičko' }),
+    );
   });
 
   it('smazaný kontakt je jen pro čtení a nemá mazací tlačítko', () => {
@@ -127,11 +282,24 @@ describe('ContactDetail', () => {
     expect(screen.queryByRole('button', { name: 'Smazat' })).toBeNull();
   });
 
-  it('má místo pro časovou osu s prázdným stavem, který jmenuje kontakt', () => {
+  /**
+   * Naměřená vada z třídy „napsané, otestované, nezapojené": tohle místo dřív
+   * vykreslovalo natvrdo zástupný prázdný stav a data osy nikdy nenačetlo,
+   * přestože doména, endpoint i samostatná stránka `/contacts/{id}/timeline`
+   * fungovaly. Uživatel viděl „zatím se nic nestalo" u kontaktu, který otevřel
+   * kampaně. Starý test to nechytil, protože tvrdil o zástupném textu.
+   *
+   * Kdyby tenhle test spadl: neupravuj ho zpátky na kontrolu prázdné věty.
+   * Znamená to, že detail zase přestal osu číst.
+   */
+  it('časovou osu doopravdy načítá, místo aby kreslila prázdný stav', () => {
     renderDetail();
     const timeline = screen.getByTestId('contact-timeline');
-    expect(timeline).toHaveTextContent('Zatím se nic nestalo');
-    expect(timeline).toHaveTextContent('Jana Nováková');
+
+    // Komponenta osy si nadpis, filtry i vlastní prázdný stav řeší sama, takže
+    // se tu kontroluje JEN to, že je namontovaná a že si sáhla pro data.
+    expect(timeline.querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(timeline).not.toHaveTextContent('Zatím se nic nestalo');
   });
 
   it('dialog smazání má doslovné znění ze 8.8 části 6 a nabídne stažení dat', async () => {
@@ -257,7 +425,16 @@ describe('akce detailu kontaktu opravdu volají server', () => {
     ).toBeInTheDocument();
   });
 
-  it('přihlásit zpět posílá adresu kontaktu do odhlášeného seznamu', async () => {
+  /**
+   * Naměřená vada: „Přihlásit zpět" volalo `POST /lists/{id}/subscribe`, tedy cestu
+   * pro přihlášení PŘÍJEMCEM. Stavový automat vrací odhlášeného vždycky přes
+   * `pending` s potvrzovacím odkazem, takže rozhraní slíbilo e-mail, ten nedorazil
+   * a kontakt zůstal „Odhlášený". Správce vlastní instalace přitom musí umět vrátit
+   * člověka, který o návrat požádal telefonem.
+   *
+   * Kdyby tenhle test spadl: neupravuj ho tak, aby zase posílal potvrzovací e-mail.
+   */
+  it('přihlásit zpět nejdřív varuje a teprve po potvrzení vrátí kontakt ručně', async () => {
     const user = userEvent.setup();
     renderDetail({
       status: 'unsubscribed',
@@ -265,11 +442,31 @@ describe('akce detailu kontaktu opravdu volají server', () => {
     });
 
     await user.click(screen.getByRole('button', { name: 'Přihlásit zpět' }));
-    expect(resubscribeAction).toHaveBeenCalledWith({
-      workspaceId: 'w-1',
-      listId: 'l-1',
-      email: 'jana@firma.cz',
+
+    // Samotné kliknutí nesmí nic změnit: přepisuje se rozhodnutí příjemce.
+    expect(confirmContactsAction).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('z odběru sám odhlásil');
+    expect(dialog).toHaveTextContent('Žádný potvrzovací e-mail se neposílá.');
+
+    await user.click(screen.getAllByRole('button', { name: 'Přihlásit zpět' }).at(-1)!);
+
+    // Vrací se cestou pro výslovné rozhodnutí správce, ne přihlášením do seznamu.
+    expect(confirmContactsAction).toHaveBeenCalledWith({ workspaceId: 'w-1', ids: ['c-1'] });
+  });
+
+  it('u odhlášeného kontaktu je tlačítko jedno, ne jedno na každý seznam', () => {
+    renderDetail({
+      status: 'unsubscribed',
+      lists: [
+        { id: 'l-1', name: 'Zákazníci', status: 'unsubscribed' },
+        { id: 'l-2', name: 'Novinky', status: 'unsubscribed' },
+      ],
     });
+
+    // Vracení pracuje s kontaktem jako celkem, takže dvě tlačítka by předstírala
+    // výběr, který server nenabízí.
+    expect(screen.getAllByRole('button', { name: 'Přihlásit zpět' })).toHaveLength(1);
   });
 
   it('zrušit pauzu volá akci s identifikátorem kontaktu', async () => {

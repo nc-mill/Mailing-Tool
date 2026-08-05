@@ -63,6 +63,130 @@ describe('readDashboard', () => {
     }
   });
 
+  /**
+   * REGRESE: přehled hlásil „Otevřelo 185,7 %".
+   *
+   * Kampaň jde přes poskytovatele `ses`, od kterého na téhle instalaci nedorazí
+   * ani jedna událost o osudu zprávy (odběr SNS se na `localhost` nepotvrdí).
+   * Doručenost se tedy NEZNÁ, jenže přehled si ji dopočítal jako „odesláno
+   * minus odrazy", a protože odrazy taky neznal, vyšel mu jmenovatel roven
+   * počtu odeslaných. Otevření se přitom měří pixelem nezávisle na
+   * poskytovateli a je jich klidně víc než odeslaných zpráv.
+   *
+   * Míra proto musí být `null`, ne velké číslo, a absolutní počty zůstávají:
+   * ty naměřené jsou.
+   */
+  it('kampaň bez zpětné vazby od služby nedostane míru počítanou z odhadu', async () => {
+    const ws = await seedWorkspace(db);
+    const campaign = await seedCampaign(db, ws.workspaceId, {
+      audienceBuiltAt: new Date(),
+      providerType: 'ses',
+    });
+    await seedCampaignStats(db, ws.workspaceId, campaign.campaignId, {
+      sent: 14,
+      delivered: 0,
+      opens_unique: 26,
+      clicks_unique_human: 3,
+    });
+
+    const result = await readDashboard(createTestTx(db), testContext(ws.workspaceId), {
+      periodDays: 30,
+      timezone: 'UTC',
+      cache: new TileCache(),
+    });
+
+    const opens = result.tiles.open_rate;
+    expect(opens.status).toBe('ok');
+    if (opens.status === 'ok') {
+      expect(opens.data.rate).toBeNull();
+      expect(opens.data.opens).toBe(26);
+      expect(opens.data.unknown).toEqual({ campaigns: 1, sent: 14 });
+    }
+    const clicks = result.tiles.click_rate;
+    if (clicks.status === 'ok') {
+      expect(clicks.data.rate).toBeNull();
+      expect(clicks.data.clicks).toBe(3);
+    }
+    // Nula odrazů z tichého poskytovatele není „v pořádku", je to „nevíme".
+    const problems = result.tiles.problems;
+    if (problems.status === 'ok') expect(problems.data.level).toBe('unknown');
+    // Odesláno se měří u nás, takže to číslo platí dál.
+    expect(result.tiles.sent).toMatchObject({ status: 'ok', data: { value: 14 } });
+  });
+
+  /**
+   * Táž vada ve dlaždici posledních kampaní a v podkladu pro obrazovku
+   * Statistiky. Kampaň odeslaná před chvílí ukazovala „100 %", protože se
+   * tři prokliky dělily třemi odeslanými zprávami, o jejichž doručení nevíme
+   * nic. Míra je proto `null` a příznak říká proč.
+   */
+  it('poslední kampaně nepočítají míru z dopočtené doručenosti', async () => {
+    const ws = await seedWorkspace(db);
+    const campaign = await seedCampaign(db, ws.workspaceId, {
+      audienceBuiltAt: new Date(),
+      providerType: 'ses',
+    });
+    await seedCampaignStats(db, ws.workspaceId, campaign.campaignId, {
+      sent: 3,
+      delivered: 0,
+      clicks_unique_human: 3,
+    });
+
+    const result = await readDashboard(createTestTx(db), testContext(ws.workspaceId), {
+      periodDays: 30,
+      timezone: 'UTC',
+      cache: new TileCache(),
+    });
+
+    const recent = result.tiles.recent_campaigns;
+    expect(recent.status).toBe('ok');
+    if (recent.status === 'ok') {
+      expect(recent.data.items[0]).toMatchObject({
+        clickRate: null,
+        deliveredKnown: false,
+        clicks: 3,
+      });
+    }
+  });
+
+  it('kampaň se známou doručeností míru počítá dál, i když vedle stojí neznámá', async () => {
+    const ws = await seedWorkspace(db);
+    const known = await seedCampaign(db, ws.workspaceId, {
+      audienceBuiltAt: new Date(),
+      providerType: 'ses',
+    });
+    await seedCampaignStats(db, ws.workspaceId, known.campaignId, {
+      sent: 100,
+      delivered: 100,
+      opens_unique: 40,
+      clicks_unique_human: 10,
+    });
+    const silent = await seedCampaign(db, ws.workspaceId, {
+      audienceBuiltAt: new Date(),
+      providerType: 'ses',
+    });
+    await seedCampaignStats(db, ws.workspaceId, silent.campaignId, {
+      sent: 50,
+      delivered: 0,
+      opens_unique: 5,
+    });
+
+    const result = await readDashboard(createTestTx(db), testContext(ws.workspaceId), {
+      periodDays: 30,
+      timezone: 'UTC',
+      cache: new TileCache(),
+    });
+
+    const opens = result.tiles.open_rate;
+    if (opens.status === 'ok') {
+      // 40 ze 100 doručených. Pětka z tiché kampaně do MÍRY nevstupuje,
+      // protože k ní není jmenovatel, ale v absolutním počtu je vidět.
+      expect(opens.data.rate).toBeCloseTo(0.4, 10);
+      expect(opens.data.opens).toBe(45);
+      expect(opens.data.unknown).toEqual({ campaigns: 1, sent: 50 });
+    }
+  });
+
   it('označí překročené prahy vrácení a stížností', async () => {
     const ws = await seedWorkspace(db);
     const ctx = testContext(ws.workspaceId);

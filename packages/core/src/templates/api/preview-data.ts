@@ -9,39 +9,15 @@ export type PreviewDataInput =
   { type: 'sample'; variant: 'default' | 'no_name' } | { type: 'contact'; contact_id: string };
 
 /**
- * Osobní údaje, které varianta `no_name` vyprazdňuje. E-mail mezi nimi
- * SCHVÁLNĚ není: kontakt bez adresy neexistuje a náhled bez ní by vypadal
- * rozbitě z jiného důvodu, než se testuje.
+ * `sampleFor` se přestěhovala do `@mlain/emails/preview-data` a odsud se jen
+ * reexportuje, aby volající v `templates.routes.ts` zůstali beze změny.
+ *
+ * Důvod stěhování: tentýž výpočet potřebuje i editor v prohlížeči, když volba
+ * „Zobrazit jako" dosazuje hodnoty přímo do plátna. `@mlain/core` sahá na
+ * databázi a do prohlížeče nesmí, takže by jinak vznikla druhá definice toho,
+ * co znamená „kontakt bez jména".
  */
-const PERSONAL_FIELDS = [
-  'first_name',
-  'last_name',
-  'middle_name',
-  'title_prefix',
-  'title_suffix',
-  'first_name_vocative',
-  'last_name_vocative',
-  'greeting',
-] as const;
-
-/**
- * Vzorová data pro náhled. Varianta `no_name` je požadavek P08-R2 z kapitoly
- * 9.2 plánu P12 a kritérium 55 části 6: uživatel musí vidět, jak e-mail vypadá
- * pro kontakt, u kterého žádné osobní údaje nejsou. Nahradit to výběrem
- * skutečného kontaktu nejde, protože kontakt bez jména v projektu být nemusí.
- */
-export function sampleFor(language: 'cs' | 'en', variant: 'default' | 'no_name'): SampleRenderData {
-  const data = sampleRenderData(language);
-  if (variant === 'default') return data;
-  const contact = { ...data.contact };
-  for (const field of PERSONAL_FIELDS) contact[field] = '';
-  // Vlastní atributy se vyprazdňují taky: podmíněný blok nad `contact.attr.city`
-  // se v téhle variantě musí chovat stejně jako u kontaktu bez vyplněných polí.
-  contact.attr = Object.fromEntries(
-    Object.keys((data.contact.attr as Record<string, unknown>) ?? {}).map((key) => [key, '']),
-  );
-  return { ...data, contact };
-}
+export { sampleFor } from '@mlain/emails/preview-data';
 
 /**
  * Data skutečného kontaktu pro náhled. Systémové adresy zůstávají ze vzorku:

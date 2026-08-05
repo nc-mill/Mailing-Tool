@@ -8,8 +8,11 @@ import { Button } from '@mlain/ui/components/button';
 // stránkování bez čísel stránek, virtualizace od 100 řádků, sticky hlavička.
 import { DataTable } from '@mlain/ui/patterns/data-table';
 import { ContactsBulkActions } from './bulk-actions';
+import { ConfirmContactButton } from './confirm-contact-button';
 import { ContactsEmptyState, ContactsFilteredEmptyState } from './contacts-empty-state';
 import { ContactStatusBadges } from './status-badges';
+import { GreetingBadge } from './greeting-badge';
+import type { GreetingStatusInput } from './greeting-status';
 import { describeContactState } from './contact-state';
 import { useFilterChips } from './filter-chips';
 import {
@@ -25,6 +28,12 @@ export type ContactRow = {
   id: string;
   email: string;
   name: string | null;
+  /**
+   * Stav oslovení. Do téhle chvíle seznam pátý pád vůbec neukazoval, takže se
+   * kontakt s tvarem „Petr" tvářil stejně jako kontakt s tvarem „Petře" a rozdíl
+   * se projevil až v odeslané kampani.
+   */
+  greeting: GreetingStatusInput;
   status: ContactStatus;
   processing_restricted: boolean;
   snooze_until: string | null;
@@ -53,6 +62,14 @@ export type ContactsTableProps = {
   cursorInvalid?: boolean;
   /** Štítky projektu pro hromadné přiřazení. Prázdné pole nabídku štítků skryje. */
   tags?: { id: string; name: string }[];
+  /** Seznamy projektu pro hromadné přidání. Prázdné pole nabídku seznamů skryje. */
+  lists?: { id: string; name: string }[];
+  /**
+   * Cesta do fronty „Kontrola oslovení" a počet nejistých kontaktů. `uncertain`
+   * je nepovinné: když se počet nepodaří zjistit, odkaz se ukáže bez čísla.
+   * Vynechání celé vlastnosti odkaz skryje, což potřebují testy starších obrazovek.
+   */
+  vocativeReview?: { href: string; uncertain?: number | undefined };
 };
 
 /**
@@ -79,6 +96,8 @@ export function ContactsTable({
   names,
   cursorInvalid = false,
   tags = [],
+  lists = [],
+  vocativeReview,
 }: ContactsTableProps) {
   const t = useTranslations('contacts');
   const format = useFormatter();
@@ -120,6 +139,25 @@ export function ContactsTable({
           <Button variant="secondary" onClick={() => router.push(`${basePath}/import`)}>
             {t('list.import')}
           </Button>
+          {/* Vložení textem je třetí cesta, jak sem dostat kontakty, a bez tlačítka
+              tady by se k ní uživatel dostal jedině napsáním adresy do prohlížeče. */}
+          <Button variant="secondary" onClick={() => router.push(`${basePath}/paste`)}>
+            {t('paste.entry')}
+          </Button>
+          {/* Fronta „Kontrola oslovení" byla do téhle chvíle dostupná jedině z výsledku
+              importu. Právě kvůli nejistým oslovením existuje, takže musí být dosažitelná
+              odtud, kde je uživatel vidí ve sloupci. */}
+          {vocativeReview !== undefined ? (
+            <Button
+              variant="secondary"
+              data-testid="vocative-review-link"
+              onClick={() => router.push(vocativeReview.href)}
+            >
+              {vocativeReview.uncertain === undefined
+                ? t('greeting.reviewLink')
+                : t('greeting.reviewLinkCount', { count: vocativeReview.uncertain })}
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -146,10 +184,14 @@ export function ContactsTable({
             filters={filters}
             names={names}
             tags={tags}
+            lists={lists}
           />
         }
         onRowActivate={(row) => router.push(`${basePath}/${row.id}`)}
         virtualizeFrom={100}
+        // Sedm místo výchozích šesti kvůli sloupci s potvrzením. Bez toho by se z výchozí
+        // sady vytlačily štítky a nový sloupec by se prosadil na jejich úkor.
+        defaultVisibleColumns={7}
         // Kurzorové stránkování bez čísel stránek. Kurzor jde do URL, ne do stavu
         // komponenty: odkaz na stránku se dá poslat dál a zpětné tlačítko funguje.
         pagination={{
@@ -172,6 +214,13 @@ export function ContactsTable({
             ),
           },
           { id: 'name', header: t('columns.name'), cell: (row) => row.name ?? '' },
+          // Oslovení hned za jménem: rozdíl mezi „Petr" a „Petře" je celý produkt
+          // a v žádném jiném sloupci ho vidět není.
+          {
+            id: 'greeting',
+            header: t('greeting.column'),
+            cell: (row) => <GreetingBadge contact={row.greeting} />,
+          },
           {
             id: 'status',
             header: t('columns.status'),
@@ -187,6 +236,36 @@ export function ContactsTable({
                     restriction_requested_at: null,
                   }).badges
                 }
+              />
+            ),
+          },
+          /*
+           * Potvrzení PŘÍMO V ŘÁDKU, ne až na detailu a ne až po zaškrtnutí.
+           *
+           * Hromadná akce nad výběrem zůstává, protože je užitečná u dávky, ale pro jeden
+           * kontakt znamenala tři kroky (zaškrtnout, najít tlačítko nad tabulkou, kliknout)
+           * a stejně tak dlouhá byla odbočka na detail a zpátky. Tlačítko v řádku je jedno
+           * kliknutí.
+           *
+           * SLOUPEC STOJÍ HNED ZA STAVEM SCHVÁLNĚ, ne na konci. `useColumnPreferences`
+           * schová všechny sloupce za prvními šesti, dokud si uživatel nevybere jinak,
+           * takže akce na konci by se novému uživateli nezobrazila vůbec. Zároveň se kvůli
+           * ní zvedla výchozí sada na sedm sloupců, aby z ní nevypadl žádný, který v ní
+           * byl dřív.
+           *
+           * Klik na tlačítko NEOTEVŘE detail: `DataTable.onRowClick` ignoruje cíle uvnitř
+           * `button, a, input, label`, takže se aktivace řádku nespustí.
+           */
+          {
+            id: 'confirm',
+            header: t('confirmState.column'),
+            cell: (row) => (
+              <ConfirmContactButton
+                workspaceId={workspaceId}
+                contactId={row.id}
+                status={row.status}
+                email={row.email}
+                variant="row"
               />
             ),
           },

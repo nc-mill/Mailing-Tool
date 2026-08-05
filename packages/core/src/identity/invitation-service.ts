@@ -5,6 +5,7 @@ import { loadConfig, type MlainConfig } from '../config';
 import { ApiError } from '../errors/api-error';
 import { writeAuditLog } from '../audit/write';
 import { queueSystemMail } from '../platform/system-mail';
+import { getSystemMailStatus } from '../platform/system-mail-config';
 import { createInvitationContext } from './context';
 import { generateOpaqueToken, tokenHash } from './token';
 import { IdentityAuditActions } from './audit';
@@ -64,6 +65,31 @@ export async function createInvitation(
   actorLabel: string,
 ): Promise<PublicInvitation> {
   const email = input.email.trim().toLowerCase();
+
+  /**
+   * POZVÁNKA SE NEZALOŽÍ, KDYŽ NENÍ ČÍM JI ODESLAT.
+   *
+   * Kontroluje se to PŘED zápisem, ne až podle výsledku odeslání, a je to
+   * rozdíl, který uživatel vidí. Dřív vznikl řádek v `invitations`, obrazovka
+   * ukázala „čeká na přijetí" a e-mail nikam neodešel; pozvaný člověk se to
+   * nedozvěděl nikdy a zvoucí se to dozvěděl leda z logu. Instalace s jediným
+   * odesílacím účtem typu SES je přesně v tomhle stavu, protože systémovou poštu
+   * odsud odešle jen účet typu SMTP.
+   *
+   * Platí to i mimo produkci. Záchranná větev v `queueSystemMail`, která odkaz
+   * mimo produkci dopíše do logu, je pomůcka pro vývoj, ne způsob doručení:
+   * uživatel vývojové instalace čeká na e-mail zrovna tak.
+   *
+   * Náhradní cesta existuje a je v téže obrazovce: založit člena rovnou s heslem
+   * (`member-create.ts`). Proto se tu nic neobchází, jen se nesmí slibovat
+   * doručení, které se nestane.
+   */
+  const mail = await getSystemMailStatus(tx, ctx.workspaceId, cfg().APP_URL);
+  if (!mail.available) {
+    throw new ApiError('system_mail_unavailable', {
+      params: { reason: mail.reason, provider_type: mail.provider_type },
+    });
+  }
 
   const { rows: member } = await tx.execute(sql`
     SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id

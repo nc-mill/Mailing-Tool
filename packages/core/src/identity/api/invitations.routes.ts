@@ -70,6 +70,8 @@ const createRouteDef = createRoute({
     404: problemResponse('not_found'),
     409: problemResponse('conflict', 'already_exists', 'idempotency_key_reuse'),
     422: problemResponse('validation_failed'),
+    // Instalace nemá čím pozvánku odeslat. Vrací se DŘÍV, než pozvánka vznikne.
+    503: problemResponse('system_mail_unavailable'),
   },
 });
 

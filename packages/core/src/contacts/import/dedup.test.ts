@@ -8,6 +8,8 @@ const row = (email: string, rowNumber: number): ProcessedOkRow => ({
   rowNumber,
   contact: { email, attributes: {} },
   attributes: {},
+  listIds: [],
+  consentOccurredAt: null,
   tags: [],
   subscribe: true,
   consent: null,

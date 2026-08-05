@@ -1,0 +1,87 @@
+{
+  "settings": {
+    "title": "Web tracking",
+    "lead": "Add one line to your website and see what visitors do before they ever sign in.",
+    "snippet": {
+      "title": "Tracking snippet",
+      "description": "Paste this snippet into the head section of your website, on every page. The script has no dependencies and weighs {size}.",
+      "copy": "Copy snippet",
+      "copy_key": "Copy key",
+      "copied": "Copied",
+      "key_label": "Public key",
+      "key_hint": "The public key is visible in your page source and that is fine. It can only write events and cannot read anything from the project.",
+      "consent_note": "Without consent the script writes and stores nothing. Pass consent by calling Mlain.consent once the visitor grants it."
+    },
+    "domains": {
+      "title": "Tracking domains",
+      "description": "The script only runs on the domains listed here. Without at least one domain, web tracking will not start.",
+      "add": "Add domain",
+      "host_label": "Domain",
+      "host_placeholder": "shop.example.com",
+      "include_subdomains": "Include subdomains",
+      "unverified": "Not verified yet. Verification happens automatically on the first successful script run.",
+      "verified": "Verified {date}",
+      "remove": "Remove",
+      "empty": "There is no domain here yet, so tracking will not start anywhere.",
+      "internal": "Internal address. Works only from this computer or from your network.",
+      "limit": "You can have at most {limit} tracking domains."
+    },
+    "status": {
+      "title": "Tracking status",
+      "waiting": "No event has arrived from your website yet.",
+      "waiting_hint": "After you add the snippet, the first event shows up within seconds. Check that your website domain is in the list above.",
+      "receiving": "In the last 30 days: {events, plural, =0 {no events} one {# event} other {# events}} from {visitors, plural, =0 {no visitors} one {# visitor} other {# visitors}}.",
+      "last_event": "Last event: {date}",
+      "disabled": "Web event collection is turned off for this project."
+    },
+    "reach": {
+      "title": "The tracking domain is not reachable from the internet",
+      "loopback": "The tracking domain is {host}, which is this computer's own address. Nobody can reach it from another website or from an inbox.",
+      "private": "The tracking domain is {host}, which is only reachable from your network. Nobody can reach it from another website or from an inbox.",
+      "invalid": "The tracking domain {host} is not a valid address.",
+      "consequence": "Email opens will therefore not be recorded at all: Gmail and others fetch the image through their own servers and those cannot reach this address. Web events only arrive from a browser on this computer.",
+      "fix": "When you move to production, point TRACKING_DOMAIN at a public domain, for example t.yourdomain.com."
+    },
+    "errors": {
+      "tracking_domain_invalid": "Enter the domain without protocol and without a path, for example shop.example.com.",
+      "tracking_domain_limit_reached": "You can have at most {limit} tracking domains.",
+      "forbidden": "You do not have permission to change tracking settings.",
+      "unexpected": "The settings could not be saved. Please try again."
+    },
+    "saved": "Saved."
+  },
+  "report": {
+    "unreachable": "The tracking domain {host} is not reachable from the internet, so email opens are not recorded and the numbers below will be incomplete. This is not a problem with the campaign."
+  },
+  "expired": {
+    "title": "This link is no longer valid",
+    "body": "The link you clicked is invalid or outdated. The campaign may have already ended.",
+    "home": "Go to the home page"
+  },
+  "errors": {
+    "tracking_event_too_large": { "detail": "The event is too large." },
+    "tracking_invalid_event_name": {
+      "detail": "Event names may only contain lowercase letters, digits and underscores."
+    },
+    "tracking_invalid_anonymous_id": { "detail": "The anonymous identifier has an invalid shape." },
+    "tracking_payload_version_unsupported": {
+      "detail": "The server does not know this version of the tracking script. Update the script on your website."
+    },
+    "tracking_identify_unsigned_pii": {
+      "detail": "An email address cannot be set from the browser without a server signature."
+    },
+    "tracking_domain_limit_reached": { "detail": "You can have at most {limit} tracking domains." },
+    "tracking_domain_invalid": {
+      "detail": "Enter the domain without protocol and without a path, for example shop.example.com."
+    },
+    "tracking_properties_keys_dropped": {
+      "detail": "The event had more properties than we store. The first {limit} were kept."
+    },
+    "tracking_properties_value_truncated": {
+      "detail": "The value of property {key} was truncated to {limit} characters."
+    },
+    "tracking_properties_depth_truncated": {
+      "detail": "Property {key} is nested deeper than we store."
+    }
+  }
+}

@@ -5,6 +5,7 @@ import { assertPermission } from '../../identity/permissions';
 import { readCampaignBuckets } from '../campaign-stats/buckets';
 import { readCampaignLinks } from '../campaign-stats/links';
 import { readCampaignStats } from '../campaign-stats/read';
+import { readCampaignSystemLinkClicks } from '../campaign-stats/system-links';
 import { inWorkspace, workspaceOf, type ReportsEnv } from './context';
 import { campaignStatsSchema, toStatsResponse, uuidParam } from './schemas';
 
@@ -175,4 +176,48 @@ campaignStatsRoutes.openapi(linksRoute, async (c) => {
     },
     200,
   );
+});
+
+/**
+ * Prokliky na systémové odkazy v patičce: odhlášení, předvolby, webová verze.
+ *
+ * VLASTNÍ CESTA, NE POLE V `/stats`, a je to rozhodnuté schválně. Odpověď
+ * `/stats` nese ETag odvozený z `campaign_stats.version`, jenže systémový
+ * proklik se do `campaign_stats` záměrně neagreguje, takže by verzí nehnul:
+ * klient s podmíněným dotazem by dostal 304 a nová čísla by neuviděl. Údaj,
+ * který se mění nezávisle, patří za vlastní adresu.
+ */
+const systemLinkClicksRoute = createRoute({
+  method: 'get',
+  path: '/campaigns/{id}/system-link-clicks',
+  tags: ['reports'],
+  summary: 'Kliknutí na odkazy v patičce',
+  request: { params: uuidParam },
+  responses: {
+    200: {
+      description: 'Počty po druzích odkazu. Do míry prokliku nevstupují a vstupovat nesmějí.',
+      content: {
+        'application/json': {
+          schema: z.object({
+            unsubscribe_page: z.number(),
+            preferences: z.number(),
+            webview: z.number(),
+          }),
+        },
+      },
+    },
+    // Bez kontroly existence: neznámé campaignId dá samé nuly, ne 404, stejně
+    // jako u seznamu odkazů výš.
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    422: problemResponse('validation_failed'),
+  },
+});
+
+campaignStatsRoutes.openapi(systemLinkClicksRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  assertPermission(workspaceOf(c), 'reports:read');
+  const counts = await inWorkspace(c, (tx, ctx) => readCampaignSystemLinkClicks(tx, ctx, id));
+  c.header('Cache-Control', 'no-store');
+  return c.json(counts, 200);
 });

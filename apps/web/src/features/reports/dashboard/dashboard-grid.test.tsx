@@ -111,4 +111,109 @@ describe('DashboardGrid', () => {
     const sentHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers as HeadersInit);
     expect(sentHeaders.get('X-Workspace-Id')).toBe('ws-1');
   });
+
+  /**
+   * REGRESE: přehled hlásil „Otevřelo 185,7 %".
+   *
+   * Server u kampaně bez zpětné vazby od odesílací služby míru nespočítá
+   * (`rate: null`) a pošle místo ní počty a informaci, kolika kampaní se to
+   * týká. Obrazovka na to musí odpovědět naměřeným číslem a větou, ne prázdným
+   * místem a ne procentem.
+   */
+  it('u kampaně s neznámou doručeností ukáže počty a vysvětlení místo procenta', async () => {
+    const tiles = {
+      ...EMPTY_TILES,
+      sent: {
+        status: 'ok',
+        data: { value: 14 },
+        computed_at: '2026-08-01T00:00:00.000Z',
+        stale: false,
+      },
+      click_rate: {
+        status: 'ok',
+        data: { rate: null, delta: null, clicks: 3, unknown: { campaigns: 6, sent: 14 } },
+        computed_at: '2026-08-01T00:00:00.000Z',
+        stale: false,
+      },
+      open_rate: {
+        status: 'ok',
+        data: {
+          rate: null,
+          machineShare: null,
+          opens: 26,
+          unknown: { campaigns: 6, sent: 14 },
+        },
+        computed_at: '2026-08-01T00:00:00.000Z',
+        stale: false,
+      },
+      problems: {
+        status: 'ok',
+        data: {
+          bounceRate: null,
+          complaintRate: null,
+          level: 'unknown',
+          unknown: { campaigns: 6, sent: 14 },
+        },
+        computed_at: '2026-08-01T00:00:00.000Z',
+        stale: false,
+      },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              period_days: 30,
+              computed_at: '2026-08-01T00:00:00.000Z',
+              tiles,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        ),
+      ),
+    );
+
+    renderGrid('ws-1');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('opens-absolute')).toHaveTextContent('26 otevření');
+    });
+    expect(screen.getByTestId('clicks-absolute')).toHaveTextContent('3 prokliky');
+    expect(screen.getByTestId('problems-unknown')).toHaveTextContent('zatím nevíme');
+    // Žádné procento z odhadnutého jmenovatele.
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
+  });
+
+  it('dlaždice aktivity na webu vede na obrazovku webové aktivity', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              period_days: 30,
+              computed_at: '2026-08-01T00:00:00.000Z',
+              tiles: {
+                ...EMPTY_TILES,
+                web_active: {
+                  status: 'ok',
+                  data: { contacts: 3 },
+                  computed_at: new Date().toISOString(),
+                  stale: false,
+                },
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        ),
+      ),
+    );
+
+    renderGrid('ws-1');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('web-active-link')).toHaveAttribute('href', '/w/ws-1/stats/web');
+    });
+  });
 });

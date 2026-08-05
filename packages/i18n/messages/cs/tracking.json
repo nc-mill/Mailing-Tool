@@ -1,0 +1,87 @@
+{
+  "settings": {
+    "title": "Měření webu",
+    "lead": "Vložte jeden řádek do svého webu a uvidíte, co návštěvníci dělají, ještě než se přihlásí.",
+    "snippet": {
+      "title": "Měřicí kód",
+      "description": "Vložte tenhle úryvek do hlavičky svého webu, tedy do značky head, a na každou stránku. Skript nemá žádné závislosti a váží {size}.",
+      "copy": "Zkopírovat kód",
+      "copy_key": "Zkopírovat klíč",
+      "copied": "Zkopírováno",
+      "key_label": "Veřejný klíč",
+      "key_hint": "Veřejný klíč je vidět ve zdrojovém kódu stránky a je to v pořádku. Slouží jen k zápisu událostí a nic z projektu nepřečte.",
+      "consent_note": "Bez souhlasu skript nic nezapíše ani neuloží. Souhlas mu předejte voláním Mlain.consent po tom, co ho návštěvník udělí."
+    },
+    "domains": {
+      "title": "Domény pro měření",
+      "description": "Skript se spustí jen na doménách, které tu jsou uvedené. Bez jediné domény se měření na webu nespustí.",
+      "add": "Přidat doménu",
+      "host_label": "Doména",
+      "host_placeholder": "shop.example.cz",
+      "include_subdomains": "Zahrnout i subdomény",
+      "unverified": "Zatím neověřeno. Ověří se samo při prvním úspěšném běhu skriptu.",
+      "verified": "Ověřeno {date}",
+      "remove": "Odebrat",
+      "empty": "Zatím tu není žádná doména, takže se měření nespustí nikde.",
+      "internal": "Vnitřní adresa. Funguje jen z tohoto počítače nebo z vaší sítě.",
+      "limit": "Můžete mít nejvýše {limit} domén pro měření."
+    },
+    "status": {
+      "title": "Stav měření",
+      "waiting": "Zatím z webu nedorazila žádná událost.",
+      "waiting_hint": "Po vložení úryvku se první událost objeví do několika sekund. Zkontrolujte, že doména webu je v seznamu výš.",
+      "receiving": "Za posledních 30 dní: {events, plural, =0 {žádné události} one {# událost} few {# události} many {# události} other {# událostí}} od {visitors, plural, =0 {žádného návštěvníka} one {# návštěvníka} few {# návštěvníků} many {# návštěvníka} other {# návštěvníků}}.",
+      "last_event": "Poslední událost: {date}",
+      "disabled": "Sběr webových událostí je pro tento projekt vypnutý."
+    },
+    "reach": {
+      "title": "Měřicí doména není dostupná z internetu",
+      "loopback": "Měřicí doména je {host}, což je adresa tohoto počítače. Z cizího webu ani z e-mailové schránky se na ni nikdo nedostane.",
+      "private": "Měřicí doména je {host}, což je adresa jen z vaší sítě. Z cizího webu ani z e-mailové schránky se na ni nikdo nedostane.",
+      "invalid": "Měřicí doména {host} není platná adresa.",
+      "consequence": "Otevření e-mailů se proto nezaznamenají vůbec: Gmail a spol. si obrázek tahají přes vlastní servery a ty sem nedosáhnou. Webové události dorazí jen z prohlížeče na tomto počítači.",
+      "fix": "Až přejdete na ostrý provoz, nastavte TRACKING_DOMAIN na veřejnou doménu, například t.vasedomena.cz."
+    },
+    "errors": {
+      "tracking_domain_invalid": "Zadejte doménu bez protokolu a bez cesty, například shop.example.cz.",
+      "tracking_domain_limit_reached": "Můžete mít nejvýše {limit} domén pro měření.",
+      "forbidden": "Na změnu nastavení měření nemáte oprávnění.",
+      "unexpected": "Nastavení se nepodařilo uložit. Zkuste to prosím znovu."
+    },
+    "saved": "Uloženo."
+  },
+  "report": {
+    "unreachable": "Měřicí doména {host} není dostupná z internetu, takže se otevření e-mailů nezaznamenají a čísla níž budou neúplná. Není to chyba kampaně."
+  },
+  "expired": {
+    "title": "Tento odkaz už neplatí",
+    "body": "Odkaz, na který jste klikli, je neplatný nebo zastaralý. Kampaň už mohla skončit.",
+    "home": "Přejít na úvodní stránku"
+  },
+  "errors": {
+    "tracking_event_too_large": { "detail": "Událost je příliš velká." },
+    "tracking_invalid_event_name": {
+      "detail": "Jméno události smí obsahovat jen malá písmena, číslice a podtržítko."
+    },
+    "tracking_invalid_anonymous_id": { "detail": "Anonymní identifikátor nemá platný tvar." },
+    "tracking_payload_version_unsupported": {
+      "detail": "Tuhle verzi měřicího kódu server nezná. Aktualizujte skript na webu."
+    },
+    "tracking_identify_unsigned_pii": {
+      "detail": "E-mail nelze nastavit z prohlížeče bez serverového podpisu."
+    },
+    "tracking_domain_limit_reached": { "detail": "Můžete mít nejvýše {limit} domén pro měření." },
+    "tracking_domain_invalid": {
+      "detail": "Zadejte doménu bez protokolu a bez cesty, například shop.example.cz."
+    },
+    "tracking_properties_keys_dropped": {
+      "detail": "Událost měla víc vlastností, než se ukládá. Uloženo prvních {limit}."
+    },
+    "tracking_properties_value_truncated": {
+      "detail": "Hodnota vlastnosti {key} byla zkrácena na {limit} znaků."
+    },
+    "tracking_properties_depth_truncated": {
+      "detail": "Vlastnost {key} je zanořená hlouběji, než se ukládá."
+    }
+  }
+}

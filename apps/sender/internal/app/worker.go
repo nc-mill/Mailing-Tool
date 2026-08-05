@@ -38,7 +38,10 @@ type Rendered struct {
 	UnsubscribeURL string
 	OneClick       bool
 	IsTest         bool
-	Warnings       []liquidx.Warning
+	// NoUnsubscribe znamená, že zpráva NESMÍ nést odhlašovací odkaz ani
+	// hlavičku List-Unsubscribe. Nastavuje ho výhradně transakční druh.
+	NoUnsubscribe bool
+	Warnings      []liquidx.Warning
 }
 
 // Renderer provádí fázi 2 renderu pro jednu zprávu.
@@ -86,12 +89,18 @@ func (r *Renderer) engine(zone string) (*liquidx.Engine, error) {
 // značky, dostal po interpolaci do těla funkční trackovací odkaz. Import CSV
 // od zákazníka je přesně to místo, odkud takový řetězec přijde.
 func (r *Renderer) Render(h *campaign.Header, msg outbox.Message) (*Rendered, error) {
-	out := &Rendered{IsTest: msg.Kind == "test"}
+	out := &Rendered{IsTest: msg.IsTest(), NoUnsubscribe: msg.IsTransactional()}
 
 	// Sledování se u testovacího odeslání vypíná úplně: platný token, ke kterému
 	// nevede žádná dohledatelná zpráva, by při každém otevření zvyšoval čítač
 	// nespárovaných otevření, který má část 5 alertovaný jako porušení invariantu.
-	tracking := !out.IsTest || r.testTracking
+	//
+	// U transakční zprávy se vypíná NATVRDO a bez přepínače. Odkaz v ní bývá
+	// jednorázový (reset hesla) a bezpečnostní skener v poštovní schránce ho
+	// při měření prokliků otevře a token spotřebuje dřív než člověk. Zbylá
+	// značka pak skončí chybou MarkerNotReplaced, což je záměr: transakční
+	// šablona se kompiluje s vypnutým sledováním a značku obsahovat nemá.
+	tracking := (!out.IsTest || r.testTracking) && !msg.IsTransactional()
 
 	// 1. Odhlašovací odkaz. Vyrábí ho sender, v render_data není.
 	unsub, oneClick, err := r.unsubscribe(h, msg, out.IsTest)
@@ -163,7 +172,17 @@ func (r *Renderer) Render(h *campaign.Header, msg outbox.Message) (*Rendered, er
 	out.Warnings = warnings
 	data["unsubscribe_url"] = unsub
 	data["one_click_unsubscribe_url"] = unsub
-	if msg.ContactID != nil {
+	// Centrum předvoleb ani zobrazení v prohlížeči transakční zpráva NEDOSTANE.
+	//
+	// Předvolby jsou nastavení marketingových odběrů a v mailu o resetu hesla
+	// nemají co dělat: pletou dvě různé věci a člověku, který o marketing nikdy
+	// nepožádal, to vypadá, jako by ho někdo někam přihlásil.
+	//
+	// Zobrazení v prohlížeči je rovnou bezpečnostní problém. Ta stránka renderuje
+	// uloženou zprávu z messages.render_data, takže by jednorázový odkaz na reset
+	// hesla šel otevřít z webové adresy a zůstal dosažitelný i potom, co se token
+	// spotřebuje nebo vyprší.
+	if msg.ContactID != nil && !msg.IsTransactional() {
 		tok, terr := r.tokens.Unsubscribe(msg.WorkspaceID, msg.Key.ID, *msg.ContactID, listID(h), msg.Key.CreatedAt)
 		if terr == nil {
 			data["preferences_url"] = r.urls.Preferences(tok)
@@ -239,7 +258,16 @@ func listID(h *campaign.Header) uuid.UUID {
 //
 // Zpráva bez možnosti odhlášení odejít NESMÍ. Je to technická pojistka proti tomu,
 // aby šlo z nástroje rozeslat něco, co nejde odhlásit.
+//
+// JEDINÁ VÝJIMKA je transakční druh. Reset hesla ani potvrzení objednávky není
+// marketingové sdělení, odhlašovací odkaz do něj nepatří a hlavička
+// List-Unsubscribe by u něj byla nesmysl: RFC 8058 popisuje odhlášení z odběru,
+// ne z plnění smlouvy. Výjimka je vázaná na JEDNU hodnotu jednoho kontraktního
+// sloupce, takže je auditovatelná a kampaňová zpráva bez odhlášení dál neodejde.
 func (r *Renderer) unsubscribe(h *campaign.Header, msg outbox.Message, isTest bool) (string, bool, error) {
+	if msg.IsTransactional() {
+		return "", false, nil
+	}
 	if msg.ContactID == nil {
 		if isTest {
 			// Stránka s vysvětlením, že šlo o testovací zprávu. One-Click se

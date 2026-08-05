@@ -26,6 +26,7 @@ export const ISSUE_CODES = [
   'content_reserved_marker',
   'content_too_many_blocks',
   'content_too_many_links',
+  'link_variable_not_tracked',
   'liquid_comparison_operator_not_supported',
   'liquid_contains_not_allowed',
   'liquid_date_format_not_allowed',

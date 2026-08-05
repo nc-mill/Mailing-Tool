@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../../identity/types';
 import { withWorkspace } from '../../tx';
 import type { ContactResponse } from '../api/schemas';
 import { writeAudit } from '../audit';
+import type { ConsentEvidence } from '../consents/evidence';
 import { recordConsent, type ConsentPurpose } from './consents';
 import { writeContact } from './contacts';
 import { getContactById } from './contacts-query';
@@ -28,6 +29,8 @@ export type ContactUpsertBody = {
   title_prefix?: string | null | undefined;
   title_suffix?: string | null | undefined;
   gender?: 'female' | 'male' | 'unknown' | undefined;
+  /** Jen `active` a `unconfirmed`, zdůvodnění výčtu je u `ContactUpsertRequestSchema`. */
+  status?: 'active' | 'unconfirmed' | undefined;
   locale?: string | undefined;
   external_id?: string | null | undefined;
   attributes?: Record<string, unknown> | undefined;
@@ -63,6 +66,20 @@ function sourceOf(raw: string | undefined): string {
 }
 
 /**
+ * Zdroj SOUHLASU, ne kontaktu. Jsou to dva různé číselníky: `ck_consents__source`
+ * z migrace 0001 zná `admin`, ale NEZNÁ `manual`, takže hodnotu ze zdroje kontaktu
+ * nejde použít přímo, spadla by na 23514.
+ *
+ * Ruční zadání správcem se zapisuje jako `admin`, ne jako `api`. Souhlas je doklad:
+ * „přes API" a „správce to odklikal v rozhraní" jsou dvě různá tvrzení o tom, kdo
+ * za souhlas ručí, a historie souhlasů obojí zvlášť pojmenovává
+ * (`consents.source.admin` versus `consents.source.api`).
+ */
+function consentSourceOf(contactSource: string): string {
+  return contactSource === 'manual' ? 'admin' : 'api';
+}
+
+/**
  * Varování v odpovědi. Slovník je společný s importem (`import/row-pipeline.ts`), aby
  * klient nemusel rozlišovat, kterým kanálem řádek přišel.
  */
@@ -78,6 +95,7 @@ export async function upsertContactFromApi(
   ctx: WorkspaceContext,
   body: ContactUpsertBody,
 ): Promise<UpsertFromApiResult> {
+  const contactSource = sourceOf(body.source);
   const result = await writeContact(ctx, {
     email: body.email,
     fullName: body.full_name ?? null,
@@ -86,10 +104,13 @@ export async function upsertContactFromApi(
     titlePrefix: body.title_prefix ?? null,
     titleSuffix: body.title_suffix ?? null,
     ...(body.gender === undefined ? {} : { gender: body.gender }),
+    // Stav se předává dál, ne dosazuje: `applyWriteRules` z něj udělá výsledný stav
+    // podle pravidla 3, takže zamknutý stav (odhlášen, odraz, stížnost) přežije i tenhle zápis.
+    ...(body.status === undefined ? {} : { status: body.status }),
     ...(body.locale === undefined ? {} : { locale: body.locale }),
     externalId: body.external_id ?? null,
     attributes: body.attributes ?? {},
-    source: sourceOf(body.source),
+    source: contactSource,
     mode: body.on_conflict ?? 'update',
   });
 
@@ -145,9 +166,16 @@ export async function upsertContactFromApi(
       status: consent.status,
       legalBasis: consent.legal_basis,
       scopeListId: null,
-      source: 'api',
+      source: consentSourceOf(contactSource),
       ...(consent.consent_text === undefined ? {} : { consentText: consent.consent_text }),
       ...(consent.occurred_at === undefined ? {} : { occurredAt: new Date(consent.occurred_at) }),
+      // NÁLEZ: `evidence` se sem dřív nepředávala vůbec. `ConsentInput` ji přitom
+      // přijímá a historie souhlasů z ní čte (`declaration`, `import_id`, `page_url`),
+      // takže doklad, který klient poslal, se zahodil a nic nespadlo: v odpovědi
+      // byl souhlas zapsaný, jen prázdný. Přetypování je stejné jako
+      // v `subscribe-service.ts`: `evidence` je v databázi otevřený jsonb, kdežto
+      // `ConsentEvidence` je jen výčet polí, kterým rozumí obrazovka.
+      ...(consent.evidence === undefined ? {} : { evidence: consent.evidence as ConsentEvidence }),
     });
   }
 

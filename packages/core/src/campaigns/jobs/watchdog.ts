@@ -53,6 +53,14 @@ export type WatchdogDeps = {
   ): Promise<boolean>;
   hasAuditForPause(workspaceId: string, campaignId: string, at: string): Promise<boolean>;
   writeAutoPauseAudit(workspaceId: string, campaignId: string, reason: PauseReason): Promise<void>;
+  /**
+   * Zařadí `sender.credentials_refresh` pro odesílací účet téhle kampaně.
+   *
+   * Volá se JEN u pauzy `credentials_undecryptable`, tedy když sender nedokázal
+   * otevřít obálku s přístupovými údaji. Kampaň bez odesílacího účtu se
+   * přeskočí, proto ta návratová hodnota.
+   */
+  requestCredentialsRefresh(workspaceId: string, campaignId: string): Promise<boolean>;
   emit(input: { workspaceId: string; type: string; campaignId: string }): Promise<void>;
   now(): Date;
   partialThreshold: number;
@@ -71,6 +79,25 @@ export async function watchdogHandler(deps: WatchdogDeps): Promise<void> {
           type: 'campaign.paused',
           campaignId: c.campaignId,
         });
+
+        /*
+         * Sebeopravný krok, a jediné místo, ze kterého se `sender.credentials_refresh`
+         * kdy zařadí. Bez něj byla ta fronta v registru bez producenta i bez
+         * obsluhy, takže se do ní nikdy nic nedostalo.
+         *
+         * `credentials_undecryptable` zapisuje sender, když neotevře obálku
+         * s přístupovými údaji; typicky po otočení SECRET_KEY a restartu bez
+         * SECRET_KEY_PREVIOUS. Aplikace tu obálku otevřít umí (má starší pokolení
+         * ve svém keyringu), takže ji přešifruje pod aktuální klíč a sender
+         * pojede dál. Ruční zásah ani restart senderu k tomu potřeba není.
+         *
+         * Je to uvnitř větve „audit ještě nebyl", takže se to zařadí JEDNOU
+         * na pauzu, ne při každém tiku hlídače. Singleton klíč fronty je
+         * `provider_id`, což je druhá pojistka proti nakupení úloh.
+         */
+        if (c.pauseReason.code === 'credentials_undecryptable') {
+          await deps.requestCredentialsRefresh(c.workspaceId, c.campaignId);
+        }
       }
       continue;
     }

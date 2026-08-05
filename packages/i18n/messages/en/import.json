@@ -159,6 +159,11 @@
     "cancelled": "You cancelled the import at row {row}",
     "failed": "The import could not be finished",
     "failedNothingWritten": "No contact was written to the database.",
+    "running": "The import is still running",
+    "runningRefresh": "The result will appear here once it finishes. Try refreshing the page in a moment.",
+    "unknown": "We cannot read the import status",
+    "unknownNextStep": "The server reports the status \"{status}\", which this screen does not know. Please refresh the page; contacts may have been written.",
+    "refresh": "Refresh the page",
     "breakdown": {
       "created": "New contacts",
       "updated": "Filled in on existing ones",
@@ -193,7 +198,8 @@
     "vocative_low_confidence": "We are not sure how to address {n} contacts.",
     "non_latin_script": "{n} names are not in the Latin script, we did not compute a greeting.",
     "suppressed_skipped": "We did not add {n} addresses, because they unsubscribed in the past or their emails kept failing.",
-    "trailing_fields_padded": "{n} rows had fewer columns than the header, we left the missing ones empty."
+    "trailing_fields_padded": "{n} rows had fewer columns than the header, we left the missing ones empty.",
+    "contact_tag_limit_reached": "We did not add some tags for {n} contacts, because one contact can carry at most 50 of them."
   },
   "rowErrors": {
     "row_field_count_mismatch": "A different number of columns than in the header",
@@ -215,7 +221,8 @@
     "unknown_field_key": "The mapping points at a field that does not exist",
     "encoding_error": "The characters make no sense in this encoding",
     "name_empty": "The name is empty",
-    "list_not_found": "The list from the mapping does not exist"
+    "list_not_found": "The list from the mapping does not exist",
+    "contact_tag_limit_reached": "The contact already has the maximum number of tags"
   },
   "fileErrors": {
     "file_too_large": {

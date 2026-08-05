@@ -55,12 +55,23 @@ export type BrandExtractDeps = {
   parseDocument: (html: string, baseUrl: string) => ParsedDocument;
   collectStylesheetUrls: (parsed: ParsedDocument, baseUrl: string) => string[];
   collectLogoCandidates: (parsed: ParsedDocument, baseUrl: string) => Array<{ url: string }>;
+  /**
+   * Zápis do jediné značky projektu. Vrací i to, CO se vytáhlo, protože běh si
+   * to ukládá do `brand_extractions.result`: značku přepíše každé další
+   * stažení, takže odkaz na profil o starším běhu nic neřekne a historie by
+   * bez toho uměla říct jen „proběhlo", ne „co z webu přišlo".
+   */
   buildBrandProfile: (params: {
     workspaceId: string;
     finalUrl: string;
     html: string;
     assets: Array<{ url: string; body: Buffer }>;
-  }) => Promise<{ brandProfileId: string; warnings: string[] }>;
+  }) => Promise<{
+    brandProfileId: string;
+    palette?: unknown;
+    typography?: unknown;
+    warnings: string[];
+  }>;
   inferTone: (params: { workspaceId: string; text: string }) => Promise<{
     tone: unknown;
     warnings: string[];
@@ -158,7 +169,14 @@ export async function runBrandExtraction(
     hopSummary: page.hops,
     bytesFetched: page.bytesRead,
     durationMs: Date.now() - startedAt,
-    result: { warnings, tone: tone.tone },
+    result: {
+      warnings,
+      tone: tone.tone,
+      // Co běh z webu vytáhl. Historie stažení to ukazuje u každého řádku,
+      // protože samotná značka drží jen výsledek toho posledního.
+      palette: profile.palette ?? null,
+      typography: profile.typography ?? null,
+    },
     brandProfileId: profile.brandProfileId,
   });
 

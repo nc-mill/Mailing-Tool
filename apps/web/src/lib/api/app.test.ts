@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { describe, it, expect } from 'vitest';
-import { createApiApp } from './app';
+import { createApiApp, CONTENT_TYPE_EXEMPT_PREFIXES } from './app';
 
 // ODCHYLKA OD PLÁNU (nutná): plán psal `import { config } from '@mlain/core/config'`,
 // jenže P01 žádný takový singleton neexportuje, vystavuje jen `loadConfig()`
@@ -62,6 +62,50 @@ describe('kostra API', () => {
     });
     expect(res.status).toBe(413);
     expect((await res.json()).code).toBe('payload_too_large');
+  });
+
+  /**
+   * VÝJIMKA Z LIMITU TĚLA, regrese na skutečnou vadu.
+   *
+   * `CONTENT_TYPE_EXEMPT_PREFIXES` vzniklo pro dvě cesty, které tělo JSON
+   * nenesou: nahrání souboru s kontakty (`IMPORT_MAX_FILE_BYTES`, výchozí
+   * 200 MiB) a nahrání obrázku (`ASSET_MAX_UPLOAD_MB`, výchozí 10 MiB).
+   * Výjimka ale platila JEN na kontrolu Content-Type, kdežto strop 1 MiB se
+   * uplatňoval na všechno. Obě cesty tedy prošly kontrolou typu a hned nato
+   * spadly na `payload_too_large` u čehokoli nad 1 MiB, tedy u prakticky
+   * každého souboru, kvůli kterému ta výjimka vznikla.
+   *
+   * Vada byla tichá dvakrát: import kontaktů ji měl od začátku a nikdo si jí
+   * nevšiml, protože se testoval malými soubory.
+   */
+  it('cesta s výjimkou pustí tělo nad 1 MiB, ostatní ne', async () => {
+    CONTENT_TYPE_EXEMPT_PREFIXES.add('/api/v1/__test/echo');
+    try {
+      const res = await app.request('/api/v1/__test/echo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'multipart/form-data; boundary=x',
+          'Content-Length': String(50 * 1024 * 1024),
+        },
+        body: 'x'.repeat(2048),
+      });
+      // Cokoli jiného než 413 stačí: test tvrdí, že strop tělo NEZASTAVIL,
+      // ne co konkrétně vrátí handler, který na multipart není napsaný.
+      expect(res.status).not.toBe(413);
+    } finally {
+      // Množina je modulový singleton sdílený s ostatními testy v běhu.
+      CONTENT_TYPE_EXEMPT_PREFIXES.delete('/api/v1/__test/echo');
+    }
+
+    // A hned vedle důkaz, že se strop nevypnul plošně: táž velikost na cestě
+    // BEZ výjimky musí dál končit 413.
+    const bez = await app.request('/api/v1/__test/echo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': String(50 * 1024 * 1024) },
+      body: JSON.stringify({ padding: 'x'.repeat(1024) }),
+    });
+    expect(bez.status).toBe(413);
+    expect((await bez.json()).code).toBe('payload_too_large');
   });
 
   /**

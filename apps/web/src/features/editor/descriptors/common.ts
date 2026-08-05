@@ -66,11 +66,31 @@ export const COMMON_DEFAULTS = {
   hideOnMobile: false,
 } as const;
 
-/** Skupiny, které má každý obsahový blok. `visibility: false` je jen patička (pravidlo S14). */
-export function contentGroups(options: { visibility?: boolean } = {}): PropGroup[] {
-  const groups: PropGroup[] = [
-    { label: 'group.layout', props: [PADDING_PROP, BACKGROUND_PROP, HIDE_ON_MOBILE_PROP] },
-  ];
+/**
+ * Skupiny, které má každý obsahový blok.
+ *
+ * Vypínače nejsou kosmetika, jsou to místa, kde emitter vlastnost NEPOUŽIJE:
+ *
+ * - `visibility: false` je patička (pravidlo S14, `visibleWhen` nemá ani ve schématu),
+ * - `padding: false` je mezera. `SpacerBlockView` posílá do rámu natvrdo samé nuly
+ *   (`packages/emails/src/emitter/blocks/spacer.tsx`), takže odsazení z panelu
+ *   se sice uloží do dokumentu, ale do e-mailu se nikdy nedostane. Výšku má
+ *   mezera vlastní vlastností a odsazení by k ní jen tiše přičítalo nic.
+ * - `hideOnMobile: false` je patička. `FooterBlockView` posílá do rámu
+ *   `hideOnMobile={false}`, protože právní minimum musí dostat každý příjemce.
+ *
+ * Pravidlo je jednoduché: co nemá vliv, se nemá dát nastavit. Nastavení, které
+ * se tváří, že se uložilo, a nemá následek, je horší než chybějící nastavení.
+ */
+export function contentGroups(
+  options: { visibility?: boolean; padding?: boolean; hideOnMobile?: boolean } = {},
+): PropGroup[] {
+  const layout: PropDescriptor[] = [];
+  if (options.padding !== false) layout.push(PADDING_PROP);
+  layout.push(BACKGROUND_PROP);
+  if (options.hideOnMobile !== false) layout.push(HIDE_ON_MOBILE_PROP);
+
+  const groups: PropGroup[] = [{ label: 'group.layout', props: layout }];
   if (options.visibility !== false) {
     groups.push({ label: 'group.visibility', props: [VISIBILITY_PROP] });
   }

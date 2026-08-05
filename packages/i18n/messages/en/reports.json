@@ -23,6 +23,8 @@
   },
   "report": {
     "title": "Campaign report",
+    "subjectLabel": "Subject",
+    "toProgress": "View sending progress",
     "clicked": {
       "label": "Clicked",
       "denominator": "of delivered",
@@ -30,7 +32,10 @@
     },
     "delivered": {
       "label": "Delivered",
-      "denominator": "of sent"
+      "denominator": "of sent",
+      "hintProvider": "Deliveries are reported by the sending service.",
+      "hintDerived": "The sending service does not report deliveries. This number is derived: sent minus rejected and failed.",
+      "hintUnknown": "The sending service has not told us anything about what happened to these emails yet. Until it does, we do not measure deliveries, bounces or complaints."
     },
     "unsubscribed": {
       "label": "Unsubscribed",
@@ -73,7 +78,10 @@
       "failed": "Errors",
       "withinNorm": "within norm",
       "high": "high",
-      "showWho": "Show who"
+      "showWho": "Show who",
+      "notMeasured": "Not measured",
+      "notReportedBody": "Bounces and complaints are reported back by the sending service. This account does not send them, so we know nothing about them. That is a missing value, not a zero.",
+      "noEventsBody": "Not a single report came back from the sending service for this campaign, so we know nothing about deliveries, bounces or complaints. That is a missing value, not a zero. Check in Settings whether the sending account has delivery notifications configured."
     },
     "links": {
       "heading": "What people clicked",
@@ -87,6 +95,14 @@
       "columnClicks": "Clicks",
       "columnPeople": "People"
     },
+    "systemLinks": {
+      "heading": "Clicks on footer links",
+      "unsubscribePage": "Unsubscribe page",
+      "preferences": "Preference centre",
+      "webview": "View in browser",
+      "none": "Nobody has clicked a footer link yet.",
+      "notInClickRate": "This counts how many recipients opened the link. It is deliberately kept out of the click rate: unsubscribing is not interest in the message, and a mixed number could not be compared with any other tool."
+    },
     "chart": {
       "heading": "Over time",
       "granularity5m": "Every 5 minutes",
@@ -98,7 +114,10 @@
       "columnSent": "Sent",
       "columnDelivered": "Delivered",
       "columnOpens": "Opens",
-      "columnClicks": "Clicks"
+      "columnClicks": "Clicks",
+      "omittedDelivered": "The Delivered series is not in the chart. The sending service reports nothing about delivery, so it would be a zero instead of a measurement.",
+      "omittedOpens": "The Opens series is not in the chart. Open tracking is turned off for this campaign.",
+      "omittedClicks": "The Clicks series is not in the chart. Click tracking is turned off for this campaign."
     },
     "diagnostics": {
       "heading": "Diagnostics",
@@ -106,8 +125,26 @@
       "scannerClicksHint": "Corporate spam filters visit every link to check it. We do not count those clicks.",
       "lastEvent": "Last event",
       "noEvents": "No event has arrived yet.",
+      "deliveredSource": "Where delivery data comes from",
       "deliveredSourceProvider": "Delivery is reported by the sending service.",
-      "deliveredSourceDerived": "The sending service does not report delivery, so it is counted as sent minus rejected."
+      "deliveredSourceDerived": "The sending service does not report delivery, so it is counted as sent minus rejected.",
+      "deliveredSourceUnknown": "The sending service has sent us nothing about what happened to the messages, so delivery is not measured at all."
+    },
+    "sentPreview": {
+      "heading": "What was actually sent",
+      "readOnly": "This preview is read-only. It shows the version stored at send time, so changing the template will not change it.",
+      "subject": "Subject",
+      "compiledAt": "Prepared for sending",
+      "revision": "Content version",
+      "frameTitle": "Preview of the sent e-mail",
+      "textHeading": "Plain text version",
+      "notCompiledTitle": "The content has not been prepared yet",
+      "notCompiledBody": "This campaign has no stored sent version yet. It is created when the content is prepared for sending, and from then on this is exactly what the recipients got.",
+      "personalizedFor": "Personal data taken from",
+      "emptyContentTitle": "This e-mail had no content",
+      "emptyContentBody": "The campaign contained no content block, only the system footer. Recipients therefore received an empty e-mail and the preview below shows exactly what they got.",
+      "systemLinksNote": "The unsubscribe, preferences and web version links are inactive in this preview. Every recipient got their own personal ones and the report does not recreate them.",
+      "failed": "The sent version of the campaign could not be loaded."
     },
     "banner": {
       "sending": "Sending in progress, numbers keep changing",
@@ -124,10 +161,12 @@
       "justSent": "Sending has just started, the first data appears within seconds.",
       "trackingOffOpens": "Open tracking was disabled for this campaign",
       "trackingOffClicks": "Click tracking was disabled for this campaign",
+      "deliveryUnknown": "We do not know yet",
       "trackingOffBody": "Tracking was disabled for this campaign, that is why the numbers are missing.",
       "error": "The report could not be loaded.",
       "retry": "Try again",
-      "smallSample": "Small sample, percentages may be misleading"
+      "smallSample": "Small sample, percentages may be misleading",
+      "notComputed": "The summary for this campaign has not been computed yet. The numbers below are zeros from an empty summary, not measurements. The sending progress screen shows how many messages actually went out."
     },
     "actions": {
       "resendToUnopened": "Resend to people who did not open",
@@ -187,6 +226,9 @@
       "messageDelivered": "Campaign {campaign} was delivered",
       "messageOpened": "{gender, select, female {Opened campaign {campaign}} male {Opened campaign {campaign}} other {Campaign {campaign} was opened}}",
       "messageClicked": "{gender, select, female {Clicked {link} in campaign {campaign}} male {Clicked {link} in campaign {campaign}} other {{link} was clicked in campaign {campaign}}}",
+      "messageClickedUnsubscribePage": "{gender, select, female {Opened the unsubscribe page from campaign {campaign}} male {Opened the unsubscribe page from campaign {campaign}} other {Unsubscribe page from campaign {campaign} was opened}}",
+      "messageClickedPreferences": "{gender, select, female {Opened the preference centre from campaign {campaign}} male {Opened the preference centre from campaign {campaign}} other {Preference centre from campaign {campaign} was opened}}",
+      "messageClickedWebview": "{gender, select, female {Viewed campaign {campaign} in the browser} male {Viewed campaign {campaign} in the browser} other {Campaign {campaign} was viewed in the browser}}",
       "messageBounced": "Campaign {campaign} bounced as undeliverable",
       "messageComplained": "{gender, select, female {Marked campaign {campaign} as spam} male {Marked campaign {campaign} as spam} other {Campaign {campaign} was marked as spam}}",
       "messageUnsubscribed": "{gender, select, female {Unsubscribed} male {Unsubscribed} other {Unsubscribed from the list}}",
@@ -231,7 +273,13 @@
     "tileError": "This tile could not be loaded.",
     "tileRetry": "Try again",
     "emptyFirstRun": "Once you send your first campaign, you will see how it did here.",
-    "emptyNoCampaigns": "No campaign sent yet, so there are no rates."
+    "emptyNoCampaigns": "No campaign sent yet, so there are no rates.",
+    "openedAbsolute": "{count, plural, =0 {no opens} one {# open} other {# opens}}",
+    "clickedAbsolute": "{count, plural, =0 {no clicks} one {# click} other {# clicks}}",
+    "rateUnknown": "No rate here: for {count, plural, =0 {no campaigns} one {# campaign} other {# campaigns}} we still do not know how many messages arrived.",
+    "problemsUnknown": "we do not know yet",
+    "problemsUnknownHint": "Bounces and complaints are reported by the sending service. Nothing has arrived from it yet, so zero here does not mean everything is fine.",
+    "webActiveAction": "What they did on the site"
   },
   "stats": {
     "campaignsHeading": "Trend over time",
@@ -244,6 +292,66 @@
     "columnCampaign": "Campaign",
     "columnSentAt": "Sent at",
     "emptyTooFew": "The trend shows up from the third sent campaign.",
-    "openWithMachineNote": "The open rate is always shown together with the share of machine opens."
+    "openWithMachineNote": "The open rate is always shown together with the share of machine opens.",
+    "excludedUnknown": "The chart leaves out {count, plural, =0 {no campaigns} one {# campaign} other {# campaigns}} where we still do not know how many messages arrived. The rate would come from an estimate, not from measurement."
+  },
+  "web": {
+    "campaign": {
+      "heading": "What people did on your site",
+      "clicked": "{count, plural, =0 {Nobody has clicked in this campaign yet} one {# person clicked in this campaign} other {# people clicked in this campaign}}.",
+      "visited": "{count, plural, =0 {None of them came to the site} one {# of them came to the site} other {# of them came to the site}}.",
+      "browsed": "They opened {pages, plural, one {# page} other {# pages}} and did {events, plural, =0 {nothing else} one {# more action} other {# more actions}}.",
+      "rule": "We count visits by people who clicked in this campaign, within {hours} hours of their click. Tracking has no other link between an email and the site, so this is a lower bound: anyone who typed the address by hand or opted out of tracking is not in these numbers.",
+      "lastVisit": "The last visit from this campaign happened {when}.",
+      "pagesHeading": "Pages they opened",
+      "pagesColumnPath": "Page",
+      "pagesColumnViews": "Views",
+      "pagesColumnVisitors": "People",
+      "eventsHeading": "What they did there",
+      "eventsColumnName": "Action",
+      "eventsColumnCount": "Count",
+      "visitorsHeading": "Who came",
+      "visitorsPages": "{count, plural, =0 {no pages} one {# page} other {# pages}}",
+      "visitorsMore": "Showing the first {count} people by their last visit.",
+      "emptyNoClicks": "Nobody has clicked a link in this campaign yet, so there is nothing to connect with site visits.",
+      "emptyNoVisits": "People clicked in the campaign, but none of them showed up on the site. Either the tracking snippet is not running there, or they closed the page right away.",
+      "emptyNoVisitsAction": "Check website tracking",
+      "notSent": "The campaign has not been sent yet, so there is nothing to measure on the site."
+    },
+    "overview": {
+      "title": "Website",
+      "heading": "What happens on your site",
+      "question": "Who came, where from and what did they look at?",
+      "period1": "24 hours",
+      "period7": "7 days",
+      "period30": "30 days",
+      "summaryKnown": "{count, plural, =0 {Nobody we know by name showed up} one {# person we know by name was here} other {# people we know by name were here}}.",
+      "summaryAnonymous": "{count, plural, =0 {We saw no unknown visitors} one {Plus # visitor we cannot name yet} other {Plus # visitors we cannot name yet}}.",
+      "summaryPages": "Together they opened {pages, plural, one {# page} other {# pages}} and did {events, plural, =0 {nothing else} one {# more action} other {# more actions}}.",
+      "anonymousExplained": "An unknown visitor is a browser we cannot put a name to yet. As soon as that person clicks a link in one of our emails, their earlier visits are attached to them.",
+      "visitsHeading": "Recent visits",
+      "visitsColumnWho": "Who",
+      "visitsColumnWhen": "When",
+      "visitsColumnPages": "Pages",
+      "visitsColumnEntry": "Landed on",
+      "visitsColumnFrom": "Came from",
+      "visitsAnonymous": "Visitor we cannot name yet",
+      "visitsDirect": "direct",
+      "pagesHeading": "Most visited pages",
+      "pagesColumnPath": "Page",
+      "pagesColumnViews": "Views",
+      "pagesColumnVisitors": "People",
+      "eventsHeading": "What they did",
+      "eventsColumnName": "Action",
+      "eventsColumnCount": "Count",
+      "referrersHeading": "Where they came from",
+      "referrersColumnHost": "Source",
+      "referrersColumnVisits": "Visits",
+      "emptyNever": "Not a single event has arrived from your site yet. The tracking snippet is probably not running there.",
+      "emptyNeverAction": "Set up website tracking",
+      "emptyPeriod": "Nothing arrived from the site in this period. The last visit was {when}.",
+      "error": "Website activity could not be loaded.",
+      "loading": "Loading website activity"
+    }
   }
 }

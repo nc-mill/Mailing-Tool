@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   setupEventDestination,
+  ensureConfigurationSet,
+  ensureEventDestination,
   MATCHING_EVENT_TYPES,
   manualInstructions,
 } from '../ses/events-setup';
@@ -84,6 +86,68 @@ describe('nastaveni udalosti u SES', () => {
     await setupEventDestination(a as never, input);
     expect(a.setTopicAttributes).toHaveBeenCalledWith(
       expect.objectContaining({ attributeName: 'SignatureVersion', attributeValue: '2' }),
+    );
+  });
+
+  /**
+   * Instalace ve vývoji má `APP_URL` na `http://localhost`. Protokol zapsaný
+   * natvrdo jako `https` Amazon odmítne s `InvalidParameter` a shodí tím celé
+   * zakládání účtu na věci, která s odesíláním vůbec nesouvisí.
+   */
+  it('protokol odberu se odvozuje z adresy, ne natvrdo z https', async () => {
+    const a = aws();
+    await ensureEventDestination(a as never, {
+      ...input,
+      appUrl: 'http://localhost:3200',
+      configurationSetName: 'mlain-acme',
+    });
+    expect(a.subscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        protocol: 'http',
+        endpoint: 'http://localhost:3200/api/webhooks/ses/p1',
+      }),
+    );
+  });
+
+  /**
+   * Amazon vraci u nepotvrzeneho odberu doslova `pending confirmation`. Je to
+   * PLATNY STAV, ne chyba: potvrzeni chodi POSTem na nas webhook a na localhost
+   * nedorazi nikdy. Volajici z toho dela „udalosti zatim nechodi", ne selhani.
+   */
+  it('nepotvrzeny odber neni chyba, jen se pozna podle subscribed = false', async () => {
+    const a = aws();
+    const r = await ensureEventDestination(a as never, {
+      ...input,
+      configurationSetName: 'mlain-acme',
+    });
+    expect(r.subscribed).toBe(false);
+    expect(r.topicArn).toBe('arn:aws:sns:eu-central-1:1:mlain-acme-events');
+  });
+
+  it('potvrzeny odber vrati subscribed = true', async () => {
+    const a = aws({
+      subscribe: vi.fn(async () => ({ SubscriptionArn: 'arn:aws:sns:eu-central-1:1:t:abcd' })),
+    });
+    const r = await ensureEventDestination(a as never, {
+      ...input,
+      configurationSetName: 'mlain-acme',
+    });
+    expect(r.subscribed).toBe(true);
+  });
+
+  /**
+   * Jmeno sady se bere z toho, co dostane funkce, ne z vypoctu ze slugu.
+   * Dialog upravy uctu dovoluje jmeno prepsat a sender posila pod ulozenym
+   * jmenem; dva zdroje pravdy by se rozesly presne tady.
+   */
+  it('sada se zaklada pod predanym jmenem, ne pod dopoctenym ze slugu', async () => {
+    const a = aws();
+    await ensureConfigurationSet(a as never, {
+      configurationSetName: 'vlastni-sada',
+      workspaceId: 'w1',
+    });
+    expect(a.createConfigurationSet).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'vlastni-sada' }),
     );
   });
 

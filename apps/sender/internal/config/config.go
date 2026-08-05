@@ -47,6 +47,19 @@ type Config struct {
 	PrecedenceBulk            bool
 	FeedbackID                bool
 	TestTracking              bool
+
+	// Zprávy mimo kampaň: testovací odeslání, transakční pošta, automatizace.
+	// Mají vlastní claim smyčku, vlastní workery a vlastní krátký interval,
+	// aby nečekaly, než se dotočí běžící rozesílka.
+	NonCampaignConcurrency    int
+	NonCampaignBatchSize      int
+	NonCampaignPollIntervalMS int
+}
+
+// NonCampaignPollInterval je perioda claimu zpráv mimo kampaň. Řádově sekunda,
+// nezávisle na PollInterval, který obnovuje seznam běžících kampaní.
+func (c *Config) NonCampaignPollInterval() time.Duration {
+	return time.Duration(c.NonCampaignPollIntervalMS) * time.Millisecond
 }
 
 // ClaimTTL je doba platnosti claimu.

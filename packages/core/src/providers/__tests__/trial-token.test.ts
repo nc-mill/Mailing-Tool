@@ -103,4 +103,24 @@ describe('platný zkušební režim', () => {
   it('vyjádření uživatele přebíjí stav domény v obou směrech', () => {
     expect(resolveTrialMode({ trial_mode: false }, { hasVerifiedDomain: false })).toBe(false);
   });
+
+  /**
+   * Přesně stav tohohle projektu: doména ověřená, a účet přitom u Amazonu
+   * v testovacím režimu. Bez tohohle pravidla by se režim vypnul, materializace
+   * by vyrobila zprávy pro celé publikum a Amazon by je odmítal jednu po druhé.
+   */
+  it('testovací režim u Amazonu zapne zkušební režim i u ověřené domény', () => {
+    expect(resolveTrialMode({}, { hasVerifiedDomain: true, providerSandbox: true })).toBe(true);
+  });
+
+  it('produkční přístup u Amazonu nechá rozhodnout doménu', () => {
+    expect(resolveTrialMode({}, { hasVerifiedDomain: true, providerSandbox: false })).toBe(false);
+  });
+
+  /** Nevědomost režim nezapíná: tvrdit omezení, které jsme nepřečetli, je táž chyba. */
+  it('nenačtený stav účtu se nepovažuje za testovací režim', () => {
+    expect(resolveTrialMode({}, { hasVerifiedDomain: true, providerSandbox: undefined })).toBe(
+      false,
+    );
+  });
 });

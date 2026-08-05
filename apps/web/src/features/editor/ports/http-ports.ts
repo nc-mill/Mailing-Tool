@@ -101,6 +101,26 @@ export function createHttpPorts(options: {
       return { ok: true, designHash: String(body.design_hash), updatedAt: String(body.updated_at) };
     },
 
+    async rename({ templateId, name }) {
+      const { status, body } = await call(`/templates/${templateId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      });
+      /*
+       * Zabrané jméno (409) a prázdná hodnota po ořezu (422) se NEVYHAZUJÍ.
+       * Obojí je odpověď na to, co uživatel napsal do pole, takže se má vrátit
+       * volajícímu a ukázat u toho pole. `PortError` je pro poruchy, ne pro
+       * odpovědi, a v hlavičce editoru by skončil jako pád celého stromu.
+       */
+      if (status === 409 || status === 422) {
+        return { ok: false, code: String(body.code ?? 'unknown_error') };
+      }
+      if (status >= 400) fail(body, status);
+      // `design_hash` je tu povinný: server spolu se jménem mění `meta.name`
+      // dokumentu, takže starý hash je od téhle chvíle neplatný zámek.
+      return { ok: true, designHash: String(body.design_hash) };
+    },
+
     async preview({ templateId, previewData }): Promise<PreviewResult> {
       // `preview_data` je požadavek P08-R2. Endpoint dnes bere jen `render_data`
       // s hotovými daty a jinak sáhne po jedné vzorové sadě, takže varianta
@@ -122,17 +142,11 @@ export function createHttpPorts(options: {
       return { findings: (body.findings as Finding[]) ?? [] };
     },
 
-    async testSend({
-      templateId,
-      recipients,
-      addTestPrefix,
-      previewData,
-    }): Promise<TestSendResult> {
+    async testSend({ templateId, recipients, previewData }): Promise<TestSendResult> {
       const { status, body } = await call(`/templates/${templateId}/test-send`, {
         method: 'POST',
         body: JSON.stringify({
           recipients,
-          add_test_prefix: addTestPrefix,
           preview_data: toSnake(previewData),
         }),
       });
@@ -147,6 +161,18 @@ export function createHttpPorts(options: {
       return { ok: true };
     },
 
+    async applyToCampaign({ campaignId, templateId }) {
+      const { status, body } = await call(`/campaigns/${campaignId}/apply-template`, {
+        method: 'POST',
+        body: JSON.stringify({ template_id: templateId }),
+      });
+      // Chyba se NEVYHAZUJE: `campaign_subject_missing` znamená, že se obsah
+      // zkopíroval, ale kampaň se nezkompilovala, a to je věta, kterou musí
+      // uživatel dostat celou. Obecná výjimka by z ní udělala „nepodařilo se".
+      if (status >= 400) return { ok: false as const, code: String(body.code ?? 'unknown_error') };
+      return { ok: true as const, overwritten: body.overwritten === true };
+    },
+
     async searchContacts(query: string): Promise<ContactSummary[]> {
       const { status, body } = await call(`/contacts?q=${encodeURIComponent(query)}&limit=10`, {
         method: 'GET',
@@ -156,10 +182,25 @@ export function createHttpPorts(options: {
     },
 
     async randomContact(): Promise<ContactSummary | null> {
-      const { status, body } = await call('/contacts?order=random&limit=1', { method: 'GET' });
+      /*
+       * `order=random` NEEXISTUJE a nikdy neexistovalo.
+       *
+       * Povolené hodnoty vypisuje `CONTACT_ORDERS` v `contacts.routes.ts`
+       * (`created_at.desc|asc`, `updated_at.desc`, `last_activity_at.desc`),
+       * protože každé řazení musí mít krycí index. `order=random` proto končilo
+       * na 422 `validation_failed` a tlačítko „Náhodný kontakt" v náhledu
+       * nefungovalo vůbec: `fail()` vyhodilo `PortError` a náhled se nezměnil.
+       *
+       * Náhoda se proto losuje z první stránky. Pro účel „ukaž mi, jak to vypadá
+       * konkrétnímu člověku" je to totéž a server kvůli tomu nemusí dostat
+       * další index nad tabulkou s miliony řádků.
+       */
+      const { status, body } = await call('/contacts?limit=25', { method: 'GET' });
       if (status >= 400) fail(body, status);
-      const first = ((body.data as Json[]) ?? [])[0];
-      return first ? toContact(first) : null;
+      const rows = (body.data as Json[]) ?? [];
+      if (rows.length === 0) return null;
+      const picked = rows[Math.floor(Math.random() * rows.length)];
+      return picked ? toContact(picked) : null;
     },
 
     async listAssets(query = ''): Promise<AssetSummary[]> {
@@ -225,10 +266,39 @@ function toAsset(item: Json): AssetSummary {
   };
 }
 
+/**
+ * Kontakt z API na tvar, se kterým pracuje editor.
+ *
+ * `values` je táž mapa, jakou pro náhled skládá `contactPreviewData` na serveru,
+ * jen z odpovědi REST místo z řádku databáze. Klíče se proto jmenují stejně
+ * jako cesty v šabloně (`contact.first_name`), ne jako sloupce v Drizzle.
+ * Slouží k dosazení hodnot do značek na plátně; závazný náhled ji nepoužívá,
+ * ten si data skládá server sám.
+ */
 function toContact(item: Json): ContactSummary {
   const first = String(item.first_name ?? '');
   const last = String(item.last_name ?? '');
-  return { id: String(item.id), email: String(item.email), name: `${first} ${last}`.trim() };
+  const text = (key: string): string => (item[key] === null ? '' : String(item[key] ?? ''));
+  return {
+    id: String(item.id),
+    email: String(item.email),
+    name: `${first} ${last}`.trim(),
+    values: {
+      email: String(item.email),
+      first_name: text('first_name'),
+      last_name: text('last_name'),
+      middle_name: text('middle_name'),
+      title_prefix: text('title_prefix'),
+      title_suffix: text('title_suffix'),
+      gender: text('gender'),
+      first_name_vocative: text('first_name_vocative'),
+      last_name_vocative: text('last_name_vocative'),
+      greeting: text('greeting'),
+      locale: text('locale'),
+      created_at: text('created_at'),
+      attr: (item.attributes ?? {}) as Record<string, unknown>,
+    },
+  };
 }
 
 function toSnake(data: PreviewData): Json {

@@ -11,6 +11,7 @@ import {
 import { EXIT_CONFIG, EXIT_OK, EXIT_USAGE } from '../exit-codes';
 import { loadCliConfig } from './load-cli-config';
 import type { CliStreams } from '../dispatch';
+import { resolveMigrationsFolder } from '../migrations-folder';
 
 const KEY_WARNING =
   'Šifrovací klíč v záloze schválně není. Uložte si zvlášť celý keyring, tedy SECRET_KEY ' +
@@ -42,7 +43,13 @@ export async function runBackupCommand(
       streams.stderr('Použití: mlain backup verify <adresář>');
       return EXIT_USAGE;
     }
-    const report = await verifyBackup({ backupDir: dir, adminUrl });
+    // Cesta k migracím se předává výslovně: zabundlované CLI si ji samo
+    // odvodit neumí, viz `migrations-folder.ts`.
+    const report = await verifyBackup({
+      backupDir: dir,
+      adminUrl,
+      migrationsFolder: resolveMigrationsFolder(env),
+    });
     if (report.ok) {
       streams.stdout(`Záloha ${dir} je v pořádku.`);
       return EXIT_OK;

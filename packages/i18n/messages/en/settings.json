@@ -159,6 +159,21 @@
       "dialogCancel": "Keep {current}",
       "started": "We switched the greeting and we're recalculating contacts."
     },
+    "greetingLocale": {
+      "label": "Language of contact greetings",
+      "hint": "Greetings are built in the contact's language, not the project's: only Czech and Slovak have the vocative case. Contacts created earlier keep the language the project started with. The project language is now {target}.",
+      "allAligned": "{count, plural, =0 {You have no contacts yet.} one {Your only contact uses {target}, there is nothing to align.} other {All # contacts use {target}, there is nothing to align.}}",
+      "mismatched": "{count, plural, =0 {Every contact uses {target}, so everyone is greeted in it.} one {# contact out of {total} uses a language other than {target}, so it will be greeted in that one.} other {# contacts out of {total} use a language other than {target}, so they will be greeted in that one.}}",
+      "perLocale": "{locale}: {count, plural, =0 {no contacts} one {# contact} other {# contacts}}",
+      "action": "Align the language to {target} and recalculate greetings",
+      "dialogTitle": "Align greeting language to {target}?",
+      "dialogConsequence1": "{count, plural, =0 {No contact will change its language.} one {We'll change the language of # contact and compute its vocative for {target}.} other {We'll change the language of # contacts and compute their vocative for {target}.}}",
+      "dialogConsequence2": "Manually confirmed forms stay. Only the sentence around them is rebuilt, so \"Hello Petře\" becomes \"Dobrý den, Petře\".",
+      "dialogConsequence3": "The recalculation runs in the background and a contact's language can be changed back at any time.",
+      "dialogConfirm": "Align and recalculate",
+      "dialogCancel": "Leave languages as they are",
+      "started": "We're aligning the language and recalculating greetings. This takes a moment."
+    },
     "danger": {
       "title": "Delete the project",
       "body": "Deleting removes all contacts, campaigns and statistics. You can restore it for 30 days. Type the project name to confirm.",
@@ -234,8 +249,100 @@
       "submitting": "Sending the invitation",
       "done": "We've sent the invitation to {email}.",
       "alreadyMember": "{email} is already in the project. You can change their role in the member list.",
-      "alreadyInvited": "We've sent the invitation to {email} again, the previous one stopped working."
+      "alreadyInvited": "We've sent the invitation to {email} again, the previous one stopped working.",
+      "mailUnavailableTitle": "Email invitations cannot be sent right now",
+      "mailUnavailableBody": "This installation has no way to send system email, so the invitation would never arrive. Create the colleague directly with a password in the form below, or set up system email first.",
+      "mailUnavailableLink": "Open system email settings"
+    },
+    "create": {
+      "title": "Create a member directly",
+      "lead": "The account is created immediately, with no email. You hand over the password yourself.",
+      "email": "Colleague's email",
+      "role": "Role",
+      "passwordMode": "Password",
+      "passwordGenerated": "Generate one and show it to me",
+      "passwordManual": "I'll type my own",
+      "password": "Password",
+      "passwordHint": "At least 12 characters. It must not contain part of the address before the at sign, nor be among the ten thousand most common passwords.",
+      "submit": "Create the member",
+      "submitting": "Creating the member",
+      "done": "The account for {email} is ready.",
+      "existing": "An account for {email} already existed in this installation, so we only added it to the project. We did not change its password.",
+      "changeHint": "Tell the new member to change the password after the first sign-in under Settings, My account. Forcing a change on first sign-in is not supported yet."
+    },
+    "orphaned": {
+      "title": "Accounts without a project",
+      "lead": "Accounts that exist in this installation but belong to no project. They can still sign in, yet they are not in any team list. Membership in a deleted project does not count.",
+      "empty": "There is no such account. Every account in this installation belongs to at least one project.",
+      "email": "Email",
+      "name": "Name",
+      "createdAt": "Created",
+      "lastLoginAt": "Last signed in",
+      "never": "Never",
+      "delete": "Delete the account",
+      "dialogTitle": "Delete the account {email}?",
+      "consequence1": "It stops signing in and its open sessions end immediately.",
+      "consequence2": "Whatever it created in the tool stays, with its name on it.",
+      "consequence3": "Audit records stay. They are evidence and are never deleted.",
+      "consequence4": "Its email address is free right away, so the account can be created again.",
+      "confirm": "Delete the account",
+      "cancel": "Keep the account",
+      "done": "The account {email} is deleted.",
+      "failed": "The account could not be deleted.",
+      "cannotDeleteSelf": "You cannot delete your own account. Ask someone else to do it.",
+      "stillMember": "The account has joined a project in the meantime. Remove it from the project first.",
+      "lastAccount": "This is the last account of the installation. If it went, nobody could get back in."
+    },
+    "password": {
+      "title": "The account is ready",
+      "warning": "Copy the password now. Neither you nor we can see it again.",
+      "acknowledge": "I've stored the password",
+      "close": "Done"
     }
+  },
+  "systemMail": {
+    "title": "System email",
+    "lead": "Email about accounts: invitations, forgotten password recovery and address verification in trial mode. It has nothing to do with sending campaigns.",
+    "okTitle": "System email works",
+    "okBody": "It is sent through the account {account} of type {type}.",
+    "failTitle": "System email does not work",
+    "reason": {
+      "no_account": "The project has no sending account that could send email.",
+      "provider_unsupported": "The project would send through the account {account} of type {type}. Only an SMTP account can send system email from here.",
+      "selected_account_missing": "The account chosen for system email is no longer in the project, or it is switched off."
+    },
+    "limitationTitle": "Why this happens",
+    "limitationBody": "System email is composed and sent by the application itself. Only the campaign sending service, written in Go, has an Amazon SES client, so the application cannot send through an SES account. This is a known limitation of the tool, not a mistake in your setup.",
+    "blockedTitle": "What this blocks",
+    "blocked1": "Inviting someone to the project by email. Instead, create the member directly with a password under Settings, Team.",
+    "blocked2": "Recovering a forgotten password. Instead, run mlain reset-password with the user's address on the server.",
+    "blocked3": "Verifying an address in trial mode, so trial mode cannot be completed.",
+    "blocked4": "The notice about a disabled webhook. That one is only undelivered, the webhook is disabled either way.",
+    "fixTitle": "How to fix it",
+    "fixBody": "Add an SMTP account under Settings, Sending. Campaigns can keep going through SES, system email will take the SMTP account.",
+    "fixLink": "Go to Sending",
+    "fromTitle": "Sender address",
+    "fromCurrent": "System email is sent from {address}.",
+    "fromSource": {
+      "configured": "You typed this address yourself.",
+      "verified_domain": "Derived from the verified domain of the sending account.",
+      "app_url": "Derived from the application address, because the account has no verified domain. Such a message ends up in spam more often."
+    },
+    "form": {
+      "title": "Settings",
+      "account": "Account for system email",
+      "accountAuto": "Choose automatically, SMTP first",
+      "accountHint": "Which sending account system email goes out through.",
+      "accountIncapable": "{name}, type {type}, cannot send system email",
+      "accountCapable": "{name}, type {type}",
+      "fromAddress": "Sender address",
+      "fromAddressHint": "Leave it empty and we'll derive it from the verified domain of the account.",
+      "submit": "Save settings",
+      "submitting": "Saving",
+      "done": "System email settings are saved."
+    },
+    "noAccounts": "The project has no sending account yet, so there is nothing to choose from.",
+    "noPermission": "System email is configured by Admins and Owners. Your role does not have that permission."
   },
   "apiKeys": {
     "title": "API keys",
@@ -446,7 +553,8 @@
         "logout": "Signed out",
         "password_changed": "Changed the password",
         "password_reset_requested": "Requested a password reset",
-        "password_reset_completed": "Completed a password reset"
+        "password_reset_completed": "Completed a password reset",
+        "deleted": "Deleted an account"
       },
       "workspace": {
         "created": "Created the project",
@@ -457,6 +565,7 @@
       },
       "member": {
         "invited": "Invited a member",
+        "created": "Created a member",
         "invitation_revoked": "Revoked an invitation",
         "joined": "Accepted an invitation",
         "role_changed": "Changed a member's role",
@@ -561,6 +670,10 @@
     "serviceUnavailable": {
       "title": "The server isn't responding",
       "body": "We couldn't reach the tool's server. This is usually temporary and a second attempt goes through."
+    },
+    "systemMailUnavailable": {
+      "title": "This installation has no way to send system email",
+      "body": "Only an SMTP account can send it, because the Amazon SES client lives solely in the campaign sending service. You can see the state and the fix under Settings, System email. Trying again will not help, what is missing is configuration, not a connection."
     },
     "dependencyTimeout": {
       "title": "The server took too long",

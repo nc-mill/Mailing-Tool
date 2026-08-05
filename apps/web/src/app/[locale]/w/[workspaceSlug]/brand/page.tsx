@@ -1,30 +1,30 @@
-import type { Metadata } from 'next';
-import { getTranslations } from 'next-intl/server';
-import { BrandScreen } from '@/features/brand/brand-screen';
+import { redirect } from 'next/navigation';
 
 /**
- * Stránka se NEPŘEDRENDEROVÁVÁ. Proxy razítkuje inline skripty Nextu nonce,
- * který vzniká pro každý požadavek, kdežto předrenderované HTML vzniká při
- * stavbě, kdy žádný požadavek není. Prohlížeč by pak skripty bez nonce
- * zablokoval, React by se nenamountoval a na stránce by nefungovalo nic.
- * Hlídá to `apps/web/test/ci/no-static-pages.test.ts`.
+ * Stará adresa značky. Obrazovka se 4. 8. 2026 přestěhovala do Nastavení
+ * (rozhodnutí zadavatele, zapsané v `packages/ui/src/patterns/navigation/registry.ts`),
+ * takže tady zůstává jen přesměrování na `/settings/brand`.
+ *
+ * Proč se `/brand` nesmazalo: adresu nesla položka menu od P05, je v plánech,
+ * v komentářích i v prohlížečích lidí, kteří si ji uložili. Tichá 404 by je
+ * poslala na obrazovku „Stránka nenalezena" a nikdo by jim neřekl, kam se
+ * značka poděla. Přesměrování stojí pět řádků.
+ *
+ * Tělo obrazovky (`BrandScreen`) je teď jen na jednom místě, pod
+ * `settings/brand/page.tsx`. Dvě stránky nad jedním tělem byly zvyk z doby,
+ * kdy položka menu mířila na `/brand` a e2e na `/settings/brand`.
+ *
+ * `dynamic = 'force-dynamic'` tu je i pro přesměrování: hlídá to
+ * `apps/web/test/ci/no-static-pages.test.ts` a rozhodnutí má být napsané,
+ * ne uhodnuté Nextem.
  */
 export const dynamic = 'force-dynamic';
-
-/**
- * Adresa z registru navigace P05 (položka `templates-brand`, `mvp0: true`).
- * Bez téhle stránky by položka „Značka projektu" v menu vedla na 404.
- */
-export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations('ai');
-  return { title: t('brand.title') };
-}
 
 export default async function BrandPage({
   params,
 }: {
-  params: Promise<{ workspaceSlug: string }>;
+  params: Promise<{ locale: string; workspaceSlug: string }>;
 }) {
-  const { workspaceSlug } = await params;
-  return <BrandScreen workspaceSlug={workspaceSlug} />;
+  const { locale, workspaceSlug } = await params;
+  redirect(`/${locale}/w/${workspaceSlug}/settings/brand`);
 }

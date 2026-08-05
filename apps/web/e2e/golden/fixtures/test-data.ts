@@ -34,6 +34,8 @@ export const SMTP = {
 export const CAMPAIGN = {
   name: 'Zlatá cesta: první kampaň',
   subject: 'Vítejte u nás',
+  /** Jméno odesílatele. Obrazovka nastavení kampaně ho vyžaduje zvlášť od adresy. */
+  fromName: 'E-shop Kolo',
   segmentName: 'Aktivní za 90 dní',
   templateName: 'Zlatá cesta: šablona',
 } as const;

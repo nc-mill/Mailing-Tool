@@ -64,6 +64,22 @@ export type CatalogInput = {
   attributes?: { key: string; label: string; fieldClass: FieldClass }[];
   lists?: { id: string; name: string }[];
   segments?: { id: string; name: string }[];
+  /**
+   * Kampaň, na kterou je otevřený segment navázaný.
+   *
+   * PROČ TO KATALOG POTŘEBUJE. Pole se poznává DOSLOVNÝM porovnáním `ref`
+   * s `condition.field` (viz komentář nahoře). Obecná položka „Klikl v kampani"
+   * má `scope: {}`, kdežto podmínka předvyplněná z reportu má
+   * `scope: { campaign_id: … }`, takže se neshodnou a výběr pole zůstane
+   * prázdný. Podmínka se přitom vyhodnotí správně a živý počet sedí, jen
+   * uživatel nevidí, co v ní stojí, a je to ta horší polovina předvyplnění:
+   * segment, který nejde zkontrolovat.
+   *
+   * Položky se přidávají jen pro TU JEDNU kampaň, ze které se sem přišlo.
+   * Nabídnout je pro všechny kampaně projektu by z výběru pole udělalo seznam
+   * o stovkách řádků.
+   */
+  campaign?: { id: string; name: string };
 };
 
 export function buildFieldCatalog(t: Translate, input: CatalogInput = {}): FieldDefinition[] {
@@ -144,6 +160,21 @@ export function buildFieldCatalog(t: Translate, input: CatalogInput = {}): Field
       valueType: 'number',
       operators: operatorsFor('engagement', t),
     });
+  }
+
+  // Tytéž metriky, ale omezené na jednu kampaň. Viz `CatalogInput.campaign`.
+  if (input.campaign !== undefined) {
+    const campaign = input.campaign;
+    for (const metric of ENGAGEMENT_METRICS) {
+      fields.push({
+        id: `engagement.${metric}.campaign.${campaign.id}`,
+        label: t(`fields.engagementInCampaign.${metric}`, { campaign: campaign.name }),
+        group: t('fieldGroups.engagement'),
+        ref: { kind: 'engagement', metric, scope: { campaign_id: campaign.id } },
+        valueType: 'number',
+        operators: operatorsFor('engagement', t),
+      });
+    }
   }
 
   for (const segment of input.segments ?? []) {

@@ -6,13 +6,14 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it, vi } from 'vitest';
 import csSettings from '../../../../../packages/i18n/messages/cs/settings.json';
+import { IDLE } from '@/lib/feedback/action-result';
 import { AddressFormSectionView } from './address-form-section';
 
 // Modul akcí se dotýká `server-only` a cookies, které v jsdom nejsou.
 // Pohled si akci bere propem, takže stačí prázdná náhrada.
-vi.mock('./actions-forms', () => ({
-  updateAddressFormFormAction: vi.fn(),
-  deleteWorkspaceFormAction: vi.fn(),
+vi.mock('./actions', () => ({
+  updateAddressFormAction: vi.fn(),
+  deleteWorkspaceAction: vi.fn(),
 }));
 
 const messages = { settings: csSettings };
@@ -38,7 +39,7 @@ function renderSection(
         workspace={{ ...WORKSPACE, address_form: addressForm }}
         canWrite={canWrite}
         contactCount={contactCount}
-        action={vi.fn()}
+        action={vi.fn(async () => IDLE)}
       />
     </NextIntlClientProvider>,
   );

@@ -218,3 +218,105 @@ func TestSubjectTooLongIsPermanentFailure(t *testing.T) {
 		t.Fatalf("chyba = %v, chci subject_too_long", err)
 	}
 }
+
+// Transakční zpráva odhlašovací odkaz NEMÁ a není to chyba. Je to jediná
+// výjimka z pojistky "zpráva bez možnosti odhlášení odejít nesmí".
+func TestTransactionalMessageHasNoUnsubscribeURL(t *testing.T) {
+	msg := testMessage()
+	msg.Kind = outbox.KindTransactional
+	out, err := testRenderer(t).Render(
+		testHeader(t, `<html><body>{{ data.reset_url }}</body></html>`, "{{ data.reset_url }}"), msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.UnsubscribeURL != "" {
+		t.Fatalf("odhlašovací odkaz = %q, transakční zpráva ho nesmí mít", out.UnsubscribeURL)
+	}
+	if out.OneClick {
+		t.Fatal("One-Click u transakční zprávy nedává smysl")
+	}
+	if !out.NoUnsubscribe {
+		t.Fatal("chybí příznak NoUnsubscribe, hlavička by se dostala do MIME")
+	}
+}
+
+// Odkaz z render_data se dosadí do těla. Je to celý smysl kořene data.
+func TestTransactionalDataRootIsInterpolated(t *testing.T) {
+	msg := testMessage()
+	msg.Kind = outbox.KindTransactional
+	msg.RenderData = []byte(`{"data":{"reset_url":"https://shop.cz/reset?t=abc"}}`)
+	out, err := testRenderer(t).Render(
+		testHeader(t, `<html><body><a href="{{ data.reset_url }}">Reset</a></body></html>`,
+			"{{ data.reset_url }}"), msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.HTML, `href="https://shop.cz/reset?t=abc"`) {
+		t.Fatalf("odkaz se do tlačítka nedosadil: %q", out.HTML)
+	}
+}
+
+// Pojistka pro kampaň zůstává. Kampaňová zpráva bez contact_id dál neodejde.
+func TestCampaignMessageWithoutContactStillFailsAfterTransactionalException(t *testing.T) {
+	msg := testMessage()
+	msg.ContactID = nil
+	msg.Kind = outbox.KindCampaign
+	_, err := testRenderer(t).Render(testHeader(t, `<html><body>x</body></html>`, "x"), msg)
+	var re *RenderError
+	if !AsRenderError(err, &re) || re.Code != errcatalog.UnsubscribeURLMissing {
+		t.Fatalf("chyba = %v, chci unsubscribe_url_missing", err)
+	}
+}
+
+// Sledování je u transakční zprávy vypnuté natvrdo, bez ohledu na TestTracking.
+// Zbylá značka je tvrdá chyba: transakční šablona se kompiluje bez sledování.
+func TestTransactionalMessageNeverTracks(t *testing.T) {
+	msg := testMessage()
+	msg.Kind = outbox.KindTransactional
+	out, err := testRenderer(t).Render(
+		testHeader(t, `<html><body><!--ML_OPEN_PIXEL--></body></html>`, "x"), msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.HTML, "/t/o/") {
+		t.Fatalf("transakční zpráva nese sledovací pixel: %q", out.HTML)
+	}
+
+	_, err = testRenderer(t).Render(
+		testHeader(t, `<html><body><a href="https://track.mlain.invalid/c/0192f3a0-1c2d-7e42-9c3d-4e5f60718293">x</a></body></html>`, "x"),
+		msg)
+	var re *RenderError
+	if !AsRenderError(err, &re) || re.Code != errcatalog.MarkerNotReplaced {
+		t.Fatalf("chyba = %v, chci marker_not_replaced", err)
+	}
+}
+
+// Transakční zpráva nedostane ani centrum předvoleb, ani zobrazení v prohlížeči.
+// Webview je u ní bezpečnostní problém: renderuje uloženou zprávu z render_data,
+// takže by jednorázový odkaz na reset hesla šel otevřít z webové adresy.
+func TestTransactionalMessageHasNoPreferencesOrWebview(t *testing.T) {
+	msg := testMessage()
+	msg.Kind = outbox.KindTransactional
+	out, err := testRenderer(t).Render(
+		testHeader(t, `<html><body>{{ preferences_url }}|{{ webview_url }}</body></html>`,
+			"{{ preferences_url }}|{{ webview_url }}"), msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.HTML, "<body>|</body>") {
+		t.Fatalf("transakční zpráva nese adresu předvoleb nebo webview: %q", out.HTML)
+	}
+}
+
+// Kampaňová zpráva je dostat MUSÍ. Výjimka se nesmí rozlít.
+func TestCampaignMessageStillGetsPreferencesAndWebview(t *testing.T) {
+	out, err := testRenderer(t).Render(
+		testHeader(t, `<html><body>{{ preferences_url }}|{{ webview_url }}</body></html>`,
+			"{{ preferences_url }}"), testMessage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.HTML, "/p/") || !strings.Contains(out.HTML, "/v/") {
+		t.Fatalf("kampaňová zpráva přišla o předvolby nebo webview: %q", out.HTML)
+	}
+}

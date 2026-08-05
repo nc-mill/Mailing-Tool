@@ -88,6 +88,14 @@ export class OnboardingPage {
   async loadDemoData(): Promise<void> {
     await this.page.goto(`/w/${this.slug}/contacts`);
     await this.page.getByRole('button', { name: 'Nahrát ukázková data' }).click();
+
+    // Počká se na DOKLAD, že se data opravdu nahrála, ne jen na kliknutí.
+    // Bez toho vzniká závod: scénář odešel na přehled dřív, než `POST
+    // /api/v1/demo-data` doběhlo, a banner tam pochopitelně ještě nebyl.
+    // Prázdný stav vystřídá tabulka s padesáti kontakty.
+    await expect(this.page.getByRole('grid', { name: 'Kontakty' })).toBeVisible({
+      timeout: 30_000,
+    });
   }
 
   async removeDemoData(): Promise<void> {

@@ -10,6 +10,8 @@ import { Input } from '@mlain/ui/components/input';
 import { RadioGroup, RadioGroupItem } from '@mlain/ui/components/radio-group';
 import { Alert } from '@mlain/ui/patterns/states';
 import { SelectField } from '@/lib/forms/select-field';
+import { ProviderHelp, SesSandboxNotice } from './provider-help';
+import { RegionSelect } from './region-select';
 import type { CreateProviderInput, CreateProviderResult } from './actions';
 
 /**
@@ -39,9 +41,6 @@ const ENCRYPTION_LABEL_KEY: Record<
   none: 'encryptionNone',
 };
 
-/** Tvar regionu je ze `sesSchema`: `z.string().regex(/^[a-z]{2}-[a-z]+-\d$/)`. */
-const REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d$/;
-
 type FormState = {
   name: string;
   region: string;
@@ -56,9 +55,18 @@ type FormState = {
   isDefault: boolean;
 };
 
+/*
+ * Region začíná PRÁZDNÝ, a je to celý smysl téhle úpravy.
+ *
+ * Dřív tu stálo `region: 'eu-central-1'`. Předvyplněná hodnota vypadá jako
+ * odpověď, takže ji uživatel odklikne a nikdy se nepodívá, kde má vlastně
+ * u Amazonu ověřeno. Přesně tahle tichá předvolba stála zadavatele čtyři dny:
+ * on ověřoval v Severní Virginii, produkt odesílal z Frankfurtu. Frankfurt
+ * zůstává v nabídce jako DOPORUČENÝ, ale vybrat ho musí člověk.
+ */
 const EMPTY: FormState = {
   name: '',
-  region: 'eu-central-1',
+  region: '',
   accessKeyId: '',
   secretAccessKey: '',
   configurationSetName: '',
@@ -115,7 +123,9 @@ export function AddProviderDialog({
     else if (name.length > 120) found['name'] = t('tooLong', { max: 120 });
 
     if (type === 'ses') {
-      if (!REGION_PATTERN.test(form.region.trim())) found['region'] = t('invalidRegion');
+      // Nevybraný region je jediná chyba, která tu může vzniknout: hodnoty
+      // nabízí seznam, takže překlep ve tvaru `eu-central-1` už nehrozí.
+      if (form.region.trim() === '') found['region'] = t('regionRequired');
       if (form.accessKeyId.trim().length < 16) found['accessKeyId'] = t('tooShort', { min: 16 });
       if (form.secretAccessKey.length < 16) found['secretAccessKey'] = t('tooShort', { min: 16 });
       if (form.configurationSetName.trim().length > 64) {
@@ -233,6 +243,14 @@ export function AddProviderDialog({
             </RadioGroup>
           </fieldset>
 
+          {/*
+            Nápověda stojí HNED za volbou typu, tedy nad poli, která vysvětluje,
+            a mění se s ní. Uvnitř rolovací oblasti proto, že rozbalená zabere
+            víc místa než celý formulář; ven patří jen věci, které musí být
+            vidět vždy.
+          */}
+          <ProviderHelp type={type} />
+
           <Field label={t('name')} hint={t('nameHint')} {...fieldError('name')}>
             <Input
               data-testid="provider-name"
@@ -243,13 +261,12 @@ export function AddProviderDialog({
 
           {type === 'ses' ? (
             <>
-              <Field label={t('region')} hint={t('regionHint')} {...fieldError('region')}>
-                <Input
-                  data-testid="provider-region"
-                  value={form.region}
-                  onChange={(event) => set('region', event.target.value)}
-                />
-              </Field>
+              <RegionSelect
+                name="provider-region"
+                value={form.region}
+                onChange={(next) => set('region', next)}
+                {...(errors['region'] === undefined ? {} : { error: errors['region'] })}
+              />
               <Field label={t('accessKeyId')} {...fieldError('accessKeyId')}>
                 <Input
                   data-testid="provider-access-key-id"
@@ -279,6 +296,9 @@ export function AddProviderDialog({
                   onChange={(event) => set('configurationSetName', event.target.value)}
                 />
               </Field>
+              {/* Testovací režim u Amazonu se NESCHOVÁVÁ do rozbalovací nápovědy: je to
+                  nejčastější důvod, proč první kampaň neodejde, a potká každý nový účet. */}
+              <SesSandboxNotice />
             </>
           ) : (
             <>

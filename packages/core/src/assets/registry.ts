@@ -64,6 +64,65 @@ export const ORIGINAL_VARIANT = 'orig';
 export const STORED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif'] as const;
 export type StoredMimeType = (typeof STORED_MIME_TYPES)[number];
 
+/**
+ * Formáty, které se NIKDY nesmí objevit na výstupu, vyjmenované.
+ *
+ * Seznam je nadbytečný vůči `STORED_MIME_TYPES` (co v uloženém výčtu není, je
+ * zakázané) a je tu SCHVÁLNĚ. Kdyby někdo do uloženého výčtu přidal `image/webp`
+ * kvůli menšímu souboru, brána `image.test.ts` spadne na jmenovitém seznamu
+ * a v hlášce bude stát důvod, ne jen „očekáváno 3, dostal 4". Rozhodnutí
+ * „WebP do e-mailu nepatří" je věcné, ne tvarové, a má být v kódu vidět
+ * jmenovitě.
+ */
+export const NEVER_STORED_MIME_TYPES = [
+  'image/webp',
+  'image/avif',
+  'image/heic',
+  'image/heif',
+  'image/tiff',
+  'image/bmp',
+  'image/svg+xml',
+  'image/jxl',
+] as const;
+
+/**
+ * Co smí přijít NA VSTUPU, v podobě pro atribut `accept` u `<input type="file">`.
+ *
+ * VSTUPNÍ SEZNAM JE ŠIRŠÍ NEŽ VÝSTUPNÍ a je to rozhodnutí, ne nedůslednost.
+ * WebP a AVIF se PŘIJÍMAJÍ A PŘEVEDOU, neodmítají se: obrázek stažený
+ * z prohlížeče je dnes běžně WebP, uživatel na to nemá vliv a odmítnutí by ho
+ * poslalo hledat převodník. Převod je bezpečný, protože o výstupu rozhoduje
+ * `assertStoredFormat` v `image.ts`, ne to, co přišlo.
+ *
+ * HEIC v seznamu NENÍ: fotky z iPhonu jsou sice běžné, ale `sharp` HEIC
+ * dekóduje jen s libheif, kterou instalace mít nemusí. Slíbit ho v `accept`
+ * a pak odmítnout až po nahrání deseti megabajtů je horší než ho nenabídnout;
+ * `detectFormat` ho proto hlásí jmenovitě a chybová hláška radí, co udělat.
+ *
+ * `image/*` se tu NEPOUŽÍVÁ. Nabídlo by v dialogu operačního systému i HEIC,
+ * TIFF a BMP, tedy přesně to, co server odmítne.
+ */
+export const UPLOAD_ACCEPT_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'image/avif',
+  'image/svg+xml',
+] as const;
+
+/** Hodnota atributu `accept`. Přípony jsou tu kvůli Windows, které u části souborů posílá prázdný typ. */
+export const UPLOAD_ACCEPT_ATTRIBUTE = [
+  ...UPLOAD_ACCEPT_MIME_TYPES,
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.webp',
+  '.avif',
+  '.svg',
+].join(',');
+
 /** Přípona v adrese `<base>/a/<public_id>/<variant>.<ext>`. */
 export const EXTENSION_BY_MIME: Record<StoredMimeType, string> = {
   'image/jpeg': 'jpg',

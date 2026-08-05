@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { createWorkspaceAsUser } from '@mlain/db';
 import * as schema from '@mlain/db/schema';
 import { appPool, withoutContext, withWorkspace } from '@mlain/core/tx';
@@ -84,4 +84,27 @@ export async function seedOwnerWithWorkspace(
   const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0]!;
 
   return { cookie, userId, workspaceId, email, slug };
+}
+
+/**
+ * Přidá projektu odesílací účet typu SMTP.
+ *
+ * Existuje kvůli systémové poště: `POST /api/v1/invitations` odmítne založit
+ * pozvánku v projektu, který ji nemá jak odeslat, a vrátí 503
+ * `system_mail_unavailable`. Účet typu SES by nestačil, systémovou poštu odsud
+ * odešle jen SMTP. Šifrovaná konfigurace je zástupná, protože samotné odesílání
+ * si testy nahrazují přes `setSystemMailer`; výběr účtu se do ní nedívá.
+ */
+export async function seedSmtpAccount(userId: string, workspaceId: string): Promise<void> {
+  // Kontext projektu je povinný: `sending_providers` má politiku `ws_isolation`
+  // s WITH CHECK, takže vložení bez kontextu skončí na SQLSTATE 42501.
+  const ctx = await createWorkspaceContext({ kind: 'session', userId, workspaceRef: workspaceId });
+  await withWorkspace(ctx, (tx) =>
+    tx.execute(sql`
+      INSERT INTO sending_providers
+        (workspace_id, name, type, config_encrypted, config_public, status, is_default)
+      VALUES (${workspaceId}::uuid, 'SMTP pro testy', 'smtp', 'enc:test', '{}'::jsonb,
+              'ready', true)
+    `),
+  );
 }

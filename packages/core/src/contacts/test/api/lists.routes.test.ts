@@ -10,7 +10,11 @@ const repo = vi.hoisted(() => ({
   stats: vi.fn(),
 }));
 const service = vi.hoisted(() => ({ subscribeToList: vi.fn(), resendConfirmation: vi.fn() }));
-const unsub = vi.hoisted(() => ({ unsubscribe: vi.fn(), snooze: vi.fn() }));
+const unsub = vi.hoisted(() => ({
+  unsubscribe: vi.fn(),
+  snooze: vi.fn(),
+  bulkUnsubscribeFromList: vi.fn(),
+}));
 const query = vi.hoisted(() => ({ findContactByEmail: vi.fn() }));
 const permissions = vi.hoisted(() => ({ assertPermission: vi.fn() }));
 
@@ -193,6 +197,58 @@ describe('POST /lists/{id}/subscribe:bulk', () => {
     expect(res.status).toBe(422);
     const body = (await res.json()) as { errors: { code: string }[] };
     expect(body.errors[0]?.code).toBe('too_many_items');
+  });
+});
+
+describe('DELETE /lists/{id}/subscribe:bulk', () => {
+  it('odhlásí dávku a vrátí výsledek po položkách', async () => {
+    unsub.bulkUnsubscribeFromList.mockResolvedValue([
+      { index: 0, outcome: 'unsubscribed', contactId: CONTACT_ID },
+      { index: 1, outcome: 'unchanged', contactId: CONTACT_ID },
+      { index: 2, outcome: 'unknown_contact', contactId: null },
+    ]);
+    const res = await app().request(`/lists/${LIST_ID}/subscribe:bulk`, {
+      method: 'DELETE',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ emails: ['a@x.cz', 'b@x.cz', 'nikdo@x.cz'] }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { results: { outcome: string }[] };
+    // Kontakt mimo seznam se nezamlčí ani nespadne: má vlastní výsledek.
+    expect(body.results.map((item) => item.outcome)).toEqual([
+      'unsubscribed',
+      'unchanged',
+      'unknown_contact',
+    ]);
+    expect(unsub.bulkUnsubscribeFromList).toHaveBeenCalledWith(
+      expect.anything(),
+      // `manual`, ne `api`: hromadné odhlášení je rozhodnutí správce a do souhlasu
+      // se má zapsat jako `admin`, ne jako by o něj požádal sám příjemce.
+      expect.objectContaining({ listId: LIST_ID, reason: 'manual' }),
+    );
+  });
+
+  it('odmítne víc než tisíc adres stejným kódem jako hromadné přihlášení', async () => {
+    const res = await app().request(`/lists/${LIST_ID}/subscribe:bulk`, {
+      method: 'DELETE',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ emails: Array.from({ length: 1001 }, (_, i) => `u${i}@x.cz`) }),
+    });
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { errors: { code: string }[] };
+    expect(body.errors[0]?.code).toBe('too_many_items');
+  });
+
+  it('neexistující seznam vrací 404, ne prázdnou práci', async () => {
+    repo.byId.mockResolvedValue(null);
+    const res = await app().request(`/lists/${LIST_ID}/subscribe:bulk`, {
+      method: 'DELETE',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ emails: ['a@x.cz'] }),
+    });
+    expect(res.status).toBe(404);
+    expect(unsub.bulkUnsubscribeFromList).not.toHaveBeenCalled();
   });
 });
 

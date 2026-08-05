@@ -13,8 +13,11 @@ function catalog(locale: 'cs' | 'en'): Record<string, unknown> {
 }
 
 describe('mapa auditních akcí', () => {
-  it('pokrývá všech dvacet šest akcí části 1 z tabulky 3.7', () => {
-    expect(Object.keys(AUDIT_ACTION_KEYS)).toHaveLength(26);
+  // Dvacet osm, ne dvacet šest: přibyla `member.created` (člen založený správcem
+  // rovnou s heslem, bez pozvánky e-mailem) a `user.deleted` (smazání účtu
+  // z rozhraní, které dřív neexistovalo vůbec).
+  it('pokrývá všech dvacet osm akcí části 1 z tabulky 3.7', () => {
+    expect(Object.keys(AUDIT_ACTION_KEYS)).toHaveLength(28);
   });
 
   it('každá akce má text v obou jazycích', () => {

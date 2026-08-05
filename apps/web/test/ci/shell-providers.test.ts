@@ -25,7 +25,17 @@ import { describe, expect, it } from 'vitest';
  * samy. Měří komponentu, ne její zasazení.
  */
 
-const SHELL = 'apps/web/src/app/[locale]/w/[workspaceSlug]/layout.tsx';
+/**
+ * Skořápka je od 4. 8. 2026 ve DVOU souborech, a nedalo se tomu vyhnout.
+ * Data (relace, projekty, oprávnění) umí načíst jen serverová komponenta,
+ * providery umí namontovat jen klientská: `ToastProvider` bere mezi popisky
+ * funkce a ty se ze serveru do klienta předat nedají. Brána proto míří na
+ * klientskou část, kde providery od té chvíle bydlí, a navíc drží to, že
+ * serverová část opravdu tuhle klientskou skořápku vykresluje. Bez druhé
+ * kontroly by šlo providery „splnit" souborem, který nikdo nepoužívá.
+ */
+const SHELL = 'apps/web/src/features/shell/workspace-shell.tsx';
+const SERVER_SHELL = 'apps/web/src/app/[locale]/w/[workspaceSlug]/layout.tsx';
 
 function repoRoot(): string {
   let dir = resolve(process.cwd());
@@ -64,5 +74,14 @@ describe('skořápka projektu montuje sdílené providery', () => {
     // takže by tooltip v navigaci spadl dál.
     expect(source.indexOf('<ToastProvider')).toBeLessThan(source.indexOf('<AppShell'));
     expect(source.indexOf('<TooltipProvider')).toBeLessThan(source.indexOf('<AppShell'));
+  });
+
+  it('serverová část skořápky tu klientskou opravdu vykresluje', async () => {
+    const source = await readFile(join(repoRoot(), SERVER_SHELL), 'utf8');
+
+    expect(
+      source,
+      'Providery smí bydlet v klientské skořápce jen tehdy, když ji layout projektu vykresluje.',
+    ).toContain('<WorkspaceShell');
   });
 });

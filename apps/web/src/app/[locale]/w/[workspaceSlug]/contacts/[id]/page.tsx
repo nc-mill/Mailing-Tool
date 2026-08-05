@@ -29,6 +29,14 @@ type ContactApiDetail = {
   last_name: string | null;
   greeting: string;
   vocative_locked: boolean;
+  /**
+   * Jistota vokativu a jazyk kontaktu. API je vracelo od začátku, detail je ale
+   * zahazoval, takže se z obrazovky nedalo poznat, jestli je tvar potvrzený,
+   * odvozený ze slovníku, nebo odhadnutý.
+   */
+  first_name_vocative: string | null;
+  vocative_confidence: 'high' | 'low' | 'none';
+  locale: string;
   gender: 'female' | 'male' | 'unknown';
   status: ContactDetailData['status'];
   processing_restricted: boolean;
@@ -101,6 +109,14 @@ export default async function ContactDetailPage({ params }: PageProps) {
     name: [payload.first_name, payload.last_name].filter(Boolean).join(' ') || null,
     greeting: payload.greeting,
     greeting_locked: payload.vocative_locked,
+    greeting_status: {
+      greeting: payload.greeting ?? '',
+      first_name: payload.first_name,
+      first_name_vocative: payload.first_name_vocative ?? null,
+      vocative_confidence: payload.vocative_confidence ?? 'none',
+      vocative_locked: payload.vocative_locked ?? false,
+      locale: payload.locale ?? 'cs',
+    },
     gender: payload.gender,
     status: payload.status,
     processing_restricted: payload.processing_restricted,
@@ -130,6 +146,7 @@ export default async function ContactDetailPage({ params }: PageProps) {
       workspacePath={`/w/${workspaceSlug}`}
       workspaceId={workspaceId}
       contact={data}
+      workspaceLocale={access.data.workspace.locale}
     />
   );
 }

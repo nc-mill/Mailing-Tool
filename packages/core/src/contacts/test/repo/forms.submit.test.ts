@@ -344,22 +344,34 @@ describe('veřejný identifikátor formuláře', () => {
 });
 
 describe('kód k vložení', () => {
-  it('vrátí tři varianty', () => {
+  it('vrátí dvě varianty', () => {
     const snippets = buildEmbedSnippets({ appUrl: 'https://app.example.com', slug: 'newsletter' });
-    expect(Object.keys(snippets)).toEqual(['script', 'iframe', 'html']);
+    // Třetí, „čistě HTML formulář", zmizela: statický kód na cizím webu nemá jak
+    // získat nonce, takže tiše zahazoval data (`dropped / missing_nonce`), zatímco
+    // návštěvník viděl děkovací stránku. Viz hlavička `buildEmbedSnippets`.
+    expect(Object.keys(snippets)).toEqual(['script', 'iframe']);
   });
 
-  it('skriptová varianta vykresluje do zapouzdřeného stromu', () => {
+  it('skriptová varianta míří na hostitelský prvek a načítá se asynchronně', () => {
     const snippets = buildEmbedSnippets({ appUrl: 'https://app.example.com', slug: 'newsletter' });
     expect(snippets.script).toContain('data-ml-form="newsletter"');
     expect(snippets.script).toContain('async');
   });
 
-  it('čistě HTML varianta funguje bez JavaScriptu', () => {
+  it('ani jedna varianta nenese CSS', () => {
     const snippets = buildEmbedSnippets({ appUrl: 'https://app.example.com', slug: 'newsletter' });
-    expect(snippets.html).toContain('method="post"');
-    expect(snippets.html).toContain('/f/newsletter/submit');
-    expect(snippets.html).not.toContain('<script');
+    // Rozhodnutí zadavatele: vzhled si určuje web, kam se formulář vkládá.
+    for (const snippet of Object.values(snippets)) {
+      expect(snippet).not.toContain('style=');
+      expect(snippet).not.toContain('<style');
+    }
+  });
+
+  it('rámeček funguje bez JavaScriptu na straně hostitele', () => {
+    const snippets = buildEmbedSnippets({ appUrl: 'https://app.example.com', slug: 'newsletter' });
+    // Uvnitř běží naše stránka, která si nonce i ochrany řeší sama.
+    expect(snippets.iframe).toContain('/f/newsletter');
+    expect(snippets.iframe).not.toContain('<script');
   });
 });
 

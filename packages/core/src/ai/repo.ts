@@ -330,9 +330,49 @@ export async function appendMessage(tx: Tx, params: AppendMessageParams): Promis
     .where(eq(schema.aiConversations.id, params.conversationId));
 }
 
-/** Denní agregát spotřeby. Přičítá se, nikdy nepřepisuje. */
+/**
+ * Denní agregát spotřeby. Přičítá se, nikdy nepřepisuje.
+ *
+ * SLOUPCE, KTERÉ POSKYTOVATEL NEHLÁSÍ, SE NEDOTÝKAJÍ VŮBEC. Nejde o optimalizaci
+ * zápisu, je to jediný způsob, jak udržet rozdíl mezi „nevíme" a „nula".
+ * Kdyby se `reported_cost` při každém volání přepočítalo z `coalesce(…, 0)`,
+ * proměnil by první požadavek přes poskytovatele bez hlášené ceny NULL v nulu
+ * a od té chvíle by řádek tvrdil, že ten den nic nestál. Proto se ty tři
+ * hodnoty do `set` přidávají PODMÍNĚNĚ.
+ */
 export async function upsertDailyUsage(tx: Tx, input: UsageUpsert): Promise<void> {
   const table = schema.aiUsageDaily;
+
+  // `PgUpdateSetSource` se nedá poskládat postupně bez přetypování: klíče jsou
+  // v typu povinně známé dopředu, kdežto tady jich část závisí na datech.
+  const set: Record<string, unknown> = {
+    requests: sql`${table.requests} + ${input.requestsDelta}`,
+    inputTokens: sql`${table.inputTokens} + ${input.inputTokensDelta}`,
+    outputTokens: sql`${table.outputTokens} + ${input.outputTokensDelta}`,
+    errors: sql`${table.errors} + ${input.errorsDelta}`,
+  };
+
+  if (input.reportedCostDelta !== null && input.reportedCostUnit !== null) {
+    /*
+     * Přetypování na `numeric` je nutné, ne kosmetika: ovladač posílá číslo
+     * jako parametr bez typu a PostgreSQL by ho v součtu s `numeric` sice
+     * odvodil, ale u prvního zápisu do NULL sloupce (`coalesce(NULL, 0) + $1`)
+     * je `0` typu `integer` a výsledek by spadl na `integer`, tedy by se
+     * setinová částka zaokrouhlila na nulu.
+     */
+    set['reportedCost'] =
+      sql`coalesce(${table.reportedCost}, 0::numeric) + ${input.reportedCostDelta}::numeric`;
+    set['reportedCostUnit'] = input.reportedCostUnit;
+  }
+  if (input.cacheReadTokensDelta !== null) {
+    set['cacheReadTokens'] =
+      sql`coalesce(${table.cacheReadTokens}, 0) + ${input.cacheReadTokensDelta}`;
+  }
+  if (input.cacheWriteTokensDelta !== null) {
+    set['cacheWriteTokens'] =
+      sql`coalesce(${table.cacheWriteTokens}, 0) + ${input.cacheWriteTokensDelta}`;
+  }
+
   await tx
     .insert(table)
     .values({
@@ -344,15 +384,17 @@ export async function upsertDailyUsage(tx: Tx, input: UsageUpsert): Promise<void
       inputTokens: input.inputTokensDelta,
       outputTokens: input.outputTokensDelta,
       errors: input.errorsDelta,
+      // U prvního řádku dne se nehlášené hodnoty ukládají jako NULL, ne nula.
+      reportedCost: input.reportedCostUnit === null ? null : input.reportedCostDelta,
+      reportedCostUnit: input.reportedCostUnit,
+      cacheReadTokens: input.cacheReadTokensDelta,
+      cacheWriteTokens: input.cacheWriteTokensDelta,
     })
     .onConflictDoUpdate({
       target: [table.workspaceId, table.day, table.provider, table.model],
-      set: {
-        requests: sql`${table.requests} + ${input.requestsDelta}`,
-        inputTokens: sql`${table.inputTokens} + ${input.inputTokensDelta}`,
-        outputTokens: sql`${table.outputTokens} + ${input.outputTokensDelta}`,
-        errors: sql`${table.errors} + ${input.errorsDelta}`,
-      },
+      set: set as Parameters<
+        ReturnType<ReturnType<typeof tx.insert>['values']>['onConflictDoUpdate']
+      >[0]['set'],
     });
 }
 
@@ -462,6 +504,10 @@ export async function loadUsageRows(
     inputTokens: number;
     outputTokens: number;
     errors: number;
+    reportedCost: number | null;
+    reportedCostUnit: string | null;
+    cacheReadTokens: number | null;
+    cacheWriteTokens: number | null;
   }>
 > {
   const table = schema.aiUsageDaily;
@@ -479,5 +525,21 @@ export async function loadUsageRows(
     inputTokens: row.inputTokens,
     outputTokens: row.outputTokens,
     errors: row.errors,
+    /*
+     * `numeric` vrací ovladač jako ŘETĚZEC, i když drizzle sloupec deklaruje
+     * s `mode: 'number'`; převod dělá až mapování drizzle a u `select()` bez
+     * výčtu sloupců se na něj nedá spolehnout napříč verzemi. Převod je proto
+     * tady a je obranný: `null` zůstává `null`, nikdy z něj nevznikne nula.
+     */
+    reportedCost: toNumberOrNull(row.reportedCost),
+    reportedCostUnit: row.reportedCostUnit,
+    cacheReadTokens: toNumberOrNull(row.cacheReadTokens),
+    cacheWriteTokens: toNumberOrNull(row.cacheWriteTokens),
   }));
+}
+
+function toNumberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }

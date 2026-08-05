@@ -1,11 +1,202 @@
 {
-  "updatedAt": "2026-07-31",
+  "updatedAt": "2026-08-03",
   "currency": "USD",
-  "note": "Ceny za milion tokenů. Uvádíme jen ceny, které umíme doložit. Model, který tu není, se v UI zobrazí jen se spotřebou tokenů, nikdy s vymyšlenou částkou.",
+  "note": "Ceny za milion tokenů. Uvádíme jen ceny, které umíme doložit odkazem ve `sources`. Model, který tu není, se v UI zobrazí jen se spotřebou tokenů, nikdy s vymyšlenou částkou. `cachedInputPerMTokUsd` je sazba za čtení z mezipaměti; zatím se nepoužívá k výpočtu, protože `ai_usage_daily` neúčtuje tokeny z mezipaměti zvlášť. `longContextThresholdTokens` znamená, že nad tímhle prahem účtuje poskytovatel víc a náš odhad platí jen pod ním.",
+  "sources": {
+    "anthropic": {
+      "url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "verifiedAt": "2026-08-03"
+    },
+    "openai": {
+      "url": "https://developers.openai.com/api/docs/pricing",
+      "verifiedAt": "2026-08-03"
+    }
+  },
   "prices": {
-    "anthropic/claude-opus-5": { "inputPerMTokUsd": 5, "outputPerMTokUsd": 25 },
-    "anthropic/claude-sonnet-5": { "inputPerMTokUsd": 3, "outputPerMTokUsd": 15 },
-    "anthropic/claude-fable-5": { "inputPerMTokUsd": 10, "outputPerMTokUsd": 50 },
-    "anthropic/claude-haiku-4-5-20251001": { "inputPerMTokUsd": 1, "outputPerMTokUsd": 5 }
+    "anthropic/claude-opus-5": {
+      "inputPerMTokUsd": 5,
+      "cachedInputPerMTokUsd": 0.5,
+      "outputPerMTokUsd": 25
+    },
+    "anthropic/claude-sonnet-5": {
+      "inputPerMTokUsd": 2,
+      "cachedInputPerMTokUsd": 0.2,
+      "outputPerMTokUsd": 10,
+      "validUntil": "2026-08-31",
+      "note": "Zaváděcí cena. Od 1. 9. 2026 platí 3 za vstup, 0,30 za čtení z mezipaměti a 15 za výstup; k tomu datu je potřeba tenhle řádek přepsat."
+    },
+    "anthropic/claude-fable-5": {
+      "inputPerMTokUsd": 10,
+      "cachedInputPerMTokUsd": 1,
+      "outputPerMTokUsd": 50
+    },
+    "anthropic/claude-haiku-4-5-20251001": {
+      "inputPerMTokUsd": 1,
+      "cachedInputPerMTokUsd": 0.1,
+      "outputPerMTokUsd": 5
+    },
+    "anthropic/claude-haiku-4-5": {
+      "inputPerMTokUsd": 1,
+      "cachedInputPerMTokUsd": 0.1,
+      "outputPerMTokUsd": 5
+    },
+    "anthropic/claude-opus-4-8": {
+      "inputPerMTokUsd": 5,
+      "cachedInputPerMTokUsd": 0.5,
+      "outputPerMTokUsd": 25
+    },
+    "anthropic/claude-opus-4-7": {
+      "inputPerMTokUsd": 5,
+      "cachedInputPerMTokUsd": 0.5,
+      "outputPerMTokUsd": 25
+    },
+    "anthropic/claude-opus-4-6": {
+      "inputPerMTokUsd": 5,
+      "cachedInputPerMTokUsd": 0.5,
+      "outputPerMTokUsd": 25
+    },
+    "anthropic/claude-sonnet-4-6": {
+      "inputPerMTokUsd": 3,
+      "cachedInputPerMTokUsd": 0.3,
+      "outputPerMTokUsd": 15
+    },
+
+    "openai/gpt-5.6-sol": {
+      "inputPerMTokUsd": 5,
+      "cachedInputPerMTokUsd": 0.5,
+      "outputPerMTokUsd": 30,
+      "longContextThresholdTokens": 272000
+    },
+    "openai/gpt-5.6-terra": {
+      "inputPerMTokUsd": 2,
+      "cachedInputPerMTokUsd": 0.2,
+      "outputPerMTokUsd": 12,
+      "longContextThresholdTokens": 272000
+    },
+    "openai/gpt-5.6-luna": {
+      "inputPerMTokUsd": 0.2,
+      "cachedInputPerMTokUsd": 0.02,
+      "outputPerMTokUsd": 1.2,
+      "longContextThresholdTokens": 272000,
+      "note": "Nad 272 000 vstupních tokenů účtuje OpenAI dvojnásobek za vstup a 1,5násobek za výstup, tedy 0,40 a 1,80 (doloženo na stránce modelu). Okno modelu je 1 050 000 tokenů, přes práh se tedy dá dostat běžně. Zápis do mezipaměti stojí 1,25násobek vstupu, tedy 0,25."
+    },
+    "openai/gpt-5.5": {
+      "inputPerMTokUsd": 5,
+      "cachedInputPerMTokUsd": 0.5,
+      "outputPerMTokUsd": 30,
+      "longContextThresholdTokens": 272000
+    },
+    "openai/gpt-5.5-pro": {
+      "inputPerMTokUsd": 30,
+      "outputPerMTokUsd": 180,
+      "longContextThresholdTokens": 272000
+    },
+    "openai/gpt-5.4": {
+      "inputPerMTokUsd": 2.5,
+      "cachedInputPerMTokUsd": 0.25,
+      "outputPerMTokUsd": 15,
+      "longContextThresholdTokens": 272000
+    },
+    "openai/gpt-5.4-mini": {
+      "inputPerMTokUsd": 0.75,
+      "cachedInputPerMTokUsd": 0.075,
+      "outputPerMTokUsd": 4.5
+    },
+    "openai/gpt-5.4-nano": {
+      "inputPerMTokUsd": 0.2,
+      "cachedInputPerMTokUsd": 0.02,
+      "outputPerMTokUsd": 1.25
+    },
+    "openai/gpt-5.4-pro": {
+      "inputPerMTokUsd": 30,
+      "outputPerMTokUsd": 180,
+      "longContextThresholdTokens": 272000
+    },
+    "openai/gpt-5.2": {
+      "inputPerMTokUsd": 1.75,
+      "cachedInputPerMTokUsd": 0.175,
+      "outputPerMTokUsd": 14
+    },
+    "openai/gpt-5.2-pro": {
+      "inputPerMTokUsd": 21,
+      "outputPerMTokUsd": 168
+    },
+    "openai/gpt-5.1": {
+      "inputPerMTokUsd": 1.25,
+      "cachedInputPerMTokUsd": 0.125,
+      "outputPerMTokUsd": 10
+    },
+    "openai/gpt-5": {
+      "inputPerMTokUsd": 1.25,
+      "cachedInputPerMTokUsd": 0.125,
+      "outputPerMTokUsd": 10
+    },
+    "openai/gpt-5-mini": {
+      "inputPerMTokUsd": 0.25,
+      "cachedInputPerMTokUsd": 0.025,
+      "outputPerMTokUsd": 2
+    },
+    "openai/gpt-5-nano": {
+      "inputPerMTokUsd": 0.05,
+      "cachedInputPerMTokUsd": 0.005,
+      "outputPerMTokUsd": 0.4
+    },
+    "openai/gpt-5-pro": {
+      "inputPerMTokUsd": 15,
+      "outputPerMTokUsd": 120
+    },
+    "openai/gpt-4.1": {
+      "inputPerMTokUsd": 2,
+      "cachedInputPerMTokUsd": 0.5,
+      "outputPerMTokUsd": 8
+    },
+    "openai/gpt-4.1-mini": {
+      "inputPerMTokUsd": 0.4,
+      "cachedInputPerMTokUsd": 0.1,
+      "outputPerMTokUsd": 1.6
+    },
+    "openai/gpt-4.1-nano": {
+      "inputPerMTokUsd": 0.1,
+      "cachedInputPerMTokUsd": 0.025,
+      "outputPerMTokUsd": 0.4
+    },
+    "openai/gpt-4o": {
+      "inputPerMTokUsd": 2.5,
+      "cachedInputPerMTokUsd": 1.25,
+      "outputPerMTokUsd": 10
+    },
+    "openai/gpt-4o-mini": {
+      "inputPerMTokUsd": 0.15,
+      "cachedInputPerMTokUsd": 0.075,
+      "outputPerMTokUsd": 0.6
+    },
+    "openai/o1": {
+      "inputPerMTokUsd": 15,
+      "cachedInputPerMTokUsd": 7.5,
+      "outputPerMTokUsd": 60
+    },
+    "openai/o1-pro": {
+      "inputPerMTokUsd": 150,
+      "outputPerMTokUsd": 600
+    },
+    "openai/o3": {
+      "inputPerMTokUsd": 2,
+      "cachedInputPerMTokUsd": 0.5,
+      "outputPerMTokUsd": 8
+    },
+    "openai/o3-mini": {
+      "inputPerMTokUsd": 1.1,
+      "cachedInputPerMTokUsd": 0.55,
+      "outputPerMTokUsd": 4.4
+    },
+    "openai/o3-pro": {
+      "inputPerMTokUsd": 20,
+      "outputPerMTokUsd": 80
+    },
+    "openai/o4-mini": {
+      "inputPerMTokUsd": 1.1,
+      "cachedInputPerMTokUsd": 0.275,
+      "outputPerMTokUsd": 4.4
+    }
   }
 }

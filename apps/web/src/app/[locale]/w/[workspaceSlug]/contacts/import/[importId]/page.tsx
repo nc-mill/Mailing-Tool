@@ -3,7 +3,11 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api-client/fetch';
 import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
-import { ImportResult, type ImportResultRow } from '@/features/import/import-result';
+import {
+  ImportResult,
+  resultStatusOf,
+  type ImportResultRow,
+} from '@/features/import/import-result';
 
 /**
  * Stránka závisí na přihlášeném uživateli, takže se NEPŘEDRENDEROVÁVÁ.
@@ -50,8 +54,6 @@ type ApiImport = {
   options: Record<string, unknown>;
 };
 
-const KNOWN = ['completed', 'completed_with_errors', 'cancelled', 'failed'] as const;
-
 export default async function ImportResultPage({ params }: PageProps) {
   const { locale, workspaceSlug, importId } = await params;
 
@@ -63,13 +65,14 @@ export default async function ImportResultPage({ params }: PageProps) {
   if (!found.ok) notFound();
 
   const raw = found.data;
-  const status = (KNOWN as readonly string[]).includes(raw.status)
-    ? (raw.status as ImportResultRow['status'])
-    : 'failed';
 
   const row: ImportResultRow = {
     id: raw.id,
-    status,
+    // Převod stavu vlastní `import-result.tsx`, protože na něm stojí i to, co obrazovka
+    // vykreslí. Dvě kopie výčtu stavů by se rozešly a rozdíl by se projevil tím, že
+    // běžící import zase vypadá jako selhaný.
+    status: resultStatusOf(raw.status),
+    rawStatus: raw.status,
     totalRows: raw.total_rows ?? 0,
     createdRows: raw.created_rows,
     updatedRows: raw.updated_rows,
@@ -81,5 +84,12 @@ export default async function ImportResultPage({ params }: PageProps) {
     failureDetail: raw.failure_detail,
   };
 
-  return <ImportResult row={row} workspaceSlug={workspaceSlug} locale={locale} />;
+  return (
+    <ImportResult
+      row={row}
+      workspaceSlug={workspaceSlug}
+      workspaceId={workspaceId}
+      locale={locale}
+    />
+  );
 }

@@ -7,6 +7,7 @@ import {
   campaignLinksUrl,
   campaignProgressUrl,
   campaignStatsUrl,
+  campaignSystemLinkClicksUrl,
   fetchJson,
   type ReportsApiError,
 } from '../api-client';
@@ -20,7 +21,11 @@ import { LinksTable, type LinkRow } from './links-table';
 import { OpensPanel } from './opens-panel';
 import { ProblemsPanel } from './problems-panel';
 import { ProgressChart, type ProgressPoint } from './progress-chart';
-import { reportBanner } from './report-banner';
+import { feedbackGap } from './provider-feedback';
+import { reportBanner, statsNotComputed } from './report-banner';
+import { SentPreview } from './sent-preview';
+import { SystemLinksPanel, type SystemLinkClicks } from './system-links-panel';
+import { WebActivityPanel } from './web-activity-panel';
 import { mergeLiveSnapshot, type OpensMode, type StatsPayload } from './report-model';
 
 export function CampaignReport({
@@ -61,18 +66,25 @@ export function CampaignReport({
     points: [],
     compacted: false,
   });
+  const [systemLinks, setSystemLinks] = useState<SystemLinkClicks | null>(null);
   const [error, setError] = useState<ReportsApiError | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    // Tři nezávislé zdroje se načítají paralelně, ne za sebou.
+    // Čtyři nezávislé zdroje se načítají paralelně, ne za sebou.
     void Promise.allSettled([
       fetchJson<StatsPayload>(campaignStatsUrl(campaignId)),
       fetchJson<{ data: LinkRow[] }>(campaignLinksUrl(campaignId)),
       fetchJson<{ points: ProgressPoint[]; compacted: boolean }>(
         campaignProgressUrl(campaignId, granularity),
       ),
-    ]).then(([stats, linkResult, progressResult]) => {
+      /*
+       * Prokliky na systémové odkazy mají VLASTNÍ dotaz, ne pole v souhrnu.
+       * Do `campaign_stats` se záměrně neagregují, takže by verzí souhrnu
+       * nehnuly a podmíněný dotaz by vracel zastaralá čísla.
+       */
+      fetchJson<SystemLinkClicks>(campaignSystemLinkClicksUrl(campaignId)),
+    ]).then(([stats, linkResult, progressResult, systemLinkResult]) => {
       if (cancelled) return;
       if (stats.status === 'fulfilled' && stats.value.status === 'ok') setPayload(stats.value.data);
       if (stats.status === 'rejected') setError(stats.reason as ReportsApiError);
@@ -81,6 +93,9 @@ export function CampaignReport({
       }
       if (progressResult.status === 'fulfilled' && progressResult.value.status === 'ok') {
         setProgress(progressResult.value.data);
+      }
+      if (systemLinkResult.status === 'fulfilled' && systemLinkResult.value.status === 'ok') {
+        setSystemLinks(systemLinkResult.value.data);
       }
     });
     return () => {
@@ -155,10 +170,63 @@ export function CampaignReport({
     );
   }
 
-  const banner = reportBanner(payload, new Date());
+  const now = new Date();
+  const banner = reportBanner(payload, now);
+  /*
+   * Chybí zpětná vazba od odesílací služby? Počítá se TADY, protože k tomu
+   * je potřeba aktuální čas: mlčení služby je nález až chvíli po dokončení
+   * rozesílky, ne během ní. Panel problémů podle toho ukáže buď naměřená
+   * čísla, nebo přizná, že údaj nemáme.
+   */
+  const gap = feedbackGap(payload, now);
 
   return (
     <div className="flex flex-col gap-6">
+      {/*
+       * Hlavička říká, ČÍ report to je. Bez ní se ze seznamu kampaní kliklo na
+       * řádek a přistálo se na stránce plné čísel bez jediného slova o tom,
+       * která kampaň to je; jméno ani předmět se nikde nevykreslovaly, přestože
+       * obojí v odpovědi `/stats` je.
+       */}
+      <header className="flex flex-col gap-1">
+        <p className="text-sm text-text-muted">{t('report.title')}</p>
+        <h1 className="text-2xl font-semibold">{payload.name}</h1>
+        <p className="text-sm text-text-muted">
+          {t('report.subjectLabel')}: {payload.subject}
+        </p>
+        {/*
+         * Cesta zpátky na průběh. Report a průběh jsou dvě strany téže kampaně
+         * a musí jít přejít OBĚMA směry: z průběhu na výsledky vede odkaz
+         * z `ProgressScreen`, odsud se dá zpátky podívat, jak rozesílka běžela.
+         */}
+        <p className="text-sm">
+          <a
+            href={`/w/${workspaceSlug}/campaigns/${campaignId}/progress`}
+            className="underline"
+            data-testid="report-to-progress"
+          >
+            {t('report.toProgress')}
+          </a>
+        </p>
+      </header>
+
+      {/*
+       * NESPOČÍTANÝ SOUHRN SE PŘIZNÁ NAHOŘE, PŘED VŠEMI ČÍSLY. Netýká se
+       * jedné dlaždice, ale celé stránky: dokud souhrn nevznikl, je každá
+       * hodnota níž nula z prázdného řádku, ne měření. Naměřeno v prohlížeči
+       * na odeslané kampani, kde průběh hlásil tři odeslané zprávy a report
+       * samé nuly.
+       */}
+      {statsNotComputed(payload) ? (
+        <p
+          role="status"
+          data-testid="stats-not-computed"
+          className="rounded-lg border border-border bg-warning-surface px-4 py-3 text-sm text-warning-text"
+        >
+          {t('report.states.notComputed')}
+        </p>
+      ) : null}
+
       {/* Pruh je pruh, ne odstavec: podklad a barevná linka ho oddělí od čísel
           pod ním, jinak splyne s obsahem a uživatel ho přehlédne. */}
       {banner === null ? null : (
@@ -206,14 +274,31 @@ export function CampaignReport({
       <OpensPanel payload={payload} mode={mode} onModeChange={changeMode} />
       <ProblemsPanel
         payload={payload}
+        gap={gap}
         onShowWho={(filter) => changeRecipientsFilter(parseFilter(filter))}
       />
       <LinksTable links={links} disabled={!payload.track_clicks} />
+      {/*
+       * Patička stojí HNED ZA odkazy na obsah, ale jako samostatný panel.
+       * Blízko, protože odpovídá na tutéž otázku „kam lidé klikali"; odděleně,
+       * protože se to nesmí sečíst s mírou prokliku.
+       */}
+      <SystemLinksPanel clicks={systemLinks} />
+      {/*
+       * Graf kreslí JEN ŘADY, KTERÉ SE DOOPRAVDY MĚŘÍ. Bez tohohle příznaku
+       * vedle sebe na jedné stránce stálo „Doručeno: Zatím nevíme" a plochá
+       * čára Doručeno na nule, tedy dvě opačná tvrzení o téže věci.
+       */}
       <ProgressChart
         points={progress.points}
         compacted={progress.compacted}
         granularity={granularity}
         onGranularityChange={changeGranularity}
+        measured={{
+          delivered: payload.delivered_known,
+          opens: payload.track_opens,
+          clicks: payload.track_clicks,
+        }}
       />
       {/*
        * DOPLNĚK PROTI PLÁNU: panel příjemců je součástí reportu.
@@ -227,6 +312,19 @@ export function CampaignReport({
         onFilterChange={changeRecipientsFilter}
         tracking={{ trackOpens: payload.track_opens, trackClicks: payload.track_clicks }}
       />
+      {/*
+       * Odeslaná podoba patří pod čísla, ne nad ně: report se otevírá kvůli
+       * výsledkům a náhled je odpověď na otázku „co přesně lidé viděli",
+       * která přichází až po nich. Je jen ke čtení, tlačítko na úpravu nemá.
+       */}
+      {/*
+       * Webová aktivita stojí ZA odkazy a před náhledem odeslané podoby.
+       * Je to odpověď na otázku „a co dělali potom", která přichází hned po
+       * „kam klikali", takže patří k sobě; má ale vlastní zdroj dat, vlastní
+       * pravidlo připsání a vlastní prázdný stav, proto je to vlastní panel.
+       */}
+      <WebActivityPanel campaignId={campaignId} workspaceSlug={workspaceSlug} />
+      <SentPreview campaignId={campaignId} />
       <DiagnosticsPanel payload={payload} />
       <FollowUpActions workspaceSlug={workspaceSlug} campaignId={campaignId} />
     </div>

@@ -1,4 +1,5 @@
 import { validateLiquid, type LiquidContext } from '@mlain/contracts/liquid';
+import { rootsForTemplateKind } from '@mlain/contracts/liquid/grammar';
 import type { FieldCatalog, FieldCatalogType } from '../external/field-catalog';
 import { fromLiquidIssue, type Issue } from '../issue';
 import { toCatalogPath, toLiquidRoots } from '../paths';
@@ -36,16 +37,6 @@ const OPERATORS_BY_TYPE: Record<FieldCatalogType, VisibilityCondition['op'][]> =
   list: ['present', 'blank'],
 };
 
-const ALLOWED_ROOTS = [
-  'contact',
-  'campaign',
-  'workspace',
-  'unsubscribe_url',
-  'one_click_unsubscribe_url',
-  'preferences_url',
-  'webview_url',
-];
-
 const issue = (
   code: string,
   severity: Issue['severity'],
@@ -63,7 +54,10 @@ export function checkFields(doc: Document, ctx: FieldContext): Issue[] {
     // Validátor chce ÚZKÝ tvar `LiquidRoots`, ne bohatý katalog polí od P07.
     // Jsou to dva různé typy (rozhodnutí R2), převod je v `../paths`.
     fields: toLiquidRoots(ctx.fields),
-    roots: ALLOWED_ROOTS,
+    // Seznam kořenů se odvozuje od druhu šablony, protože `data` smí použít
+    // jedině transakční šablona. Kampaň dostane `liquid_unknown_root`, což je
+    // přesně to, co se má stát: hodnotu by jí nikdo nedodal.
+    roots: rootsForTemplateKind(ctx.templateKind),
     template_kind: ctx.templateKind,
   };
   let hasUnsubscribe = false;

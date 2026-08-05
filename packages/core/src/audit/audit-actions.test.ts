@@ -45,8 +45,21 @@ describe('registr auditních akcí napříč doménami', () => {
     expect(duplicates).toEqual([]);
   });
 
-  it('doména identity deklaruje všech 24 akcí z tabulky 3.7, které jí patří', async () => {
+  /**
+   * Počet je 26, ne 24 z tabulky 3.7, a je to ZÁMĚR, ne rozvolnění brány.
+   *
+   * Dvě akce přibyly nad rámec původní tabulky: `member.created` (založení
+   * člena rovnou s heslem, bez pozvánky e-mailem) a `user.deleted` (smazání
+   * účtu bez projektu). Obojí jsou skutečné operace v rozhraní a bez záznamu
+   * v auditu by po nich nezůstala stopa, což je u zásahu do cizího přístupu
+   * nepřijatelné.
+   *
+   * Test drží PŘESNÝ počet schválně, ne „aspoň tolik": nová auditní akce je
+   * rozhodnutí, ne detail, a má o ní vědět ten, kdo mění tenhle výčet. Kdo
+   * sem akci přidá, upraví číslo a napíše sem proč.
+   */
+  it('doména identity deklaruje všech 26 akcí, které jí patří', async () => {
     const { IdentityAuditActions } = await import('../identity/audit');
-    expect(Object.keys(IdentityAuditActions)).toHaveLength(24);
+    expect(Object.keys(IdentityAuditActions)).toHaveLength(26);
   });
 });

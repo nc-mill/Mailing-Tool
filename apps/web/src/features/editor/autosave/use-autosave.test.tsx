@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EditorDocument } from '../model/document-types';
 import { createFakePorts } from '../ports/fake-ports';
+import { PortError } from '../ports/types';
 import { createEditorStore } from '../state/editor-store';
 import { useAutosave } from './use-autosave';
 
@@ -89,6 +90,49 @@ describe('useAutosave', () => {
     });
     await waitFor(() => expect(store.getState().status).toBe('saved'));
     expect(calls).toBe(2);
+  });
+
+  it('odmítnutý dokument neposílá dokola a řekne, že jde o obsah, ne o spojení', async () => {
+    /*
+     * Regrese na smyčku z provozu: stačilo přidat blok obrázku (nový blok má
+     * `assetId: ""`, schéma chce `uuid`) a editor mlel PATCH požadavky každou
+     * 1,5 vteřiny, dokud uživatel stránku nezavřel. Smyčku dělal odběr storu:
+     * `setStatus` je změna stavu, takže si neúspěšné uložení samo naplánovalo
+     * další pokus.
+     */
+    let calls = 0;
+    const store = createEditorStore({ document: doc(), designHash: 'h1' });
+    const ports = createFakePorts({
+      save: async () => {
+        calls += 1;
+        throw new PortError('template_document_invalid', 'neplatný dokument', undefined, 422);
+      },
+    });
+    renderHook(() => useAutosave({ store, ports, templateId: 't1' }));
+
+    act(() => {
+      store.patchProps('b_h1', { level: 1 });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    await waitFor(() => expect(store.getState().status).toBe('invalid'));
+    expect(calls).toBe(1);
+
+    // Dvacet vteřin ticha: bez opravy se nesmí stát vůbec nic.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20000);
+    });
+    expect(calls).toBe(1);
+
+    // Jakmile uživatel dokument změní, zkusí se to znovu. Sám od sebe ne.
+    act(() => {
+      store.patchProps('b_h1', { level: 2 });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    await waitFor(() => expect(calls).toBe(2));
   });
 
   it('flush uloží okamžitě, používá ho náhled a testovací odeslání', async () => {

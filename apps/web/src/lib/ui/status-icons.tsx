@@ -68,3 +68,21 @@ export const DeviceIcon = (
     <path d="M8 20h8" />
   </Frame>
 );
+
+/** Odznak „e-mail z formuláře" v knihovně šablon: list papíru s řádky. */
+export const FormIcon = (
+  <Frame>
+    <rect x="4" y="3" width="16" height="18" rx="2" />
+    <path d="M8 8h8" />
+    <path d="M8 12h8" />
+    <path d="M8 16h4" />
+  </Frame>
+);
+
+/** Odznak „transakční e-mail" v knihovně šablon: obálka. */
+export const MailIcon = (
+  <Frame>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="m3.5 7 8.5 6 8.5-6" />
+  </Frame>
+);

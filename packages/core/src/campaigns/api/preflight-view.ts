@@ -1,4 +1,5 @@
 import { loadConfig } from '../../config/index';
+import { countPendingMembers } from '../../contacts/repo/lists';
 import { compileAudienceToSql } from '../../segments/repo';
 import { campaignAudienceGates, ZERO_GATE_COUNTS } from './audience-gates';
 import type { WorkspaceContext } from '../../tx';
@@ -124,6 +125,29 @@ export async function audienceState(
   return { estimate: counted.count, exact: counted.exact, breakdown };
 }
 
+/**
+ * PRÁZDNÉ PUBLIKUM MÁ DVĚ RŮZNÉ PŘÍČINY a uživatel s každou dělá něco jiného.
+ *
+ * „Publikum je prázdné, vyberte alespoň jeden seznam nebo segment" je u kampaně, která
+ * seznam vybraný MÁ a jsou v něm lidé, prostě lež: vybírat není co, vybráno už je.
+ * Stává se to proto, že členstvím v seznamu se rozumí POTVRZENÉ přihlášení, takže seznam
+ * samých čekajících vyjde jako nula a v rozpadu po branách se to nikde neukáže (do vstupní
+ * množiny se ti lidé nedostanou, tedy je nemá co odečíst).
+ *
+ * Když tedy vyjde nula a přitom ve vybraných seznamech někdo čeká na potvrzení, vrací se
+ * vlastní nález s počtem čekajících. Kontrolní seznam v rozhraní skládá klíč překladu
+ * z kódu nálezu a neznámý kód umí zobrazit, takže nový kód stačí doplnit do katalogů.
+ */
+async function emptyAudienceFinding(
+  ctx: WorkspaceContext,
+  audience: CampaignAudience,
+): Promise<PreflightFinding> {
+  const pending = await countPendingMembers(ctx, audience.include.lists);
+  return pending > 0
+    ? { code: 'campaign_audience_all_pending', severity: 'error', params: { pending } }
+    : { code: 'campaign_audience_empty', severity: 'error' };
+}
+
 /** Odkaz na odhlášení se pozná podle značky, kterou do HTML vkládá kompilace P08. */
 function hasUnsubscribeLink(html: string | null): boolean {
   if (!html) return false;
@@ -149,7 +173,7 @@ export async function runCampaignPreflight(
     const state = await audienceState(ctx, audience, opts);
     estimate = state.estimate;
     breakdown = state.breakdown;
-    if (estimate === 0) findings.push({ code: 'campaign_audience_empty', severity: 'error' });
+    if (estimate === 0) findings.push(await emptyAudienceFinding(ctx, audience));
     if (estimate > config.CAMPAIGN_MAX_RECIPIENTS) {
       findings.push({
         code: 'campaign_audience_too_large',
@@ -162,7 +186,38 @@ export async function runCampaignPreflight(
   if (campaign.subject.trim() === '') {
     findings.push({ code: 'campaign_subject_missing', severity: 'error' });
   }
-  if (!campaign.compiled_html) {
+
+  /*
+   * PRÁZDNÝ E-MAIL SE NESMÍ ODESLAT, a je to CHYBA, ne varování.
+   *
+   * Vada z instalace: kampaň „Test kampaň (kopie)" odešla na tři adresy a do
+   * schránky dorazil e-mail, ve kterém nebylo nic než patička. V databázi to
+   * sedělo přesně tak, jak to odešlo, takže to nebyla vada odesílání ani
+   * vykreslování. Dokument měl jednu sekci a v ní jediného potomka typu `footer`,
+   * tedy přesně to, co vydá založení nového obsahu kampaně.
+   *
+   * Kontrola to pustila, protože se ptala na dvě věci a ani jedna z nich o obsahu
+   * nic neříká: `compiled_html` bylo vyplněné (patička se kompiluje jako každý
+   * jiný blok, výsledek měl 4529 znaků) a odkaz na odhlášení v HTML byl, protože
+   * ho tam dala právě ta patička. Obě brány tedy prázdný e-mail hladce prošel.
+   *
+   * Chyba, ne varování s možností potvrdit: e-mail, ve kterém není nic než
+   * odhlašovací odkaz, nemá důvod odejít nikomu, a potvrzovací dialog je špatné
+   * místo na to, aby si člověk všiml, že mu chybí celý newsletter. Varování by
+   * navíc bylo přehlédnutelné přesně tak, jak se to stalo teď.
+   *
+   * Dva různé kódy, protože jsou to dva různé stavy s různou radou: „obsah
+   * kampaně vůbec nevznikl" proti „obsah je, ale je prázdný". Rozliší je
+   * `has_design` z databáze.
+   */
+  if (!campaign.has_design) {
+    findings.push({ code: 'campaign_content_missing', severity: 'error' });
+  } else if (campaign.content_block_count === 0) {
+    findings.push({ code: 'campaign_content_empty', severity: 'error' });
+  } else if (!campaign.compiled_html) {
+    // `campaign_not_compiled` až jako TŘETÍ v pořadí. Kampaň bez obsahu se
+    // zkompilovat nedá, takže by u ní hlásila důsledek místo příčiny a poslala
+    // by uživatele kompilovat něco, co ještě nenapsal.
     findings.push({ code: 'campaign_not_compiled', severity: 'error' });
   } else if (!hasUnsubscribeLink(campaign.compiled_html)) {
     findings.push({ code: 'campaign_no_unsubscribe', severity: 'error' });

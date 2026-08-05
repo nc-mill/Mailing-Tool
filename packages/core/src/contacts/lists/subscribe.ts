@@ -37,6 +37,17 @@ export type SubscribeInput = {
   pageUrl?: string | null;
 };
 
+/**
+ * Doklad o dřív uděleném souhlasu. Nese se do auditu i do evidence nového souhlasu,
+ * aby šlo za rok dohledat, o co se potvrzení opřelo, a ne jen že „to systém uznal".
+ */
+export type ExistingConsentProof = {
+  consentId: string;
+  scopeListId: string | null;
+  source: string;
+  occurredAt: Date;
+};
+
 export type SubscribeOutcome =
   | 'confirmation_sent'
   | 'confirmed'
@@ -80,6 +91,11 @@ export type SubscribePorts = {
     bumpResends?: boolean;
   }): Promise<void>;
   countResends(contactId: string, listId: string): Promise<number>;
+  /**
+   * Doložený, dosud neodvolaný souhlas pro tenhle seznam, nebo `null`. Zapojuje se na
+   * `findEffectiveConsent`; port existuje proto, aby `subscribe()` zůstalo bez databáze.
+   */
+  findConsent(contactId: string, listId: string): Promise<ExistingConsentProof | null>;
   issueConfirmation(input: {
     contactId: string;
     listId: string;
@@ -106,6 +122,45 @@ export type SubscribePorts = {
 
 /** Důvody suppression, po kterých se kontakt ani nezaloží (4.10.5). */
 const HARD_BLOCK_REASONS = new Set(['complaint', 'gdpr_erasure']);
+
+/**
+ * Překlad zdroje přihlášení na zdroj souhlasu. Číselníky se PŘEKRÝVAJÍ, ale nejsou
+ * totožné, a rozdíl je věcný: `manual` znamená „udělal to správce", což je o tom, kdo
+ * za souhlas ručí, jiné tvrzení než „přišlo to přes API". Sloupec `consents.source`
+ * proto `manual` vůbec nezná (`ck_consents__source`) a nepřeložená hodnota končila
+ * porušením omezení, tedy pětistovkou uprostřed přihlášení.
+ *
+ * Stejný překlad dělá `consentSourceFor` v `unsubscribe.ts` a `consentSourceOf`
+ * v `repo/contacts-api.ts`; obojí mapuje `manual` na `admin` a je to týž důvod.
+ */
+function consentSourceFor(source: SubscribeInput['source']): string {
+  return source === 'manual' ? 'admin' : source;
+}
+
+/**
+ * Překlad zdroje přihlášení na zdroj KONTAKTU. Je to tentýž druh chyby jako u souhlasu,
+ * jen na opačnou stranu, a stálo to pětistovku uprostřed veřejné stránky předvoleb.
+ *
+ * Číselníky se zase PŘEKRÝVAJÍ, ale nejsou totožné. `ck_list_subscriptions__source`
+ * i `ck_consents__source` hodnotu `preference_center` znají, `ck_contacts__source`
+ * (migrace 0001) ne: zná `manual, import, api, form, webhook, double_opt_in, migration`.
+ * Zaškrtnutí seznamu na `/p/{token}` volalo `subscribeToList` se zdrojem
+ * `preference_center`, ten šel beze změny do `writeContact` a zápis skončil na 23514.
+ *
+ * PROČ TO SPADLO I U DÁVNO EXISTUJÍCÍHO KONTAKTU. `writeContact` zapisuje přes
+ * `INSERT … ON CONFLICT DO UPDATE` a PostgreSQL vyhodnocuje CHECK omezení nad
+ * NAVRHOVANÝM řádkem JEŠTĚ PŘED tím, než zjistí konflikt. Sloupec `source` se sice
+ * při konfliktu neaktualizuje, ale do kontroly vstoupí, takže padalo každé zaškrtnutí
+ * seznamu, ne jen zakládání kontaktu.
+ *
+ * Překládá se, a nerozšiřuje se číselník: `contacts.source` odpovídá na otázku
+ * „odkud se kontakt vzal", a centrum předvoleb žádný kontakt nezakládá. Nejbližší
+ * pravdivá hodnota je `api`, tedy tatáž, jakou pro tentýž případ používá už
+ * `applyPreferenceAction` v `public/preferences.ts`.
+ */
+function contactSourceFor(source: SubscribeInput['source']): SubscribeInput['source'] {
+  return source === 'preference_center' ? 'api' : source;
+}
 
 /**
  * Přihlášení do seznamu podle 4.8 části 2.
@@ -169,12 +224,20 @@ export async function subscribe(
     lastName: input.lastName ?? null,
     attributes: input.attributes ?? {},
     locale: input.locale ?? null,
-    source: input.source,
+    // Zdroj kontaktu má vlastní číselník, viz `contactSourceFor`. Zdroj přihlášení
+    // a zdroj souhlasu se překládají zvlášť a `preference_center` si ponechají.
+    source: contactSourceFor(input.source),
     sourceRef: input.sourceRef ?? null,
   });
 
   const existing = await ports.readSubscription(contact.contactId, list.id);
   const from = existing?.status ?? 'none';
+
+  /*
+   * Souhlas se hledá jen u kontaktu, který už existoval. Nově založený nemá co doložit
+   * a dotaz by byl zbytečné kolo do databáze u každého importovaného řádku.
+   */
+  const consentProof = contact.created ? null : await ports.findConsent(contact.contactId, list.id);
 
   const decision = transition(from, {
     kind: 'subscribe',
@@ -183,6 +246,7 @@ export async function subscribe(
     suppression,
     ...(input.skipConfirmation === undefined ? {} : { skipConfirmation: input.skipConfirmation }),
     ...(input.declaration === undefined ? {} : { declaration: input.declaration }),
+    ...(consentProof === null ? {} : { existingConsent: true }),
     now,
   });
 
@@ -227,13 +291,26 @@ export async function subscribe(
       contactId: contact.contactId,
       scopeListId: list.id,
       status: 'granted',
-      source: input.source === 'form' ? 'form' : input.source,
+      source: consentSourceFor(input.source),
       consentText: input.consentText ?? null,
       evidence: {
         ip: input.requestIp ?? null,
         user_agent: input.userAgent ?? null,
         page_url: input.pageUrl ?? null,
         declaration: input.declaration === true,
+        /*
+         * Když se potvrzení opřelo o dřívější souhlas, musí to být v dokladu vidět.
+         * Nový řádek souhlasu jinak vypadá jako samostatné rozhodnutí a nešlo by
+         * dohledat, proč se člověk ocitl v seznamu bez jediného kliknutí.
+         */
+        ...(consentProof === null
+          ? {}
+          : {
+              based_on_consent_id: consentProof.consentId,
+              based_on_consent_scope: consentProof.scopeListId,
+              based_on_consent_source: consentProof.source,
+              based_on_consent_at: consentProof.occurredAt.toISOString(),
+            }),
       },
       occurredAt: now,
     });

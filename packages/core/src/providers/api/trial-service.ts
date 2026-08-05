@@ -12,7 +12,7 @@ import { queueSystemMail } from '../../platform/system-mail';
 import type { WorkspaceContext } from '../../tx';
 import { addTrialAddress, resolveTrialSettings, type TrialSettings } from '../trial-mode';
 import { issueTrialToken, verifyTrialToken } from '../trial-token';
-import { listDomains } from './service';
+import { listDomains, listProviders } from './service';
 
 /**
  * Aplikační vrstva zkušebního režimu.
@@ -38,6 +38,13 @@ export type TrialState = {
   verified_count: number;
   max_addresses: number;
   has_verified_domain: boolean;
+  /**
+   * Drží Amazon výchozí odesílací účet v testovacím režimu? `null` = nevíme,
+   * protože se stav účtu ještě nenačetl. Je to druhý důvod, proč může být
+   * zkušební režim zapnutý, a uživatel ho musí vidět: bez něj vypadá zapnutý
+   * přepínač u ověřené domény jako chyba nástroje.
+   */
+  provider_sandbox: boolean | null;
 };
 
 /**
@@ -52,7 +59,7 @@ export type TrialState = {
  */
 export function resolveTrialMode(
   settings: TrialSettings,
-  input: { hasVerifiedDomain: boolean },
+  input: { hasVerifiedDomain: boolean; providerSandbox?: boolean | undefined },
 ): boolean {
   // Pravidlo samotné bydlí v doméně, ne tady. Materializace ho potřebuje taky
   // a dvě kopie by se rozešly právě u té výchozí hodnoty, na které vše stojí.
@@ -66,29 +73,46 @@ function addressesOf(settings: TrialSettings): TrialAddress[] {
   }));
 }
 
-function stateOf(settings: TrialSettings, hasVerifiedDomain: boolean): TrialState {
+/** Podklad, ze kterého se rozhoduje o zkušebním režimu. */
+type TrialInputs = { hasVerifiedDomain: boolean; providerSandbox: boolean | null };
+
+function stateOf(settings: TrialSettings, inputs: TrialInputs): TrialState {
   const verified = addressesOf(settings);
   return {
-    trial_mode: resolveTrialMode(settings, { hasVerifiedDomain }),
+    trial_mode: resolveTrialMode(settings, {
+      hasVerifiedDomain: inputs.hasVerifiedDomain,
+      providerSandbox: inputs.providerSandbox ?? undefined,
+    }),
     trial_mode_explicit: typeof settings.trial_mode === 'boolean' ? settings.trial_mode : null,
     verified,
     verified_count: verified.filter((a) => a.verified_at !== null).length,
     max_addresses: TRIAL_MAX_VERIFIED_ADDRESSES,
-    has_verified_domain: hasVerifiedDomain,
+    has_verified_domain: inputs.hasVerifiedDomain,
+    provider_sandbox: inputs.providerSandbox,
   };
 }
 
-async function hasVerifiedDomain(ctx: WorkspaceContext): Promise<boolean> {
-  const domains = await listDomains(ctx);
-  return domains.some((d) => d.verified_at !== null);
+/**
+ * Ověřená doména je ta, kterou za ověřenou uznal POSKYTOVATEL. `verified_at`
+ * se od opravy plní výhradně z `GetEmailIdentity`, takže tenhle dotaz už
+ * neodpovídá „naše kontrola DNS prošla", ale „Amazon doménu ověřil".
+ */
+async function trialInputs(ctx: WorkspaceContext): Promise<TrialInputs> {
+  const [domains, providers] = await Promise.all([listDomains(ctx), listProviders(ctx)]);
+  const chosen = providers.find((p) => p.is_default) ?? providers[0] ?? null;
+  return {
+    hasVerifiedDomain: domains.some((d) => d.verified_at !== null),
+    // SMTP server o testovacím režimu nic neví, takže se u něj netvrdí ani ne.
+    providerSandbox:
+      chosen === null || chosen.type !== 'ses' || chosen.production_access === null
+        ? null
+        : chosen.production_access === false,
+  };
 }
 
 export async function readTrialState(ctx: WorkspaceContext): Promise<TrialState> {
-  const [settings, verifiedDomain] = await Promise.all([
-    readWorkspaceSettings(ctx),
-    hasVerifiedDomain(ctx),
-  ]);
-  return stateOf(settings.campaigns, verifiedDomain);
+  const [settings, inputs] = await Promise.all([readWorkspaceSettings(ctx), trialInputs(ctx)]);
+  return stateOf(settings.campaigns, inputs);
 }
 
 /** Zápis vždy skrz celý klíč `campaigns`, aby se nesmazalo časové pásmo ani okno undo. */
@@ -123,7 +147,7 @@ export async function setTrialMode(ctx: WorkspaceContext, enabled: boolean): Pro
     await revokePendingOutsideTrial(ctx, verified);
   }
 
-  return stateOf(next, await hasVerifiedDomain(ctx));
+  return stateOf(next, await trialInputs(ctx));
 }
 
 export type AddTrialAddressResult = {
@@ -172,7 +196,7 @@ export async function addTrialVerifiedAddress(
   });
 
   return {
-    state: stateOf(next, await hasVerifiedDomain(ctx)),
+    state: stateOf(next, await trialInputs(ctx)),
     verification_url: cfg.NODE_ENV === 'production' ? null : url,
   };
 }
@@ -199,7 +223,7 @@ export async function removeTrialVerifiedAddress(
     trial_verified: current.filter((a) => a.email.toLowerCase() !== normalized),
   };
   await saveCampaignSettings(ctx, next);
-  return stateOf(next, await hasVerifiedDomain(ctx));
+  return stateOf(next, await trialInputs(ctx));
 }
 
 export type ConfirmTrialAddressResult =

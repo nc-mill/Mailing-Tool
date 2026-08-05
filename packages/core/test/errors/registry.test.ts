@@ -53,13 +53,33 @@ describe('registr chybových kódů', () => {
     // v testu. Obecný `already_exists` by uživateli neřekl, že si má změnit
     // jméno. Zbytek pojistky platí dál: každá DALŠÍ změna registru se tady
     // zase zastaví.
-    expect(PROBLEM_CODES).toHaveLength(124);
-    expect(FINDING_CODES).toHaveLength(18);
+    //
+    // 126 → 127 (a 306 → 307): přibyl `template_in_use`. Formulář a seznam si
+    // svůj e-mail berou ze ŽIVÉ šablony při každém odeslání, takže měkké smazání
+    // by je umlčelo, aniž by cokoli spadlo: formulář by dál sbíral adresy a jeho
+    // e-mail by nikam nechodil. `deleteTemplate` proto takové mazání odmítá
+    // a bez registrovaného kódu by odmítnutí skončilo pětistovkou, protože
+    // `ApiError` neregistrovaný kód odmítne vyrobit. Obecný `conflict` by
+    // uživateli neřekl, co má udělat, tedy odpojit šablonu ve formuláři.
+    //
+    // 127 → 135 (a 307 → 315): přibyla osmičlenná rodina transakční pošty přes
+    // API. Volajícím je APLIKACE ZÁKAZNÍKA, ne naše rozhraní, takže z odpovědi
+    // musí poznat, co má opravit, bez čtení dokumentace. Obecné `validation_failed`
+    // by u resetu hesla neřeklo nic použitelného. Kódy jsou
+    // `template_kind_not_transactional`, `template_not_compilable`,
+    // `recipient_suppressed`, `recipient_unknown`, `transactional_data_too_large`,
+    // `transactional_variable_unknown`, `sender_identity_not_found`
+    // a `sending_not_configured`.
+    expect(PROBLEM_CODES).toHaveLength(135);
+    // 19 + `campaign_content_missing` a `campaign_content_empty`: kontrola před
+    // odesláním musí rozlišit kampaň bez obsahu od kampaně, ve které není nic
+    // než patička. Obojí dřív prošlo a e-mail odešel prázdný.
+    expect(FINDING_CODES).toHaveLength(21);
     expect(VALIDATION_CODES).toHaveLength(94);
     expect(MESSAGE_CODES).toHaveLength(34);
     expect(IMPORT_ROW_CODES).toHaveLength(32);
-    expect(OPERATIONAL_CODES).toHaveLength(23);
-    expect(ALL_REGISTERED_CODES.size).toBe(302);
+    expect(OPERATIONAL_CODES).toHaveLength(24);
+    expect(ALL_REGISTERED_CODES.size).toBe(315);
   });
 
   it('používá lower_snake_case bez výjimky (konvence 3.11)', () => {
@@ -225,7 +245,7 @@ describe('šestý jmenný prostor, provozní a migrační kódy', () => {
     expect(operationalCode('cli', 'config_invalid').exitCode).toBe(78);
   });
 
-  it('zná všech čtrnáct nálezů mlain doctor a jednu izolační kontrolu', () => {
+  it('zná všech patnáct nálezů mlain doctor a jednu izolační kontrolu', () => {
     const doctor = OPERATIONAL_CODES.filter((item) => item.scope === 'doctor').map((i) => i.code);
     for (const code of [
       'missing_key_generations',
@@ -242,11 +262,12 @@ describe('šestý jmenný prostor, provozní a migrační kódy', () => {
       'trial_mode_enabled',
       'demo_data_present',
       'check_failed',
+      'system_mail_unavailable',
       'isolation_prerequisites_missing',
     ]) {
       expect(doctor, `nález ${code} chybí`).toContain(code);
     }
-    expect(doctor).toHaveLength(15);
+    expect(doctor).toHaveLength(16);
   });
 
   it('tentýž kód smí být ve víc prostorech, když má v každém význam', () => {

@@ -41,6 +41,14 @@ export const PERMISSIONS = [
   'campaigns:send',
   'campaigns:control',
   'campaigns:delete',
+  /**
+   * Odeslání JEDNÉ transakční zprávy přes API. Schválně to není `campaigns:send`:
+   * ten gatuje i pozastavení, obnovení, zrušení a vzetí zpět, takže klíč
+   * v aplikaci zákazníka, který má poslat reset hesla, by uměl zastavit
+   * běžící rozesílku. Jméno nekopíruje `messages:send`, protože `messages`
+   * je v produktu název outboxové tabulky a pletlo by se to.
+   */
+  'transactional:send',
   'forms:read',
   'forms:write',
   'events:write',
@@ -89,6 +97,7 @@ const EDITOR_EXTRA: readonly Permission[] = [
   'campaigns:write',
   'campaigns:send',
   'campaigns:control',
+  'transactional:send',
   'forms:write',
   'events:write',
   'webhooks:read',

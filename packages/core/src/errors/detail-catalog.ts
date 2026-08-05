@@ -50,6 +50,9 @@ const en: Catalog = {
   not_implemented: 'This endpoint is not available in this build.',
   service_unavailable: 'The service is temporarily unavailable.',
   migration_failed: 'The database update failed and the application runs in limited mode.',
+  system_mail_unavailable:
+    'This installation cannot send system e-mail, so invitations, password resets and address ' +
+    'verification will not be delivered. Add an SMTP sending account in Settings, System e-mail.',
   dependency_timeout: 'A dependency did not respond in time.',
 
   // --- Kampaně a odesílání, část 4a -----------------------------------------
@@ -57,6 +60,8 @@ const en: Catalog = {
   campaign_audience_changed: 'The audience changed after the campaign was prepared.',
   campaign_undo_window_expired: 'The window for cancelling this send has already closed.',
   campaign_audience_empty: 'The campaign audience contains no recipients.',
+  campaign_audience_all_pending:
+    'Everyone in the selected lists is still waiting for confirmation.',
   campaign_audience_too_large: 'The campaign audience exceeds the allowed size.',
   campaign_not_compiled: 'The campaign template has not been compiled yet.',
   campaign_subject_missing: 'The campaign has no subject line.',
@@ -84,6 +89,18 @@ const en: Catalog = {
   domain_dmarc_missing: 'The sending domain has no DMARC record.',
   domain_check_rate_limited: 'Domain checks are rate limited. Try again later.',
   test_recipient_suppressed: 'The test recipient is on the suppression list.',
+  // --- Transakční pošta přes API -------------------------------------------
+  template_kind_not_transactional:
+    'The template is not a transactional template. Only transactional templates can be sent through this endpoint.',
+  template_not_compilable: 'The template could not be compiled into an e-mail.',
+  recipient_suppressed:
+    'The address is on the suppression list for a reason that blocks transactional mail too.',
+  recipient_unknown:
+    'The address is not a contact in this workspace and create_contact is disabled.',
+  transactional_data_too_large: 'The data object is larger than the allowed limit.',
+  transactional_variable_unknown: 'The template uses a variable that the request did not supply.',
+  sender_identity_not_found: 'No sender identity was found for this workspace.',
+  sending_not_configured: 'This workspace has no sending account connected yet.',
   test_rate_limited: 'Too many test sends. Try again later.',
 
   // --- Kontakty, část 2 ------------------------------------------------------
@@ -93,6 +110,21 @@ const en: Catalog = {
   template_document_invalid: 'The template document did not pass validation.',
   template_schema_too_new: 'The template was created in a newer version of the application.',
   template_starter_immutable: 'Starter templates cannot be modified. Duplicate one first.',
+  template_in_use:
+    'A form or a list sends this template. Disconnect it there first, then delete it.',
+  /*
+   * Blokující nálezy předodesílací kontroly. V katalogu chyběly, takže
+   * `resolveDetail` vracela holý kód a editor psal uživateli do panelu
+   * „precheck_app_url_not_public". Doplněno ve chvíli, kdy se ty nálezy
+   * v editoru poprvé skutečně ukázaly; do REGISTRU kódů nepatří, protože
+   * to nejsou kořenové kódy odpovědi, ale položky pole `findings`.
+   */
+  precheck_template_invalid: 'The template has errors that prevent sending.',
+  precheck_missing_unsubscribe: 'The email has no unsubscribe link.',
+  precheck_html_too_large: 'The email is too large to send.',
+  precheck_subject_empty: 'The subject is empty.',
+  precheck_app_url_not_public:
+    'The application address is not public, so links in the email would not work for recipients.',
   template_name_conflict: 'A template with this name already exists in the project.',
   content_too_many_blocks: 'The document contains more blocks than allowed.',
   asset_quota_exceeded: 'The storage quota for assets has been used up.',
@@ -188,6 +220,9 @@ const cs: Catalog = {
   not_implemented: 'Tenhle endpoint v této verzi není dostupný.',
   service_unavailable: 'Služba je dočasně nedostupná.',
   migration_failed: 'Aktualizace databáze se nezdařila. Aplikace běží v omezeném režimu.',
+  system_mail_unavailable:
+    'Instalace nemá čím odeslat systémový e-mail, takže pozvánka, obnova hesla ani ověření ' +
+    'adresy nedorazí. Přidejte v Nastavení, Systémová pošta odesílací účet typu SMTP.',
   dependency_timeout: 'Závislá služba neodpověděla včas.',
 
   // --- Kampaně a odesílání, část 4a -----------------------------------------
@@ -195,6 +230,7 @@ const cs: Catalog = {
   campaign_audience_changed: 'Publikum se od přípravy kampaně změnilo.',
   campaign_undo_window_expired: 'Lhůta na zrušení rozeslání už uplynula.',
   campaign_audience_empty: 'Publikum kampaně neobsahuje žádného příjemce.',
+  campaign_audience_all_pending: 'Všichni ve vybraných seznamech čekají na potvrzení.',
   campaign_audience_too_large: 'Publikum kampaně překračuje povolenou velikost.',
   campaign_not_compiled: 'Šablona kampaně ještě není zkompilovaná.',
   campaign_subject_missing: 'Kampaň nemá vyplněný předmět.',
@@ -222,6 +258,17 @@ const cs: Catalog = {
   domain_dmarc_missing: 'Odesílací doména nemá DMARC záznam.',
   domain_check_rate_limited: 'Kontroly domény jsou omezené. Zkuste to za chvíli.',
   test_recipient_suppressed: 'Testovací příjemce je na seznamu potlačených adres.',
+  // --- Transakční pošta přes API -------------------------------------------
+  template_kind_not_transactional:
+    'Šablona není transakční. Tímhle rozhraním jde odeslat jen transakční šablona.',
+  template_not_compilable: 'Šablonu se nepodařilo zkompilovat do e-mailu.',
+  recipient_suppressed:
+    'Adresa je na seznamu blokovaných z důvodu, který blokuje i transakční poštu.',
+  recipient_unknown: 'Adresa v tomhle projektu není kontakt a zakládání kontaktu je vypnuté.',
+  transactional_data_too_large: 'Objekt data je větší, než dovoluje limit.',
+  transactional_variable_unknown: 'Šablona používá proměnnou, kterou volání nedodalo.',
+  sender_identity_not_found: 'Pro tenhle projekt se nenašla žádná odesílací identita.',
+  sending_not_configured: 'Projekt zatím nemá připojený odesílací účet.',
   test_rate_limited: 'Příliš mnoho testovacích odeslání. Zkuste to za chvíli.',
 
   // --- Kontakty, část 2 ------------------------------------------------------
@@ -231,6 +278,15 @@ const cs: Catalog = {
   template_document_invalid: 'Dokument šablony neprošel kontrolou.',
   template_schema_too_new: 'Šablona vznikla v novější verzi aplikace.',
   template_starter_immutable: 'Výchozí šablony nejdou měnit. Nejdřív si ji zduplikujte.',
+  template_in_use:
+    'Tuhle šablonu rozesílá formulář nebo seznam. Nejdřív ji tam odpojte, pak půjde smazat.',
+  // Blokující nálezy předodesílací kontroly, viz poznámka u anglického katalogu.
+  precheck_template_invalid: 'Šablona má chyby, kvůli kterým ji nejde odeslat.',
+  precheck_missing_unsubscribe: 'E-mail nemá odkaz na odhlášení.',
+  precheck_html_too_large: 'E-mail je moc velký na odeslání.',
+  precheck_subject_empty: 'Předmět je prázdný.',
+  precheck_app_url_not_public:
+    'Adresa aplikace není veřejná, takže odkazy v e-mailu by příjemcům nefungovaly.',
   template_name_conflict: 'Šablona s tímhle jménem už v projektu je.',
   content_too_many_blocks: 'Dokument obsahuje víc bloků, než je povoleno.',
   asset_quota_exceeded: 'Úložný prostor pro soubory je vyčerpaný.',

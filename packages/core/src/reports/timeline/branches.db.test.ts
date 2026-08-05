@@ -100,6 +100,55 @@ describe('větve časové osy', () => {
     expect(rows).toHaveLength(4);
   });
 
+  /**
+   * Proklik na odkaz v patičce dostane VLASTNÍ typ položky.
+   *
+   * Bez toho z něj byla věta „Klikl na  v kampani Test kampaň", tedy s dírou
+   * uprostřed: systémový odkaz nemá řádek v `campaign_links`, takže slot
+   * `{link}` nikdo nenaplnil. Přitom je z `metadata.system_link` přesně známo,
+   * kam příjemce klikl, a „Otevřel centrum předvoleb" je užitečnější věta.
+   */
+  it('proklik na systémový odkaz dostane vlastní typ a zůstane potvrzený', async () => {
+    const ws = await seedWorkspace(db);
+    const campaign = await seedCampaign(db, ws.workspaceId);
+    const contact = await seedContact(db, ws.workspaceId);
+    const messageId = randomUUID();
+    await db.pool.query(
+      `INSERT INTO messages (id, workspace_id, campaign_id, contact_id, email, status, created_at, sent_at)
+       VALUES ($1, $2, $3, $4, 'x@example.cz', 'sent', $5, $5)`,
+      [messageId, ws.workspaceId, campaign.campaignId, contact, campaign.audienceBuiltAt],
+    );
+    for (const kind of ['preferences', 'unsubscribe_page', 'webview']) {
+      await seedMessageEvent(db, {
+        workspaceId: ws.workspaceId,
+        campaignId: campaign.campaignId,
+        messageId,
+        messageCreatedAt: campaign.audienceBuiltAt,
+        contactId: contact,
+        type: 'click',
+        subtype: 'system',
+        ts: '2026-07-31T15:00:00.000Z',
+        metadata: { system_link: kind },
+      });
+    }
+
+    const rows = await messageEventBranch(createTestTx(db), testContext(ws.workspaceId), {
+      contactId: contact,
+      window: WINDOW,
+      limit: 51,
+    });
+
+    const types = rows.map((r) => r.type).sort();
+    expect(types).toEqual([
+      'message_clicked_preferences',
+      'message_clicked_unsubscribe_page',
+      'message_clicked_webview',
+    ]);
+    // Stránku odhlášení ani předvoleb si poštovní klient sám neotevře.
+    expect(rows.every((r) => r.reliability === 'confirmed')).toBe(true);
+    expect(rows[0]?.detail).toMatchObject({ subtype: 'system' });
+  });
+
   it('odraz, který dorazil dlouho po odeslání, v ose zůstane (R21)', async () => {
     const ws = await seedWorkspace(db);
     const campaign = await seedCampaign(db, ws.workspaceId);
@@ -151,6 +200,33 @@ describe('větve časové osy', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.type).toBe('page_view');
     expect(rows[0]?.slots['page']).toBe('https://x.cz/kola');
+  });
+
+  /**
+   * Otevření e-mailu je v ose JEDNOU, ne dvakrát.
+   *
+   * `process-engagement` je zapisuje i do `web_events` jako `email_opened`,
+   * takže v ose stálo „Otevřel kampaň …" a hned pod tím „Událost email_opened".
+   * Druhá položka navíc tvrdila, že jde o web, přestože kontakt na web nepřišel.
+   */
+  it('větev webu přeskočí události, které přišly z e-mailu', async () => {
+    const ws = await seedWorkspace(db);
+    const contact = await seedContact(db, ws.workspaceId);
+    await ensurePartitions(db, new Date('2026-07-15T10:00:00.000Z'));
+    await db.pool.query(
+      `INSERT INTO web_events (id, occurred_at, received_at, workspace_id, name, contact_id, source, page)
+       VALUES (gen_random_uuid(), '2026-07-15T10:00:00.000Z', '2026-07-15T09:59:00.000Z', $1, 'email_opened', $2, 'email', '{}'::jsonb),
+              (gen_random_uuid(), '2026-07-15T10:05:00.000Z', '2026-07-15T10:04:00.000Z', $1, 'page_view', $2, 'web', $3)`,
+      [ws.workspaceId, contact, JSON.stringify({ url: 'https://x.cz/a' })],
+    );
+
+    const rows = await webEventBranch(createTestTx(db), testContext(ws.workspaceId), {
+      contactId: contact,
+      window: WINDOW,
+      limit: 51,
+    });
+
+    expect(rows.map((r) => r.type)).toEqual(['page_view']);
   });
 
   it('větev kontaktu složí vznik, přihlášení a souhlasy', async () => {

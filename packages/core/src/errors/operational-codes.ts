@@ -92,6 +92,15 @@ export const OPERATIONAL_CODES: readonly OperationalCodeEntry[] = [
   { code: 'trial_mode_enabled', scope: 'doctor', severity: 'info', owner: 'P16', source: 'spec' },
   { code: 'demo_data_present', scope: 'doctor', severity: 'info', owner: 'P16', source: 'spec' },
   { code: 'check_failed', scope: 'doctor', severity: 'warning', owner: 'P16', source: 'spec' },
+  // Projekt nemá odesílací účet, kterým by šla odeslat systémová pošta. Bez ní
+  // neodejde pozvánka ani obnova hesla, a dosud se to dalo poznat jen z logu.
+  {
+    code: 'system_mail_unavailable',
+    scope: 'doctor',
+    severity: 'warning',
+    owner: 'P16',
+    source: 'derived',
+  },
   // Nález N24 evidence: doctor musí umět hlásit i to, že se na aktuální roli
   // nevztahuje RLS. P03 pro to dodává checkIsolationPrerequisites().
   {

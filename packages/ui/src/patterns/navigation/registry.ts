@@ -6,6 +6,18 @@
  * které dělá uživatel, takže se zavádí jen za samostatnou úlohu
  * s vlastním životním cyklem.
  *
+ * ROZHODNUTÍ ZADAVATELE ze 4. 8. 2026, dvě přesunutí. Doslova:
+ * „Značka projektu patří do Nastavení. Ne pod šablony." a „Knihovna médií
+ * patří na hlavní úroveň side menu, ne pod šablony." Je to přesně ten druh
+ * rozhodnutí, které si pravidlo výš vyhrazuje pro uživatele, takže se provádí,
+ * a zapisuje se sem, aby bylo za rok dohledatelné, proč sekce Šablony zhubla
+ * na jedinou položku:
+ *
+ *   - `templates-brand` → `settings-brand`, cesta `/brand` → `/settings/brand`
+ *     (obě stránky existovaly už dřív a renderovaly totéž tělo, e2e i P15
+ *     mířily na tu pod Nastavením; `/brand` teď jen přesměrovává).
+ *   - `templates-media` → `media` na hlavní úrovni, cesta `/assets` beze změny.
+ *
  * Hloubka nejvýš tři úrovně. Co je hlouběji, se otevírá jako panel
  * nebo dialog nad kontextem, ne jako další stránka.
  */
@@ -82,19 +94,6 @@ export const NAVIGATION: NavigationItem[] = [
         mvp0: true,
       },
       {
-        id: 'contacts-forms',
-        labelKey: 'common.nav.contactsForms',
-        path: '/forms',
-        permission: 'contacts:read',
-        // Správa formulářů zatím neexistuje: v `apps/web/src/app` je jen veřejná
-        // strana (`(public)/f/[slug]`), kam se odesílá přihlášení, žádná
-        // obrazovka pro jejich zakládání. Odkaz vracel 404, ověřeno v prohlížeči.
-        // Skryté je lepší než mrtvé: mrtvý odkaz slibuje funkci, kterou produkt
-        // nemá. Až obrazovka vznikne, brána `registry-screens.test.ts` si
-        // vynutí přepnutí zpátky.
-        mvp0: false,
-      },
-      {
         id: 'contacts-suppressions',
         labelKey: 'common.nav.contactsSuppressions',
         path: '/suppressions',
@@ -113,6 +112,29 @@ export const NAVIGATION: NavigationItem[] = [
         mvp0: true,
       },
     ],
+  },
+  {
+    // Formuláře na HLAVNÍ ÚROVNI. Rozhodnutí zadavatele ze 4. 8. 2026, stejný
+    // druh jako přesun Knihovny médií výš: „Formuláře chci jako vlastní položku
+    // na hlavní úrovni, ne jako podpoložku Kontaktů."
+    //
+    // Sedí to i věcně. Podpoložka Kontaktů slibovala pohled na data, která už
+    // mám. Formulář je naopak KANÁL, kterým kontakty teprve přicházejí, a stojí
+    // vedle kampaní: kampaň je odchozí směr, formulář příchozí. Uživatel ho
+    // nehledá v seznamu kontaktů, hledá ho tehdy, když chce sbírat adresy z webu.
+    //
+    // Původně tu byla podpoložka `contacts-forms` se `mvp0: false` a komentářem,
+    // že správa formulářů neexistuje a odkaz vrací 404. Existuje: `/forms`,
+    // `/forms/{id}` a `/forms/{id}/embed`. Položka se tedy přesouvá a odkrývá,
+    // což si vynucuje i brána `registry-screens.test.ts`.
+    //
+    // Bez podpoložek, jako Knihovna médií: druhá úroveň by nabídla detail
+    // konkrétního formuláře, což do menu nepatří.
+    id: 'forms',
+    labelKey: 'common.nav.forms',
+    path: '/forms',
+    permission: 'contacts:read',
+    mvp0: true,
   },
   {
     id: 'campaigns',
@@ -153,14 +175,31 @@ export const NAVIGATION: NavigationItem[] = [
         permission: 'templates:read',
         mvp0: true,
       },
-      {
-        id: 'templates-brand',
-        labelKey: 'common.nav.templatesBrand',
-        path: '/brand',
-        permission: 'templates:read',
-        mvp0: true,
-      },
     ],
+  },
+  {
+    // Knihovna médií na HLAVNÍ ÚROVNI. Registr pro ni místo neměl, takže je to
+    // nová položka, ne přehození `mvp0`, a o jejím umístění rozhodl zadavatel
+    // (viz hlavička souboru): „Knihovna médií patří na hlavní úroveň side menu,
+    // ne pod šablony."
+    //
+    // Sedí to i věcně. Obrázek není součást šablony, je to samostatný obsah
+    // projektu: tentýž soubor používá šablona, kampaň i logo značky, a odkud
+    // se na něj sahá, se pozná až v knihovně (sloupec „Používá"). Položka
+    // schovaná pod Šablonami slibovala opak.
+    //
+    // Oprávnění je `assets:read`, ne `templates:read`. Doména assetů má
+    // vlastní dvojici oprávnění (`packages/core/src/identity/permissions.ts`)
+    // a mazání obrázků je jiná pravomoc než čtení šablon: kdo smí číst
+    // šablonu, nemá tím ještě smět zahodit obrázek z odeslané kampaně.
+    //
+    // Bez podpoložek. Knihovna je jedna obrazovka a druhá úroveň by nabídla
+    // prázdno; `visibleNavigation` se sekcí bez dětí umí pracovat.
+    id: 'media',
+    labelKey: 'common.nav.media',
+    path: '/assets',
+    permission: 'assets:read',
+    mvp0: true,
   },
   {
     id: 'statistics',
@@ -191,6 +230,16 @@ export const NAVIGATION: NavigationItem[] = [
         mvp0: true,
       },
       {
+        // Provoz na webu, ne jeden člověk. Proto vlastní položka a ne naplnění
+        // skryté `statistics-contacts`: ta se jmenuje „Kontakty" a přepsat jí
+        // cestu by v navigaci nechalo jméno, které neodpovídá obsahu.
+        id: 'statistics-web',
+        labelKey: 'common.nav.statisticsWeb',
+        path: '/stats/web',
+        permission: 'reports:read',
+        mvp0: true,
+      },
+      {
         id: 'statistics-contacts',
         labelKey: 'common.nav.statisticsContacts',
         path: '/statistics/contacts',
@@ -213,10 +262,55 @@ export const NAVIGATION: NavigationItem[] = [
         permission: 'workspace:update',
         mvp0: true,
       },
+      // Značka projektu. Sem ji přesunul zadavatel (viz hlavička souboru),
+      // z „Šablony → Značka projektu" na „Nastavení → Značka projektu".
+      // Barvy, logo a písmo nejsou jedna ze šablon, jsou to VÝCHOZÍ HODNOTY,
+      // ze kterých šablony vznikají, a to je nastavení projektu.
+      //
+      // Cesta je `/settings/brand`, ne původní `/brand`. Obě stránky existovaly
+      // vedle sebe už předtím a renderovaly totéž tělo; ta pod Nastavením
+      // sedí do sekce (má levé menu Nastavení kolem sebe) a míří na ni i e2e
+      // `apps/web/e2e/ai/brand-extraction.spec.ts`. `/brand` zůstává jako
+      // přesměrování, aby staré odkazy nekončily na 404.
+      //
+      // Oprávnění je `templates:write`, ne `templates:read`: obrazovka značku
+      // UPRAVUJE a `BrandScreen` se sama uzavírá pod `templates:write`. Kdo ho
+      // nemá, viděl by v menu položku a za ní hlášku „Na tuhle část nemáte
+      // oprávnění", což je mrtvý odkaz s mezikrokem.
+      {
+        id: 'settings-brand',
+        labelKey: 'common.nav.settingsBrand',
+        path: '/settings/brand',
+        permission: 'templates:write',
+        mvp0: true,
+      },
       {
         id: 'settings-sending',
         labelKey: 'common.nav.settingsSending',
         path: '/settings/sending',
+        permission: 'providers:read',
+        mvp0: true,
+      },
+      // Předvolby odesílatele. Stojí VEDLE odesílání, ne uvnitř: obrazovka
+      // odesílání je o účtech, doménách a DNS, tedy o nastavení, které se dělá
+      // jednou. Předvolby jsou naopak věc, do které se uživatel vrací, kdykoli
+      // mu přibude adresa. Oprávnění je `providers:read`, protože se předvolba
+      // odkazuje na účet a doménu, a musí být EXISTUJÍCÍ jméno oprávnění:
+      // vymyšlené by položku skrylo úplně všem a nic by přitom neselhalo.
+      {
+        id: 'settings-senders',
+        labelKey: 'common.nav.settingsSenders',
+        path: '/settings/senders',
+        permission: 'providers:read',
+        mvp0: true,
+      },
+      // Stav systémové pošty. Vlastní položka, ne odstavec v Odesílání, protože
+      // je to jiná věc než rozesílka kampaní a uživatel ji hledá tehdy, když
+      // něco nedorazilo: pozvánka, obnova hesla, ověření adresy.
+      {
+        id: 'settings-system-mail',
+        labelKey: 'common.nav.settingsSystemMail',
+        path: '/settings/system-mail',
         permission: 'providers:read',
         mvp0: true,
       },
@@ -267,7 +361,12 @@ export const NAVIGATION: NavigationItem[] = [
         labelKey: 'common.nav.settingsTracking',
         path: '/settings/tracking',
         permission: 'workspace:update',
-        mvp0: false,
+        // Odkryto ve chvíli, kdy obrazovka `settings/tracking` doopravdy vznikla.
+        // Do té doby byla položka schválně skrytá: odkaz na neexistující obrazovku
+        // slibuje funkci, kterou produkt nemá, a vrací 404. Hlídá to
+        // `registry-screens.test.ts`, který spadne v obou směrech, tedy i kdyby
+        // se obrazovka zase ztratila.
+        mvp0: true,
       },
       {
         id: 'settings-ai',

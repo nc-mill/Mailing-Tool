@@ -21,7 +21,29 @@ export const FormFieldSchema = z
     label: LocalizedTextSchema,
     placeholder: LocalizedTextSchema.optional(),
     required: z.boolean(),
-    type: z.enum(['text', 'email', 'select', 'checkbox', 'date', 'number', 'hidden']),
+    /**
+     * Značka vstupu, tedy JAK se pole vykreslí. NENÍ to typ hodnoty: co se s hodnotou
+     * stane, řídí definice vlastního pole v `contact_fields` a `coerceValue`.
+     *
+     * Rozšířeno o `textarea`, `url`, `tel` a `datetime`, aby měl protějšek každý typ
+     * vlastního pole, který jde formulářem sbírat. Bez nich by se dlouhý text sbíral
+     * jednořádkovým polem a datum s časem by přišlo jako text; obojí by uživatel zjistil
+     * až z chybějících dat. Zbývá `multi_enum`, který protějšek NEMÁ a nemá ho schválně:
+     * viz `FORM_FIELD_TYPE_FOR`.
+     */
+    type: z.enum([
+      'text',
+      'textarea',
+      'email',
+      'url',
+      'tel',
+      'select',
+      'checkbox',
+      'date',
+      'datetime',
+      'number',
+      'hidden',
+    ]),
     options: z
       .array(z.object({ value: z.string(), label: LocalizedTextSchema }).strict())
       .optional(),
@@ -64,6 +86,12 @@ export const FormDefinitionSchema = z
      */
     captcha_provider: z.enum(['none', 'turnstile', 'hcaptcha']).default('none'),
     captcha_config: z.record(z.string(), z.unknown()).nullable().default(null),
+    /**
+     * Šablona e-mailu, který přijde člověku po vyplnění formuláře. Skládá se
+     * v editoru e-mailů, takže do ní jde dát cokoliv, typicky odkaz ke stažení
+     * slíbeného souboru. `null` znamená, že formulář žádný e-mail neposílá.
+     */
+    delivery_template_id: z.uuid().nullable().default(null),
     redirect_url: z.url().nullable().default(null),
     success_message: LocalizedTextSchema.partial().default({}),
     active: z.boolean().default(true),
@@ -92,6 +120,52 @@ export function validateFormFields(
     }
   }
   return { ok: true };
+}
+
+/**
+ * Značka vstupu pro daný typ vlastního pole kontaktu.
+ *
+ * VZNIKLO Z NESOULADU, KTERÝ SE MUSEL ROZHODNOUT. `contact_fields` zná jedenáct typů,
+ * formulář jich vykresluje deset. Chybí protějšek pro `multi_enum` a vrací se pro něj
+ * `null`, což znamená „tímhle formulářem se sbírat NEDÁ".
+ *
+ * Proč zrovna `multi_enum` vypadl: je to jediný typ, jehož hodnota je POLE. Odeslání
+ * formuláře přenáší dvojice klíč a hodnota, takže by se buď přenesla jen poslední
+ * vybraná položka (tichá ztráta dat), nebo by se musel zavést vlastní tvar zápisu
+ * a rozumět mu na obou stranách. Tichá ztráta je nepřijatelná a vlastní tvar je práce,
+ * která si zaslouží vlastní rozhodnutí, ne přílepek. Rozhraní proto takové pole
+ * v nabídce vůbec nenabídne a řekne proč; nikdy nevznikne formulář, který se tváří,
+ * že sbírá víc hodnot, a uloží jednu.
+ *
+ * `long_text` míří na `textarea`, `datetime` na `datetime`, `url` na `url`,
+ * `phone` na `tel`. Všechny čtyři byly dřív obyčejný `text`.
+ */
+export function formFieldTypeFor(fieldType: string): FormField['type'] | null {
+  switch (fieldType) {
+    case 'text':
+      return 'text';
+    case 'long_text':
+      return 'textarea';
+    case 'number':
+      return 'number';
+    case 'boolean':
+      return 'checkbox';
+    case 'date':
+      return 'date';
+    case 'datetime':
+      return 'datetime';
+    case 'enum':
+      return 'select';
+    case 'url':
+      return 'url';
+    case 'email':
+      return 'email';
+    case 'phone':
+      return 'tel';
+    // `multi_enum` schválně chybí, viz hlavička.
+    default:
+      return null;
+  }
 }
 
 /** Jméno pole ve formuláři, tedy klíč, pod kterým hodnota přijde v těle požadavku. */

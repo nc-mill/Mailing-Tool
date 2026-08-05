@@ -24,6 +24,16 @@ export type ConsentEvidence = {
   double_opt_in_at?: string;
   confirmation_ip?: string | null;
   import_id?: string;
+  /**
+   * Volný popis původu souhlasu od uživatele nástroje („veletrh Brno 2026",
+   * „objednávkový formulář e-shopu").
+   *
+   * NENÍ to `consents.source`. Ten sloupec má omezení `ck_consents__source` s pevným
+   * číselníkem kanálů (`import`, `form`, `api`, …) a volný text by ho shodil na 23514,
+   * tedy pádem celé dávky importu. Kanál tedy zůstává ve sloupci a tvrzení uživatele
+   * o tom, odkud souhlas doopravdy pochází, se ukládá sem, kde je doložitelné.
+   */
+  declared_source?: string;
   /** Prohlášení uživatele nástroje o doloženém souhlasu, typicky u importu. */
   declaration?: boolean;
 };

@@ -52,7 +52,8 @@ test('zlatá cesta od instalace k reportu', async ({ page }) => {
   await onboarding.expectStepDone('contacts');
 
   // 4. Šablona. AI krok je z testu vynechaný, viz kapitola 3 plánu.
-  await new TemplatePage(page, slug).createFromStarter();
+  const templates = new TemplatePage(page, slug);
+  const templateName = await templates.createFromStarter();
   await onboarding.openDashboard();
   await onboarding.expectStepDone('template');
 
@@ -60,22 +61,28 @@ test('zlatá cesta od instalace k reportu', async ({ page }) => {
   const segmentSize = await new SegmentPage(page, slug).createActiveNinetyDays();
   expect(segmentSize).toBeGreaterThan(0);
 
-  // 6. Kampaň: test, potom odeslání.
-  const campaign = new CampaignPage(page, slug);
-  await campaign.createFromTemplateAndSegment();
-  await campaign.sendTestTo(VERIFIED_RECIPIENT);
-  const testMail = await waitForMessage(VERIFIED_RECIPIENT, { subjectContains: CAMPAIGN.subject });
+  // 6. Zkušební e-mail.
+  //
+  // ODCHYLKA OD PLÁNU, vynucená produktem: testovací odeslání je v EDITORU
+  // ŠABLONY, ne u kampaně. Ani obrazovka nastavení kampaně, ani její kontrolní
+  // seznam žádné „Poslat test" nemají, ověřeno v prohlížeči. Testuje se obsah,
+  // a ten nese šablona, takže to tam patří.
+  await templates.openLatest();
+  await templates.sendTestTo(VERIFIED_RECIPIENT);
+  const testMail = await waitForMessage(VERIFIED_RECIPIENT);
   expect(testMail.html).toContain('Dobrý den');
 
   await onboarding.openDashboard();
   await onboarding.expectStepDone('testSend');
 
-  await page.goto(`/w/${slug}/campaigns`);
-  await page.getByRole('link', { name: CAMPAIGN.name }).click();
+  // 7. Kampaň: nastavení, kontrola připravenosti, odeslání.
+  const campaign = new CampaignPage(page, slug);
+  await campaign.createFromTemplateAndSegment(templateName);
+  await campaign.openSendCheck();
   await campaign.send();
   await campaign.expectLiveProgress();
 
-  // 7. Otevření, proklik a časová osa.
+  // 8. Otevření, proklik a časová osa.
   const delivered = await waitForMessage(VERIFIED_RECIPIENT, {
     subjectContains: CAMPAIGN.subject,
     timeoutMs: 120_000,
@@ -86,14 +93,14 @@ test('zlatá cesta od instalace k reportu', async ({ page }) => {
   const clickResponse = await page.request.get(clickUrl, { maxRedirects: 0 });
   expect([301, 302, 307, 308]).toContain(clickResponse.status());
 
-  // 8. Report.
+  // 9. Report.
   const report = new ReportPage(page, slug);
   await report.open();
   await report.expectHeadlineTiles();
   await report.expectOpenRateCaveat();
   await report.expectDenominatorNextToEveryPercentage();
 
-  // 9. Onboarding je hotový a hlásí to jednorázově.
+  // 10. Onboarding je hotový a hlásí to jednorázově.
   await onboarding.openDashboard();
   await expect(page.getByText('Hotovo, první kampaň odeslána.')).toBeVisible();
 });

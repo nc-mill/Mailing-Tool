@@ -3,21 +3,27 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it } from 'vitest';
-import type { EditorDocument } from '../model/document-types';
+import { blockDefaults, DEFAULT_THEME, type EditorDocument } from '../model/document-types';
 import { createFakePorts } from '../ports/fake-ports';
 import { EditorShell } from './editor-shell';
 
+/**
+ * Motiv i vlastnosti jsou skutečné, ne prázdné objekty. Plátno teď kreslí e-mail
+ * v jeho podobě, takže si motiv rozřeší `resolveTheme` z `@mlain/emails`, a ta
+ * na `theme: {}` spadne na `theme.darkMode.colors`. Dřív to prošlo jen proto,
+ * že plátno motiv vůbec nečetlo.
+ */
 const document = (): EditorDocument =>
   ({
     schemaVersion: 1,
     meta: { name: 'Letní výprodej', previewText: '', language: 'cs' },
-    theme: {},
+    theme: DEFAULT_THEME,
     blocks: [
       {
         id: 'b_s1',
         type: 'section',
-        props: {},
-        children: [{ id: 'b_h1', type: 'heading', props: {} }],
+        props: { ...blockDefaults('section') },
+        children: [{ id: 'b_h1', type: 'heading', props: { ...blockDefaults('heading') } }],
       },
     ],
   }) as unknown as EditorDocument;
@@ -27,6 +33,7 @@ const base = {
   designHash: 'h1',
   document: document(),
   canWriteHtml: true,
+  templateKind: 'campaign' as const,
   readOnly: false,
   fieldCatalog: { fields: [], version: 'v1' },
   ports: createFakePorts(),

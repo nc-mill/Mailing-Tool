@@ -1,10 +1,11 @@
 'use client';
 
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Plus } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../../components/dropdown-menu';
 import { workspaceAccent } from '../../lib/workspace-accent';
@@ -17,11 +18,17 @@ export type WorkspaceSummary = { id: string; slug: string; name: string };
  *
  * Přepnutí vede **vždy na Přehled** nového projektu, nikdy na stejnou
  * stránku v cizím projektu: kampaň s tímhle id tam neexistuje.
+ *
+ * Založení dalšího projektu je POSLEDNÍ položkou téhle nabídky, oddělenou
+ * čárou. Je to jediné místo v aplikaci, kde se projekty vypisují, takže je
+ * to jediné místo, kde je uživatel bude hledat. Položka je nepovinná: kde se
+ * zakládat nesmí, prostě nevznikne, a nabídka zůstane jen přepínačem.
  */
 export function WorkspaceSwitcher({
   workspaces,
   currentId,
   onSwitch,
+  onCreate,
   labels,
 }: {
   workspaces: WorkspaceSummary[];
@@ -32,7 +39,9 @@ export function WorkspaceSwitcher({
   // Dnes vrací `workspaceAccent()` CSS proměnnou a světlost dopočítá motiv,
   // takže komponenta o motivu vědět nepotřebuje.
   onSwitch: (slug: string) => void;
-  labels: { switcher: string; current: (name: string) => string };
+  /** Bez téhle funkce se položka „Nový projekt" vůbec nevykreslí. */
+  onCreate?: (() => void) | undefined;
+  labels: { switcher: string; current: (name: string) => string; create?: string | undefined };
 }) {
   const current = workspaces.find((workspace) => workspace.id === currentId);
 
@@ -67,6 +76,15 @@ export function WorkspaceSwitcher({
             {workspace.name}
           </DropdownMenuItem>
         ))}
+        {onCreate && labels.create ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onCreate}>
+              <Plus aria-hidden className="size-4" />
+              {labels.create}
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

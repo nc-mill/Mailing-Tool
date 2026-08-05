@@ -56,6 +56,9 @@ export const WARNING_CODES = [
   'non_latin_script',
   'suppressed_skipped',
   'trailing_fields_padded',
+  // Vzniká až při zápisu dávky: kontakt unese nejvýš TAG_LIMIT_PER_CONTACT štítků
+  // a přebytek se nepřidá. Bez tohohle řádku by o tom uživatel nevěděl.
+  'contact_tag_limit_reached',
 ] as const;
 
 export type WarningCode = (typeof WARNING_CODES)[number];

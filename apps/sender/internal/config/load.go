@@ -171,6 +171,12 @@ func Load(lookup func(string) (string, bool), readFile func(string) ([]byte, err
 	c.ClaimTTLSeconds = s.intRange("SENDER_CLAIM_TTL_SECONDS", 300, 30, 3600)
 	c.PollIntervalMS = s.intRange("SENDER_POLL_INTERVAL_MS", 1000, 100, 60000)
 	c.CredentialsMaxRetries = s.intRange("SENDER_CREDENTIALS_MAX_RETRIES", 10, 1, 100)
+	// Ne-kampaňový proud je úzký schválně: jeho úkol je nízká latence jednotek
+	// zpráv, ne propustnost. Dávka 20 odpovídá dřívějšímu pevnému TestBatchSize,
+	// který se v produkčním drátování nenastavoval vůbec.
+	c.NonCampaignConcurrency = s.intRange("SENDER_NON_CAMPAIGN_CONCURRENCY", 4, 1, 256)
+	c.NonCampaignBatchSize = s.intRange("SENDER_NON_CAMPAIGN_BATCH_SIZE", 20, 1, 1000)
+	c.NonCampaignPollIntervalMS = s.intRange("SENDER_NON_CAMPAIGN_POLL_INTERVAL_MS", 1000, 100, 60000)
 	c.AmbiguousPolicySES = s.enum("AMBIGUOUS_DISPATCH_POLICY_SES", "fail", "retry", "fail")
 	c.AmbiguousPolicySMTP = s.enum("AMBIGUOUS_DISPATCH_POLICY_SMTP", "retry", "retry", "fail")
 	c.ShutdownGraceSeconds = s.intRange("SHUTDOWN_GRACE_SECONDS", 25, 1, 300)

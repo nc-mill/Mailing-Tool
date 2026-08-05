@@ -13,10 +13,32 @@ export type BrandInput = {
   typography: { headingStack: string; bodyStack: string; radius: number };
 };
 
-const STACK_HINTS: Array<[RegExp, FontStackId]> = [
+/**
+ * Převod zápisu písma z profilu značky na náš identifikátor.
+ *
+ * POŘADÍ JE SOUČÁST CHOVÁNÍ, ne kosmetika. Konkrétní názvy písem musí stát
+ * PŘED obecnými rodinami (`serif`, `mono`), protože zápis z prohlížeče je
+ * skoro vždy seznam, který obojí míchá: `Arial, Helvetica, sans-serif`.
+ *
+ * NAMĚŘENÁ VADA, kvůli které tenhle komentář vznikl: vzorek `/times|serif/i`
+ * stál druhý a `serif` je částí slova `sans-serif`, takže úplně běžný
+ * bezpatkový zápis `Arial, Helvetica, sans-serif` se mapoval na **Times New
+ * Roman**. Uživatel si v nastavení značky zvolil Arial a v e-mailu dostal
+ * patkové písmo, aniž by měl jak zjistit proč.
+ *
+ * Proto dvě opatření naráz, obě nutná:
+ *  1. konkrétní písma napřed, obecné rodiny až nakonec,
+ *  2. `serif` se nesmí chytit uvnitř `sans-serif`; hlídá to pohled dozadu.
+ *     Bez něj by samotný zápis `sans-serif` bez konkrétního písma spadl
+ *     na patkové, tedy na pravý opak toho, co říká.
+ *
+ * Co se sem NEVEJDE, spadne na `system`, a to je správně: vlastní webové
+ * písmo poštovní klienti stejně nenačtou.
+ */
+const SPECIFIC_HINTS: Array<[RegExp, FontStackId]> = [
   [/georgia/i, 'georgia'],
-  [/times|serif/i, 'times'],
-  [/courier|mono/i, 'courier'],
+  [/times/i, 'times'],
+  [/courier/i, 'courier'],
   [/verdana/i, 'verdana'],
   [/tahoma|segoe/i, 'tahoma'],
   [/trebuchet/i, 'trebuchet'],
@@ -24,10 +46,37 @@ const STACK_HINTS: Array<[RegExp, FontStackId]> = [
   [/arial/i, 'arial'],
 ];
 
+/** Poslední záchrana, když v zápisu není ani jedno konkrétní písmo. */
+const GENERIC_HINTS: Array<[RegExp, FontStackId]> = [
+  [/(?<!sans-)serif/i, 'times'],
+  [/mono/i, 'courier'],
+];
+
 const RADII: Radius[] = [0, 4, 6, 8, 12];
 
+/**
+ * Rozhoduje POŘADÍ V ZÁPISU, ne pořadí v našem výčtu.
+ *
+ * Zápis `Arial, Helvetica, sans-serif` znamená „nejdřív Arial, když nebude,
+ * tak Helvetica". Když se bere první vzorek z našeho seznamu, který někam sedne,
+ * vyhraje písmo podle toho, jak jsme si výčet seřadili my, tedy Helvetica.
+ * Uživatel zvolil Arial a dostal jiné písmo, jen o stupeň méně nápadně než
+ * u toho patkového.
+ *
+ * Vybírá se proto shoda s NEJMENŠÍM indexem v zadaném řetězci. Obecné rodiny
+ * (`serif`, `mono`) se zkoušejí až tehdy, když v zápisu není žádné konkrétní
+ * písmo, protože v seznamu stojí naposled schválně jako poslední záchrana.
+ */
 function mapStack(value: string): FontStackId {
-  for (const [pattern, id] of STACK_HINTS) if (pattern.test(value)) return id;
+  let best: { id: FontStackId; at: number } | null = null;
+
+  for (const [pattern, id] of SPECIFIC_HINTS) {
+    const at = value.search(pattern);
+    if (at !== -1 && (best === null || at < best.at)) best = { id, at };
+  }
+  if (best !== null) return best.id;
+
+  for (const [pattern, id] of GENERIC_HINTS) if (pattern.test(value)) return id;
   return 'system';
 }
 

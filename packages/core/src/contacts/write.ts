@@ -96,7 +96,9 @@ export function applyWriteRules(input: WriteRulesInput): WriteRulesResult {
 
   // Pravidlo 6: zamknutý vokativ přežije zápis, dokud se nezmění jméno.
   const releaseVocativeLock =
-    existing !== null && existing.vocativeLocked && shouldReleaseVocativeLock(existing, incoming);
+    existing !== null &&
+    existing.vocativeLocked &&
+    shouldReleaseVocativeLock(existing, incoming, mode);
 
   return {
     email,
@@ -120,14 +122,57 @@ export function applyWriteRules(input: WriteRulesInput): WriteRulesResult {
  *
  * Změna jen rodu zámek nechává: rod ovlivňuje tvar oslovení příjmením, ne samotný
  * vokativ, který už člověk potvrdil.
+ *
+ * PRÁZDNÉ JMÉNO VE VSTUPU NENÍ ZMĚNA JMÉNA (oprava hlášené vady „přesun kontaktů do
+ * seznamu shodí oslovení"). Cesty, které jméno vůbec nenesou, ho do zápisu posílají
+ * jako `null`, ne jako `undefined`: přihlášení do seznamu pracuje s adresou
+ * (`lists/subscribe.ts` skládá `input.firstName ?? null`), stejně tak stránka
+ * předvoleb i příchozí webhook. Původní podmínka takový zápis vyhodnotila jako
+ * „jméno se změnilo z Petr na nic", zámek shodila a kontakt, který měl ručně
+ * potvrzené „Petře", se v seznamu naráz tvářil jako neověřený.
+ *
+ * DOLOŽENO NA ŽIVÉ DATABÁZI: hromadné přidání tří kontaktů do seznamu zapsalo do
+ * auditu třikrát `contact.vocative_lock_released` s důvodem `name_changed`, přestože
+ * se ani u jednoho z nich jméno nezměnilo.
+ *
+ * Podmínka teď kopíruje to, co se SKUTEČNĚ stane s daty: v režimech `update`, `skip`
+ * a `create` prázdná hodnota jméno v databázi nepřepíše (`coalesce(nullif(excluded
+ * .first_name, ''), contacts.first_name)` v `repo/contacts.ts`), takže se nemá o čem
+ * rozhodovat. V režimu `overwrite` prázdná hodnota jméno SMAŽE, a tam je uvolnění
+ * zámku správně: oslovení „Petře" u kontaktu bez jména nemá základ.
  */
 export function shouldReleaseVocativeLock(
   existing: { firstName: string | null; lastName: string | null },
   incoming: { firstName?: string | null | undefined; lastName?: string | null | undefined },
+  mode: UpsertMode = 'update',
 ): boolean {
-  const firstChanged =
-    incoming.firstName !== undefined && (incoming.firstName ?? null) !== existing.firstName;
-  const lastChanged =
-    incoming.lastName !== undefined && (incoming.lastName ?? null) !== existing.lastName;
-  return firstChanged || lastChanged;
+  const clearing = mode === 'overwrite';
+  return (
+    nameChanged(existing.firstName, incoming.firstName, clearing) ||
+    nameChanged(existing.lastName, incoming.lastName, clearing)
+  );
+}
+
+/**
+ * Změní tenhle zápis jméno v databázi?
+ *
+ * Porovnává se na oříznuté hodnotě: „Petr " a „Petr" je totéž jméno a rozdíl v bílém
+ * znaku nesmí shodit ručně potvrzený tvar. Prázdný řetězec je táž hodnota jako `null`,
+ * viz `nonEmpty` v `naming/greeting.ts`.
+ */
+function nameChanged(
+  existing: string | null,
+  incoming: string | null | undefined,
+  clearing: boolean,
+): boolean {
+  if (incoming === undefined) return false;
+  const next = trimToNull(incoming);
+  if (next === null && !clearing) return false;
+  return next !== trimToNull(existing);
+}
+
+function trimToNull(value: string | null): string | null {
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
 }

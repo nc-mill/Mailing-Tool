@@ -54,6 +54,9 @@ apps/sender/ml-sender
 
 # Lokální vývojová data mimo git
 .dev-data/
+# Data běžící vývojové instalace: nahrané soubory, zálohy, klíče. Vzniká
+# lokálně z DATA_DIR a do repozitáře nepatří, stejně jako .dev-data/ výš.
+.dev-data-clean/
 apps/web/.env.local
 
 # Artefakty běhu Playwrightu. Vznikají při každém spuštění testů a nepatří

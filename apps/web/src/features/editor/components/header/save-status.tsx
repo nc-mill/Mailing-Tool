@@ -14,17 +14,19 @@ export function SaveStatus() {
   const text =
     status === 'saving'
       ? t('header.saving')
-      : status === 'error'
-        ? t('header.saveFailed')
-        : status === 'conflict'
-          ? t('state.conflictTitle')
-          : isDirty
-            ? t('header.unsaved')
-            : savedAt
-              ? t('header.saved', {
-                  time: format.dateTime(new Date(savedAt), { timeStyle: 'short' }),
-                })
-              : '';
+      : status === 'invalid'
+        ? t('header.saveInvalid')
+        : status === 'error'
+          ? t('header.saveFailed')
+          : status === 'conflict'
+            ? t('state.conflictTitle')
+            : isDirty
+              ? t('header.unsaved')
+              : savedAt
+                ? t('header.saved', {
+                    time: format.dateTime(new Date(savedAt), { timeStyle: 'short' }),
+                  })
+                : '';
 
   return (
     <p data-testid="save-status" aria-live="polite" className="text-xs text-text-muted">

@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { enqueueTrackingJob } from '../jobs/enqueue';
 import { withTrackingTx } from './tx';
 
 export type MessageEventInsert = {
@@ -63,8 +64,10 @@ export async function insertMessageEvents(rows: readonly MessageEventInsert[]): 
 
   const insertedIds: string[] = [];
   for (const [workspaceId, group] of byWorkspace) {
-    const ids = await withTrackingTx({ workspaceId, job: 'tracking.writer_flush' }, async (tx) => {
-      const { rows: inserted } = await tx.execute<{ id: string }>(sql`
+    const written = await withTrackingTx(
+      { workspaceId, job: 'tracking.writer_flush' },
+      async (tx) => {
+        const { rows: inserted } = await tx.execute<{ id: string }>(sql`
         INSERT INTO message_events (
           id, workspace_id, message_id, message_created_at, campaign_id,
           contact_id, type, subtype, ts, link_id, metadata, source)
@@ -91,10 +94,51 @@ export async function insertMessageEvents(rows: readonly MessageEventInsert[]): 
                     AND e.received_at >= now() - interval '1 hour')
         RETURNING id
       `);
-      return inserted.map((row) => row.id);
-    });
-    insertedIds.push(...ids);
+
+        const ids = inserted.map((row) => row.id);
+
+        /**
+         * ZAŘAZENÍ AGREGACE VE STEJNÉ TRANSAKCI. Tohle byl přetržený článek řetězu.
+         *
+         * Do téhle chvíle zápis skončil tady a nikdo se o nových událostech
+         * nedozvěděl. Otevření a prokliky se poctivě ukládaly do `message_events`,
+         * jenže `campaign_stats` z nich nikdo nepočítal, takže report kampaně
+         * ukazoval samé nuly. Vypadalo to jako rozbité měření, přitom se jen
+         * nikdy nezavolalo počítání.
+         *
+         * Zařazuje se z transakce, ne po ní: úloha nad událostmi, které se
+         * nakonec neuložily, by hledala řádky, které neexistují, a naopak úloha
+         * zařazená až po commitu by se ztratila při pádu procesu mezi tím.
+         *
+         * Prázdný seznam (druhý běh téže dávky) žádnou úlohu nezařadí.
+         */
+        await enqueueProcessEngagementFor(tx, workspaceId, ids);
+
+        return ids;
+      },
+    );
+    insertedIds.push(...written);
   }
 
   return insertedIds;
+}
+
+/**
+ * Zařazení `tracking.process_engagement`.
+ *
+ * Náklad má tvar z registru P01 (`workspace_id`, `event_ids`). Import je
+ * pojmenovaný přes tenhle obal, aby byl cyklus modulů vidět: `jobs/enqueue.ts`
+ * na tenhle soubor nesahá, takže jde o jednosměrnou závislost repozitáře
+ * na zařazování úloh.
+ */
+async function enqueueProcessEngagementFor(
+  tx: Parameters<typeof enqueueTrackingJob>[0],
+  workspaceId: string,
+  eventIds: readonly string[],
+): Promise<void> {
+  if (eventIds.length === 0) return;
+  await enqueueTrackingJob(tx, 'tracking.process_engagement', {
+    workspaceId,
+    eventIds: [...eventIds],
+  });
 }

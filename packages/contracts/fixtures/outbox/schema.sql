@@ -41,6 +41,9 @@ CREATE TABLE suppressions (
   email              citext,
   fingerprint        bytea,
   fingerprint_key_id smallint,
+  -- Důvod blokace. Sender ho čte kvůli transakční poště: odhlášení z marketingu
+  -- ji blokovat nesmí, tvrdý odraz, stížnost a výmaz podle GDPR ano.
+  reason             text NOT NULL DEFAULT 'manual',
   removed_at         timestamptz,
   created_at         timestamptz NOT NULL DEFAULT now()
 );

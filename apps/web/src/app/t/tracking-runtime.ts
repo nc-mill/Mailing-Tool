@@ -1,4 +1,3 @@
-import { v7 as uuidv7 } from 'uuid';
 import { loadConfig } from '@mlain/core/config';
 import {
   EventBuffer,
@@ -10,11 +9,9 @@ import {
   createOpenHandler,
   createPublicTrackingRoutes,
   currentTrackingKeyId,
-  insertMessageEvents,
+  flushTrackingEvents,
   lookupMessage,
-  type BufferedClick,
-  type BufferedOpen,
-  type MessageEventInsert,
+  type BufferedTrackingEvent,
   type TrackingKeyring,
 } from '@mlain/core/tracking';
 
@@ -36,45 +33,18 @@ import {
  *  - `isWebTrackingEnabled` nečte `workspaces.settings.tracking.web_tracking_enabled`.
  *    Kontrola registrované domény, tedy ta, která brání úniku identity na cizí
  *    web, platí i tak a je v `handle-click.ts`.
- *  - Vyprazdňování bufferu zapisuje do `message_events` přímo. Zařazení
- *    navazujícího jobu `tracking.process_engagement` přidává Task 25.
+ *
+ * Vyprazdňování bufferu už ODCHYLKA NENÍ. Funkce `flush` tady dřív žila jako
+ * lokální kopie a zařazení navazujícího jobu `tracking.process_engagement`
+ * v ní chybělo, takže se události zapsaly a nikdo z nich nespočítal statistiku.
+ * Zápis i zařazení dělá `flushTrackingEvents` z `@mlain/core/tracking`,
+ * tedy kód, který má vlastní databázový test.
  */
 
-type BufferedEvent = BufferedOpen | BufferedClick;
+type BufferedEvent = BufferedTrackingEvent;
 
-/**
- * Dohledá kampaň a kontakt ke každé položce dávky a zapíše je jako události.
- * Zpráva se hledá podle OBOU složek klíče, takže je to zásah do jedné partition.
- */
 async function flush(batch: BufferedEvent[]): Promise<void> {
-  const rows: MessageEventInsert[] = [];
-
-  for (const item of batch) {
-    const message = await lookupMessage({
-      workspaceId: item.workspaceId,
-      messageId: item.messageId,
-      messageCreatedAt: item.messageCreatedAt,
-    });
-    // Nedohledaná zpráva je porušení invariantu I1. Čítač zvýšil lookupMessage,
-    // událost se zahodí: bez kampaně ji není kam zařadit.
-    if (message === null) continue;
-
-    rows.push({
-      id: uuidv7(),
-      workspaceId: item.workspaceId,
-      messageId: item.messageId,
-      messageCreatedAt: message.createdAt,
-      campaignId: message.campaignId,
-      contactId: message.contactId,
-      type: item.kind === 'open' ? 'open' : 'click',
-      subtype: item.kind === 'open' ? item.openClass : item.clickClass,
-      ts: item.occurredAt,
-      linkId: item.kind === 'click' ? item.linkId : null,
-      metadata: item.kind === 'click' ? { link_position: item.linkPosition } : {},
-    });
-  }
-
-  await insertMessageEvents(rows);
+  await flushTrackingEvents(batch);
 }
 
 /**

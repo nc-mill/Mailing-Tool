@@ -1,6 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createTestWorkspace, type TestWorkspace } from '../support/db';
+import {
+  countSubscriptionRows,
+  createActiveContact,
+  createSubscription,
+  createTestWorkspace,
+  type TestWorkspace,
+} from '../support/db';
 import * as listsRepo from '../../repo/lists';
+import { deleteContact, listMailableContacts, restoreContact } from '../../repo/contacts';
 
 /**
  * ODCHYLKA OD PLÁNU, VYNUCENÁ POŘADÍM HÁKŮ. Plán měl `const ws = await createTestWorkspace()`
@@ -118,6 +125,88 @@ describe('lists.stats', () => {
       complained: 0,
       total: 4,
     });
+  }, 30_000);
+
+  /*
+   * REGRESE. Počítadlo se ptalo jen tabulky `list_subscriptions`, ne kontaktů. Mazání
+   * kontaktu je měkké a přihlášení po něm schválně zůstává, takže obrazovka seznamů
+   * hlásila „50 potvrzených kontaktů" projektu, ve kterém zbyly tři, a číslo se
+   * nespravilo nikdy, protože žádný úklid přihlášení neběží ani běžet nesmí.
+   *
+   * Test jde přes SKUTEČNOU databázi a přes SKUTEČNOU mazací cestu (`deleteContact`),
+   * ne přes vymyšlená data: vada přežila právě proto, že se ověřovala nad čistou funkcí,
+   * které nikdo nesmazal kontakt pod rukama.
+   */
+  it('smazaný kontakt se do počtu nepočítá, přihlášení mu ale zůstává', async () => {
+    const a = await listsRepo.create(ws.ctx, { name: 'Novinky' });
+    const zustava = await createActiveContact(ws.ctx, 'zustava@x.cz');
+    const mazany = await createActiveContact(ws.ctx, 'mazany@x.cz');
+    const cekajici = await createActiveContact(ws.ctx, 'cekajici@x.cz');
+    await createSubscription(ws.ctx, { contactId: zustava.id, listId: a.id, status: 'confirmed' });
+    await createSubscription(ws.ctx, { contactId: mazany.id, listId: a.id, status: 'confirmed' });
+    await createSubscription(ws.ctx, { contactId: cekajici.id, listId: a.id, status: 'pending' });
+
+    expect(await listsRepo.stats(ws.ctx, a.id)).toMatchObject({ confirmed: 2, pending: 1 });
+
+    await deleteContact(ws.ctx, mazany.id, 'soft');
+
+    expect(await listsRepo.stats(ws.ctx, a.id)).toMatchObject({
+      confirmed: 1,
+      pending: 1,
+      total: 2,
+    });
+    // Řádek přihlášení musí přežít, jinak by obnova do třiceti dnů vrátila člověka
+    // bez členství. Kdyby se tahle kontrola smazala, dala by se vada „opravit" úklidem,
+    // který uživateli tiše sebere seznamy.
+    expect(await countSubscriptionRows(ws.ctx, a.id)).toBe(3);
+
+    await restoreContact(ws.ctx, mazany.id);
+    expect(await listsRepo.stats(ws.ctx, a.id)).toMatchObject({ confirmed: 2, pending: 1 });
+  }, 30_000);
+
+  /*
+   * Zablokovaná a odhlášená adresa se počítat MÁ. Je to ochrana příjemce, ne nepřítomnost
+   * člověka, a uživatel musí na obrazovce vidět, že tam ten člověk je a proč mu nepíšeme.
+   */
+  it('odhlášený kontakt z počtu nemizí, jen sedí ve svém stavu', async () => {
+    const a = await listsRepo.create(ws.ctx, { name: 'Novinky' });
+    const odhlaseny = await createActiveContact(ws.ctx, 'odhlaseny@x.cz');
+    await createSubscription(ws.ctx, {
+      contactId: odhlaseny.id,
+      listId: a.id,
+      status: 'unsubscribed',
+    });
+
+    expect(await listsRepo.stats(ws.ctx, a.id)).toMatchObject({
+      unsubscribed: 1,
+      confirmed: 0,
+      total: 1,
+    });
+  }, 30_000);
+
+  /*
+   * Počítadlo a výběr příjemců musí odpovídat na tutéž otázku „je ten člověk v projektu".
+   * Kdyby se rozešly, obrazovka by slíbila padesát a odešlo by třem, což je přesně ta
+   * vada, kterou tenhle soubor hlídá.
+   */
+  it('počet potvrzených sedí s tím, komu kampaň doopravdy odejde', async () => {
+    const a = await listsRepo.create(ws.ctx, { name: 'Novinky' });
+    for (const email of ['a@x.cz', 'b@x.cz', 'c@x.cz']) {
+      const contact = await createActiveContact(ws.ctx, email);
+      await createSubscription(ws.ctx, {
+        contactId: contact.id,
+        listId: a.id,
+        status: 'confirmed',
+      });
+    }
+    const smazany = await createActiveContact(ws.ctx, 'd@x.cz');
+    await createSubscription(ws.ctx, { contactId: smazany.id, listId: a.id, status: 'confirmed' });
+    await deleteContact(ws.ctx, smazany.id, 'soft');
+
+    const counted = await listsRepo.stats(ws.ctx, a.id);
+    const mailable = await listMailableContacts(ws.ctx, { listId: a.id });
+    expect(counted.confirmed).toBe(mailable.length);
+    expect(counted.confirmed).toBe(3);
   }, 30_000);
 });
 

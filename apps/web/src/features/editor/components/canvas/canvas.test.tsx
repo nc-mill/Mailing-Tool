@@ -4,7 +4,8 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it } from 'vitest';
-import type { EditorDocument } from '../../model/document-types';
+import { blockDefaults, DEFAULT_THEME, type EditorDocument } from '../../model/document-types';
+import type { FieldCatalog } from '../../model/field-catalog';
 import { createEditorStore } from '../../state/editor-store';
 import { EditorStoreProvider } from '../../state/use-editor';
 import { Canvas } from './canvas';
@@ -20,26 +21,50 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
 
+const catalog: FieldCatalog = {
+  version: 'v1',
+  fields: [
+    {
+      path: 'first_name',
+      type: 'string',
+      label: { cs: 'Jméno', en: 'First name' },
+      group: 'name',
+      deleted: false,
+    },
+  ],
+};
+
+/**
+ * Vlastnosti se berou z `blockDefaults` a motiv z `DEFAULT_THEME`, ne z prázdných
+ * objektů. Plátno teď kreslí skutečný vzhled, takže čte odsazení, barvy a písmo;
+ * s `props: {}` a `theme: {}` by nebylo co číst a test by měřil pád, ne chování.
+ */
 const document = (): EditorDocument =>
   ({
     schemaVersion: 1,
     meta: { name: 'T', previewText: '', language: 'cs' },
-    theme: {},
+    theme: DEFAULT_THEME,
     blocks: [
       {
         id: 'b_s1',
         type: 'section',
-        props: {},
+        props: { ...blockDefaults('section') },
         children: [
           {
             id: 'b_h1',
             type: 'heading',
-            props: { content: [{ t: 'p', children: [{ t: 's', v: 'Letní výprodej' }] }] },
+            props: {
+              ...blockDefaults('heading'),
+              content: [{ t: 'p', children: [{ t: 's', v: 'Letní výprodej' }] }],
+            },
           },
           {
             id: 'b_t1',
             type: 'text',
-            props: { content: [{ t: 'p', children: [{ t: 's', v: 'Text' }] }] },
+            props: {
+              ...blockDefaults('text'),
+              content: [{ t: 'p', children: [{ t: 's', v: 'Text' }] }],
+            },
           },
         ],
       },
@@ -52,7 +77,7 @@ function renderCanvas(doc: EditorDocument) {
     <NextIntlClientProvider locale="cs" messages={{ editor: messages }}>
       <LiveRegionProvider label="Oznámení">
         <EditorStoreProvider value={store}>
-          <Canvas canWriteHtml />
+          <Canvas canWriteHtml fieldCatalog={catalog} />
         </EditorStoreProvider>
       </LiveRegionProvider>
     </NextIntlClientProvider>,
@@ -100,8 +125,24 @@ describe('Canvas', () => {
   it('ovládání bloku nabízí všech šest operací také myší', async () => {
     setup();
     await userEvent.click(screen.getByTestId('block-b_h1'));
+    // Klik do nadpisu rovnou otevře psaní, a při psaní se ovládání bloku
+    // schovává, aby nezakrývalo psaný řádek. Esc psaní opustí a blok zůstane
+    // vybraný, což je stav, ve kterém ovládání patří na obrazovku.
+    await userEvent.keyboard('{Escape}');
     const toolbar = screen.getByTestId('block-toolbar-b_h1');
     expect(toolbar.querySelectorAll('button')).toHaveLength(6);
+  });
+
+  /**
+   * Naměřený nález zadavatele: při psaní mu přes řádek visely šipky, duplikace
+   * a koš. Ovládání se týká bloku jako celku, tedy jiného úmyslu než psát do
+   * něj větu, a při psaní na obrazovce nemá co dělat.
+   */
+  it('při psaní do bloku se jeho ovládání nekreslí', async () => {
+    setup();
+    await userEvent.click(screen.getByTestId('block-b_h1'));
+
+    expect(screen.queryByTestId('block-toolbar-b_h1')).toBeNull();
   });
 
   it('tlačítko + mezi bloky otevře paletu a vloží blok na dané místo', async () => {
@@ -122,7 +163,7 @@ describe('Canvas', () => {
         {
           id: 'b_s1',
           type: 'section',
-          props: {},
+          props: { ...blockDefaults('section') },
           children: [{ id: 'b_x1', type: 'carousel', props: { foo: 1 } }],
         },
       ],

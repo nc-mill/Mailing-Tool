@@ -4,6 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 import * as schema from '@mlain/db/schema';
 import { startPgHarness, type PgHarness } from '../test-support/pg-harness';
 import { closePools, withWorkspace, withoutContext } from '../tx';
+import { setSystemMailer } from '../platform/system-mail';
 import { createWorkspaceContext } from './context';
 import { hashPassword } from './password';
 import { createWorkspace } from './workspace-service';
@@ -39,6 +40,26 @@ async function makeUser(prefix: string): Promise<{ id: string; email: string }> 
   return { id, email };
 }
 
+/**
+ * Projekt dostane odesílací účet typu SMTP.
+ *
+ * Není to kulisa navíc: `createInvitation` od opravy vady se systémovou poštou
+ * odmítne založit pozvánku v projektu, který ji nemá jak odeslat. Bez tohohle
+ * účtu by každý test pozvánek skončil na `system_mail_unavailable`, a měl by
+ * pravdu. Skutečné odesílání se nahrazuje přes `setSystemMailer`, aby test
+ * nechodil na síť.
+ */
+async function seedSystemMailAccount(ctx: WorkspaceContext): Promise<void> {
+  await withWorkspace(ctx, (tx) =>
+    tx.execute(sql`
+      INSERT INTO sending_providers
+        (workspace_id, name, type, config_encrypted, config_public, status, is_default)
+      VALUES (${ctx.workspaceId}::uuid, 'SMTP pro testy', 'smtp', 'enc:test', '{}'::jsonb,
+              'ready', true)
+    `),
+  );
+}
+
 beforeAll(async () => {
   harness = await startPgHarness();
   const owner = await makeUser('clen-owner');
@@ -50,9 +71,12 @@ beforeAll(async () => {
     userId: ownerId,
     workspaceRef: created.workspace.id,
   });
+  await seedSystemMailAccount(ownerCtx);
+  setSystemMailer({ async send() {} });
 }, 180_000);
 
 afterAll(async () => {
+  setSystemMailer(null);
   await closePools();
   await harness?.stop();
 }, 120_000);

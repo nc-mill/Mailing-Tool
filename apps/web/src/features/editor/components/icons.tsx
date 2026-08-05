@@ -89,14 +89,6 @@ export function Plus(props: IconProps) {
   );
 }
 
-export function AlertTriangle(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3ZM12 9v4M12 17h.01" />
-    </Icon>
-  );
-}
-
 export function XCircle(props: IconProps) {
   return (
     <Icon {...props}>
@@ -184,6 +176,72 @@ export function Braces(props: IconProps) {
   return (
     <Icon {...props}>
       <path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1" />
+    </Icon>
+  );
+}
+
+export function Monitor(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 5h18v11H3zM8 21h8M12 16v5" />
+    </Icon>
+  );
+}
+
+export function Smartphone(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M7 2h10v20H7zM11 18h2" />
+    </Icon>
+  );
+}
+
+export function TextLines(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 6h16M4 12h16M4 18h10" />
+    </Icon>
+  );
+}
+
+export function Code(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m16 18 6-6-6-6M8 6l-6 6 6 6" />
+    </Icon>
+  );
+}
+
+/** Ikona AI asistenta. Tvar jiskření z Lucide (`sparkles`). */
+export function Sparkles(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9zM18 15l.9 2.1 2.1.9-2.1.9L18 21l-.9-2.1-2.1-.9 2.1-.9z" />
+    </Icon>
+  );
+}
+
+/** Ikona volby „Zobrazit jako". */
+export function UserRound(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0" />
+    </Icon>
+  );
+}
+
+export function ChevronLeft(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m15 18-6-6 6-6" />
+    </Icon>
+  );
+}
+
+export function ChevronRight(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m9 18 6-6-6-6" />
     </Icon>
   );
 }

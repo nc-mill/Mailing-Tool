@@ -53,6 +53,10 @@ export function ThemePanel() {
               canWriteHtml={false}
               fieldCatalog={{ fields: [], version: 'theme' }}
               ports={null}
+              // Panel motivu nemá jediné pole odkazu, takže profil nic
+              // neovlivní. `campaign` je tu jako přísnější z dvojice: kdyby
+              // sem někdy odkaz přibyl, bude se kontrolovat, ne propouštět.
+              templateKind="campaign"
               value={getPath(document.theme as unknown as Record<string, unknown>, descriptor.key)}
               onChange={(next) =>
                 store.patchTheme(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reportBanner } from './report-banner';
+import { reportBanner, statsNotComputed } from './report-banner';
 import { headlineTiles, mergeLiveSnapshot, opensView, type StatsPayload } from './report-model';
 
 const payload: StatsPayload = {
@@ -10,6 +10,7 @@ const payload: StatsPayload = {
   track_opens: true,
   track_clicks: true,
   delivered_source: 'provider_events',
+  delivered_known: true,
   counts: {
     materialized: 1153,
     sent: 1153,
@@ -74,6 +75,23 @@ describe('headlineTiles', () => {
 
   it('míra otevření mezi hlavními dlaždicemi není (kritérium 57)', () => {
     expect(headlineTiles(payload).some((t) => t.key.includes('open'))).toBe(false);
+  });
+
+  /*
+   * Odkud se doručenost bere, musí být vidět U ČÍSLA. U SMTP účtu žádné
+   * potvrzení nechodí a číslo je dopočet; bez téhle věty vypadá stejně
+   * důvěryhodně jako potvrzení od odesílací služby.
+   */
+  it('u doručenosti říká, jestli ji hlásí odesílací služba', () => {
+    const provider = headlineTiles(payload).find((t) => t.key === 'delivered');
+    expect(provider?.hintKey).toBe('report.delivered.hintProvider');
+  });
+
+  it('u odvozené doručenosti říká, že je to dopočet', () => {
+    const derived = headlineTiles({ ...payload, delivered_source: 'derived_from_sent' }).find(
+      (t) => t.key === 'delivered',
+    );
+    expect(derived?.hintKey).toBe('report.delivered.hintDerived');
   });
 });
 
@@ -179,5 +197,20 @@ describe('reportBanner', () => {
       new Date('2026-08-04T00:00:00.000Z'),
     );
     expect(banner?.key).toBe('report.banner.stopped');
+  });
+});
+
+/**
+ * Kdyby tenhle blok spadl: report zase tvrdí „Doručeno 0 z odeslaných"
+ * u kampaně, která opravdu odeslala, jen se jí ještě nespočítal souhrn.
+ * Naměřeno v prohlížeči: `/progress` hlásil 3 odeslané, `/stats` samé nuly.
+ */
+describe('statsNotComputed', () => {
+  it('spočítaný souhrn nehlásí nic', () => {
+    expect(statsNotComputed(payload)).toBe(false);
+  });
+
+  it('chybějící řádek souhrnu se pozná podle času z počátku epochy', () => {
+    expect(statsNotComputed({ ...payload, updated_at: '1970-01-01T00:00:00.000Z' })).toBe(true);
   });
 });

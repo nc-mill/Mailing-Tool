@@ -63,9 +63,72 @@ export class TemplatePage {
     // plátno: to se dokresluje až po načtení dokumentu.
     await expect(this.page.getByRole('complementary', { name: 'Bloky' })).toBeVisible();
 
-    // Ukládá se průběžně. Test čeká na doklad o uložení, ne na tlačítko.
-    await expect(this.page.getByText(/Uloženo v|Ukládáme/)).toBeVisible({ timeout: 30_000 });
-
+    /*
+     * NEČEKÁ se na text „Uloženo v…".
+     *
+     * Editor ukládá průběžně, ale u ČERSTVĚ otevřené šablony nemá co hlásit:
+     * `SaveStatus` skládá text ze `status`, `isDirty` a `savedAt`, a dokud
+     * uživatel nic nezmění, jsou to `idle`, `false` a `null`, takže vypíše
+     * prázdný řetězec. Dřívější znění na ten text čekalo a padalo, přestože
+     * šablona vznikla a editor běžel.
+     *
+     * Doklad o vzniku je adresa s jejím id (výš) a to, že ji `openLatest()`
+     * najde v seznamu šablon. Ukládání obsahu ověřuje `saveDesign` v jednotkových
+     * testech portů, ne tenhle krok.
+     */
     return 'Nová šablona';
+  }
+
+  /** Otevře poslední založenou šablonu ze seznamu. */
+  async openLatest(): Promise<void> {
+    await this.page.goto(`/w/${this.slug}/templates`);
+    await this.page.getByRole('link', { name: 'Nová šablona' }).first().click();
+    await this.page.waitForURL(/\/templates\/[0-9a-f-]{36}$/i);
+    await expect(this.page.getByRole('complementary', { name: 'Bloky' })).toBeVisible();
+  }
+
+  /**
+   * Testovací odeslání.
+   *
+   * Bydlí v EDITORU ŠABLONY, ne u kampaně, jak čekal plán: obrazovka kampaně
+   * ani její kontrolní seznam žádné „Poslat test" nemají. Dává to smysl,
+   * protože testuje obsah, a ten nese šablona.
+   *
+   * Doslovný tvar dialogu z produktu (`features/editor/components/test-send`):
+   *   DialogTitle "Testovací e-mail"
+   *   textarea aria-label "Adresy"   (víc adres se odděluje čárkou, nejvýš pět)
+   *   switch "Přidat do předmětu značku TEST"
+   *   button "Poslat test"
+   * Po odeslání se ukáže „Testovací e-mail odešel."
+   */
+  async sendTestTo(email: string): Promise<void> {
+    await this.page.getByRole('button', { name: 'Poslat test' }).first().click();
+
+    const dialog = this.page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Adresy').fill(email);
+    await dialog.getByRole('button', { name: 'Poslat test' }).click();
+
+    /*
+     * Čeká se na to, co nastane dřív: potvrzení, nebo chybová hláška.
+     *
+     * Dialog vypisuje nezdar do `role="alert"` (limit testovacích e-mailů,
+     * nepřipravený odesílací účet, cokoli dalšího). Holé čekání na potvrzení
+     * by z toho udělalo obyčejné vypršení bez jediné stopy po příčině.
+     */
+    const success = dialog
+      .getByText(/Testovací e-mail odešel/)
+      .waitFor({ state: 'visible', timeout: 30_000 })
+      .then(() => 'ok' as const);
+    const failure = dialog
+      .getByRole('alert')
+      .waitFor({ state: 'visible', timeout: 30_000 })
+      .then(() => 'failed' as const);
+
+    if ((await Promise.race([success, failure])) === 'failed') {
+      throw new Error(
+        `Testovací e-mail neodešel: ${(await dialog.getByRole('alert').innerText()).trim()}`,
+      );
+    }
   }
 }

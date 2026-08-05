@@ -1,4 +1,4 @@
-import { ALIGN_OPTIONS, COMMON_DEFAULTS, contentGroups, FONT_STACK_OPTIONS } from './common';
+import { ALIGN_OPTIONS, COMMON_DEFAULTS, contentGroups } from './common';
 import type { BlockDescriptor } from './types';
 
 export const TEXT_DESCRIPTOR: BlockDescriptor = {
@@ -22,12 +22,12 @@ export const TEXT_DESCRIPTOR: BlockDescriptor = {
           label: 'prop.align',
           options: [...ALIGN_OPTIONS, { value: 'justify', label: 'value.align.justify' }],
         },
-        {
-          kind: 'select',
-          key: 'fontFamily',
-          label: 'prop.fontFamily',
-          options: FONT_STACK_OPTIONS,
-        },
+        /*
+         * PÍSMO SE TU UŽ NENABÍZÍ. `TextBlockView` má
+         *   fontFamily: props.fontFamily ? theme.fonts.body : theme.fonts.body
+         * tedy obě větve stejné: text dostane vždy písmo z motivu. Výběr v panelu
+         * neměl žádný následek. Písmo textu se nastavuje v panelu motivu.
+         */
         {
           kind: 'number',
           key: 'fontSize',

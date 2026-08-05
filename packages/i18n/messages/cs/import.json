@@ -159,6 +159,11 @@
     "cancelled": "Import jste zrušili na řádku {row}",
     "failed": "Import se nepodařilo dokončit",
     "failedNothingWritten": "Do databáze se nezapsal žádný kontakt.",
+    "running": "Import ještě běží",
+    "runningRefresh": "Až doběhne, uvidíte tady výsledek. Zkuste stránku za chvíli obnovit.",
+    "unknown": "Stav importu neumíme přečíst",
+    "unknownNextStep": "Server hlásí stav „{status}\", který tahle obrazovka nezná. Obnovte prosím stránku; kontakty mohly být zapsané.",
+    "refresh": "Obnovit stránku",
     "breakdown": {
       "created": "Nových kontaktů",
       "updated": "Doplněných u existujících",
@@ -193,7 +198,8 @@
     "vocative_low_confidence": "U {n} kontaktů si nejsme jistí oslovením.",
     "non_latin_script": "{n} jmen není v latince, oslovení jsme nepočítali.",
     "suppressed_skipped": "{n} adres jsme nepřidali, protože se v minulosti odhlásily nebo se jim e-maily nedoručovaly.",
-    "trailing_fields_padded": "{n} řádků mělo míň sloupců než hlavička, chybějící jsme nechali prázdné."
+    "trailing_fields_padded": "{n} řádků mělo míň sloupců než hlavička, chybějící jsme nechali prázdné.",
+    "contact_tag_limit_reached": "U {n} kontaktů jsme část štítků nepřidali, protože jeden kontakt jich unese nejvýš 50."
   },
   "rowErrors": {
     "row_field_count_mismatch": "Jiný počet sloupců než v hlavičce",
@@ -215,7 +221,8 @@
     "unknown_field_key": "Mapování ukazuje na pole, které neexistuje",
     "encoding_error": "Znaky nedávají v tomhle kódování smysl",
     "name_empty": "Jméno je prázdné",
-    "list_not_found": "Seznam z mapování neexistuje"
+    "list_not_found": "Seznam z mapování neexistuje",
+    "contact_tag_limit_reached": "Kontakt už má nejvýš povolený počet štítků"
   },
   "fileErrors": {
     "file_too_large": {

@@ -37,5 +37,11 @@ export default async function ProgressPage({ params }: PageProps) {
   });
   if (!progress.ok) notFound();
 
-  return <ProgressView progress={progress.data} workspaceId={access.data.workspace.id} />;
+  return (
+    <ProgressView
+      progress={progress.data}
+      workspaceId={access.data.workspace.id}
+      basePath={`/w/${workspaceSlug}`}
+    />
+  );
 }

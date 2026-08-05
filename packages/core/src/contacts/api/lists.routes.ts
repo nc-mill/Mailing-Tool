@@ -2,8 +2,9 @@ import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import { ApiError, validationFailed } from '../../errors/api-error';
 import { assertPermission } from '../../identity/permissions';
 import { DEFAULT_CONFIRMATION_MODE, DEFAULT_CONFIRMATION_TTL_HOURS } from '../constants';
+import { confirmPendingSubscriptions } from '../lists/confirm-pending';
 import { resendConfirmation, subscribeToList } from '../lists/subscribe-service';
-import { unsubscribe } from '../lists/unsubscribe';
+import { bulkUnsubscribeFromList, unsubscribe } from '../lists/unsubscribe';
 import { findContactByEmail } from '../repo/contacts-query';
 import {
   archive as archiveList,
@@ -29,6 +30,13 @@ import {
 
 const TAG = 'Lists';
 
+/**
+ * Strop obou hromadných operací nad seznamem. Přihlášení i odhlášení ho mají SPOLEČNÝ
+ * schválně: jsou to dvě poloviny téže věci a různý strop by znamenal, že co se dá jedním
+ * voláním přidat, se nedá jedním voláním odebrat.
+ */
+const BULK_LIMIT = 1000;
+
 const ListSchema = z
   .object({
     id: Uuid,
@@ -40,6 +48,9 @@ const ListSchema = z
     confirmation_max_resends: z.number().int(),
     send_welcome: z.boolean(),
     is_default: z.boolean(),
+    public_visible: z.boolean(),
+    public_name: z.string().nullable(),
+    public_description: z.string().nullable(),
     archived_at: IsoDateTime.nullable(),
     created_at: IsoDateTime,
   })
@@ -64,6 +75,18 @@ const CreateListSchema = z
     confirmation_max_resends: z.number().int().min(0).max(10).optional(),
     send_welcome: z.boolean().default(false),
     is_default: z.boolean().default(false),
+    /**
+     * Nabízet seznam ve veřejném centru předvoleb k PŘIHLÁŠENÍ?
+     *
+     * Výchozí `false` je bezpečnostní rozhodnutí, ne opatrnost: seznam je nositelem
+     * oprávnění k rozesílce, takže zapnuté nabízení znamená „kdokoli s odhlašovacím
+     * odkazem se sem smí přihlásit sám". U seznamu jako „VIP" je to nárok zdarma.
+     * Odhlášení se tím NEŘÍDÍ, to jde vždycky.
+     */
+    public_visible: z.boolean().default(false),
+    /** Název pro příjemce. Když chybí, ukáže se pracovní `name`. */
+    public_name: z.string().min(1).max(120).nullable().optional(),
+    public_description: z.string().min(1).max(500).nullable().optional(),
   })
   .strict()
   .openapi('CreateList');
@@ -111,6 +134,9 @@ function present(row: ListRow): z.infer<typeof ListSchema> {
     confirmation_max_resends: row.confirmationMaxResends,
     send_welcome: row.sendWelcome,
     is_default: row.isDefault,
+    public_visible: row.publicVisible,
+    public_name: row.publicName,
+    public_description: row.publicDescription,
     archived_at: toIso(row.deletedAt),
     created_at: toIsoRequired(row.createdAt),
   };
@@ -293,7 +319,9 @@ const bulkSubscribeRoute = createRoute({
     body: {
       content: {
         'application/json': {
-          schema: z.object({ subscribers: z.array(SubscribeSchema).min(1).max(1000) }).strict(),
+          schema: z
+            .object({ subscribers: z.array(SubscribeSchema).min(1).max(BULK_LIMIT) })
+            .strict(),
         },
       },
     },
@@ -308,6 +336,63 @@ const bulkSubscribeRoute = createRoute({
               z.object({
                 index: z.number().int(),
                 outcome: z.string(),
+                contact_id: Uuid.nullable(),
+              }),
+            ),
+          }),
+        },
+      },
+    },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    422: problemResponse('validation_failed', 'too_many_items'),
+    429: problemResponse('rate_limited'),
+  },
+});
+
+/**
+ * Hromadné odhlášení. Protějšek `subscribe:bulk` a drží jeho tvar: tentýž strop,
+ * výsledek po položkách a tytéž chybové kódy.
+ *
+ * METODA DELETE SE STEJNOU CESTOU, protože jednotlivá dvojice je `POST /subscribe`
+ * a `DELETE /subscribe`. Kdyby hromadné odhlášení bylo POST na vlastní cestě, měl by
+ * produkt na dvě stejné věci dva různé tvary.
+ *
+ * Tělo nese jen adresy: u odhlášení nemá co dorovnávat jméno ani atributy, a čím míň
+ * toho endpoint přijme, tím míň se dá omylem přepsat.
+ */
+const bulkUnsubscribeRoute = createRoute({
+  method: 'delete',
+  path: '/lists/{id}/subscribe:bulk',
+  tags: [TAG],
+  summary: 'Hromadné odhlášení, nejvýš tisíc adres',
+  security: [{ bearerAuth: ['lists:write'] }],
+  request: {
+    params: IdParam,
+    headers: IdempotencyHeaderSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({ emails: z.array(EmailInput).min(1).max(BULK_LIMIT) }).strict(),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Výsledek po položkách',
+      content: {
+        'application/json': {
+          schema: z.object({
+            results: z.array(
+              z.object({
+                index: z.number().int(),
+                /**
+                 * `unchanged` je kontakt, který v seznamu není nebo v něm odhlášený už je.
+                 * `unknown_contact` je adresa, ke které v projektu žádný kontakt není.
+                 */
+                outcome: z.enum(['unsubscribed', 'unchanged', 'unknown_contact']),
                 contact_id: Uuid.nullable(),
               }),
             ),
@@ -362,6 +447,46 @@ const statsRoute = createRoute({
   },
 });
 
+/**
+ * Hromadné potvrzení čekajících přihlášení. Je to zásah správce, ne projev vůle příjemce,
+ * takže si vyžádá TÉŽ výslovné prohlášení jako zkratka v `subscribe:bulk`: bez
+ * `declaration: true` se nestane nic. Prohlášení je jediná věc, kterou tělo nese;
+ * koho se to týká, určuje seznam a stav přihlášení, ne volající.
+ */
+const confirmPendingRoute = createRoute({
+  method: 'post',
+  path: '/lists/{id}/subscriptions:confirm-pending',
+  tags: [TAG],
+  summary: 'Potvrdí čekající přihlášení seznamu na základě doloženého souhlasu',
+  security: [{ bearerAuth: ['lists:write'] }],
+  request: {
+    params: IdParam,
+    body: {
+      content: {
+        'application/json': { schema: z.object({ declaration: z.boolean() }).strict() },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Kolik čekalo, potvrdilo se a vynechalo',
+      content: {
+        'application/json': {
+          schema: z.object({
+            pending: z.number().int(),
+            confirmed: z.number().int(),
+            skipped: z.number().int(),
+          }),
+        },
+      },
+    },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    422: problemResponse('validation_failed'),
+  },
+});
+
 /** Prohlášení o doloženém souhlasu se kontroluje na jednom místě pro obě cesty zápisu. */
 function assertDeclaration(body: { skip_confirmation: boolean; declaration: boolean }): void {
   // Vynucené potvrzení jde obejít jen s výslovným prohlášením, že souhlas je doložený.
@@ -401,6 +526,11 @@ export function registerListRoutes(app: OpenAPIHono<ContactsEnv>): void {
         : { confirmationMaxResends: body.confirmation_max_resends }),
       sendWelcome: body.send_welcome,
       isDefault: body.is_default,
+      publicVisible: body.public_visible,
+      ...(body.public_name === undefined ? {} : { publicName: body.public_name }),
+      ...(body.public_description === undefined
+        ? {}
+        : { publicDescription: body.public_description }),
     });
     c.header('Location', `/api/v1/lists/${row.id}`);
     return c.json({ data: present(row) }, 201);
@@ -430,6 +560,11 @@ export function registerListRoutes(app: OpenAPIHono<ContactsEnv>): void {
         ? {}
         : { confirmationMaxResends: body.confirmation_max_resends }),
       ...(body.send_welcome === undefined ? {} : { sendWelcome: body.send_welcome }),
+      ...(body.public_visible === undefined ? {} : { publicVisible: body.public_visible }),
+      ...(body.public_name === undefined ? {} : { publicName: body.public_name }),
+      ...(body.public_description === undefined
+        ? {}
+        : { publicDescription: body.public_description }),
     });
     return c.json({ data: present(row) }, 200);
   });
@@ -534,6 +669,37 @@ export function registerListRoutes(app: OpenAPIHono<ContactsEnv>): void {
     return c.json({ results }, 200);
   });
 
+  app.openapi(bulkUnsubscribeRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    assertPermission(ctx, 'lists:write');
+    const listId = c.req.valid('param').id;
+    // Neexistující seznam se musí ozvat 404. Bez téhle kontroly by odhlášení z překlepu
+    // v identifikátoru vrátilo samá `unchanged` a vypadalo by jako práce.
+    if ((await listById(ctx, listId, { includeArchived: true })) === null) {
+      throw new ApiError('not_found');
+    }
+
+    const results = await bulkUnsubscribeFromList(ctx, {
+      listId,
+      emails: c.req.valid('json').emails,
+      // `manual` je rozhodnutí správce, ne projev vůle příjemce: do souhlasu se zapíše
+      // zdroj `admin`, viz `consentSourceFor`. Hromadné odhlášení nikdy nespustí sám
+      // příjemce, ten má stránku předvoleb a odhlašovací odkaz.
+      reason: 'manual',
+    });
+
+    return c.json(
+      {
+        results: results.map((item) => ({
+          index: item.index,
+          outcome: item.outcome,
+          contact_id: item.contactId,
+        })),
+      },
+      200,
+    );
+  });
+
   app.openapi(resendRoute, async (c) => {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'lists:write');
@@ -545,6 +711,17 @@ export function registerListRoutes(app: OpenAPIHono<ContactsEnv>): void {
     // s outcome `resend_throttled`, aby klient poznal rozdíl mezi "odesláno"
     // a "zamítnuto limitem", a přitom se z toho nestala chyba integrace.
     return c.json({ outcome: result.outcome }, 200);
+  });
+
+  app.openapi(confirmPendingRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    assertPermission(ctx, 'lists:write');
+    // Bez prohlášení se nestane vůbec nic a volající to musí poznat. Tiché „potvrzeno 0"
+    // by z chybějícího příznaku udělalo záhadu, kterou by nikdo nehledal v těle požadavku.
+    if (!c.req.valid('json').declaration) {
+      throw new ApiError('validation_failed', { params: { detail: 'declaration_required' } });
+    }
+    return c.json(await confirmPendingSubscriptions(ctx, c.req.valid('param').id), 200);
   });
 
   app.openapi(statsRoute, async (c) => {

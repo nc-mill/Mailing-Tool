@@ -1,0 +1,197 @@
+- generic:
+  - generic:
+    - banner:
+      - link:
+        - /url: "#main"
+        - text: Přeskočit na obsah
+      - generic: Mlain Mailer
+      - button:
+        - text: "Projekt: Petr Osobní mail"
+        - generic: Přepnout projekt
+      - button:
+        - generic: Petr Novák
+    - generic:
+      - navigation:
+        - generic:
+          - link:
+            - /url: /w/petr-osobni-mail
+            - generic: Přehled
+        - generic:
+          - link:
+            - /url: /w/petr-osobni-mail/contacts
+            - generic: Kontakty
+        - generic:
+          - link:
+            - /url: /w/petr-osobni-mail/campaigns
+            - generic: Kampaně
+        - generic:
+          - link:
+            - /url: /w/petr-osobni-mail/templates
+            - generic: Šablony
+        - generic:
+          - link:
+            - /url: /w/petr-osobni-mail/assets
+            - generic: Knihovna médií
+        - generic:
+          - link:
+            - /url: /w/petr-osobni-mail/deliverability
+            - generic: Statistiky
+        - generic:
+          - link:
+            - /url: /w/petr-osobni-mail/settings/general
+            - generic: Nastavení
+      - main:
+        - generic:
+          - complementary:
+            - navigation:
+              - list:
+                - listitem:
+                  - link:
+                    - /url: /w/petr-osobni-mail/settings/general
+                    - text: Projekt
+                - listitem:
+                  - link:
+                    - /url: /w/petr-osobni-mail/settings/brand
+                    - text: Značka projektu
+                - listitem:
+                  - link:
+                    - /url: /w/petr-osobni-mail/settings/sending
+                    - text: Odesílání
+                - listitem:
+                  - link:
+                    - /url: /w/petr-osobni-mail/settings/senders
+                    - text: Odesílatelé
+                - listitem:
+                  - link:
+                    - /url: /w/petr-osobni-mail/settings/system-mail
+                    - text: Systémová pošta
+                - listitem:
+                  - link:
+                    - /url: /w/petr-osobni-mail/settings/members
+                    - text: Tým
+                - listitem:
+                  - link:
+                    - /url: /w/petr-osobni-mail/settings/api-keys
+                    - text: Klíče k API
+                - listitem:
+                  - link:
+                    - /url: /w/petr-osobni-mail/settings/webhooks
+                    - text: Webhooky
+                - listitem:
+                  - link:
+                    - /url: /w/petr-osobni-mail/settings/ai
+                    - text: AI asistent
+                - listitem:
+                  - link:
+                    - /url: /w/petr-osobni-mail/settings/audit
+                    - text: Audit log
+                - listitem:
+                  - link:
+                    - /url: /w/petr-osobni-mail/settings/backups
+                    - text: Zálohy
+                - listitem:
+                  - link:
+                    - /url: /w/petr-osobni-mail/settings/account
+                    - text: Můj účet
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - heading [level=1]: Tým
+                  - paragraph: Kdo má do projektu přístup a co smí.
+              - generic:
+                - generic:
+                  - generic:
+                    - table:
+                      - caption: Tým
+                      - rowgroup:
+                        - row:
+                          - columnheader: Člen projektu
+                          - columnheader: Role
+                          - columnheader: Akce
+                      - rowgroup:
+                        - row:
+                          - cell:
+                            - paragraph: Petr Novák
+                            - paragraph: petr.novak@gmail.com
+                          - cell:
+                            - text: Vlastník
+                            - paragraph: Vidí a mění všechno včetně záloh, smazání a předání projektu.
+                          - cell
+                  - region:
+                    - heading [level=2]: Čekající pozvánky
+                    - generic:
+                      - generic:
+                        - heading [level=2]: Čekající pozvánky
+                        - paragraph: Žádná pozvánka nečeká na přijetí.
+                        - generic:
+                          - generic:
+                            - button: Napsat e-mail kolegy
+                    - generic:
+                      - alert:
+                        - generic:
+                          - paragraph: Pozvánku e-mailem teď poslat nejde
+                          - paragraph: Instalace nemá čím odeslat systémový e-mail, takže by pozvánka nikam nedorazila. Založte kolegu rovnou s heslem ve formuláři níž, nebo systémovou poštu nejdřív nastavte.
+                          - link:
+                            - /url: /w/petr-osobni-mail/settings/system-mail
+                            - text: Otevřít nastavení systémové pošty
+                  - region:
+                    - heading [level=2]: Založit člena rovnou
+                    - paragraph: Účet vznikne hned, bez e-mailu. Heslo mu předáte sami.
+                    - generic:
+                      - generic:
+                        - generic: E-mail kolegy
+                        - textbox
+                      - generic:
+                        - generic: Role
+                        - combobox:
+                          - generic: Prohlížející
+                        - combobox
+                      - group:
+                        - generic: Heslo
+                        - radiogroup:
+                          - generic:
+                            - radio [checked]
+                            - radio [checked]
+                            - generic: Vygenerovat a ukázat mi ho
+                          - generic:
+                            - radio
+                            - radio
+                            - generic: Zadám vlastní
+                      - button: Založit člena
+                  - region:
+                    - heading [level=2]: Účty bez projektu
+                    - paragraph: Účty, které v instalaci existují, ale nepatří do žádného projektu. Přihlásit se s nimi jde, vidět v týmu nejsou. Členství ve smazaném projektu se nepočítá.
+                    - generic:
+                      - table:
+                        - caption: Účty bez projektu
+                        - rowgroup:
+                          - row:
+                            - columnheader: E-mail
+                            - columnheader: Založen
+                            - columnheader: Naposledy přihlášen
+                            - columnheader: Akce
+                        - rowgroup:
+                          - row:
+                            - cell:
+                              - paragraph: docasny.ucet@brevio.cz
+                            - cell:
+                              - time: 4. 8. 2026
+                            - cell: Nikdy
+                            - cell:
+                              - button: Smazat účet
+  - button "Open Next.js Dev Tools" [ref=f195e156] [cursor=pointer]
+  - alert
+  - dialog [ref=f195e161]:
+    - heading "Smazat účet docasny.ucet@brevio.cz?" [level=2] [ref=f195e162]
+    - generic [ref=f195e163]:
+      - paragraph [ref=f195e164]: Co se stane
+      - list [ref=f195e165]:
+        - listitem [ref=f195e166]: Přestane se přihlašovat a jeho otevřené relace skončí okamžitě.
+        - listitem [ref=f195e167]: To, co v nástroji vytvořil, zůstává i s jeho jménem u toho.
+        - listitem [ref=f195e168]: Záznamy v auditu zůstávají, jsou to doklady a nemažou se.
+        - listitem [ref=f195e169]: Jeho e-mailová adresa je hned volná, takže účet jde založit znovu.
+      - paragraph [ref=f195e170]: Tuhle akci nejde vzít zpět.
+    - generic [ref=f195e171]:
+      - button "Nechat účet" [active] [ref=f195e173]
+      - button "Smazat účet" [ref=f195e175]

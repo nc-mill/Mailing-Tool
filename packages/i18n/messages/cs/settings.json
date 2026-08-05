@@ -159,6 +159,21 @@
       "dialogCancel": "Nechat {current}",
       "started": "Oslovení jsme přepnuli a přepočítáváme kontakty."
     },
+    "greetingLocale": {
+      "label": "Jazyk oslovení kontaktů",
+      "hint": "Oslovení skládáme jazykem kontaktu, ne projektu: 5. pád má jen čeština a slovenština. Kontakty, které vznikly dřív, mají jazyk, se kterým projekt začínal. Jazyk projektu je teď {target}.",
+      "allAligned": "{count, plural, =0 {Zatím nemáte žádné kontakty.} one {Jediný kontakt má jazyk {target}, nic není potřeba srovnávat.} few {Všechny # kontakty mají jazyk {target}, nic není potřeba srovnávat.} many {Všech # kontaktů má jazyk {target}, nic není potřeba srovnávat.} other {Všech # kontaktů má jazyk {target}, nic není potřeba srovnávat.}}",
+      "mismatched": "{count, plural, =0 {Všechny kontakty mají jazyk {target}, takže se všichni osloví v něm.} one {# kontakt z {total} má jiný jazyk než {target}, takže se osloví v něm.} few {# kontakty z {total} mají jiný jazyk než {target}, takže se osloví v něm.} many {# kontaktů z {total} má jiný jazyk než {target}, takže se osloví v něm.} other {# kontaktů z {total} má jiný jazyk než {target}, takže se osloví v něm.}}",
+      "perLocale": "{locale}: {count, plural, =0 {0 kontaktů} one {# kontakt} few {# kontakty} many {# kontaktů} other {# kontaktů}}",
+      "action": "Sjednotit jazyk na {target} a přepočítat oslovení",
+      "dialogTitle": "Sjednotit jazyk oslovení na {target}?",
+      "dialogConsequence1": "{count, plural, =0 {Nezměníme jazyk u žádného kontaktu.} one {Změníme jazyk u # kontaktu a spočítáme mu 5. pád podle {target}.} few {Změníme jazyk u # kontaktů a spočítáme jim 5. pád podle {target}.} many {Změníme jazyk u # kontaktů a spočítáme jim 5. pád podle {target}.} other {Změníme jazyk u # kontaktů a spočítáme jim 5. pád podle {target}.}}",
+      "dialogConsequence2": "Ručně potvrzené tvary zůstanou. Přepočítá se z nich jen věta, takže z „Hello Petře“ vznikne „Dobrý den, Petře“.",
+      "dialogConsequence3": "Přepočet běží na pozadí a jazyk kontaktu jde kdykoliv změnit zpátky.",
+      "dialogConfirm": "Sjednotit a přepočítat",
+      "dialogCancel": "Nechat jazyky beze změny",
+      "started": "Jazyk sjednocujeme a přepočítáváme oslovení. Chvíli to potrvá."
+    },
     "danger": {
       "title": "Smazání projektu",
       "body": "Smazání odstraní všechny kontakty, kampaně i statistiky. Obnovit to jde 30 dní. Pro potvrzení opište název projektu.",
@@ -234,8 +249,100 @@
       "submitting": "Odesíláme pozvánku",
       "done": "Pozvánku jsme poslali na {email}.",
       "alreadyMember": "{email} už v projektu je. Roli mu můžete změnit v seznamu členů.",
-      "alreadyInvited": "Pozvánku na {email} jsme poslali znovu, ta předchozí přestala platit."
+      "alreadyInvited": "Pozvánku na {email} jsme poslali znovu, ta předchozí přestala platit.",
+      "mailUnavailableTitle": "Pozvánku e-mailem teď poslat nejde",
+      "mailUnavailableBody": "Instalace nemá čím odeslat systémový e-mail, takže by pozvánka nikam nedorazila. Založte kolegu rovnou s heslem ve formuláři níž, nebo systémovou poštu nejdřív nastavte.",
+      "mailUnavailableLink": "Otevřít nastavení systémové pošty"
+    },
+    "create": {
+      "title": "Založit člena rovnou",
+      "lead": "Účet vznikne hned, bez e-mailu. Heslo mu předáte sami.",
+      "email": "E-mail kolegy",
+      "role": "Role",
+      "passwordMode": "Heslo",
+      "passwordGenerated": "Vygenerovat a ukázat mi ho",
+      "passwordManual": "Zadám vlastní",
+      "password": "Heslo",
+      "passwordHint": "Aspoň 12 znaků. Nesmí obsahovat část adresy před zavináčem ani patřit mezi deset tisíc nejpoužívanějších hesel.",
+      "submit": "Založit člena",
+      "submitting": "Zakládáme člena",
+      "done": "Účet pro {email} je založený.",
+      "existing": "Účet pro {email} v instalaci už byl, tak jsme ho jen přidali do projektu. Heslo jsme mu nezměnili.",
+      "changeHint": "Řekněte novému členovi, ať si heslo po prvním přihlášení změní v Nastavení, Můj účet. Vynutit změnu při prvním přihlášení nástroj zatím neumí."
+    },
+    "orphaned": {
+      "title": "Účty bez projektu",
+      "lead": "Účty, které v instalaci existují, ale nepatří do žádného projektu. Přihlásit se s nimi jde, vidět v týmu nejsou. Členství ve smazaném projektu se nepočítá.",
+      "empty": "Žádný takový účet tu není. Každý účet v instalaci patří aspoň do jednoho projektu.",
+      "email": "E-mail",
+      "name": "Jméno",
+      "createdAt": "Založen",
+      "lastLoginAt": "Naposledy přihlášen",
+      "never": "Nikdy",
+      "delete": "Smazat účet",
+      "dialogTitle": "Smazat účet {email}?",
+      "consequence1": "Přestane se přihlašovat a jeho otevřené relace skončí okamžitě.",
+      "consequence2": "To, co v nástroji vytvořil, zůstává i s jeho jménem u toho.",
+      "consequence3": "Záznamy v auditu zůstávají, jsou to doklady a nemažou se.",
+      "consequence4": "Jeho e-mailová adresa je hned volná, takže účet jde založit znovu.",
+      "confirm": "Smazat účet",
+      "cancel": "Nechat účet",
+      "done": "Účet {email} je smazaný.",
+      "failed": "Účet se nepodařilo smazat.",
+      "cannotDeleteSelf": "Vlastní účet smazat nejde. Požádejte o to někoho jiného.",
+      "stillMember": "Účet mezitím do nějakého projektu vstoupil. Nejdřív ho odeberte z projektu.",
+      "lastAccount": "Tohle je poslední účet instalace. Kdyby zmizel, dovnitř se už nikdo nedostane."
+    },
+    "password": {
+      "title": "Účet je založený",
+      "warning": "Zkopírujte si heslo teď. Podruhé ho neukážeme ani my.",
+      "acknowledge": "Heslo mám uložené",
+      "close": "Hotovo"
     }
+  },
+  "systemMail": {
+    "title": "Systémová pošta",
+    "lead": "E-maily o účtech: pozvánky, obnova zapomenutého hesla a ověření adresy ve zkušebním režimu. S rozesílkou kampaní to nesouvisí.",
+    "okTitle": "Systémová pošta funguje",
+    "okBody": "Odesílá se účtem {account} typu {type}.",
+    "failTitle": "Systémová pošta nefunguje",
+    "reason": {
+      "no_account": "Projekt nemá odesílací účet, kterým by šlo e-mail poslat.",
+      "provider_unsupported": "Projekt by odeslal účtem {account} typu {type}. Systémovou poštu odsud odešle jen účet typu SMTP.",
+      "selected_account_missing": "Účet vybraný pro systémovou poštu v projektu už není, nebo je vypnutý."
+    },
+    "limitationTitle": "Proč to tak je",
+    "limitationBody": "Systémové e-maily skládá a odesílá aplikace sama. Klienta pro Amazon SES má jen odesílací služba kampaní, napsaná v Go, takže aplikace účtem typu SES odeslat neumí. Je to známé omezení nástroje, ne chyba vašeho nastavení.",
+    "blockedTitle": "Co kvůli tomu nejde",
+    "blocked1": "Pozvánka do projektu e-mailem. Náhrada: v Nastavení, Tým založte člena rovnou s heslem.",
+    "blocked2": "Obnova zapomenutého hesla. Náhrada: na serveru příkaz mlain reset-password s adresou uživatele.",
+    "blocked3": "Ověření adresy ve zkušebním režimu, takže zkušební režim nejde dokončit.",
+    "blocked4": "Upozornění na vypnutý webhook. To se jen nedoručí, webhook se vypne tak jako tak.",
+    "fixTitle": "Jak to spravit",
+    "fixBody": "Přidejte v Nastavení, Odesílání účet typu SMTP. Kampaně můžou dál chodit přes SES, systémová pošta si vezme ten účet SMTP.",
+    "fixLink": "Přejít na Odesílání",
+    "fromTitle": "Adresa odesílatele",
+    "fromCurrent": "Systémové e-maily chodí z adresy {address}.",
+    "fromSource": {
+      "configured": "Tuhle adresu jste zadali ručně.",
+      "verified_domain": "Odvozeno z ověřené domény odesílacího účtu.",
+      "app_url": "Odvozeno z adresy aplikace, protože účet nemá ověřenou doménu. Taková zpráva častěji skončí ve spamu."
+    },
+    "form": {
+      "title": "Nastavení",
+      "account": "Účet pro systémovou poštu",
+      "accountAuto": "Vybrat automaticky, přednost má SMTP",
+      "accountHint": "Kterým odesílacím účtem systémové e-maily odejdou.",
+      "accountIncapable": "{name}, typ {type}, systémovou poštu neumí",
+      "accountCapable": "{name}, typ {type}",
+      "fromAddress": "Adresa odesílatele",
+      "fromAddressHint": "Nechte prázdné a odvodíme ji z ověřené domény účtu.",
+      "submit": "Uložit nastavení",
+      "submitting": "Ukládáme",
+      "done": "Nastavení systémové pošty je uložené."
+    },
+    "noAccounts": "V projektu zatím není žádný odesílací účet, takže není z čeho vybírat.",
+    "noPermission": "Systémovou poštu nastavuje Správce a Vlastník. Vaše role na to oprávnění nemá."
   },
   "apiKeys": {
     "title": "Klíče k API",
@@ -446,7 +553,8 @@
         "logout": "Odhlásil se",
         "password_changed": "Změnil heslo",
         "password_reset_requested": "Vyžádal obnovu hesla",
-        "password_reset_completed": "Dokončil obnovu hesla"
+        "password_reset_completed": "Dokončil obnovu hesla",
+        "deleted": "Smazal účet"
       },
       "workspace": {
         "created": "Založil projekt",
@@ -457,6 +565,7 @@
       },
       "member": {
         "invited": "Pozval člena",
+        "created": "Založil člena",
         "invitation_revoked": "Zrušil pozvánku",
         "joined": "Přijal pozvánku",
         "role_changed": "Změnil roli člena",
@@ -561,6 +670,10 @@
     "serviceUnavailable": {
       "title": "Server neodpovídá",
       "body": "Nepodařilo se nám spojit se serverem nástroje. Většinou je to přechodné a druhý pokus projde."
+    },
+    "systemMailUnavailable": {
+      "title": "Systémovou poštu nemá instalace jak odeslat",
+      "body": "Odesílá ji jen účet typu SMTP, protože klient Amazon SES má pouze odesílací služba kampaní. Stav a nápravu najdete v Nastavení, Systémová pošta. Opakování pokusu nepomůže, chybí nastavení, ne spojení."
     },
     "dependencyTimeout": {
       "title": "Server odpovídal moc dlouho",

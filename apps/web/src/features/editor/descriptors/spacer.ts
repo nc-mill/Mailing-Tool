@@ -6,6 +6,18 @@ export const SPACER_DESCRIPTOR: BlockDescriptor = {
   label: 'block.spacer',
   icon: 'spacer',
   inPalette: true,
+  /*
+   * MEZERA NABÍZÍ JEN TO, CO SE PROJEVÍ.
+   *
+   * Odsazení tu není, protože `SpacerBlockView` posílá do rámu natvrdo nuly.
+   * Mobilní výška tu není, protože `heightMobile` neužije ani emitter, ani
+   * `buildHeadCss`: v celém `packages/emails/src` se ta vlastnost jen deklaruje
+   * ve schématu a nikde nečte. Obojí se dřív nastavit dalo a nemělo to žádný
+   * následek, což uživatel našel sám na odsazení.
+   *
+   * Výchozí hodnoty ZŮSTÁVAJÍ (`padding`, `heightMobile` níž): schéma je
+   * vyžaduje a starší šablony je mají uložené. Mizí ovládání, ne data.
+   */
   groups: [
     {
       label: 'group.style',
@@ -19,20 +31,9 @@ export const SPACER_DESCRIPTOR: BlockDescriptor = {
           step: 4,
           unit: 'px',
         },
-        {
-          kind: 'number',
-          key: 'heightMobile',
-          label: 'prop.heightMobile',
-          min: 4,
-          max: 120,
-          step: 4,
-          unit: 'px',
-          nullable: true,
-          hint: 'hint.outlookIgnored',
-        },
       ],
     },
-    ...contentGroups(),
+    ...contentGroups({ padding: false }),
   ],
   defaults: { ...COMMON_DEFAULTS, height: 24, heightMobile: null },
   outlookHints: ['heightMobile'],

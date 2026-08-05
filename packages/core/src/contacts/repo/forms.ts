@@ -38,6 +38,12 @@ export type FormRow = {
   redirectUrl: string | null;
   successMessage: Record<string, string>;
   active: boolean;
+  /** Šablona e-mailu, který přijde po vyplnění. NULL = formulář nic neposílá. */
+  deliveryTemplateId: string | null;
+  /** Počítadlo přijatých odeslání. Zvyšuje ho `recordSubmission`, nikdy se nesnižuje. */
+  submissionCount: number;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type RawFormRow = {
@@ -60,7 +66,21 @@ type RawFormRow = {
   redirect_url: string | null;
   success_message: unknown;
   active: boolean;
+  delivery_template_id: string | null;
+  submission_count: string | number;
+  created_at: Date | string;
+  updated_at: Date | string;
 };
+
+/**
+ * Časy vydává ovladač u syrového SQL jako řetězec, ne jako `Date` (týž nález je
+ * u `ConsentRow` v `repo/consents.ts`). Kdyby se na hodnotě volalo rovnou
+ * `.toISOString()`, spadlo by to za běhu na TypeError a typová kontrola by to
+ * nechytila, takže se převod dělá na jednom místě.
+ */
+function toIsoString(value: Date | string): string {
+  return (value instanceof Date ? value : new Date(value)).toISOString();
+}
 
 function toRow(raw: RawFormRow): FormRow {
   return {
@@ -83,15 +103,24 @@ function toRow(raw: RawFormRow): FormRow {
     redirectUrl: raw.redirect_url,
     successMessage: (raw.success_message ?? {}) as Record<string, string>,
     active: raw.active,
+    deliveryTemplateId: raw.delivery_template_id,
+    // bigint vydává ovladač jako řetězec, aby nepřišel o přesnost. Počet odeslání
+    // se vejde do bezpečného rozsahu čísla, tak se převádí tady a ne u každého volajícího.
+    submissionCount: Number(raw.submission_count ?? 0),
+    createdAt: toIsoString(raw.created_at),
+    updatedAt: toIsoString(raw.updated_at),
   };
 }
 
-const SELECT_FORM = sql`
-  SELECT id, workspace_id, name, slug, fields, custom_css, list_ids, tag_ids, double_opt_in,
-         consent_text, consent_required, legal_basis, honeypot_field, min_fill_seconds,
-         allowed_origins, captcha_provider, redirect_url, success_message, active
-    FROM forms
+/** Sloupce, které umí `toRow`. Drží se pohromadě, aby se SELECT a RETURNING nerozešly. */
+const FORM_COLUMNS = sql`
+  id, workspace_id, name, slug, fields, custom_css, list_ids, tag_ids, double_opt_in,
+  consent_text, consent_required, legal_basis, honeypot_field, min_fill_seconds,
+  allowed_origins, captcha_provider, redirect_url, success_message, active,
+  delivery_template_id, submission_count, created_at, updated_at
 `;
+
+const SELECT_FORM = sql`SELECT ${FORM_COLUMNS} FROM forms`;
 
 export async function createForm(
   ctx: WorkspaceContext,
@@ -103,7 +132,8 @@ export async function createForm(
       INSERT INTO forms (workspace_id, name, slug, fields, design, custom_css, list_ids, tag_ids,
                          double_opt_in, consent_text, consent_required, legal_basis,
                          honeypot_field, min_fill_seconds, allowed_origins, captcha_provider,
-                         captcha_config, redirect_url, success_message, active)
+                         captcha_config, redirect_url, success_message, active,
+                         delivery_template_id)
       VALUES (${ctx.workspaceId}::uuid, ${definition.name}, ${generateFormSlug()},
               ${JSON.stringify(definition.fields)}::jsonb, ${JSON.stringify(definition.design)}::jsonb,
               ${definition.custom_css}, ${sql.param(definition.list_ids)}::uuid[], ${sql.param(definition.tag_ids)}::uuid[],
@@ -112,10 +142,8 @@ export async function createForm(
               ${sql.param(definition.allowed_origins)}::text[], ${definition.captcha_provider},
               ${definition.captcha_config === null ? null : JSON.stringify(definition.captcha_config)}::jsonb,
               ${definition.redirect_url}, ${JSON.stringify(definition.success_message)}::jsonb,
-              ${definition.active})
-      RETURNING id, workspace_id, name, slug, fields, custom_css, list_ids, tag_ids, double_opt_in,
-                consent_text, consent_required, legal_basis, honeypot_field, min_fill_seconds,
-                allowed_origins, captcha_provider, redirect_url, success_message, active
+              ${definition.active}, ${definition.delivery_template_id}::uuid)
+      RETURNING ${FORM_COLUMNS}
     `);
     const row = toRow(inserted.rows[0]!);
 
@@ -177,6 +205,278 @@ export async function findFormById(ctx: WorkspaceContext, id: string): Promise<F
     `);
     const row = rows[0];
     return row === undefined ? null : toRow(row);
+  });
+}
+
+/**
+ * Výpis formulářů projektu, nejnovější první.
+ *
+ * Bez stránkování schválně: formulářů má projekt jednotky, ne tisíce, a krycí index
+ * `idx_forms__ws_created` je přesně na tohle pořadí. Kdyby jich přibylo, patří sem
+ * kurzor, ne vyšší strop.
+ */
+export async function listForms(
+  ctx: WorkspaceContext,
+  options: { includeInactive?: boolean } = {},
+): Promise<FormRow[]> {
+  return withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<RawFormRow>(sql`
+      ${SELECT_FORM}
+       WHERE workspace_id = ${ctx.workspaceId}::uuid
+         ${options.includeInactive === false ? sql`AND active` : sql``}
+       ORDER BY created_at DESC, id DESC
+    `);
+    return rows.map(toRow);
+  });
+}
+
+/**
+ * Úprava formuláře. Vstup je ČÁSTEČNÝ, ale zápis je celý: aktuální řádek se načte,
+ * změny se do něj vloží a teprve výsledek projde `FormDefinitionSchema`.
+ *
+ * Je to schválně tahle cesta, ne poskládaný UPDATE jen ze změněných sloupců. Definice
+ * formuláře je jeden celek se vzájemnými závislostmi (pole versus katalog vlastních polí,
+ * dvojí potvrzení versus seznamy) a částečný zápis by schéma obešel: uložilo by se něco,
+ * co jako celek neprojde validací.
+ */
+export async function updateForm(
+  ctx: WorkspaceContext,
+  id: string,
+  patch: Partial<FormDefinition>,
+): Promise<FormRow> {
+  return withWorkspace(ctx, async (tx) => {
+    const found = await tx.execute<RawFormRow>(sql`
+      ${SELECT_FORM} WHERE workspace_id = ${ctx.workspaceId}::uuid AND id = ${id}::uuid
+    `);
+    const raw = found.rows[0];
+    if (raw === undefined) throw new ApiError('not_found');
+    const current = toRow(raw);
+
+    const definition = FormDefinitionSchema.parse({
+      name: current.name,
+      fields: current.fields,
+      // `design` a `captcha_config` se přes API neupravují a v `FormRow` nejsou.
+      // Do zápisu se proto neberou z načteného řádku, ale nechávají se v databázi být.
+      custom_css: current.customCss,
+      list_ids: current.listIds,
+      tag_ids: current.tagIds,
+      double_opt_in: current.doubleOptIn,
+      consent_text: current.consentText,
+      consent_required: current.consentRequired,
+      legal_basis: current.legalBasis,
+      honeypot_field: current.honeypotField,
+      min_fill_seconds: current.minFillSeconds,
+      allowed_origins: current.allowedOrigins,
+      captcha_provider: current.captchaProvider,
+      redirect_url: current.redirectUrl,
+      delivery_template_id: current.deliveryTemplateId,
+      success_message: current.successMessage,
+      active: current.active,
+      ...patch,
+    });
+
+    const updated = await tx.execute<RawFormRow>(sql`
+      UPDATE forms
+         SET name = ${definition.name},
+             fields = ${JSON.stringify(definition.fields)}::jsonb,
+             custom_css = ${definition.custom_css},
+             list_ids = ${sql.param(definition.list_ids)}::uuid[],
+             tag_ids = ${sql.param(definition.tag_ids)}::uuid[],
+             double_opt_in = ${definition.double_opt_in},
+             consent_text = ${definition.consent_text},
+             consent_required = ${definition.consent_required},
+             legal_basis = ${definition.legal_basis},
+             honeypot_field = ${definition.honeypot_field},
+             min_fill_seconds = ${definition.min_fill_seconds},
+             allowed_origins = ${sql.param(definition.allowed_origins)}::text[],
+             captcha_provider = ${definition.captcha_provider},
+             redirect_url = ${definition.redirect_url},
+             delivery_template_id = ${definition.delivery_template_id}::uuid,
+             success_message = ${JSON.stringify(definition.success_message)}::jsonb,
+             active = ${definition.active},
+             updated_at = now()
+       WHERE workspace_id = ${ctx.workspaceId}::uuid AND id = ${id}::uuid
+      RETURNING ${FORM_COLUMNS}
+    `);
+    const row = toRow(updated.rows[0]!);
+
+    await writeAudit(tx, ctx, {
+      action: 'form.updated',
+      targetType: 'form',
+      targetId: id,
+      metadata: { name: row.name },
+    });
+    // Stejná zvláštní auditní akce jako při založení. Vypnuté dvojí potvrzení znamená,
+    // že kdokoliv smí přihlásit cizí adresu, a v záplavě přejmenování by zaniklo.
+    if (current.doubleOptIn && !row.doubleOptIn) {
+      await writeAudit(tx, ctx, {
+        action: 'form.double_opt_in_disabled',
+        targetType: 'form',
+        targetId: id,
+        metadata: { name: row.name },
+      });
+    }
+    return row;
+  });
+}
+
+/**
+ * Smazání formuláře i s jeho odesláními (`form_submissions` má kaskádu).
+ *
+ * Formuláře nemají `deleted_at`, takže archivace ve smyslu seznamů tu neexistuje.
+ * Odpovídající krok je POZASTAVENÍ (`active = false`): formulář zůstane i s historií
+ * odeslání a veřejná adresa se navenek chová jako neexistující. Rozhraní proto nabízí
+ * obojí a mazání staví jako nevratné.
+ */
+export async function deleteForm(ctx: WorkspaceContext, id: string): Promise<void> {
+  await withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<{ name: string }>(sql`
+      DELETE FROM forms
+       WHERE workspace_id = ${ctx.workspaceId}::uuid AND id = ${id}::uuid
+      RETURNING name
+    `);
+    const row = rows[0];
+    if (row === undefined) throw new ApiError('not_found');
+
+    await writeAudit(tx, ctx, {
+      action: 'form.deleted',
+      targetType: 'form',
+      targetId: id,
+      metadata: { name: row.name },
+    });
+  });
+}
+
+export type FormSubmissionStats = {
+  /** Kdy dorazilo PRVNÍ přijaté odeslání. Jediná odpověď na „funguje to vložení?". */
+  firstAcceptedAt: string | null;
+  lastAcceptedAt: string | null;
+  accepted30d: number;
+};
+
+/**
+ * Statistika odeslání pro jeden formulář. Počítá se jen z přijatých: zahozené pokusy
+ * robotů nejsou přihlášení a v obrazovce by z nich bylo falešné „funguje to".
+ */
+export async function formSubmissionStats(
+  ctx: WorkspaceContext,
+  formId: string,
+): Promise<FormSubmissionStats> {
+  return withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<{
+      first_at: Date | string | null;
+      last_at: Date | string | null;
+      accepted_30d: string | number;
+    }>(sql`
+      SELECT min(created_at) AS first_at,
+             max(created_at) AS last_at,
+             count(*) FILTER (WHERE created_at >= now() - interval '30 days') AS accepted_30d
+        FROM form_submissions
+       WHERE workspace_id = ${ctx.workspaceId}::uuid
+         AND form_id = ${formId}::uuid
+         AND status = 'accepted'
+    `);
+    const row = rows[0];
+    return {
+      firstAcceptedAt: row?.first_at == null ? null : toIsoString(row.first_at),
+      lastAcceptedAt: row?.last_at == null ? null : toIsoString(row.last_at),
+      accepted30d: Number(row?.accepted_30d ?? 0),
+    };
+  });
+}
+
+/**
+ * Počty přijatých odeslání za posledních 30 dní pro VŠECHNY formuláře projektu naráz.
+ *
+ * Jeden seskupený dotaz, ne dotaz na formulář. Seznam formulářů ten údaj potřebuje
+ * u každého řádku a cyklus přes `formSubmissionStats` by z pěti formulářů udělal
+ * pět kol na databázi kvůli jednomu číslu.
+ */
+export async function acceptedCounts30d(ctx: WorkspaceContext): Promise<Map<string, number>> {
+  return withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<{ form_id: string; total: string | number }>(sql`
+      SELECT form_id, count(*) AS total
+        FROM form_submissions
+       WHERE workspace_id = ${ctx.workspaceId}::uuid
+         AND status = 'accepted'
+         AND created_at >= now() - interval '30 days'
+       GROUP BY form_id
+    `);
+    return new Map(rows.map((row) => [row.form_id, Number(row.total)]));
+  });
+}
+
+/**
+ * Formulář, přes který se kontakt naposledy přihlásil.
+ *
+ * Odpovídá na otázku „komu mám po potvrzení poslat slíbený e-mail": potvrzovací
+ * odkaz nese jen kontakt a seznam, o formuláři neví nic. Hledá se poslední PŘIJATÉ
+ * odeslání, protože jeden člověk může vyplnit víc formulářů a slíbený soubor patří
+ * k tomu poslednímu.
+ */
+export async function findFormOfLastSubmission(
+  ctx: WorkspaceContext,
+  contactId: string,
+): Promise<FormRow | null> {
+  return withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<RawFormRow>(sql`
+      SELECT ${FORM_COLUMNS}
+        FROM forms
+       WHERE workspace_id = ${ctx.workspaceId}::uuid
+         AND id = (
+           SELECT form_id FROM form_submissions
+            WHERE workspace_id = ${ctx.workspaceId}::uuid
+              AND contact_id = ${contactId}::uuid
+              AND status = 'accepted'
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+         )
+    `);
+    const row = rows[0];
+    return row === undefined ? null : toRow(row);
+  });
+}
+
+export type SubmissionListRow = {
+  id: string;
+  status: SubmissionStatus;
+  errorCode: string | null;
+  contactId: string | null;
+  pageUrl: string | null;
+  createdAt: string;
+};
+
+/** Poslední odeslání formuláře, nejnovější první. Podklad pro blok „Zkouška". */
+export async function listSubmissions(
+  ctx: WorkspaceContext,
+  formId: string,
+  options: { limit: number; status?: SubmissionStatus },
+): Promise<SubmissionListRow[]> {
+  return withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<{
+      id: string;
+      status: SubmissionStatus;
+      error_code: string | null;
+      contact_id: string | null;
+      page_url: string | null;
+      created_at: Date | string;
+    }>(sql`
+      SELECT id, status, error_code, contact_id, page_url, created_at
+        FROM form_submissions
+       WHERE workspace_id = ${ctx.workspaceId}::uuid
+         AND form_id = ${formId}::uuid
+         ${options.status === undefined ? sql`` : sql`AND status = ${options.status}`}
+       ORDER BY created_at DESC, id DESC
+       LIMIT ${options.limit}
+    `);
+    return rows.map((row) => ({
+      id: row.id,
+      status: row.status,
+      errorCode: row.error_code,
+      contactId: row.contact_id,
+      pageUrl: row.page_url,
+      createdAt: toIsoString(row.created_at),
+    }));
   });
 }
 

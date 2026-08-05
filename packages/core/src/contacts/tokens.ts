@@ -8,6 +8,7 @@ import {
 // currentKeyId a typ Keyring bydlí v keyring.ts, ne v token.ts. Kontrakt je mezi
 // ně dělí schválně: klíče žijí déle než formát tokenu.
 import { currentKeyId, keyringFromEnv, type Keyring } from '@mlain/contracts/keyring';
+import { sanitizePublicToken } from '../net/public-link';
 
 /**
  * Povolené typy tokenů per endpoint (rozhodnutí R3 plánu).
@@ -20,6 +21,10 @@ import { currentKeyId, keyringFromEnv, type Keyring } from '@mlain/contracts/key
  * tentýž rozsah oprávnění: obojí přišlo v e-mailu na tutéž adresu a obojí smí spravovat
  * odběr téhož kontaktu.
  *
+ * Endpoint `/v/**` (zobrazení zprávy v prohlížeči) je na tom stejně a není to volba webu:
+ * odesílač skládá `webview_url` z TÉHOŽ odhlašovacího tokenu jako `preferences_url`
+ * (`apps/sender/internal/app/worker.go`, `urls.go`). Web tedy jiný typ ani dostat nemůže.
+ *
  * Krok 4 ověření z kontraktu ("type odpovídá endpointu") se tím NEVYPOUŠTÍ, jen se povolený
  * typ deklaruje tady a explicitně. Bez něj by šel token pro otevření podstrčit jako token
  * pro odhlášení, což je zranitelnost, ne teorie.
@@ -28,6 +33,7 @@ export const ENDPOINT_TOKEN_TYPES = {
   '/u/**': ['u'],
   '/p/**': ['u'],
   '/r/**': ['u'],
+  '/v/**': ['u'],
 } as const;
 
 export type PublicEndpoint = keyof typeof ENDPOINT_TOKEN_TYPES;
@@ -59,6 +65,11 @@ export type ReadTokenResult =
  *     kontrakt sdílený s Go stranou. Veřejná stránka ale musí umět ukázat "odkaz už
  *     neplatí", ne spadnout na neošetřené výjimce.
  *  2. **Překládá `list_id` samých nul na `null`**, tedy binární tvar na doménový.
+ *  3. **Uřízne přílepek poštovního klienta.** Gmail připojuje `&source=gmail&ust=…&usg=…`
+ *     naivním spojením, bez ohledu na to, že odkaz `/u/<token>` žádné `?` nemá, takže se
+ *     celý přílepek stane součástí segmentu cesty a tím i tokenu. Podrobně v
+ *     `packages/core/src/net/public-link.ts`. Čistí se TADY, a ne v kodeku: kontrakt 3 je
+ *     zmrazený a má zlaté vektory sdílené s Go stranou.
  *
  * Typ 'u' nemá expiraci ani nonce, takže `now` a `isNonceUsed` jsou pro něj bez následku;
  * kontrakt je i tak vyžaduje, protože jeho signatura je společná pro všechny čtyři typy.
@@ -71,7 +82,7 @@ export function readPublicToken(
   const allowed = ENDPOINT_TOKEN_TYPES[endpoint];
   try {
     const verified = verifyToken({
-      token: raw,
+      token: sanitizePublicToken(raw),
       endpointType: allowed[0],
       keyring,
       now: Math.floor(Date.now() / 1000),

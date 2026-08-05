@@ -5,12 +5,16 @@ import type { DisabledReason } from '@mlain/core/reports/metrics/display';
 import { headlineTiles, type StatsPayload } from './report-model';
 
 /**
- * Jediné místo, kde se z důvodu vypnutého měření stává text. Klíče existují
- * oba, protože „nemá se z čeho počítat" u otevření a u prokliků není totéž.
+ * Jediné místo, kde se z důvodu „tohle číslo nemáme" stává text. Klíče jsou
+ * tři, protože „nemá se z čeho počítat" u otevření, u prokliků a u doručení
+ * není totéž. U prvních dvou měření vypnul správce a zapne si ho zpátky,
+ * u doručení nám odesílací služba zatím nic neřekla a řeší se dokončením
+ * nastavení oznámení.
  */
 const NOT_MEASURED_KEY: Record<DisabledReason, string> = {
   opens_disabled: 'report.states.trackingOffOpens',
   clicks_disabled: 'report.states.trackingOffClicks',
+  delivery_unknown: 'report.states.deliveryUnknown',
 };
 
 export function HeadlineTiles({ payload }: { payload: StatsPayload }) {

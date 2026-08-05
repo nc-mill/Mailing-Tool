@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Styleguide — Mlain Mailer web</title>
+<meta name="description" content="Design tokeny, základní prvky a přehled komponent webu Mlain Mailer.">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#FAF7EE">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/img/favicon-512.png" type="image/png" sizes="512x512">
+<script>(function(){var m=document.cookie.match(/(?:^|; )wm_theme=(dark|light)/);document.documentElement.dataset.theme=m?m[1]:(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");})();</script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&amp;family=IBM+Plex+Sans:wght@400;600&amp;display=swap">
+<link rel="stylesheet" href="style.css">
+<script src="script.js" defer></script>
+</head>
+<body>
+<a class="u-skip" href="#main">Přeskočit na obsah</a>
+<header class="sg-head">
+  <div class="sg-head__inner">
+    <h1>Styleguide</h1>
+    <p>Základní kámen webu Mlain Mailer: tokeny, základní prvky a přehled komponent. Celé sekce v plném rozsahu jsou v <a href="komponenty.html">knihovně komponent</a>.</p>
+    <button class="wm-button wm-button--ghost wm-button--sm" type="button" data-theme-toggle style="justify-self:start;margin-top:10px">Přepnout light/dark</button>
+  </div>
+</header>
+<main class="sg-main" id="main">
+
+  <section class="sg-section" id="barvy">
+    <h2>Barvy</h2>
+    <p class="sg-note">Gradienty se nepoužívají. Všechny hodnoty jsou v :root ve style.css.</p>
+    <h3 style="margin:20px 0 15px">Light mode</h3>
+    <div class="sg-swatches">
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#FAF7EE"></div><div class="sg-swatch__meta"><strong>--wm-color__bg</strong><span>#FAF7EE — základní pozadí</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#F2ECDB"></div><div class="sg-swatch__meta"><strong>--wm-color__surface</strong><span>#F2ECDB — klidná změna pozadí sekcí</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#26221A"></div><div class="sg-swatch__meta"><strong>--wm-color__panel</strong><span>#26221A — tmavé panely (log, snippet, CTA)</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#F5EFDF"></div><div class="sg-swatch__meta"><strong>--wm-color__panel-fg</strong><span>#F5EFDF — text na tmavém panelu</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#9A907B"></div><div class="sg-swatch__meta"><strong>--wm-color__panel-muted</strong><span>#9A907B — tlumený text na panelu</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#C9BFA8"></div><div class="sg-swatch__meta"><strong>--wm-color__panel-soft</strong><span>#C9BFA8 — běžný text v tmavých buňkách</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#3D372B"></div><div class="sg-swatch__meta"><strong>--wm-color__panel-line</strong><span>#3D372B — linky a hover na panelu</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#26221A"></div><div class="sg-swatch__meta"><strong>--wm-color__text</strong><span>#26221A — základní text</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#6C6453"></div><div class="sg-swatch__meta"><strong>--wm-color__text-muted</strong><span>#6C6453 — sekundární text</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#E1D9C4"></div><div class="sg-swatch__meta"><strong>--wm-color__line</strong><span>#E1D9C4 — hairline linky, rámečky</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#94896C"></div><div class="sg-swatch__meta"><strong>--wm-color__field-border</strong><span>#94896C — rámeček formulářových polí</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#FDFBF4"></div><div class="sg-swatch__meta"><strong>--wm-color__field-bg</strong><span>#FDFBF4 — podklad formulářových polí</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#E4C258"></div><div class="sg-swatch__meta"><strong>--wm-color__primary</strong><span>#E4C258 — obilná žlutá, plochy a akcenty</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#CFAC38"></div><div class="sg-swatch__meta"><strong>--wm-color__primary-strong</strong><span>#CFAC38 — hover primárního tlačítka</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#F5E8BC"></div><div class="sg-swatch__meta"><strong>--wm-color__primary-soft</strong><span>#F5E8BC — žlutý podklad (řádek tabulky, štítek)</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#77621B"></div><div class="sg-swatch__meta"><strong>--wm-color__link</strong><span>#77621B — odkazy v textu</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#4F420F"></div><div class="sg-swatch__meta"><strong>--wm-color__link-hover</strong><span>#4F420F — odkaz hover</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#6D5A34"></div><div class="sg-swatch__meta"><strong>--wm-color__link-visited</strong><span>#6D5A34 — navštívený odkaz</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#26221A"></div><div class="sg-swatch__meta"><strong>--wm-color__icon</strong><span>#26221A — hex uložených souborů ikon</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#26221A"></div><div class="sg-swatch__meta"><strong>--wm-color__focus</strong><span>#26221A — obrys fokusu (na panelech přepsán žlutou)</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#A4432C"></div><div class="sg-swatch__meta"><strong>--wm-color__error</strong><span>#A4432C — chybové stavy formulářů</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#4A5A2A"></div><div class="sg-swatch__meta"><strong>--wm-color__success</strong><span>#4A5A2A — úspěch, štítek Done</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#E3EAD3"></div><div class="sg-swatch__meta"><strong>--wm-color__done-bg</strong><span>#E3EAD3 — podklad štítku Done</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#6E5716"></div><div class="sg-swatch__meta"><strong>--wm-color__progress-fg</strong><span>#6E5716 — text štítku In progress</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#CFC5AA"></div><div class="sg-swatch__meta"><strong>--wm-color__chart-a</strong><span>#CFC5AA — graf, konkurence A</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#B7AB8C"></div><div class="sg-swatch__meta"><strong>--wm-color__chart-b</strong><span>#B7AB8C — graf, konkurence B</span></div></div>
+    </div>
+    <h3 style="margin:35px 0 15px">Dark mode</h3>
+    <p class="sg-note">Stejné proměnné, jiné hodnoty — přepíná je atribut data-theme="dark" na &lt;html&gt;. Volbu drží cookie wm_theme (rok, SameSite=Lax); bez cookie rozhoduje prefers-color-scheme, bez něj je výchozí light. Beze změny zůstávají --wm-color__primary a __primary-strong (žlutá je identita) a panelové barvy __panel-fg, __panel-muted, __panel-soft, __panel-line — tmavé panely jsou v obou módech stejné, v dark modu jen o odstín tmavší než pozadí. Tlačítka drží inkoustový text na žluté v obou módech.</p>
+    <div class="sg-swatches" style="margin-top:20px">
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#1D1A13"></div><div class="sg-swatch__meta"><strong>--wm-color__bg</strong><span>#1D1A13 — základní pozadí</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#252115"></div><div class="sg-swatch__meta"><strong>--wm-color__surface</strong><span>#252115 — klidná změna pozadí sekcí</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#14110B"></div><div class="sg-swatch__meta"><strong>--wm-color__panel</strong><span>#14110B — tmavé panely (log, snippet, CTA)</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#EDE7D6"></div><div class="sg-swatch__meta"><strong>--wm-color__text</strong><span>#EDE7D6 — základní text</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#A89D85"></div><div class="sg-swatch__meta"><strong>--wm-color__text-muted</strong><span>#A89D85 — sekundární text</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#393426"></div><div class="sg-swatch__meta"><strong>--wm-color__line</strong><span>#393426 — hairline linky, rámečky</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#6F6550"></div><div class="sg-swatch__meta"><strong>--wm-color__field-border</strong><span>#6F6550 — rámeček formulářových polí</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#211D14"></div><div class="sg-swatch__meta"><strong>--wm-color__field-bg</strong><span>#211D14 — podklad formulářových polí</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#3E361D"></div><div class="sg-swatch__meta"><strong>--wm-color__primary-soft</strong><span>#3E361D — žlutý podklad (řádek tabulky, štítek)</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#D9BC66"></div><div class="sg-swatch__meta"><strong>--wm-color__link</strong><span>#D9BC66 — odkazy v textu</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#EED892"></div><div class="sg-swatch__meta"><strong>--wm-color__link-hover</strong><span>#EED892 — odkaz hover</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#B4A377"></div><div class="sg-swatch__meta"><strong>--wm-color__link-visited</strong><span>#B4A377 — navštívený odkaz</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#EDE7D6"></div><div class="sg-swatch__meta"><strong>--wm-color__icon</strong><span>#EDE7D6 — inline ikony přes currentColor; soubory nesou light hex</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#E4C258"></div><div class="sg-swatch__meta"><strong>--wm-color__focus</strong><span>#E4C258 — obrys fokusu</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#E08A70"></div><div class="sg-swatch__meta"><strong>--wm-color__error</strong><span>#E08A70 — chybové stavy formulářů</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#A9C285"></div><div class="sg-swatch__meta"><strong>--wm-color__success</strong><span>#A9C285 — úspěch, štítek Done</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#2B331E"></div><div class="sg-swatch__meta"><strong>--wm-color__done-bg</strong><span>#2B331E — podklad štítku Done</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#E8CC72"></div><div class="sg-swatch__meta"><strong>--wm-color__progress-fg</strong><span>#E8CC72 — text štítku In progress</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#57503E"></div><div class="sg-swatch__meta"><strong>--wm-color__chart-a</strong><span>#57503E — graf, konkurence A</span></div></div>
+      <div class="sg-swatch"><div class="sg-swatch__chip" style="background:#756B54"></div><div class="sg-swatch__meta"><strong>--wm-color__chart-b</strong><span>#756B54 — graf, konkurence B</span></div></div>
+    </div>
+  </section>
+
+  <section class="sg-section" id="pisma">
+    <h2>Písma</h2>
+    <div class="sg-demo">
+      <div class="sg-type-row"><p style="font-size:2.4rem">IBM Plex Sans Regular 400 — základní text, formuláře, tabulky</p><small>--wm-font-family__base · fallback: "Segoe UI", Arial, sans-serif</small></div>
+      <div class="sg-type-row"><p style="font-size:2.4rem;font-weight:600">IBM Plex Sans SemiBold 600 — nadpisy, tlačítka, tučný text</p><small>strong i nadpisy používají 600, řez 700 se nenačítá</small></div>
+      <div class="sg-type-row"><p style="font-size:2.2rem;font-family:var(--wm-font-family__mono)">IBM Plex Mono Regular 400 — timeline, kód, štítky, meta údaje</p><small>--wm-font-family__mono · fallback: ui-monospace, Consolas, monospace</small></div>
+      <p class="sg-note">Subset latin-ext. Zatím Google Fonts CDN jako dočasný fallback — postup self-hostingu je v assets/fonts/README.md, připravený @font-face blok na začátku style.css.</p>
+    </div>
+  </section>
+
+  <section class="sg-section" id="velikosti">
+    <h2>Velikosti písma</h2>
+    <div class="sg-type-row"><p style="font-size:var(--wm-font-size__h1);font-weight:600;line-height:var(--wm-line-height__heading);letter-spacing:-0.01em">Nadpis h1</p><small>--wm-font-size__h1 · clamp(3.6rem, 2.6rem + 2.2vw, 5.4rem) · 600 · line-height 1.12</small></div>
+    <div class="sg-type-row"><p style="font-size:var(--wm-font-size__h2);font-weight:600;line-height:var(--wm-line-height__heading);letter-spacing:-0.01em">Nadpis h2</p><small>--wm-font-size__h2 · clamp(2.6rem, 2.1rem + 1.1vw, 3.6rem) · 600 · line-height 1.12</small></div>
+    <div class="sg-type-row"><p style="font-size:var(--wm-font-size__h3);font-weight:600;line-height:var(--wm-line-height__heading)">Nadpis h3</p><small>--wm-font-size__h3 · clamp(1.9rem, 1.75rem + 0.35vw, 2.2rem) · 600 · line-height 1.12</small></div>
+    <div class="sg-type-row"><p style="font-size:var(--wm-font-size__lead)">Perex — uvozující odstavec sekce</p><small>--wm-font-size__lead · clamp(1.8rem, 1.7rem + 0.25vw, 2rem) · line-height 1.6</small></div>
+    <div class="sg-type-row"><p>Základní text odstavců</p><small>--wm-font-size__base · 1.7rem (17px) · line-height 1.6</small></div>
+    <div class="sg-type-row"><p style="font-size:var(--wm-font-size__sm)">Menší text — karty, tabulky, popisy</p><small>--wm-font-size__sm · 1.5rem (15px)</small></div>
+    <div class="sg-type-row"><p style="font-size:var(--wm-font-size__xs)">Drobný text — poznámky, meta údaje</p><small>--wm-font-size__xs · 1.3rem (13px)</small></div>
+    <div class="sg-type-row"><p style="font-size:var(--wm-font-size__mono);font-family:var(--wm-font-family__mono);line-height:var(--wm-line-height__mono)">14:07&nbsp;&nbsp;monospace log — timeline a výpisy</p><small>--wm-font-size__mono · 1.4rem (14px) · line-height 1.9</small></div>
+  </section>
+
+  <section class="sg-section" id="spacing">
+    <h2>Spacing</h2>
+    <p class="sg-note">Násobky 5 px. Vertikální rytmus sekcí řídí --wm-space__section: 120px, pod 760px 70px.</p>
+    <div style="margin-top:15px">
+      <div class="sg-space-row"><span>--wm-space__5 · 5px</span><i style="width:5px"></i></div>
+      <div class="sg-space-row"><span>--wm-space__10 · 10px</span><i style="width:10px"></i></div>
+      <div class="sg-space-row"><span>--wm-space__15 · 15px</span><i style="width:15px"></i></div>
+      <div class="sg-space-row"><span>--wm-space__20 · 20px</span><i style="width:20px"></i></div>
+      <div class="sg-space-row"><span>--wm-space__30 · 30px</span><i style="width:30px"></i></div>
+      <div class="sg-space-row"><span>--wm-space__40 · 40px</span><i style="width:40px"></i></div>
+      <div class="sg-space-row"><span>--wm-space__60 · 60px</span><i style="width:60px"></i></div>
+      <div class="sg-space-row"><span>--wm-space__80 · 80px</span><i style="width:80px"></i></div>
+      <div class="sg-space-row"><span>--wm-space__120 · 120px</span><i style="width:120px"></i></div>
+    </div>
+  </section>
+
+  <section class="sg-section" id="tlacitka">
+    <h2>Tlačítka</h2>
+    <div class="sg-demo sg-demo--row">
+      <button class="wm-button" type="button">Primární tlačítko</button>
+      <button class="wm-button wm-button--ghost" type="button">Sekundární (ghost)</button>
+      <button class="wm-button wm-button--sm" type="button">Malé</button>
+      <button class="wm-button" type="button" disabled>Disabled</button>
+    </div>
+    <p class="sg-note" style="margin-top:20px">Stavy: hover ztmavuje žlutou na --wm-color__primary-strong, focus má 2px obrys s odsazením, active posune tlačítko o 1px dolů, disabled šedne a mění kurzor. Vše si vyzkoušej myší a klávesnicí.</p>
+  </section>
+
+  <section class="sg-section" id="odkazy">
+    <h2>Odkazy</h2>
+    <div class="sg-demo">
+      <p>Výchozí <a href="komponenty.html">odkaz v textu</a> je okrový s podtržením. <a href="#odkazy">Navštívený odkaz</a> lehce zhnědne, hover ztmavne a zesílí podtržení, active přejde do barvy textu, focus má stejný obrys jako všechny interaktivní prvky.</p>
+      <p class="sg-note">Navigační odkazy (menu, patička) podtržení nemají a drží barvu textu — viz komponenty header a footer.</p>
+    </div>
+  </section>
+
+  <section class="sg-section" id="odstavec">
+    <h2>Ukázka odstavce</h2>
+    <div class="sg-demo">
+      <p>Mlain Mailer runs on <strong>your own server</strong>, so the bill stays flat no matter how the list grows. The software is MIT licensed and every feature ships in the <a href="https://github.com/nc-mill/Mailing-Tool" target="_blank" rel="noopener">public repository</a> — there is no paid tier to unlock.</p>
+    </div>
+  </section>
+
+  <section class="sg-section" id="seznamy">
+    <h2>Seznamy</h2>
+    <div class="sg-demo">
+      <ul class="wm-list">
+        <li>Odrážkový seznam s pomlčkou v akcentové barvě</li>
+        <li>Mezery mezi položkami řeší gap na kontejneru</li>
+        <li>Delší položka: import zvládne rozbitá data — deset vadných adres neshodí soubor s tisícem řádků</li>
+      </ul>
+      <ol class="wm-list wm-list--ordered">
+        <li>Číslovaný seznam s monospace číslicí</li>
+        <li>Používá se pro kroky a postupy</li>
+        <li>Číslice je jen vizuální, pořadí nese &lt;ol&gt;</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="sg-section" id="tabulka">
+    <h2>Tabulka</h2>
+    <table>
+      <caption>Ukázková tabulka — hlavička monospace, řádky oddělené hairline linkou</caption>
+      <thead>
+        <tr><th scope="col">Kanál</th><th scope="col">Cena</th><th scope="col">Doporučení</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">Amazon SES</th><td>$1 / 10 000 e-mailů</td><td>nad ~2 000 e-mailů denně</td></tr>
+        <tr><th scope="row">Vlastní SMTP</th><td>v ceně hostingu</td><td>do ~2 000 e-mailů denně</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="sg-section" id="citace">
+    <h2>Citace</h2>
+    <blockquote>
+      <p>Self-hosting trades money for responsibility. We say that on the pricing section, not in a footnote.</p>
+      <cite>— zásada obsahu webu</cite>
+    </blockquote>
+  </section>
+
+  <section class="sg-section" id="formulare">
+    <h2>Formuláře</h2>
+    <form class="wm-form">
+      <div class="wm-field">
+        <label class="wm-field__label" for="sg-name">Textové pole</label>
+        <input class="wm-field__input" type="text" id="sg-name" name="name" autocomplete="name">
+        <p class="wm-field__hint">Nápověda pod polem — drobný tlumený text.</p>
+      </div>
+      <div class="wm-field wm-field--error">
+        <label class="wm-field__label" for="sg-email">E-mail (chybový stav)</label>
+        <input class="wm-field__input" type="email" id="sg-email" name="email" value="jana@example" aria-describedby="sg-email-msg" aria-invalid="true">
+        <p class="wm-field__msg" id="sg-email-msg">Adresa nemá platný tvar — chybí doména.</p>
+      </div>
+      <div class="wm-field wm-field--success">
+        <label class="wm-field__label" for="sg-domain">Doména (úspěšný stav)</label>
+        <input class="wm-field__input" type="text" id="sg-domain" name="domain" value="mail.example.com" aria-describedby="sg-domain-msg">
+        <p class="wm-field__msg" id="sg-domain-msg">DNS záznamy ověřeny.</p>
+      </div>
+      <div class="wm-field">
+        <label class="wm-field__label" for="sg-select">Select</label>
+        <select class="wm-field__input" id="sg-select" name="channel">
+          <option>Amazon SES</option>
+          <option>Vlastní SMTP</option>
+        </select>
+      </div>
+      <div class="wm-field">
+        <label class="wm-field__label" for="sg-textarea">Textarea</label>
+        <textarea class="wm-field__input" id="sg-textarea" name="note"></textarea>
+      </div>
+      <div class="wm-field wm-field--check">
+        <input type="checkbox" id="sg-check" name="agree">
+        <label class="wm-field__label" for="sg-check">Checkbox — souhlas s odběrem</label>
+      </div>
+      <div class="wm-field wm-field--check">
+        <input type="radio" id="sg-radio-a" name="mode" checked>
+        <label class="wm-field__label" for="sg-radio-a">Radio — varianta A</label>
+      </div>
+      <div class="wm-field wm-field--check">
+        <input type="radio" id="sg-radio-b" name="mode">
+        <label class="wm-field__label" for="sg-radio-b">Radio — varianta B</label>
+      </div>
+      <button class="wm-button" type="button">Odeslat (demo)</button>
+    </form>
+  </section>
+
+  <section class="sg-section" id="ikony">
+    <h2>Ikonová sada</h2>
+    <p class="sg-note">Mřížka 24×24, ochranná zóna 2px (čárkovaně). Inline verze nesou fill="currentColor"; uložené soubory v assets/icons/ nesou hex níže — při změně tokenu --wm-color__icon se soubory přegenerují, inline verze se přebarví samy.</p>
+    <div class="sg-icons" style="margin-top:20px">
+      <figure class="sg-iconcell">
+        <div class="sg-icongrid"><svg class="wm-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M16.175 13H4v-2h12.175l-5.6-5.6L12 4l8 8-8 8-1.425-1.4 5.6-5.6Z"/></svg></div>
+        <figcaption><strong>icon_arrow-right.svg</strong><span>soubor: #26221A</span></figcaption>
+      </figure>
+      <figure class="sg-iconcell">
+        <div class="sg-icongrid"><svg class="wm-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M9 18q-.825 0-1.412-.587Q7 16.825 7 16V4q0-.825.588-1.413Q8.175 2 9 2h9q.825 0 1.413.587Q20 3.175 20 4v12q0 .825-.587 1.413Q18.825 18 18 18Zm0-2h9V4H9v12Zm-4 6q-.825 0-1.412-.587Q3 20.825 3 20V6h2v14h11v2Zm4-6V4v12Z"/></svg></div>
+        <figcaption><strong>icon_copy.svg</strong><span>soubor: #26221A</span></figcaption>
+      </figure>
+      <figure class="sg-iconcell">
+        <div class="sg-icongrid"><svg class="wm-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M9.55 18 3.85 12.3l1.425-1.425L9.55 15.15l9.175-9.175L20.15 7.4Z"/></svg></div>
+        <figcaption><strong>icon_check.svg</strong><span>soubor: #26221A</span></figcaption>
+      </figure>
+      <figure class="sg-iconcell">
+        <div class="sg-icongrid"><svg class="wm-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3 18v-2h18v2Zm0-5v-2h18v2Zm0-5V6h18v2Z"/></svg></div>
+        <figcaption><strong>icon_menu.svg</strong><span>soubor: #26221A</span></figcaption>
+      </figure>
+      <figure class="sg-iconcell">
+        <div class="sg-icongrid"><svg class="wm-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5l5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6Z"/></svg></div>
+        <figcaption><strong>icon_close.svg</strong><span>soubor: #26221A</span></figcaption>
+      </figure>
+      <figure class="sg-iconcell">
+        <div class="sg-icongrid"><svg class="wm-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 21q-3.75 0-6.375-2.625T3 12q0-3.75 2.625-6.375T12 3q.35 0 .688.025.337.025.662.075-1.025.725-1.637 1.887Q11.1 6.15 11.1 7.5q0 2.25 1.575 3.825Q14.25 12.9 16.5 12.9q1.375 0 2.525-.613 1.15-.612 1.875-1.637.05.325.075.662Q21 11.65 21 12q0 3.75-2.625 6.375T12 21Zm0-2q2.2 0 3.95-1.212 1.75-1.213 2.55-3.163-.5.125-1 .2-.5.075-1 .075-3.075 0-5.238-2.162Q9.1 10.575 9.1 7.5q0-.5.075-1t.2-1q-1.95.8-3.162 2.55Q5 9.8 5 12q0 2.9 2.05 4.95Q9.1 19 12 19Zm-.25-6.75Z"/></svg></div>
+        <figcaption><strong>icon_dark-mode.svg</strong><span>soubor: #26221A</span></figcaption>
+      </figure>
+      <figure class="sg-iconcell">
+        <div class="sg-icongrid"><svg class="wm-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 15q1.25 0 2.125-.875T15 12q0-1.25-.875-2.125T12 9q-1.25 0-2.125.875T9 12q0 1.25.875 2.125T12 15Zm0 2q-2.075 0-3.537-1.463Q7 14.075 7 12t1.463-3.538Q9.925 7 12 7t3.538 1.462Q17 9.925 17 12q0 2.075-1.462 3.537Q14.075 17 12 17ZM2 13q-.425 0-.712-.288Q1 12.425 1 12t.288-.713Q1.575 11 2 11h2q.425 0 .713.287Q5 11.575 5 12t-.287.712Q4.425 13 4 13Zm18 0q-.425 0-.712-.288Q19 12.425 19 12t.288-.713Q19.575 11 20 11h2q.425 0 .712.287.288.288.288.713t-.288.712Q22.425 13 22 13Zm-8-8q-.425 0-.712-.288Q11 4.425 11 4V2q0-.425.288-.713Q11.575 1 12 1t.713.287Q13 1.575 13 2v2q0 .425-.287.712Q12.425 5 12 5Zm0 18q-.425 0-.712-.288Q11 22.425 11 22v-2q0-.425.288-.713Q11.575 19 12 19t.713.287Q13 19.575 13 20v2q0 .425-.287.712Q12.425 23 12 23ZM5.65 7.05 4.575 6q-.3-.275-.288-.7.013-.425.288-.725.3-.3.725-.3t.7.3L7.05 5.65q.275.3.275.7 0 .4-.275.7-.275.3-.687.287-.413-.012-.713-.287ZM18 19.425l-1.05-1.075q-.275-.3-.275-.712 0-.413.275-.688.275-.3.688-.287.412.012.712.287L19.425 18q.3.275.288.7-.013.425-.288.725-.3.3-.725.3t-.7-.3ZM16.95 7.05q-.3-.275-.287-.688.012-.412.287-.712L18 4.575q.275-.3.7-.288.425.013.725.288.3.3.3.725t-.3.7L18.35 7.05q-.3.275-.7.275-.4 0-.7-.275ZM4.575 19.425q-.3-.3-.3-.725t.3-.7l1.075-1.05q.3-.275.713-.275.412 0 .687.275.3.275.288.688-.013.412-.288.712L6 19.425q-.275.3-.7.287-.425-.012-.725-.287ZM12 12Z"/></svg></div>
+        <figcaption><strong>icon_light-mode.svg</strong><span>soubor: #26221A</span></figcaption>
+      </figure>
+      <figure class="sg-iconcell">
+        <div class="sg-icongrid"><svg class="wm-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 2.247a10 10 0 0 0-3.162 19.487c.5.088.687-.212.687-.475 0-.237-.012-1.025-.012-1.862-2.513.462-3.163-.613-3.363-1.175a3.636 3.636 0 0 0-1.025-1.413c-.35-.187-.85-.65-.012-.662a2 2 0 0 1 1.537 1.025 2.137 2.137 0 0 0 2.913.825 2.104 2.104 0 0 1 .637-1.338c-2.225-.25-4.55-1.112-4.55-4.937a3.892 3.892 0 0 1 1.025-2.688 3.594 3.594 0 0 1 .1-2.65s.837-.262 2.75 1.025a9.427 9.427 0 0 1 5 0c1.912-1.3 2.75-1.025 2.75-1.025a3.593 3.593 0 0 1 .1 2.65 3.869 3.869 0 0 1 1.025 2.688c0 3.837-2.338 4.687-4.563 4.937a2.368 2.368 0 0 1 .675 1.85c0 1.338-.012 2.413-.012 2.75 0 .262.187.575.687.475A10.005 10.005 0 0 0 12 2.247Z"/></svg></div>
+        <figcaption><strong>icon_github.svg</strong><span>soubor: #26221A · Boxicons</span></figcaption>
+      </figure>
+      <figure class="sg-iconcell">
+        <div class="sg-icongrid"><svg class="wm-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="2" y="5" width="20" height="14" rx="3.5" fill="#FF0000"/><path d="M10 9.2v5.6L15 12Z" fill="#FFFFFF"/></svg></div>
+        <figcaption><strong>icon_youtube.svg</strong><span>vícebarevná: #FF0000 + #FFFFFF</span></figcaption>
+      </figure>
+    </div>
+    <h3 style="margin-top:35px;margin-bottom:15px">Velikostní tokeny</h3>
+    <div class="sg-demo sg-demo--row">
+      <svg class="wm-icon wm-icon--sm" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M16.175 13H4v-2h12.175l-5.6-5.6L12 4l8 8-8 8-1.425-1.4 5.6-5.6Z"/></svg>
+      <svg class="wm-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M16.175 13H4v-2h12.175l-5.6-5.6L12 4l8 8-8 8-1.425-1.4 5.6-5.6Z"/></svg>
+      <svg class="wm-icon wm-icon--lg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M16.175 13H4v-2h12.175l-5.6-5.6L12 4l8 8-8 8-1.425-1.4 5.6-5.6Z"/></svg>
+      <span class="sg-note">--wm-icon-size__sm 1.6rem · __md 2rem · __lg 2.4rem</span>
+    </div>
+    <h3 style="margin-top:35px;margin-bottom:15px">Ikona v textu</h3>
+    <p>Odkaz s dekorativní ikonou: <a href="komponenty.html" style="display:inline-flex;align-items:center;gap:6px">knihovna komponent <svg class="wm-icon wm-icon--sm" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M16.175 13H4v-2h12.175l-5.6-5.6L12 4l8 8-8 8-1.425-1.4 5.6-5.6Z"/></svg></a></p>
+    <h3 style="margin-top:35px;margin-bottom:15px">Ikonové tlačítko</h3>
+    <div class="sg-dark" style="max-width:200px">
+      <button class="wm-install__copy" type="button">
+        <svg class="wm-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M9 18q-.825 0-1.412-.587Q7 16.825 7 16V4q0-.825.588-1.413Q8.175 2 9 2h9q.825 0 1.413.587Q20 3.175 20 4v12q0 .825-.587 1.413Q18.825 18 18 18Zm0-2h9V4H9v12Zm-4 6q-.825 0-1.412-.587Q3 20.825 3 20V6h2v14h11v2Zm4-6V4v12Z"/></svg>
+        <span class="u-visually-hidden">Zkopírovat příkaz</span>
+      </button>
+    </div>
+    <p class="sg-note" style="margin-top:15px">Přístupný název nese vizuálně skrytý text v tlačítku, SVG je aria-hidden. Klikací plocha 44×44 px, hover zesvětlí podklad, focus má žlutý obrys (na tmavém panelu se přepisuje --wm-color__focus).</p>
+  </section>
+
+  <section class="sg-section" id="favicon">
+    <h2>Favicon</h2>
+    <div class="sg-demo sg-demo--row">
+      <figure class="sg-figure"><img src="assets/img/favicon.svg" alt="Favicon SVG" width="64" height="64"><figcaption>favicon.svg</figcaption></figure>
+      <figure class="sg-figure"><img src="assets/img/favicon-512.png" alt="Favicon PNG 512×512" width="64" height="64"><figcaption>favicon-512.png · 512×512</figcaption></figure>
+    </div>
+    <p class="sg-note" style="margin-top:15px">Odvozeno z dummy značky — po dodání finálního loga přegenerovat.</p>
+  </section>
+
+  <section class="sg-section" id="social">
+    <h2>Social meta image</h2>
+    <figure class="sg-figure">
+      <img src="assets/img/og-mlain-mailer.png" alt="Náhled social meta obrázku: značka, název Mlain Mailer a podtitul" width="480" height="252">
+      <figcaption>og-mlain-mailer.png · 1200×630 · v og:image musí být v produkci absolutní URL</figcaption>
+    </figure>
+  </section>
+
+  <section class="sg-section" id="komponenty">
+    <h2>Přehled komponent (sekcí)</h2>
+    <p class="sg-note">Kompletní sada. Než založíš novou sekci, zkus variantu existující — ukázky v plném rozsahu jsou v <a href="komponenty.html">komponenty.html</a>.</p>
+    <dl class="sg-components" style="margin-top:15px">
+      <div><dt><code>.wm-header</code> — hlavička</dt><dd>Logo + vyměnitelný název aplikace (text v .wm-header__name), hlavní menu, tlačítko GitHub. Volitelné: tlačítko GitHub. Poslední prvek: přepínač light/dark módu (__theme). Pod 980px menu skládá do panelu. <a href="komponenty.html#k-header">Ukázka</a></dd></div>
+      <div><dt><code>.wm-hero</code> — úvod homepage</dt><dd>Text vlevo, koláž app oken vpravo. Volitelné: sekundární tlačítko, trust řádek, druhé okno koláže. <a href="komponenty.html#k-hero">Ukázka</a></dd></div>
+      <div><dt><code>.wm-features</code> — mřížka vlastností</dt><dd>Bento mřížka na 6 sloupcích: boxy šíře 2/3/4 sloupců (--span-3, --span-4), tónované varianty --tinted a --inverse, mono eyebrow s číslem. Volitelné: perex, eyebrow, mono ukázka (__sample). <a href="komponenty.html#k-features">Ukázka</a></dd></div>
+      <div><dt><code>.wm-timeline</code> — vlajková sekce trackingu</dt><dd>Text + tmavý monospace log, pod tím kroky „how it works“. Volitelné: věta pod logem, blok kroků, mono poznámka. <a href="komponenty.html#k-timeline">Ukázka</a></dd></div>
+      <div><dt><code>.wm-compare</code> — cenové srovnání</dt><dd>HTML/CSS sloupcový graf + tabulka s přesnými čísly. Volitelné: graf s legendou (tabulka je vždy), výpočet, disclaimer. Zvýraznění vlastních řádků: --self. <a href="komponenty.html#k-compare">Ukázka</a></dd></div>
+      <div><dt><code>.wm-install</code> — instalace</dt><dd>Kopírovatelný snippet, karty odesílacích kanálů, fakta v &lt;dl&gt;, odkaz na docs. Volitelné: druhá karta, řádek pod kartami, fakta, odkaz. <a href="komponenty.html#k-install">Ukázka</a></dd></div>
+      <div><dt><code>.wm-roadmap</code> — stavový výpis</dt><dd>Kompaktní seznam se štítky .wm-badge (--done / --progress / výchozí Planned). Volitelné: závěrečná věta s odkazem. <a href="komponenty.html#k-roadmap">Ukázka</a></dd></div>
+      <div><dt><code>.wm-faq</code> — akordeon</dt><dd>Nativní &lt;details&gt;/&lt;summary&gt;, hairline oddělovače. Volitelné: perex; počet položek libovolný. <a href="komponenty.html#k-faq">Ukázka</a></dd></div>
+      <div><dt><code>.wm-cta</code> — závěrečná výzva</dt><dd>Nadpis + tlačítka na střed. Varianta --inverse (tmavý panel). Volitelné: perex, sekundární tlačítko. <a href="komponenty.html#k-cta">Ukázka</a></dd></div>
+      <div><dt><code>.wm-changelog</code> — výpis verzí</dt><dd>Keep a Changelog: verze + datum, kategorie Added/Changed/Fixed/Security jen když mají obsah. Volitelné: úvodní odstavec. <a href="komponenty.html#k-changelog">Ukázka</a></dd></div>
+      <div><dt><code>.wm-prose</code> — centrovaný obsah</dt><dd>Stránky bez designu na míru (GDPR, docs, licence) — typografie ze styleguide v šířce 720px. <a href="komponenty.html#k-prose">Ukázka</a></dd></div>
+      <div><dt><code>.wm-footer</code> — patička</dt><dd>Logo + vyměnitelný název, navigace, meta řádek. Volitelné: meta řádek. <a href="komponenty.html#k-footer">Ukázka</a></dd></div>
+    </dl>
+  </section>
+
+  <section class="sg-section" id="layout">
+    <h2>Layout</h2>
+    <ul class="wm-list">
+      <li>Kontejner sekcí: <code>--wm-layout__container</code> 1160px, boční padding <code>--wm-layout__pad</code> 40px (pod 760px 20px)</li>
+      <li>Šířka běžného obsahu: <code>--wm-layout__content</code> 720px (prose), širší výpisy 840px</li>
+      <li>Breakpoint 980px — menu do panelu, hero a timeline do jednoho sloupce, mřížky na 2 sloupce</li>
+      <li>Breakpoint 760px — padding 20px, sekce 70px, jednosloupcové mřížky, skrytí druhého okna koláže</li>
+      <li>Breakpoint 560px — kroky a tlačítka akcí přes celou šířku</li>
+      <li>Přístup desktop-first, media queries přes max-width; sticky prvky přes position: sticky</li>
+    </ul>
+  </section>
+
+</main>
+</body>
+</html>

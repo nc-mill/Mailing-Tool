@@ -166,16 +166,26 @@ WHERE m.id         = cl.id
 RETURNING m.id, m.created_at, m.workspace_id, m.campaign_id, m.contact_id,
           m.email, m.render_data, m.attempts, m.kind`
 
-// StmtClaimTestBatch claimuje testovací odeslání napříč kampaněmi a přednostně.
-// Schválně NEKONTROLUJE c.status: testovací odeslání musí fungovat u kampaně
-// ve stavu draft, jinak nemá smysl. Kontrola smazané kampaně a smazaného
-// workspace zůstává.
-const StmtClaimTestBatch = `
+// StmtClaimNonCampaignBatch claimuje zprávy MIMO kampaň napříč kampaněmi,
+// tedy testovací odeslání, transakční poštu a uzly automatizace.
+//
+// Schválně NEKONTROLUJE c.status: nosičem obsahu je u všech těchhle druhů
+// skrytá kampaň, která zůstává ve stavu draft navždy. Kontrola smazané kampaně
+// a smazaného workspace zůstává.
+//
+// Podmínka je kind <> 'campaign', ne výčet. Nová hodnota v ck_messages__kind
+// tím spadne do téhle větve sama a nezůstane ležet ve frontě navěky proto, že
+// ji někdo zapomněl dopsat do seznamu. Kampaňová větev má vlastní dotaz
+// s vlastním kind = 'campaign', takže se dávky nemůžou překrývat.
+//
+// Vrací navíc c.revision. Bez ní by se hlavička nosné kampaně nacachovala pod
+// revizí 0 a změna transakční šablony by se do odeslané pošty nikdy nepromítla.
+const StmtClaimNonCampaignBatch = `
 WITH claimable AS (
   SELECT m.id, m.created_at
   FROM messages m
   WHERE m.status = 'pending'
-    AND m.kind = 'test'
+    AND m.kind <> 'campaign'
     AND m.campaign_id IS NOT NULL
     AND m.next_attempt_at <= now()
   ORDER BY m.next_attempt_at, m.id
@@ -196,7 +206,7 @@ WHERE m.id         = cl.id
   AND c.deleted_at IS NULL
   AND w.deleted_at IS NULL
 RETURNING m.id, m.created_at, m.workspace_id, m.campaign_id, m.contact_id,
-          m.email, m.render_data, m.attempts, m.kind`
+          m.email, m.render_data, m.attempts, m.kind, c.revision`
 
 // StmtHeartbeat prodlužuje claim rozpracovaných zpráv. Musí nést OBĚ složky
 // klíče, jinak se neuplatní prořezání partition a heartbeat každých pár desítek
@@ -370,8 +380,14 @@ WHERE id = $1 AND created_at = $2
 // ASSIGNMENT cast, parametr zůstává text[], takže pgx nemusí znát OID pro
 // citext[], a porovnání se vrátí k citext = citext, tedy i k unikátnímu indexu
 // uq_suppressions__workspace_email.
+//
+// Sloupec `reason` se čte kvůli transakční poště: odhlášení z marketingu ji
+// blokovat NESMÍ, tvrdý odraz, stížnost a výmaz podle GDPR ano. Rozhoduje o tom
+// funkce transactionalBlocks v suppression.go a její TypeScript protějšek
+// `transactionalVerdict`. Sender má SELECT na celou tabulku, takže to nestojí
+// žádný nový grant.
 const StmtSuppressionBatch = `
-SELECT s.email, s.fingerprint
+SELECT s.email, s.fingerprint, s.reason
 FROM suppressions s
 WHERE s.workspace_id = $1
   AND s.removed_at IS NULL
@@ -404,29 +420,29 @@ WHERE id = $1 AND status IN ('queueing', 'sending')`
 // AllStatements je registr pro OB-00. Klíč je jméno scénáře, hodnota je SQL.
 func AllStatements() map[string]string {
 	return map[string]string{
-		"active_campaigns":        StmtActiveCampaigns,
-		"campaign_header":         StmtCampaignHeader,
-		"campaign_header_no_meta": StmtCampaignHeaderNoMeta,
-		"provider_config":         StmtProviderConfig,
-		"has_compile_meta":        StmtHasCompileMeta,
-		"claim_batch":             StmtClaimBatch,
-		"claim_test_batch":        StmtClaimTestBatch,
-		"heartbeat":               StmtHeartbeat,
-		"reaper_released":         StmtReaperReleased,
-		"reaper_ambiguous":        StmtReaperAmbiguous,
-		"recovery_pass":           StmtRecoveryPass,
-		"release_remaining":       StmtReleaseRemaining,
-		"mark_dispatch_started":   StmtMarkDispatchStarted,
-		"result_sent":             StmtResultSent,
-		"result_retry":            StmtResultRetry,
-		"result_failed":           StmtResultFailed,
-		"result_fatal":            StmtResultFatal,
-		"result_throttled":        StmtResultThrottled,
-		"suppression_batch":       StmtSuppressionBatch,
-		"pause_campaign":          StmtPauseCampaign,
-		"skip_suppressed":         StmtSkipSuppressed,
-		"insert_message_event":    StmtInsertMessageEvent,
-		"upsert_render_warnings":  StmtUpsertRenderWarnings,
+		"active_campaigns":         StmtActiveCampaigns,
+		"campaign_header":          StmtCampaignHeader,
+		"campaign_header_no_meta":  StmtCampaignHeaderNoMeta,
+		"provider_config":          StmtProviderConfig,
+		"has_compile_meta":         StmtHasCompileMeta,
+		"claim_batch":              StmtClaimBatch,
+		"claim_non_campaign_batch": StmtClaimNonCampaignBatch,
+		"heartbeat":                StmtHeartbeat,
+		"reaper_released":          StmtReaperReleased,
+		"reaper_ambiguous":         StmtReaperAmbiguous,
+		"recovery_pass":            StmtRecoveryPass,
+		"release_remaining":        StmtReleaseRemaining,
+		"mark_dispatch_started":    StmtMarkDispatchStarted,
+		"result_sent":              StmtResultSent,
+		"result_retry":             StmtResultRetry,
+		"result_failed":            StmtResultFailed,
+		"result_fatal":             StmtResultFatal,
+		"result_throttled":         StmtResultThrottled,
+		"suppression_batch":        StmtSuppressionBatch,
+		"pause_campaign":           StmtPauseCampaign,
+		"skip_suppressed":          StmtSkipSuppressed,
+		"insert_message_event":     StmtInsertMessageEvent,
+		"upsert_render_warnings":   StmtUpsertRenderWarnings,
 	}
 }
 

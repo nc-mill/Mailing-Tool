@@ -1,7 +1,7 @@
-import { fileURLToPath } from 'node:url';
 import { ConfigError, loadConfig } from '@mlain/core/config';
 import { EXIT_CONFIG, EXIT_OK } from '../exit-codes';
 import type { CliStreams } from '../dispatch';
+import { resolveMigrationsFolder } from '../migrations-folder';
 
 /**
  * Kde leží migrace, počítáno vůči SESTAVENÉMU CLI, ne vůči `packages/db`.
@@ -19,12 +19,6 @@ import type { CliStreams } from '../dispatch';
  * `MIGRATIONS_DIR` je únikový východ pro nestandardní rozložení. Běžně se
  * nenastavuje.
  */
-function resolveMigrationsFolder(env: NodeJS.ProcessEnv): string {
-  const override = env['MIGRATIONS_DIR'];
-  if (override !== undefined && override !== '') return override;
-  return fileURLToPath(new URL('../../../packages/db/migrations', import.meta.url));
-}
-
 /**
  * `mlain migrate` aplikuje migrace pod rolí `mlain_migrator`.
  *

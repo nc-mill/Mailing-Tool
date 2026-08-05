@@ -3,15 +3,25 @@ import { ApiError } from '../../errors/api-error';
 import { assertPermission } from '../../identity/permissions';
 import { problemResponse } from '../../identity/api/schemas';
 import type { WorkspaceContext } from '../../tx';
+// Předvolby odesílatele jsou vlastní doména, ale kampaň je ten, kdo se z nich
+// předvyplňuje, takže se odsud čte jedna jediná funkce. Opačný směr (doména
+// předvoleb by sahala do kampaní) by udělal kruh.
+import { getDefaultSenderIdentity } from '../../sender-identities/repo';
 import { AUDIENCE_CONFIRM_TOLERANCE } from '../constants';
 import { cancelCampaign } from '../control/cancel';
 import { pauseCampaign } from '../control/pause';
+import { releaseCampaignNow } from '../control/release-now';
 import { resumeCampaign } from '../control/resume';
 import { EDITABLE_WHILE_SCHEDULED, validateSchedule } from '../control/schedule';
 import { undoState } from '../control/undo';
+import { withPending } from '../types';
+import type { CampaignCompilation } from '../compile';
+import { assertCompilationCurrent, compileCampaign } from '../compile-service';
+import { applyTemplateToCampaign } from '../template-apply';
 import { buildPauseReason } from '../pause-reason';
 import { startMaterialization } from '../repo/audience-progress';
-import { transitionStatus } from '../repo/campaign';
+import { readLiveDelivery, readLiveHandover } from '../repo/live-progress';
+import { readSentPreview, transitionStatus } from '../repo/campaign';
 import { MATERIALIZE_JOB } from '../jobs/materialize';
 import {
   audienceState,
@@ -20,8 +30,12 @@ import {
   EMPTY_BREAKDOWN,
 } from './preflight-view';
 import {
+  ApplyTemplateRequest,
+  ApplyTemplateResponse,
   AudiencePreviewResponse,
   CampaignResponse,
+  CampaignSentPreviewResponse,
+  CompileCampaignResponse,
   CreateCampaignRequest,
   MessageItem,
   PatchCampaignRequest,
@@ -32,7 +46,6 @@ import {
   Uuid,
 } from './schemas';
 import {
-  ambiguousCount,
   counters,
   createCampaign,
   duplicateCampaign,
@@ -61,6 +74,20 @@ const WORKSPACE_TIMEZONE = 'Europe/Prague';
 
 const IdParam = z.object({ id: Uuid });
 
+/**
+ * Stavy, ze kterých `startMaterialization` kampaň zabere. Je to TÝŽ výčet, jaký má
+ * ten dotaz ve `WHERE`; kdyby se rozešly, kontrola před odesláním by běžela nad
+ * kampaní, kterou stejně nikdo neodešle, a její chyba by přebila správné 409.
+ */
+const SENDABLE_FROM: readonly string[] = ['draft', 'scheduled', 'schedule_missed'];
+
+/**
+ * Stavy, ze kterých už rozesílka nikam nepokročí. Posílá se jako jeden příznak,
+ * aby obrazovka nemusela ten výčet držet podruhé: podle něj přestane obnovovat.
+ * Výčet je týž, jaký má `campaignTarget` ve webu pro cíl „report".
+ */
+const FINISHED_STATUSES: readonly string[] = ['sent', 'partially_sent', 'cancelled', 'failed'];
+
 function present(row: CampaignRowFull): z.infer<typeof CampaignResponse> {
   return {
     id: row.id,
@@ -72,12 +99,16 @@ function present(row: CampaignRowFull): z.infer<typeof CampaignResponse> {
     from_email: row.from_email,
     reply_to: row.reply_to,
     template_id: row.template_id,
+    has_design: row.has_design,
+    has_content: row.content_block_count > 0,
+    content_block_count: row.content_block_count,
     audience: row.audience,
     audience_size: row.audience_size,
     audience_breakdown: row.audience_breakdown ?? null,
     audience_built_at: row.audience_built_at,
     provider_id: row.provider_id,
     sender_domain_id: row.sender_domain_id,
+    sender_identity_id: row.sender_identity_id,
     unsubscribe_list_id: row.unsubscribe_list_id,
     track_opens: row.track_opens,
     track_clicks: row.track_clicks,
@@ -97,6 +128,53 @@ function present(row: CampaignRowFull): z.infer<typeof CampaignResponse> {
 
 async function load(ctx: WorkspaceContext, id: string): Promise<CampaignRowFull> {
   return requireCampaign(await getCampaignFull(ctx, id));
+}
+
+/**
+ * Předvyplnění nové kampaně z VÝCHOZÍ předvolby odesílatele.
+ *
+ * Dělá se to na serveru, ne v obrazovce, a je to podstatný rozdíl. Kampaň
+ * nevzniká jen z formuláře: zakládá ji i ukázková data, onboarding a klient přes
+ * API klíč. Kdyby předvyplnění bydlelo v obrazovce, mělo by ho přesně jedno
+ * z těch čtyř míst a ostatní tři by dělaly kampaně s prázdným odesílatelem.
+ *
+ * VYPLNĚNÉ POLE SE NIKDY NEPŘEPÍŠE. Doplňuje se jen to, co volající neposlal;
+ * kdo si odesílatele určuje sám, ať už je to klient API nebo průvodce
+ * onboardingem, dostane přesně to, co si řekl. Proto se pole testují každé
+ * zvlášť a ne blokem.
+ *
+ * Když projekt výchozí předvolbu nemá, nestane se nic. Není to chyba, je to
+ * úplně běžný stav prvních minut instalace.
+ */
+async function prefillFromDefaultSender(
+  ctx: WorkspaceContext,
+  body: z.infer<typeof CreateCampaignRequest>,
+): Promise<z.infer<typeof CreateCampaignRequest>> {
+  const missing =
+    body.from_name === undefined ||
+    body.from_email === undefined ||
+    body.reply_to === undefined ||
+    body.provider_id === undefined ||
+    body.sender_domain_id === undefined;
+  if (!missing) return body;
+
+  const identity = await getDefaultSenderIdentity(ctx);
+  if (identity === null) return body;
+
+  return {
+    ...body,
+    ...(body.from_name === undefined ? { from_name: identity.from_name } : {}),
+    ...(body.from_email === undefined ? { from_email: identity.from_email } : {}),
+    ...(body.reply_to === undefined ? { reply_to: identity.reply_to } : {}),
+    ...(body.provider_id === undefined ? { provider_id: identity.provider_id } : {}),
+    ...(body.sender_domain_id === undefined ? { sender_domain_id: identity.sender_domain_id } : {}),
+    // Odkaz na předvolbu se doplňuje jen tehdy, když se z ní opravdu bralo.
+    // Kdyby se zapsal vždycky, tvrdila by kampaň s ručně vyplněnou adresou,
+    // že vznikla z předvolby, a obrazovka by u ní ukazovala cizí jméno.
+    ...(body.sender_identity_id === undefined && body.from_email === undefined
+      ? { sender_identity_id: identity.id }
+      : {}),
+  };
 }
 
 const listRoute = createRoute({
@@ -225,6 +303,36 @@ const previewRoute = createRoute({
   },
 });
 
+/**
+ * Náhled odeslané podoby kampaně, JEN KE ČTENÍ.
+ *
+ * Vrací uložené sloupce, nikdy nekompiluje znovu. Kompilace u odeslané kampaně
+ * může vydat jiné tělo, než jaké odešlo (mezitím se změnila šablona, asset nebo
+ * emitter), a náhled existuje právě proto, aby se uživatel podíval na to, co
+ * doopravdy dostali příjemci.
+ *
+ * Cesta je `/campaigns/{id}/preview`, kdežto odhad publika sedí na
+ * `/campaigns/{id}/audience/preview`. Jsou to dvě různé věci a nekříží se.
+ */
+const sentPreviewRoute = createRoute({
+  method: 'get',
+  path: '/campaigns/{id}/preview',
+  tags: [TAG],
+  summary: 'Odeslaná podoba kampaně',
+  security: [{ bearerAuth: ['campaigns:read'] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description:
+        'Uložená podoba. Nezkompilovaná kampaň vrací 200 s html null, ne 404: kampaň existuje.',
+      content: { 'application/json': { schema: CampaignSentPreviewResponse } },
+    },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+  },
+});
+
 const preflightRoute = createRoute({
   method: 'get',
   path: '/campaigns/{id}/preflight',
@@ -240,6 +348,75 @@ const preflightRoute = createRoute({
     401: problemResponse('unauthenticated'),
     403: problemResponse('forbidden', 'insufficient_scope'),
     404: problemResponse('not_found'),
+  },
+});
+
+/**
+ * Použití šablony na kampaň: zkopíruje dokument do obsahu kampaně a rovnou ho
+ * zkompiluje. Jediná cesta, která smí obsah kampaně PŘEPSAT.
+ *
+ * Samostatná trasa, ne klíč v `PATCH`, ze tří důvodů. Za prvé je to z pohledu
+ * uživatele jedna operace („vezmi šablonu a připrav kampaň k odeslání"), ne dvě.
+ * Za druhé přepisuje obsah, tedy jedinou věc, o kterou jde přijít nenávratně,
+ * a taková věc nemá viset na uložení formuláře, kde ji uživatel nečeká. Za třetí
+ * vrací `overwritten`, takže obrazovka ví, co se stalo, a umí se zeptat předem
+ * (podle `has_design` v odpovědi kampaně).
+ */
+const applyTemplateRoute = createRoute({
+  method: 'post',
+  path: '/campaigns/{id}/apply-template',
+  tags: [TAG],
+  summary: 'Použití šablony na kampaň',
+  security: [{ bearerAuth: ['campaigns:write'] }],
+  request: {
+    params: IdParam,
+    body: { content: { 'application/json': { schema: ApplyTemplateRequest } } },
+  },
+  responses: {
+    200: {
+      description: 'Obsah zkopírován, zkompilován jen když kampaň má předmět',
+      content: { 'application/json': { schema: ApplyTemplateResponse } },
+    },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    409: problemResponse('campaign_locked'),
+    /*
+     * `campaign_subject_missing` tady UŽ NENÍ a je to podstatná změna. Chybějící
+     * předmět nebyl neúspěch převzetí obsahu: dokument se zkopíroval a chyba
+     * mluvila o kompilaci, tedy o kroku, který se dá odložit. Odpověď proto vrací
+     * `compiled: null` a předmět hlídá kontrola před odesláním.
+     */
+    422: problemResponse('template_document_invalid'),
+  },
+});
+
+/**
+ * Kompilace kampaně. Je to samostatná trasa, ne vedlejší účinek uložení nastavení.
+ *
+ * Plán trasu nepředepisuje, rozhoduje se tady a důvod je v tom, že kompilace může
+ * selhat z důvodů, které se nastavení kampaně netýkají (rozbitá šablona, chybějící
+ * asset). Kdyby visela na `PATCH`, uložení nastavení by padalo na chybě obsahu
+ * a uživatel by nedokázal opravit ani to, co s obsahem nesouvisí. Obrazovka
+ * nastavení ji volá hned po úspěšném uložení, takže druhé tlačítko nepotřebuje.
+ */
+const compileRoute = createRoute({
+  method: 'post',
+  path: '/campaigns/{id}/compile',
+  tags: [TAG],
+  summary: 'Kompilace obsahu kampaně',
+  security: [{ bearerAuth: ['campaigns:write'] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: 'Zkompilováno, výsledek uložen',
+      content: { 'application/json': { schema: CompileCampaignResponse } },
+    },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    409: problemResponse('campaign_locked'),
+    422: problemResponse('campaign_not_compiled', 'campaign_subject_missing'),
   },
 });
 
@@ -321,6 +498,11 @@ const pauseRoute = simpleAction('pause', 'Pozastavení rozesílky', 'campaigns:c
 const resumeRoute = simpleAction('resume', 'Pokračování rozesílky', 'campaigns:control');
 const cancelRoute = simpleAction('cancel', 'Zrušení zbytku rozesílky', 'campaigns:control');
 const undoRoute = simpleAction('undo', 'Vzetí odeslání zpět v okně', 'campaigns:send');
+/**
+ * Druhá polovina okna na vzetí zpět. `undo` ho ukončí zrušením kampaně,
+ * `send-now` ho ukončí tím, že rozesílku pustí okamžitě.
+ */
+const sendNowRoute = simpleAction('send-now', 'Okamžité odeslání bez čekání', 'campaigns:send');
 
 const progressRoute = createRoute({
   method: 'get',
@@ -384,7 +566,7 @@ export function registerCampaignRoutes(app: OpenAPIHono<CampaignsEnv>): void {
     assertPermission(ctx, 'campaigns:write');
     const body = c.req.valid('json');
     const row = await createCampaign(ctx, {
-      ...body,
+      ...(await prefillFromDefaultSender(ctx, body)),
       ...(ctx.actor.type === 'user' ? { createdBy: ctx.actor.userId } : {}),
     });
     return c.json(present(row), 201);
@@ -423,7 +605,11 @@ export function registerCampaignRoutes(app: OpenAPIHono<CampaignsEnv>): void {
     const current = await load(ctx, c.req.valid('param').id);
     const r = await softDeleteCampaign(ctx, current.id);
     if (!r.deleted) {
-      throw new ApiError('conflict', { params: { reason: 'campaign_not_draft' } });
+      // Stav se posílá s sebou: bez něj by rozhraní hlásilo obecné „nejde to"
+      // a uživatel by nevěděl, jestli má čekat, zrušit plán, nebo to vzdát.
+      throw new ApiError('conflict', {
+        params: { reason: 'campaign_not_draft', status: current.status },
+      });
     }
     return c.body(null, 204);
   });
@@ -457,6 +643,71 @@ export function registerCampaignRoutes(app: OpenAPIHono<CampaignsEnv>): void {
         audience_estimate: state.estimate,
         breakdown: state.breakdown,
         checked_at: asOf.toISOString(),
+      },
+      200,
+    );
+  });
+
+  /** Výsledek kompilace pro odpověď. Sdílí ho `/compile` i `/apply-template`. */
+  async function compileResult(
+    ctx: WorkspaceContext,
+    id: string,
+    compilation: CampaignCompilation,
+  ): Promise<z.infer<typeof CompileCampaignResponse>> {
+    const after = await load(ctx, id);
+    return {
+      id,
+      revision: after.revision,
+      compiled_hash: compilation.compiledHash,
+      html_bytes: Buffer.byteLength(compilation.html, 'utf8'),
+      link_count: compilation.compileMeta.links.length,
+      click_marker_count: compilation.compileMeta.clickMarkerCount,
+      has_unsubscribe_link: compilation.compileMeta.hasUnsubscribeLink,
+    };
+  }
+
+  app.openapi(applyTemplateRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    assertPermission(ctx, 'campaigns:write');
+    const id = c.req.valid('param').id;
+    const applied = await applyTemplateToCampaign(ctx, id, c.req.valid('json').template_id);
+    return c.json(
+      {
+        overwritten: applied.overwritten,
+        // `null` znamená „obsah je v kampani, kompilace čeká na předmět".
+        compiled:
+          applied.compilation === null ? null : await compileResult(ctx, id, applied.compilation),
+      },
+      200,
+    );
+  });
+
+  app.openapi(compileRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    assertPermission(ctx, 'campaigns:write');
+    const id = c.req.valid('param').id;
+    return c.json(await compileResult(ctx, id, await compileCampaign(ctx, id)), 200);
+  });
+
+  app.openapi(sentPreviewRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    assertPermission(ctx, 'campaigns:read');
+    const row = await readSentPreview(ctx, c.req.valid('param').id);
+    if (!row) throw new ApiError('not_found');
+    return c.json(
+      {
+        html: row.compiled_html,
+        text: row.compiled_text,
+        /*
+         * Ovladač vrací `timestamptz` jako `Date`, protože v projektu nikdo
+         * nenastavuje vlastní parser typů. Kontrakt slibuje řetězec, tak se
+         * převádí tady a ne až v serializaci, aby odpověď byla tvarem shodná
+         * i pro toho, kdo funkci volá z kódu.
+         */
+        compiled_at: row.compiled_at === null ? null : new Date(row.compiled_at).toISOString(),
+        revision: row.revision,
+        status: row.status,
+        subject: row.subject,
       },
       200,
     );
@@ -498,6 +749,24 @@ export function registerCampaignRoutes(app: OpenAPIHono<CampaignsEnv>): void {
           ...(f.params === undefined ? {} : { params: f.params }),
         })),
       });
+    }
+
+    /*
+     * Třetí část rozhodnutí D17: rekompilace a porovnání s uloženou `compile_meta`.
+     * Musí být AŽ TADY, po preflightu a po potvrzení počtu, protože je to jediná
+     * operace v celé cestě, která zapisuje. Při neshodě se kampaň neodešle.
+     *
+     * Bez tohohle volání by rozejitá ID odkazů znamenala, že report kliků zůstane
+     * prázdný, a poznalo by se to týdny po odeslání, bez jediné chybové hlášky.
+     * Registr kódů dává `contract_mismatch` stav 422, ne 409 z textu rozhodnutí;
+     * registr vlastní P01 a měnit se kvůli tomu nebude.
+     *
+     * Běží jen u stavů, ze kterých `startMaterialization` kampaň opravdu zabere.
+     * U odeslané kampaně je správná odpověď 409 o stavu, ne hlášení o obsahu:
+     * obsah odeslané kampaně už měnit nejde a mluvit o něm by mátlo.
+     */
+    if (SENDABLE_FROM.includes(campaign.status)) {
+      await assertCompilationCurrent(ctx, campaign.id);
     }
 
     /*
@@ -687,13 +956,62 @@ export function registerCampaignRoutes(app: OpenAPIHono<CampaignsEnv>): void {
     return c.json(present(await load(ctx, campaign.id)), 200);
   });
 
+  /**
+   * Přeskočení odpočtu. Uživatel si o to řekl výslovně, takže se nic
+   * nepotvrzuje podruhé; jediná kontrola je, že se kampaň vůbec odesílá.
+   *
+   * Kampaň, které okno mezitím uplynulo samo, NENÍ chyba: `releaseCampaignNow`
+   * nemá co uvolnit a odpoví 200. Kdyby to bylo 409, dostal by uživatel chybu
+   * za to, že zmáčkl tlačítko o vteřinu později, než odpočet doběhl.
+   */
+  app.openapi(sendNowRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    assertPermission(ctx, 'campaigns:send');
+    const campaign = await load(ctx, c.req.valid('param').id);
+    if (campaign.status !== 'queueing' && campaign.status !== 'sending') {
+      throw new ApiError('invalid_state_transition', { params: { status: campaign.status } });
+    }
+    await releaseCampaignNow(ctx, campaign.id);
+    return c.json(present(await load(ctx, campaign.id)), 200);
+  });
+
+  /**
+   * Průběh se čte ŽIVĚ z `messages` a `message_events`, ne ze sloupců
+   * `campaigns.*_count`.
+   *
+   * Ty sloupce plní cronová úloha `campaign.watchdog` jednou za patnáct sekund,
+   * takže obrazovka obnovovaná po několika sekundách ukazovala mezi dvěma tiky
+   * pořád totéž. U kampaně na tři adresy se ukazatel nepohnul ani jednou:
+   * uživatel viděl nuly a pak rovnou hotovo. Živé čtení je ta samá agregace,
+   * jakou hlídač zapisuje, jen bez zápisu, takže se čísla nemůžou rozejít.
+   *
+   * Ostatní cesty (`present`, seznam kampaní, report) čtou uložené sloupce dál.
+   * Tenhle koncový bod je jediný, který se ptá NA BĚŽÍCÍ ROZESÍLKU, a jediný,
+   * kde je patnáctisekundové zpoždění vidět.
+   */
   app.openapi(progressRoute, async (c) => {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'campaigns:read');
     const campaign = await load(ctx, c.req.valid('param').id);
     const now = new Date();
-    const c8 = counters(campaign);
-    const ambiguous = campaign.audience_built_at ? await ambiguousCount(ctx, campaign.id) : 0;
+
+    const [handover, delivery] = await Promise.all([
+      readLiveHandover(ctx, {
+        campaignId: campaign.id,
+        audienceBuiltAt: campaign.audience_built_at,
+      }),
+      readLiveDelivery(ctx, campaign.id),
+    ]);
+
+    const c8 = withPending({
+      total: handover.total,
+      sent: handover.sent,
+      failed: handover.failed,
+      skipped: handover.skipped,
+      delivered: delivery.delivered,
+      bounced: delivery.bounced,
+      complained: delivery.complained,
+    });
 
     const elapsedSeconds = campaign.started_at
       ? Math.max(1, (now.getTime() - new Date(campaign.started_at).getTime()) / 1000)
@@ -702,24 +1020,35 @@ export function registerCampaignRoutes(app: OpenAPIHono<CampaignsEnv>): void {
 
     // Zaseknutá rozesílka: kampaň se odesílá, zbývá práce, a přesto se přes minutu
     // nic nezměnilo. Hlásí se, ne opravuje: zásah patří senderu, ne obrazovce.
+    //
+    // Měří se poslední změna V OUTBOXU, ne `campaigns.updated_at`. Ten totiž
+    // posouvá hlídač při každém tiku, takže podmínka nebyla splnitelná a hláška
+    // se neukázala nikdy. Čerstvá kampaň bez jediné zprávy se za zaseknutou
+    // nepovažuje: `lastChangeAt` je `null` a není od čeho měřit.
     const stalled =
       campaign.status === 'sending' &&
       c8.pending > 0 &&
-      now.getTime() - new Date(campaign.updated_at).getTime() > 60_000;
+      handover.lastChangeAt !== null &&
+      now.getTime() - new Date(handover.lastChangeAt).getTime() > 60_000;
 
     return c.json(
       {
         campaign_id: campaign.id,
         status: campaign.status,
         counters: c8,
-        ambiguous_count: ambiguous,
+        ambiguous_count: handover.ambiguous,
         rate_per_second: rate === null ? null : Math.round(rate * 100) / 100,
         eta_seconds:
           rate === null || rate <= 0 || c8.pending === 0 ? null : Math.round(c8.pending / rate),
         stalled,
         pause_reason: campaign.pause_reason ?? null,
         undo_remaining_seconds: undoRemainingSeconds(campaign, now),
-        updated_at: campaign.updated_at,
+        delivery_events_seen: delivery.providerEvents > 0,
+        finished: FINISHED_STATUSES.includes(campaign.status),
+        // Čas POSLEDNÍ ZMĚNY PRŮBĚHU, ne řádku kampaně. Obrazovka podle něj
+        // pozná, jak čerstvá čísla drží; `campaigns.updated_at` by jí říkalo
+        // jen to, kdy naposled tikl hlídač.
+        updated_at: handover.lastChangeAt ?? campaign.updated_at,
       },
       200,
     );

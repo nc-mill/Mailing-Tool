@@ -1,9 +1,10 @@
-import { and, asc, count, eq, isNull, sql } from 'drizzle-orm';
-import { listSubscriptions, lists } from '@mlain/db/schema';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { lists } from '@mlain/db/schema';
 import { ApiError } from '../../errors/api-error';
 import type { WorkspaceContext } from '../../identity/types';
 import { pgErrorCode, withWorkspace, type Tx } from '../../tx';
 import { writeAudit } from '../audit';
+import { contactExistsForJoinSql } from '../existence';
 import {
   DEFAULT_CONFIRMATION_MAX_RESENDS,
   DEFAULT_CONFIRMATION_MODE,
@@ -23,6 +24,11 @@ export type CreateListInput = {
   welcomeTemplateId?: string | null;
   sendWelcome?: boolean;
   isDefault?: boolean;
+  /** Nabízet ve veřejném centru předvoleb k přihlášení? Výchozí je NE, viz migrace 0014. */
+  publicVisible?: boolean;
+  /** Jméno pro příjemce. null znamená „nenapsáno", pak se ukáže `name`. */
+  publicName?: string | null;
+  publicDescription?: string | null;
 };
 
 export type UpdateListInput = Partial<Omit<CreateListInput, 'isDefault'>>;
@@ -38,6 +44,21 @@ export type ListStats = {
 
 /** Název omezení, které hlídá jedinečnost jména seznamu v projektu. */
 const NAME_CONSTRAINT = 'uq_lists__workspace_name';
+
+/**
+ * Prázdný veřejný text je „nevyplněno", ne prázdné jméno.
+ *
+ * Formulář posílá u nevyplněného pole prázdný řetězec, ale `ck_lists__public_name_len`
+ * a `ck_lists__public_description_len` ho zakazují, protože by to byl třetí stav vedle
+ * NULL a vyplněné hodnoty. Bez tohohle překladu by uložení nastavení s prázdným polem
+ * skončilo pětistovkou na 23514.
+ */
+function emptyToNull(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}
 
 /**
  * Přeloží porušení částečného unikátního indexu na doménovou chybu.
@@ -102,6 +123,11 @@ export async function create(ctx: WorkspaceContext, input: CreateListInput): Pro
         welcomeTemplateId: input.welcomeTemplateId ?? null,
         sendWelcome: input.sendWelcome ?? false,
         isDefault: input.isDefault ?? false,
+        // Bezpečná výchozí hodnota: nový seznam se veřejně NENABÍZÍ, dokud to
+        // správce nezapne. Zdůvodnění je v migraci 0014.
+        publicVisible: input.publicVisible ?? false,
+        publicName: emptyToNull(input.publicName),
+        publicDescription: emptyToNull(input.publicDescription),
       })
       .returning()
       .catch(rethrowUniqueViolation);
@@ -138,6 +164,37 @@ export async function byId(
   });
 }
 
+/**
+ * Režim potvrzení u vyjmenovaných seznamů, jedním dotazem, uvnitř otevřené transakce.
+ *
+ * Import podle něj rozhoduje o stavu přihlášení: na single opt-in seznamu končí nový
+ * kontakt rovnou v `confirmed`, na double opt-in v `pending`, pokud uživatel nedoloží
+ * prohlášení. Bez tohohle dotazu by import musel opt-in hádat, a hádat se tady nesmí.
+ *
+ * Archivované seznamy se vynechávají: přihlašovat do zrušeného seznamu nedává smysl
+ * a volající pozná podle chybějícího klíče, že se do něj přihlašovat nemá.
+ */
+export async function optInByIdsIn(
+  tx: Tx,
+  ctx: WorkspaceContext,
+  ids: readonly string[],
+): Promise<Map<string, 'single' | 'double'>> {
+  const out = new Map<string, 'single' | 'double'>();
+  if (ids.length === 0) return out;
+  const rows = await tx
+    .select({ id: lists.id, optIn: lists.optIn })
+    .from(lists)
+    .where(
+      and(
+        eq(lists.workspaceId, ctx.workspaceId),
+        isNull(lists.deletedAt),
+        sql`${lists.id} = ANY(${sql.param([...new Set(ids)])}::uuid[])`,
+      ),
+    );
+  for (const row of rows) out.set(row.id, row.optIn);
+  return out;
+}
+
 export async function list(
   ctx: WorkspaceContext,
   options: { includeArchived?: boolean } = {},
@@ -166,12 +223,32 @@ export async function update(
 
     const rows = await tx
       .update(lists)
-      .set({ ...patch, updatedAt: new Date() })
+      .set({
+        ...patch,
+        // Prázdný řetězec z formuláře je „nevyplněno", ne prázdné jméno; omezení
+        // v databázi ho zakazuje, viz `emptyToNull`.
+        ...(patch.publicName === undefined ? {} : { publicName: emptyToNull(patch.publicName) }),
+        ...(patch.publicDescription === undefined
+          ? {}
+          : { publicDescription: emptyToNull(patch.publicDescription) }),
+        updatedAt: new Date(),
+      })
       .where(and(eq(lists.workspaceId, ctx.workspaceId), eq(lists.id, id)))
       .returning()
       .catch(rethrowUniqueViolation);
 
     const row = rows[0]!;
+
+    // Zapnutí veřejného nabízení je rozhodnutí o tom, kdo se smí sám přihlásit,
+    // takže musí být dohledatelné stejně jako změna opt-in.
+    if (patch.publicVisible !== undefined && patch.publicVisible !== current.publicVisible) {
+      await writeAudit(tx, ctx, {
+        action: 'list.public_visibility_changed',
+        targetType: 'list',
+        targetId: id,
+        metadata: { from: current.publicVisible, to: patch.publicVisible },
+      });
+    }
 
     // Změna opt_in je změna úrovně ochrany příjemců, takže musí být dohledatelná i za rok.
     // Ostatní pole se do auditu nepíšou, jinak by v logu utonulo přejmenování seznamu.
@@ -243,18 +320,32 @@ export async function getDefault(ctx: WorkspaceContext): Promise<ListRow | null>
   });
 }
 
+/**
+ * Počty přihlášení podle stavu. Počítá LIDI, ne řádky vazby.
+ *
+ * Smazaný kontakt si přihlášení nechává, protože měkké smazání se do třiceti dnů
+ * vrací a obnovený člověk musí dostat zpět svá členství. Počítadlo se proto musí
+ * zeptat, jestli kontakt ještě existuje; bez toho hlásilo „50 potvrzených kontaktů"
+ * projektu, ve kterém zbyly tři, a číslo se nespravilo ani po úklidu, protože žádný
+ * úklid neběžel.
+ *
+ * Odhlášené a zablokované to NEODEČÍTÁ. Ti lidé existují a jejich stav je ochrana
+ * příjemce, kterou musí být na obrazovce vidět; proto mají v `ListStats` vlastní klíč.
+ */
 export async function stats(ctx: WorkspaceContext, listId: string): Promise<ListStats> {
   return withWorkspace(ctx, async (tx) => {
-    const rows = await tx
-      .select({ status: listSubscriptions.status, total: count() })
-      .from(listSubscriptions)
-      .where(
-        and(
-          eq(listSubscriptions.workspaceId, ctx.workspaceId),
-          eq(listSubscriptions.listId, listId),
-        ),
-      )
-      .groupBy(listSubscriptions.status);
+    // Ručně psané SQL, ne query builder: predikát existence kontaktu je sdílený text
+    // s vlastním aliasem a builder by ho musel skládat přes `sql.raw` proti aliasu,
+    // který si sám odvozuje z názvu tabulky. Vlastní alias `s` je čitelnější a nemůže
+    // se rozejít s tím, co builder zrovna vygeneruje.
+    const { rows } = await tx.execute<{ status: string; total: number }>(sql`
+      SELECT s.status, count(*)::int AS total
+        FROM list_subscriptions s
+       WHERE s.workspace_id = ${ctx.workspaceId}::uuid
+         AND s.list_id = ${listId}::uuid
+         AND ${sql.raw(contactExistsForJoinSql('s'))}
+       GROUP BY s.status
+    `);
 
     // Chybějící stav se vrací jako nula, ne jako chybějící klíč. UI jinak musí řešit
     // undefined na pěti místech a jednou to zapomene.
@@ -271,6 +362,34 @@ export async function stats(ctx: WorkspaceContext, listId: string): Promise<List
       result.total += Number(row.total);
     }
     return result;
+  });
+}
+
+/**
+ * Kolik LIDÍ ve vyjmenovaných seznamech čeká na potvrzení. Počítá se přes DISTINCT,
+ * protože jeden člověk může čekat ve dvou seznamech a dvakrát započítaný by z hlášky
+ * udělal další nepravdivé číslo.
+ *
+ * K čemu to je: publikum kampaně bere ze seznamu jen potvrzené. Když jsou všichni
+ * ve stavu `pending`, vyjde nula a kontrolní seznam před odesláním hlásil „publikum
+ * je prázdné", což u seznamu se třemi lidmi není pravda. Tohle číslo dovolí říct,
+ * co se doopravdy stalo a co s tím uživatel udělá.
+ */
+export async function countPendingMembers(
+  ctx: WorkspaceContext,
+  listIds: readonly string[],
+): Promise<number> {
+  if (listIds.length === 0) return 0;
+  return withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<{ total: number }>(sql`
+      SELECT count(DISTINCT s.contact_id)::int AS total
+        FROM list_subscriptions s
+       WHERE s.workspace_id = ${ctx.workspaceId}::uuid
+         AND s.list_id = ANY(${sql.param([...new Set(listIds)])}::uuid[])
+         AND s.status = 'pending'
+         AND ${sql.raw(contactExistsForJoinSql('s'))}
+    `);
+    return rows[0]?.total ?? 0;
   });
 }
 

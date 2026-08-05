@@ -17,16 +17,26 @@ import { assetIdsInDocument, loadAssetRefs } from '../assets';
 import { compileTemplate } from '../compile';
 import { preSendCheck } from '../precheck';
 import {
+  categoryOf,
+  countTemplatesByCategory,
+  EMPTY_TEMPLATE_USAGE,
   findTemplateById,
   findTemplateIdsUsingField,
   listTemplates,
+  listTemplateSummaries,
+  loadTemplateUsage,
+  validationProfileFor,
+  type TemplateSummaryRow,
   type TemplateKind,
   type TemplateRow,
+  type TemplateUsage,
 } from '../repository';
 import {
   createTemplate,
   deleteTemplate,
   duplicateTemplate,
+  renameTemplate,
+  restoreTemplate,
   restoreTemplateVersion,
   saveDesign,
   type ServiceContext,
@@ -44,8 +54,10 @@ import {
   PatchTemplateRequest,
   PreviewRequest,
   PreviewResponse,
+  TemplateCategorySchema,
   TemplateKindSchema,
   TemplateListResponse,
+  type TemplateSummary,
   TemplateResponse,
   TestSendRequest,
   TestSendResponse,
@@ -105,6 +117,31 @@ function present(row: TemplateRow): z.infer<typeof TemplateResponse> {
     thumbnail_asset_id: row.thumbnailAssetId,
     starter: row.starter,
     created_at: row.createdAt.toISOString(),
+    updated_at: row.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Úsporná položka seznamu. Sloupec `design` se sem nedostane ani omylem.
+ *
+ * `category` a `usage` jsou JEN tady, ne v plné odpovědi `TemplateResponse`,
+ * a je to rozhodnutí o ceně. Obojí stojí dotaz navíc, plnou odpověď vrací
+ * i `PATCH /templates/{id}`, a ten volá autosave editoru každých pět sekund.
+ * Byl by to dotaz na data, která editor nepoužije. Knihovna je jediná
+ * obrazovka, která kategorii i zapojení potřebuje, a ta čte právě seznam.
+ */
+function presentSummary(
+  row: TemplateSummaryRow,
+  usage: TemplateUsage,
+): z.infer<typeof TemplateSummary> {
+  return {
+    id: row.id,
+    name: row.name,
+    kind: row.kind,
+    category: categoryOf(row.kind, usage),
+    usage,
+    validation_state: row.validationState,
+    starter: row.starter,
     updated_at: row.updatedAt.toISOString(),
   };
 }
@@ -174,8 +211,19 @@ function translateDomainError(error: unknown): never {
       });
     case 'template_name_conflict':
       throw new ApiError('template_name_conflict');
+    // Jméno ze samých mezer. Není to konflikt ani chybějící pole, je to
+    // hodnota, kterou po ořezání nezbylo co uložit, a patří k poli `name`,
+    // aby ji rozhraní ukázalo u něj, ne jako obecnou hlášku nahoře.
+    case 'template_name_empty':
+      throw new ApiError('validation_failed', {
+        errors: [
+          { path: 'name', code: 'required_field_missing', message: 'Název nesmí být prázdný.' },
+        ],
+      });
     case 'template_starter_immutable':
       throw new ApiError('template_starter_immutable');
+    case 'template_in_use':
+      throw new ApiError('template_in_use');
     default:
       throw error;
   }
@@ -228,6 +276,20 @@ function translateTestSendError(error: unknown): never {
             code: 'test_no_contact',
             message:
               'Projekt nemá žádný kontakt, ze kterého by šla vzít data pro dosazení. Nahrajte kontakty a zkuste to znovu.',
+          },
+        ],
+      });
+    // Prázdná šablona, tedy dokument bez jediného obsahového bloku. Patří sem,
+    // mezi důvody jednoho 422, a ne mezi kořenové kódy: je to stejný druh
+    // nedodělané práce jako projekt bez kontaktu, ne vlastní stav odesílání.
+    case 'test_template_empty':
+      throw new ApiError('validation_failed', {
+        errors: [
+          {
+            path: '',
+            code: 'test_template_empty',
+            message:
+              'E-mail je zatím prázdný: kromě patičky v něm není žádný obsah. Napište do něj text, obrázek nebo tlačítko a zkuste to znovu.',
           },
         ],
       });
@@ -288,7 +350,8 @@ async function requireValidDocument(
   const assetIds = assetIdsInDocument(raw).filter((id) => Uuid.safeParse(id).success);
   const assets = await withWorkspace(ctx, (tx) => loadAssetRefs(tx, ctx, assetIds));
   const result = validateTemplateDocument(raw, {
-    templateKind: kind,
+    // Profil, ne `kind`: pracovní obsah kampaně se kontroluje jako kampaň.
+    templateKind: validationProfileFor(kind),
     fields,
     assetIds: new Set(Object.keys(assets)),
   });
@@ -318,7 +381,7 @@ async function compileFor(
     tx,
     ctx,
     document: design,
-    templateKind: row.kind,
+    templateKind: validationProfileFor(row.kind),
     fields,
     language: languageOf(design),
     assetBaseUrl: config().ASSET_BASE_URL,
@@ -345,7 +408,18 @@ const listRoute = createRoute({
       limit: z.coerce.number().int().min(1).max(100).default(25),
       cursor: z.string().min(1).optional(),
       kind: TemplateKindSchema.optional(),
+      /**
+       * Filtr knihovny. Bez něj se vrací všechny kategorie, což je stav „Vše";
+       * samostatná hodnota `all` by byla druhý způsob, jak říct totéž.
+       */
+      category: TemplateCategorySchema.optional(),
       validation_state: z.enum(['unknown', 'valid', 'invalid']).optional(),
+      /**
+       * Tvar položek. Výchozí `full` je to, co cesta vracela vždycky, takže
+       * stávající volající se nedotkne. `summary` vynechá dokument `design`,
+       * což je zdaleka největší sloupec tabulky a do výběru šablony k ničemu.
+       */
+      view: z.enum(['full', 'summary']).default('full'),
     }),
   },
   responses: {
@@ -435,6 +509,8 @@ const patchRoute = createRoute({
     401: problemResponse('unauthenticated'),
     403: problemResponse('forbidden', 'insufficient_scope'),
     404: problemResponse('not_found'),
+    // 409 přibylo s přejmenováním: jméno může být zabrané jinou šablonou.
+    409: problemResponse('template_name_conflict'),
     412: problemResponse('precondition_failed'),
     413: problemResponse('content_too_many_blocks'),
     422: problemResponse(
@@ -457,7 +533,30 @@ const deleteRoute = createRoute({
     401: problemResponse('unauthenticated'),
     403: problemResponse('forbidden', 'insufficient_scope'),
     404: problemResponse('not_found'),
-    409: problemResponse('template_starter_immutable'),
+    409: problemResponse('template_starter_immutable', 'template_in_use'),
+  },
+});
+
+/**
+ * Vrácení smazané šablony zpět. Trasa existuje proto, aby smazání bylo vratné
+ * a rozhraní ho tak smělo popsat: bez ní by potvrzovací okno muselo tvrdit, že
+ * cesta zpátky není, ačkoli řádek v databázi po měkkém smazání zůstává.
+ *
+ * 409 nastane, když jméno mezitím zabrala jiná šablona.
+ */
+const restoreRoute = createRoute({
+  method: 'post',
+  path: '/templates/{id}/restore',
+  tags: [TAG],
+  summary: 'Vrácení smazané šablony',
+  security: [{ bearerAuth: ['templates:write'] }],
+  request: { params: IdParam },
+  responses: {
+    200: { description: 'Obnoveno', content: { 'application/json': { schema: TemplateResponse } } },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    409: problemResponse('template_name_conflict'),
   },
 });
 
@@ -643,14 +742,48 @@ export function registerTemplateRoutes(app: OpenAPIHono<TemplatesEnv>): void {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'templates:read');
     const q = c.req.valid('query');
-    const page = await withWorkspace(ctx, (tx) =>
-      listTemplates(tx, ctx, {
-        limit: q.limit,
-        ...(q.cursor === undefined ? {} : { cursor: q.cursor }),
-        ...(q.kind === undefined ? {} : { kind: q.kind }),
-        ...(q.validation_state === undefined ? {} : { validationState: q.validation_state }),
-      }),
-    ).catch((error: unknown) => {
+    const options = {
+      limit: q.limit,
+      ...(q.cursor === undefined ? {} : { cursor: q.cursor }),
+      ...(q.kind === undefined ? {} : { kind: q.kind }),
+      ...(q.category === undefined ? {} : { category: q.category }),
+      ...(q.validation_state === undefined ? {} : { validationState: q.validation_state }),
+    };
+    /*
+     * Úsporná podoba se NEOŘEZÁVÁ až z načtených řádků. `design` je největší
+     * sloupec tabulky a `select()` bez výčtu sloupců ho vytáhne z databáze,
+     * i kdyby ho odpověď zahodila; šetřilo by se pak jen na drátě, ne na dotazu.
+     *
+     * Zapojení se dotahuje JEDNÍM dotazem pro celou stránku, ne dotazem na
+     * řádek. Dvacet pět položek v knihovně by jinak znamenalo dvacet pět
+     * dotazů na formuláře a dalších dvacet pět na seznamy.
+     */
+    const page = await withWorkspace(ctx, async (tx) => {
+      const [result, counts] = await Promise.all([
+        q.view === 'summary'
+          ? listTemplateSummaries(tx, ctx, options)
+          : listTemplates(tx, ctx, options),
+        countTemplatesByCategory(tx, ctx),
+      ]);
+      if (q.view !== 'summary') {
+        return {
+          items: (result.items as TemplateRow[]).map(present),
+          nextCursor: result.nextCursor,
+          counts,
+        };
+      }
+      const rows = result.items as TemplateSummaryRow[];
+      const usage = await loadTemplateUsage(
+        tx,
+        ctx,
+        rows.map((row) => row.id),
+      );
+      return {
+        items: rows.map((row) => presentSummary(row, usage.get(row.id) ?? EMPTY_TEMPLATE_USAGE)),
+        nextCursor: result.nextCursor,
+        counts,
+      };
+    }).catch((error: unknown) => {
       // Rozbitý kurzor je chyba volajícího, ne serveru.
       if (error instanceof Error && error.message === 'invalid_cursor') {
         throw new ApiError('validation_failed', {
@@ -659,7 +792,7 @@ export function registerTemplateRoutes(app: OpenAPIHono<TemplatesEnv>): void {
       }
       throw error;
     });
-    return c.json({ items: page.items.map(present), next_cursor: page.nextCursor }, 200);
+    return c.json({ items: page.items, next_cursor: page.nextCursor, counts: page.counts }, 200);
   });
 
   app.openapi(fieldUsageRoute, async (c) => {
@@ -698,24 +831,45 @@ export function registerTemplateRoutes(app: OpenAPIHono<TemplatesEnv>): void {
     assertPermission(ctx, 'templates:write');
     const id = c.req.valid('param').id;
     const body = c.req.valid('json');
-    if (body.design === undefined) {
+    /*
+     * `name` UŽ SE NEZAHAZUJE.
+     *
+     * Schéma `PatchTemplateRequest` pole `name` mělo od začátku, jenže tenhle
+     * handler ho nikdy nepřečetl a `design` navíc vyžadoval, takže samotné
+     * přejmenování skončilo na 422 „Chybí `design`". Přejmenovat šablonu tedy
+     * nešlo vůbec, ani z rozhraní, ani z API, a uživateli zůstávala jména jako
+     * „E-mail z formuláře test".
+     *
+     * Poslat jde jedno, druhé, nebo obojí. Nic z toho je chyba volajícího.
+     */
+    if (body.design === undefined && body.name === undefined) {
       throw new ApiError('validation_failed', {
-        errors: [{ path: 'design', code: 'required_field_missing', message: 'Chybí `design`.' }],
+        errors: [
+          { path: '', code: 'required_field_missing', message: 'Chybí `design` nebo `name`.' },
+        ],
       });
     }
     const service = await serviceContext(ctx);
-    const current = await withWorkspace(ctx, (tx) => load(tx, ctx, id));
-    const document = await requireValidDocument(ctx, service.fields, current.kind, body.design);
+    let row: TemplateRow | undefined;
     try {
-      const result = await saveDesign(
-        service,
-        id,
-        document,
-        body.if_design_hash === undefined
-          ? undefined
-          : Buffer.from(body.if_design_hash.toLowerCase(), 'hex'),
-      );
-      return c.json(present(result.row), 200);
+      if (body.design !== undefined) {
+        const current = await withWorkspace(ctx, (tx) => load(tx, ctx, id));
+        const document = await requireValidDocument(ctx, service.fields, current.kind, body.design);
+        const result = await saveDesign(
+          service,
+          id,
+          document,
+          body.if_design_hash === undefined
+            ? undefined
+            : Buffer.from(body.if_design_hash.toLowerCase(), 'hex'),
+        );
+        row = result.row;
+      }
+      // Přejmenování až PO uložení návrhu, když přijde obojí. Mění dokument
+      // (`meta.name`) i hash, takže jako druhé v pořadí vrací platný stav;
+      // obráceně by ho uložení návrhu přepsalo starým jménem v dokumentu.
+      if (body.name !== undefined) row = await renameTemplate(service, id, body.name);
+      return c.json(present(row!), 200);
     } catch (error) {
       translateDomainError(error);
     }
@@ -730,6 +884,17 @@ export function registerTemplateRoutes(app: OpenAPIHono<TemplatesEnv>): void {
       translateDomainError(error);
     }
     return c.body(null, 204);
+  });
+
+  app.openapi(restoreRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    assertPermission(ctx, 'templates:write');
+    try {
+      const row = await restoreTemplate(await serviceContext(ctx), c.req.valid('param').id);
+      return c.json(present(row), 200);
+    } catch (error) {
+      translateDomainError(error);
+    }
   });
 
   app.openapi(duplicateRoute, async (c) => {
@@ -793,7 +958,7 @@ export function registerTemplateRoutes(app: OpenAPIHono<TemplatesEnv>): void {
 
     const design = row.design as Document;
     const validation = validateTemplateDocument(design, {
-      templateKind: row.kind,
+      templateKind: validationProfileFor(row.kind),
       fields: service.fields,
       assetIds: new Set(assetIdsInDocument(design)),
     });

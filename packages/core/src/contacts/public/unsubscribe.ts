@@ -1,8 +1,10 @@
 import { sql } from 'drizzle-orm';
 import { withWorkspace } from '../../tx';
+import { recordCampaignUnsubscribe } from '../../tracking/unsubscribe/record';
 import { unsubscribe } from '../lists/unsubscribe';
 import { readPublicToken, type PublicEndpoint, type UnsubscribeTokenData } from '../tokens';
 import { anonymousBranding, loadContact, publicScope, type PublicScope } from './context';
+import { publicListLabel } from './list-label';
 
 /**
  * Ověřený veřejný odkaz typu 'u'. Nese projekt v payloadu, takže na rozdíl od potvrzovacího
@@ -41,22 +43,29 @@ export async function readVerifiedToken(
   })();
   if (contact === null) return { ok: false, branding: anonymousBranding() };
 
+  // Jméno se čte v PODOBĚ PRO PŘÍJEMCE, tedy `public_name`, a teprve když chybí,
+  // sáhne se na pracovní `name`. Interní pojmenování („Novinky od 4. srpna 2026")
+  // je poznámka správce, ne text pro toho, kdo se odhlašuje. Viz `list-label.ts`.
   const listName =
     verified.data.listId === null
       ? null
       : await withWorkspace(contact.scope.ctx, async (tx) => {
-          const { rows } = await tx.execute<{ name: string }>(sql`
-            SELECT name FROM lists
+          const { rows } = await tx.execute<{ name: string; public_name: string | null }>(sql`
+            SELECT name, public_name FROM lists
              WHERE id = ${verified.data.listId}::uuid
                AND workspace_id = ${contact.scope.ctx.workspaceId}::uuid
           `);
-          return rows[0]?.name ?? null;
+          const row = rows[0];
+          return row === undefined
+            ? null
+            : publicListLabel({ name: row.name, publicName: row.public_name });
         });
 
   return {
     ok: true,
     token: {
       scope: {
+        ...contact.scope,
         ctx: contact.scope.ctx,
         branding: { ...contact.scope.branding, locale: contact.contactLocale },
       },
@@ -80,11 +89,37 @@ export async function unsubscribeByToken(
   input: { reason: 'link' | 'one_click' | 'preference_center'; forceGlobal?: boolean },
 ): Promise<{ scope: UnsubscribeScope }> {
   const listId = input.forceGlobal === true ? null : token.data.listId;
+
+  /**
+   * KAMPAŇ SE ODHLÁŠENÍ MUSÍ PŘIPSAT.
+   *
+   * Do téhle chvíle tu stálo natvrdo `campaignId: null`, takže odhlášení
+   * z odkazu v kampani se v datech tvářilo jako odhlášení odnikud:
+   * `list_subscriptions.unsubscribe_campaign_id` zůstalo prázdné a ve
+   * statistice kampaně byla nula, i když se člověk prokazatelně odhlásil.
+   *
+   * Kampaň se nehádá. Odhlašovací token nese `message_id` a `message_created_at`,
+   * tedy obě složky primárního klíče zprávy, a `recordCampaignUnsubscribe`
+   * z té zprávy přečte `campaign_id` a zapíše událost `unsubscribe`
+   * do `message_events`. Až z ní počítá report.
+   *
+   * Pořadí je dané: událost se zapisuje PŘED samotným odhlášením, protože
+   * potřebuje jen zprávu, kdežto naopak by se `campaignId` nemělo kde vzít.
+   * Když zpráva neexistuje (starý token, smazaná partition), vrátí funkce
+   * `null` a odhlášení proběhne bez připsání kampani, což je správně.
+   */
+  const recorded = await recordCampaignUnsubscribe({
+    workspaceId: token.data.workspaceId,
+    messageId: token.data.messageId,
+    messageCreatedAt: token.data.messageCreatedAt,
+    contactId: token.data.contactId,
+  });
+
   return unsubscribe(token.scope.ctx, {
     contactId: token.data.contactId,
     // Rozsah se předává vždy explicitně, i když je null, viz kritérium 79.
     listId,
     reason: input.reason,
-    campaignId: null,
+    campaignId: recorded.campaignId,
   });
 }

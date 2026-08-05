@@ -20,23 +20,19 @@ const CONTRACT = path.join(ROOT, 'packages/contracts/openapi.generated.json');
 const ACTION_FILES = [
   'apps/web/src/features/contacts/actions.ts',
   'apps/web/src/features/contacts/edit-actions.ts',
+  'apps/web/src/features/contacts/confirm-actions.ts',
+  'apps/web/src/features/contacts/list-actions.ts',
 ];
 
-/**
- * ZNÁMÁ DÍRA, KTEROU TENHLE TEST HLÍDÁ, ABY SE NEZTRATILA.
+/*
+ * VÝJIMKA UŽ ŽÁDNÁ NENÍ.
  *
- * `POST /suppressions/{id}/reveal` plán P07 popisuje („Celou adresu vrací samostatný
- * endpoint a jeho volání se zapisuje do auditu"), ale v API NENÍ: `suppressions.routes.ts`
- * zná jen výpis, přidání a odebrání. Tlačítko „Zobrazit celou adresu" na obrazovce
- * blokovaných adres proto nic neudělá.
- *
- * Doplnit ho není jednořádková oprava: audit má v části 1 uzavřenou tabulku 3.7
- * s dvaceti šesti akcemi a `suppression.revealed` mezi nimi není, takže by k tomu
- * patřilo rozhodnutí o rozšíření té tabulky včetně obou jazyků. Patří to do vlastního
- * úkolu, ne do opravy hlavičky projektu. Až endpoint vznikne, tenhle výčet se smaže
- * a test zezelená sám.
+ * Byla tu jediná, `/api/v1/suppressions/{param}/reveal`. Endpoint nevznikl a nevzniká:
+ * tlačítko „Zobrazit celou adresu", které na něj mířilo, z obrazovky blokovaných adres
+ * zmizelo, protože seznam je maskovaný záměrně a audit nemá akci `suppression.revealed`,
+ * kterou by odkrytí muselo zapsat. Kdyby se sem výjimka někdy vracela, musí k ní patřit
+ * rozhodnutí, kdy se zase smaže.
  */
-const KNOWN_MISSING = new Set(['/api/v1/suppressions/{param}/reveal']);
 
 /** `/api/v1/lists/{id}/subscribe` a `` `/api/v1/lists/${x}/subscribe` `` na týž tvar. */
 function toTemplate(value: string): string {
@@ -69,30 +65,16 @@ describe('serverové akce kontaktů volají jen existující endpointy', () => {
     expect(known.size).toBeGreaterThan(100);
   });
 
-  it('výjimka platí jen do doby, než endpoint vznikne', () => {
-    // Kdyby výjimka přežila endpoint, mlčky by dovolila i příští překlep ve stejné cestě.
-    for (const candidate of KNOWN_MISSING) {
-      expect(known.has(candidate), `${candidate} už v API je, smaž ho z KNOWN_MISSING`).toBe(false);
-    }
-  });
-
-  it('výjimka se opravdu používá, tedy popisuje živý problém', () => {
+  it('žádná akce nemíří na odkrytí adresy, endpoint pro něj neexistuje', () => {
     const used = new Set(ACTION_FILES.flatMap(usedPaths));
-    for (const candidate of KNOWN_MISSING) {
-      expect(
-        used.has(candidate),
-        `${candidate} už žádná akce nevolá, smaž ho z KNOWN_MISSING`,
-      ).toBe(true);
-    }
+    expect(used.has('/api/v1/suppressions/{param}/reveal')).toBe(false);
   });
 
   for (const file of ACTION_FILES) {
     it(`${file} nemíří na neexistující cestu`, () => {
       const used = usedPaths(file);
       expect(used.length, `v ${file} se nenašlo žádné volání API`).toBeGreaterThan(0);
-      const missing = used.filter(
-        (candidate) => !known.has(candidate) && !KNOWN_MISSING.has(candidate),
-      );
+      const missing = used.filter((candidate) => !known.has(candidate));
       expect(missing, `tyhle cesty v openapi.generated.json nejsou: ${missing.join(', ')}`).toEqual(
         [],
       );

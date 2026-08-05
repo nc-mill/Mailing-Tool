@@ -4,8 +4,10 @@ import {
   loadPreferencesData,
   maskEmail,
   readVerifiedToken,
+  recordSystemLinkVisit,
   type PreferenceAction,
 } from '@mlain/core/contacts';
+import { sanitizePublicToken } from '@mlain/core/net/public-link';
 import { publicTranslator, resolvePublicLocale } from '@/features/public/i18n';
 import { InvalidLinkPage, PreferencesDonePage, PreferencesPage } from '@/features/public/pages';
 import { renderPublicPage } from '@/features/public/render';
@@ -31,12 +33,20 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ token: string }> },
 ): Promise<Response> {
-  const { token } = await params;
+  // Přílepek poštovního klienta se uřízne hned; z očištěné podoby se pak skládá
+  // i `action` formuláře, aby ho POST nezopakoval. Viz `net/public-link.ts`.
+  const token = sanitizePublicToken((await params).token);
   const verified = await readVerifiedToken(token, '/p/**');
   if (!verified.ok) return invalidPage();
 
   const data = await loadPreferencesData(verified.token);
   if (data === null) return invalidPage();
+
+  // Proklik na „Nastavit předvolby" se připíše kampani, ze které odkaz přišel.
+  // Zapisuje se až tady, po dohledání kontaktu: u tokenu bez existujícího
+  // příjemce by událost neměla komu patřit. Opakované načtení stránky nového
+  // řádku nevyrobí, o idempotenci se stará `recordSystemLinkClick`.
+  await recordSystemLinkVisit(verified.token, 'preferences');
 
   const { branding } = verified.token.scope;
   const t = await publicTranslator(branding.locale, 'contacts.public');
@@ -97,7 +107,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ token: string }> },
 ): Promise<Response> {
-  const { token } = await params;
+  const token = sanitizePublicToken((await params).token);
   const body = await readFormBody(request);
 
   const verified = await readVerifiedToken(token, '/p/**');
@@ -108,11 +118,13 @@ export async function POST(
     return new Response(null, { status: 303, headers: { location: `/p/${token}` } });
   }
 
-  await applyPreferenceAction(verified.token, action);
+  const outcome = await applyPreferenceAction(verified.token, action);
 
   // Žádost podle GDPR má vlastní potvrzení: přesměrování zpět na formulář by vypadalo,
-  // že se nestalo nic.
-  if (action.kind === 'export_data' || action.kind === 'erase_data') {
+  // že se nestalo nic. Potvrzení se ale vypíše JEN když se akce opravdu provedla:
+  // s vypnutým centrem předvoleb neprojde nic kromě odhlášení a stránka „přijali jsme
+  // vaši žádost" by lhala.
+  if (outcome.performed && (action.kind === 'export_data' || action.kind === 'erase_data')) {
     const { branding } = verified.token.scope;
     const t = await publicTranslator(branding.locale, 'contacts.public');
     return renderPublicPage(PreferencesDonePage({ t, action: action.kind }), {

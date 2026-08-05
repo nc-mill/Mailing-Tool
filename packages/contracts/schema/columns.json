@@ -51,6 +51,7 @@
     "email": "USER-DEFINED",
     "fingerprint": "bytea",
     "fingerprint_key_id": "smallint",
+    "reason": "text",
     "removed_at": "timestamp with time zone",
     "created_at": "timestamp with time zone"
   }

@@ -17,7 +17,16 @@ export type PublicBranding = {
   brandColor: string | null;
 };
 
-export type PublicScope = { ctx: WorkspaceContext; branding: PublicBranding };
+export type PublicScope = {
+  ctx: WorkspaceContext;
+  branding: PublicBranding;
+  /**
+   * Nabízí projekt veřejné centrum předvoleb? Čte se z `settings.contacts`
+   * (`public_preference_center`, výchozí zapnuto) a rozhoduje o tom, jestli stránka
+   * odhlášení vůbec smí na předvolby odkázat. Odhlášení samo se tím NEŘÍDÍ.
+   */
+  preferenceCenter: boolean;
+};
 
 const FALLBACK_BRANDING: PublicBranding = {
   senderName: '',
@@ -47,8 +56,16 @@ export async function publicScope(
   });
   if (branding === null) return null;
 
-  const settings = (branding.settings ?? {}) as { branding?: { color?: unknown } };
+  const settings = (branding.settings ?? {}) as {
+    branding?: { color?: unknown };
+    contacts?: { public_preference_center?: unknown };
+  };
   const color = settings.branding?.color;
+  // Číst se musí přímo tady, ne přes `readContactsSettings`: veřejná stránka má na
+  // ruce jen tenhle jeden dotaz a druhé kolo do databáze kvůli jednomu booleanu by
+  // zaplatil každý příjemce, který klikne na odhlášení. Zapnuto je výchozí stav,
+  // takže poškozené nebo starší nastavení nabídku předvoleb nesebere.
+  const preferenceCenter = settings.contacts?.public_preference_center;
 
   return {
     ctx,
@@ -57,6 +74,7 @@ export async function publicScope(
       locale: contactLocale ?? branding.locale ?? FALLBACK_BRANDING.locale,
       brandColor: typeof color === 'string' ? color : null,
     },
+    preferenceCenter: preferenceCenter !== false,
   };
 }
 

@@ -14,7 +14,17 @@ describe('ContactsWorkspaceSettingsSchema', () => {
       export_delimiter: ';',
       contact_limit: null,
       require_consent_on_import: true,
+      public_preference_center: true,
     });
+  });
+
+  it('centrum předvoleb je ve výchozím stavu zapnuté', () => {
+    // Bezpečnostní vada byla v tom, že se kdokoli mohl sám přihlásit do libovolného
+    // seznamu; tu zavírá výchozí `public_visible = false` u SEZNAMU. Samotné centrum
+    // předvoleb žádné oprávnění neuděluje, jen dovoluje příjemci upravit jazyk a jméno
+    // a požádat o svá data, takže jeho vypnutí příjemci škodí. Vypnout ho je vědomá
+    // volba správce, ne výchozí stav.
+    expect(ContactsWorkspaceSettingsSchema.parse({}).public_preference_center).toBe(true);
   });
 
   it('výchozí vocative_policy je strict podle rozhodnutí zadavatele, ne balanced', () => {

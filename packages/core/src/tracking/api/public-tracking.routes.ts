@@ -3,8 +3,25 @@ import { PIXEL_GIF, PIXEL_HEADERS } from '../open/gif';
 import type { OpenRequest } from '../open/handle-open';
 import type { ClickRequest, ClickResponse } from '../click/handle-click';
 import { EXPIRED_PATH, REDIRECT_HEADERS } from '../click/handle-click';
+import { sanitizePublicToken } from '../../net/public-link';
 
 const MAX_TOKEN_LENGTH = 512;
+
+/**
+ * Token z cesty, očištěný o přílepek poštovního klienta.
+ *
+ * Gmail připojuje `&source=gmail&ust=…&usg=…` naivním spojením, tedy i k adrese bez
+ * query řetězce. `/t/c/<token>` a `/t/o/<token>` query nemají, takže by se přílepek stal
+ * součástí segmentu cesty a proklik by skončil na `/t/expired` místo na cílové adrese.
+ * Podrobné zdůvodnění je v `packages/core/src/net/public-link.ts`.
+ *
+ * Délka se měří na SYROVÉM parametru: strop má bránit tomu, aby se do ověření dostal
+ * megabajtový řetězec, a to platí i tehdy, když je celý za prvním cizím znakem.
+ */
+function tokenParam(raw: string): string | null {
+  if (raw.length > MAX_TOKEN_LENGTH) return null;
+  return sanitizePublicToken(raw);
+}
 
 export type PublicTrackingDeps = {
   handleOpen: (request: OpenRequest) => void;
@@ -27,8 +44,8 @@ export function createPublicTrackingRoutes(deps: PublicTrackingDeps): Hono {
   const app = new Hono();
 
   app.get('/o/:token', async (c) => {
-    const token = c.req.param('token');
-    if (token.length > MAX_TOKEN_LENGTH) return c.notFound();
+    const token = tokenParam(c.req.param('token'));
+    if (token === null) return c.notFound();
 
     const headers = headerBag(c.req.raw);
     const ip = deps.clientIp?.(headers) ?? null;
@@ -53,8 +70,8 @@ export function createPublicTrackingRoutes(deps: PublicTrackingDeps): Hono {
   });
 
   app.on(['GET', 'HEAD'], '/c/:token', async (c) => {
-    const token = c.req.param('token');
-    if (token.length > MAX_TOKEN_LENGTH) return c.notFound();
+    const token = tokenParam(c.req.param('token'));
+    if (token === null) return c.notFound();
 
     const headers = headerBag(c.req.raw);
     const ip = deps.clientIp?.(headers) ?? null;

@@ -25,6 +25,7 @@ export function ConfirmDialog({
   consequences,
   confirmLabel,
   cancelLabel,
+  note,
   acknowledgement,
   confirmPhrase,
   confirmPhraseLabel,
@@ -47,6 +48,21 @@ export function ConfirmDialog({
   consequences: string[];
   confirmLabel: string;
   cancelLabel: string;
+  /**
+   * Povinná poznámka k akci, kterou server zapíše do auditu. Když ji volající zadá,
+   * potvrzení s prázdným polem neprojde: záznam „kdo a kdy" bez „proč" nikomu,
+   * kdo bude akci později dohledávat, nepomůže.
+   */
+  note?:
+    | {
+        label: string;
+        hint?: string | undefined;
+        value: string;
+        onChange: (value: string) => void;
+        /** Věta pod tlačítkem, dokud je pole prázdné. Tlačítko se nezašeďuje. */
+        missingReason: string;
+      }
+    | undefined;
   /** Povinné u N3. Věta popisuje následek, ne souhlas. */
   acknowledgement?: string | undefined;
   /** Povinné u N4: text, který uživatel opíše, například název projektu. */
@@ -78,10 +94,12 @@ export function ConfirmDialog({
   const [ownTyped, setOwnTyped] = useState('');
   const checkboxId = useId();
   const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const noteRef = useRef<HTMLInputElement | null>(null);
 
   const controlledPhrase = onConfirmPhraseChange !== undefined;
   const typed = controlledPhrase ? (confirmPhrase ?? '') : ownTyped;
 
+  const noteFilled = note === undefined || note.value.trim() !== '';
   const needsCheckbox = level === 'N3' && Boolean(acknowledgement);
   const needsTyping = level === 'N4' && Boolean(confirmPhrase);
   const typingMatches = needsTyping ? typed.trim() === confirmPhrase : true;
@@ -93,6 +111,7 @@ export function ConfirmDialog({
   }, [open]);
 
   function unavailableReason(): string | undefined {
+    if (note !== undefined && !noteFilled) return note.missingReason;
     if (needsCheckbox && !checked) return labels.notYetConfirmed;
     if (needsTyping && !typingMatches) return labels.notYetTyped;
     return undefined;
@@ -104,6 +123,10 @@ export function ConfirmDialog({
     // Tlačítko není disabled (kritérium 18). Když akce nejde provést,
     // `unavailableReason()` už vysvětlení vypisuje pod tlačítkem samo,
     // tady se jen přesune fokus na chybějící krok (rozhodnutí R7).
+    if (!noteFilled) {
+      noteRef.current?.focus();
+      return;
+    }
     if (needsCheckbox && !checked) {
       document.getElementById(checkboxId)?.focus();
       return;
@@ -149,6 +172,16 @@ export function ConfirmDialog({
               {softerAlternative.label}
             </Button>
           </div>
+        ) : null}
+
+        {note ? (
+          <Field label={note.label} {...(note.hint === undefined ? {} : { hint: note.hint })}>
+            <Input
+              ref={noteRef}
+              value={note.value}
+              onChange={(event) => note.onChange(event.target.value)}
+            />
+          </Field>
         ) : null}
 
         {needsCheckbox ? (

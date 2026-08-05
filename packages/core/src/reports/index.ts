@@ -11,6 +11,14 @@ export {
 export { readCampaignProgress, bucketDrift } from './progress/read';
 export { readContactTimeline } from './timeline/query';
 export { readDashboard } from './dashboard/read';
+export { readCampaignWebActivity, type CampaignWebActivity } from './web-activity/campaign';
+export {
+  readWebActivityOverview,
+  WEB_OVERVIEW_PERIODS,
+  type WebActivityOverview,
+  type WebOverviewPeriod,
+} from './web-activity/overview';
+export { ATTRIBUTION_WINDOW_HOURS } from './web-activity/attribution';
 export { EVENT_TYPES, type EventType } from './event-types';
 
 // Router se schválně NEREEXPORTUJE. Cesty se importují z '@mlain/core/reports/api',

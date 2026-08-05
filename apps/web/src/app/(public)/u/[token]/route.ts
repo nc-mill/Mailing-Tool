@@ -3,8 +3,10 @@ import {
   isOneClickBody,
   oneClickRateLimit,
   readVerifiedToken,
+  recordSystemLinkVisit,
   unsubscribeByToken,
 } from '@mlain/core/contacts';
+import { sanitizePublicToken } from '@mlain/core/net/public-link';
 import { publicTranslator } from '@/features/public/i18n';
 import { InvalidLinkPage, OneClickDonePage, UnsubscribePage } from '@/features/public/pages';
 import { renderPublicPage } from '@/features/public/render';
@@ -30,6 +32,12 @@ import { consumeTokenRateLimit } from '@/features/public/rate-limit';
  *    by ukázal, že odhlášení selhalo, a uživatel by místo toho označil zprávu jako spam.
  *    Neúspěšné one-click odhlášení je přesně to, za co Gmail penalizuje doručitelnost,
  *    takže by ochrana způsobila právě tu škodu, které má bránit.
+ *
+ * TOKEN SE ČISTÍ HNED NA VSTUPU. Gmail k odkazu připojuje `&source=gmail&ust=…&usg=…`
+ * naivním spojením, takže se přílepek stane součástí segmentu cesty a tím i tokenu.
+ * `sanitizePublicToken` ho uřízne a všechny adresy, které stránka dál skládá (`action`,
+ * odkaz na předvolby, přesměrování po odhlášení), se staví z očištěné podoby. Kdyby se
+ * skládaly ze syrového parametru, POST z formuláře by přílepek zopakoval.
  */
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,7 +52,7 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ token: string }> },
 ): Promise<Response> {
-  const { token } = await params;
+  const token = sanitizePublicToken((await params).token);
   const verified = await readVerifiedToken(token, '/u/**');
   if (!verified.ok) return invalidPage();
 
@@ -52,12 +60,20 @@ export async function GET(
   const t = await publicTranslator(branding.locale, 'contacts.public');
   const done = new URL(request.url).searchParams.get('done') === '1';
 
+  // Otevření odhlašovací stránky je proklik, samotné odhlášení je jiná událost
+  // a zapisuje ho `unsubscribeByToken`. Kdo si stránku otevře a odejde, nechá
+  // po sobě jen tenhle proklik, a to je přesně ta informace, která odesílateli
+  // dosud chyběla. Přesměrování po odhlášení (`?done=1`) druhý řádek nevyrobí.
+  await recordSystemLinkVisit(verified.token, 'unsubscribe_page');
+
   // GET jen vykreslí stránku a NIC NEODHLÁSÍ (kritérium 57).
   return renderPublicPage(
     UnsubscribePage({
       t,
       action: `/u/${token}`,
-      preferencesHref: `/p/${token}`,
+      // Na předvolby se odkazuje jen tehdy, když je projekt nabízí. Odhlášení samo
+      // zůstává vždycky: je to zákonná povinnost, ne nastavení.
+      preferencesHref: verified.token.scope.preferenceCenter ? `/p/${token}` : null,
       senderName: branding.senderName,
       listName: verified.token.listName,
       scoped: verified.token.data.listId !== null,
@@ -71,7 +87,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ token: string }> },
 ): Promise<Response> {
-  const { token } = await params;
+  const token = sanitizePublicToken((await params).token);
 
   const verified = await readVerifiedToken(token, '/u/**');
   if (!verified.ok) {

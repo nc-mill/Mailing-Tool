@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { wizardLabels } from './labels';
 import { StepFileCheck, type FileCheckPreview } from './step-file-check';
 import { StepMapping, type MappingColumn } from './step-mapping';
-import { StepOptions, type ListOption } from './step-options';
+import { StepOptions, type ImportOptionsValue, type ListOption } from './step-options';
 import { StepPreview, type PreviewRow } from './step-preview';
 import { StepProgress } from './step-progress';
 import { StepUpload } from './step-upload';
@@ -77,6 +77,43 @@ function toApiMapping(
     out[String(index)] = { target: target === undefined || target === '' ? 'ignore' : target };
   });
   return out;
+}
+
+/**
+ * Volby obrazovky převedené do tvaru, který přijímá `ImportOptionsSchema`.
+ *
+ * Schéma je `.strict()`, takže JEDINÝ klíč navíc shodí celý PATCH na 422 a průvodce
+ * se z kroku Volby nehne. Přesně to se dělo: posílal se `tag`, tedy jméno štítku, které
+ * schéma nezná (zná `tag_ids` s identifikátory), a s ním se zahazovaly i všechny ostatní
+ * volby, které obrazovka sbírá. Seznam, stav přihlášení ani prohlášení o souhlasu se
+ * na server nikdy nedostaly.
+ *
+ * Čtvrtá možnost v otázce „Co když už kontakt máme?" míří JINAM než první tři.
+ * „Přeskočit / Doplnit / Přepsat" je `on_conflict`, tedy co s kontaktem, který už
+ * v databázi je, kdežto „Nahlásit jako chybu" mluví o druhém výskytu téže adresy
+ * V SOUBORU, což je `duplicate_in_file`. Ve schématu jsou to dvě různá pole a `error`
+ * v `on_conflict` neexistuje, takže dosazovat ho tam znamenalo 422.
+ */
+function toApiOptions(value: ImportOptionsValue, tagIds: string[]): Record<string, unknown> {
+  const duplicateError = value.onConflict === 'error';
+  return {
+    on_conflict: duplicateError ? 'update' : value.onConflict,
+    duplicate_in_file: duplicateError ? 'error' : 'last',
+    list_ids: value.listId === null ? [] : [value.listId],
+    subscription_status: value.subscriptionStatus,
+    tag_ids: tagIds,
+    // Prohlášení není zaškrtávátko navíc, je to doklad: ukládá se do voleb importu
+    // i do evidence u každého zapsaného souhlasu (4.6.5). Bez něj se souhlas
+    // nezapisuje vůbec, protože nemáme co doložit.
+    consent: value.declaration
+      ? {
+          purpose: 'email_marketing',
+          legal_basis: 'consent',
+          source: 'import',
+          declaration: true,
+        }
+      : null,
+  };
 }
 
 export type ImportWizardProps = {
@@ -209,6 +246,47 @@ export function ImportWizard({
     sample,
   };
 
+  /**
+   * Štítek z obrazovky na identifikátor pro `tag_ids`.
+   *
+   * Obrazovka nabízí VOLNÝ TEXT s předvyplněným datovým štítkem („import-2026-08-01"),
+   * ne výběr z existujících, takže štítek zpravidla ještě neexistuje a jméno se na id
+   * musí nejdřív přeložit. Založení je `POST /api/v1/tags`; když štítek s tímhle jménem
+   * v projektu je (409, index nad `lower(name)`), dohledá se v seznamu, protože „import
+   * ze stejného dne podruhé" je běžný případ, ne chyba.
+   *
+   * Vrací `null` jen při skutečném selhání. Tiché zahození štítku by bylo horší než
+   * chyba: podle něj se podle rozhodnutí R5 dohledává celá naimportovaná skupina,
+   * takže bez něj uživatel přijde o jedinou náhradu za „vrátit tento import".
+   */
+  async function ensureTagId(name: string): Promise<string | null> {
+    const headers = { 'X-Workspace-Id': workspaceId, 'Content-Type': 'application/json' };
+    const created = await fetch('/api/v1/tags', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name }),
+    });
+    if (created.ok) {
+      const body = (await created.json()) as { data: { id: string } };
+      return body.data.id;
+    }
+    if (created.status !== 409) {
+      console.error(`Štítek ${name} se nepodařilo založit: HTTP ${created.status}`);
+      return null;
+    }
+    const found = await fetch(`/api/v1/tags?q=${encodeURIComponent(name)}&limit=100`, {
+      headers: { 'X-Workspace-Id': workspaceId },
+    });
+    if (!found.ok) {
+      console.error(`Štítek ${name} se nepodařilo dohledat: HTTP ${found.status}`);
+      return null;
+    }
+    const body = (await found.json()) as { data: { id: string; name: string }[] };
+    const hit = body.data.find((tag) => tag.name.toLowerCase() === name.toLowerCase());
+    if (hit === undefined) console.error(`Štítek ${name} v seznamu není, i když už existuje.`);
+    return hit?.id ?? null;
+  }
+
   /** Vrací, jestli se uložilo. Průvodce na neuložené změně nesmí jít dál. */
   async function patch(body: Record<string, unknown>): Promise<boolean> {
     if (importId === null) return false;
@@ -248,7 +326,12 @@ export function ImportWizard({
         vypadá jako výsledek a svede uživatele přepsat nastavení, které je
         v pořádku.
       */}
-      {preview.kind === 'failed' && needsPreview ? (
+      {/*
+        Krok Volby je v podmínce schválně, i když na náhledu nestojí. Uložení voleb
+        i založení štítku se dělá právě tady a selhání se dosud nikde neprojevilo:
+        tlačítko „Naimportovat" jen nic neudělalo a jediná stopa zůstala v konzoli.
+      */}
+      {preview.kind === 'failed' && (needsPreview || step === 'options') ? (
         <div role="alert" className="flex flex-col items-start gap-2">
           <p>{t('previewFailed.title')}</p>
           <p>{t('previewFailed.nextStep', { detail: preview.detail })}</p>
@@ -335,8 +418,19 @@ export function ImportWizard({
           }}
           lists={lists}
           onSubmit={async (value) => {
-            if (!(await patch({ options: { on_conflict: value.onConflict, tag: value.tag } })))
-              return;
+            const tagName = value.tag.trim();
+            let tagIds: string[] = [];
+            if (tagName !== '') {
+              const tagId = await ensureTagId(tagName);
+              // Krok se nedokončí. Import bez štítku by se sice spustil, ale skupinu
+              // by pak nešlo dohledat a uživatel by se to dozvěděl až za týden.
+              if (tagId === null) {
+                setPreview({ kind: 'failed', detail: 'tag' });
+                return;
+              }
+              tagIds = [tagId];
+            }
+            if (!(await patch({ options: toApiOptions(value, tagIds) }))) return;
             if (importId !== null) {
               await fetch(`/api/v1/contacts/imports/${importId}/confirm`, {
                 method: 'POST',

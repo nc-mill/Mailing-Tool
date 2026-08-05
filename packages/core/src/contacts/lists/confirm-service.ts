@@ -1,8 +1,11 @@
 import { sql } from 'drizzle-orm';
+import { loadConfig } from '../../config';
 import type { WorkspaceContext } from '../../identity/types';
 import { emitWebhookEvent } from '../../platform/webhooks/emit';
 import { withWorkspace } from '../../tx';
+import { sendFormDeliveryEmail } from '../forms/delivery-email';
 import { recordConsent, type ConsentPurpose } from '../repo/consents';
+import { findFormOfLastSubmission } from '../repo/forms';
 import { byId as listById } from '../repo/lists';
 import {
   consumeConfirmation,
@@ -192,7 +195,53 @@ export async function confirmPublicSubscription(
   ctx: WorkspaceContext,
   input: { token: string; requestIp?: string | null; userAgent?: string | null },
 ): Promise<ConfirmResult> {
-  return confirmSubscription(ctx, { ...input, method: 'POST' }, confirmPorts(ctx));
+  /*
+   * Kdo potvrzuje, se musí zjistit PŘED potvrzením. Potvrzení token spotřebuje,
+   * takže potom už z něj kontakt nedohledáme, a `ConfirmResult` ho nenese:
+   * veřejná stránka ho vědět nesmí, jinak by se z ní stal nástroj na zjišťování,
+   * komu která adresa patří.
+   */
+  const record = await findConfirmation(ctx, input.token);
+  const result = await confirmSubscription(ctx, { ...input, method: 'POST' }, confirmPorts(ctx));
+
+  if (result.view === 'done' && record !== null) {
+    await deliverFormEmailAfterConfirm(ctx, record.contactId);
+  }
+  return result;
+}
+
+/**
+ * Slíbený e-mail po potvrzení přihlášení.
+ *
+ * TADY, ne v `subscribe()`: u formuláře se zapnutým potvrzováním adresy nesmí nic
+ * odejít dřív, než člověk klikne na potvrzovací odkaz. Kdyby e-book odešel hned
+ * po vyplnění, bylo by dvojí potvrzení jen ozdoba, protože slíbenou věc by dostal
+ * i ten, kdo o ni nepožádal, a jeho adresu by šlo takhle zneužít k rozesílce.
+ *
+ * NIKDY NEVYHODÍ VÝJIMKU. Přihlášení je v tuhle chvíli potvrzené a zapsané;
+ * neodeslaný e-mail nesmí ten zápis shodit ani zobrazit člověku chybu. Důvod
+ * neodeslání zůstává v návratové hodnotě `sendFormDeliveryEmail` a v logu senderu.
+ */
+async function deliverFormEmailAfterConfirm(
+  ctx: WorkspaceContext,
+  contactId: string,
+): Promise<void> {
+  try {
+    const form = await findFormOfLastSubmission(ctx, contactId);
+    if (form === null || form.deliveryTemplateId === null) return;
+
+    const email = await emailOf(ctx, contactId);
+    if (email === null) return;
+
+    await sendFormDeliveryEmail(ctx, {
+      form,
+      contactId,
+      email,
+      assetBaseUrl: loadConfig().ASSET_BASE_URL,
+    });
+  } catch {
+    // Viz hlavička: potvrzené přihlášení nesmí spadnout kvůli e-mailu.
+  }
 }
 
 async function emailOf(ctx: WorkspaceContext, contactId: string): Promise<string | null> {

@@ -53,10 +53,13 @@ export function SendScreen({
         }}
       />
       {/* Kontrolní seznam umí jen vypsat, co chybí. Odkaz na nastavení je jediná
-          cesta, jak to vyplnit; bez něj byla obrazovka slepá ulička. */}
+          cesta, jak to vyplnit; bez něj byla obrazovka slepá ulička.
+
+          Adresa nese krok, protože kampaň se otevírá obsahem. Odkaz slibuje
+          nastavení, takže musí skončit v nastavení, ne o krok vedle. */}
       <p>
         <Link
-          href={`${basePath}/campaigns/${campaignId}`}
+          href={`${basePath}/campaigns/${campaignId}?step=settings`}
           className="underline"
           data-testid="to-settings"
         >

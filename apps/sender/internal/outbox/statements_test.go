@@ -11,7 +11,7 @@ func TestRegistryListsEveryNormativeStatement(t *testing.T) {
 	want := []string{
 		"active_campaigns", "campaign_header", "campaign_header_no_meta",
 		"provider_config", "has_compile_meta",
-		"claim_batch", "claim_test_batch",
+		"claim_batch", "claim_non_campaign_batch",
 		"heartbeat", "reaper_released", "reaper_ambiguous", "recovery_pass",
 		"release_remaining", "mark_dispatch_started",
 		"result_sent", "result_retry", "result_failed", "result_fatal", "result_throttled",
@@ -81,7 +81,7 @@ func TestAmbiguousReaperUsesMinus(t *testing.T) {
 // že je zahodí vnitřní spojení, nestačí: řádek s campaign_id IS NULL by ležel
 // ve frontě navěky a nikde by se to neprojevilo jako porucha.
 func TestClaimExcludesNonCampaignMessagesExplicitly(t *testing.T) {
-	for _, name := range []string{"claim_batch", "claim_test_batch"} {
+	for _, name := range []string{"claim_batch", "claim_non_campaign_batch"} {
 		if !strings.Contains(AllStatements()[name], "campaign_id IS NOT NULL") {
 			t.Errorf("dotaz %q nemá výslovnou podmínku campaign_id IS NOT NULL", name)
 		}

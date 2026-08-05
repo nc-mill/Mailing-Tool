@@ -24,6 +24,11 @@ export type FetchOptions = {
    * nenačtou vůbec, ne jen jednotlivé dlaždice.
    */
   workspaceId?: string;
+  /**
+   * Jazyk pro věty skládané na serveru. Když chybí, bere se z `<html lang>`,
+   * tedy z jazyka aplikace. Nikdy se nespoléhá na to, co pošle prohlížeč sám.
+   */
+  locale?: string;
   signal?: AbortSignal;
   fetchImpl?: typeof fetch;
 };
@@ -51,6 +56,29 @@ function workspaceFromLocation(): string | null {
 }
 
 /**
+ * Jazyk APLIKACE, ne prohlížeče. Posílá se jako `Accept-Language`.
+ *
+ * OPRAVA CELÉ TŘÍDY VAD, NE JEDNOHO TEXTU. Věty časové osy skládá server
+ * (`contacts/{id}/timeline`), aby je nemusel implementovat každý klient API,
+ * a jazyk si vyjednává z `Accept-Language`. Prohlížeč tam ale posílá SVOJE
+ * nastavení, na běžném Chromu `en-US,en;q=0.9`. Aplikace běžela česky,
+ * `<html lang="cs">`, a osa přesto psala „Received campaign", „Opened campaign"
+ * a „Granted consent". Katalogu nechybělo nic, české překlady tam byly celou
+ * dobu, jen se nikdy nepoužily. Naměřeno v prohlížeči: tentýž požadavek
+ * s `Accept-Language: cs` vrátil „Dostal kampaň", bez hlavičky angličtinu.
+ *
+ * Zdrojem je `<html lang>`, které nastavuje next-intl podle jazyka projektu.
+ * Vyjednávání na serveru zůstává, jak je: pro cizí klienty API je
+ * `Accept-Language` správná cesta. Chybělo jen to, že náš vlastní klient
+ * o jazyku aplikace mlčel a nechal za sebe mluvit prohlížeč.
+ */
+function localeFromDocument(): string | null {
+  if (typeof document === 'undefined') return null;
+  const lang = document.documentElement.lang.trim();
+  return lang === '' ? null : lang;
+}
+
+/**
  * Tenký klient nad veřejným API. Obrazovky reportů nemluví s databází přímo,
  * takže závisí jen na kontraktu, který vlastní P04, ne na jeho vnitřcích.
  */
@@ -64,6 +92,9 @@ export async function fetchJson<T>(
 
   const workspace = options.workspaceId ?? workspaceFromLocation();
   if (workspace) headers['X-Workspace-Id'] = workspace;
+
+  const locale = options.locale ?? localeFromDocument();
+  if (locale) headers['Accept-Language'] = locale;
 
   const response = await doFetch(url, {
     method: 'GET',
@@ -104,6 +135,29 @@ export function campaignLinksUrl(campaignId: string): string {
   return `/api/v1/campaigns/${campaignId}/links`;
 }
 
+/**
+ * Kliknutí na odkazy v patičce: odhlášení, předvolby, webová verze.
+ * Vlastní adresa, ne pole v `/stats`, protože se ta čísla mění nezávisle
+ * na verzi souhrnu, ze které se skládá ETag.
+ */
+export function campaignSystemLinkClicksUrl(campaignId: string): string {
+  return `/api/v1/campaigns/${campaignId}/system-link-clicks`;
+}
+
+/**
+ * Odeslaná podoba kampaně, VYRENDEROVANÁ. Vrací `compiled_html` interpolované
+ * daty skutečné odeslané zprávy, takže náhled ukazuje to, co příjemce dostal
+ * do schránky, ne zdrojovou podobu se syrovými Liquid výrazy a ne to, co by
+ * z dnešní šablony vzniklo.
+ *
+ * Nezaměňovat se dvěma sousedy: `/campaigns/{id}/preview` z domény kampaní
+ * vrací uložené sloupce tak, jak jsou, a `/campaigns/{id}/audience/preview`
+ * je odhad publika.
+ */
+export function campaignSentContentUrl(campaignId: string): string {
+  return `/api/v1/campaigns/${campaignId}/sent-content`;
+}
+
 export function recipientsUrl(campaignId: string, filter: string, cursor?: string): string {
   const query = new URLSearchParams({ filter, limit: '50' });
   if (cursor) query.set('cursor', cursor);
@@ -122,4 +176,20 @@ export function timelineUrl(
 
 export function dashboardUrl(period: number): string {
   return `/api/v1/dashboard?period=${period}`;
+}
+
+/**
+ * Co příjemci kampaně dělali na webu.
+ *
+ * Vlastní adresa, ne pole v `/stats`. Souhrn kampaně se počítá z `campaign_stats`
+ * a jeho verze se mění po každé události v e-mailu; webová aktivita se počítá
+ * z `web_events` a mění se úplně jinak. Sloučené do jedné odpovědi by ETag
+ * jedné z nich lhal.
+ */
+export function campaignWebActivityUrl(campaignId: string): string {
+  return `/api/v1/campaigns/${campaignId}/web-activity`;
+}
+
+export function webActivityUrl(periodDays: number): string {
+  return `/api/v1/web-activity?period=${periodDays}`;
 }

@@ -7,6 +7,7 @@ import {
   restoreContact,
   changeContactEmail,
 } from '../repo/contacts';
+import { confirmContactManually } from '../repo/contact-confirm';
 import { batchUpsertFromApi, patchContact, upsertContactFromApi } from '../repo/contacts-api';
 import {
   countContacts,
@@ -389,6 +390,60 @@ const changeEmailRoute = createRoute({
 });
 
 /**
+ * Výsledek ručního povýšení. Nese víc než jen kontakt, protože rozhraní musí umět říct
+ * PRAVDU o tom, co se stalo:
+ *
+ *  - `from_status` odliší „nic se neměnilo, už byl potvrzený" od skutečného povýšení,
+ *  - `suppression_blocking` je ta nejdůležitější položka. Stav kontaktu není jediná brána:
+ *    odesílací cesta vylučuje zablokované adresy nezávisle na stavu, takže kontakt může
+ *    být `active` a přesto se mu nic neodešle. Bez tohohle pole by rozhraní ohlásilo
+ *    úspěch a uživatel by čekal na e-maily, které nikdy neodejdou.
+ */
+const ConfirmResultSchema = z.object({
+  data: ContactResponseSchema,
+  confirm: z.object({
+    from_status: z.enum([
+      'active',
+      'unconfirmed',
+      'unsubscribed',
+      'bounced',
+      'complained',
+      'deleted',
+    ]),
+    changed: z.boolean(),
+    lists_confirmed: z.number().int(),
+    suppression_removed: z.array(z.string()),
+    suppression_blocking: z.string().nullable(),
+  }),
+});
+
+/**
+ * Ruční povýšení na potvrzený je SAMOSTATNÁ CESTA, ne `PATCH` s `status: 'active'`.
+ *
+ * Zápis totiž zamčený stav (odhlášen, odraz, stížnost) mlčky zachová, takže by `PATCH`
+ * odpověděl 200 a nic by se nezměnilo. Vlastní endpoint dovoluje ověřit vyšší oprávnění,
+ * zapsat vlastní auditní akci a vrátit, co se stalo s blokací adresy.
+ */
+const confirmRoute = createRoute({
+  method: 'post',
+  path: '/contacts/{id}/confirm',
+  tags: [TAG],
+  summary: 'Ruční povýšení kontaktu na potvrzený',
+  security: [{ bearerAuth: ['contacts:write'] }],
+  request: { params: IdParam, headers: IdempotencyHeaderSchema },
+  responses: {
+    200: {
+      description: 'Kontakt je potvrzený',
+      content: { 'application/json': { schema: ConfirmResultSchema } },
+    },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    422: problemResponse('validation_failed'),
+  },
+});
+
+/**
  * Pořadí registrace není kosmetika. Cesty se statickým posledním segmentem (count, lookup,
  * batch, bulk-delete) musí být zaregistrované dřív než /contacts/{id}, jinak by je router
  * poslal do parametru a klient by dostal invalid_uuid místo odpovědi.
@@ -539,6 +594,30 @@ export function registerContactRoutes(app: OpenAPIHono<ContactsEnv>): void {
     const row = await getContactById(ctx, id);
     if (row === null) throw new ApiError('not_found');
     return c.json({ data: row }, 200);
+  });
+
+  app.openapi(confirmRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    const { id } = c.req.valid('param');
+    // Oprávnění se neověřuje tady, ale v `confirmContactManually`: u kontaktu se živou
+    // blokací adresy je potřeba `suppressions:write` navíc, a to se pozná až po přečtení
+    // adresy. Kontrola v route vrstvě by tu druhou půlku vynechala.
+    const result = await confirmContactManually(ctx, id);
+    const row = await getContactById(ctx, id);
+    if (row === null) throw new ApiError('not_found');
+    return c.json(
+      {
+        data: row,
+        confirm: {
+          from_status: result.fromStatus,
+          changed: result.changed,
+          lists_confirmed: result.listsConfirmed,
+          suppression_removed: result.suppressionRemoved,
+          suppression_blocking: result.suppressionBlocking,
+        },
+      },
+      200,
+    );
   });
 
   app.openapi(changeEmailRoute, async (c) => {

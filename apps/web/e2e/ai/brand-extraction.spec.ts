@@ -34,13 +34,12 @@ test.describe('extrakce značky', () => {
   test('poznámka o písmech je vidět, aby uživatel nečekal firemní font', async ({ page }) => {
     await signIn(page);
     await page.goto(brandSettingsPath());
-    const note = page.getByText(/Vaše firemní písmo se v e-mailu spolehlivě nezobrazí/);
-    // Poznámka patří ke kontrole výsledku. Projekt bez jediné uložené značky
-    // ji nemá kde ukázat, a to je správně: nevymýšlíme profil, který neexistuje.
-    if (await page.getByTestId('brand-review').isVisible()) {
-      await expect(note).toBeVisible();
-    } else {
-      await expect(page.getByText(/Zadejte adresu svého webu/)).toBeVisible();
-    }
+    // Poznámka je od 4. 8. 2026 SOUČÁSTÍ FORMULÁŘE značky, ne kontroly výsledku
+    // extrakce, takže je vidět vždycky. Dřív visela na sekci `brand-review`,
+    // kterou obrazovka ukazovala jen s uloženým profilem: projekt bez značky
+    // se tedy o omezení písem nedozvěděl, přestože si ho zrovna nastavuje.
+    await expect(
+      page.getByText(/Vaše firemní písmo se v e-mailu spolehlivě nezobrazí/),
+    ).toBeVisible();
   });
 });

@@ -37,6 +37,16 @@ type ContactApiRow = {
   email: string;
   first_name: string | null;
   last_name: string | null;
+  /**
+   * Sloupce oslovení. API je vrací od začátku (`ContactResponseSchema`), jen je
+   * seznam do téhle chvíle zahazoval, takže se pátý pád, tedy hlavní odlišující
+   * vlastnost produktu, na nejčastěji otevírané obrazovce vůbec neobjevil.
+   */
+  greeting: string;
+  first_name_vocative: string | null;
+  vocative_confidence: 'high' | 'low' | 'none';
+  vocative_locked: boolean;
+  locale: string;
   status: ContactRow['status'];
   processing_restricted: boolean;
   anonymized_at?: string | null;
@@ -64,6 +74,14 @@ function toRow(contact: ContactApiRow): ContactRow {
     id: contact.id,
     email: contact.email,
     name: [contact.first_name, contact.last_name].filter(Boolean).join(' ') || null,
+    greeting: {
+      greeting: contact.greeting ?? '',
+      first_name: contact.first_name,
+      first_name_vocative: contact.first_name_vocative ?? null,
+      vocative_confidence: contact.vocative_confidence ?? 'none',
+      vocative_locked: contact.vocative_locked ?? false,
+      locale: contact.locale ?? 'cs',
+    },
     status: contact.status,
     processing_restricted: contact.processing_restricted,
     snooze_until: snooze.length > 0 ? snooze.toSorted().at(-1)! : null,
@@ -87,9 +105,13 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
   }
   const workspaceId = access.data.workspace.id;
 
-  // Čtyři nezávislé požadavky najednou. Sekvenčně by se čekání sčítalo a seznam kontaktů
+  // Pět nezávislých požadavků najednou. Sekvenčně by se čekání sčítalo a seznam kontaktů
   // je nejčastěji otevíraná obrazovka produktu.
-  const [page, count, lists, tags] = await Promise.all([
+  //
+  // Pátý je počet nejistých oslovení. Obrazovka „Kontrola oslovení" existovala,
+  // ale vedl na ni jediný odkaz, a to z výsledku importu. Kdo kontakty nenaimportoval,
+  // nebo se k výsledku nevrátil, se o ní nedozvěděl.
+  const [page, count, lists, tags, review] = await Promise.all([
     apiFetch<ContactPage>('/api/v1/contacts', {
       workspaceId,
       searchParams: filtersToQuery(filters, { cursor, limit: 50 }),
@@ -103,15 +125,19 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
       workspaceId,
       searchParams: { limit: 200 },
     }),
+    apiFetch<{ groups: number; contacts: number }>('/api/v1/vocative-review/count', {
+      workspaceId,
+    }),
   ]);
 
   if (!page.ok) return <ContactsProblem problem={page.problem} />;
 
   const tagList = tags.ok ? tags.data.data : [];
+  // Seznamy se do téhle chvíle používaly JEN na popisky filtrů. Hromadné přidání do
+  // seznamu je potřebuje jako nabídku, jinak by nad tabulkou byla nabídka bez obsahu.
+  const listOptions = lists.ok ? lists.data.data : [];
   const names = {
-    lists: Object.fromEntries(
-      (lists.ok ? lists.data.data : []).map((list) => [list.id, list.name]),
-    ),
+    lists: Object.fromEntries(listOptions.map((list) => [list.id, list.name])),
     tags: Object.fromEntries(tagList.map((tag) => [tag.id, tag.name])),
     segments: {},
   };
@@ -126,6 +152,13 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
       filters={filters}
       names={names}
       tags={tagList}
+      lists={listOptions}
+      // Počet nejistých oslovení. Když se endpoint nepodaří zavolat, odkaz se ukáže
+      // bez čísla: odkaz na frontu je pravdivý vždycky, číslo jen tehdy, když ho víme.
+      vocativeReview={{
+        href: `${basePath}/vocative-review`,
+        ...(review.ok ? { uncertain: review.data.contacts } : {}),
+      }}
     />
   );
 }

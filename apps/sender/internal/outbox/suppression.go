@@ -23,6 +23,11 @@ import (
 //
 // Vyloučené zprávy se překlopí na skipped s error_code = 'suppressed' a z dávky
 // vypadnou ještě před krokem D0, tedy dřív, než se čerpá povolenka throttleru.
+//
+// DŮVOD BLOKACE ROZHODUJE, a to jen u transakčního druhu. Odhlášení z marketingu
+// není odvolání souhlasu se zpracováním, takže reset hesla přes něj projít musí,
+// kdežto tvrdý odraz, stížnost a výmaz podle GDPR ho zastaví. Pro kampaň
+// a testovací odeslání platí beze změny, že blokuje každý důvod.
 func (s *Store) FilterSuppressed(ctx context.Context, kr *keyring.Keyring, workspaceID uuid.UUID, msgs []Message) (kept, skipped []Message, err error) {
 	if len(msgs) == 0 {
 		return nil, nil, nil
@@ -52,21 +57,34 @@ func (s *Store) FilterSuppressed(ctx context.Context, kr *keyring.Keyring, works
 		return nil, nil, qerr
 	}
 	blocked := make(map[int]bool, 8)
+	// mark zablokuje zprávu jen tehdy, když ji tenhle důvod blokovat má.
+	// Jedna zpráva může sedět na víc řádcích suppression (adresa i otisk),
+	// takže se příznak jen nastavuje, nikdy neruší.
+	mark := func(idx int, reason string) {
+		if idx < 0 || idx >= len(msgs) {
+			return
+		}
+		if msgs[idx].IsTransactional() && !transactionalBlocks(reason) {
+			return
+		}
+		blocked[idx] = true
+	}
 	for rows.Next() {
 		// email je citext NOT NULL, takže se skenuje do string, ne do ukazatele.
 		// U řádku po výmazu podle GDPR je v něm zástupná hodnota, která se
 		// s žádným příjemcem neshoduje, a blokaci proto nese větev přes otisk.
 		var email string
 		var fingerprint []byte
-		if serr := rows.Scan(&email, &fingerprint); serr != nil {
+		var reason string
+		if serr := rows.Scan(&email, &fingerprint, &reason); serr != nil {
 			rows.Close()
 			return nil, nil, serr
 		}
 		for _, idx := range byEmail[strings.ToLower(strings.TrimSpace(email))] {
-			blocked[idx] = true
+			mark(idx, reason)
 		}
 		if idx, ok := printOwner[hex.EncodeToString(fingerprint)]; ok {
-			blocked[idx] = true
+			mark(idx, reason)
 		}
 	}
 	rows.Close()
@@ -88,4 +106,29 @@ func (s *Store) FilterSuppressed(ctx context.Context, kr *keyring.Keyring, works
 		}
 	}
 	return kept, skipped, nil
+}
+
+// transactionalBlocks je Go protějšek funkce transactionalVerdict z
+// packages/core/src/contacts/suppression/transactional.ts. Obě strany musí
+// dávat stejné odpovědi: kdyby se rozešly, sender propustí, co endpoint
+// zablokoval, nebo naopak, a projeví se to tím, že člověku nedojde reset hesla.
+//
+// Seznam je VÝČET, ne "všechno kromě". Neznámý důvod blokuje: nová hodnota
+// v ck_suppressions__reason bez zatřídění sem je chyba, ale bezpečnější je
+// zprávu neposlat než ji poslat.
+func transactionalBlocks(reason string) bool {
+	switch reason {
+	case "gdpr_erasure", "complaint", "hard_bounce", "ses_suppressed",
+		"soft_bounce_threshold", "invalid":
+		return true
+	case "global_unsubscribe", "one_click_unsubscribe":
+		// Odhlášení z marketingu. Transakční poštu neblokuje.
+		return false
+	case "manual", "import":
+		// Ruční blokace a řádek z importu: záměr nejde poznat, bývá marketingový.
+		// Propouští se, rozhodnutí zadavatele z 5. 8. 2026.
+		return false
+	default:
+		return true
+	}
 }

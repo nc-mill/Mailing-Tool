@@ -16,6 +16,12 @@ import { PLAIN_TEXT_WIDTH, wrapPlain } from './wrap';
 export type TextRenderOptions = {
   normalized: NormalizedDocument;
   linkHref: (href: string, trackable: boolean) => string;
+  /**
+   * Nabízí projekt centrum předvoleb? Vynechání znamená ano. Prostý text musí
+   * odkaz vynechat úplně stejně jako HTML, jinak by dvě podoby téže zprávy
+   * nabízely různé věci. Podrobně v `compile/types.ts`.
+   */
+  preferenceCenterEnabled?: boolean | undefined;
 };
 
 type Collected = { text: string; markers: string[] };
@@ -117,7 +123,7 @@ function emitBlock(lines: string[], block: SectionChild, options: TextRenderOpti
       if (known.props.showUnsubscribe) {
         lines.push(`${known.props.unsubscribeLabel}: {{ unsubscribe_url }}`);
       }
-      if (known.props.showPreferences) {
+      if (known.props.showPreferences && options.preferenceCenterEnabled !== false) {
         lines.push(`${known.props.preferencesLabel}: {{ preferences_url }}`);
       }
       if (known.props.showWebview) {

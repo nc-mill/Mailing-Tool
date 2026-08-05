@@ -13,6 +13,39 @@ type TextInline = Extract<InlineNode, { t: 's' }>;
 type VarInline = Extract<InlineNode, { t: 'var' }>;
 type ParagraphNode = Extract<RichNode, { t: 'p' }>;
 
+/**
+ * Doplní nebo odebere název filtru ve výrazu uzlu `var`.
+ *
+ * PROČ TO TU JE. Emitter vyrábí Liquid tak, že argument filtru vkládá **záměnou
+ * za název filtru**, aby zbytek výrazu zůstal znak po znaku takový, jak ho
+ * napsal autor:
+ *
+ *   expr.replace(/(\|\s*default)(?![\w])/, `$1:${filterSlotMarker(...)}`)
+ *   (packages/emails/src/emitter/rich-text.tsx, varOutput)
+ *
+ * Když ve výrazu `| default` není, záměna nemá co najít a zadaná náhradní
+ * hodnota se do e-mailu NIKDY nedostane. Editor přitom do `expr` filtr nikdy
+ * nepsal, takže náhrada byla celou dobu mrtvá: kontakt bez jména dostal větu
+ * „Dobrý den, ," místo náhradního oslovení.
+ *
+ * Že je rozbitá strana editoru a ne emitteru, je vidět ze zlatého vzorku
+ * `packages/emails/test/__fixtures__/documents/08-filter-slots.json`, kde má
+ * uzel `expr: "contact.first_name | default"` a vedle něj `fallback: "kolego"`.
+ * Kontrakt tedy filtr ve výrazu očekává. Emitter ani zlaté vzorky se proto
+ * nemění, doplňuje se to tady, na jediném převodním místě.
+ *
+ * Pořadí je `x | date | default`, jak popisuje komentář u `VarInline`
+ * v `packages/emails/src/document/types.ts`.
+ */
+function exprWithFilters(expr: string, want: { date: boolean; default: boolean }): string {
+  const strip = (source: string, filter: 'default' | 'date'): string =>
+    source.replace(new RegExp(`\\s*\\|\\s*${filter}(?![\\w])`, 'g'), '');
+  let out = strip(strip(expr, 'default'), 'date').trim();
+  if (want.date) out = `${out} | date`;
+  if (want.default) out = `${out} | default`;
+  return out;
+}
+
 const MARK_BY_FLAG: Array<[flag: 'b' | 'i' | 'u' | 'strike', type: string]> = [
   ['b', 'bold'],
   ['i', 'italic'],
@@ -83,10 +116,18 @@ function tiptapInlines(nodes: TiptapNode[] = []): InlineNode[] {
       continue;
     }
     if (node.type === 'personalization') {
-      const item: VarInline = { t: 'var', expr: String(node.attrs?.expr ?? '') };
-      if (node.attrs?.fallback) item.fallback = String(node.attrs.fallback);
-      if (node.attrs?.dateFormat) {
-        item.dateFormat = String(node.attrs.dateFormat) as NonNullable<VarInline['dateFormat']>;
+      const fallback = node.attrs?.fallback ? String(node.attrs.fallback) : null;
+      const dateFormat = node.attrs?.dateFormat ? String(node.attrs.dateFormat) : null;
+      const item: VarInline = {
+        t: 'var',
+        expr: exprWithFilters(String(node.attrs?.expr ?? ''), {
+          date: dateFormat !== null,
+          default: fallback !== null,
+        }),
+      };
+      if (fallback !== null) item.fallback = fallback;
+      if (dateFormat !== null) {
+        item.dateFormat = dateFormat as NonNullable<VarInline['dateFormat']>;
       }
       out.push(item);
       continue;

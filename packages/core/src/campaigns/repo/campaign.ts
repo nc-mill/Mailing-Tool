@@ -1,4 +1,5 @@
-import { withWorkspace, type WorkspaceContext } from '../../tx';
+import { withWorkspace, type Tx, type WorkspaceContext } from '../../tx';
+import { isStoredCompileMeta, type StoredCompileMeta } from '../compile';
 import { rawSql } from './raw-sql';
 
 export type CampaignRow = {
@@ -30,6 +31,162 @@ export async function getCampaign(ctx: WorkspaceContext, id: string): Promise<Ca
         id,
         ctx.workspaceId,
       ]),
+    );
+    return r.rows[0] ?? null;
+  });
+}
+
+/**
+ * Zdroj kompilace: obsah kampaně a přepínače měření.
+ *
+ * Čte se vlastním dotazem, ne přes `getCampaignFull`: seznam sloupců v `api/service.ts`
+ * slouží odpovědi API a `design` do ní nepatří (je to vnitřek obsahu, ne veřejné pole).
+ */
+export type CampaignCompileSource = {
+  id: string;
+  status: string;
+  subject: string;
+  preheader: string;
+  design: unknown;
+  track_opens: boolean;
+  track_clicks: boolean;
+};
+
+export async function readCampaignCompileSource(
+  ctx: WorkspaceContext,
+  id: string,
+): Promise<CampaignCompileSource | null> {
+  return withWorkspace(ctx, async (tx) => {
+    const r = await tx.execute<CampaignCompileSource>(
+      rawSql(
+        `SELECT id, status, subject, preheader, design, track_opens, track_clicks
+           FROM campaigns
+          WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND kind = 'campaign'`,
+        [id, ctx.workspaceId],
+      ),
+    );
+    return r.rows[0] ?? null;
+  });
+}
+
+/**
+ * Uložení kompilace. `compile_meta` je součástí hodnot neměnných po přechodu
+ * do `sending`, viz rozhodnutí D18, proto je v podmínce výčet stavů, ve kterých
+ * se kampaň ještě dá upravovat. Vrací počet dotčených řádků, tedy nulu, když
+ * kampaň mezitím draft opustila.
+ *
+ * `revision` se zvyšuje proto, že klíč cache senderu je (campaign_id, revision).
+ * Bez inkrementu by po překompilování odesílal staré tělo.
+ */
+export async function saveCompilationTx(
+  tx: Tx,
+  workspaceId: string,
+  campaignId: string,
+  input: {
+    html: string;
+    text: string;
+    usedPaths: string[];
+    compileMeta: unknown;
+    compiledHash: string;
+  },
+): Promise<number> {
+  const r = await tx.execute<{ id: string }>(
+    rawSql(
+      `UPDATE campaigns
+          SET compiled_html = $3, compiled_text = $4, compiled_fields = $5::text[],
+              compile_meta = $6::jsonb, compiled_hash = $7, compiled_at = now(),
+              revision = revision + 1, updated_at = now()
+        WHERE id = $1 AND workspace_id = $2
+          AND deleted_at IS NULL
+          AND status IN ('draft','schedule_missed','failed')
+        RETURNING id`,
+      [
+        campaignId,
+        workspaceId,
+        input.html,
+        input.text,
+        input.usedPaths,
+        JSON.stringify(input.compileMeta),
+        input.compiledHash,
+      ],
+    ),
+  );
+  return r.rows.length;
+}
+
+export async function saveCompilation(
+  ctx: WorkspaceContext,
+  campaignId: string,
+  input: {
+    html: string;
+    text: string;
+    usedPaths: string[];
+    compileMeta: unknown;
+    compiledHash: string;
+  },
+): Promise<number> {
+  return withWorkspace(ctx, (tx) => saveCompilationTx(tx, ctx.workspaceId, campaignId, input));
+}
+
+/** Čte uloženou `compile_meta`. Vrací null, když kampaň ještě nebyla zkompilovaná. */
+export async function readCompileMeta(
+  ctx: WorkspaceContext,
+  campaignId: string,
+): Promise<StoredCompileMeta | null> {
+  return withWorkspace(ctx, async (tx) => {
+    const r = await tx.execute<{ compile_meta: unknown }>(
+      rawSql(
+        `SELECT compile_meta FROM campaigns WHERE id = $1 AND workspace_id = $2
+           AND deleted_at IS NULL`,
+        [campaignId, ctx.workspaceId],
+      ),
+    );
+    const meta = r.rows[0]?.compile_meta ?? null;
+    return isStoredCompileMeta(meta) ? meta : null;
+  });
+}
+
+/**
+ * Uložená podoba kampaně, tedy to, co se doopravdy rozeslalo.
+ *
+ * Čte se vlastním dotazem vedle `readCompileMeta`, protože seznam sloupců
+ * v `api/service.ts` slouží odpovědi o kampani a `compiled_text` ani
+ * `compiled_at` v něm nejsou. Doplňovat je tam kvůli jedné cestě by znamenalo
+ * tahat stovky kilobajtů těla do každého výpisu kampaní.
+ *
+ * `status` a `subject` jsou v témž dotazu schválně: náhled je má ukázat vedle
+ * těla, a druhý dotaz na tutéž řádku by k ničemu nebyl.
+ */
+export type CampaignSentPreview = {
+  status: string;
+  subject: string;
+  revision: number;
+  compiled_html: string | null;
+  compiled_text: string | null;
+  compiled_at: string | null;
+};
+
+/**
+ * Čte uloženou podobu kampaně. NIC nekompiluje: náhled má ukázat, co odešlo,
+ * ne co by vzniklo dnes.
+ *
+ * Vrací null jen tehdy, když kampaň neexistuje, je smazaná, nebo je systémová
+ * (`kind <> 'campaign'`). Podmínka je táž jako v `getCampaignFull`, aby se
+ * náhledem nedalo obejít to, co běžné čtení kampaně nepustí. Kampaň, která se
+ * ještě nekompilovala, se vrací s prázdnými sloupci, ne jako null.
+ */
+export async function readSentPreview(
+  ctx: WorkspaceContext,
+  id: string,
+): Promise<CampaignSentPreview | null> {
+  return withWorkspace(ctx, async (tx) => {
+    const r = await tx.execute<CampaignSentPreview>(
+      rawSql(
+        `SELECT status, subject, revision, compiled_html, compiled_text, compiled_at
+           FROM campaigns
+          WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND kind = 'campaign'`,
+        [id, ctx.workspaceId],
+      ),
     );
     return r.rows[0] ?? null;
   });

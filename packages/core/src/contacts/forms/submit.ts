@@ -1,4 +1,5 @@
 import { keyringFromEnv, type Keyring } from '@mlain/contracts/keyring';
+import { loadConfig } from '../../config';
 import { withWorkspace } from '../../tx';
 import { buildConsentEvidence, consentTextEvidence } from '../consents/evidence';
 import { normalizeEmail } from '../email';
@@ -13,6 +14,7 @@ import { checkSingleSuppression } from '../repo/suppressions';
 import { addTagsToContact } from '../repo/tags';
 import { readContactsSettings } from '../settings';
 import { formFieldName } from './definition';
+import { sendFormDeliveryEmail } from './delivery-email';
 import { checkProtection } from './protection';
 import { sharedFormRateLimiter, type FormRateLimiter } from './rate-limit';
 
@@ -263,8 +265,42 @@ export async function submitForm(
     });
   });
 
-  // 10. Odpověď, vždy stejná.
+  // 10. Slíbený e-mail, typicky odkaz ke stažení. Odchází JEN u formuláře
+  //     s vypnutým potvrzováním adresy; se zapnutým ho posílá až potvrzovací
+  //     odkaz (`confirm-service.ts`), aby slíbenou věc nedostal někdo, kdo
+  //     o ni nepožádal a jen mu někdo cizí zadal adresu.
+  //
+  //     ZÁMĚRNĚ AŽ ZA ZÁPISEM a mimo jeho transakci: odeslání je vedlejší
+  //     účinek a nesmí zdržet ani shodit potvrzení odeslání formuláře.
+  if (!active.doubleOptIn && contactId !== null && active.deliveryTemplateId !== null) {
+    await deliverFormEmail(ctx, active, contactId, validation.email);
+  }
+
+  // 11. Odpověď, vždy stejná.
   return finish();
+}
+
+/**
+ * Odeslání slíbeného e-mailu. Nikdy nevyhodí výjimku a nikdy nezmění odpověď
+ * formuláře: kontakt je v tuhle chvíli zapsaný a odpověď musí zůstat stejná pro
+ * všechny (rozhodnutí R9). Neodeslání se pozná z počtu zpráv, ne ze stránky.
+ */
+async function deliverFormEmail(
+  ctx: PublicForm['ctx'],
+  form: PublicForm,
+  contactId: string,
+  email: string,
+): Promise<void> {
+  try {
+    await sendFormDeliveryEmail(ctx, {
+      form,
+      contactId,
+      email,
+      assetBaseUrl: loadConfig().ASSET_BASE_URL,
+    });
+  } catch {
+    // Viz hlavička.
+  }
 }
 
 /**

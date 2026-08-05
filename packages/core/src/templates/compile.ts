@@ -2,6 +2,7 @@ import { compileDocument } from '@mlain/emails/compile/compile';
 import type { CompileContext, CompileResult } from '@mlain/emails/compile/types';
 import type { Document } from '@mlain/emails/document/types';
 import type { FieldCatalog } from '../contacts/fields/catalog';
+import { readContactsSettings } from '../contacts/settings';
 import type { WorkspaceContext } from '../identity/types';
 import type { Tx } from '../tx';
 import { assetIdsInDocument, loadAssetRefs } from './assets';
@@ -27,10 +28,17 @@ export type CompileTemplateInput = {
  * Obal nad kontraktem: dohledá assety, znovu zvaliduje a teprve pak kompiluje.
  * Validace před kompilací je tvrdá brána z 3.8.4 C: kampaň s rozbitou šablonou
  * nesmí odejít ani tehdy, když se kontaktní pole smazalo až po uložení šablony.
+ *
+ * Nastavení projektu se čte TADY, protože kompilace je poslední místo, kde jde
+ * do patičky sáhnout. Odesílač už interpoluje hotové HTML a odkaz z něj vyříznout
+ * nedokáže; podrobně v `CompileContext.preferenceCenterEnabled`.
  */
 export async function compileTemplate(input: CompileTemplateInput): Promise<CompileResult> {
   const assetIds = assetIdsInDocument(input.document);
-  const assets = await loadAssetRefs(input.tx, input.ctx, assetIds);
+  const [assets, settings] = await Promise.all([
+    loadAssetRefs(input.tx, input.ctx, assetIds),
+    readContactsSettings(input.tx, input.ctx),
+  ]);
 
   const validation = validateTemplateDocument(input.document, {
     templateKind: input.templateKind,
@@ -56,6 +64,9 @@ export async function compileTemplate(input: CompileTemplateInput): Promise<Comp
     // `exactOptionalPropertyTypes` nesmí předat výslovné undefined, jen vynechat.
     ...(input.preheader === undefined ? {} : { preheader: input.preheader }),
     currentYear: (input.now ?? new Date()).getUTCFullYear(),
+    // Vypnuté centrum předvoleb vyřadí odkaz „Nastavit předvolby" z patičky,
+    // z HTML i z prostého textu. Odhlašovací odkaz zůstává vždy.
+    preferenceCenterEnabled: settings.public_preference_center,
   };
   return compileDocument(validation.document!, ctx);
 }

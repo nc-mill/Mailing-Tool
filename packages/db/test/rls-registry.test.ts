@@ -108,7 +108,7 @@ describe('registr RLS proti skutečnému stavu', () => {
     }
   });
 
-  it('celkem existuje 88 politik', async () => {
+  it('celkem existuje 90 politik', async () => {
     const { rows } = await h
       .as('mlain_migrator')
       .query<{ n: number }>(
@@ -118,6 +118,8 @@ describe('registr RLS proti skutečnému stavu', () => {
     // projekty (`maintenance_scan` na workspaces, campaigns a sender_domains,
     // `maintenance_purge` na workspaces). Exaktní číslo je pojistka proti
     // politice, kterou někdo přidá bez záznamu v registru.
-    expect(rows[0].n).toBe(88);
+    // 88 → 90: migrace 0011 přidala `asset_public_lookup` na `assets`
+    // a migrace 0013 `ws_isolation` na `sender_identities`.
+    expect(rows[0].n).toBe(90);
   });
 });

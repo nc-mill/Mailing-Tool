@@ -1,4 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { BLOCK_ID_PATTERN } from '@mlain/emails/document/ids';
+import { loadDocument } from '@mlain/emails/document/migrate';
+import { validateDocumentSchema } from '@mlain/emails/document/schema';
+import type { FooterBlock, InlineNode } from '@mlain/emails/document/types';
+import { richTextFieldsOf, walkBlocks, walkRichText } from '@mlain/emails/document/walk';
 import {
   DEMO_CAMPAIGN,
   DEMO_CONTACTS,
@@ -202,6 +207,83 @@ describe('zbytek sady', () => {
     // se filtrem nedal vybrat a uživatel by ho v tabulce nenašel.
     for (const contact of DEMO_CONTACTS) {
       expect(contact.tagKeys, contact.email).toContain('ukazkova-data');
+    }
+  });
+});
+
+/**
+ * Ukázkové šablony musí být PLATNÉ dokumenty Mlain Mailer Document v1.
+ *
+ * Tenhle blok existuje kvůli konkrétní vadě: šablony nesly vymyšlený tvar
+ * `{ version, sections: [...] }`, který žádná vrstva neznala. Nešly zkompilovat,
+ * takže ukázková kampaň skončila na `template_document_invalid` a nedala se
+ * odeslat. Sémantická pravidla (odhlašovací odkaz, merge tagy proti katalogu
+ * polí) ověřuje `seed.db.test.ts` proti skutečné databázi; tady jde o tvar,
+ * na který stačí schéma bez databáze.
+ */
+describe('ukázkové šablony jsou platné dokumenty', () => {
+  const inlineNodes = (key: string): InlineNode[] => {
+    const design = DEMO_TEMPLATES.find((t) => t.key === key)!.design;
+    const nodes: InlineNode[] = [];
+    for (const { block } of walkBlocks(design)) {
+      for (const field of richTextFieldsOf(block)) {
+        for (const { node } of walkRichText(field.rich, '')) nodes.push(node);
+      }
+    }
+    return nodes;
+  };
+
+  it('projdou JSON Schema dokumentu v1', () => {
+    for (const template of DEMO_TEMPLATES) {
+      const result = validateDocumentSchema(template.design);
+      expect(result.ok ? [] : result.issues, template.key).toEqual([]);
+    }
+  });
+
+  it('projdou načtením přes migraci verzí, tedy mají známou schemaVersion', () => {
+    for (const template of DEMO_TEMPLATES) {
+      expect(() => loadDocument(template.design), template.key).not.toThrow();
+      expect(template.design.schemaVersion).toBe(1);
+    }
+  });
+
+  it('kořenem jsou sekce a identifikátory bloků jsou jedinečné a ve správném formátu', () => {
+    for (const template of DEMO_TEMPLATES) {
+      for (const block of template.design.blocks) expect(block.type).toBe('section');
+      const ids = [...walkBlocks(template.design)].map((visit) => visit.block.id);
+      for (const id of ids) expect(id, `${template.key}: ${id}`).toMatch(BLOCK_ID_PATTERN);
+      expect(new Set(ids).size, template.key).toBe(ids.length);
+    }
+  });
+
+  it('oslovení je uzel var s cestou contact.greeting, ne text se závorkami', () => {
+    // Vokativ je hlavní funkce produktu. Kdyby oslovení zůstalo obyčejným
+    // textem `{{ contact.greeting }}`, přišel by zákazníkovi e-mail
+    // se závorkami místo jména.
+    for (const template of DEMO_TEMPLATES) {
+      const nodes = inlineNodes(template.key);
+      const vars = nodes.filter((node) => node.t === 'var').map((node) => node.expr);
+      expect(vars, template.key).toContain('contact.greeting');
+      for (const node of nodes) {
+        if (node.t === 's') expect(node.v, template.key).not.toMatch(/\{\{|\{%/);
+      }
+    }
+  });
+
+  it('mají patičku s odhlašovacím odkazem, jinak je dokument podle pravidla S4 neplatný', () => {
+    for (const template of DEMO_TEMPLATES) {
+      const footers = [...walkBlocks(template.design)]
+        .map((visit) => visit.block)
+        .filter((block): block is FooterBlock => block.type === 'footer');
+      expect(footers, template.key).toHaveLength(1);
+      expect(footers[0]!.props.showUnsubscribe, template.key).toBe(true);
+    }
+  });
+
+  it('jméno v dokumentu se shoduje se jménem šablony, protože podle něj se pojmenuje kopie', () => {
+    for (const template of DEMO_TEMPLATES) {
+      expect(template.design.meta.name).toBe(template.name);
+      expect(template.design.meta.language).toBe('cs');
     }
   });
 });

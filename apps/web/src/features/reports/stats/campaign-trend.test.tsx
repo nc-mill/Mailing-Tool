@@ -1,7 +1,7 @@
 // Matchery jest-dom se typují modulovou augmentací, viz komentář v setup-form.test.tsx.
 import '@testing-library/jest-dom/vitest';
 
-import { render, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import csReports from '../../../../../../packages/i18n/messages/cs/reports.json';
@@ -43,5 +43,46 @@ describe('CampaignTrend', () => {
     expect(url).toBe('/api/v1/dashboard?period=90');
     const headers = new Headers(init.headers);
     expect(headers.get('X-Workspace-Id')).toBe('ws-1');
+  });
+
+  /**
+   * Statistiky nesmí být slepá ulice. Zadavatel report hledal právě tady
+   * („předpokládal bych, že to bude ve statistikách") a tabulka měr sice
+   * kampaně vypsala, ale prokliknout se z ní na konkrétní report nedalo.
+   */
+  it('jméno kampaně v tabulce vede na její report', async () => {
+    const items = [1, 2, 3].map((n) => ({
+      campaignId: `c${n}`,
+      name: `Kampaň ${n}`,
+      startedAt: `2026-07-0${n}T10:00:00.000Z`,
+      sent: 1000,
+      delivered: 990,
+      deliveredEffective: 990,
+      opens: 400,
+      opensApple: 100,
+      clicks: 90,
+      unsubscribed: 3,
+    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ tiles: { recent_campaigns: { status: 'ok', data: { items } } } }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
+      ),
+    );
+
+    render(
+      <NextIntlClientProvider locale="cs" messages={messages} timeZone="Europe/Prague">
+        <CampaignTrend workspaceSlug="demo" />
+      </NextIntlClientProvider>,
+    );
+
+    const link = await screen.findByRole('link', { name: 'Kampaň 2' });
+    expect(link).toHaveAttribute('href', '/w/demo/campaigns/c2/report');
   });
 });

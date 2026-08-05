@@ -42,6 +42,47 @@ export class AssetProcessingError extends Error {
   }
 }
 
+/**
+ * Pojistka na VÝSTUPU: uložit se smí jen to, co přečte každý poštovní klient.
+ *
+ * Kontroluje se MAGICKÉ ČÍSLO HOTOVÝCH BAJTŮ, ne to, co jsme chtěli zakódovat.
+ * Rozdíl není teoretický: `sharp` vybírá kodek podle volané metody, ale kdyby
+ * se do `encode()` někdy dostala větev navíc, nebo kdyby budoucí verze libvips
+ * u některého vstupu zvolila jiný kontejner, výsledek by se od `mimeType`
+ * v databázi rozešel. Poznalo by se to teprve tím, že části příjemců chybí
+ * v e-mailu obrázek, a nenahlásí to nikdo: odesílatel vidí svůj Gmail, kde
+ * WebP i AVIF fungují.
+ *
+ * Kontrola tedy stojí mezi kodekem a diskem a je záměrně nedůvěřivá vůči
+ * vlastnímu kódu. Cena je jedno porovnání pár bajtů na obrázek.
+ *
+ * GIF ve výčtu ZŮSTÁVÁ, přestože zadání mluví o JPEG a PNG. Není to změkčení:
+ * zadání zakazuje formáty, které starší Outlook a Apple Mail nezobrazí, a GIF
+ * je z celé trojice ten nejstarší a nejlépe podporovaný. Vyhodit ho by
+ * neznamenalo bezpečnější e-mail, ale ztrátu animací, které jsou v newsletteru
+ * běžná a funkční věc. Zakázané jsou WebP, AVIF a spol., ne stáří formátu.
+ */
+function assertStoredFormat(data: Buffer, declared: StoredMimeType): void {
+  const actual = detectFormat(data);
+  const matches =
+    actual.kind === 'raster' &&
+    ((actual.format === 'jpeg' && declared === 'image/jpeg') ||
+      (actual.format === 'png' && declared === 'image/png') ||
+      (actual.format === 'gif' && declared === 'image/gif'));
+  if (matches) return;
+
+  const what =
+    actual.kind === 'raster' || actual.kind === 'rejected'
+      ? actual.format
+      : actual.kind === 'convert'
+        ? actual.format
+        : actual.kind;
+  throw new AssetProcessingError(
+    'asset_corrupt',
+    `Zpracování vyrobilo ${what} místo ${declared}. Do e-mailu se smí jen JPEG, PNG nebo GIF.`,
+  );
+}
+
 export type NormalizedImage = {
   data: Buffer;
   mimeType: StoredMimeType;
@@ -99,9 +140,12 @@ export async function normalizeUpload(input: Buffer): Promise<NormalizedImage> {
 
   if (detected.kind === 'rejected' || detected.kind === 'unknown') {
     const what = detected.kind === 'rejected' ? detected.format : 'neznámý formát';
+    // Hláška jmenuje i WebP a AVIF, protože ty se PŘIJÍMAJÍ a převedou.
+    // Dřív tu stálo „Použijte JPEG, PNG, GIF nebo SVG", což byla nepravda
+    // v neprospěch uživatele: poslala ho převádět soubor, který server bere.
     throw new AssetProcessingError(
       'asset_unsupported_format',
-      `Formát ${what} se nahrát nedá. Použijte JPEG, PNG, GIF nebo SVG.`,
+      `Formát ${what} se nahrát nedá. Použijte JPEG, PNG, GIF, WebP, AVIF nebo SVG.`,
     );
   }
 
@@ -131,6 +175,7 @@ export async function normalizeUpload(input: Buffer): Promise<NormalizedImage> {
   // GIF, prošel výš. Rozměr se nezmenšuje, protože zmenšení animace je právě
   // ta operace, která ji rozbíjí.
   if (animated) {
+    assertStoredFormat(input, 'image/gif');
     return {
       data: input,
       mimeType: 'image/gif',
@@ -156,6 +201,7 @@ export async function normalizeUpload(input: Buffer): Promise<NormalizedImage> {
     const { data, info } = await encode(resized, target, metadata).toBuffer({
       resolveWithObject: true,
     });
+    assertStoredFormat(data, target);
     return { data, mimeType: target, width: info.width, height: info.height, frameCount: 1 };
   } catch (error) {
     throw toAssetError(error);
@@ -233,6 +279,7 @@ async function rasterizeSvg(input: Buffer): Promise<NormalizedImage> {
       .resize({ width: SVG_RASTER_WIDTH, fit: 'inside', withoutEnlargement: true })
       .png({ compressionLevel: 9 })
       .toBuffer({ resolveWithObject: true });
+    assertStoredFormat(data, 'image/png');
     return {
       data,
       mimeType: 'image/png',
@@ -296,6 +343,7 @@ async function renderVariant(
         : { width: spec.width, fit: 'inside', withoutEnlargement: true },
     );
     const { data, info } = await encode(pipeline, mimeType).toBuffer({ resolveWithObject: true });
+    assertStoredFormat(data, mimeType);
     return { variant: spec.name, data, mimeType, width: info.width, height: info.height };
   } catch (error) {
     throw toAssetError(error);

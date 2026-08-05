@@ -2,10 +2,12 @@
 
 import { useFormatter, useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
+import { Button } from '@mlain/ui/components/button';
 import { Skeleton } from '@mlain/ui/components/skeleton';
 import { DataTable, type DataTableLabels } from '@mlain/ui/patterns/data-table';
 import { EmptyState, ErrorBlock } from '@mlain/ui/patterns/states';
 import { StatusBadge } from './status-badge';
+import { campaignHref } from './campaign-target';
 
 export type CampaignRow = {
   id: string;
@@ -19,12 +21,17 @@ export type CampaignRow = {
 export type CampaignListState = 'loading' | 'empty' | 'error' | 'data';
 
 /**
- * Stavy, ve kterých se kampaň ještě dodělává. Shodné s bránou v `PATCH /campaigns/{id}`.
+ * Stavy, ze kterých API kampaň smaže. TÝŽ výčet jako `DELETABLE_STATUSES`
+ * v jádru: kampaň, která nikdy neodešla, se nemá čím držet.
  *
- * Řádek v takovém stavu vede na NASTAVENÍ, ne na průběh: průběh u rozepsané
- * kampaně ukazuje samé nuly a nenabízí místo, kde se dá kampaň dokončit.
+ * Není to totéž co „vede na nastavení" (`campaignTarget`): naplánovaná kampaň
+ * se otevírá v nastavení, ale smazat se nedá, dokud se plán nezruší.
+ *
+ * V řádcích ostatních stavů se tlačítko neukazuje vůbec. Tlačítko, které vždycky
+ * jen ohlásí, že to nejde, je horší než žádné; vysvětlení, proč smazat nejde,
+ * patří na detail kampaně, kde je vidět celý její stav.
  */
-const DRAFT_STATUSES = new Set(['draft', 'schedule_missed']);
+const DELETABLE_STATUSES = new Set(['draft', 'schedule_missed']);
 
 /**
  * Čtyři stavy obrazovky (S1, S3, S4 a data). Prázdný stav vysvětluje pojem a nabízí
@@ -37,12 +44,19 @@ export function CampaignList({
   basePath,
   onCreate,
   onRetry,
+  onDelete,
 }: {
   rows: CampaignRow[];
   state: CampaignListState;
   basePath?: string;
   onCreate?: () => void;
   onRetry?: () => void;
+  /**
+   * Otevře potvrzení smazání. Dialog i akce patří obalu, protože seznam sám
+   * o projektu nic neví; bez téhle funkce se sloupec s mazáním nevykreslí,
+   * aby v tabulce nevzniklo tlačítko, které nikam nevede.
+   */
+  onDelete?: (row: CampaignRow) => void;
 }) {
   const t = useTranslations('campaigns');
   const tc = useTranslations('common');
@@ -152,16 +166,45 @@ export function CampaignList({
           // musí složit tentýž řetězec, jinak vznikne nesoulad hydratace.
           cell: (row: CampaignRow) => format.dateTime(new Date(row.updated_at), 'short'),
         },
+        /*
+         * Sloupec s mazáním vzniká JEN tehdy, když obal dodal `onDelete`.
+         * Tlačítko bez napojené akce je mrtvé tlačítko a v tabulce se pozná
+         * až tím, že po kliknutí nic není.
+         *
+         * Klik na tlačítko neotevře kampaň: `DataTable` u řádku ignoruje cíle
+         * uvnitř `button`, `a`, `input` a `label`.
+         */
+        ...(onDelete
+          ? [
+              {
+                id: 'delete',
+                header: t('delete.columnHeader'),
+                cell: (row: CampaignRow) =>
+                  DELETABLE_STATUSES.has(row.status) ? (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      data-testid={`delete-campaign-${row.id}`}
+                      onClick={() => onDelete(row)}
+                    >
+                      {t('delete.open')}
+                    </Button>
+                  ) : null,
+              },
+            ]
+          : []),
       ]}
       pagination={{ hasMore: false, canGoBack: false, onPrevious: () => {}, onNext: () => {} }}
       {...(basePath
         ? {
+            /*
+             * Kam řádek vede, rozhoduje `campaignHref` podle stavu, ne tahle
+             * komponenta: totéž rozhodnutí dělá i serverová stránka, když
+             * přesměrovává ručně napsanou adresu. Dvě kopie pravidla by se
+             * dřív nebo později rozešly.
+             */
             onRowActivate: (row: CampaignRow) =>
-              router.push(
-                DRAFT_STATUSES.has(row.status)
-                  ? `${basePath}/${row.id}`
-                  : `${basePath}/${row.id}/progress`,
-              ),
+              router.push(campaignHref(basePath, row.id, row.status)),
           }
         : {})}
     />

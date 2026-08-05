@@ -312,12 +312,41 @@ export const lists = pgTable(
     sendWelcome: boolean().notNull().default(false),
     confirmationMaxResends: smallint().notNull().default(3),
     isDefault: boolean().notNull().default(false),
+    /**
+     * Nabízí se seznam ve veřejném centru předvoleb k PŘIHLÁŠENÍ?
+     *
+     * Výchozí hodnota je `false` a je to bezpečnostní rozhodnutí, ne opatrnost.
+     * Dokud sloupec neexistoval, mohl se držitel jakéhokoliv odhlašovacího odkazu sám
+     * přihlásit do libovolného seznamu projektu, tedy i do takového, který znamená nárok
+     * (VIP, zákazníci se slevou). `false` u existujících seznamů je proto jediná možná
+     * migrace: nabízet se smí jen to, co správce vědomě nabídnout chtěl.
+     *
+     * ODHLÁŠENÍ TENHLE PŘÍZNAK NEŘÍDÍ. Odhlásit se jde vždy a ze všeho, je to zákonná
+     * povinnost a nesmí jít vypnout.
+     */
+    publicVisible: boolean().notNull().default(false),
+    /**
+     * Jméno, které uvidí PŘÍJEMCE. `name` je pracovní poznámka správce („Novinky od
+     * 4. srpna 2026") a příjemci neříká nic. Když chybí, ukáže se `name`, protože
+     * bezejmenné zaškrtávátko je horší než pracovní název.
+     */
+    publicName: text(),
+    /** Věta pod veřejným názvem: co příjemci v odběru chodí a jak často. */
+    publicDescription: text(),
     deletedAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     check('ck_lists__name_len', sql`char_length(${t.name}) BETWEEN 1 AND 120`),
+    check(
+      'ck_lists__public_name_len',
+      sql`${t.publicName} IS NULL OR char_length(${t.publicName}) BETWEEN 1 AND 120`,
+    ),
+    check(
+      'ck_lists__public_description_len',
+      sql`${t.publicDescription} IS NULL OR char_length(${t.publicDescription}) BETWEEN 1 AND 500`,
+    ),
     check('ck_lists__opt_in', sql`${t.optIn} IN ('single','double')`),
     check('ck_lists__confirmation_mode', sql`${t.confirmationMode} IN ('one_step','two_step')`),
     check('ck_lists__confirmation_ttl', sql`${t.confirmationTtlHours} BETWEEN 1 AND 720`),
@@ -858,6 +887,16 @@ export const forms = pgTable(
     redirectUrl: text(),
     successMessage: jsonb().notNull().default({}),
     active: boolean().notNull().default(true),
+    /**
+     * Šablona e-mailu, který přijde člověku po vyplnění formuláře (migrace 0015).
+     * NULL znamená, že formulář žádný e-mail neposílá.
+     *
+     * Cizí klíč `fk_forms__delivery_template` je JEN v migraci, ne tady, stejně
+     * jako u `lists.confirmation_template_id`. Zapsat ho přes `.references(() =>
+     * templates.id)` by znamenalo import z `content.ts` do `contacts.ts`, a ten
+     * modul importuje kontakty zpátky.
+     */
+    deliveryTemplateId: uuid(),
     submissionCount: bigint({ mode: 'number' }).notNull().default(0),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

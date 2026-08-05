@@ -15,7 +15,7 @@ func TestTestMessageIsClaimedForDraftCampaign(t *testing.T) {
 	s := db.SeedCampaign(t, "draft")
 	db.SeedMessages(t, s, 3, "test")
 
-	batch, err := store(t, db, "sender-A").ClaimTestBatch(context.Background(), 20, 300)
+	batch, err := store(t, db, "sender-A").ClaimNonCampaignBatch(context.Background(), 20, 300)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestTestClaimSkipsDeletedCampaign(t *testing.T) {
 		`UPDATE campaigns SET deleted_at = now() WHERE id = $1`, s.CampaignID); err != nil {
 		t.Fatal(err)
 	}
-	batch, err := store(t, db, "sender-A").ClaimTestBatch(context.Background(), 20, 300)
+	batch, err := store(t, db, "sender-A").ClaimNonCampaignBatch(context.Background(), 20, 300)
 	if err != nil {
 		t.Fatal(err)
 	}

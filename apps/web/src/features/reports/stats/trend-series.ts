@@ -11,11 +11,35 @@ export type TrendCampaign = {
   sent: number;
   delivered: number;
   deliveredEffective: number;
+  /**
+   * Víme u téhle kampaně, kolik zpráv dorazilo? Server ho posílá jako
+   * `deliveredKnown` v dlaždici `recent_campaigns`.
+   */
+  deliveredKnown?: boolean;
   opens: number;
   opensApple: number;
   clicks: number;
   unsubscribed: number;
 };
+
+/**
+ * Kampaně, ze kterých se smí kreslit graf měr.
+ *
+ * VZNIKLO Z POHLEDU NA OBRAZOVKU. Trend ukazoval „Doručeno 100 %" a „Otevřelo
+ * 87 %" u kampaní, od jejichž odesílací služby nedorazila ani jedna zpráva
+ * o osudu e-mailů. Jmenovatel byl dopočtený („odesláno minus odrazy", jenže
+ * odrazy taky neznáme), takže čára v grafu nepopisovala měření, ale výpočet
+ * z neznámé veličiny.
+ *
+ * Kampaň se proto z grafu VYPOUŠTÍ a obrazovka o tom napíše větu. Nakreslit ji
+ * v nule by tvrdilo, že nikomu nic nedošlo, což je jiná lež.
+ *
+ * Chybějící `deliveredKnown` (starší odpověď serveru) se bere jako známé:
+ * chování zůstane takové, jaké bylo, místo aby se graf tiše vyprázdnil.
+ */
+export function withKnownDelivery(campaigns: TrendCampaign[]): TrendCampaign[] {
+  return campaigns.filter((campaign) => campaign.deliveredKnown !== false);
+}
 
 export type TrendRow = {
   campaignId: string;

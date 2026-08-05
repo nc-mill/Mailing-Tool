@@ -52,6 +52,31 @@ describe('kritérium 35: každá registrovaná cesta je v dokumentu', () => {
     expect(buildOpenApiDocument(app).openapi.startsWith('3.1')).toBe(true);
   });
 
+  /**
+   * Bez definice schématu je celý dokument plný `security: [{ bearerAuth }]`,
+   * které odkazuje do prázdna. Generátory klientů z toho udělají klienta BEZ
+   * autorizace a zákazník to zjistí až tím, že mu každé volání vrací 401.
+   */
+  it('components.securitySchemes definuje bearerAuth, na které se security odkazuje', () => {
+    const document = buildOpenApiDocument(app);
+    const schemes = (document.components ?? {})['securitySchemes'] as
+      Record<string, { type?: string; scheme?: string }> | undefined;
+    expect(schemes?.['bearerAuth']).toMatchObject({ type: 'http', scheme: 'bearer' });
+
+    // Každé jméno použité v `security` musí být definované, jinak je to odkaz
+    // do prázdna i u jednotlivé operace.
+    const used = new Set<string>();
+    for (const methods of Object.values(document.paths ?? {})) {
+      for (const operation of Object.values(methods)) {
+        for (const requirement of (operation as { security?: Array<Record<string, unknown>> })
+          .security ?? []) {
+          for (const name of Object.keys(requirement)) used.add(name);
+        }
+      }
+    }
+    expect([...used].filter((name) => !(name in (schemes ?? {})))).toEqual([]);
+  });
+
   it('každý endpoint pod /api/v1 má aspoň jednu chybovou odpověď se schématem Problem', () => {
     const document = buildOpenApiDocument(app);
     const offenders: string[] = [];
@@ -80,12 +105,16 @@ describe('kritérium 35: každá registrovaná cesta je v dokumentu', () => {
     'jobs',
     'members',
     'setup',
+    // Účty instalace: výpis osiřelých a smazání účtu.
+    'users',
     'webhook-deliveries',
     'webhook-endpoints',
     'workspaces',
   ];
 
-  it('dokument obsahuje 43 operací vlastněných částí 1', () => {
+  // 43 → 46: `POST /api/v1/members`, `GET /api/v1/users/orphaned`
+  // a `DELETE /api/v1/users/{user_id}`.
+  it('dokument obsahuje 46 operací vlastněných částí 1', () => {
     const document = buildOpenApiDocument(app);
     const operations = Object.entries(document.paths ?? {})
       .filter(([path]) => {
@@ -93,7 +122,7 @@ describe('kritérium 35: každá registrovaná cesta je v dokumentu', () => {
         return CAST_1_KORENY.includes(koren);
       })
       .flatMap(([, methods]) => Object.keys(methods as Record<string, unknown>));
-    expect(operations.length).toBe(43);
+    expect(operations.length).toBe(46);
   });
 });
 

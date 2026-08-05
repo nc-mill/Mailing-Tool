@@ -130,7 +130,22 @@ export {
   type FormRateLimiter,
 } from './forms/rate-limit';
 export { submitForm, UNIFORM_RESPONSE, type SubmitInput, type SubmitResult } from './forms/submit';
-export { createForm, loadPublicForm, publicFormRef, type PublicForm } from './repo/forms';
+export {
+  acceptedCounts30d,
+  createForm,
+  deleteForm,
+  findFormById,
+  formSubmissionStats,
+  listForms,
+  listSubmissions,
+  loadPublicForm,
+  publicFormRef,
+  updateForm,
+  type FormRow,
+  type FormSubmissionStats,
+  type PublicForm,
+  type SubmissionListRow,
+} from './repo/forms';
 
 // Příchozí webhooky. Ověření podpisu konzumuje HTTP obsluha, mapování job.
 export { verifySignature, renderTemplate, type SignatureMode } from './inbound/signature';
@@ -158,7 +173,10 @@ export {
   type PreferenceAction,
   type PreferencesData,
 } from './public/preferences';
+export { recordSystemLinkVisit } from './public/system-link-visit';
 export { applyReactivation, REACTIVATION_TAG } from './public/reactivation';
+export { loadWebview, type WebviewResult } from './public/webview';
+export { publicListLabel } from './public/list-label';
 export { confirmPublicSubscription } from './lists/confirm-service';
 export { isOneClickBody, oneClickRateLimit, ONE_CLICK_BODY } from './lists/one-click';
 

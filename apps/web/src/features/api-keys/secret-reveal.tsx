@@ -8,10 +8,20 @@ import { CopyButton } from '@mlain/ui/components/copy-button';
 
 export type SecretRevealProps = {
   secret: string;
-  /** Klíče jsou literály, protože sekret se odhaluje u klíčů i u webhooků. */
-  titleKey: 'apiKeys.secret.title' | 'webhooks.secret.title';
-  warningKey: 'apiKeys.secret.warning' | 'webhooks.secret.warning';
-  hintKey?: 'webhooks.secret.hint' | undefined;
+  /**
+   * Klíče jsou literály, protože sekret se odhaluje u klíčů, u webhooků
+   * a u hesla člena založeného správcem. Skládat je za běhu je zakázané
+   * (kritérium 71 části 6), takže výčet roste s každým dalším místem.
+   */
+  titleKey: 'apiKeys.secret.title' | 'webhooks.secret.title' | 'members.password.title';
+  warningKey: 'apiKeys.secret.warning' | 'webhooks.secret.warning' | 'members.password.warning';
+  hintKey?: 'webhooks.secret.hint' | 'members.create.changeHint' | undefined;
+  /**
+   * Texty zaškrtnutí a zavření. Výchozí patří ke klíči k API; heslo potřebuje
+   * jiná slova, protože „Sekret mám uložený" u hesla nedává smysl.
+   */
+  acknowledgeKey?: 'apiKeys.secret.acknowledge' | 'members.password.acknowledge' | undefined;
+  closeKey?: 'apiKeys.secret.close' | 'members.password.close' | undefined;
   onClose: () => void;
 };
 
@@ -26,6 +36,8 @@ export function SecretReveal({
   titleKey,
   warningKey,
   hintKey,
+  acknowledgeKey = 'apiKeys.secret.acknowledge',
+  closeKey = 'apiKeys.secret.close',
   onClose,
 }: SecretRevealProps) {
   const t = useTranslations('settings');
@@ -54,12 +66,12 @@ export function SecretReveal({
             if (value) setNudge(false);
           }}
         />
-        <span>{t('apiKeys.secret.acknowledge')}</span>
+        <span>{t(acknowledgeKey)}</span>
       </label>
 
       {nudge ? (
         <p role="status" className="mt-2 text-sm text-warning-text">
-          {t('apiKeys.secret.acknowledge')}
+          {t(acknowledgeKey)}
         </p>
       ) : null}
 
@@ -72,7 +84,7 @@ export function SecretReveal({
             else setNudge(true);
           }}
         >
-          {t('apiKeys.secret.close')}
+          {t(closeKey)}
         </Button>
       </div>
     </section>

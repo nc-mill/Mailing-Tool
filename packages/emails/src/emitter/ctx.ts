@@ -22,6 +22,16 @@ export type EmitterState = {
   linkHref: (href: string, trackable: boolean) => string;
   /** Popisky dodávané produktem podle jazyka (patička, oddělovače). */
   t: (key: string) => string;
+  /**
+   * Nabízí projekt veřejné centrum předvoleb? `false` vyřadí odkaz „Nastavit předvolby"
+   * z patičky. Je to nastavení PROJEKTU, ne šablony; šablona má vlastní přepínač
+   * `showPreferences` a platí přísnější z těch dvou. Podrobně v `compile/types.ts`.
+   *
+   * Vynechání znamená ZAPNUTO. Nepovinné je schválně: `EmitterState` si ručně skládá
+   * půltucet testů bloků, kterých se patička netýká, a povinné pole by je rozbilo,
+   * aniž by to o chování patičky cokoli vypovídalo.
+   */
+  preferenceCenterEnabled?: boolean | undefined;
 };
 
 /** Vlastnost, kterou nese každá komponenta emitteru. */

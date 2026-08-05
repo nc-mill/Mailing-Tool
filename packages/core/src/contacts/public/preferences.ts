@@ -8,12 +8,25 @@ import { writeContact } from '../repo/contacts';
 import { coerceValue, type FieldDefinition } from '../fields/coerce';
 import { readContactsSettings } from '../settings';
 import { loadContact } from './context';
+import { publicListLabel } from './list-label';
 import { unsubscribeByToken, type VerifiedPublicToken } from './unsubscribe';
 
 export type PreferenceList = {
   id: string;
+  /** Jméno v podobě pro příjemce: `public_name`, a když chybí, pracovní `name`. */
   name: string;
+  /** Věta pod zaškrtávátkem: co v odběru chodí. null znamená, že ji správce nenapsal. */
+  description: string | null;
   subscribed: boolean;
+  /**
+   * Čeká přihlášení na potvrzení v e-mailu?
+   *
+   * Bez toho vypadá stránka rozbitě: kdo se dřív odhlásil a teď se zaškrtnutím vrací,
+   * skončí na `pending`, protože stavový automat odmítá vrátit odhlášeného člověka
+   * rovnou do rozesílky. Zaškrtnutí se pak po uložení samo odškrtne a nikde není
+   * napsané proč.
+   */
+  pending: boolean;
   subscribedAt: Date | null;
 };
 
@@ -26,8 +39,20 @@ export type PreferencesData = {
   lastName: string | null;
   locale: string;
   availableLocales: string[];
+  /**
+   * Seznamy, které se PŘÍJEMCI NABÍZEJÍ, tedy jen ty s `public_visible`. Prázdné pole
+   * znamená, že správce veřejně nenabízí nic, a stránka pak blok se seznamy vůbec
+   * nevykreslí. Nikdy tu nejsou seznamy, do kterých se nesmí přihlásit sám: dokud
+   * je stránka vypisovala všechny, mohl se kdokoli s odhlašovacím odkazem přihlásit
+   * třeba do seznamu „VIP" a začít dostávat slevy, na které nemá nárok.
+   */
   lists: PreferenceList[];
   editableFields: EditableField[];
+  /**
+   * Je celé centrum předvoleb zapnuté? Když ne, stránka nabídne JEN odhlášení
+   * (`settings.contacts.public_preference_center`).
+   */
+  preferenceCenter: boolean;
 };
 
 /** Jazyky, které smí příjemce vybrat. Katalog aplikace vlastní P05, tohle je jeho podmnožina. */
@@ -42,25 +67,41 @@ export async function loadPreferencesData(
 
   const [lists, fields] = await Promise.all([
     withWorkspace(ctx, async (tx) => {
+      /*
+       * `WHERE l.public_visible` je bezpečnostní podmínka, ne filtr pro vzhled.
+       * Seznam je v tomhle systému nositelem oprávnění k rozesílce, takže dokud tenhle
+       * dotaz vracel všechny seznamy projektu, mohl se držitel jakéhokoli odhlašovacího
+       * odkazu sám přihlásit do seznamu „VIP" nebo „Zákazníci se slevou" a začít
+       * dostávat nabídky, na které nemá nárok. `applyPreferenceAction` níž pracuje
+       * s TÍMTO seznamem, takže podmínka platí i pro zápis, ne jen pro to, co se vykreslí.
+       *
+       * Řadí se podle jména VIDITELNÉHO PŘÍJEMCI, ne podle pracovního: kdyby se řadilo
+       * podle `l.name`, mělo by pořadí na stránce logiku, kterou příjemce nemá jak vidět.
+       */
       const { rows } = await tx.execute<{
         id: string;
         name: string;
+        public_name: string | null;
+        public_description: string | null;
         status: string | null;
         subscribed_at: string | null;
       }>(sql`
-        SELECT l.id, l.name, s.status, s.subscribed_at
+        SELECT l.id, l.name, l.public_name, l.public_description, s.status, s.subscribed_at
           FROM lists l
           LEFT JOIN list_subscriptions s
                  ON s.list_id = l.id AND s.contact_id = ${contact.id}::uuid
                 AND s.workspace_id = ${ctx.workspaceId}::uuid
          WHERE l.workspace_id = ${ctx.workspaceId}::uuid
            AND l.deleted_at IS NULL
-         ORDER BY l.name
+           AND l.public_visible
+         ORDER BY coalesce(nullif(btrim(l.public_name), ''), l.name)
       `);
       return rows.map((row) => ({
         id: row.id,
-        name: row.name,
+        name: publicListLabel({ name: row.name, publicName: row.public_name }),
+        description: row.public_description,
         subscribed: row.status === 'confirmed',
+        pending: row.status === 'pending',
         subscribedAt: row.subscribed_at === null ? null : new Date(row.subscribed_at),
       }));
     }),
@@ -74,7 +115,8 @@ export async function loadPreferencesData(
     lastName: contact.lastName,
     locale: contact.locale,
     availableLocales: AVAILABLE_LOCALES,
-    lists,
+    lists: token.scope.preferenceCenter ? lists : [],
+    preferenceCenter: token.scope.preferenceCenter,
     // Jen pole s příznakem subject_editable. Server hodnoty mimo tenhle seznam ZAHODÍ,
     // i kdyby je někdo do těla dopsal ručně; příznak není jen o tom, co se vykreslí.
     editableFields: fields
@@ -101,7 +143,15 @@ export type PreferenceAction =
   | { kind: 'export_data' }
   | { kind: 'erase_data' };
 
-export type PreferenceOutcome = { applied: PreferenceAction['kind'] };
+export type PreferenceOutcome = {
+  applied: PreferenceAction['kind'];
+  /**
+   * Provedla se akce doopravdy? `false` znamená, že ji projekt vůbec nenabízí
+   * (vypnuté centrum předvoleb). Volající podle toho pozná, že nemá vypisovat
+   * potvrzení o něčem, co se nestalo.
+   */
+  performed: boolean;
+};
 
 /**
  * Provede akci ze stránky předvoleb. Všechny běží přes POST a odpovídá se 303 na tutéž
@@ -113,6 +163,18 @@ export async function applyPreferenceAction(
 ): Promise<PreferenceOutcome> {
   const ctx = token.scope.ctx;
   const contactId = token.data.contactId;
+
+  /*
+   * S VYPNUTÝM CENTREM PŘEDVOLEB PROJDE JEN ODHLÁŠENÍ.
+   *
+   * Kontrola je tady, na serveru, ne jen v tom, co se vykreslilo: tělo požadavku napíše
+   * kdokoli a odkaz na předvolby je bez expirace, takže „stránka to nenabízí" není žádná
+   * ochrana. Odhlášení je z pravidla vyňaté schválně, vypnout ho nejde: je to zákonná
+   * povinnost, ne nastavení.
+   */
+  if (!token.scope.preferenceCenter && action.kind !== 'unsubscribe_all') {
+    return { applied: action.kind, performed: false };
+  }
 
   switch (action.kind) {
     case 'update_lists': {
@@ -213,7 +275,7 @@ export async function applyPreferenceAction(
     }
   }
 
-  return { applied: action.kind };
+  return { applied: action.kind, performed: true };
 }
 
 function toFieldDefinition(field: {

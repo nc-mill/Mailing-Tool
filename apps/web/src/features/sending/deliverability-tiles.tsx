@@ -4,11 +4,28 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
 import { EmptyState } from '@mlain/ui/patterns/states';
 
+/**
+ * Míry doručitelnosti.
+ *
+ * `delivery_known` NENÍ nepovinný příznak k dovyplnění. Odrazy a stížnosti se
+ * dozvíme jedině od odesílací služby, a když od ní nedorazila ani jedna zpráva
+ * o osudu e-mailů, jsou obě čísla nula, jenže ta nula neznamená „nic se
+ * nestalo", nýbrž „nic jsme se nedozvěděli". Obrazovka nad takovou nulou svítila
+ * zeleně a tvrdila, že je všechno v pořádku.
+ *
+ * Rozhoduje se PODLE TÉHOŽ PRAVIDLA jako report kampaně a přehled projektu
+ * (`isDeliveredKnown` v `packages/core/src/reports/campaign-stats/read.ts`);
+ * stránka ho sem přinese hotové, nepočítá si ho znovu. Pole je povinné právě
+ * proto, aby ho nešlo tiše vynechat, což je způsob, jakým tahle vada vznikla.
+ *
+ * `delivery_rate` a `soft_rate` odsud ZMIZELY. Nevykresloval je nikdo a
+ * `soft_rate` se navíc plnil natvrdo nulou, tedy vymyšleným číslem.
+ */
 export type DeliverabilityMetrics = {
-  bounce_rate: number;
-  complaint_rate: number;
-  delivery_rate: number;
-  soft_rate: number;
+  /** `null`, když se míra nemá z čeho spočítat. */
+  bounce_rate: number | null;
+  complaint_rate: number | null;
+  delivery_known: boolean;
 };
 
 export type AccountSnapshot = {
@@ -101,6 +118,16 @@ export function DeliverabilityTiles({
     );
   }
 
+  /**
+   * Smí se z téhle míry udělat číslo?
+   *
+   * Dvě podmínky a obě jsou nutné: musíme mít od služby aspoň jednu zprávu
+   * o osudu e-mailů (`delivery_known`) a míra musí mít jmenovatele (`!== null`).
+   * Typový strážce `rate is number` je tu proto, aby se za ním nedalo omylem
+   * formátovat `null`.
+   */
+  const measured = (rate: number | null): rate is number => metrics.delivery_known && rate !== null;
+
   return (
     <section className="flex flex-col gap-4" aria-labelledby="deliverability-title">
       <h2 id="deliverability-title" className="text-lg font-semibold">
@@ -116,33 +143,54 @@ export function DeliverabilityTiles({
           )}`}
         />
         <Tile title={t('sendRate')} value={String(account.quota_max_send_rate ?? 0)} />
+        {/*
+         * Dlaždice s mírou ukáže číslo jen tehdy, když stojí na měření.
+         * Jinak je bez zóny, tedy bez barvy: zelený rámeček kolem „zatím
+         * nevíme" by byl týž nepodložený klid, jaký tady svítil dřív.
+         */}
         <Tile
           testId="tile-bounce"
-          zone={zoneFor(
-            metrics.bounce_rate,
-            thresholds.bounce_warn_rate,
-            thresholds.bounce_guard_rate,
-          )}
+          {...(measured(metrics.bounce_rate)
+            ? {
+                zone: zoneFor(
+                  metrics.bounce_rate,
+                  thresholds.bounce_warn_rate,
+                  thresholds.bounce_guard_rate,
+                ),
+              }
+            : {})}
           title={t('bounceTitle')}
-          value={format.number(metrics.bounce_rate, {
-            style: 'percent',
-            maximumFractionDigits: 1,
-          })}
-          hint={t('bounceHint')}
+          value={
+            measured(metrics.bounce_rate)
+              ? format.number(metrics.bounce_rate, {
+                  style: 'percent',
+                  maximumFractionDigits: 1,
+                })
+              : t('unknownValue')
+          }
+          hint={measured(metrics.bounce_rate) ? t('bounceHint') : t('unknownHint')}
         />
         <Tile
           testId="tile-complaint"
-          zone={zoneFor(
-            metrics.complaint_rate,
-            thresholds.complaint_warn_rate,
-            thresholds.complaint_guard_rate,
-          )}
+          {...(measured(metrics.complaint_rate)
+            ? {
+                zone: zoneFor(
+                  metrics.complaint_rate,
+                  thresholds.complaint_warn_rate,
+                  thresholds.complaint_guard_rate,
+                ),
+              }
+            : {})}
           title={t('complaintTitle')}
-          value={format.number(metrics.complaint_rate, {
-            style: 'percent',
-            maximumFractionDigits: 2,
-          })}
-          hint={t('estimateNote')}
+          value={
+            measured(metrics.complaint_rate)
+              ? format.number(metrics.complaint_rate, {
+                  style: 'percent',
+                  maximumFractionDigits: 2,
+                })
+              : t('unknownValue')
+          }
+          hint={measured(metrics.complaint_rate) ? t('estimateNote') : t('unknownHint')}
         />
         <Tile title={t('unmatchedEvents')} value={format.number(unmatchedEvents)} />
       </div>

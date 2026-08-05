@@ -118,3 +118,49 @@ describe('fetchJson odvozuje projekt z adresy', () => {
     expect((init.headers as Record<string, string>)['X-Workspace-Id']).toBeUndefined();
   });
 });
+
+/**
+ * JAZYK APLIKACE, NE PROHLÍŽEČE.
+ *
+ * Věty časové osy skládá server a jazyk si vyjednává z `Accept-Language`.
+ * Prohlížeč tam bez našeho přičinění posílá svoje nastavení, na běžném Chromu
+ * `en-US,en;q=0.9`, takže osa v české aplikaci psala „Received campaign"
+ * a „Granted consent". Naměřeno v prohlížeči proti běžící instalaci: `<html
+ * lang>` bylo `cs`, `navigator.languages` bylo `["en-US","en"]` a odpověď API
+ * byla anglicky; s ruční hlavičkou `cs` česky. Kdyby tenhle test spadl,
+ * neupravuj ho, znamená to, že se osa zase ptá prohlížeče.
+ */
+describe('fetchJson posílá jazyk aplikace', () => {
+  function volani(lang: string, options: Record<string, unknown> = {}) {
+    document.documentElement.lang = lang;
+    const fetchImpl = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    return { fetchImpl, promise: fetchJson('/api/v1/x', { fetchImpl, ...options }) };
+  }
+
+  it('vezme jazyk z <html lang>', async () => {
+    const { fetchImpl, promise } = volani('cs');
+    await promise;
+
+    const init = fetchImpl.mock.calls[0]![1]!;
+    expect((init.headers as Record<string, string>)['Accept-Language']).toBe('cs');
+  });
+
+  it('výslovně předaný jazyk má přednost', async () => {
+    const { fetchImpl, promise } = volani('cs', { locale: 'en' });
+    await promise;
+
+    const init = fetchImpl.mock.calls[0]![1]!;
+    expect((init.headers as Record<string, string>)['Accept-Language']).toBe('en');
+  });
+
+  it('bez jazyka v dokumentu hlavičku neposílá', async () => {
+    const { fetchImpl, promise } = volani('');
+    await promise;
+
+    const init = fetchImpl.mock.calls[0]![1]!;
+    expect((init.headers as Record<string, string>)['Accept-Language']).toBeUndefined();
+  });
+});

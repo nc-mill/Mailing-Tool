@@ -10,11 +10,18 @@ export type {
   OpenTokenFields,
   TokenErrorCode,
   TrackingTokenFields,
+  SystemLinkKind,
   TrackingTokenType,
   UnsubscribeTokenFields,
   WebEventRef,
 } from './types';
-export { EVENT_NAME_RE, EVENT_SOURCES, OPEN_CLASS_BIT } from './types';
+export {
+  EVENT_NAME_RE,
+  EVENT_SOURCES,
+  OPEN_CLASS_BIT,
+  SYSTEM_CLICK_SUBTYPE,
+  SYSTEM_LINK_KINDS,
+} from './types';
 
 /**
  * Veřejný povrch domény. `apps/web` se do `packages/core` dostane jedině přes
@@ -65,9 +72,30 @@ export { TrackingDomainCache, normalizeHost, originHost } from './domains/domain
 
 export { EventBuffer } from './writer/event-buffer';
 export type { EventBufferOptions } from './writer/event-buffer';
+export { flushTrackingEvents } from './writer/flush';
+export type { BufferedTrackingEvent } from './writer/flush';
 
 export { insertMessageEvents } from './repo/message-events.repo';
 export type { MessageEventInsert } from './repo/message-events.repo';
+
+/**
+ * Zápis odhlášení jako události kampaně. Volá ho veřejná stránka odhlášení
+ * a one-click POST; bez něj se odhlášení ve statistice kampaně neobjeví,
+ * i když je v `list_subscriptions` vidět.
+ */
+export { recordCampaignUnsubscribe } from './unsubscribe/record';
+export type { RecordUnsubscribeInput, RecordUnsubscribeResult } from './unsubscribe/record';
+
+/**
+ * Proklik na systémový odkaz z patičky. Volají ho veřejné stránky `/u/`, `/p/`
+ * a `/v/`, protože ty nevedou přes `/t/c/` a do měření se jinak nedostanou.
+ */
+export { recordSystemLinkClick, readSystemLinkClicks } from './system-links/record';
+export type {
+  RecordSystemLinkClickInput,
+  RecordSystemLinkClickResult,
+  SystemLinkClickCounts,
+} from './system-links/record';
 
 // Rozhraní I→P10.1. Provozní příkaz `mlain rebuild-engagement` z P16 si tuhle
 // funkci načítá jménem přes tenhle barrel, takže reexport není kosmetika.
@@ -79,3 +107,62 @@ export type {
 
 export { createPublicTrackingRoutes } from './api/public-tracking.routes';
 export type { PublicTrackingDeps } from './api/public-tracking.routes';
+
+/**
+ * Příjem webových událostí, tedy povrch `/e/**`. Do `apps/web` se dostane
+ * jedině přes tenhle barrel, exportní mapa balíčku hlubší cestu nemá.
+ */
+export { createPublicEventRoutes } from './api/public-events.routes';
+export type { PublicEventDeps } from './api/public-events.routes';
+export { createSdkResponder } from './api/serve-sdk';
+export type { SdkResponderDeps } from './api/serve-sdk';
+export { createIngestService } from './ingest/ingest-service';
+export type {
+  EventProcessPayload,
+  IngestRequestMeta,
+  IngestResponse,
+  IngestServiceDeps,
+  PreparedEvent,
+} from './ingest/ingest-service';
+export { createIdentifyService } from './ingest/consume-token';
+export type { IdentifyResponse, IdentifyServiceDeps } from './ingest/consume-token';
+export { resolvePublicKey, resetPublicKeyCache } from './ingest/public-key';
+export type { PublicKeyOwner } from './ingest/public-key';
+export {
+  MAX_EVENTS_PER_BATCH,
+  SUPPORTED_PAYLOAD_VERSIONS,
+  parseBatch,
+  IngestBatchSchema,
+  IngestEventSchema,
+} from './ingest/schema';
+export type { IngestBatch, IngestEvent } from './ingest/schema';
+export { DEFAULT_STRIP_PARAMS, extractCampaign, sanitizeUrl } from './ingest/sanitize-url';
+export { sanitizeProperties } from './ingest/sanitize-properties';
+export type { Finding, PropertyLimits } from './ingest/sanitize-properties';
+export { correctOccurredAt } from './ingest/clock-skew';
+export { EVENT_PROCESS_QUEUE, handleEventProcess } from './ingest/event-process';
+export type { EventProcessJobData } from './ingest/event-process';
+export { enqueueEventBatch, readTrackingSettings } from './ingest/enqueue-batch';
+export { classifyTrackingDomain, isTrackingDomainUnreachable } from './ingest/domain-reach';
+export type { DomainReach } from './ingest/domain-reach';
+
+/** Obrazovka „Nastavení → Měření". */
+export {
+  addTrackingDomain,
+  ensurePublicTrackingKey,
+  listTrackingDomains,
+  originMatches,
+  readAllowedOrigins,
+  readWebTrackingStatus,
+  removeTrackingDomain,
+} from './ingest/settings-service';
+export type {
+  AddDomainResult,
+  AllowedOrigin,
+  PublicTrackingKey,
+  TrackingDomainRow,
+  WebTrackingStatus,
+} from './ingest/settings-service';
+
+export { bindIdentity } from './identity/bind';
+export type { BindIdentityInput, BindOutcome } from './identity/bind';

@@ -60,6 +60,8 @@ export const PUBLIC_CSS = `
 }
 .ml-public .ml-muted { color: var(--ml-muted); font-size: 0.9375rem; }
 .ml-public .ml-sender { color: var(--ml-muted); font-size: 0.9375rem; margin-bottom: 1.5rem; }
+/* Popis odběru pod zaškrtávátkem. Musí být na vlastním řádku, jinak splyne s názvem. */
+.ml-public .ml-block { display: block; margin: 0.125rem 0 0 1.75rem; }
 /* Cílová plocha nejméně 44 krát 44 bodů podle požadavků na přístupnost. */
 .ml-public button,
 .ml-public .ml-button {

@@ -28,12 +28,16 @@ import { campaignStatsRoutes } from './campaign-stats.routes';
 import { campaignStreamRoutes } from './campaign-stream.routes';
 import { contactTimelineRoutes } from './contact-timeline.routes';
 import { dashboardRoutes } from './dashboard.routes';
+import { sentContentRoutes } from './sent-content.routes';
+import { webActivityRoutes } from './web-activity.routes';
 
 reportsApi.route('/', campaignStatsRoutes);
 reportsApi.route('/', campaignRecipientsRoutes);
 reportsApi.route('/', campaignStreamRoutes);
 reportsApi.route('/', contactTimelineRoutes);
 reportsApi.route('/', dashboardRoutes);
+reportsApi.route('/', sentContentRoutes);
+reportsApi.route('/', webActivityRoutes);
 
 /**
  * Registrace do hlavní aplikace. Stejný tvar jako `registerContactsRoutes`,

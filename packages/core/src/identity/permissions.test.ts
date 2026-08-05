@@ -24,9 +24,10 @@ const keyCtx = (scopes: string[]): WorkspaceContext =>
   unsafeWorkspaceContext(WS, { type: 'api_key', apiKeyId: 'k', scopes });
 
 describe('matice oprávnění 3.4', () => {
-  it('má přesně 48 oprávnění', () => {
-    expect(PERMISSIONS.length).toBe(48);
-    expect(new Set(PERMISSIONS).size).toBe(48);
+  // 48 ze specifikace plus `transactional:send` pro transakční API.
+  it('má přesně 49 oprávnění', () => {
+    expect(PERMISSIONS.length).toBe(49);
+    expect(new Set(PERMISSIONS).size).toBe(49);
   });
 
   it('každé oprávnění má tvar resource:action', () => {
@@ -34,9 +35,9 @@ describe('matice oprávnění 3.4', () => {
   });
 
   it('počty na roli sedí s tabulkou', () => {
-    expect(ROLE_PERMISSIONS.owner.length).toBe(48);
-    expect(ROLE_PERMISSIONS.admin.length).toBe(43);
-    expect(ROLE_PERMISSIONS.editor.length).toBe(28);
+    expect(ROLE_PERMISSIONS.owner.length).toBe(49);
+    expect(ROLE_PERMISSIONS.admin.length).toBe(44);
+    expect(ROLE_PERMISSIONS.editor.length).toBe(29);
     expect(ROLE_PERMISSIONS.viewer.length).toBe(12);
   });
 

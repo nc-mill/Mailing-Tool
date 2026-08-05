@@ -135,4 +135,64 @@ describe('buildRenderSchema', () => {
   it('has no loops in MVP 0 because repeat is never emitted', () => {
     expect(run([]).renderSchema.loops).toEqual([]);
   });
+
+  // Bez tohohle sběru by proměnná v odkazu neskončila v usedPaths, buildRenderData
+  // by ji nesnapshotlo a render s vypnutým strictVariables by z ní udělal prázdný
+  // řetězec. Tlačítko by odešlo s href="" tiše, bez chyby a bez varování.
+  it('collects a variable from the button href', () => {
+    const schema = run([
+      {
+        id: 'b_000000000002',
+        type: 'button',
+        props: { ...blockDefaults('button'), href: '{{ data.reset_url }}', trackable: false },
+      },
+    ]);
+    expect(schema.fields.map((f) => f.path)).toEqual(['data.reset_url']);
+    expect(schema.usedPaths).toContain('data.reset_url');
+  });
+
+  it('collects a variable from the image href and from a social item', () => {
+    const schema = run([
+      {
+        id: 'b_000000000002',
+        type: 'image',
+        props: { ...blockDefaults('image'), href: '{{ data.product_url }}' },
+      },
+      {
+        id: 'b_000000000003',
+        type: 'social',
+        props: {
+          ...blockDefaults('social'),
+          items: [{ network: 'web', href: '{{ workspace.website }}' }],
+        },
+      },
+    ]);
+    expect(schema.fields.map((f) => f.path).sort()).toEqual([
+      'data.product_url',
+      'workspace.website',
+    ]);
+  });
+
+  it('collects a variable from an inline link href and keeps the filter out of the path', () => {
+    const schema = run([
+      textWith('b_000000000002', [
+        {
+          t: 'a',
+          href: '{{ data.invoice_url | default: "x" }}',
+          children: [{ t: 's', v: 'Faktura' }],
+        },
+      ]),
+    ]);
+    expect(schema.fields.map((f) => f.path)).toEqual(['data.invoice_url']);
+  });
+
+  it('still recognises a system tag in an inline link href as a system tag', () => {
+    const schema = run([
+      textWith('b_000000000002', [
+        { t: 'a', href: '{{ unsubscribe_url }}', children: [{ t: 's', v: 'Odhlásit' }] },
+      ]),
+    ]);
+    expect(schema.systemTags).toEqual(['unsubscribe_url']);
+    expect(schema.fields).toEqual([]);
+  });
 });

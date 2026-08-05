@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Komponenty — Mlain Mailer web</title>
+<meta name="description" content="Knihovna všech sekcí webu Mlain Mailer v plném rozsahu.">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#FAF7EE">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/img/favicon-512.png" type="image/png" sizes="512x512">
+<script>(function(){var m=document.cookie.match(/(?:^|; )wm_theme=(dark|light)/);document.documentElement.dataset.theme=m?m[1]:(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");})();</script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&amp;family=IBM+Plex+Sans:wght@400;600&amp;display=swap">
+<link rel="stylesheet" href="style.css">
+<script src="script.js" defer></script>
+</head>
+<body>
+<a class="u-skip" href="#main">Přeskočit na obsah</a>
+<header class="wm-header">
+  <div class="wm-header__inner">
+    <a class="wm-header__brand" href="index.html">
+      <img class="wm-header__logo" src="assets/img/logo-mlain.svg" alt="" width="30" height="30">
+      <span class="wm-header__name">Mlain Mailer</span>
+    </a>
+    <nav class="wm-header__nav" id="site-nav" aria-label="Main">
+      <ul class="wm-header__menu">
+        <li><a href="index.html#features">Features</a></li>
+        <li><a href="index.html#how-it-works">How it works</a></li>
+        <li><a href="index.html#costs">Costs</a></li>
+        <li><a href="index.html#install">Install</a></li>
+        <li><a href="index.html#faq">FAQ</a></li>
+        <li><a href="docs.html">Docs</a></li>
+        <li><a href="changelog.html">Changelog</a></li>
+      </ul>
+    </nav>
+    <a class="wm-button wm-button--ghost wm-button--sm wm-header__github" href="https://github.com/nc-mill/Mailing-Tool" target="_blank" rel="noopener" aria-label="GitHub">
+      <svg class="wm-icon wm-icon--sm" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 2.247a10 10 0 0 0-3.162 19.487c.5.088.687-.212.687-.475 0-.237-.012-1.025-.012-1.862-2.513.462-3.163-.613-3.363-1.175a3.636 3.636 0 0 0-1.025-1.413c-.35-.187-.85-.65-.012-.662a2 2 0 0 1 1.537 1.025 2.137 2.137 0 0 0 2.913.825 2.104 2.104 0 0 1 .637-1.338c-2.225-.25-4.55-1.112-4.55-4.937a3.892 3.892 0 0 1 1.025-2.688 3.594 3.594 0 0 1 .1-2.65s.837-.262 2.75 1.025a9.427 9.427 0 0 1 5 0c1.912-1.3 2.75-1.025 2.75-1.025a3.593 3.593 0 0 1 .1 2.65 3.869 3.869 0 0 1 1.025 2.688c0 3.837-2.338 4.687-4.563 4.937a2.368 2.368 0 0 1 .675 1.85c0 1.338-.012 2.413-.012 2.75 0 .262.187.575.687.475A10.005 10.005 0 0 0 12 2.247Z"/></svg>
+      <span class="wm-header__github-label">GitHub</span>
+    </a>
+    <button class="wm-header__toggle" type="button" aria-expanded="false" aria-controls="site-nav">
+      <svg class="wm-icon wm-header__icon-menu" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3 18v-2h18v2Zm0-5v-2h18v2Zm0-5V6h18v2Z"/></svg>
+      <svg class="wm-icon wm-header__icon-close" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5l5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6Z"/></svg>
+      <span class="u-visually-hidden">Menu</span>
+    </button>
+    <button class="wm-header__theme" type="button" data-theme-toggle>
+      <svg class="wm-icon wm-header__icon-dark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 21q-3.75 0-6.375-2.625T3 12q0-3.75 2.625-6.375T12 3q.35 0 .688.025.337.025.662.075-1.025.725-1.637 1.887Q11.1 6.15 11.1 7.5q0 2.25 1.575 3.825Q14.25 12.9 16.5 12.9q1.375 0 2.525-.613 1.15-.612 1.875-1.637.05.325.075.662Q21 11.65 21 12q0 3.75-2.625 6.375T12 21Zm0-2q2.2 0 3.95-1.212 1.75-1.213 2.55-3.163-.5.125-1 .2-.5.075-1 .075-3.075 0-5.238-2.162Q9.1 10.575 9.1 7.5q0-.5.075-1t.2-1q-1.95.8-3.162 2.55Q5 9.8 5 12q0 2.9 2.05 4.95Q9.1 19 12 19Zm-.25-6.75Z"/></svg>
+      <svg class="wm-icon wm-header__icon-light" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 15q1.25 0 2.125-.875T15 12q0-1.25-.875-2.125T12 9q-1.25 0-2.125.875T9 12q0 1.25.875 2.125T12 15Zm0 2q-2.075 0-3.537-1.463Q7 14.075 7 12t1.463-3.538Q9.925 7 12 7t3.538 1.462Q17 9.925 17 12q0 2.075-1.462 3.537Q14.075 17 12 17ZM2 13q-.425 0-.712-.288Q1 12.425 1 12t.288-.713Q1.575 11 2 11h2q.425 0 .713.287Q5 11.575 5 12t-.287.712Q4.425 13 4 13Zm18 0q-.425 0-.712-.288Q19 12.425 19 12t.288-.713Q19.575 11 20 11h2q.425 0 .712.287.288.288.288.713t-.288.712Q22.425 13 22 13Zm-8-8q-.425 0-.712-.288Q11 4.425 11 4V2q0-.425.288-.713Q11.575 1 12 1t.713.287Q13 1.575 13 2v2q0 .425-.287.712Q12.425 5 12 5Zm0 18q-.425 0-.712-.288Q11 22.425 11 22v-2q0-.425.288-.713Q11.575 19 12 19t.713.287Q13 19.575 13 20v2q0 .425-.287.712Q12.425 23 12 23ZM5.65 7.05 4.575 6q-.3-.275-.288-.7.013-.425.288-.725.3-.3.725-.3t.7.3L7.05 5.65q.275.3.275.7 0 .4-.275.7-.275.3-.687.287-.413-.012-.713-.287ZM18 19.425l-1.05-1.075q-.275-.3-.275-.712 0-.413.275-.688.275-.3.688-.287.412.012.712.287L19.425 18q.3.275.288.7-.013.425-.288.725-.3.3-.725.3t-.7-.3ZM16.95 7.05q-.3-.275-.287-.688.012-.412.287-.712L18 4.575q.275-.3.7-.288.425.013.725.288.3.3.3.725t-.3.7L18.35 7.05q-.3.275-.7.275-.4 0-.7-.275ZM4.575 19.425q-.3-.3-.3-.725t.3-.7l1.075-1.05q.3-.275.713-.275.412 0 .687.275.3.275.288.688-.013.412-.288.712L6 19.425q-.275.3-.7.287-.425-.012-.725-.287ZM12 12Z"/></svg>
+      <span class="u-visually-hidden">Switch colour mode</span>
+    </button>
+  </div>
+</header>
+<div class="sg-item" id="k-header">
+  <p class="sg-label">↑ .wm-header — hlavička s logem a vyměnitelným názvem aplikace (.wm-header__name je text, ne grafika). Varianty: žádné. Volitelné části: tlačítko GitHub. Posledním prvkem je přepínač light/dark (__theme, ikony měsíc/slunce, stav drží cookie wm_theme). Pod 980px se menu skládá do panelu přes .wm-header__toggle. Slouží zároveň jako ukázka — v knihovně se neduplikuje.</p>
+</div>
+<main id="main">
+  <nav class="sg-toc" aria-label="Obsah knihovny">
+    <a href="#k-header">header</a>
+    <a href="#k-hero">hero</a>
+    <a href="#k-features">features</a>
+    <a href="#k-timeline">timeline</a>
+    <a href="#k-compare">compare</a>
+    <a href="#k-install">install</a>
+    <a href="#k-roadmap">roadmap</a>
+    <a href="#k-faq">faq</a>
+    <a href="#k-cta">cta</a>
+    <a href="#k-changelog">changelog</a>
+    <a href="#k-prose">prose</a>
+    <a href="#k-footer">footer</a>
+  </nav>
+
+  <div class="sg-item" id="k-hero">
+    <p class="sg-label">.wm-hero — úvod homepage: text vlevo, koláž app oken vpravo (okna = globální prvek .wm-window, screenshoty zatím placeholder). Varianty: žádné. Volitelné části: sekundární tlačítko, trust řádek (__trust), druhé okno koláže (__window--detail, pod 760px se skrývá samo).</p>
+    <section class="wm-hero">
+      <div class="wm-hero__inner">
+        <div class="wm-hero__copy">
+          <h1 class="wm-hero__title">Email marketing you host yourself. Free forever.</h1>
+          <p class="wm-hero__perex">Mlain Mailer is a completely free &amp; self-hosted email marketing tool — campaigns, contacts, behavioural tracking and automation. MIT licensed, every feature included, code on GitHub.</p>
+          <div class="wm-hero__actions">
+            <a class="wm-button" href="https://github.com/nc-mill/Mailing-Tool" target="_blank" rel="noopener">View on GitHub</a>
+            <a class="wm-button wm-button--ghost" href="#">Live demo</a>
+          </div>
+          <p class="wm-hero__trust">MIT license · No feature gates · Never phones home · Docker Compose install</p>
+        </div>
+        <div class="wm-hero__media">
+          <figure class="wm-window wm-hero__window">
+            <div class="wm-window__bar"><span class="wm-window__dots"><span></span><span></span><span></span></span><span class="wm-window__title">campaigns — Mlain Mailer</span></div>
+            <img class="wm-window__body" src="assets/img/screenshot-campaigns-placeholder.svg" alt="" width="960" height="600" loading="eager" fetchpriority="high">
+          </figure>
+          <figure class="wm-window wm-hero__window--detail">
+            <div class="wm-window__bar"><span class="wm-window__dots"><span></span><span></span><span></span></span><span class="wm-window__title">contact timeline</span></div>
+            <img class="wm-window__body" src="assets/img/screenshot-timeline-placeholder.svg" alt="" width="640" height="420">
+          </figure>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="sg-item" id="k-features">
+    <p class="sg-label">.wm-features — bento mřížka boxů s hairline linkami na 6 sloupcích. Varianty boxu: šířka (--span-3, --span-4; výchozí 2/6), tón (--tinted žlutý podklad, --inverse tmavý panel — max. jeden od každého na sekci). Volitelné části: perex (__perex), eyebrow boxu (__eyebrow), mono ukázka (__sample). Pod 980px boxy po dvou, pod 760px pod sebou.</p>
+    <section class="wm-features">
+      <div class="wm-features__inner">
+        <h2 class="wm-features__title">What it does</h2>
+        <p class="wm-features__perex">The parts that matter in daily use. Everything below ships in the free build — there is no other build.</p>
+        <ul class="wm-features__grid">
+          <li class="wm-features__item">
+            <p class="wm-features__eyebrow">01 · Editor</p>
+            <h3>Drag &amp; drop editor</h3>
+            <p>Build emails from blocks; never touch HTML. Every drag action has a keyboard equivalent.</p>
+          </li>
+          <li class="wm-features__item wm-features__item--span-4">
+            <p class="wm-features__eyebrow">02 · AI</p>
+            <h3>AI assistant, on your own key</h3>
+            <p>Describe the campaign, get a draft. Bring your own OpenAI, Anthropic, Google or OpenRouter key — typically €0.05–0.20 per newsletter, paid to them, not us. Optional; nothing depends on it.</p>
+          </li>
+          <li class="wm-features__item wm-features__item--span-4 wm-features__item--tinted">
+            <p class="wm-features__eyebrow">03 · Segments</p>
+            <h3>Segments made of sentences</h3>
+            <p>No AND/OR logic trees. Pick conditions in plain language, see the live count and five real people who match.</p>
+            <p class="wm-features__sample">opened a campaign in the last 90 days → 1,204 people</p>
+          </li>
+          <li class="wm-features__item">
+            <p class="wm-features__eyebrow">04 · Import</p>
+            <h3>Import that survives messy data</h3>
+            <p>Encoding and delimiter detected automatically, per-row errors you can download, fix and re-upload. Ten broken addresses don't reject a file of a thousand.</p>
+          </li>
+          <li class="wm-features__item wm-features__item--span-3 wm-features__item--inverse">
+            <p class="wm-features__eyebrow">05 · Deliverability</p>
+            <h3>Deliverability that protects you</h3>
+            <p>An automatic suppression list that can't be switched off, and an automatic brake: a campaign pauses itself at 8&nbsp;% bounces or 0.3&nbsp;% complaints, long before Amazon suspends your account. SPF, DKIM and DMARC generated with copy buttons.</p>
+          </li>
+          <li class="wm-features__item wm-features__item--span-3">
+            <p class="wm-features__eyebrow">06 · Projects</p>
+            <h3>Twelve clients, twelve walls</h3>
+            <p>One installation, many projects. An API key belongs to exactly one project — a key for client A physically cannot read client B's contacts. Each project has its own sending account and reputation.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+  </div>
+
+  <div class="sg-item" id="k-timeline">
+    <p class="sg-label">.wm-timeline — vlajková sekce trackingu: text + tmavý monospace log, pod tím kroky. Varianty: žádné. Volitelné části: věta pod logem (__then), blok „How the link is made“ (__how s kroky), mono poznámka (__note). Tlumený řádek události: __event--exit.</p>
+    <section class="wm-timeline">
+      <div class="wm-timeline__inner">
+        <div class="wm-timeline__copy">
+          <h2 class="wm-timeline__title">See what happens after the click.</h2>
+          <p class="wm-timeline__perex">Most tools stop at opened and clicked. Mlain Mailer links the click in the email to what the person actually did on your site — pages, products, basket — in one timeline you can read.</p>
+          <p class="wm-timeline__then">And then you can act on it: everyone who reached the basket and didn't buy within 24 hours gets a reminder.</p>
+        </div>
+        <figure class="wm-timeline__log">
+          <div class="wm-timeline__log-head">jana@example.com</div>
+          <ol class="wm-timeline__events">
+            <li class="wm-timeline__event"><span class="wm-timeline__time">14:02</span><span>received campaign "Summer Sale"</span></li>
+            <li class="wm-timeline__event"><span class="wm-timeline__time">14:07</span><span>opened the email</span></li>
+            <li class="wm-timeline__event"><span class="wm-timeline__time">14:07</span><span>clicked "Shop the sale"</span></li>
+            <li class="wm-timeline__event"><span class="wm-timeline__time">14:07</span><span>visited /sale</span></li>
+            <li class="wm-timeline__event"><span class="wm-timeline__time">14:09</span><span>viewed product "Alpha 42 sneakers"</span></li>
+            <li class="wm-timeline__event"><span class="wm-timeline__time">14:11</span><span>added to basket (€59)</span></li>
+            <li class="wm-timeline__event wm-timeline__event--exit"><span class="wm-timeline__time">14:12</span><span>left</span></li>
+          </ol>
+        </figure>
+        <div class="wm-timeline__how">
+          <h3>How the link is made</h3>
+          <ol class="wm-timeline__steps">
+            <li>A single-use key valid for 15 minutes is attached to links in the email.</li>
+            <li>Your site's script picks it up and confirms it with your server.</li>
+            <li>The key is stripped from the URL immediately, so it can't be copied or shared.</li>
+            <li>It is only ever added to domains you have registered yourself.</li>
+          </ol>
+          <p class="wm-timeline__note">The tracking script is under 5 kB and served from your own subdomain.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="sg-item" id="k-compare">
+    <p class="sg-label">.wm-compare — cenové srovnání: HTML/CSS graf (aria-hidden, výšky přes --size) + tabulka s přesnými čísly. Varianty: žádné. Volitelné části: graf s legendou (tabulka zůstává vždy), výpočet (__calc), disclaimer (__disclaimer). Zvýrazněné vlastní řádky: __row--self. Řazení sloupců i řádků: od nejlevnější položky.</p>
+    <section class="wm-compare">
+      <div class="wm-compare__inner">
+        <h2 class="wm-compare__title">The software is free. Here's the whole bill.</h2>
+        <p class="wm-compare__note">List prices as of mid-2026, sources on request. Kit and Sendy are in the table only — Kit publishes no 50k/100k list price, Sendy is a one-time $69 licence plus SES.</p>
+        <div class="wm-compare__chart" aria-hidden="true">
+          <div class="wm-compare__group">
+            <div class="wm-compare__bars">
+              <div class="wm-compare__bar"><span class="wm-compare__amount">~€5</span><div class="wm-compare__fill wm-compare__fill--smtp" style="--size:0.4%"></div></div>
+              <div class="wm-compare__bar"><span class="wm-compare__amount">~€7</span><div class="wm-compare__fill wm-compare__fill--ses" style="--size:0.6%"></div></div>
+              <div class="wm-compare__bar"><span class="wm-compare__amount">$135</span><div class="wm-compare__fill wm-compare__fill--mailchimp" style="--size:9.8%"></div></div>
+              <div class="wm-compare__bar"><span class="wm-compare__amount">$150</span><div class="wm-compare__fill wm-compare__fill--klaviyo" style="--size:10.9%"></div></div>
+            </div>
+            <div class="wm-compare__group-label">10,000 contacts</div>
+          </div>
+          <div class="wm-compare__group">
+            <div class="wm-compare__bars">
+              <div class="wm-compare__bar"><span class="wm-compare__amount">~€5</span><div class="wm-compare__fill wm-compare__fill--smtp" style="--size:0.4%"></div></div>
+              <div class="wm-compare__bar"><span class="wm-compare__amount">~€14</span><div class="wm-compare__fill wm-compare__fill--ses" style="--size:1.2%"></div></div>
+              <div class="wm-compare__bar"><span class="wm-compare__amount">$450</span><div class="wm-compare__fill wm-compare__fill--mailchimp" style="--size:32.6%"></div></div>
+              <div class="wm-compare__bar"><span class="wm-compare__amount">$720</span><div class="wm-compare__fill wm-compare__fill--klaviyo" style="--size:52.2%"></div></div>
+            </div>
+            <div class="wm-compare__group-label">50,000 contacts</div>
+          </div>
+          <div class="wm-compare__group">
+            <div class="wm-compare__bars">
+              <div class="wm-compare__bar"><span class="wm-compare__amount">~€5</span><div class="wm-compare__fill wm-compare__fill--smtp" style="--size:0.4%"></div></div>
+              <div class="wm-compare__bar"><span class="wm-compare__amount">~€24</span><div class="wm-compare__fill wm-compare__fill--ses" style="--size:2%"></div></div>
+              <div class="wm-compare__bar"><span class="wm-compare__amount">$800</span><div class="wm-compare__fill wm-compare__fill--mailchimp" style="--size:58%"></div></div>
+              <div class="wm-compare__bar"><span class="wm-compare__amount">$1,380</span><div class="wm-compare__fill wm-compare__fill--klaviyo" style="--size:100%"></div></div>
+            </div>
+            <div class="wm-compare__group-label">100,000 contacts</div>
+          </div>
+        </div>
+        <ul class="wm-compare__legend" aria-hidden="true">
+          <li><span class="wm-compare__swatch wm-compare__swatch--smtp"></span>Mlain Mailer + your own SMTP</li>
+          <li><span class="wm-compare__swatch wm-compare__swatch--ses"></span>Mlain Mailer + Amazon SES</li>
+          <li><span class="wm-compare__swatch wm-compare__swatch--mailchimp"></span>Mailchimp Standard</li>
+          <li><span class="wm-compare__swatch wm-compare__swatch--klaviyo"></span>Klaviyo</li>
+        </ul>
+        <div class="wm-compare__scroll" role="region" aria-label="Monthly cost by list size" tabindex="0">
+          <table class="wm-compare__table">
+            <caption>Monthly cost by list size, list prices as of mid-2026</caption>
+            <thead>
+              <tr><th scope="col">Tool</th><th scope="col">10,000 contacts</th><th scope="col">50,000 contacts</th><th scope="col">100,000 contacts</th></tr>
+            </thead>
+            <tbody>
+              <tr class="wm-compare__row--self"><th scope="row">Mlain Mailer + your own SMTP</th><td><strong>~€5/mo</strong></td><td><strong>~€5/mo</strong></td><td><strong>~€5/mo</strong></td></tr>
+              <tr class="wm-compare__row--self"><th scope="row">Mlain Mailer + Amazon SES</th><td><strong>~€7/mo</strong></td><td><strong>~€14/mo</strong></td><td><strong>~€24/mo</strong></td></tr>
+              <tr><th scope="row">Sendy</th><td>$69 one-time + SES</td><td>$69 + SES</td><td>$69 + SES</td></tr>
+              <tr><th scope="row">Kit (ConvertKit) Creator</th><td>$119/mo</td><td>—</td><td>—</td></tr>
+              <tr><th scope="row">Mailchimp Standard</th><td>$135/mo</td><td>$450/mo</td><td>$800/mo</td></tr>
+              <tr><th scope="row">Klaviyo</th><td>$150/mo</td><td>$720/mo</td><td>$1,380/mo</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="wm-compare__calc">The Mlain Mailer rows: a €5/month server (2 cores, 2 GB RAM) plus Amazon SES at $1 per 10,000 emails, assuming two sends a month. With your existing hosting's SMTP, sending costs effectively nothing on top of the server.</p>
+        <p class="wm-compare__disclaimer">These are list prices for hosted tools. Mlain Mailer's figure does not include your time to install, update and maintain it — self-hosting trades money for responsibility. Hosted tools also bill by contact even for unsubscribed addresses; billing models differ, so compare carefully.</p>
+      </div>
+    </section>
+  </div>
+
+  <div class="sg-item" id="k-install">
+    <p class="sg-label">.wm-install — instalace: kopírovatelný snippet (tlačítko s data-copy), karty odesílacích kanálů, fakta v &lt;dl&gt;. Varianty: žádné. Volitelné části: druhá karta, řádek pod kartami (__aside), fakta (__facts), odkaz na docs (__docs).</p>
+    <section class="wm-install">
+      <div class="wm-install__inner">
+        <h2 class="wm-install__title">One command to install. €5/month to run.</h2>
+        <p class="wm-install__snippet">
+          <span class="wm-install__prompt">$</span>
+          <code>docker compose up -d</code>
+          <button class="wm-install__copy" type="button" data-copy="docker compose up -d">
+            <svg class="wm-icon wm-icon--copy" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M9 18q-.825 0-1.412-.587Q7 16.825 7 16V4q0-.825.588-1.413Q8.175 2 9 2h9q.825 0 1.413.587Q20 3.175 20 4v12q0 .825-.587 1.413Q18.825 18 18 18Zm0-2h9V4H9v12Zm-4 6q-.825 0-1.412-.587Q3 20.825 3 20V6h2v14h11v2Zm4-6V4v12Z"/></svg>
+            <svg class="wm-icon wm-icon--check" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M9.55 18 3.85 12.3l1.425-1.425L9.55 15.15l9.175-9.175L20.15 7.4Z"/></svg>
+            <span class="u-visually-hidden">Copy command</span>
+            <span class="u-visually-hidden wm-copy-status" aria-live="polite"></span>
+          </button>
+        </p>
+        <ul class="wm-install__channels">
+          <li class="wm-install__channel">
+            <h3>Amazon SES</h3>
+            <p>About $1 per 10,000 emails. Reports bounces and complaints back, which powers the automatic protection. Recommended above ~2,000 emails a day.</p>
+          </li>
+          <li class="wm-install__channel">
+            <h3>Your own SMTP</h3>
+            <p>The SMTP from your existing hosting works and costs effectively nothing. Recommended up to ~2,000 emails a day.</p>
+            <p>Honest note: most SMTP providers don't report bounces and complaints back, so you lose part of the automatic protection — the interface says so too.</p>
+          </li>
+        </ul>
+        <p class="wm-install__aside">Any other provider speaking SMTP can be plugged in the same way.</p>
+        <dl class="wm-install__facts">
+          <dt>Requirements</dt>
+          <dd>Linux server with Docker · 2 cores, 2 GB RAM, 20 GB disk · domain + TLS</dd>
+          <dt>Updates</dt>
+          <dd><code>docker compose pull &amp;&amp; docker compose up -d</code></dd>
+          <dt>Backups</dt>
+          <dd>Nightly, kept 14 days, automatically restore-tested.</dd>
+        </dl>
+        <a class="wm-install__docs" href="docs.html">Read the docs <svg class="wm-icon wm-icon--sm" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M16.175 13H4v-2h12.175l-5.6-5.6L12 4l8 8-8 8-1.425-1.4 5.6-5.6Z"/></svg></a>
+      </div>
+    </section>
+  </div>
+
+  <div class="sg-item" id="k-roadmap">
+    <p class="sg-label">.wm-roadmap — kompaktní stavový výpis se štítky (globální prvek .wm-badge: --done, --progress, výchozí = Planned). Varianty: žádné. Volitelné části: závěrečná věta s odkazem (__more).</p>
+    <section class="wm-roadmap">
+      <div class="wm-roadmap__inner">
+        <h2 class="wm-roadmap__title">What's done, what's next</h2>
+        <ul class="wm-roadmap__list">
+          <li><span class="wm-badge wm-badge--done">Done</span>Block editor, segments, campaigns &amp; reports</li>
+          <li><span class="wm-badge wm-badge--done">Done</span>Customer timeline &amp; website tracking</li>
+          <li><span class="wm-badge wm-badge--done">Done</span>Amazon SES &amp; SMTP sending, suppression list</li>
+          <li><span class="wm-badge wm-badge--progress">In progress</span>Visual automation builder</li>
+          <li><span class="wm-badge wm-badge--progress">In progress</span>A/B testing</li>
+          <li><span class="wm-badge">Planned</span>WooCommerce &amp; Shopify connectors, importers from Listmonk and Mautic</li>
+        </ul>
+        <p class="wm-roadmap__more">The full picture lives in the open — follow the <a href="https://github.com/nc-mill/Mailing-Tool" target="_blank" rel="noopener">repository on GitHub</a>.</p>
+      </div>
+    </section>
+  </div>
+
+  <div class="sg-item" id="k-faq">
+    <p class="sg-label">.wm-faq — akordeon z nativních &lt;details&gt;/&lt;summary&gt;, hairline oddělovače. Varianty: žádné. Volitelné části: perex (__perex); počet položek libovolný.</p>
+    <section class="wm-faq">
+      <div class="wm-faq__inner">
+        <h2 class="wm-faq__title">Frequently asked questions</h2>
+        <p class="wm-faq__perex">The questions that come up in every conversation about self-hosted email — answered without hedging.</p>
+        <details class="wm-faq__item">
+          <summary class="wm-faq__q">Is it really free, including the parts other tools charge for, like automation and multiple projects?</summary>
+          <div class="wm-faq__answer">
+            <p>Yes. MIT license, every feature in the public repository. No license key, no seat limit, no feature gate, no Enterprise edition.</p>
+          </div>
+        </details>
+        <details class="wm-faq__item">
+          <summary class="wm-faq__q">How will you make money?</summary>
+          <div class="wm-faq__answer">
+            <p>Later, from hosting, support and migrations — never from unlocking features. If we ever sell something, it will be convenience, not capability.</p>
+          </div>
+        </details>
+        <details class="wm-faq__item">
+          <summary class="wm-faq__q">SES or my own SMTP — which should I use?</summary>
+          <div class="wm-faq__answer">
+            <p>Your hosting's SMTP up to roughly 2,000 emails a day — it costs nothing. Above that, Amazon SES: it reports bounces and complaints back, which the automatic protection needs.</p>
+          </div>
+        </details>
+      </div>
+    </section>
+  </div>
+
+  <div class="sg-item" id="k-cta">
+    <p class="sg-label">.wm-cta — závěrečná výzva na střed. Varianty: --inverse (tmavý panel, na ukázce; bez modifikátoru světlé pozadí). Volitelné části: perex, sekundární tlačítko.</p>
+    <section class="wm-cta wm-cta--inverse">
+      <div class="wm-cta__inner">
+        <h2 class="wm-cta__title">Built in the open, for people who'd rather own their stack.</h2>
+        <p class="wm-cta__perex">The repository, the roadmap and every release note are public. And if it ever stops fitting you, your data sits in your own PostgreSQL — take it and go.</p>
+        <div class="wm-cta__actions">
+          <a class="wm-button" href="https://github.com/nc-mill/Mailing-Tool" target="_blank" rel="noopener">View on GitHub</a>
+          <a class="wm-button wm-button--ghost" href="#">Live demo</a>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="sg-item" id="k-changelog">
+    <p class="sg-label">.wm-changelog — výpis verzí dle Keep a Changelog: monospace číslo verze + &lt;time&gt;, kategorie Added/Changed/Fixed/Security jen když mají obsah. Varianty: žádné. Volitelné části: úvodní odstavec (__intro).</p>
+    <section class="wm-changelog">
+      <div class="wm-changelog__inner">
+        <h1 class="wm-changelog__title">Changelog</h1>
+        <p class="wm-changelog__intro">Every release, in plain language. For the commit-level history, see GitHub.</p>
+        <article class="wm-changelog__release">
+          <h2 class="wm-changelog__version"><code>1.2.0</code> <time class="wm-changelog__date" datetime="2026-07-14">2026-07-14</time></h2>
+          <div class="wm-changelog__group">
+            <h3>Added</h3>
+            <ul class="wm-list">
+              <li>Campaigns now pause themselves at 8 % bounces or 0.3 % complaints, before your sending account is at risk.</li>
+              <li>DMARC record generator with a copy button, next to the existing SPF and DKIM ones.</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+    </section>
+  </div>
+
+  <div class="sg-item" id="k-prose">
+    <p class="sg-label">.wm-prose — centrovaný obsah 720px pro stránky bez designu na míru (GDPR, docs, licence). Varianty: žádné. Obsah: libovolná typografie ze styleguide (nadpisy, odstavce, seznamy, odkazy).</p>
+    <section class="wm-prose">
+      <div class="wm-prose__inner">
+        <h1>Privacy on this website</h1>
+        <p>This site sets no cookies and loads nothing from third parties. There is no analytics script and no tracking pixel — the same restraint we expect from a mailing tool.</p>
+        <h2>What the server logs</h2>
+        <p>The web server keeps standard access logs for debugging:</p>
+        <ul class="wm-list">
+          <li>IP address and requested URL, rotated after 14 days</li>
+          <li>Nothing else — no fingerprinting, no third-party requests</li>
+        </ul>
+        <p>Questions? Write to <a href="mailto:hello@mlainmailer.com">hello@mlainmailer.com</a> or open an issue <strong>directly on GitHub</strong>.</p>
+      </div>
+    </section>
+  </div>
+
+  <div class="sg-item" id="k-footer">
+    <p class="sg-label">↓ .wm-footer — patička s logem, vyměnitelným názvem aplikace a navigací (aria-label="Footer"). Varianty: žádné. Volitelné části: meta řádek (__meta). Slouží zároveň jako ukázka — v knihovně se neduplikuje.</p>
+  </div>
+</main>
+<footer class="wm-footer">
+  <div class="wm-footer__inner">
+    <a class="wm-footer__brand" href="index.html">
+      <img class="wm-footer__logo" src="assets/img/logo-mlain.svg" alt="" width="24" height="24">
+      <span>Mlain Mailer</span>
+    </a>
+    <nav class="wm-footer__nav" aria-label="Footer">
+      <ul class="wm-footer__menu">
+        <li><a href="docs.html">Docs</a></li>
+        <li><a href="changelog.html">Changelog</a></li>
+        <li><a href="https://github.com/nc-mill/Mailing-Tool" target="_blank" rel="noopener">GitHub</a></li>
+        <li><a href="default.html">MIT License</a></li>
+      </ul>
+    </nav>
+    <p class="wm-footer__meta">Self-hosted email marketing. Every feature free, MIT licensed. © 2026 Mlain</p>
+  </div>
+</footer>
+</body>
+</html>

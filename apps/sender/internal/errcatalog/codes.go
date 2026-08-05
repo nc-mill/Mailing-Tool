@@ -125,6 +125,48 @@ var classes = map[string]ErrorClass{
 // Class vrací klasifikační třídu kódu.
 func Class(code string) ErrorClass { return classes[code] }
 
+// explanations jsou věty PRO LOG SENDERU, ne pro uživatele.
+//
+// Kontrakt z hlavičky balíčku platí dál: do error_code se zapisuje výhradně kód
+// a texty pro uživatele vlastní katalog i18n v aplikaci. Tohle je něco jiného,
+// totiž jediný řádek, který v logu odpoví na otázku „co to znamená", aby se
+// příčina nemusela hledat v cizím zdrojáku.
+//
+// Důvod je konkrétní: provider_event_config_missing se čtyři dny objevoval
+// v databázi a z kódu ani z logu nešlo poznat, že za ním je odpověď Amazonu
+// NotFoundException, tedy že konfigurační sada v účtu vůbec neexistuje.
+var explanations = map[string]string{
+	RateLimited:         "provider odmítl kvůli překročení sekundové kvóty, zpráva se zkusí znovu za chvíli",
+	ProviderUnavailable: "provider je dočasně nedostupný nebo vrátil vnitřní chybu",
+	NetworkError:        "síťová chyba nebo vypršel čas volání provideru",
+
+	ProviderAuthFailed: "provider odmítl přístupové údaje, zkontrolujte přístupový klíč a tajemství odesílacího účtu",
+	SendingPaused:      "provider má odesílání pozastavené na úrovni účtu",
+	AccountSuspended:   "provider účet pozastavil",
+	MailFromNotVerified: "zpáteční doména (MAIL FROM) není u provideru ověřená, " +
+		"doplňte chybějící DNS záznamy odesílací domény",
+	ProviderEventConfigMissing: "konfigurační sada uvedená u odesílacího účtu v účtu AWS NEEXISTUJE " +
+		"(Amazon odpověděl NotFoundException); sadu je potřeba u Amazonu založit, bez ní SES nepřijme žádnou zprávu",
+	ProviderQuotaExceeded:    "vyčerpaná denní kvóta provideru",
+	CredentialsUndecryptable: "konfiguraci odesílacího účtu nejde dešifrovat, nesouhlasí SECRET_KEY",
+	ContractMismatch:         "typ odesílacího účtu v databázi nesouhlasí s typem v šifrované konfiguraci",
+
+	MessageRejected: "provider zprávu odmítl; u účtu SES v sandboxu to nejčastěji znamená, " +
+		"že adresa PŘÍJEMCE není u Amazonu ověřená, protože v sandboxu se doručuje jen na ověřené identity",
+	InvalidRecipient:    "adresa příjemce není platná",
+	InvalidRequest:      "provider označil požadavek za vadný",
+	MessageTooLarge:     "hotová zpráva přesáhla limit velikosti provideru",
+	MaxAttemptsExceeded: "vyčerpaný počet pokusů, poslední chyba byla opakovatelná",
+	Suppressed:          "adresa je na seznamu vyloučených, zpráva se neodeslala schválně",
+	AmbiguousDispatch:   "sender spadl mezi odesláním a zápisem výsledku, osud zprávy je nejistý",
+}
+
+// Explain vrací vysvětlující větu ke kódu pro log senderu.
+//
+// U neznámého kódu vrací prázdný řetězec, aby se do logu nedostal vymyšlený
+// popis chyby, kterou katalog nezná.
+func Explain(code string) string { return explanations[code] }
+
 // All vrací všechny známé kódy.
 func All() []string {
 	out := make([]string, 0, len(classes))

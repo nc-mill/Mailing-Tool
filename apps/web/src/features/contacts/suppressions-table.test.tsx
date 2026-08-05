@@ -5,18 +5,16 @@ import { SuppressionsTable } from './suppressions-table';
 import type { SuppressionRow } from './suppression-affordance';
 import { renderWithProviders } from './test-utils';
 
-const reveal = vi.fn().mockResolvedValue({ status: 'success', email: 'alena@seznam.cz' });
-
 vi.mock('@mlain/i18n/navigation', () => ({
   Link: ({ children, ...props }: { children: React.ReactNode }) => <a {...props}>{children}</a>,
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }));
 
 const addSuppression = vi.fn().mockResolvedValue({ status: 'success' });
+const removeSuppression = vi.fn().mockResolvedValue({ status: 'success' });
 
 vi.mock('./actions', () => ({
-  removeSuppressionAction: vi.fn().mockResolvedValue({ status: 'success' }),
-  revealSuppressionEmailAction: (...args: unknown[]) => reveal(...args),
+  removeSuppressionAction: (...args: unknown[]) => removeSuppression(...args),
   addSuppressionAction: (...args: unknown[]) => addSuppression(...args),
 }));
 
@@ -68,6 +66,13 @@ function renderTable(props: Partial<React.ComponentProps<typeof SuppressionsTabl
   );
 }
 
+/** Celý řádek mřížky, ne jen buňka s adresou: tlačítko Odebrat je ve sloupci akcí. */
+function removalRow(id: string): HTMLElement {
+  const row = screen.getByTestId(`suppression-${id}`).closest('[role="row"]');
+  if (row === null) throw new Error(`řádek pro blokaci ${id} se nenašel`);
+  return row as HTMLElement;
+}
+
 /** Zaškrtávátko řádku podle pořadí v mřížce. Popisek je u P05 jeden pro všechny řádky. */
 async function selectRows(user: ReturnType<typeof userEvent.setup>, indexes: number[]) {
   const grid = screen.getByRole('grid');
@@ -76,7 +81,8 @@ async function selectRows(user: ReturnType<typeof userEvent.setup>, indexes: num
 }
 
 beforeEach(() => {
-  reveal.mockClear();
+  removeSuppression.mockClear();
+  addSuppression.mockClear();
 });
 
 describe('SuppressionsTable', () => {
@@ -114,18 +120,67 @@ describe('SuppressionsTable', () => {
     }
   });
 
-  it('adresy jsou maskované a celá se ukáže až po kliknutí, se zápisem do auditu', async () => {
-    const user = userEvent.setup();
+  /**
+   * Tlačítko „Zobrazit celou adresu" volalo `POST /suppressions/{id}/reveal`, tedy cestu,
+   * jaká v API nikdy nebyla. Odpověď výpisu nese jen `masked_email`, takže odkrýt nebylo
+   * z čeho a kliknutí spolehlivě končilo na 404.
+   */
+  it('adresy zůstávají maskované a nic nenabízí jejich odkrytí', () => {
     renderTable();
     expect(screen.getByText('a***@seznam.cz')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Zobrazit celou adresu' })).toBeNull();
+  });
+
+  /**
+   * Regrese na 422: obrazovka posílala `note: ''`, jenže tělo `DELETE /suppressions/{id}`
+   * má `z.string().min(1)`. Odblokování proto neprošlo NIKDY. Test kontroluje to,
+   * co odesílá opravdu obrazovka, tedy včetně poznámky napsané v dialogu.
+   */
+  it('odebrání pošle poznámku, kterou uživatel napsal v dialogu', async () => {
+    const user = userEvent.setup();
+    renderTable();
+
+    await user.click(within(removalRow('4')).getByRole('button', { name: 'Odebrat' }));
+    await user.type(screen.getByLabelText('Poznámka, proč adresu odebíráte'), 'omyl při importu');
+    await user.click(screen.getByRole('button', { name: 'Odebrat adresu' }));
+
+    expect(removeSuppression).toHaveBeenCalledWith({
+      workspaceId: 'w-1',
+      id: '4',
+      note: 'omyl při importu',
+    });
+  });
+
+  it('bez poznámky odebrání neodešle a řekne proč', async () => {
+    const user = userEvent.setup();
+    renderTable();
+
+    await user.click(within(removalRow('4')).getByRole('button', { name: 'Odebrat' }));
+    await user.click(screen.getByRole('button', { name: 'Odebrat adresu' }));
+
+    expect(removeSuppression).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('Bez poznámky odebrat nejde. Napište, proč adresu odblokováváte.'),
+    ).toBeInTheDocument();
+  });
+
+  it('hromadné odebrání posílá poznámku u každé adresy', async () => {
+    const user = userEvent.setup();
+    renderTable();
+
+    await selectRows(user, [2, 3]);
     await user.click(
-      within(screen.getByTestId('suppression-1')).getByRole('button', {
-        name: 'Zobrazit celou adresu',
+      within(screen.getByTestId('suppressions-bulk')).getByRole('button', {
+        name: 'Odebrat 2 z 2 vybraných',
       }),
     );
-    expect(reveal).toHaveBeenCalledWith({ workspaceId: 'w-1', id: '1' });
-    expect(await screen.findByText('alena@seznam.cz')).toBeInTheDocument();
-    expect(screen.getByText('Zobrazení celé adresy zapíšeme do auditu.')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Poznámka, proč adresu odebíráte'), 'úklid seznamu');
+    await user.click(screen.getByRole('button', { name: 'Odebrat adresy' }));
+
+    expect(removeSuppression).toHaveBeenCalledTimes(2);
+    for (const [call] of removeSuppression.mock.calls) {
+      expect((call as { note: string }).note).toBe('úklid seznamu');
+    }
   });
 
   it('u smíšeného výběru řekne, kolika adres se akce týká, a pod tím proč ne všech', async () => {

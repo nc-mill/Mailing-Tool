@@ -28,6 +28,13 @@ export function LoginForm({ action, next, initialState }: LoginFormProps) {
 
   const retryAfter = state.status === 'error' ? (state.problem.retry_after ?? 0) : 0;
 
+  /*
+   * E-mail po chybě zůstává vyplněný. React 19 formulář po doběhnutí `action`
+   * vynuluje, takže překlep v hesle uživatele nutil přepsat i adresu.
+   * Heslo se schválně nevrací.
+   */
+  const email = state.status === 'error' ? (state.values?.['email'] ?? '') : '';
+
   return (
     <AuthCard
       title={t('login.title')}
@@ -54,6 +61,7 @@ export function LoginForm({ action, next, initialState }: LoginFormProps) {
             name="email"
             type="email"
             autoComplete="username"
+            defaultValue={email}
             {...fieldAria('email', fieldErrors)}
           />
           <FieldError name="email" errors={fieldErrors} />

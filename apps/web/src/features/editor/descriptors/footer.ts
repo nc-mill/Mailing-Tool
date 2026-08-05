@@ -39,7 +39,10 @@ export const FOOTER_DESCRIPTOR: BlockDescriptor = {
         { kind: 'color', key: 'color', label: 'prop.color', allowThemeRef: true },
       ],
     },
-    ...contentGroups({ visibility: false }),
+    // Bez podmínky zobrazení (S14) a bez skrytí na mobilu: emitter posílá
+    // `hideOnMobile={false}` natvrdo, protože právní minimum musí dostat každý
+    // příjemce. Přepínač, který jde zapnout a nic neudělá, je horší než žádný.
+    ...contentGroups({ visibility: false, hideOnMobile: false }),
   ],
   defaults: {
     ...COMMON_DEFAULTS,

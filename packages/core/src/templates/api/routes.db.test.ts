@@ -47,7 +47,18 @@ const JSON_HEADERS = { 'content-type': 'application/json' };
 
 const footer = { id: 'b_000000000099', type: 'footer', props: blockDefaults('footer') };
 
-/** Nejmenší platný dokument: sekce s patičkou, tedy i s odkazem na odhlášení. */
+/**
+ * Textový blok. Bez něj je dokument sice platný, ale PRÁZDNÝ, a testovací
+ * odeslání ho od opravy vady s prázdným e-mailem odmítá dřív, než se dostane
+ * k tomu, co jednotlivé testy zkoumají.
+ */
+const text = {
+  id: 'b_000000000010',
+  type: 'text',
+  props: { ...blockDefaults('text'), content: [{ t: 'p', children: [{ t: 's', v: 'Ahoj.' }] }] },
+};
+
+/** Nejmenší dokument s obsahem: sekce s textem a patičkou (tedy i s odkazem na odhlášení). */
 function design(overrides: Record<string, unknown> = {}) {
   return {
     schemaVersion: 1,
@@ -58,7 +69,7 @@ function design(overrides: Record<string, unknown> = {}) {
         id: 'b_000000000001',
         type: 'section',
         props: blockDefaults('section'),
-        children: [footer],
+        children: [text, footer],
       },
     ],
     ...overrides,
@@ -533,5 +544,255 @@ describe('REST API šablon', () => {
     expect((await app.request(`/templates/${id}`)).status).toBe(404);
     const list = (await (await app.request('/templates')).json()) as { items: unknown[] };
     expect(list.items).toHaveLength(0);
+  });
+
+  it('obnova vrátí smazanou šablonu do seznamu i do detailu', async () => {
+    const { app } = await freshApp();
+    const created = await createTemplateVia(app, { name: 'Vrácená', document: design() });
+    const id = String(created.body.id);
+    await app.request(`/templates/${id}`, { method: 'DELETE' });
+
+    const restored = await app.request(`/templates/${id}/restore`, { method: 'POST' });
+
+    expect(restored.status).toBe(200);
+    expect((await app.request(`/templates/${id}`)).status).toBe(200);
+    const list = (await (await app.request('/templates')).json()) as { items: unknown[] };
+    expect(list.items).toHaveLength(1);
+  });
+
+  it('obnova skončí konfliktem, když jméno mezitím zabrala jiná šablona', async () => {
+    const { app } = await freshApp();
+    const created = await createTemplateVia(app, { name: 'Sporná', document: design() });
+    const id = String(created.body.id);
+    await app.request(`/templates/${id}`, { method: 'DELETE' });
+    await createTemplateVia(app, { name: 'Sporná', document: design() });
+
+    const response = await app.request(`/templates/${id}/restore`, { method: 'POST' });
+
+    expect(response.status).toBe(409);
+    expect(((await response.json()) as { code: string }).code).toBe('template_name_conflict');
+  });
+
+  it('obnova neznámé šablony je 404', async () => {
+    const { app } = await freshApp();
+    // Platné UUID verze 7, jaké schéma cesty požaduje. Samé nuly by neprošly
+    // validací a test by měřil schéma, ne chování obnovy.
+    const response = await app.request('/templates/01890000-0000-7000-8000-000000000000/restore', {
+      method: 'POST',
+    });
+    expect(response.status).toBe(404);
+  });
+});
+
+describe('přejmenování šablony', () => {
+  it('PATCH se samotným `name` přejmenuje řádek i dokument', async () => {
+    const { app } = await freshApp();
+    const created = await createTemplateVia(app, {
+      name: 'E-mail z formuláře test',
+      kind: 'transactional',
+      document: design(),
+    });
+    const id = String(created.body.id);
+
+    const response = await app.request(`/templates/${id}`, {
+      method: 'PATCH',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ name: 'Děkujeme za zprávu' }),
+    });
+
+    // Dřív tahle cesta vracela 422 „Chybí `design`" a přejmenovat nešlo vůbec.
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      name: string;
+      design: { meta: { name: string } };
+      design_hash: string;
+    };
+    expect(body.name).toBe('Děkujeme za zprávu');
+    expect(body.design.meta.name).toBe('Děkujeme za zprávu');
+    // Klient musí dostat nový hash, jinak mu příští uložení spadne na 412.
+    expect(body.design_hash).not.toBe(String(created.body.design_hash));
+  });
+
+  it('prázdné tělo je chyba volajícího, ne tichý zápis', async () => {
+    const { app } = await freshApp();
+    const created = await createTemplateVia(app, { name: 'Něco', document: design() });
+    const response = await app.request(`/templates/${String(created.body.id)}`, {
+      method: 'PATCH',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(422);
+  });
+
+  it('jméno ze samých mezer ohlásí u pole `name`, ne jako obecnou hlášku', async () => {
+    const { app } = await freshApp();
+    const created = await createTemplateVia(app, { name: 'Něco', document: design() });
+
+    const response = await app.request(`/templates/${String(created.body.id)}`, {
+      method: 'PATCH',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ name: '   ' }),
+    });
+
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as { errors: Array<{ path: string }> | null };
+    expect(body.errors?.[0]?.path).toBe('name');
+  });
+
+  it('delší jméno než 120 znaků neprojde schématem', async () => {
+    const { app } = await freshApp();
+    const created = await createTemplateVia(app, { name: 'Něco', document: design() });
+    const response = await app.request(`/templates/${String(created.body.id)}`, {
+      method: 'PATCH',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ name: 'x'.repeat(121) }),
+    });
+    expect(response.status).toBe(422);
+  });
+
+  it('obsazené jméno je 409, ne pětistovka', async () => {
+    const { app } = await freshApp();
+    await createTemplateVia(app, { name: 'Zabrané', document: design() });
+    const created = await createTemplateVia(app, { name: 'Moje', document: design() });
+
+    const response = await app.request(`/templates/${String(created.body.id)}`, {
+      method: 'PATCH',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ name: 'Zabrané' }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(((await response.json()) as { code: string }).code).toBe('template_name_conflict');
+  });
+
+  it('návrh a jméno naráz projdou jedním požadavkem', async () => {
+    const { app } = await freshApp();
+    const created = await createTemplateVia(app, { name: 'Původní', document: design() });
+    const id = String(created.body.id);
+
+    const response = await app.request(`/templates/${id}`, {
+      method: 'PATCH',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        design: design({ meta: { name: 'Původní', previewText: 'Jiný', language: 'cs' } }),
+        name: 'Nové jméno',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      name: string;
+      design: { meta: { name: string; previewText: string } };
+    };
+    // Pořadí je závazné: uložení návrhu, teprve pak přejmenování. Obráceně by
+    // uložený návrh přepsal `meta.name` zpátky na staré jméno.
+    expect(body.name).toBe('Nové jméno');
+    expect(body.design.meta.name).toBe('Nové jméno');
+    expect(body.design.meta.previewText).toBe('Jiný');
+  });
+});
+
+describe('kategorie v API šablon', () => {
+  type ListBody = {
+    items: Array<{
+      id: string;
+      name: string;
+      category: string;
+      usage: { forms: Array<{ name: string }>; lists: Array<{ name: string; role: string }> };
+    }>;
+    counts: { all: number; campaign: number; form: number; transactional: number };
+  };
+
+  /**
+   * `uq_forms__slug` je unikátní GLOBÁLNĚ, ne v rámci projektu: veřejný
+   * endpoint `/f/{slug}` hledá formulář bez znalosti projektu. Pevný řetězec
+   * by proto ve druhém testu spadl na 23505.
+   */
+  let formSeq = 0;
+  const formSlug = () => {
+    formSeq += 1;
+    return `form${formSeq}${Math.random().toString(36).slice(2)}`.slice(0, 24).padEnd(16, '0');
+  };
+
+  async function seeded() {
+    const { ws, app } = await freshApp();
+    const campaign = await createTemplateVia(app, {
+      name: 'Newsletter',
+      kind: 'campaign',
+      document: design(),
+    });
+    const formEmail = await createTemplateVia(app, {
+      name: 'Z formuláře',
+      kind: 'transactional',
+      document: design(),
+    });
+    const standalone = await createTemplateVia(app, {
+      name: 'Potvrzení',
+      kind: 'transactional',
+      document: design(),
+    });
+    await withWorkspace(ws.ctx, (tx) =>
+      tx.insert(schema.forms).values({
+        workspaceId: ws.ctx.workspaceId,
+        name: 'Patička webu',
+        slug: formSlug(),
+        deliveryTemplateId: String(formEmail.body.id),
+      }),
+    );
+    return {
+      app,
+      ids: {
+        campaign: String(campaign.body.id),
+        formEmail: String(formEmail.body.id),
+        standalone: String(standalone.body.id),
+      },
+    };
+  }
+
+  const list = async (app: OpenAPIHono<TemplatesEnv>, query: string): Promise<ListBody> =>
+    (await (await app.request(`/templates?view=summary${query}`)).json()) as ListBody;
+
+  it('úsporná položka nese kategorii i zapojení', async () => {
+    const { app, ids } = await seeded();
+    const body = await list(app, '');
+
+    const byId = new Map(body.items.map((item) => [item.id, item]));
+    expect(byId.get(ids.campaign)?.category).toBe('campaign');
+    expect(byId.get(ids.formEmail)?.category).toBe('form');
+    expect(byId.get(ids.formEmail)?.usage.forms.map((form) => form.name)).toEqual(['Patička webu']);
+    expect(byId.get(ids.standalone)?.category).toBe('transactional');
+    expect(byId.get(ids.standalone)?.usage).toEqual({ forms: [], lists: [] });
+  });
+
+  it('filtr vrátí jen zvolenou kategorii, počty přitom platí o celé knihovně', async () => {
+    const { app, ids } = await seeded();
+
+    const forms = await list(app, '&category=form');
+    expect(forms.items.map((item) => item.id)).toEqual([ids.formEmail]);
+    // Počty se filtrem NEMĚNÍ, jinak by přepínače po prvním kliknutí ukazovaly
+    // všude nulu a nedalo by se poznat, kam se vyplatí přepnout.
+    expect(forms.counts).toEqual({ all: 3, campaign: 1, form: 1, transactional: 1 });
+
+    const campaigns = await list(app, '&category=campaign');
+    expect(campaigns.items.map((item) => item.id)).toEqual([ids.campaign]);
+  });
+
+  it('neznámá kategorie je chyba volajícího, ne tichá knihovna beze změny', async () => {
+    const { app } = await seeded();
+    const response = await app.request('/templates?category=cokoli');
+    expect(response.status).toBe(422);
+  });
+
+  it('šablonu rozesílanou formulářem odmítne smazat s kódem template_in_use', async () => {
+    const { app, ids } = await seeded();
+
+    const response = await app.request(`/templates/${ids.formEmail}`, { method: 'DELETE' });
+
+    expect(response.status).toBe(409);
+    expect(((await response.json()) as { code: string }).code).toBe('template_in_use');
+    // Volnou šablonu to nijak neomezuje.
+    expect((await app.request(`/templates/${ids.standalone}`, { method: 'DELETE' })).status).toBe(
+      204,
+    );
   });
 });

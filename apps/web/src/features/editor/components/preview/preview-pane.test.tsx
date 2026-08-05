@@ -4,19 +4,36 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it, vi } from 'vitest';
 import { createFakePorts } from '../../ports/fake-ports';
-import { PreviewPane } from './preview-pane';
+import { ViewControls } from '../header/view-controls';
+import { ViewProvider } from '../view/view-state';
+import { explainPreviewLinks, PreviewPane } from './preview-pane';
 
+// Radix v jsdom potřebuje pár metod, které tam nejsou.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => {};
+  Element.prototype.releasePointerCapture = () => {};
+}
+
+/**
+ * Náhled se testuje SPOLU s ovladači z hlavičky, protože od téhle změny je to
+ * jeden stav: přepínač zařízení, tmavý režim i „Zobrazit jako" sedí v hlavičce
+ * a řídí zároveň plátno. Kdyby si je náhled držel sám, byly by dva stavy.
+ */
 function setup(ports = createFakePorts()) {
   render(
     <NextIntlClientProvider locale="cs" messages={{ editor: messages }}>
-      <PreviewPane templateId="t1" ports={ports} flush={async () => {}} />
+      <ViewProvider language="cs">
+        <ViewControls ports={ports} />
+        <PreviewPane templateId="t1" ports={ports} flush={async () => {}} />
+      </ViewProvider>
     </NextIntlClientProvider>,
   );
   return ports;
 }
 
-describe('PreviewPane', () => {
-  it('má čtyři režimy a k tomu nezávislý přepínač tmavého režimu', async () => {
+describe('PreviewPane a ovladače zobrazení', () => {
+  it('má čtyři režimy a k tomu nezávislý přepínač tmavého režimu', () => {
     setup();
     for (const label of ['Počítač', 'Mobil', 'Textová verze', 'Zdroj']) {
       expect(screen.getByRole('radio', { name: label })).toBeInTheDocument();
@@ -43,11 +60,12 @@ describe('PreviewPane', () => {
     expect(screen.getByTestId('preview-frame')).toHaveAttribute('data-width', '375');
   });
 
-  it('tlačítko Kontakt bez jména vyžádá náhled s prázdnými osobními údaji, kritérium 55', async () => {
+  it('volba Kontakt bez jména vyžádá náhled s prázdnými osobními údaji, kritérium 55', async () => {
     const ports = createFakePorts();
     const preview = vi.spyOn(ports, 'preview');
     setup(ports);
-    await userEvent.click(screen.getByRole('button', { name: /Kontakt bez jména/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Zobrazit jako/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Kontakt bez jména/ }));
     await waitFor(() =>
       expect(preview).toHaveBeenLastCalledWith(
         expect.objectContaining({ previewData: { type: 'sample', variant: 'no_name' } }),
@@ -59,7 +77,9 @@ describe('PreviewPane', () => {
     const flush = vi.fn().mockResolvedValue(undefined);
     render(
       <NextIntlClientProvider locale="cs" messages={{ editor: messages }}>
-        <PreviewPane templateId="t1" ports={createFakePorts()} flush={flush} />
+        <ViewProvider language="cs">
+          <PreviewPane templateId="t1" ports={createFakePorts()} flush={flush} />
+        </ViewProvider>
       </NextIntlClientProvider>,
     );
     await waitFor(() => expect(flush).toHaveBeenCalled());
@@ -69,5 +89,23 @@ describe('PreviewPane', () => {
     setup();
     await userEvent.click(screen.getByRole('radio', { name: 'Textová verze' }));
     await waitFor(() => expect(screen.getByTestId('preview-text')).toHaveTextContent('Dobrý den'));
+  });
+
+  /**
+   * Systémové odkazy v náhledu nesou `#preview-disabled`, protože odhlašovací
+   * adresa se podepisuje až při odeslání. Je to správně, ale uživateli to nic
+   * neříká: v textové verzi viděl tři řádky se záhadnou značkou a musel se ptát.
+   */
+  it('místo #preview-disabled vysvětlí, že odkaz vznikne až při odeslání', () => {
+    expect(
+      explainPreviewLinks(
+        'Odhlásit se z odběru: #preview-disabled',
+        '(odkaz vznikne až při odeslání)',
+      ),
+    ).toBe('Odhlásit se z odběru: (odkaz vznikne až při odeslání)');
+    // Náhrada nesmí vypadat jako adresa, aby si ji nikdo nezkopíroval.
+    expect(
+      explainPreviewLinks('#preview-disabled', '(odkaz vznikne až při odeslání)'),
+    ).not.toContain('http');
   });
 });

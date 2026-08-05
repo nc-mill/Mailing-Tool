@@ -1,10 +1,11 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { fetchJson } from '../api-client';
-import { trendRows, trendSeries, type TrendCampaign } from './trend-series';
+import { trendRows, trendSeries, withKnownDelivery, type TrendCampaign } from './trend-series';
 
 const ReportChart = dynamic(() => import('../adapters/report-chart').then((m) => m.ReportChart), {
   ssr: false,
@@ -41,18 +42,35 @@ export function CampaignTrend({ workspaceSlug }: { workspaceSlug: string }) {
   if (!campaigns)
     return <div aria-busy="true" className="h-64 animate-pulse rounded-lg bg-surface-muted" />;
 
-  if (campaigns.length < MIN_CAMPAIGNS_FOR_TREND) {
+  /*
+   * Do grafu jdou JEN kampaně se známou doručeností. Zdůvodnění je
+   * u `withKnownDelivery`; tady zbývá rozhodnout, co se stane se zbytkem:
+   * napíše se, kolik jich vypadlo a proč. Bez té věty by uživatel viděl
+   * graf o třech kampaních a nevěděl, kam se poděly zbylé čtyři.
+   */
+  const usable = withKnownDelivery(campaigns);
+  const excluded = campaigns.length - usable.length;
+
+  const excludedNote =
+    excluded === 0 ? null : (
+      <p className="mt-2 text-sm text-text-muted" data-testid="trend-excluded">
+        {t('stats.excludedUnknown', { count: excluded })}
+      </p>
+    );
+
+  if (usable.length < MIN_CAMPAIGNS_FOR_TREND) {
     return (
       <section aria-labelledby="trend-heading">
         <h1 id="trend-heading" className="text-2xl font-semibold">
           {t('stats.campaignsHeading')}
         </h1>
         <p className="mt-2 text-text-muted">{t('stats.emptyTooFew')}</p>
+        {excludedNote}
       </section>
     );
   }
 
-  const rows = trendRows(campaigns);
+  const rows = trendRows(usable);
 
   return (
     <section aria-labelledby="trend-heading" className="flex flex-col gap-4">
@@ -60,6 +78,7 @@ export function CampaignTrend({ workspaceSlug }: { workspaceSlug: string }) {
         {t('stats.campaignsHeading')}
       </h1>
       <p className="text-sm text-text-muted">{t('stats.openWithMachineNote')}</p>
+      {excludedNote}
       <ReportChart
         title={t('stats.campaignsHeading')}
         labels={{
@@ -98,8 +117,19 @@ export function CampaignTrend({ workspaceSlug }: { workspaceSlug: string }) {
         <tbody>
           {rows.map((row) => (
             <tr key={row.campaignId} className="border-t border-border first:border-t-0">
+              {/*
+                Jméno kampaně je ODKAZ NA JEJÍ REPORT. Bez něj byly Statistiky
+                slepá ulice: tabulka vypsala míry deseti kampaní a k té jedné,
+                která uživatele zajímá, se odsud nedalo prokliknout. Stejně to
+                dělá dlaždice posledních kampaní na přehledu.
+              */}
               <th scope="row" className="py-2 text-left font-normal">
-                {row.name}
+                <Link
+                  href={`/w/${workspaceSlug}/campaigns/${row.campaignId}/report`}
+                  className="underline"
+                >
+                  {row.name}
+                </Link>
               </th>
               <td className="py-2 text-right tabular-nums">
                 {format.number(row.values.clicked, { style: 'percent', maximumFractionDigits: 1 })}

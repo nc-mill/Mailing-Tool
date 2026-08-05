@@ -98,8 +98,42 @@ describe('workspaceChecks', () => {
     expect(findings.find((x) => x.id === 'demo_data_present')?.severity).toBe('info');
   });
 
-  it('čistý projekt nehlásí nic', async () => {
-    expect(await run(workspaceChecks)).toEqual([]);
+  /**
+   * „Čistý" znamená bez zkušebního režimu a bez ukázkových dat. Nález
+   * `system_mail_unavailable` tu být MÁ: testovací projekt nemá odesílací účet,
+   * takže z něj systémový e-mail opravdu odejít nemůže. Právě proto ta kontrola
+   * vznikla; instalace se to dřív dozvěděla jedině z logu, až když někdo
+   * zapomněl heslo.
+   */
+  it('čistý projekt nehlásí nic než chybějící systémovou poštu', async () => {
+    const findings = await run(workspaceChecks);
+    expect(findings.map((f) => f.id)).toEqual(['system_mail_unavailable']);
+    expect(findings[0]?.severity).toBe('warning');
+    expect(findings[0]?.detail).toContain('nemá ani jeden použitelný odesílací účet');
+  });
+
+  it('projekt s účtem typu SES hlásí, že systémovou poštu odeslat neumí', async () => {
+    await pg.sql(`
+      INSERT INTO sending_providers
+        (workspace_id, name, type, config_encrypted, config_public, status, is_default)
+      SELECT id, 'SES', 'ses', 'enc:test', '{}'::jsonb, 'ready', true FROM workspaces LIMIT 1
+    `);
+    const findings = await run(workspaceChecks);
+    const f = findings.find((x) => x.id === 'system_mail_unavailable');
+    expect(f?.detail).toContain('typu ses');
+    expect(f?.action).toContain('mlain reset-password');
+    await pg.sql(`DELETE FROM sending_providers`);
+  });
+
+  it('projekt s účtem typu SMTP systémovou poštu nehlásí', async () => {
+    await pg.sql(`
+      INSERT INTO sending_providers
+        (workspace_id, name, type, config_encrypted, config_public, status, is_default)
+      SELECT id, 'SMTP', 'smtp', 'enc:test', '{}'::jsonb, 'ready', true FROM workspaces LIMIT 1
+    `);
+    const findings = await run(workspaceChecks);
+    expect(findings.find((x) => x.id === 'system_mail_unavailable')).toBeUndefined();
+    await pg.sql(`DELETE FROM sending_providers`);
   });
 
   it('nehlásí čistý projekt, když jen nemá jak se zeptat', async () => {

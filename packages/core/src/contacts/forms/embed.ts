@@ -1,21 +1,39 @@
 export type EmbedSnippets = {
-  /** Výchozí varianta, nejlepší vzhled. Vykresluje do zapouzdřeného stromu. */
+  /**
+   * Výchozí varianta. Skript vykreslí formulář přímo do stránky, bez jediného
+   * pravidla stylu a s pojmenovanými úchyty, takže vzhled určuje hostitelský web.
+   */
   script: string;
-  /** Pro redakční systémy, kde nejde vložit skript. */
+  /**
+   * Pro redakční systémy, kde nejde vložit skript, a pro weby s vypnutým
+   * JavaScriptem: uvnitř rámečku běží NAŠE stránka `/f/{slug}`, takže si nonce
+   * i ochrany řeší sama.
+   */
   iframe: string;
-  /** Plná kontrola nad vzhledem, funguje bez JavaScriptu. */
-  html: string;
 };
 
 /**
- * Tři varianty vložení podle 4.13.1 části 2.
+ * Kód k vložení formuláře na cizí web.
  *
- * Skriptová varianta vykresluje formulář do zapouzdřeného stromu (shadow DOM), takže
- * styly hostitelské stránky nemohou rozbít vzhled a naopak. Skript sám o sobě nic
- * netrackuje a je oddělený od trackovacího SDK z části 5.
+ * DVĚ VARIANTY, NE TŘI. Třetí bývala „čistě HTML formulář, funguje i bez
+ * JavaScriptu" a MUSELA ZMIZET, protože tiše zahazovala data. Druhá vrstva
+ * ochrany (`checkProtection`) vyžaduje nonce a `verifyNonce` ho váže na
+ * formulář, na PREFIX IP odesílatele a na čas vydání. Statický HTML kód
+ * zkopírovaný na cizí web nemá jak nonce získat: v okamžiku generování
+ * neznáme IP návštěvníka a do vypršení TTL by stejně nedožil. Naměřeno na
+ * instalaci doslova takhle:
  *
- * Čistě HTML varianta funguje i s vypnutým JavaScriptem, jen bez ochrany časovou pastí
- * a bez nonce. Uživatel je na to při generování kódu upozorněný.
+ *   POST /f/{ref}/submit  (urlencoded, bez nonce)  →  HTTP 303 na děkovací stránku
+ *   form_submissions                               →  dropped / missing_nonce
+ *
+ * Návštěvník tedy viděl „děkujeme" a kontakt nevznikl. Tichá ztráta dat je
+ * horší než chybějící varianta, a oba důvody, proč ta varianta existovala,
+ * dnes plní zbylé dvě: plnou kontrolu nad vzhledem dává skriptová varianta
+ * (holé značkování s úchyty `ml-form`, `ml-field`, …) a funkci bez JavaScriptu
+ * na straně hostitele dává rámeček.
+ *
+ * Ani jedna varianta nenese CSS. Rámeček měl dřív `style="border:0"`; vzhled
+ * si určuje web přes třídu `ml-embed-frame` jako u všeho ostatního.
  *
  * POZOR NA `slug`. Očekává se VEŘEJNÝ IDENTIFIKÁTOR z `publicFormRef(form)`, ne holý
  * `form.slug`. Veřejné adresy nesou projekt v sobě (viz `public/ids.ts`), takže odkaz
@@ -30,15 +48,6 @@ export function buildEmbedSnippets(input: { appUrl: string; slug: string }): Emb
       `<div data-ml-form="${input.slug}"></div>`,
     iframe:
       `<iframe src="${base}/f/${input.slug}" width="100%" height="320" ` +
-      `style="border:0" title="Přihlášení k odběru"></iframe>`,
-    html:
-      `<form action="${base}/f/${input.slug}/submit" method="post">\n` +
-      `  <label for="ml-email">E-mail</label>\n` +
-      `  <input id="ml-email" type="email" name="email" required>\n` +
-      `  <div style="position:absolute;left:-9999px" aria-hidden="true">\n` +
-      `    <input type="text" name="website" tabindex="-1" autocomplete="off">\n` +
-      `  </div>\n` +
-      `  <button type="submit">Přihlásit se k odběru</button>\n` +
-      `</form>`,
+      `class="ml-embed-frame" title="Přihlášení k odběru"></iframe>`,
   };
 }

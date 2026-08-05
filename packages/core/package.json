@@ -20,6 +20,7 @@
     "./ops/jobs": "./src/ops/jobs/queue-handlers.ts",
     "./platform/jobs": "./src/platform/jobs/queue-handlers.ts",
     "./segments/jobs": "./src/segments/jobs/queue-handlers.ts",
+    "./sender/jobs": "./src/sender/jobs/queue-handlers.ts",
     "./tracking/jobs": "./src/tracking/jobs/queue-handlers.ts",
     "./ai/api": "./src/ai/api/index.ts",
     "./ai/sdk": "./src/ai/sdk/index.ts",
@@ -32,10 +33,14 @@
     "./reports/metrics/*": "./src/reports/metrics/*.ts",
     "./templates/api": "./src/templates/api/index.ts",
     "./templates/*": "./src/templates/*.ts",
+    "./transactional/api": "./src/transactional/api/index.ts",
+    "./transactional/jobs": "./src/transactional/jobs/queue-handlers.ts",
+    "./transactional/*": "./src/transactional/*.ts",
     "./test-support/*": "./src/test-support/*.ts",
     "./tx/*": "./src/tx/*.ts",
     "./ops/api": "./src/ops/api/index.ts",
     "./ops/*": "./src/ops/*.ts",
+    "./providers/ses/*": "./src/providers/ses/*.ts",
     "./*": "./src/*/index.ts"
   },
   "scripts": {

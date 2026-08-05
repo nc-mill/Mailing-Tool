@@ -1,8 +1,18 @@
 import { screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ImportResult, type ImportResultRow } from '../../src/features/import/import-result';
 import { WARNING_CODES } from '../../src/features/import/labels';
 import { renderIntl } from '../helpers/intl';
+
+/**
+ * Směrovač Nextu mimo aplikaci neexistuje, takže `useRouter` v testu vyhodí
+ * „invariant expected app router to be mounted" a padne CELÝ soubor, ne jedno
+ * tvrzení. `ImportResult` ho začal používat ve chvíli, kdy se doplnilo
+ * překreslení běžícího importu; do té doby byla komponenta bez směrovače.
+ */
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+}));
 
 const row = (patch: Partial<ImportResultRow> = {}): ImportResultRow => ({
   id: 'i1',

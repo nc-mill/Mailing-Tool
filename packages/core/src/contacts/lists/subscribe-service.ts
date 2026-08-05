@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../../identity/types';
 import { emitWebhookEvent } from '../../platform/webhooks/emit';
 import { withWorkspace } from '../../tx';
-import { recordConsent, type ConsentPurpose } from '../repo/consents';
+import { findEffectiveConsent, recordConsent, type ConsentPurpose } from '../repo/consents';
 import { writeContact } from '../repo/contacts';
 import { byId as listById } from '../repo/lists';
 import {
@@ -110,11 +110,26 @@ export function subscribePorts(ctx: WorkspaceContext): SubscribePorts {
       };
     },
 
+    /**
+     * PŘIHLÁŠENÍ DO SEZNAMU NENÍ ZMĚNA JMÉNA.
+     *
+     * Port má jména psaná jako `string | null`, protože `subscribe()` normalizuje
+     * `undefined` na `null` na hranici portu (viz hlavička `subscribe.ts`). Do zápisu
+     * se ale `null` posílat NESMÍ: pro `writeContact` je „null" tvrzení „jméno má být
+     * prázdné", zatímco tady znamená „přihlášení jméno vůbec nenese". Rozdíl se dřív
+     * ztratil a hromadné přidání do seznamu tím shodilo ručně potvrzený tvar oslovení
+     * (v auditu `contact.vocative_lock_released` s důvodem `name_changed` u kontaktů,
+     * kterým se jméno nezměnilo).
+     *
+     * Prázdné jméno se proto vynechává úplně a `writeContact` pak jméno, vokativ ani
+     * oslovení nemá o čem přepočítat. Formulář, který jméno vyplněné MÁ, ho posílá dál
+     * a chová se přesně jako dřív.
+     */
     async upsertContact(input) {
       const result = await writeContact(ctx, {
         email: input.email,
-        firstName: input.firstName,
-        lastName: input.lastName,
+        ...(input.firstName === null ? {} : { firstName: input.firstName }),
+        ...(input.lastName === null ? {} : { lastName: input.lastName }),
         attributes: input.attributes,
         ...(input.locale === null ? {} : { locale: input.locale }),
         source: input.source,
@@ -157,6 +172,18 @@ export function subscribePorts(ctx: WorkspaceContext): SubscribePorts {
       return withWorkspace(ctx, async (tx) =>
         countResendsIn24h(tx, ctx, contactId, listId, new Date()),
       );
+    },
+
+    async findConsent(contactId, listId) {
+      const proof = await findEffectiveConsent(ctx, { contactId, listId });
+      return proof === null
+        ? null
+        : {
+            consentId: proof.consentId,
+            scopeListId: proof.scopeListId,
+            source: proof.source,
+            occurredAt: proof.occurredAt,
+          };
     },
 
     async issueConfirmation(input) {

@@ -229,4 +229,30 @@ describe('structural semantics', () => {
     );
     expect(codes(docOf(many))).toContain('content_too_many_blocks');
   });
+  // Transakční profil se kompiluje s vypnutým sledováním, takže proměnná
+  // v odkazu tam není odchylka, ale normální stav. U kampaně pojistka platí dál.
+  it('allows a liquid variable in a button href only in the transactional profile', () => {
+    const button = {
+      id: 'b_000000000002',
+      type: 'button',
+      props: { ...blockDefaults('button'), href: '{{ data.reset_url }}', trackable: true },
+    };
+    const doc = docOf([section('b_000000000001', [button])]);
+    expect(codes(doc, 'campaign')).toContain('liquid_in_trackable_href');
+    expect(codes(doc, 'transactional')).not.toContain('liquid_in_trackable_href');
+    expect(codes(doc, 'transactional')).not.toContain('link_variable_not_tracked');
+  });
+
+  // Kampaň s vypnutým sledováním na jednom odkazu varování dostat MÁ: říká
+  // „tenhle jeden se do statistiky nedostane".
+  it('keeps the untracked link warning in a campaign', () => {
+    const button = {
+      id: 'b_000000000002',
+      type: 'button',
+      props: { ...blockDefaults('button'), href: '{{ contact.attr.city }}', trackable: false },
+    };
+    expect(codes(docOf([section('b_000000000001', [button])]), 'campaign')).toContain(
+      'link_variable_not_tracked',
+    );
+  });
 });

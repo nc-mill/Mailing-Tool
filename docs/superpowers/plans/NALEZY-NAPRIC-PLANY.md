@@ -5665,3 +5665,96 @@ funkce, která je v produktu od začátku a soubory nad megabajt je u ní běžn
 Poučení: výjimka, kterou nikdo nevynucuje, vypadá v kódu stejně jako výjimka,
 která platí. Ke každé patří test, který doloží, že cesta ze seznamu skutečně
 projde s větším tělem.
+
+### I105. Dvoje hodiny v jednom porovnání, rezerva pod 10 ms
+
+- **Našel:** agent po tom, co mu hlavní agent doložil opakovaný pád u sebe
+- **Uzavřeno:** 2026-08-03
+
+`hideAsset` razil `hidden_at` **hodinami aplikace** (`new Date()` v Node),
+kdežto úklid ten sloupec porovnává proti `now()`, tedy **hodinami databáze**.
+V jednom porovnání tedy byly dvoje hodiny ze dvou různých strojů.
+
+Testy to dotlačily do nejhoršího tvaru: skryly asset „teď" a hned se zeptaly
+na kandidáty se lhůtou NULA dní, tedy na podmínku s nulovou šířkou okna.
+
+Naměřená rezerva:
+```
+posun hidden_at   0 ms -> kandidatu 1
+posun hidden_at   5 ms -> kandidatu 1
+posun hidden_at  10 ms -> kandidatu 0   <- tady to padne
+```
+
+Na stroji autora šly hodiny o 2 ms v jeho prospěch, takže mu prošlo osm běhů
+z osmi. Jinde se rozešly opačně a spadlo to.
+
+**Pravidlo, které z toho plyne: co porovnává `now()`, ať `now()` i zapisuje.**
+V provozu s třicetidenní lhůtou by se to neprojevilo nikdy, ale míchat dvoje
+hodiny v jednom porovnání je vada bez ohledu na to, jestli se dnes projeví.
+
+Testy nově posouvají čas o 31 dní hodinami databáze a ptají se SKUTEČNOU
+třicetidenní lhůtou z produkce, ne degenerovanou nulou. Rezerva vzrostla
+z necelých 10 ms na necelý den.
+
+Poučení k hlášení výsledků, které si bere autor i hlavní agent: **osm zelených
+běhů na jednom stroji nedokazuje nic o testu, jehož rezerva je 10 ms.**
+Dokazuje jen, že ten stroj měl toho dne štěstí. U všeho, co sahá na čas, se má
+měřit REZERVA, ne počet běhů.
+
+### I106. Úklid směl smazat odkazovaný soubor a sada zůstala zelená
+
+- **Našel:** agent při ověřování, že jeho testy chytají regrese
+- **Uzavřeno:** 2026-08-03
+
+Zavedl do `listPurgeCandidates` vadu, odstranil podmínku `reference_count = 0`,
+a **celá sada zůstala ZELENÁ**.
+
+Dosah: úklid by směl fyzicky smazat soubor, na který odkazuje odeslaná kampaň.
+Poznalo by se to teprve tím, že by příjemcům zmizely obrázky v e-mailech, které
+dávno dostali. Je to ztráta dat U PŘÍJEMCE, ne u nás, a nejde ji vzít zpět.
+
+Doplněn test, který ověřuje obě půlky: odkazovaný asset kandidátem není, a jakmile
+reference zmizí, kandidátem se stane. Bez té druhé půlky by test prošel i nad
+dotazem, který nevrací nikdy nic.
+
+Poučení: „zavedl jsem vadu a testy spadly" se musí zkoušet i u podmínek, které
+vypadají samozřejmě. Právě u nich nikdo test nepíše.
+
+### I107. Soubor `.ts` vedle `.tsx` téhož jména odřízl komponentu
+
+- **Našel:** hlavní agent tím, že tu vadu sám způsobil
+- **Uzavřeno:** 2026-08-03
+
+Při dělení `visibility.tsx` na čistou část a JSX komponentu dostala čistá část
+jméno `visibility.ts`, tedy TÉŽ jméno vedle `.tsx`. Přípona `.ts` se při
+rozřešení zkouší dřív, takže cesta `./visibility` začala ukazovat na soubor bez
+komponenty `Visible` a **95 testů emitteru spadlo naráz**.
+
+Opraveno přejmenováním na `visibility-tags.ts` a do obou souborů připsáno, proč
+se ten soubor nesmí jmenovat stejně.
+
+Poučení: dělení souboru na `.ts` a `.tsx` téhož jména není rozdělení, je to
+skryté přepsání. Jméno musí být jiné.
+
+### I108. Vada nebyla nová, jen nově dosažitelná
+
+- **Našel:** hlavní agent při kompletní sérii
+- **Uzavřeno:** 2026-08-03
+
+Typová kontrola `apps/worker` začala padat na `TS6142: Module was resolved to
+.tsx, but '--jsx' is not set`. Vypadalo to jako regrese z přepisu emitteru,
+jenže dotčené importy v `packages/emails/src/text/emit.ts` byly stejné už
+v předchozím commitu, ověřeno přes `git show`.
+
+Změnilo se něco jiného: **worker si zapojením front domény assetů a značky
+vtáhl do svého grafu balíček e-mailů**, který skládá HTML pomocí JSX. Vada tam
+ležela celou dobu a byla jen NEDOSAŽITELNÁ.
+
+U workeru se proto zapnulo JSX v jeho `tsconfig.json`, nedělil se další soubor.
+Rozdíl proti `ctx` a `visibility`: tam React vůbec nepatřil, kdežto `varOutput`
+s vykreslováním souvisí a dělit soubor kvůli nastavení spotřebitele znamená
+ohýbat návrh podle konfigurace.
+
+Poučení: než se vada prohlásí za regresi, patří ověřit, jestli se změnil KÓD,
+nebo jen DOSAH. Rozšíření grafu závislostí odhaluje staré vady a vypadá to
+přitom jako by je způsobilo.

@@ -81,6 +81,13 @@
     }
   ],
   "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "API klíč ve tvaru `ml_live_<prefix>_<sekret>`. Posílá se jako `Authorization: Bearer <klíč>`. Rozsah oprávnění klíče se vydává při jeho založení; hodnoty v `security` u jednotlivých operací říkají, který scope daná operace vyžaduje."
+      }
+    },
     "schemas": {
       "SetupOutput": {
         "type": "object",
@@ -656,6 +663,50 @@
           "created_at"
         ]
       },
+      "CreatedMember": {
+        "type": "object",
+        "properties": {
+          "member": {
+            "$ref": "#/components/schemas/Member"
+          },
+          "generated_password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "password_set": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "member",
+          "generated_password",
+          "password_set"
+        ]
+      },
+      "CreateMemberInput": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ],
+        "additionalProperties": false
+      },
       "UpdateMemberInput": {
         "type": "object",
         "properties": {
@@ -667,6 +718,40 @@
           "role"
         ],
         "additionalProperties": false
+      },
+      "OrphanedAccount": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_login_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "name",
+          "created_at",
+          "last_login_at"
+        ]
       },
       "Invitation": {
         "type": "object",
@@ -792,6 +877,7 @@
                 "campaigns:send",
                 "campaigns:control",
                 "campaigns:delete",
+                "transactional:send",
                 "forms:read",
                 "forms:write",
                 "events:write",
@@ -883,7 +969,7 @@
             "items": {
               "type": "string"
             },
-            "maxItems": 48
+            "maxItems": 49
           },
           "expires_at": {
             "type": [
@@ -1235,6 +1321,161 @@
           "finished_at",
           "note"
         ]
+      },
+      "SystemMailStatus": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "no_account",
+              "provider_unsupported",
+              "selected_account_missing",
+              null
+            ]
+          },
+          "provider_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "provider_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from_address": {
+            "type": "string"
+          },
+          "from_source": {
+            "type": "string",
+            "enum": [
+              "configured",
+              "verified_domain",
+              "app_url"
+            ]
+          },
+          "capable_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "settings": {
+            "$ref": "#/components/schemas/SystemMailSettings"
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SystemMailAccount"
+            }
+          }
+        },
+        "required": [
+          "available",
+          "reason",
+          "provider_id",
+          "provider_type",
+          "from_address",
+          "from_source",
+          "capable_types",
+          "settings",
+          "accounts"
+        ]
+      },
+      "SystemMailSettings": {
+        "type": "object",
+        "properties": {
+          "provider_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "from_address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "provider_id",
+          "from_address"
+        ]
+      },
+      "SystemMailAccount": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "capable": {
+            "type": "boolean"
+          },
+          "domain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "status",
+          "is_default",
+          "capable",
+          "domain"
+        ]
+      },
+      "UpdateSystemMailSettingsInput": {
+        "type": "object",
+        "properties": {
+          "provider_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "from_address": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 320
+          }
+        },
+        "required": [
+          "provider_id",
+          "from_address"
+        ],
+        "additionalProperties": false
       },
       "Import": {
         "type": "object",
@@ -2151,6 +2392,13 @@
               "unknown"
             ]
           },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "unconfirmed"
+            ]
+          },
           "first_name_vocative": {
             "type": [
               "string",
@@ -2614,6 +2862,21 @@
           "is_default": {
             "type": "boolean"
           },
+          "public_visible": {
+            "type": "boolean"
+          },
+          "public_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "public_description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "archived_at": {
             "allOf": [
               {
@@ -2641,6 +2904,9 @@
           "confirmation_max_resends",
           "send_welcome",
           "is_default",
+          "public_visible",
+          "public_name",
+          "public_description",
           "archived_at",
           "created_at"
         ]
@@ -2694,6 +2960,26 @@
           "is_default": {
             "type": "boolean",
             "default": false
+          },
+          "public_visible": {
+            "type": "boolean",
+            "default": false
+          },
+          "public_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "public_description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 500
           }
         },
         "required": [
@@ -2742,6 +3028,513 @@
           "email"
         ],
         "additionalProperties": false
+      },
+      "Form": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "hosted_url": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "target": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "attribute": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "attribute"
+                      ]
+                    }
+                  ]
+                },
+                "label": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "options": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "label"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "target",
+                "label",
+                "required",
+                "type"
+              ]
+            }
+          },
+          "list_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "tag_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "double_opt_in": {
+            "type": "boolean"
+          },
+          "consent_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "consent_required": {
+            "type": "boolean"
+          },
+          "legal_basis": {
+            "type": "string",
+            "enum": [
+              "consent",
+              "legitimate_interest",
+              "contract",
+              "soft_opt_in"
+            ]
+          },
+          "honeypot_field": {
+            "type": "string"
+          },
+          "min_fill_seconds": {
+            "type": "integer"
+          },
+          "allowed_origins": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "captcha_provider": {
+            "type": "string",
+            "enum": [
+              "none",
+              "turnstile",
+              "hcaptcha"
+            ]
+          },
+          "redirect_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "delivery_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "success_message": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "submission_count": {
+            "type": "integer"
+          },
+          "accepted_30d": {
+            "type": "integer"
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/IsoDateTime"
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/IsoDateTime"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "hosted_url",
+          "fields",
+          "list_ids",
+          "tag_ids",
+          "double_opt_in",
+          "consent_text",
+          "consent_required",
+          "legal_basis",
+          "honeypot_field",
+          "min_fill_seconds",
+          "allowed_origins",
+          "captcha_provider",
+          "redirect_url",
+          "delivery_template_id",
+          "success_message",
+          "active",
+          "submission_count",
+          "accepted_30d",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "CreateForm": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "target": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "email",
+                        "first_name",
+                        "last_name",
+                        "full_name",
+                        "locale"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "attribute": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80
+                        }
+                      },
+                      "required": [
+                        "attribute"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "label": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "en": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        }
+                      },
+                      "required": [
+                        "en"
+                      ],
+                      "additionalProperties": {
+                        "type": "string",
+                        "maxLength": 200
+                      }
+                    }
+                  ]
+                },
+                "placeholder": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "en": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        }
+                      },
+                      "required": [
+                        "en"
+                      ],
+                      "additionalProperties": {
+                        "type": "string",
+                        "maxLength": 200
+                      }
+                    }
+                  ]
+                },
+                "required": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "text",
+                    "textarea",
+                    "email",
+                    "url",
+                    "tel",
+                    "select",
+                    "checkbox",
+                    "date",
+                    "datetime",
+                    "number",
+                    "hidden"
+                  ]
+                },
+                "options": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "label": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "en": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              }
+                            },
+                            "required": [
+                              "en"
+                            ],
+                            "additionalProperties": {
+                              "type": "string",
+                              "maxLength": 200
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "label"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "maxItems": 50
+                },
+                "default_value": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              },
+              "required": [
+                "target",
+                "label",
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 15
+          },
+          "list_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 20
+          },
+          "tag_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 20
+          },
+          "double_opt_in": {
+            "type": "boolean"
+          },
+          "consent_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "consent_required": {
+            "type": "boolean"
+          },
+          "legal_basis": {
+            "type": "string",
+            "enum": [
+              "consent",
+              "legitimate_interest",
+              "contract",
+              "soft_opt_in"
+            ]
+          },
+          "honeypot_field": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "min_fill_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 60
+          },
+          "allowed_origins": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "maxItems": 20
+          },
+          "captcha_provider": {
+            "type": "string",
+            "enum": [
+              "none",
+              "turnstile",
+              "hcaptcha"
+            ]
+          },
+          "redirect_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "delivery_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "success_message": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "custom_css": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "FormEmbed": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "hosted_url": {
+            "type": "string"
+          },
+          "script": {
+            "type": "string"
+          },
+          "iframe": {
+            "type": "string"
+          },
+          "first_submission_at": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IsoDateTime"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "slug",
+          "hosted_url",
+          "script",
+          "iframe",
+          "first_submission_at"
+        ]
       },
       "SuppressionPage": {
         "type": "object",
@@ -3132,6 +3925,13 @@
               "unknown"
             ]
           },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "unconfirmed"
+            ]
+          },
           "first_name_vocative": {
             "type": [
               "string",
@@ -3301,6 +4101,67 @@
           "gender_source",
           "warnings"
         ]
+      },
+      "GreetingLocaleSummary": {
+        "type": "object",
+        "properties": {
+          "workspace_locale": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "mismatched": {
+            "type": "integer"
+          },
+          "by_locale": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "locale": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "locale",
+                "count"
+              ]
+            }
+          }
+        },
+        "required": [
+          "workspace_locale",
+          "total",
+          "mismatched",
+          "by_locale"
+        ]
+      },
+      "GreetingOverrideRequest": {
+        "type": "object",
+        "properties": {
+          "first_name_vocative": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100
+          },
+          "last_name_vocative": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "first_name_vocative"
+        ],
+        "additionalProperties": false
       },
       "OnboardingState": {
         "type": "object",
@@ -3813,7 +4674,14 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Template"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Template"
+                },
+                {
+                  "$ref": "#/components/schemas/TemplateSummary"
+                }
+              ]
             }
           },
           "next_cursor": {
@@ -3821,11 +4689,15 @@
               "string",
               "null"
             ]
+          },
+          "counts": {
+            "$ref": "#/components/schemas/TemplateCategoryCounts"
           }
         },
         "required": [
           "items",
-          "next_cursor"
+          "next_cursor",
+          "counts"
         ]
       },
       "Template": {
@@ -3943,6 +4815,121 @@
           "code",
           "severity",
           "pointer"
+        ]
+      },
+      "TemplateSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/TemplateUsage"
+          },
+          "validation_state": {
+            "type": "string"
+          },
+          "starter": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "category",
+          "usage",
+          "validation_state",
+          "starter",
+          "updated_at"
+        ]
+      },
+      "TemplateUsage": {
+        "type": "object",
+        "properties": {
+          "forms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ]
+            }
+          },
+          "lists": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "role"
+              ]
+            }
+          }
+        },
+        "required": [
+          "forms",
+          "lists"
+        ]
+      },
+      "TemplateCategoryCounts": {
+        "type": "object",
+        "properties": {
+          "all": {
+            "type": "integer"
+          },
+          "campaign": {
+            "type": "integer"
+          },
+          "form": {
+            "type": "integer"
+          },
+          "transactional": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "all",
+          "campaign",
+          "form",
+          "transactional"
         ]
       },
       "TemplateFieldUsageResponse": {
@@ -4591,6 +5578,15 @@
             ],
             "format": "uuid"
           },
+          "has_design": {
+            "type": "boolean"
+          },
+          "has_content": {
+            "type": "boolean"
+          },
+          "content_block_count": {
+            "type": "integer"
+          },
           "audience": {},
           "audience_size": {
             "type": [
@@ -4613,6 +5609,13 @@
             "format": "uuid"
           },
           "sender_domain_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "sender_identity_id": {
             "type": [
               "string",
               "null"
@@ -4692,10 +5695,14 @@
           "from_email",
           "reply_to",
           "template_id",
+          "has_design",
+          "has_content",
+          "content_block_count",
           "audience_size",
           "audience_built_at",
           "provider_id",
           "sender_domain_id",
+          "sender_identity_id",
           "unsubscribe_list_id",
           "track_opens",
           "track_clicks",
@@ -4854,6 +5861,13 @@
             ],
             "format": "uuid"
           },
+          "sender_identity_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "unsubscribe_list_id": {
             "type": [
               "string",
@@ -4971,6 +5985,13 @@
             ],
             "format": "uuid"
           },
+          "sender_identity_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "unsubscribe_list_id": {
             "type": [
               "string",
@@ -5072,6 +6093,117 @@
           "excluded_sample",
           "excluded_by_selection",
           "duplicates_removed"
+        ]
+      },
+      "ApplyTemplateResult": {
+        "type": "object",
+        "properties": {
+          "overwritten": {
+            "type": "boolean"
+          },
+          "compiled": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CampaignCompileResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "overwritten",
+          "compiled"
+        ]
+      },
+      "CampaignCompileResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "compiled_hash": {
+            "type": "string"
+          },
+          "html_bytes": {
+            "type": "integer"
+          },
+          "link_count": {
+            "type": "integer"
+          },
+          "click_marker_count": {
+            "type": "integer"
+          },
+          "has_unsubscribe_link": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "compiled_hash",
+          "html_bytes",
+          "link_count",
+          "click_marker_count",
+          "has_unsubscribe_link"
+        ]
+      },
+      "ApplyTemplateRequest": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "template_id"
+        ],
+        "additionalProperties": false
+      },
+      "CampaignSentPreview": {
+        "type": "object",
+        "properties": {
+          "html": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "compiled_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "html",
+          "text",
+          "compiled_at",
+          "revision",
+          "status",
+          "subject"
         ]
       },
       "CampaignPreflight": {
@@ -5209,6 +6341,12 @@
           "undo_remaining_seconds": {
             "type": "integer"
           },
+          "delivery_events_seen": {
+            "type": "boolean"
+          },
+          "finished": {
+            "type": "boolean"
+          },
           "updated_at": {
             "type": "string"
           }
@@ -5222,6 +6360,8 @@
           "eta_seconds",
           "stalled",
           "undo_remaining_seconds",
+          "delivery_events_seen",
+          "finished",
           "updated_at"
         ]
       },
@@ -5264,6 +6404,120 @@
           "error_code",
           "provider_message_id",
           "sent_at"
+        ]
+      },
+      "TransactionalSendResponse": {
+        "type": "object",
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued"
+            ]
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "campaign_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "params": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              },
+              "required": [
+                "code"
+              ]
+            }
+          }
+        },
+        "required": [
+          "message_id",
+          "status",
+          "contact_id",
+          "campaign_id",
+          "created_at",
+          "warnings"
+        ]
+      },
+      "TransactionalSendRequest": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Šablona s kind = \"transactional\". Jiný druh skončí na 422."
+          },
+          "to": {
+            "$ref": "#/components/schemas/TransactionalRecipient"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Hodnoty pro kořen `data` v šabloně, tedy `{{ data.reset_url }}`. Nejvýš 16384 bajtů po serializaci. Proměnná, kterou šablona používá a volání ji nedodá, je chyba, ne prázdný řetězec."
+          },
+          "sender_identity_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Bez ní se vezme výchozí odesílací identita projektu."
+          },
+          "reply_to": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "maxItems": 10,
+            "description": "Rozpad v reportu. NENÍ to tagování kontaktu."
+          },
+          "create_contact": {
+            "type": "boolean",
+            "description": "Výchozí true. Neznámá adresa se založí jako kontakt BEZ marketingového souhlasu, bez přihlášení do seznamu a se zdrojem \"api\". Při false a neznámé adrese vrací 422 recipient_unknown."
+          }
+        },
+        "required": [
+          "template_id",
+          "to"
+        ]
+      },
+      "TransactionalRecipient": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "email"
         ]
       },
       "SendingProvider": {
@@ -5394,6 +6648,16 @@
             "minLength": 16,
             "maxLength": 256
           },
+          "region": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "configuration_set_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
           "host": {
             "type": "string",
             "minLength": 1,
@@ -5422,6 +6686,77 @@
           }
         },
         "additionalProperties": false
+      },
+      "SesIdentity": {
+        "type": "object",
+        "properties": {
+          "identity": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "domain",
+              "email",
+              "unknown"
+            ]
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "pending",
+              "failed",
+              "temporary_failure",
+              "not_started",
+              "unknown"
+            ]
+          }
+        },
+        "required": [
+          "identity",
+          "kind",
+          "verified",
+          "status"
+        ]
+      },
+      "SesEmailIdentity": {
+        "type": "object",
+        "properties": {
+          "region": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "pending",
+              "failed",
+              "temporary_failure",
+              "not_started",
+              "unknown"
+            ]
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "already_existed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "region",
+          "email",
+          "status",
+          "verified",
+          "already_existed"
+        ]
       },
       "SenderDomain": {
         "type": "object",
@@ -5505,6 +6840,12 @@
           },
           "has_verified_domain": {
             "type": "boolean"
+          },
+          "provider_sandbox": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "required": [
@@ -5513,7 +6854,8 @@
           "verified",
           "verified_count",
           "max_addresses",
-          "has_verified_domain"
+          "has_verified_domain",
+          "provider_sandbox"
         ]
       },
       "TrialVerifiedAddress": {
@@ -5534,6 +6876,124 @@
           "email",
           "verified_at"
         ]
+      },
+      "SenderIdentity": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "from_name": {
+            "type": "string"
+          },
+          "from_email": {
+            "type": "string"
+          },
+          "reply_to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provider_name": {
+            "type": "string"
+          },
+          "provider_status": {
+            "type": "string"
+          },
+          "sender_domain_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "domain_verified": {
+            "type": "boolean"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "from_name",
+          "from_email",
+          "reply_to",
+          "provider_id",
+          "provider_name",
+          "provider_status",
+          "sender_domain_id",
+          "domain",
+          "domain_verified",
+          "is_default",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "SenderIdentityRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "from_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "from_email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "reply_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 254,
+            "format": "email"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sender_domain_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_default": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "name",
+          "from_name",
+          "from_email",
+          "reply_to",
+          "provider_id",
+          "sender_domain_id"
+        ],
+        "additionalProperties": false
       },
       "AiCredential": {
         "type": "object",
@@ -5608,6 +7068,59 @@
           "last_error_code",
           "created_at",
           "updated_at"
+        ]
+      },
+      "BrandExtraction": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "succeeded",
+              "failed",
+              "blocked"
+            ]
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "brand_profile_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "result": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "error_code",
+          "brand_profile_id",
+          "result"
         ]
       }
     },
@@ -6746,6 +8259,91 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Založení člena rovnou, s heslem",
+        "description": "Cesta pro instalace, které nemají jak doručit pozvánku e-mailem. Heslo buď zadá správce, nebo ho vygeneruje server a vrátí právě v téhle odpovědi. Když účet s danou adresou v instalaci už je, přidá se jen členství a heslo zůstává beze změny.",
+        "security": [
+          {
+            "bearerAuth": [
+              "members:invite"
+            ]
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMemberInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Člen založen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedMember"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict (Conflict)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/members/{user_id}": {
@@ -6922,6 +8520,147 @@
         }
       }
     },
+    "/api/v1/users/orphaned": {
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Účty, které nepatří do žádného projektu",
+        "description": "Účet zůstane po odebrání z projektu i po smazání projektu. Nikde jinde se nezobrazuje, přitom se pořád přihlásí, takže bez tohohle výpisu ho nejde ani najít, ani smazat. Členství ve smazaném projektu se nepočítá.",
+        "security": [
+          {
+            "bearerAuth": [
+              "members:remove"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Seznam účtů bez projektu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/OrphanedAccount"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}": {
+      "delete": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Smazání uživatelského účtu",
+        "description": "Maže se měkce: účet přestane existovat pro přihlášení i pro výpisy, ale zůstane u toho, co vytvořil, a jeho adresa je hned volná. Auditní záznamy zůstávají. Smazat jde jen účet, který nepatří do žádného projektu; člena projektu je nutné nejdřív odebrat.",
+        "security": [
+          {
+            "bearerAuth": [
+              "members:remove"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "user_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Smazáno, relace účtu jsou zrušené"
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict (Conflict)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/invitations": {
       "get": {
         "tags": [
@@ -7081,6 +8820,16 @@
           },
           "422": {
             "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "system_mail_unavailable (System mail is not configured)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -8915,6 +10664,157 @@
           },
           "404": {
             "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system-mail/status": {
+      "get": {
+        "tags": [
+          "Platform"
+        ],
+        "summary": "Stav systémové pošty projektu",
+        "description": "Systémové e-maily (pozvánka, obnova hesla, ověření adresy ve zkušebním režimu) odesílá jen účet typu SMTP: klient SES existuje pouze v odesílací službě napsané v Go. Projekt, který má jen účet typu SES, je odeslat neumí a je to známé omezení produktu, ne chyba nastavení.",
+        "security": [
+          {
+            "bearerAuth": [
+              "providers:read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stav systémové pošty",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "system_mail": {
+                      "$ref": "#/components/schemas/SystemMailStatus"
+                    }
+                  },
+                  "required": [
+                    "system_mail"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system-mail/settings": {
+      "put": {
+        "tags": [
+          "Platform"
+        ],
+        "summary": "Nastavení systémové pošty",
+        "description": "Účet, kterým systémová pošta chodí, a adresa odesílatele. `null` u obou znamená „vyber automaticky\", tedy přednostně účet typu SMTP a adresa z ověřené domény.",
+        "security": [
+          {
+            "bearerAuth": [
+              "providers:write"
+            ]
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSystemMailSettingsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Uloženo, vrací se přepočítaný stav",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "system_mail": {
+                      "$ref": "#/components/schemas/SystemMailStatus"
+                    }
+                  },
+                  "required": [
+                    "system_mail"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -11734,6 +13634,13 @@
                       "unknown"
                     ]
                   },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "unconfirmed"
+                    ]
+                  },
                   "first_name_vocative": {
                     "type": [
                       "string",
@@ -12212,6 +14119,142 @@
           },
           "409": {
             "description": "already_exists (Already exists)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/{id}/confirm": {
+      "post": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Ruční povýšení kontaktu na potvrzený",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Kontakt je potvrzený",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Contact"
+                    },
+                    "confirm": {
+                      "type": "object",
+                      "properties": {
+                        "from_status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "unconfirmed",
+                            "unsubscribed",
+                            "bounced",
+                            "complained",
+                            "deleted"
+                          ]
+                        },
+                        "changed": {
+                          "type": "boolean"
+                        },
+                        "lists_confirmed": {
+                          "type": "integer"
+                        },
+                        "suppression_removed": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "suppression_blocking": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "from_status",
+                        "changed",
+                        "lists_confirmed",
+                        "suppression_removed",
+                        "suppression_blocking"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "confirm"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13530,6 +15573,26 @@
                   "send_welcome": {
                     "type": "boolean",
                     "default": false
+                  },
+                  "public_visible": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "public_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "public_description": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 500
                   }
                 },
                 "additionalProperties": false
@@ -14124,6 +16187,161 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Lists"
+        ],
+        "summary": "Hromadné odhlášení, nejvýš tisíc adres",
+        "security": [
+          {
+            "bearerAuth": [
+              "lists:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "emails": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "email",
+                      "example": "jan@example.cz"
+                    },
+                    "minItems": 1,
+                    "maxItems": 1000
+                  }
+                },
+                "required": [
+                  "emails"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Výsledek po položkách",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "index": {
+                            "type": "integer"
+                          },
+                          "outcome": {
+                            "type": "string",
+                            "enum": [
+                              "unsubscribed",
+                              "unchanged",
+                              "unknown_contact"
+                            ]
+                          },
+                          "contact_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "uuid"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "outcome",
+                          "contact_id"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "results"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed), too_many_items (Too many items)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited (Rate limit exceeded)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/lists/{id}/resend-confirmation": {
@@ -14241,6 +16459,118 @@
         }
       }
     },
+    "/api/v1/lists/{id}/subscriptions:confirm-pending": {
+      "post": {
+        "tags": [
+          "Lists"
+        ],
+        "summary": "Potvrdí čekající přihlášení seznamu na základě doloženého souhlasu",
+        "security": [
+          {
+            "bearerAuth": [
+              "lists:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "declaration": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "declaration"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Kolik čekalo, potvrdilo se a vynechalo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pending": {
+                      "type": "integer"
+                    },
+                    "confirmed": {
+                      "type": "integer"
+                    },
+                    "skipped": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "pending",
+                    "confirmed",
+                    "skipped"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/lists/{id}/stats": {
       "get": {
         "tags": [
@@ -14299,6 +16629,910 @@
                     "bounced",
                     "complained",
                     "total"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/forms": {
+      "get": {
+        "tags": [
+          "Forms"
+        ],
+        "summary": "Formuláře projektu",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "include_inactive",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Formuláře projektu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Form"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Forms"
+        ],
+        "summary": "Založení formuláře",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:write"
+            ]
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateForm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Vytvořeno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Form"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/forms/{id}": {
+      "get": {
+        "tags": [
+          "Forms"
+        ],
+        "summary": "Detail formuláře",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detail formuláře",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Form"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Forms"
+        ],
+        "summary": "Úprava formuláře, včetně pozastavení",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "fields": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "target": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "email",
+                                "first_name",
+                                "last_name",
+                                "full_name",
+                                "locale"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "attribute": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 80
+                                }
+                              },
+                              "required": [
+                                "attribute"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "label": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "en": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "en"
+                              ],
+                              "additionalProperties": {
+                                "type": "string",
+                                "maxLength": 200
+                              }
+                            }
+                          ]
+                        },
+                        "placeholder": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "en": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "en"
+                              ],
+                              "additionalProperties": {
+                                "type": "string",
+                                "maxLength": 200
+                              }
+                            }
+                          ]
+                        },
+                        "required": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "text",
+                            "textarea",
+                            "email",
+                            "url",
+                            "tel",
+                            "select",
+                            "checkbox",
+                            "date",
+                            "datetime",
+                            "number",
+                            "hidden"
+                          ]
+                        },
+                        "options": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "label": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "en": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 200
+                                      }
+                                    },
+                                    "required": [
+                                      "en"
+                                    ],
+                                    "additionalProperties": {
+                                      "type": "string",
+                                      "maxLength": 200
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "label"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "maxItems": 50
+                        },
+                        "default_value": {
+                          "type": "string",
+                          "maxLength": 1000
+                        }
+                      },
+                      "required": [
+                        "target",
+                        "label",
+                        "type"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 15
+                  },
+                  "list_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "maxItems": 20
+                  },
+                  "tag_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "maxItems": 20
+                  },
+                  "double_opt_in": {
+                    "type": "boolean"
+                  },
+                  "consent_text": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 2000
+                  },
+                  "consent_required": {
+                    "type": "boolean"
+                  },
+                  "legal_basis": {
+                    "type": "string",
+                    "enum": [
+                      "consent",
+                      "legitimate_interest",
+                      "contract",
+                      "soft_opt_in"
+                    ]
+                  },
+                  "honeypot_field": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "min_fill_seconds": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 60
+                  },
+                  "allowed_origins": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "maxItems": 20
+                  },
+                  "captcha_provider": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "turnstile",
+                      "hcaptcha"
+                    ]
+                  },
+                  "redirect_url": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uri"
+                  },
+                  "delivery_template_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "success_message": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 200
+                    }
+                  },
+                  "active": {
+                    "type": "boolean"
+                  },
+                  "custom_css": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 20000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upraveno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Form"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Forms"
+        ],
+        "summary": "Smazání formuláře i s historií odeslání",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Smazáno"
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/forms/{id}/embed": {
+      "get": {
+        "tags": [
+          "Forms"
+        ],
+        "summary": "Vkládací kód ve třech variantách",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Kód k vložení a adresa hotové stránky",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FormEmbed"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/forms/{id}/submissions": {
+      "get": {
+        "tags": [
+          "Forms"
+        ],
+        "summary": "Poslední odeslání formuláře",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "accepted",
+                "rejected",
+                "dropped"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Odeslání, nejnovější první",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "accepted",
+                              "rejected",
+                              "dropped"
+                            ]
+                          },
+                          "error_code": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "contact_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "uuid"
+                          },
+                          "page_url": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "created_at": {
+                            "$ref": "#/components/schemas/IsoDateTime"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status",
+                          "error_code",
+                          "contact_id",
+                          "page_url",
+                          "created_at"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
                   ]
                 }
               }
@@ -16364,6 +19598,306 @@
         }
       }
     },
+    "/api/v1/greeting-locale": {
+      "get": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Kolik kontaktů má jiný jazyk oslovení než projekt",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Přehled jazyků kontaktů",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/GreetingLocaleSummary"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/greeting-locale:align": {
+      "post": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Sjednotí jazyk oslovení kontaktů s jazykem projektu a přepočítá oslovení",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:write"
+            ]
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Přepočet zařazen do fronty",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "queued"
+                      ]
+                    },
+                    "locale": {
+                      "type": "string"
+                    },
+                    "affected": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "locale",
+                    "affected"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/{id}/greeting": {
+      "put": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Ruční tvar oslovení, zamkne kontakt proti přepočtu",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GreetingOverrideRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Oslovení uloženo a zamknuto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Contact"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Zrušení ručního tvaru, oslovení se spočítá znovu",
+        "security": [
+          {
+            "bearerAuth": [
+              "contacts:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Zámek zrušen, oslovení přepočítáno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Contact"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/onboarding": {
       "get": {
         "tags": [
@@ -17981,6 +21515,19 @@
             "schema": {
               "type": "string",
               "enum": [
+                "campaign",
+                "form",
+                "transactional"
+              ]
+            },
+            "required": false,
+            "name": "category",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
                 "unknown",
                 "valid",
                 "invalid"
@@ -17988,6 +21535,19 @@
             },
             "required": false,
             "name": "validation_state",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "full",
+                "summary"
+              ],
+              "default": "full"
+            },
+            "required": false,
+            "name": "view",
             "in": "query"
           }
         ],
@@ -18328,6 +21888,16 @@
               }
             }
           },
+          "409": {
+            "description": "template_name_conflict (Template name already exists)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "412": {
             "description": "precondition_failed (Precondition failed)",
             "content": {
@@ -18418,7 +21988,85 @@
             }
           },
           "409": {
-            "description": "template_starter_immutable (Starter template is immutable)",
+            "description": "template_starter_immutable (Starter template is immutable), template_in_use (Template is wired to a form or a list)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/templates/{id}/restore": {
+      "post": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Vrácení smazané šablony",
+        "security": [
+          {
+            "bearerAuth": [
+              "templates:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Obnoveno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Template"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "template_name_conflict (Template name already exists)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -20041,6 +23689,259 @@
         }
       }
     },
+    "/api/v1/campaigns/{id}/apply-template": {
+      "post": {
+        "tags": [
+          "Campaigns"
+        ],
+        "summary": "Použití šablony na kampaň",
+        "security": [
+          {
+            "bearerAuth": [
+              "campaigns:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyTemplateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Obsah zkopírován, zkompilován jen když kampaň má předmět",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyTemplateResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "campaign_locked (Campaign is locked)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "template_document_invalid (Template document is invalid)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{id}/compile": {
+      "post": {
+        "tags": [
+          "Campaigns"
+        ],
+        "summary": "Kompilace obsahu kampaně",
+        "security": [
+          {
+            "bearerAuth": [
+              "campaigns:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Zkompilováno, výsledek uložen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignCompileResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "campaign_locked (Campaign is locked)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "campaign_not_compiled (Campaign template not compiled), campaign_subject_missing (Campaign subject is missing)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{id}/preview": {
+      "get": {
+        "tags": [
+          "Campaigns"
+        ],
+        "summary": "Odeslaná podoba kampaně",
+        "security": [
+          {
+            "bearerAuth": [
+              "campaigns:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Uložená podoba. Nezkompilovaná kampaň vrací 200 s html null, ne 404: kampaň existuje.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignSentPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/campaigns/{id}/preflight": {
       "get": {
         "tags": [
@@ -20775,6 +24676,94 @@
         }
       }
     },
+    "/api/v1/campaigns/{id}/send-now": {
+      "post": {
+        "tags": [
+          "Campaigns"
+        ],
+        "summary": "Okamžité odeslání bez čekání",
+        "security": [
+          {
+            "bearerAuth": [
+              "campaigns:send"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Okamžité odeslání bez čekání",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Campaign"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "invalid_state_transition (Invalid state transition), campaign_undo_window_expired (Undo window expired)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "provider_sending_paused (Provider sending is paused)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/campaigns/{id}/progress": {
       "get": {
         "tags": [
@@ -20944,6 +24933,127 @@
           },
           "404": {
             "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transactional": {
+      "post": {
+        "tags": [
+          "Transactional"
+        ],
+        "summary": "Odeslání jedné transakční zprávy",
+        "description": "Transakční sdělení je plnění smlouvy nebo oprávněný zájem, například reset hesla nebo potvrzení objednávky. Zpráva nenese odhlašovací odkaz ani hlavičku List-Unsubscribe a neměří se u ní otevření ani prokliky. Marketing tudy posílat NELZE: „vaše objednávka byla odeslána, a mrkněte na tyhle produkty\" je marketing, i když jde tímhle rozhraním, a odpovědnost za to nese odesílatel.",
+        "security": [
+          {
+            "bearerAuth": [
+              "transactional:send"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "description": "Povinná. 8 až 255 znaků z [A-Za-z0-9._:-]."
+            },
+            "required": true,
+            "description": "Povinná. 8 až 255 znaků z [A-Za-z0-9._:-].",
+            "name": "Idempotency-Key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransactionalSendRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Zpráva je ve frontě. Odesílá ji sender, ne tenhle požadavek. Opakované volání s týmž Idempotency-Key vrátí tutéž odpověď a druhý mail neodejde.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionalSendResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict (Conflict), idempotency_key_reuse (Idempotency key reused), idempotency_request_in_progress (Request in progress), sending_not_configured (Sending is not configured)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "transactional_data_too_large (Transactional data is too large)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed), template_kind_not_transactional (Template is not transactional), template_not_compilable (Template cannot be compiled), recipient_suppressed (Recipient is suppressed), recipient_unknown (Recipient is not a contact), transactional_variable_unknown (Transactional variable was not supplied), sender_identity_not_found (Sender identity not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited (Rate limit exceeded)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -21285,11 +25395,24 @@
                     },
                     "detail": {
                       "type": "string"
+                    },
+                    "sandbox": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "status_detail": {
+                      "type": "object",
+                      "additionalProperties": {}
                     }
                   },
                   "required": [
                     "ok",
-                    "detail"
+                    "detail",
+                    "sandbox",
+                    "status",
+                    "status_detail"
                   ]
                 }
               }
@@ -21326,7 +25449,7 @@
             }
           },
           "422": {
-            "description": "provider_smtp_auth_failed (SMTP authentication failed), provider_credentials_invalid (Provider credentials are invalid)",
+            "description": "provider_credentials_invalid (Provider credentials are invalid), provider_smtp_auth_failed (SMTP authentication failed), provider_smtp_host_unknown (SMTP host is unknown), provider_smtp_connection_refused (SMTP connection refused), provider_smtp_tls_invalid (SMTP TLS handshake failed), provider_smtp_timeout (SMTP connection timed out), provider_smtp_starttls_unsupported (SMTP server does not support STARTTLS), provider_smtp_greeting_invalid (SMTP greeting is invalid)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -21472,6 +25595,440 @@
           },
           "404": {
             "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/providers/{id}/identities": {
+      "get": {
+        "tags": [
+          "Sending"
+        ],
+        "summary": "Co má účet ověřené v regionu účtu",
+        "security": [
+          {
+            "bearerAuth": [
+              "providers:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Region účtu a identity, které v něm Amazon zná",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "region": {
+                      "type": "string"
+                    },
+                    "identities": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SesIdentity"
+                      }
+                    }
+                  },
+                  "required": [
+                    "region",
+                    "identities"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed), provider_credentials_invalid (Provider credentials are invalid)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Sending"
+        ],
+        "summary": "Ověření adresy odesílatele u Amazonu",
+        "security": [
+          {
+            "bearerAuth": [
+              "providers:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "minLength": 6,
+                    "maxLength": 254
+                  }
+                },
+                "required": [
+                  "email"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Amazon adresu přijal a poslal na ni potvrzovací e-mail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SesEmailIdentity"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict (Conflict)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed), provider_credentials_invalid (Provider credentials are invalid)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/providers/{id}/identities/{identity}": {
+      "get": {
+        "tags": [
+          "Sending"
+        ],
+        "summary": "Stav jedné ověřované adresy",
+        "security": [
+          {
+            "bearerAuth": [
+              "providers:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 254
+            },
+            "required": true,
+            "name": "identity",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stav adresy podle Amazonu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SesEmailIdentity"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed), provider_credentials_invalid (Provider credentials are invalid)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/providers/{id}/production-access": {
+      "post": {
+        "tags": [
+          "Sending"
+        ],
+        "summary": "Žádost o vyřazení z testovacího režimu u Amazonu",
+        "security": [
+          {
+            "bearerAuth": [
+              "providers:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mail_type": {
+                    "type": "string",
+                    "enum": [
+                      "MARKETING",
+                      "TRANSACTIONAL"
+                    ]
+                  },
+                  "website_url": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  },
+                  "additional_contact_emails": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 6,
+                      "maxLength": 254
+                    },
+                    "maxItems": 4
+                  },
+                  "contact_language": {
+                    "type": "string",
+                    "enum": [
+                      "EN",
+                      "JA"
+                    ]
+                  }
+                },
+                "required": [
+                  "mail_type",
+                  "website_url"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Žádost odešla a Amazon ji posuzuje",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "region": {
+                      "type": "string"
+                    },
+                    "submitted": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "region",
+                    "submitted"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict (Conflict)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed), provider_credentials_invalid (Provider credentials are invalid)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -22545,6 +27102,416 @@
         }
       }
     },
+    "/api/v1/senders": {
+      "get": {
+        "tags": [
+          "Sending"
+        ],
+        "summary": "Předvolby odesílatele",
+        "security": [
+          {
+            "bearerAuth": [
+              "providers:read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Předvolby projektu, výchozí první",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SenderIdentity"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Sending"
+        ],
+        "summary": "Nová předvolba odesílatele",
+        "security": [
+          {
+            "bearerAuth": [
+              "providers:write"
+            ]
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SenderIdentityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Založeno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SenderIdentity"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/senders/{id}": {
+      "get": {
+        "tags": [
+          "Sending"
+        ],
+        "summary": "Jedna předvolba",
+        "security": [
+          {
+            "bearerAuth": [
+              "providers:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Předvolba",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SenderIdentity"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Sending"
+        ],
+        "summary": "Úprava předvolby",
+        "security": [
+          {
+            "bearerAuth": [
+              "providers:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SenderIdentityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Uloženo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SenderIdentity"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Sending"
+        ],
+        "summary": "Smazání předvolby",
+        "security": [
+          {
+            "bearerAuth": [
+              "providers:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Smazáno"
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/senders/{id}/default": {
+      "post": {
+        "tags": [
+          "Sending"
+        ],
+        "summary": "Nastavení výchozí předvolby",
+        "security": [
+          {
+            "bearerAuth": [
+              "providers:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Nastaveno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/credentials": {
       "get": {
         "tags": [
@@ -23136,6 +28103,57 @@
                               "number",
                               "null"
                             ]
+                          },
+                          "input_cost_usd": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "output_cost_usd": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "reported_cost": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "reported_cost_unit": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "cache_read_tokens": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "cache_write_tokens": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "price_status": {
+                            "type": "string",
+                            "enum": [
+                              "reported",
+                              "estimated",
+                              "provider_reports",
+                              "unknown"
+                            ]
+                          },
+                          "long_context_threshold_tokens": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
@@ -23145,7 +28163,15 @@
                           "input_tokens",
                           "output_tokens",
                           "errors",
-                          "estimated_cost_usd"
+                          "estimated_cost_usd",
+                          "input_cost_usd",
+                          "output_cost_usd",
+                          "reported_cost",
+                          "reported_cost_unit",
+                          "cache_read_tokens",
+                          "cache_write_tokens",
+                          "price_status",
+                          "long_context_threshold_tokens"
                         ]
                       }
                     },
@@ -23168,6 +28194,36 @@
                           },
                           "errors": {
                             "type": "number"
+                          },
+                          "estimated_cost_usd": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "input_cost_usd": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "output_cost_usd": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "reported_cost": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "reported_cost_unit": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
@@ -23175,7 +28231,12 @@
                           "requests",
                           "input_tokens",
                           "output_tokens",
-                          "errors"
+                          "errors",
+                          "estimated_cost_usd",
+                          "input_cost_usd",
+                          "output_cost_usd",
+                          "reported_cost",
+                          "reported_cost_unit"
                         ]
                       }
                     },
@@ -23184,6 +28245,33 @@
                         "number",
                         "null"
                       ]
+                    },
+                    "input_cost_usd": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "output_cost_usd": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "reported_cost": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "reported_cost_unit": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "has_long_context_caveat": {
+                      "type": "boolean"
                     },
                     "pricing_updated_at": {
                       "type": "string"
@@ -23194,6 +28282,11 @@
                     "by_model",
                     "by_day",
                     "estimated_cost_usd",
+                    "input_cost_usd",
+                    "output_cost_usd",
+                    "reported_cost",
+                    "reported_cost_unit",
+                    "has_long_context_caveat",
                     "pricing_updated_at"
                   ]
                 }
@@ -23596,6 +28689,202 @@
         }
       }
     },
+    "/api/v1/brand/extractions": {
+      "post": {
+        "tags": [
+          "Brand"
+        ],
+        "summary": "Stáhne barvy a logo z webu a založí z nich značku",
+        "security": [
+          {
+            "bearerAuth": [
+              "templates:write"
+            ]
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048
+                  },
+                  "infer_tone": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "url"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Extrakce zařazena, job běží na pozadí",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "brand_invalid_url (Brand URL is invalid), brand_scheme_not_allowed (Brand URL scheme is not allowed), brand_credentials_in_url (Brand URL contains credentials), brand_port_not_allowed (Brand URL port is not allowed), brand_host_not_allowed (Brand host is not allowed), brand_blocked_address (Brand host resolves to a blocked address)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "brand_extract_running (Brand extraction already running)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited (Rate limit exceeded)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/brand/extractions/{extraction_id}": {
+      "get": {
+        "tags": [
+          "Brand"
+        ],
+        "summary": "Stav a výsledek jednoho běhu extrakce",
+        "security": [
+          {
+            "bearerAuth": [
+              "templates:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "extraction_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stav a výsledek extrakce",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandExtraction"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/campaigns/{id}/stats": {
       "get": {
         "tags": [
@@ -23645,6 +28934,9 @@
                         "provider_events",
                         "derived_from_sent"
                       ]
+                    },
+                    "delivered_known": {
+                      "type": "boolean"
                     },
                     "counts": {
                       "type": "object",
@@ -23885,6 +29177,7 @@
                     "track_opens",
                     "track_clicks",
                     "delivered_source",
+                    "delivered_known",
                     "counts",
                     "rates",
                     "open_breakdown",
@@ -24152,6 +29445,83 @@
                   },
                   "required": [
                     "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{id}/system-link-clicks": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Kliknutí na odkazy v patičce",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Počty po druzích odkazu. Do míry prokliku nevstupují a vstupovat nesmějí.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "unsubscribe_page": {
+                      "type": "number"
+                    },
+                    "preferences": {
+                      "type": "number"
+                    },
+                    "webview": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "unsubscribe_page",
+                    "preferences",
+                    "webview"
                   ]
                 }
               }
@@ -24812,6 +30182,562 @@
                     "period_days",
                     "computed_at",
                     "tiles"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{id}/sent-content": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Co se doopravdy rozeslalo",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vyrenderovaná podoba. Nezkompilovaná kampaň vrací 200 s html null, ne 404: kampaň existuje.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "html": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "text": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "subject": {
+                      "type": "string"
+                    },
+                    "compiled_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "revision": {
+                      "type": "number"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "content_state": {
+                      "type": "string",
+                      "enum": [
+                        "missing",
+                        "empty",
+                        "ok"
+                      ]
+                    },
+                    "personalized_for": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "html",
+                    "text",
+                    "subject",
+                    "compiled_at",
+                    "revision",
+                    "status",
+                    "content_state",
+                    "personalized_for"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{id}/web-activity": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Co příjemci kampaně dělali na webu",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webová aktivita připsaná kampani",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "campaign_id": {
+                      "type": "string"
+                    },
+                    "started_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "window_hours": {
+                      "type": "number"
+                    },
+                    "clicked_contacts": {
+                      "type": "number"
+                    },
+                    "visitor_contacts": {
+                      "type": "number"
+                    },
+                    "page_views": {
+                      "type": "number"
+                    },
+                    "other_events": {
+                      "type": "number"
+                    },
+                    "sessions": {
+                      "type": "number"
+                    },
+                    "last_visit_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "pages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "views": {
+                            "type": "number"
+                          },
+                          "visitors": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "path",
+                          "views",
+                          "visitors"
+                        ]
+                      }
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "number"
+                          },
+                          "visitors": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "count",
+                          "visitors"
+                        ]
+                      }
+                    },
+                    "visitors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "contact_id": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "page_views": {
+                            "type": "number"
+                          },
+                          "events": {
+                            "type": "number"
+                          },
+                          "first_seen_at": {
+                            "type": "string"
+                          },
+                          "last_seen_at": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "contact_id",
+                          "email",
+                          "name",
+                          "page_views",
+                          "events",
+                          "first_seen_at",
+                          "last_seen_at"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "campaign_id",
+                    "started_at",
+                    "window_hours",
+                    "clicked_contacts",
+                    "visitor_contacts",
+                    "page_views",
+                    "other_events",
+                    "sessions",
+                    "last_visit_at",
+                    "pages",
+                    "events",
+                    "visitors"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/web-activity": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Přehled aktivity na webu projektu",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "default": 7
+            },
+            "required": false,
+            "name": "period",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aktivita na webu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "period_days": {
+                      "type": "number"
+                    },
+                    "computed_at": {
+                      "type": "string"
+                    },
+                    "known_contacts": {
+                      "type": "number"
+                    },
+                    "anonymous_visitors": {
+                      "type": "number"
+                    },
+                    "page_views": {
+                      "type": "number"
+                    },
+                    "other_events": {
+                      "type": "number"
+                    },
+                    "last_event_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "pages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "views": {
+                            "type": "number"
+                          },
+                          "visitors": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "path",
+                          "views",
+                          "visitors"
+                        ]
+                      }
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "number"
+                          },
+                          "visitors": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "count",
+                          "visitors"
+                        ]
+                      }
+                    },
+                    "referrers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "host": {
+                            "type": "string"
+                          },
+                          "visits": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "host",
+                          "visits"
+                        ]
+                      }
+                    },
+                    "visits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "contact_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "email": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "started_at": {
+                            "type": "string"
+                          },
+                          "ended_at": {
+                            "type": "string"
+                          },
+                          "page_views": {
+                            "type": "number"
+                          },
+                          "events": {
+                            "type": "number"
+                          },
+                          "entry_path": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "last_path": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "referrer_host": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "contact_id",
+                          "email",
+                          "name",
+                          "started_at",
+                          "ended_at",
+                          "page_views",
+                          "events",
+                          "entry_path",
+                          "last_path",
+                          "referrer_host"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "period_days",
+                    "computed_at",
+                    "known_contacts",
+                    "anonymous_visitors",
+                    "page_views",
+                    "other_events",
+                    "last_event_at",
+                    "pages",
+                    "events",
+                    "referrers",
+                    "visits"
                   ]
                 }
               }

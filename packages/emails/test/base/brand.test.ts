@@ -43,6 +43,42 @@ describe('brandToTheme', () => {
     ).toEqual({ heading: 'system', body: 'system' });
   });
 
+  /**
+   * Regrese na naměřenou vadu: `Arial, Helvetica, sans-serif` se mapovalo na
+   * Times New Roman. Vzorek `/times|serif/i` stál před konkrétními písmy a
+   * `serif` je částí slova `sans-serif`. Uživatel si zvolil Arial a v e-mailu
+   * dostal patkové písmo.
+   *
+   * Testuje se ZÁPIS, JAKÝ OPRAVDU CHODÍ Z PROHLÍŽEČE, tedy seznam s obecnou
+   * rodinou na konci, ne holé jméno písma. Původní test měl jen `'Arial'` a
+   * `'Georgia'`, a proto vadu minul.
+   */
+  it('seznam písem se řídí konkrétním písmem, ne obecnou rodinou na konci', () => {
+    const stacks = (heading: string, body: string) =>
+      brandToTheme(brand({ typography: { headingStack: heading, bodyStack: body, radius: 6 } }))
+        .fonts;
+
+    expect(stacks('Arial, Helvetica, sans-serif', 'Arial, Helvetica, sans-serif')).toEqual({
+      heading: 'arial',
+      body: 'arial',
+    });
+    expect(stacks('Helvetica Neue, sans-serif', 'Verdana, Geneva, sans-serif')).toEqual({
+      heading: 'helvetica',
+      body: 'verdana',
+    });
+    // Patkový seznam se pořád pozná, obecná rodina je tu na místě.
+    expect(stacks('Georgia, Times New Roman, serif', 'Times New Roman, serif')).toEqual({
+      heading: 'georgia',
+      body: 'times',
+    });
+    // Samotná obecná rodina bez konkrétního písma: `sans-serif` NENÍ patkové.
+    expect(stacks('sans-serif', 'serif')).toEqual({ heading: 'system', body: 'times' });
+    expect(stacks('ui-monospace, monospace', 'system-ui, sans-serif')).toEqual({
+      heading: 'courier',
+      body: 'system',
+    });
+  });
+
   it('rounds the radius onto an allowed value', () => {
     expect(brandToTheme(brand()).radius).toBe(6);
     expect(

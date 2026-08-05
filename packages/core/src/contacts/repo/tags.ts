@@ -1,8 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { ApiError } from '../../errors/api-error';
 import type { WorkspaceContext } from '../../identity/types';
-import { pgErrorCode, withWorkspace } from '../../tx';
+import { pgErrorCode, withWorkspace, type Tx } from '../../tx';
 import { writeAudit } from '../audit';
+import { contactExistsForJoinSql } from '../existence';
 import { enqueue } from '../jobs/enqueue';
 
 export const TAG_LIMIT_PER_WORKSPACE = 500;
@@ -259,6 +260,10 @@ export type TagPage = { rows: TagWithCount[]; nextCursor: string | null; hasMore
  * Stránka štítků i s počtem kontaktů. Počet se počítá poddotazem nad
  * `idx_contact_tags__ws_tag_contact`, tedy index only scanem, ne joinem přes celou
  * tabulku vazeb.
+ *
+ * Počítají se LIDÉ, ne řádky vazby: mazání kontaktu je měkké a přiřazení štítku po něm
+ * schválně zůstává, aby ho obnovený kontakt dostal zpět. Bez podmínky na existenci
+ * kontaktu by u štítku svítil počet z dob, kdy ty kontakty ještě žily.
  */
 export async function listTagsPage(ctx: WorkspaceContext, query: TagPageQuery): Promise<TagPage> {
   const byName = query.order === 'name.asc';
@@ -266,7 +271,8 @@ export async function listTagsPage(ctx: WorkspaceContext, query: TagPageQuery): 
     const { rows } = await tx.execute<TagWithCount>(sql`
       SELECT t.id, t.name, t.color, t.created_at,
              (SELECT count(*)::int FROM contact_tags ct
-               WHERE ct.tag_id = t.id AND ct.workspace_id = t.workspace_id) AS contact_count
+               WHERE ct.tag_id = t.id AND ct.workspace_id = t.workspace_id
+                 AND ${sql.raw(contactExistsForJoinSql('ct'))}) AS contact_count
         FROM tags t
        WHERE t.workspace_id = ${ctx.workspaceId}::uuid
          AND (${query.q ?? null}::text IS NULL OR lower(t.name) LIKE lower(${`%${query.q ?? ''}%`}))
@@ -287,12 +293,14 @@ export async function listTagsPage(ctx: WorkspaceContext, query: TagPageQuery): 
   });
 }
 
+/** Jeden štítek i s počtem kontaktů. Počítá se stejně jako ve `listTagsPage`. */
 export async function getTag(ctx: WorkspaceContext, tagId: string): Promise<TagWithCount | null> {
   return withWorkspace(ctx, async (tx) => {
     const { rows } = await tx.execute<TagWithCount>(sql`
       SELECT t.id, t.name, t.color, t.created_at,
              (SELECT count(*)::int FROM contact_tags ct
-               WHERE ct.tag_id = t.id AND ct.workspace_id = t.workspace_id) AS contact_count
+               WHERE ct.tag_id = t.id AND ct.workspace_id = t.workspace_id
+                 AND ${sql.raw(contactExistsForJoinSql('ct'))}) AS contact_count
         FROM tags t
        WHERE t.workspace_id = ${ctx.workspaceId}::uuid AND t.id = ${tagId}::uuid
     `);
@@ -352,20 +360,116 @@ export async function ensureTags(
   ctx: WorkspaceContext,
   names: readonly string[],
 ): Promise<string[]> {
-  const unique = [...new Set(names.map((name) => name.trim()).filter((name) => name !== ''))];
-  if (unique.length === 0) return [];
+  return withWorkspace(ctx, async (tx) => [...(await ensureTagsIn(tx, ctx, names)).values()]);
+}
 
-  return withWorkspace(ctx, async (tx) => {
-    await tx.execute(sql`
-      INSERT INTO tags (workspace_id, name)
-      SELECT ${ctx.workspaceId}::uuid, n FROM unnest(${sql.param(unique)}::text[]) AS n
-      ON CONFLICT (workspace_id, lower(name)) DO NOTHING
-    `);
-    const { rows } = await tx.execute<{ id: string }>(sql`
-      SELECT id FROM tags
-       WHERE workspace_id = ${ctx.workspaceId}::uuid
-         AND lower(name) = ANY(SELECT lower(n) FROM unnest(${sql.param(unique)}::text[]) AS n)
-    `);
-    return rows.map((row) => row.id);
-  });
+/**
+ * Táž operace uvnitř UŽ OTEVŘENÉ transakce, a k tomu s mapou ze jména na id.
+ *
+ * Obojí kvůli importu. Dávka importu musí štítky založit i přiřadit ve stejné transakci
+ * jako kontakty a checkpoint, jinak pád workera nechá poloviční stav; a protože každý
+ * řádek souboru může mít ve sloupci se štítky něco jiného, potřebuje volající přiřadit
+ * id ke konkrétnímu jménu, ne jen dostat pytel id.
+ *
+ * Klíč mapy je `lower(name)`, protože přesně podle toho výrazu se štítky porovnávají
+ * v `uq_tags__workspace_name`: „VIP" a „vip" jsou tentýž štítek.
+ */
+export async function ensureTagsIn(
+  tx: Tx,
+  ctx: WorkspaceContext,
+  names: readonly string[],
+): Promise<Map<string, string>> {
+  const unique = [...new Set(names.map((name) => name.trim()).filter((name) => name !== ''))];
+  const out = new Map<string, string>();
+  if (unique.length === 0) return out;
+
+  await tx.execute(sql`
+    INSERT INTO tags (workspace_id, name)
+    SELECT ${ctx.workspaceId}::uuid, n FROM unnest(${sql.param(unique)}::text[]) AS n
+    ON CONFLICT (workspace_id, lower(name)) DO NOTHING
+  `);
+  const { rows } = await tx.execute<{ id: string; name: string }>(sql`
+    SELECT id, name FROM tags
+     WHERE workspace_id = ${ctx.workspaceId}::uuid
+       AND lower(name) = ANY(SELECT lower(n) FROM unnest(${sql.param(unique)}::text[]) AS n)
+  `);
+  for (const row of rows) out.set(row.name.toLowerCase(), row.id);
+  return out;
+}
+
+/**
+ * Kolik štítků mají vyjmenované kontakty teď, jedním dotazem.
+ *
+ * Kvůli dávkovým zápisům: `addTagsToContact` počítá limit dotazem na JEDEN kontakt,
+ * což je u dávky o tisíci řádcích tisíc dotazů. Tenhle tvar dá totéž číslo najednou,
+ * takže se `TAG_LIMIT_PER_CONTACT` dá udržet i v importu. Kontakty bez jediného štítku
+ * v mapě nejsou; volající si za ně dosadí nulu.
+ */
+export async function countTagsPerContactIn(
+  tx: Tx,
+  ctx: WorkspaceContext,
+  contactIds: readonly string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (contactIds.length === 0) return out;
+  const { rows } = await tx.execute<{ contact_id: string; total: number }>(sql`
+    SELECT contact_id, count(*)::int AS total FROM contact_tags
+     WHERE workspace_id = ${ctx.workspaceId}::uuid
+       AND contact_id = ANY(${sql.param([...new Set(contactIds)])}::uuid[])
+     GROUP BY contact_id
+  `);
+  for (const row of rows) out.set(row.contact_id, row.total);
+  return out;
+}
+
+/**
+ * Které z předaných id štítků v projektu SKUTEČNĚ existují.
+ *
+ * Import si podle toho čistí volby: štítek vybraný v průvodci může být do spuštění
+ * dávky smazaný a `contact_tags` má na `tags` cizí klíč, takže zápis neexistujícího id
+ * shodí celou transakci dávky. Job importu má `retryLimit = 0`, takže by se import
+ * zasekl natrvalo kvůli štítku, který uživatele nezajímá.
+ */
+export async function existingTagIdsIn(
+  tx: Tx,
+  ctx: WorkspaceContext,
+  ids: readonly string[],
+): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    SELECT id FROM tags
+     WHERE workspace_id = ${ctx.workspaceId}::uuid
+       AND id = ANY(${sql.param([...new Set(ids)])}::uuid[])
+  `);
+  return rows.map((row) => row.id);
+}
+
+/**
+ * Hromadné přiřazení štítků kontaktům uvnitř už otevřené transakce, jedním příkazem.
+ *
+ * Proč ne `addTagsToContact` v cyklu: ta si otevírá VLASTNÍ transakci, takže by zápis
+ * štítků vypadl z transakce dávky, a k tomu dělá dotaz na počet štítků u každého
+ * kontaktu zvlášť, tedy dva tisíce dotazů na dávku o tisíci řádcích. Strop
+ * `TAG_LIMIT_PER_CONTACT` se tady proto nekontroluje, stejně jako ho nekontroluje
+ * `bulkTagContacts` o pár řádků výš: hromadné cesty ho neuhlídají bez dotazu na kontakt,
+ * a limit je pojistka proti ručnímu zaplevelení detailu kontaktu, ne proti importu.
+ */
+export async function addTagsToContactsIn(
+  tx: Tx,
+  ctx: WorkspaceContext,
+  pairs: readonly { contactId: string; tagId: string }[],
+): Promise<void> {
+  if (pairs.length === 0) return;
+  // Dvojice se odduplikují už tady. Tentýž pár dvakrát v jednom příkazu je pro
+  // ON CONFLICT DO NOTHING neškodný, ale zbytečně nafukuje pole parametrů.
+  const unique = [...new Set(pairs.map((pair) => `${pair.contactId}:${pair.tagId}`))].map(
+    (key) => key.split(':') as [string, string],
+  );
+  await tx.execute(sql`
+    INSERT INTO contact_tags (contact_id, tag_id, workspace_id)
+    SELECT c, t, ${ctx.workspaceId}::uuid
+      FROM unnest(${sql.param(unique.map(([contactId]) => contactId))}::uuid[],
+                  ${sql.param(unique.map(([, tagId]) => tagId))}::uuid[]) AS u(c, t)
+    ON CONFLICT (contact_id, tag_id) DO NOTHING
+  `);
 }

@@ -5,7 +5,10 @@ import { withWorkspace } from '../../tx';
 import { writeAudit } from '../audit';
 import { revokePendingMessages } from '../campaigns-port';
 import { recordConsent } from '../repo/consents';
+import { findContactByEmail } from '../repo/contacts-query';
+import { findSubscription } from '../repo/subscriptions';
 import { addSuppression } from '../repo/suppressions';
+import { transition, type SubscriptionState } from './state-machine';
 
 export type UnsubscribeReason =
   'link' | 'one_click' | 'preference_center' | 'api' | 'manual' | 'global' | 'objection';
@@ -24,6 +27,33 @@ export type UnsubscribeInput = {
   reason: UnsubscribeReason;
   campaignId?: string | null;
 };
+
+/**
+ * Zdroj odvolání souhlasu pro tabulku `consents`.
+ *
+ * ZÁSAH SPRÁVCE SE MUSÍ POZNAT OD PROJEVU VŮLE PŘÍJEMCE. Do téhle chvíle spadlo
+ * všechno kromě one-click a námitky na `preference_center`, tedy na „odhlásil se sám
+ * ze stránky předvoleb". Ruční i hromadné odhlášení správcem se tak v historii kontaktu
+ * tvářilo jako rozhodnutí příjemce, což je přesně ten údaj, kvůli kterému se souhlasy
+ * vedou. `admin`, `api` i `objection` jsou v `ck_consents__source` povolené hodnoty,
+ * takže to není migrace.
+ *
+ * Rozdíl mezi `admin` a `api` je schválně: `manual` je člověk v rozhraní správce,
+ * `api` je integrace nebo příchozí zpráva zpracovaná strojově (`jobs/inbound-process`).
+ * Sloučit je do jedné hodnoty by znamenalo tvrdit, že za odhlášením z e-shopu stál
+ * konkrétní správce.
+ *
+ * Námitka podle článku 21 se zapisuje jako `objection` bez ohledu na rozsah: dřív to
+ * platilo jen u globálního odhlášení, i když námitka omezená na jeden seznam je táž
+ * právní věc.
+ */
+function consentSourceFor(reason: UnsubscribeReason): string {
+  if (reason === 'one_click') return 'one_click';
+  if (reason === 'objection') return 'objection';
+  if (reason === 'manual') return 'admin';
+  if (reason === 'api') return 'api';
+  return 'preference_center';
+}
 
 /**
  * Odhlášení podle tabulky rozsahů ve 4.9.2 části 2.
@@ -77,12 +107,7 @@ export async function unsubscribe(
         status: 'withdrawn',
         legalBasis: 'consent',
         scopeListId: null,
-        source:
-          input.reason === 'objection'
-            ? 'objection'
-            : input.reason === 'one_click'
-              ? 'one_click'
-              : 'preference_center',
+        source: consentSourceFor(input.reason),
         tx,
       });
     } else {
@@ -102,7 +127,7 @@ export async function unsubscribe(
         status: 'withdrawn',
         legalBasis: 'consent',
         scopeListId: input.listId,
-        source: input.reason === 'one_click' ? 'one_click' : 'preference_center',
+        source: consentSourceFor(input.reason),
         tx,
       });
     }
@@ -131,6 +156,99 @@ export async function unsubscribe(
 
     return { scope: global ? 'global' : 'list' };
   });
+}
+
+/**
+ * Výsledek jedné položky hromadného odhlášení.
+ *
+ * `unchanged` znamená, že se nemělo co zapsat: kontakt v seznamu vůbec není, nebo v něm
+ * odhlášený už je. Přeskočení bez výsledku tu být nesmí, protože pak by volající nepoznal
+ * rozdíl mezi „hotovo" a „nic se nestalo".
+ */
+export type BulkUnsubscribeOutcome = 'unsubscribed' | 'unchanged' | 'unknown_contact';
+
+export type BulkUnsubscribeItem = {
+  index: number;
+  outcome: BulkUnsubscribeOutcome;
+  contactId: string | null;
+};
+
+/**
+ * Hromadné odhlášení ze seznamu. Protějšek `subscribeToList` v hromadné podobě.
+ *
+ * O KAŽDÉ POLOŽCE ROZHODUJE STAVOVÝ AUTOMAT, ne parametr volajícího. Přečte se skutečný
+ * stav přihlášení, `transition()` k němu vydá cílový stav a teprve podle něj se rozhodne,
+ * jestli se má co zapsat. Kdyby se místo toho jen pustilo UPDATE nad všemi řádky, byl by
+ * v produktu druhý výklad pravidel vedle automatu a rozešel by se s ním po první změně.
+ *
+ * ZÁPIS DĚLÁ `unsubscribe()`, ne tahle funkce. Odvolání souhlasu, zrušení čekajících
+ * zpráv i odchozí událost tak vzniknou úplně stejně jako u odhlášení jednoho kontaktu.
+ * Vlastní SQL by znamenalo druhou implementaci a v historii kontaktu by se hromadné
+ * odhlášení od jednotlivého lišilo.
+ *
+ * NIC SE TIŠE NEPŘESKAKUJE. Neznámá adresa i kontakt mimo seznam mají vlastní výsledek,
+ * takže volající vždycky ví, co se s každou položkou stalo.
+ */
+export async function bulkUnsubscribeFromList(
+  ctx: WorkspaceContext,
+  input: { listId: string; emails: readonly string[]; reason: UnsubscribeReason },
+): Promise<BulkUnsubscribeItem[]> {
+  const results: BulkUnsubscribeItem[] = [];
+  let changed = 0;
+
+  for (const [index, email] of input.emails.entries()) {
+    const contact = await findContactByEmail(ctx, email);
+    if (contact === null) {
+      results.push({ index, outcome: 'unknown_contact', contactId: null });
+      continue;
+    }
+
+    const existing = await findSubscription(ctx, contact.id, input.listId);
+    const from: SubscriptionState = existing === null ? 'none' : existing.status;
+    const decision = transition(from, {
+      kind: 'unsubscribe',
+      scope: 'list',
+      reason: input.reason,
+      now: new Date(),
+    });
+
+    if (!decision.allowed) {
+      // Nedosažitelné: automat odhlášení nikdy neodmítá. Kdyby to někdo změnil, ať to
+      // skončí výslovným výsledkem místo tichého přeskočení.
+      results.push({ index, outcome: 'unchanged', contactId: contact.id });
+      continue;
+    }
+
+    // Řádek, který neexistuje, není co odhlašovat, a stav, který se rovná cílovému,
+    // není co měnit. Obojí je legitimní výsledek, ne chyba.
+    if (from === 'none' || decision.next === from) {
+      results.push({ index, outcome: 'unchanged', contactId: contact.id });
+      continue;
+    }
+
+    await unsubscribe(ctx, { contactId: contact.id, listId: input.listId, reason: input.reason });
+    changed += 1;
+    results.push({ index, outcome: 'unsubscribed', contactId: contact.id });
+  }
+
+  // Audit se zapisuje jednou za dávku, ne za položku: hromadné odhlášení je JEDEN
+  // zásah správce a stovka řádků v auditu by dohledávání spíš ztížila. Adresy se do
+  // metadat nedávají, `writeAudit` je stejně redaguje.
+  await withWorkspace(ctx, async (tx) => {
+    await writeAudit(tx, ctx, {
+      action: 'contact.bulk_unsubscribed',
+      targetType: 'list',
+      targetId: input.listId,
+      metadata: {
+        requested: input.emails.length,
+        unsubscribed: changed,
+        unchanged: results.length - changed,
+        reason: input.reason,
+      },
+    });
+  });
+
+  return results;
 }
 
 /**

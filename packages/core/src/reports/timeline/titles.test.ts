@@ -18,6 +18,19 @@ describe('titleKey', () => {
   it('neznámý typ dostane obecný klíč, ne výjimku', () => {
     expect(titleKey('automation_entered')).toBe('timeline.item.generic');
   });
+
+  /**
+   * Systémový odkaz nemá řádek v `campaign_links`, takže obecná věta
+   * „Klikl na {link} v kampani" u něj vykreslila díru uprostřed. Vlastní klíče
+   * navíc říkají něco užitečnějšího: člověk si otevřel předvolby.
+   */
+  it('proklik na systémový odkaz má vlastní klíč, ne obecné kliknutí', () => {
+    expect(titleKey('message_clicked_preferences')).toBe('timeline.item.messageClickedPreferences');
+    expect(titleKey('message_clicked_unsubscribe_page')).toBe(
+      'timeline.item.messageClickedUnsubscribePage',
+    );
+    expect(titleKey('message_clicked_webview')).toBe('timeline.item.messageClickedWebview');
+  });
 });
 
 describe('composeTitle', () => {

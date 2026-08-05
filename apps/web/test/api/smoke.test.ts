@@ -73,6 +73,9 @@ describe('průřezová kontrola celé aplikace', () => {
     'jobs',
     'members',
     'setup',
+    // Účty instalace: výpis osiřelých a smazání účtu. Doména identity, jen
+    // nemluví o projektu, protože účet projektu nepatří.
+    'users',
     'webhook-deliveries',
     'webhook-endpoints',
     'workspaces',
@@ -111,6 +114,8 @@ describe('průřezová kontrola celé aplikace', () => {
         '/api/v1/members/{user_id}',
         '/api/v1/openapi.json',
         '/api/v1/setup',
+        '/api/v1/users/orphaned',
+        '/api/v1/users/{user_id}',
         '/api/v1/webhook-deliveries',
         '/api/v1/webhook-deliveries/count',
         '/api/v1/webhook-deliveries/{id}/retry',
@@ -126,11 +131,14 @@ describe('průřezová kontrola celé aplikace', () => {
     );
   });
 
-  it('dokument OpenAPI popisuje 43 operací', () => {
+  // 43 → 46. Přibyl `POST /api/v1/members` (založení člena rovnou s heslem),
+  // `GET /api/v1/users/orphaned` a `DELETE /api/v1/users/{user_id}`. Všechno tři
+  // opravy téže mezery: účet šlo jedině založit, ne najít a smazat.
+  it('dokument OpenAPI popisuje 46 operací', () => {
     const document = buildOpenApiDocument(app);
     const operations = Object.entries(document.paths ?? {})
       .filter(([path]) => patriCasti1(path))
       .flatMap(([, methods]) => Object.keys(methods as Record<string, unknown>));
-    expect(operations).toHaveLength(43);
+    expect(operations).toHaveLength(46);
   });
 });

@@ -6,8 +6,30 @@
 export const MESSAGE_STATUSES = ['pending', 'claimed', 'sent', 'failed', 'skipped'] as const;
 export type MessageStatus = (typeof MESSAGE_STATUSES)[number];
 
-export const MESSAGE_KINDS = ['campaign', 'test'] as const;
+/**
+ * Druh zprávy v outboxu.
+ *
+ * `campaign` a `test` jsou původní zmrazená dvojice. `transactional` (volání
+ * API zákazníka) a `automation` (uzel automatizace, plán P17) se přidávají
+ * ROZŠÍŘENÍM výčtu, ne změnou významu stávajících hodnot: obě práce sahaly
+ * do téhož CHECKu a do téže claim smyčky, takže se to dělá jednou.
+ */
+export const MESSAGE_KINDS = ['campaign', 'test', 'transactional', 'automation'] as const;
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
+
+/**
+ * Druhy, které NEPATŘÍ kampani. Claim smyčka je bere vlastní, krátkou větví,
+ * protože kampaňová větev dojíždí celou rozesílku, než se vrátí, a reset hesla
+ * by čekal desítky minut.
+ */
+export const NON_CAMPAIGN_MESSAGE_KINDS = ['test', 'transactional', 'automation'] as const;
+
+/**
+ * Druhy, které NESMÍ nést odhlašovací odkaz ani hlavičku `List-Unsubscribe`.
+ * Transakční zpráva je plnění smlouvy, ne marketing, a odhlašovat reset hesla
+ * nedává smysl.
+ */
+export const NO_UNSUBSCRIBE_MESSAGE_KINDS = ['transactional'] as const;
 
 export const TERMINAL_STATUSES = ['sent', 'failed', 'skipped'] as const;
 
@@ -161,6 +183,10 @@ export const FOREIGN_CONTRACT_COLUMNS: Readonly<Record<string, readonly string[]
     'email',
     'fingerprint',
     'fingerprint_key_id',
+    // `reason` čte sender kvůli transakční poště: odhlášení z marketingu ji
+    // blokovat nesmí, tvrdý odraz a výmaz podle GDPR ano. Grant se tím nemění,
+    // sender má SELECT na celou tabulku.
+    'reason',
     'removed_at',
     'created_at',
   ],

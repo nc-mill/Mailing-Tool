@@ -11,6 +11,7 @@ import { quotaRemaining } from '../../providers/ses/account';
 import { writeAuditLog } from '../../audit/write';
 import { withWorkspace, type WorkspaceContext } from '../../tx';
 import { CampaignAuditActions } from '../audit';
+import { campaignsLogger } from '../logging';
 import { enqueueCampaignJob } from '../api/service';
 import { resumeCampaign } from '../control/resume';
 import { claimDueCampaignRows, markScheduleMissedIds, transitionStatus } from '../repo/campaign';
@@ -20,10 +21,12 @@ import {
   reconcileHandoverCounters,
 } from '../repo/counters';
 import { rawSql } from '../repo/raw-sql';
+import { CREDENTIALS_REFRESH_JOB } from '../../sender/jobs/credentials-refresh';
 import { MATERIALIZE_JOB } from './materialize';
 import type { ReconcileDeps } from './reconcile';
 import type { ResumeOnQuotaDeps } from './resume-on-quota';
 import type { SchedulerDeps } from './scheduler';
+import type { StallWatchDeps } from './stall-watch';
 import type { WatchdogDeps } from './watchdog';
 
 /**
@@ -312,6 +315,39 @@ export function systemWatchdogDeps(): WatchdogDeps {
         detail: { ...(reason as unknown as Record<string, unknown>) },
       }),
 
+    /**
+     * Zařazení obnovy přístupových údajů odesílacího účtu.
+     *
+     * `provider_id` se dohledává z kampaně, protože sken napříč projekty vrací
+     * jen identifikátory kampaní. Kampaň bez účtu vrací `false` a nic nezařadí:
+     * pauza `credentials_undecryptable` bez odesílacího účtu znamená ručně
+     * upravený řádek a zařadit úlohu na neexistující účet by jen vyrobilo
+     * chybu ve frontě.
+     */
+    requestCredentialsRefresh: async (workspaceId, campaignId) => {
+      const ctx = ctxFor(workspaceId, job);
+      const providerId = await withWorkspace(ctx, async (tx) => {
+        const r = await tx.execute<{ provider_id: string | null }>(
+          rawSql(`SELECT provider_id FROM campaigns WHERE id = $1 AND workspace_id = $2`, [
+            campaignId,
+            ctx.workspaceId,
+          ]),
+        );
+        return r.rows[0]?.provider_id ?? null;
+      });
+      if (providerId === null) return false;
+
+      await withWorkspace(ctx, (tx) =>
+        enqueueCampaignJob(
+          tx,
+          CREDENTIALS_REFRESH_JOB.queue,
+          { workspace_id: workspaceId, provider_id: providerId },
+          { singletonKey: CREDENTIALS_REFRESH_JOB.singletonKey(providerId) },
+        ),
+      );
+      return true;
+    },
+
     emit: ({ workspaceId, type, campaignId }) =>
       emitEvent(ctxFor(workspaceId, job), { type, data: { campaign_id: campaignId } }),
 
@@ -373,4 +409,82 @@ export type OutboxReconcileScan = Pick<ReconcileDeps, 'listWorkspaces'>;
 /** Ta polovina závislostí `outbox.reconcile`, která už dodat jde. */
 export function systemReconcileScan(): OutboxReconcileScan {
   return { listWorkspaces: () => listWorkspaceIds() };
+}
+
+/**
+ * Závislosti jobu `outbox.stall_watch`.
+ *
+ * Na rozdíl od `outbox.reconcile` se tahle složit DÁ, a to celá. Sken běžících
+ * kampaní napříč projekty (`listRunningCampaigns`) je hotový a používají ho už
+ * tři jiné úlohy; zbytek je jeden dotaz nad `messages` v kontextu jednoho
+ * projektu, tedy pod `mlain_app` a pod RLS.
+ *
+ * Hlášení jde do LOGU, ne do databáze. Zaseknutá kampaň není stav kampaně, je to
+ * stav instalace: nejčastěji neběžící sender. Zapisovat kvůli tomu do
+ * `pause_reason` by pletlo příčinu s následkem a hlídač by kampani ublížil víc
+ * než výpadek sám.
+ */
+export function systemStallWatchDeps(): StallWatchDeps {
+  const job = 'outbox.stall_watch';
+  const log = campaignsLogger();
+
+  return {
+    listRunning: async () =>
+      (await listRunningCampaigns()).map((c) => ({
+        workspaceId: c.workspaceId,
+        campaignId: c.campaignId,
+        status: c.status,
+      })),
+
+    /**
+     * Počet čekajících zpráv a čas poslední změny NĚKTERÉ z nich.
+     *
+     * `claimed` se počítá mezi nevyřízené stejně jako `pending`. Zpráva, kterou
+     * si sender vzal a spadl dřív, než dopsal výsledek, je totiž z hlediska
+     * uživatele zaseknutá úplně stejně; reaper ji vrátí až po vypršení claimu.
+     */
+    outboxState: async (workspaceId, campaignId) => {
+      const ctx = ctxFor(workspaceId, job);
+      return withWorkspace(ctx, async (tx) => {
+        const r = await tx.execute<{ pending: number; last_change_at: string | Date | null }>(
+          rawSql(
+            `SELECT
+               count(*) FILTER (WHERE m.status IN ('pending','claimed'))::int AS pending,
+               max(m.updated_at) AS last_change_at
+             FROM messages m
+             WHERE m.campaign_id = $1 AND m.workspace_id = $2 AND m.kind = 'campaign'`,
+            [campaignId, ctx.workspaceId],
+          ),
+        );
+        const row = r.rows[0];
+        // Kampaň bez jediné zprávy nemá outbox, takže nemá co váznout.
+        if (!row || row.last_change_at === null) return null;
+        return { pending: row.pending, lastChangeAt: new Date(row.last_change_at) };
+      });
+    },
+
+    report: (stalled) => {
+      if (stalled.length === 0) return;
+      /*
+       * Jedna řádka na kampaň, ne souhrn. Souhrn by řekl „tři kampaně stojí",
+       * což je k dohledání k ničemu; podle campaign_id se dá hned zjistit, čí
+       * to je a přes kterého providera to mělo jít.
+       */
+      for (const s of stalled) {
+        log.warn(
+          {
+            job,
+            workspace_id: s.workspaceId,
+            campaign_id: s.campaignId,
+            pending: s.pending,
+            quiet_seconds: s.quietSeconds,
+          },
+          'kampaň se odesílá, ale v outboxu se nic nehýbe: nejspíš neběží sender ' +
+            'nebo mu provider odmítá každou zprávu',
+        );
+      }
+    },
+
+    now: () => new Date(),
+  };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { trendRows, trendSeries } from './trend-series';
+import { trendRows, trendSeries, withKnownDelivery } from './trend-series';
 
 const campaigns = [
   {
@@ -64,5 +64,21 @@ describe('trendSeries', () => {
 
   it('u každé kampaně nese podíl automatických otevření, aby otevření nestálo samo', () => {
     expect(trendRows(campaigns)[0]?.machineShare).toBeCloseTo(200 / 500, 10);
+  });
+});
+
+describe('withKnownDelivery', () => {
+  /**
+   * Kampaň, od jejíž odesílací služby nedorazila ani jedna zpráva o osudu
+   * e-mailů, nesmí do grafu měr: `deliveredEffective` je u ní dopočtený odhad
+   * a čára by tvrdila „Doručeno 100 %" o něčem, co jsme nezměřili.
+   */
+  it('vypustí kampaň s neznámou doručeností', () => {
+    const unknown = { ...campaigns[0]!, campaignId: 'c', deliveredKnown: false };
+    expect(withKnownDelivery([...campaigns, unknown]).map((c) => c.campaignId)).toEqual(['a', 'b']);
+  });
+
+  it('chybějící příznak bere jako známý, aby starší odpověď serveru graf nevyprázdnila', () => {
+    expect(withKnownDelivery(campaigns)).toHaveLength(2);
   });
 });

@@ -148,6 +148,10 @@ const WS_ISOLATION_TABLES = [
   // kampaně
   'sending_providers',
   'sender_domains',
+  // Předvolby odesílatele (migrace 0013). Sender na ně grant NEMÁ a mít nemá:
+  // v okamžiku odesílání jsou hodnoty dávno zkopírované v kampani, takže by
+  // grant znamenal jen další výjimku z izolace bez užitku.
+  'sender_identities',
   'campaigns',
   'campaign_content_variants',
   'campaign_links',
@@ -223,6 +227,15 @@ export const EXTRA_POLICIES: Readonly<Record<string, readonly string[]>> = {
   // je repo/audit-global.ts nespustitelné.
   audit_log: ['user_own_global_audit'],
   web_events: ['maintenance_bypass'],
+  // Veřejný výdej obrázku z e-mailu (migrace 0011). Poštovní klient příjemce
+  // není přihlášený a v adrese má jen `public_id`, takže workspace kontext
+  // neexistuje a `ws_isolation` by nevrátila ani řádek.
+  //
+  // V registru to chybělo od chvíle, kdy ta migrace vznikla, takže
+  // `rls-registry.test.ts` padal na „assets.asset_public_lookup není
+  // v registru" a exaktní počet politik neseděl o jedna. Nesouvisí to
+  // s předvolbami odesílatele, jen se to tímhle souborem opravuje.
+  assets: ['asset_public_lookup'],
   // Systémové skeny napříč projekty (migrace 0009), jen pro čtení.
   campaigns: ['maintenance_scan'],
   sender_domains: ['maintenance_scan'],

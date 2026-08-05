@@ -1,4 +1,5 @@
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
+import { getFieldCatalog } from '../../contacts/fields/catalog';
 import { ApiError } from '../../errors/api-error';
 import { problemResponse, type ApiEnv } from '../../identity/api/schemas';
 import { assertPermission } from '../../identity/permissions';
@@ -136,11 +137,15 @@ export function registerDemoDataRoutes(app: OpenAPIHono<ApiEnv>): void {
   app.openapi(seedRoute, async (c) => {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'contacts:write');
+    // Katalog polí se vyzvedává PŘED transakcí. Uvnitř by si otevřel druhé
+    // spojení z poolu, zatímco to první drží zámek nad řádkem projektu.
+    // Seed ho potřebuje na ověření ukázkových šablon.
+    const fields = await getFieldCatalog(ctx);
     try {
       // Celý seed uvnitř JEDNÉ transakce s kontextem projektu. Bez obálky by
       // první INSERT skončil na WITH CHECK politiky ws_isolation.
       const manifest = await withWorkspace(ctx, (tx) =>
-        seedDemoData(tx, { workspaceId: ctx.workspaceId, now: new Date() }),
+        seedDemoData(tx, { workspaceId: ctx.workspaceId, now: new Date(), fields }),
       );
       return c.json({ data: { contacts: manifest.contactIds.length } }, 201);
     } catch (err) {

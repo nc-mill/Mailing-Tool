@@ -109,6 +109,80 @@ export async function writeSubscriptionIn(
   return rows[0]!;
 }
 
+/**
+ * Stavy přihlášení pro celou dávku najednou, jedním dotazem, uvnitř otevřené transakce.
+ *
+ * Import potřebuje u každé dvojice kontakt a seznam vědět, ZE KTERÉHO stavu přechází:
+ * o dalším stavu rozhoduje `transition()` ze `lists/state-machine.ts` a bez výchozího
+ * stavu by import odhlášeného člověka rovnou přepsal na `confirmed`, což je přesně to,
+ * čemu automat brání. Volání `findSubscriptionIn` v cyklu by znamenalo tisíc dotazů
+ * na dávku.
+ *
+ * Klíč mapy je `contactId:listId`.
+ */
+export async function readSubscriptionStatusesIn(
+  tx: Tx,
+  ctx: WorkspaceContext,
+  contactIds: readonly string[],
+  listIds: readonly string[],
+): Promise<Map<string, SubscriptionStatus>> {
+  const out = new Map<string, SubscriptionStatus>();
+  if (contactIds.length === 0 || listIds.length === 0) return out;
+  const { rows } = await tx.execute<{ contact_id: string; list_id: string; status: string }>(sql`
+    SELECT contact_id, list_id, status FROM list_subscriptions
+     WHERE workspace_id = ${ctx.workspaceId}::uuid
+       AND contact_id = ANY(${sql.param([...new Set(contactIds)])}::uuid[])
+       AND list_id = ANY(${sql.param([...new Set(listIds)])}::uuid[])
+  `);
+  for (const row of rows) {
+    out.set(`${row.contact_id}:${row.list_id}`, row.status as SubscriptionStatus);
+  }
+  return out;
+}
+
+/**
+ * Dávkový zápis přihlášení jedním příkazem, uvnitř otevřené transakce.
+ *
+ * Tvar konfliktu i chování při něm jsou schválně stejné jako u `writeSubscriptionIn`
+ * o kus výš, jen se hodnoty berou z `excluded` místo z parametrů. Rozdíl je v tom,
+ * odkud se bere `confirmed_at` a `source_ref`: `coalesce(excluded.…, list_subscriptions.…)`
+ * znamená „nepředané pole nech být", tedy totéž, co tam dělá `sql` odkaz na starou hodnotu.
+ *
+ * `snooze_until` se tady NEnuluje, na rozdíl od `writeSubscriptionIn`. Odložení rozesílky
+ * je projev vůle příjemce a import, který jen znovu potvrzuje existující přihlášení,
+ * nemá důvod ho zahodit.
+ */
+export async function writeSubscriptionsIn(
+  tx: Tx,
+  ctx: WorkspaceContext,
+  rows: readonly WriteSubscriptionInput[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  await tx.execute(sql`
+    INSERT INTO list_subscriptions (workspace_id, contact_id, list_id, status, source, source_ref,
+                                    confirmed_at, confirmation_sent_at, confirmation_resends)
+    SELECT ${ctx.workspaceId}::uuid, u.contact_id, u.list_id, u.status, u.source, u.source_ref,
+           u.confirmed_at, u.confirmation_sent_at, 0
+      FROM unnest(
+        ${sql.param(rows.map((r) => r.contactId))}::uuid[],
+        ${sql.param(rows.map((r) => r.listId))}::uuid[],
+        ${sql.param(rows.map((r) => r.status))}::text[],
+        ${sql.param(rows.map((r) => r.source))}::text[],
+        ${sql.param(rows.map((r) => r.sourceRef ?? null))}::text[],
+        ${sql.param(rows.map((r) => r.confirmedAt ?? null))}::timestamptz[],
+        ${sql.param(rows.map((r) => r.confirmationSentAt ?? null))}::timestamptz[]
+      ) AS u(contact_id, list_id, status, source, source_ref, confirmed_at, confirmation_sent_at)
+    ON CONFLICT (contact_id, list_id) DO UPDATE SET
+      status = excluded.status,
+      source = excluded.source,
+      source_ref = coalesce(excluded.source_ref, list_subscriptions.source_ref),
+      confirmed_at = coalesce(excluded.confirmed_at, list_subscriptions.confirmed_at),
+      confirmation_sent_at = coalesce(excluded.confirmation_sent_at,
+                                      list_subscriptions.confirmation_sent_at),
+      updated_at = now()
+  `);
+}
+
 export type IssueConfirmationInput = {
   contactId: string;
   listId: string;

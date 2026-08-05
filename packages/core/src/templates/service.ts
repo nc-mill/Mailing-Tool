@@ -1,4 +1,4 @@
-import { and, eq, isNull, like } from 'drizzle-orm';
+import { and, count, eq, isNull, like, ne } from 'drizzle-orm';
 import * as schema from '@mlain/db/schema';
 import { buildBaseTemplate, type BaseTemplateParams } from '@mlain/emails/base/build';
 import { buildRenderSchema } from '@mlain/emails/compile/render-schema';
@@ -10,12 +10,18 @@ import type { WorkspaceContext } from '../identity/types';
 import { pgErrorCode, withWorkspace, type Tx } from '../tx';
 import { syncAssetReferences } from './asset-references';
 import { assetIdsInDocument, loadAssetRefs } from './assets';
+import { writeTemplatesAudit } from './audit';
 import {
   createTemplateRow,
+  findDeletedTemplateById,
   findTemplateById,
+  loadTemplateUsage,
+  renameTemplateRow,
+  restoreTemplateRow,
   setValidationState,
   softDeleteTemplate,
   updateTemplateDesign,
+  validationProfileFor,
   type TemplateRow,
 } from './repository';
 import { validateTemplateDocument } from './validate';
@@ -60,7 +66,9 @@ async function validateAndStore(
 ): Promise<void> {
   const assets = await loadAssetRefs(tx, ctx.ctx, assetIdsInDocument(document));
   const result = validateTemplateDocument(document, {
-    templateKind: kind,
+    // Profil, ne `kind`. Pracovní obsah kampaně (`kind = 'system'`) se kontroluje
+    // jako kampaň, jinak by editor mlčel tam, kde odeslání spadne.
+    templateKind: validationProfileFor(kind),
     fields: ctx.fields,
     assetIds: new Set(Object.keys(assets)),
   });
@@ -132,6 +140,59 @@ export async function saveDesign(
 }
 
 /**
+ * Přejmenování šablony.
+ *
+ * Jméno se OŘEZÁVÁ o mezery a prázdné se odmítne. Zod na trase hlídá délku
+ * 1 až 120, jenže samé mezery projdou: `"   "` má délku tři a databázové
+ * `ck_templates__name_len` ho pustí taky. Vznikla by šablona s neviditelným
+ * jménem, kterou v knihovně nejde ani najít, ani odlišit od ostatních.
+ *
+ * Dokument se mění SPOLU s řádkem, důvod je rozepsaný u `renameTemplateRow`:
+ * `meta.name` je předmět odesílaného e-mailu, ne kopie jména pro parádu.
+ *
+ * Stav kontroly se nepřepočítává. Změna `meta.name` nemůže platný dokument
+ * zneplatnit ani naopak: schéma na něm chce jen délku 1 až 120, což je táž
+ * podmínka, jakou tahle funkce právě ověřila.
+ */
+export async function renameTemplate(
+  ctx: ServiceContext,
+  templateId: string,
+  name: string,
+): Promise<TemplateRow> {
+  const trimmed = name.trim();
+  if (trimmed === '') throw new Error('template_name_empty');
+
+  return withWorkspace(ctx.ctx, async (tx) => {
+    const row = await findTemplateById(tx, ctx.ctx, templateId);
+    if (!row) throw new Error('not_found');
+    // Beze změny se nezapisuje: přejmenování na tutéž hodnotu by jen posunulo
+    // `updated_at` a vystřelilo šablonu na začátek knihovny řazené podle
+    // poslední změny, přestože se v ní nic nezměnilo.
+    if (row.name === trimmed) return row;
+
+    const design = row.design as Document;
+    const renamed: Document = { ...design, meta: { ...design.meta, name: trimmed } };
+    let updated: TemplateRow;
+    try {
+      updated = await renameTemplateRow(tx, ctx.ctx, templateId, trimmed, renamed);
+    } catch (error) {
+      // `uq_templates__workspace_name` je na `lower(name)` mezi nesmazanými.
+      if (pgErrorCode(error) === '23505') throw new Error('template_name_conflict');
+      throw error;
+    }
+    // Ve stejné transakci jako zápis (3.7). V metadatech je STARÉ i NOVÉ jméno:
+    // bez starého se z auditu nedá poznat, která šablona se přejmenovala, protože
+    // pod původním názvem ji už nikdo nenajde.
+    await writeTemplatesAudit(tx, ctx.ctx, {
+      action: 'template.renamed',
+      targetId: templateId,
+      metadata: { from: row.name, to: trimmed },
+    });
+    return updated;
+  });
+}
+
+/**
  * Jméno kopie. Dvě omezení naráz, obě z P03:
  * `ck_templates__name_len` povoluje 1 až 120 znaků a `uq_templates__workspace_name`
  * je unikátní na `lower(name)` mezi nesmazanými. Bez zkrácení by nešla zkopírovat
@@ -184,17 +245,124 @@ export async function duplicateTemplate(
   throw new Error('template_name_conflict');
 }
 
+/**
+ * MĚKKÉ smazání, ne tvrdé, a je to rozhodnutí o důkazech, ne o pohodlí.
+ *
+ * Tabulka `templates` má sloupec `deleted_at` a oba výpisy i `findTemplateById`
+ * podle něj filtrují, takže řádek po smazání z rozhraní zmizí. Kdyby se místo
+ * toho mazal řádek, vzalo by to s sebou kaskádou `template_versions`, tedy
+ * i verze označené `pinned = true`, což je uložený důkaz, co přesně se
+ * rozeslalo. `campaigns.template_id` má sice `ON DELETE SET NULL`, takže by
+ * kampaň nespadla, ale ztratila by stopu, z čeho vznikla.
+ *
+ * KAMPANĚ SMAZÁNÍ NEPOCIŤUJÍ. Kampaň si obsah drží ve vlastních sloupcích
+ * (`campaigns.design`, `compiled_html`, `compiled_text`), šablona je jen
+ * předloha, ze které se jednou převzal. Odkaz `template_id` po měkkém smazání
+ * navíc dál ukazuje na existující řádek, takže se nemá co porušit.
+ *
+ * FORMULÁŘE A SEZNAMY ANO, A PROTO SE JIM ŠABLONA POD RUKAMA NESMAŽE.
+ * `forms.delivery_template_id`, `lists.confirmation_template_id`
+ * a `lists.welcome_template_id` neukazují na předlohu, ale na e-mail, který se
+ * ŽIVĚ odesílá při každém vyplnění formuláře a při každém přihlášení. Měkce
+ * smazaná šablona z `findTemplateById` nevypadne, takže by odesílání přestalo
+ * fungovat tiše: formulář by dál sbíral adresy a jeho e-mail by nikam nechodil.
+ * Tichá porucha je horší než odmítnutí, proto se maže až po odpojení.
+ */
 export async function deleteTemplate(ctx: ServiceContext, templateId: string): Promise<void> {
   await withWorkspace(ctx.ctx, async (tx) => {
     const row = await findTemplateById(tx, ctx.ctx, templateId);
     if (!row) throw new Error('not_found');
     // Dodávané šablony jde jen skrýt, ne smazat.
     if (row.starter) throw new Error('template_starter_immutable');
+    const usage = (await loadTemplateUsage(tx, ctx.ctx, [templateId])).get(templateId);
+    if (usage && (usage.forms.length > 0 || usage.lists.length > 0)) {
+      throw new Error('template_in_use');
+    }
     await softDeleteTemplate(tx, ctx.ctx, templateId);
     // Smazaná šablona přestává držet assety. Verze si je drží dál, ty se mažou
     // až retencí, takže obrázek použitý ve staré verzi zůstane.
     await syncAssetReferences(tx, ctx.ctx, { refType: 'template', refId: templateId }, []);
+    // Audit ve stejné transakci (3.7). Počet kampaní je v metadatech schválně:
+    // je to odpověď na otázku, kterou si po smazání položí každý, tedy „koho se
+    // to dotklo". Nula znamená, že šablonu nikdy nikdo nepoužil.
+    await writeTemplatesAudit(tx, ctx.ctx, {
+      action: 'template.deleted',
+      targetId: templateId,
+      metadata: {
+        name: row.name,
+        kind: row.kind,
+        campaigns_using: await countCampaignsUsing(tx, ctx.ctx, templateId),
+      },
+    });
   });
+}
+
+/**
+ * Vrácení smazané šablony zpět. Existuje proto, aby smazání nebylo nenávratné:
+ * měkké smazání řádek zachovává, takže obnova je jedno UPDATE a rozhraní může
+ * hned po smazání nabídnout „Vrátit zpět" místo věty „tohle už nevrátíte".
+ *
+ * Jméno může být mezitím zabrané: `uq_templates__workspace_name` platí jen mezi
+ * nesmazanými řádky, takže nic nebrání založit novou šablonu téhož jména.
+ * Taková obnova skončí konfliktem, ne přejmenováním za zády uživatele.
+ */
+export async function restoreTemplate(
+  ctx: ServiceContext,
+  templateId: string,
+): Promise<TemplateRow> {
+  return withWorkspace(ctx.ctx, async (tx) => {
+    const row = await findDeletedTemplateById(tx, ctx.ctx, templateId);
+    // Nesmazaná šablona není chyba volajícího, ale ani není co obnovovat:
+    // 404 by tvrdilo, že neexistuje, což je nepravda.
+    if (!row) {
+      const alive = await findTemplateById(tx, ctx.ctx, templateId);
+      if (alive) return alive;
+      throw new Error('not_found');
+    }
+    try {
+      await restoreTemplateRow(tx, ctx.ctx, templateId);
+    } catch (error) {
+      if (pgErrorCode(error) === '23505') throw new Error('template_name_conflict');
+      throw error;
+    }
+    // Vazby na assety se obnovují taky: smazání je zahodilo, takže by po návratu
+    // šablona používala obrázky, ke kterým se nehlásí, a úklid assetů by je
+    // považoval za nepoužité.
+    await syncAssetReferences(
+      tx,
+      ctx.ctx,
+      { refType: 'template', refId: templateId },
+      assetIdsInDocument(row.design as Document),
+    );
+    await writeTemplatesAudit(tx, ctx.ctx, {
+      action: 'template.restored',
+      targetId: templateId,
+      metadata: { name: row.name, kind: row.kind },
+    });
+    return { ...row, deletedAt: null };
+  });
+}
+
+/** Kolik kampaní z šablony vzniklo. Jen do auditu a do dopadu v rozhraní. */
+async function countCampaignsUsing(
+  tx: Tx,
+  ctx: WorkspaceContext,
+  templateId: string,
+): Promise<number> {
+  const [row] = await tx
+    .select({ value: count() })
+    .from(schema.campaigns)
+    .where(
+      and(
+        wsEq(ctx, schema.campaigns),
+        eq(schema.campaigns.templateId, templateId),
+        // Systémová kampaň není kampaň uživatele, je to schránka na testovací
+        // odeslání šablony. Počítat ji sem by číslo nafouklo o něco, co si
+        // vyrobila aplikace sama.
+        ne(schema.campaigns.kind, 'system'),
+      ),
+    );
+  return row?.value ?? 0;
 }
 
 /**

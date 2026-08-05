@@ -6,13 +6,14 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it, vi } from 'vitest';
 import csSettings from '../../../../../packages/i18n/messages/cs/settings.json';
+import { IDLE } from '@/lib/feedback/action-result';
 import { DangerZoneView } from './danger-zone';
 
 // Modul akcí se dotýká `server-only` a cookies, které v jsdom nejsou.
 // Pohled si akci bere propem, takže stačí prázdná náhrada.
-vi.mock('./actions-forms', () => ({
-  updateAddressFormFormAction: vi.fn(),
-  deleteWorkspaceFormAction: vi.fn(),
+vi.mock('./actions', () => ({
+  updateAddressFormAction: vi.fn(),
+  deleteWorkspaceAction: vi.fn(),
 }));
 
 const messages = { settings: csSettings };
@@ -30,7 +31,7 @@ const WORKSPACE = {
 function renderZone() {
   return render(
     <NextIntlClientProvider locale="cs" messages={messages} timeZone="Europe/Prague">
-      <DangerZoneView workspace={WORKSPACE} action={vi.fn()} />
+      <DangerZoneView workspace={WORKSPACE} action={vi.fn(async () => IDLE)} />
     </NextIntlClientProvider>,
   );
 }

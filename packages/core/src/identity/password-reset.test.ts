@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import * as schema from '@mlain/db/schema';
 import { closePools, withoutContext } from '../tx';
+import { setSystemMailer } from '../platform/system-mail';
 import { startPgHarness, type PgHarness } from '../test-support/pg-harness';
 import { asMigrator, closeMigratorPool } from '../test-support/migrator';
 import { hashPassword, verifyPassword } from './password';
@@ -25,9 +26,17 @@ const request = () =>
 
 beforeAll(async () => {
   harness = await startPgHarness();
+  /**
+   * Náhradní odesílatel. Testovací uživatelé nepatří do žádného projektu, takže
+   * skutečný odesílatel nemá odkud vzít odesílací účet a `queueSystemMail` u zprávy
+   * `password_reset` vyhodí `system_mail_unavailable`. Je to správné chování,
+   * jen se tady netestuje: tenhle soubor zkoumá tokeny, relace a audit.
+   */
+  setSystemMailer({ async send() {} });
 }, 180_000);
 
 afterAll(async () => {
+  setSystemMailer(null);
   await closePools();
   await closeMigratorPool();
   await harness?.stop();

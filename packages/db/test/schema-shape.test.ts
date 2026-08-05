@@ -21,8 +21,9 @@ function namesOf(mod: Record<string, unknown>): string[] {
 }
 
 describe('tvar schématu', () => {
-  it('schéma obsahuje přesně 75 tabulek', () => {
-    expect(tablesOf(schema)).toHaveLength(75);
+  it('schéma obsahuje přesně 76 tabulek', () => {
+    // 75 do migrace 0012, od 0013 navíc `sender_identities`.
+    expect(tablesOf(schema)).toHaveLength(76);
   });
 
   it('každý název tabulky je snake_case', () => {
@@ -51,7 +52,7 @@ describe('tvar schématu', () => {
     ]);
     expect(namesOf(contactsSchema)).toHaveLength(23);
     expect(namesOf(content)).toHaveLength(12);
-    expect(namesOf(campaignsSchema)).toHaveLength(8);
+    expect(namesOf(campaignsSchema)).toHaveLength(9);
     expect(namesOf(tracking)).toHaveLength(11);
     expect(namesOf(partitioned)).toEqual([
       'audit_log',

@@ -38,6 +38,22 @@ export const MATERIALIZE_TIMEOUT_STRIKES = 3;
 /** Watchdog uzavira kampan az po 10 s bez zmeny citacu, kvuli zavodu s dobehem davky. */
 export const WATCHDOG_QUIET_SECONDS = 10;
 
+/**
+ * Kdy uz je kampan se zbyvajicimi zpravami zaseknuta (`outbox.stall_watch`).
+ *
+ * Prah je 120 sekund, tedy vyrazne vic nez `WATCHDOG_QUIET_SECONDS`, a je to
+ * schvalne. Hlidac kampani resi zavod s dobehem davky, kdezto tenhle prah odpovida
+ * na otazku "sahl na tuhle kampan vubec nekdo?". Sender bere davku kazdou sekundu
+ * (SENDER_POLL_INTERVAL_MS) a claim mu vyprsi za 300 sekund
+ * (SENDER_CLAIM_TTL_SECONDS), takze dve minuty ticha uz nejde vysvetlit beznym
+ * provozem ani jednou pomalejsi davkou. Niz by hlaseni chodilo pri kazde vetsi
+ * kampani, vys by se ztratila prvni hodina vypadku.
+ *
+ * Je to konstanta, ne promenna prostredi: je to prah HLASENI, ne provozni
+ * parametr, a nic podle nej nerozhoduje o osudu zpravy.
+ */
+export const STALL_WATCH_QUIET_SECONDS = 120;
+
 /** Testovaci odeslani: 1 az 5 adres. */
 export const TEST_SEND_MAX_RECIPIENTS = 5;
 

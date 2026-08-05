@@ -1,0 +1,13 @@
+{
+  "id": "LQ-704",
+  "description": "kořen data z transakčního volání, odkaz do tlačítka",
+  "level": "authored",
+  "context": "html",
+  "template": "{{ data.reset_url }}",
+  "data": {
+    "data": {
+      "reset_url": "https://shop.cz/reset?token=abc&uid=8472"
+    }
+  },
+  "expected": "https://shop.cz/reset?token=abc&amp;uid=8472"
+}

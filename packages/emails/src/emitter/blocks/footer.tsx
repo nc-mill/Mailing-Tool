@@ -10,6 +10,11 @@ import { BlockFrame } from './frame';
  * takže ji nejde podmínit a musí ji dostat každý příjemce (pravidlo S14).
  * Systémové adresy zůstávají Liquid výrazem: sender je interpoluje z podepsaného
  * tokenu, kompilace o nich neví nic víc než jejich jméno.
+ *
+ * ODKAZ NA PŘEDVOLBY MÁ DVĚ PODMÍNKY, ODHLÁŠENÍ ŽÁDNOU. `showPreferences` patří
+ * ŠABLONĚ, `emitter.preferenceCenterEnabled` PROJEKTU, a platí přísnější z nich:
+ * když správce předvolby nenabízí, nesmí na ně odkazovat ani šablona uložená dřív.
+ * Odhlašovací odkaz se takhle podmínit NESMÍ, je to zákonná povinnost.
  */
 export function FooterBlockView({
   block,
@@ -20,7 +25,9 @@ export function FooterBlockView({
   const color = theme.light.color(p.color);
   const links: Array<{ label: string; href: string }> = [];
   if (p.showUnsubscribe) links.push({ label: p.unsubscribeLabel, href: '{{ unsubscribe_url }}' });
-  if (p.showPreferences) links.push({ label: p.preferencesLabel, href: '{{ preferences_url }}' });
+  if (p.showPreferences && emitter.preferenceCenterEnabled !== false) {
+    links.push({ label: p.preferencesLabel, href: '{{ preferences_url }}' });
+  }
   if (p.showWebview) links.push({ label: p.webviewLabel, href: '{{ webview_url }}' });
 
   return (

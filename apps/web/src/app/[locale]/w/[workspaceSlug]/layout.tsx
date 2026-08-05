@@ -1,143 +1,90 @@
-'use client';
-
-import { Link, usePathname, useRouter } from '@mlain/i18n/navigation';
-import { workspaceAccent } from '@mlain/ui/lib/workspace-accent';
-import { visibleNavigation } from '@mlain/ui/patterns/navigation';
-import { AppShell, Sidebar, Topbar, WorkspaceSwitcher } from '@mlain/ui/patterns/shell';
-import { TooltipProvider } from '@mlain/ui/components/tooltip';
-import { ToastProvider } from '@mlain/ui/patterns/toast';
-import type { SystemBarState } from '@mlain/ui/patterns/shell';
-import { useTranslations } from 'next-intl';
-import { useParams } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import { notFound } from 'next/navigation';
+import type { ReactNode } from 'react';
+import { AuthProblem } from '@/features/auth/action-problem';
+import { createWorkspaceAction } from '@/features/auth/actions';
+import { WorkspaceShell } from '@/features/shell/workspace-shell';
+import { permissionsOf } from '@/lib/identity/permissions';
+import { requireUser } from '@/lib/identity/require-user';
+import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
 
 /**
- * Skořápka projektu: topbar, boční menu, přepínač projektů a systémový pruh.
- * Obrazovky pod ní dodávají doménové plány, skořápka je pro ně jediná.
+ * Serverová část skořápky projektu. Načte relaci a předá klientské skořápce
+ * SKUTEČNÁ data: seznam projektů přihlášeného, oprávnění jeho role v tomhle
+ * projektu, název projektu a jeho vlastní účet.
  *
- * Relace, oprávnění a seznam projektů dodá vrstva identity (plán jádra API).
- * Do té doby drží skořápka hodnoty níž, aby se dala spustit a proklikat.
+ * PROČ TENHLE SOUBOR VZNIKL: do 4. 8. 2026 tady stála zástupná verze z plánu
+ * designového systému, s poznámkou „Relace, oprávnění a seznam projektů dodá
+ * vrstva identity". Vrstva identity mezitím dávno existovala, jen ji sem nikdo
+ * nepřipojil, takže:
+ *   - přepínač projektů dostával seznam o JEDNOM prvku, tom otevřeném, a
+ *     přepnout se proto nedalo, i kdyby měl uživatel projektů deset,
+ *   - v hlavičce svítil slug (`eshop-kolo`) místo názvu (`E-shop Kolo`),
+ *   - oprávnění byla natvrdo napsaný seznam, ve kterém chybělo `providers:read`,
+ *     `ai:configure`, `backups:read` i `templates:write`, takže se z menu
+ *     odfiltrovalo pět hotových obrazovek Nastavení včetně Odesílání,
+ *   - uživatelská nabídka byla `null`, tedy nešlo se odhlásit.
+ *
+ * Skořápka je rozdělená na dva soubory schválně. Data umí načíst jen serverová
+ * komponenta (cookie relace, `server-only`), interaktivitu a providery umí jen
+ * klientská. Testovat jde obojí zvlášť: tenhle soubor za to, CO předá, klientský
+ * za to, jak to vykreslí.
  */
-const PLACEHOLDER_PERMISSIONS = [
-  'contacts:read',
-  'contacts:write',
-  'campaigns:read',
-  'templates:read',
-  'reports:read',
-  'api_keys:read',
-  'webhooks:read',
-  'audit:read',
-  'members:invite',
-  'workspace:update',
-];
+export const dynamic = 'force-dynamic';
 
-export default function WorkspaceLayout({ children }: { children: ReactNode }) {
-  const t = useTranslations('common');
-  const router = useRouter();
-  const pathname = usePathname();
-  const params = useParams<{ workspaceSlug: string }>();
-  const workspaceSlug = params.workspaceSlug;
+export default async function WorkspaceLayout({
+  children,
+  params,
+}: {
+  children: ReactNode;
+  params: Promise<{ workspaceSlug: string }>;
+}) {
+  const { workspaceSlug } = await params;
 
-  const [offline, setOffline] = useState(false);
-  useEffect(() => {
-    const update = () => setOffline(!navigator.onLine);
-    update();
-    window.addEventListener('online', update);
-    window.addEventListener('offline', update);
-    return () => {
-      window.removeEventListener('online', update);
-      window.removeEventListener('offline', update);
-    };
-  }, []);
-
-  // Identifikátor projektu zatím není načtený, barva se proto odvozuje ze
-  // slugu. Jakmile skořápka dostane relaci, dosadí se `workspace_id`.
-  const workspace = { id: workspaceSlug, slug: workspaceSlug, name: workspaceSlug };
-  const items = visibleNavigation({ permissions: PLACEHOLDER_PERMISSIONS, workspaceSlug });
-  const accent = workspaceAccent(workspace.id);
-  const systemBarStates: SystemBarState[] = offline
-    ? [{ kind: 'offline', message: t('systemBar.offline') }]
-    : [];
+  const me = await requireUser(`/w/${workspaceSlug}`);
+  // Nepřihlášeného přesměruje `requireUser` sám. Sem se dojde jen u jiné
+  // potíže, třeba když API neodpovídá, a to je potřeba říct: bez relace
+  // nemá skořápka co vykreslit a prázdná hlavička vypadá jako rozbité menu.
+  if (!me.ok) return <AuthProblem problem={me.problem} />;
 
   /**
-   * Providery montuje SKOŘÁPKA, ne jednotlivé domény.
-   *
-   * `useToast` mimo `ToastProvider` a `Tooltip` mimo `TooltipProvider` vyhodí
-   * výjimku. Chyba v klientské komponentě přitom neshodí tu komponentu, ale
-   * **celý strom po nejbližší error boundary**, takže uživatel místo obrazovky
-   * uvidí „Aplikace se neočekávaně zastavila". Naměřeno na Přehledu: zapojení
-   * jednoho panelu shodilo i dlaždice, které předtím fungovaly.
-   *
-   * Dokud to skořápka nedělala, obcházely to domény samy vlastními `layout.tsx`
-   * (kontakty, seznamy, štítky, zablokované adresy) a nakonec i komponenty.
-   * Šest míst, každé s poznámkou „až je skořápka dostane, tenhle soubor zmizí".
-   * Sedmá obrazovka by spadla stejně a spadla by celá.
-   *
-   * Vnořené providery nevadí, ty obcházky můžou zmizet postupně.
+   * Nečlen dostane 404, ne 403: z rozdílu by se dalo vyčíst, které projekty
+   * na instalaci existují (3.4 části 1). Rozhoduje se podle členství, které
+   * už relaci doprovází, takže se kvůli tomu nikam nesahá.
    */
+  const membership = me.data.memberships.find((entry) => entry.slug === workspaceSlug);
+  if (!membership) notFound();
+
+  /**
+   * `getWorkspaceAccess` je zdroj pravdy o názvu projektu a o oprávněních a
+   * je cachovaný na požadavek, takže si ho obrazovky pod skořápkou (Nastavení)
+   * berou zadarmo.
+   *
+   * Když ale selže, skořápka se NEVZDÁVÁ a poskládá se z členství: jméno,
+   * slug i role v něm jsou. Výpadek jednoho čtení by jinak zhasl hlavičku,
+   * menu i odhlášení na každé stránce projektu, přestože stránka pod nimi
+   * svoje data mít může.
+   */
+  const access = await getWorkspaceAccess(workspaceSlug);
+  const workspace = access.ok
+    ? access.data.workspace
+    : { id: membership.workspace_id, slug: membership.slug, name: membership.name };
+  const permissions = access.ok ? access.data.permissions : permissionsOf(membership.role);
+
+  const workspaces = me.data.memberships.map((entry) => ({
+    id: entry.workspace_id,
+    slug: entry.slug,
+    name: entry.name,
+  }));
+
   return (
-    <ToastProvider
-      labels={{
-        undo: t('actions.undo'),
-        close: t('actions.close'),
-        notifications: t('a11y.notifications'),
-        countdown: (seconds: number) => t('feedback.undoCountdown', { seconds }),
-        repeated: (message: string, count: number) => t('feedback.repeated', { message, count }),
-      }}
+    <WorkspaceShell
+      workspaces={workspaces}
+      currentWorkspaceId={workspace.id}
+      permissions={permissions}
+      user={{ name: me.data.user.name, email: me.data.user.email }}
+      createWorkspace={createWorkspaceAction}
     >
-      <TooltipProvider>
-        <AppShell
-          topbar={
-            <Topbar
-              workspaceSwitcher={
-                <WorkspaceSwitcher
-                  workspaces={[workspace]}
-                  currentId={workspace.id}
-                  onSwitch={(slug) => router.push(`/w/${slug}`)}
-                  labels={{
-                    switcher: t('shell.projectSwitcher'),
-                    current: (name) => t('shell.currentProject', { name }),
-                  }}
-                />
-              }
-              // Paletu příkazů a nápovědu napojí plán zkratek a plán nápovědy,
-              // skořápka pro ně drží místo na stejné pozici na všech stránkách.
-              onOpenSearch={() => {}}
-              onOpenHelp={() => {}}
-              jobsBadge={null}
-              userMenu={null}
-              labels={{
-                search: t('shell.search'),
-                help: t('shell.help'),
-                skipToContent: t('shell.skipToContent'),
-              }}
-            />
-          }
-          sidebar={
-            <Sidebar
-              items={items}
-              currentPath={pathname}
-              collapsed={false}
-              accentColor={accent}
-              translate={(labelKey) => t(labelKey.replace(/^common\./, ''))}
-              renderLink={({ href, label, active, children: linkChildren }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  aria-current={active ? 'page' : undefined}
-                  aria-label={label}
-                >
-                  {linkChildren}
-                </Link>
-              )}
-              labels={{ mainNavigation: t('shell.mainNavigation') }}
-            />
-          }
-          systemBarStates={systemBarStates}
-        >
-          {children}
-        </AppShell>
-      </TooltipProvider>
-    </ToastProvider>
+      {children}
+    </WorkspaceShell>
   );
 }

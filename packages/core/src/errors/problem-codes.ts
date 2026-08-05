@@ -301,6 +301,22 @@ export const PROBLEM_CODES: readonly ProblemCodeEntry[] = [
     domain: 'platform',
     source: 'spec',
   },
+  /**
+   * Instalace nemá čím odeslat systémový e-mail.
+   *
+   * Vlastní kód, ne `service_unavailable`, protože příčina není výpadek, ale
+   * chybějící nastavení, a odpověď na ni je jiná: přidat účet typu SMTP, ne
+   * počkat a zkusit znovu. `retryable` je proto `false`. 503 je záměr: operace
+   * neselhala vinou toho, kdo ji vyvolal, a data se nezměnila.
+   */
+  {
+    code: 'system_mail_unavailable',
+    status: 503,
+    title: 'System mail is not configured',
+    retryable: false,
+    domain: 'platform',
+    source: 'derived',
+  },
   {
     code: 'dependency_timeout',
     status: 504,
@@ -340,6 +356,14 @@ export const PROBLEM_CODES: readonly ProblemCodeEntry[] = [
     code: 'campaign_audience_empty',
     status: 422,
     title: 'Campaign audience is empty',
+    retryable: false,
+    domain: 'campaigns',
+    source: 'spec',
+  },
+  {
+    code: 'campaign_audience_all_pending',
+    status: 422,
+    title: 'Campaign audience has only unconfirmed subscribers',
     retryable: false,
     domain: 'campaigns',
     source: 'spec',
@@ -581,6 +605,74 @@ export const PROBLEM_CODES: readonly ProblemCodeEntry[] = [
     source: 'derived',
   },
 
+  // --- Transakční pošta přes API -------------------------------------------
+  // Vlastní rodina kódů, protože volajícím je APLIKACE ZÁKAZNÍKA, ne naše UI:
+  // musí z odpovědi poznat, co má opravit, bez čtení dokumentace.
+  {
+    code: 'template_kind_not_transactional',
+    status: 422,
+    title: 'Template is not transactional',
+    retryable: false,
+    domain: 'campaigns',
+    source: 'derived',
+  },
+  {
+    code: 'template_not_compilable',
+    status: 422,
+    title: 'Template cannot be compiled',
+    retryable: false,
+    domain: 'campaigns',
+    source: 'derived',
+  },
+  {
+    code: 'recipient_suppressed',
+    status: 422,
+    title: 'Recipient is suppressed',
+    retryable: false,
+    domain: 'campaigns',
+    source: 'derived',
+  },
+  {
+    code: 'recipient_unknown',
+    status: 422,
+    title: 'Recipient is not a contact',
+    retryable: false,
+    domain: 'campaigns',
+    source: 'derived',
+  },
+  {
+    code: 'transactional_data_too_large',
+    status: 413,
+    title: 'Transactional data is too large',
+    retryable: false,
+    domain: 'campaigns',
+    source: 'derived',
+  },
+  {
+    code: 'transactional_variable_unknown',
+    status: 422,
+    title: 'Transactional variable was not supplied',
+    retryable: false,
+    domain: 'campaigns',
+    source: 'derived',
+  },
+  {
+    code: 'sender_identity_not_found',
+    status: 422,
+    title: 'Sender identity not found',
+    retryable: false,
+    domain: 'campaigns',
+    source: 'derived',
+  },
+  {
+    code: 'sending_not_configured',
+    status: 409,
+    title: 'Sending is not configured',
+    retryable: false,
+    domain: 'campaigns',
+    source: 'derived',
+  },
+
   // --- Kontakty, souhlasy, segmenty, část 2 --------------------------------
   // Část 2, kapitola 2.3 mapuje své situace na platformní kódy a doménovou
   // příčinu posílá do errors[].code. Vlastní kořenový kód zavádí jen tenhle:
@@ -617,6 +709,18 @@ export const PROBLEM_CODES: readonly ProblemCodeEntry[] = [
     retryable: false,
     domain: 'content',
     source: 'spec',
+  },
+  {
+    // Doplněno k filtru knihovny šablon. Formulář a seznam si svůj e-mail berou
+    // ze ŽIVÉ šablony při každém odeslání, takže měkké smazání by je umlčelo,
+    // aniž by cokoli spadlo. 409, ne 422: požadavek je v pořádku, jen stav
+    // projektu ho nedovoluje, a uživatel to napraví odpojením, ne opravou těla.
+    code: 'template_in_use',
+    status: 409,
+    title: 'Template is wired to a form or a list',
+    retryable: false,
+    domain: 'content',
+    source: 'derived',
   },
   {
     // Doplněno pro trasy šablon. Plán P08 (Task 42) ho vyžaduje doslova, jak
@@ -1069,7 +1173,23 @@ export const FINDING_CODES: readonly FindingCodeEntry[] = [
   { code: 'campaign_subject_missing', severity: 'error', domain: 'campaigns', source: 'spec' },
   { code: 'campaign_unknown_merge_field', severity: 'error', domain: 'campaigns', source: 'spec' },
   { code: 'campaign_audience_empty', severity: 'error', domain: 'campaigns', source: 'spec' },
+  // Zvláštní případ prázdného publika: seznam vybraný je a lidé v něm jsou, jenže
+  // všichni čekají na potvrzení. Vlastní kód proto, že rada „vyberte seznam" je tady
+  // nepoužitelná a uživatel potřebuje slyšet něco jiného.
+  { code: 'campaign_audience_all_pending', severity: 'error', domain: 'campaigns', source: 'spec' },
   { code: 'campaign_not_compiled', severity: 'error', domain: 'campaigns', source: 'spec' },
+  /*
+   * Obsah kampaně ve dvou stavech, ne v jednom. Vzniklo z vady z instalace:
+   * kampaň, jejíž dokument neobsahoval nic než patičku, prošla kontrolou před
+   * odesláním a na tři adresy dorazil e-mail s pouhými odkazy na odhlášení.
+   *
+   * `campaign_content_missing` znamená, že dokument vůbec není, tedy že si
+   * uživatel obsah ještě nezaložil. `campaign_content_empty` znamená, že dokument
+   * je, ale není v něm jediný obsahový blok. Rada je u každého jiná („založte
+   * obsah" proti „napište do e-mailu něco"), proto dva kódy a ne jeden.
+   */
+  { code: 'campaign_content_missing', severity: 'error', domain: 'campaigns', source: 'spec' },
+  { code: 'campaign_content_empty', severity: 'error', domain: 'campaigns', source: 'spec' },
   { code: 'provider_not_ready', severity: 'error', domain: 'campaigns', source: 'spec' },
   { code: 'provider_sandbox', severity: 'error', domain: 'campaigns', source: 'spec' },
   { code: 'domain_dkim_missing', severity: 'error', domain: 'campaigns', source: 'spec' },

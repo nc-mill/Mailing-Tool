@@ -33,6 +33,25 @@ export const ContactsWorkspaceSettingsSchema = z
     /** Strop počtu kontaktů v projektu. null znamená bez stropu. */
     contact_limit: z.number().int().positive().nullable().default(null),
     require_consent_on_import: z.boolean().default(true),
+    /**
+     * Nabízí se příjemcům veřejné centrum předvoleb `/p/{token}`?
+     *
+     * Když je vypnuté, zmizí odkaz „Nastavit předvolby" z patičky e-mailu i ze stránky
+     * odhlášení a samotná stránka `/p/{token}` nabídne JEN odhlášení. Je to výslovné
+     * přání zadavatele: „někdy to prostě nechci nabízet, jen možnost odhlásit se, pak
+     * se to nesmí objevit ani v patičce mailu."
+     *
+     * Výchozí hodnota je `true`, a je to jiné rozhodnutí než u `lists.public_visible`.
+     * Bezpečnostní vada byla v tom, že se KDOKOLI mohl sám přihlásit do libovolného
+     * seznamu; tu zavírá výchozí `false` u seznamu. Samotné centrum předvoleb žádné
+     * oprávnění neuděluje, jen dovoluje příjemci upravit jazyk, jméno, frekvenci
+     * a požádat o svá data, takže jeho vypnutí příjemci škodí, ne pomáhá. Vypnout ho
+     * je proto vědomá volba správce, ne výchozí stav.
+     *
+     * ODHLÁŠENÍ TENHLE PŘEPÍNAČ NEŘÍDÍ. Odkaz na odhlášení v patičce ani stránka
+     * `/u/{token}` se jím neovlivňují a ovlivňovat nesmí: je to zákonná povinnost.
+     */
+    public_preference_center: z.boolean().default(true),
   })
   .strict();
 

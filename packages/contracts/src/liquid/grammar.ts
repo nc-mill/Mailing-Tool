@@ -50,7 +50,28 @@ export const ALLOWED_ROOTS = [
   'one_click_unsubscribe_url',
   'preferences_url',
   'webview_url',
+  'data',
 ] as const;
+
+/**
+ * `data` je kořen pro hodnoty předané při volání transakčního API, tedy
+ * `{{ data.reset_url }}`. Do `ALLOWED_ROOTS` patří proto, že kompilovanou
+ * úroveň (invariant I1) validuje tentýž validátor bez znalosti druhu šablony
+ * a musel by hotové HTML odmítnout.
+ *
+ * V AUTORSKÉ šabloně ho ale smí použít jen `kind = 'transactional'`: kampani
+ * nikdo `data` nedodá a render s `strictVariables: false` by z chybějící
+ * hodnoty tiše udělal prázdný řetězec. Bránu drží volající tím, že validátoru
+ * předá `roots` bez `data`, viz `rootsForTemplateKind`.
+ */
+export const TRANSACTIONAL_DATA_ROOT = 'data';
+
+/** Kořeny povolené v autorské šabloně daného druhu. */
+export function rootsForTemplateKind(kind: 'campaign' | 'transactional' | 'system'): string[] {
+  return ALLOWED_ROOTS.filter(
+    (root) => root !== TRANSACTIONAL_DATA_ROOT || kind === 'transactional',
+  );
+}
 
 /**
  * `_present.<slug>` je kořen pro podmíněné zobrazení bloku. Autor ho nikdy

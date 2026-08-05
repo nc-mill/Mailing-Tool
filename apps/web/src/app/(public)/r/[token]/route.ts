@@ -1,4 +1,5 @@
 import { anonymousBranding, applyReactivation, readVerifiedToken } from '@mlain/core/contacts';
+import { sanitizePublicToken } from '@mlain/core/net/public-link';
 import { publicTranslator } from '@/features/public/i18n';
 import {
   InvalidLinkPage,
@@ -33,7 +34,8 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ token: string }> },
 ): Promise<Response> {
-  const { token } = await params;
+  // Očištěno o přílepek poštovního klienta, viz `net/public-link.ts`.
+  const token = sanitizePublicToken((await params).token);
   const verified = await readVerifiedToken(token, '/r/**');
   if (!verified.ok) return invalidPage();
 
@@ -49,7 +51,7 @@ export async function POST(
   _request: Request,
   { params }: { params: Promise<{ token: string }> },
 ): Promise<Response> {
-  const { token } = await params;
+  const token = sanitizePublicToken((await params).token);
   const verified = await readVerifiedToken(token, '/r/**');
   if (!verified.ok) return invalidPage();
 

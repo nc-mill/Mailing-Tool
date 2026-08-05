@@ -23,8 +23,15 @@ const tokenFor = (over: Partial<typeof fields> = {}) =>
   buildToken({ type: 'u', keyId: 1, fields: { ...fields, ...over }, keyring }).token;
 
 describe('tabulka povolených typů', () => {
-  it('všechny tři veřejné endpointy berou jen typ u', () => {
-    expect(ENDPOINT_TOKEN_TYPES).toEqual({ '/u/**': ['u'], '/p/**': ['u'], '/r/**': ['u'] });
+  it('všechny čtyři veřejné endpointy berou jen typ u', () => {
+    // `/v/**` (zobrazení zprávy v prohlížeči) přibylo a jiný typ ani dostat nemůže:
+    // odesílač skládá `webview_url` z TÉHOŽ odhlašovacího tokenu jako `preferences_url`.
+    expect(ENDPOINT_TOKEN_TYPES).toEqual({
+      '/u/**': ['u'],
+      '/p/**': ['u'],
+      '/r/**': ['u'],
+      '/v/**': ['u'],
+    });
   });
 });
 

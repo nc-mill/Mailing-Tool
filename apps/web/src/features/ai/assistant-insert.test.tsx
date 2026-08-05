@@ -63,7 +63,7 @@ describe('vložení výsledku do editoru', () => {
 
   it('hotový návrh se vkládá přes blokový model, ne jako text', () => {
     chat.draft = { document: { schemaVersion: 1, blocks: [{ id: 'novy' }] }, designHash: 'novy' };
-    wrap(<AiAssistantPanel templateId="t1" hasCredential brandName={null} />);
+    wrap(<AiAssistantPanel templateId="t1" workspaceId="w1" hasCredential brandName={null} />);
 
     expect(replaceDocument).toHaveBeenCalledTimes(1);
     const [document, hash] = replaceDocument.mock.calls[0] as [
@@ -78,7 +78,7 @@ describe('vložení výsledku do editoru', () => {
 
   it('Zkusit jinak vrátí původní dokument, práce se neztratí', () => {
     chat.draft = { document: { schemaVersion: 1, blocks: [{ id: 'novy' }] }, designHash: 'novy' };
-    wrap(<AiAssistantPanel templateId="t1" hasCredential brandName={null} />);
+    wrap(<AiAssistantPanel templateId="t1" workspaceId="w1" hasCredential brandName={null} />);
     replaceDocument.mockClear();
 
     screen.getByRole('button', { name: 'Zkusit jinak' }).click();

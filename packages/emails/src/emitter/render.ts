@@ -20,6 +20,8 @@ export type RenderOptions = {
   preheader?: string | undefined;
   /** Jen pro testy. V produkci se nikdy nepředává. */
   rawNonce?: string | undefined;
+  /** Nabízí projekt centrum předvoleb? Vynechání znamená ano, viz `EmitterState`. */
+  preferenceCenterEnabled?: boolean | undefined;
 };
 
 /** Texty dodávané produktem. Zatím jen oddělovače prostého textu, patička je v props bloku. */
@@ -41,6 +43,7 @@ export async function renderDocumentHtml(options: RenderOptions): Promise<string
     trackClicks: options.trackClicks,
     linkHref: options.linkHref,
     t: (key: string) => PRODUCT_TEXTS[normalized.language]?.[key] ?? PRODUCT_TEXTS.en![key] ?? key,
+    preferenceCenterEnabled: options.preferenceCenterEnabled,
   };
 
   // Stav prochází stromem jako vlastnost `emitter`, ne React kontextem.

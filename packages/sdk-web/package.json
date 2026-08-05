@@ -4,10 +4,27 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs"
+    },
+    "./package.json": "./package.json"
   },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {},
   "devDependencies": {
-    "@mlain/config": "workspace:*"
+    "@mlain/config": "workspace:*",
+    "esbuild": "^0.25.0",
+    "happy-dom": "20.0.0",
+    "vitest": "4.1.10"
   }
 }

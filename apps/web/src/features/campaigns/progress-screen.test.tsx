@@ -1,8 +1,9 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ProgressScreen, type CampaignProgress } from './progress-screen';
 import { UndoCountdown } from './undo-countdown';
-import { renderWithProviders } from './test-utils';
+import { renderWithProviders, withProviders } from './test-utils';
 
 const progress: CampaignProgress = {
   campaign_id: 'k1',
@@ -23,6 +24,9 @@ const progress: CampaignProgress = {
   stalled: false,
   pause_reason: null,
   undo_remaining_seconds: 0,
+  // Kampaň, u které doručenost MĚŘÍME: od poskytovatele něco dorazilo.
+  delivery_events_seen: true,
+  finished: false,
   updated_at: '2026-08-01T12:40:00.000Z',
 };
 
@@ -45,6 +49,54 @@ describe('okno na zrušení', () => {
     renderWithProviders(<UndoCountdown remainingSeconds={0} onUndo={vi.fn()} onPause={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Pozastavit' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Vzít zpět' })).toBeNull();
+  });
+
+  it('Odeslat teď stojí vedle Vzít zpět, ne schované jinde', () => {
+    renderWithProviders(
+      <UndoCountdown remainingSeconds={40} onUndo={vi.fn()} onSendNow={vi.fn()} />,
+    );
+    const row = screen.getByTestId('undo-countdown');
+    expect(row).toHaveTextContent('Vzít zpět');
+    expect(row).toHaveTextContent('Odeslat teď');
+  });
+
+  it('u Odeslat teď je rovnou napsané, že zpátky to nepůjde', () => {
+    renderWithProviders(
+      <UndoCountdown remainingSeconds={40} onUndo={vi.fn()} onSendNow={vi.fn()} />,
+    );
+    expect(screen.getByText(/zpátky už nepůjde/)).toBeInTheDocument();
+  });
+
+  it('bez obsluhy se Odeslat teď vůbec nenabízí', () => {
+    renderWithProviders(<UndoCountdown remainingSeconds={40} onUndo={vi.fn()} />);
+    expect(screen.queryByTestId('send-now')).toBeNull();
+  });
+
+  it('po stisku Odeslat teď zmizí odpočet a je vidět, že se spouští', async () => {
+    const onSendNow = vi.fn();
+    const { rerender } = renderWithProviders(
+      <UndoCountdown remainingSeconds={40} onUndo={vi.fn()} onSendNow={onSendNow} />,
+    );
+    await userEvent.click(screen.getByTestId('send-now'));
+    expect(onSendNow).toHaveBeenCalledTimes(1);
+
+    // Stav drží obrazovka průběhu, takže se sem vrací propem. Podstatné je, co
+    // uživatel uvidí: odpočet je pryč a na jeho místě je hláška o spouštění.
+    rerender(
+      withProviders(
+        <UndoCountdown remainingSeconds={40} onUndo={vi.fn()} onSendNow={onSendNow} releasing />,
+      ),
+    );
+    expect(screen.getByText('Spouštíme rozesílku…')).toBeInTheDocument();
+    expect(screen.queryByText(/Odesíláme za/)).toBeNull();
+  });
+
+  it('při spouštění je ukazatel NEURČITÝ, nepředstírá procenta', () => {
+    renderWithProviders(
+      <UndoCountdown remainingSeconds={40} onUndo={vi.fn()} onSendNow={vi.fn()} releasing />,
+    );
+    const bar = screen.getByRole('progressbar');
+    expect(bar).not.toHaveAttribute('aria-valuenow');
   });
 });
 
@@ -100,6 +152,78 @@ describe('obrazovka průběhu', () => {
     const bar = screen.getByRole('progressbar');
     expect(bar).toHaveAttribute('aria-valuenow', '428');
     expect(bar).toHaveAttribute('aria-valuemax', '1129');
+  });
+
+  /*
+   * Nula a „neměříme" jsou dvě různé věci. Ve vývoji nedorazí od poskytovatele
+   * ani jedna událost (odběr u Amazonu se nepotvrdí, protože náš webhook běží
+   * na localhost), takže trvalá nula u Doručeno by tvrdila, že nikomu nic
+   * nedošlo. Obrazovka to musí říct.
+   */
+  it('bez událostí od poskytovatele neukazuje u Doručeno nulu', () => {
+    renderWithProviders(
+      <ProgressScreen
+        progress={{
+          ...progress,
+          delivery_events_seen: false,
+          counters: { ...progress.counters, delivered: 0, bounced: 0 },
+        }}
+      />,
+    );
+    expect(screen.getByTestId('tile-delivered')).toHaveTextContent('Zatím nevíme');
+    expect(screen.getByTestId('tile-bounced')).toHaveTextContent('Zatím nevíme');
+    expect(screen.getByTestId('tile-delivered')).not.toHaveTextContent('0');
+  });
+
+  it('chybějící příznak z API se bere jako neměříme, ne jako nula', () => {
+    const withoutFlag: CampaignProgress = { ...progress };
+    delete withoutFlag.delivery_events_seen;
+    renderWithProviders(<ProgressScreen progress={withoutFlag} />);
+    expect(screen.getByTestId('tile-delivered')).toHaveTextContent('Zatím nevíme');
+  });
+
+  it('s událostmi od poskytovatele ukazuje skutečná čísla', () => {
+    renderWithProviders(<ProgressScreen progress={progress} />);
+    expect(screen.getByTestId('tile-delivered')).toHaveTextContent('421');
+  });
+
+  it('počet odeslaných je vidět i jako text, ne jen v atributu pruhu', () => {
+    renderWithProviders(<ProgressScreen progress={progress} />);
+    expect(screen.getByTestId('progress-caption').textContent).toContain('Odesláno 428 z 1');
+  });
+
+  it('při stavbě publika je ukazatel neurčitý, ne nula procent', () => {
+    renderWithProviders(
+      <ProgressScreen
+        progress={{
+          ...progress,
+          status: 'queueing',
+          counters: { ...progress.counters, total: 0, sent: 0, pending: 0 },
+        }}
+      />,
+    );
+    expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow');
+    expect(screen.getByText('Připravujeme publikum…')).toBeInTheDocument();
+  });
+
+  it('odkaz na report je za běhu nenápadný a po dojetí z něj je pruh', () => {
+    renderWithProviders(
+      <ProgressScreen progress={progress} reportHref="/w/a/campaigns/k1/report" />,
+    );
+    expect(screen.getByTestId('progress-to-report').tagName).toBe('A');
+
+    renderWithProviders(
+      <ProgressScreen
+        progress={{ ...progress, status: 'sent' }}
+        reportHref="/w/a/campaigns/k1/report"
+      />,
+    );
+    expect(screen.getAllByText(/Rozesílka skončila/)[0]).toBeInTheDocument();
+  });
+
+  it('selhání akce se přizná, netlumí se', () => {
+    renderWithProviders(<ProgressScreen progress={progress} actionFailed />);
+    expect(screen.getByText(/Akci se nepodařilo provést/)).toBeInTheDocument();
   });
 
   it('během odesílání říká nahlas, že převzatá dávka doběhne', () => {

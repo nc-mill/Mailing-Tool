@@ -28,6 +28,36 @@ export const TemplateDocument = z
 
 export const TemplateKindSchema = z.enum(['campaign', 'transactional', 'system']);
 
+/**
+ * Kategorie knihovny, tedy to, podle čeho filtruje uživatel. Není to `kind`:
+ * `form` vzniká z vazby `forms.delivery_template_id`, ne ze sloupce. Důvod
+ * je rozepsaný u `TemplateCategory` v `templates/repository.ts`.
+ */
+export const TemplateCategorySchema = z.enum(['campaign', 'form', 'transactional']);
+
+/**
+ * Kde je šablona zapojená. Kampaně tu SCHVÁLNĚ nejsou: kampaň si obsah
+ * zkopírovala do vlastních sloupců, takže smazání šablony nepocítí, kdežto
+ * formulář a seznam z ní čtou při každém odeslání.
+ */
+export const TemplateUsageSchema = z
+  .object({
+    forms: z.array(z.object({ id: Uuid, name: z.string() })),
+    // `role` je otevřený výčet (`confirmation`, `welcome`) ze stejného důvodu
+    // jako `kind`: klient musí snést hodnotu, kterou ještě nezná.
+    lists: z.array(z.object({ id: Uuid, name: z.string(), role: z.string() })),
+  })
+  .openapi('TemplateUsage');
+
+export const TemplateCategoryCountsSchema = z
+  .object({
+    all: z.number().int(),
+    campaign: z.number().int(),
+    form: z.number().int(),
+    transactional: z.number().int(),
+  })
+  .openapi('TemplateCategoryCounts');
+
 /** SHA-256 v hexu: 64 znaků, jen [0-9a-f]. */
 export const DesignHash = z.string().regex(/^[0-9a-f]{64}$/i);
 
@@ -67,10 +97,43 @@ export const TemplateResponse = z
   })
   .openapi('Template');
 
+/**
+ * Úsporná podoba položky seznamu, bez dokumentu `design`.
+ *
+ * Vlastní schéma, ne `TemplateResponse` s nepovinnými poli. Kdyby se `design`
+ * označil jako nepovinný, tvrdila by to i odpověď `GET /templates/{id}`, která
+ * ho vrací vždycky, a klient by musel ošetřovat případ, který nikdy nenastane.
+ */
+export const TemplateSummary = z
+  .object({
+    id: Uuid,
+    name: z.string(),
+    kind: z.string(),
+    /** Otevřený výčet ze stejného důvodu jako `kind`. */
+    category: z.string(),
+    usage: TemplateUsageSchema,
+    validation_state: z.string(),
+    starter: z.boolean(),
+    updated_at: z.iso.datetime(),
+  })
+  .openapi('TemplateSummary');
+
 export const TemplateListResponse = z
   .object({
-    items: z.array(TemplateResponse),
+    /**
+     * Tvar položky určuje parametr `view`. Výchozí `full` vrací `Template`
+     * jako dřív, `summary` vrací `TemplateSummary`. Sjednocení je tu proto,
+     * že to je pravda o odpovědi; jedno schéma pro obojí by muselo prohlásit
+     * `design` za nepovinný a lhalo by o všech ostatních cestách.
+     */
+    items: z.array(z.union([TemplateResponse, TemplateSummary])),
     next_cursor: z.string().nullable(),
+    /**
+     * Kolik šablon je v které kategorii. Čísla platí o CELÉ knihovně, ne
+     * o vrácené stránce a ne o zvolené kategorii: patří k přepínačům filtru,
+     * a ty musí ukazovat, kolik je kde, i když jsem právě jinde.
+     */
+    counts: TemplateCategoryCountsSchema,
   })
   .openapi('TemplateList');
 

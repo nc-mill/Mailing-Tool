@@ -66,11 +66,28 @@ export type SetupEventDestinationInput = {
   region: string;
 };
 
-export async function setupEventDestination(
+export function configurationSetNameFor(workspaceSlug: string): string {
+  return `mlain-${workspaceSlug}`;
+}
+
+/**
+ * KROK, KTERÝ ROZHODUJE O TOM, JESTLI VŮBEC NĚCO ODEJDE.
+ *
+ * Konfigurační sada se u Amazonu musí opravdu ZALOŽIT, ne jen pojmenovat. Když si
+ * aplikace jméno vymyslí, uloží ho do konfigurace a u Amazonu ho nikdo nevytvoří,
+ * skončí KAŽDÉ odeslání na `NotFoundException` a zpráva neodejde. Přesně to se
+ * stalo: `ListConfigurationSets` na účtu vracel prázdný seznam, přestože jméno
+ * `mlain-<slug>` bylo v konfiguraci uložené.
+ *
+ * Proto je založení sady oddělené od nastavení událostí. Sada je podmínka
+ * odesílání a její selhání se musí ohlásit hned. Události jsou zpětná vazba
+ * a bez nich se odesílat DÁ, jen se nedozvíme o odrazech.
+ */
+export async function ensureConfigurationSet(
   aws: AwsSetupClient,
-  input: SetupEventDestinationInput,
-): Promise<{ topicArn: string; configurationSetName: string }> {
-  const name = `mlain-${input.workspaceSlug}`;
+  input: { configurationSetName: string; workspaceId: string },
+): Promise<{ configurationSetName: string; created: boolean }> {
+  const name = input.configurationSetName;
 
   let exists = false;
   try {
@@ -89,6 +106,27 @@ export async function setupEventDestination(
   // Uctova suppression u Amazonu je DRUHA pojistka vedle nasi vlastni.
   await aws.putSuppressionOptions({ name, reasons: ['BOUNCE', 'COMPLAINT'] });
 
+  return { configurationSetName: name, created: !exists };
+}
+
+/**
+ * Zpětná vazba od Amazonu: SNS topic, cíl událostí a odběr našeho webhooku.
+ *
+ * `protocol` se odvozuje z adresy, ne natvrdo z `https`. Instalace ve vývoji má
+ * `APP_URL` na `http://localhost`, a odběr s protokolem `https` a adresou `http://…`
+ * Amazon odmítne s `InvalidParameter`. Natvrdo zapsaný protokol tedy shodil celé
+ * zakládání účtu na věci, která s odesíláním vůbec nesouvisí.
+ */
+export async function ensureEventDestination(
+  aws: AwsSetupClient,
+  input: SetupEventDestinationInput & { configurationSetName: string },
+): Promise<{
+  topicArn: string;
+  subscribed: boolean;
+  subscriptionArn: string | null;
+  /** Proč se odběr nepovedl. `null` znamená, že volání prošlo. */
+  subscribeError: string | null;
+}> {
   const topic = await aws.createTopic({ name: `mlain-${input.workspaceSlug}-events` });
   const topicArn = topic.TopicArn;
   if (!topicArn) throw new Error('SNS nevrátil ARN topicu.');
@@ -99,17 +137,59 @@ export async function setupEventDestination(
     attributeValue: '2',
   });
   await aws.createEventDestination({
-    configurationSetName: name,
+    configurationSetName: input.configurationSetName,
     topicArn,
     eventTypes: MATCHING_EVENT_TYPES,
   });
-  // RawMessageDelivery = false, protoze potrebujeme podepsanou obalku SNS.
-  await aws.subscribe({
-    topicArn,
-    protocol: 'https',
-    endpoint: `${input.appUrl}/api/webhooks/ses/${input.providerId}`,
-    rawMessageDelivery: false,
-  });
 
-  return { topicArn, configurationSetName: name };
+  const endpoint = `${input.appUrl}/api/webhooks/ses/${input.providerId}`;
+
+  /*
+   * ODBĚR SE ZKOUŠÍ, ALE NESMÍ SHODIT ZBYTEK.
+   *
+   * V tuhle chvíli je u Amazonu hotové všechno, na čem stojí odesílání:
+   * konfigurační sada, topic i cíl událostí. Odběr je poslední krok a zároveň
+   * jediný, který závisí na tom, jestli je naše adresa z internetu dosažitelná.
+   * Instalace ve vývoji běží na `localhost` a Amazon na ni odpoví doslova
+   * „Not authorized to subscribe internal endpoints"; ověřeno spuštěním proti
+   * skutečnému účtu. Kdyby se ta chyba propadla ven, přišli bychom i o ARN
+   * topicu, který právě vznikl, a příští běh by ho zakládal znovu.
+   *
+   * Amazon navíc u nepotvrzeného odběru vrací doslova `pending confirmation`
+   * místo identifikátoru. Potvrzení chodí POSTem na náš webhook, takže na
+   * localhost nedorazí nikdy. Obojí je platný stav „události zatím nechodí".
+   */
+  let subscriptionArn: string | null = null;
+  let subscribeError: string | null = null;
+  try {
+    // RawMessageDelivery = false, protoze potrebujeme podepsanou obalku SNS.
+    const sub = (await aws.subscribe({
+      topicArn,
+      protocol: endpoint.startsWith('https://') ? 'https' : 'http',
+      endpoint,
+      rawMessageDelivery: false,
+    })) as { SubscriptionArn?: string } | undefined;
+    subscriptionArn = sub?.SubscriptionArn ?? null;
+  } catch (err) {
+    subscribeError = err instanceof Error ? err.message : 'Odběr událostí se nepodařilo založit.';
+  }
+
+  return {
+    topicArn,
+    subscribed: subscriptionArn !== null && subscriptionArn.startsWith('arn:'),
+    subscriptionArn,
+    subscribeError,
+  };
+}
+
+export async function setupEventDestination(
+  aws: AwsSetupClient,
+  input: SetupEventDestinationInput,
+): Promise<{ topicArn: string; configurationSetName: string }> {
+  const { configurationSetName } = await ensureConfigurationSet(aws, {
+    configurationSetName: configurationSetNameFor(input.workspaceSlug),
+    workspaceId: input.workspaceId,
+  });
+  const { topicArn } = await ensureEventDestination(aws, { ...input, configurationSetName });
+  return { topicArn, configurationSetName };
 }

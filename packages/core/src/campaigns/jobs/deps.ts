@@ -1,5 +1,3 @@
-import type { RenderSchema } from '@mlain/emails/compile/types';
-import { toPreparedSchema } from '@mlain/emails/paths';
 import { loadConfig } from '../../config/index';
 import { readDemoManifest } from '../../demo/seed';
 import { createSystemContext } from '../../identity/context';
@@ -16,6 +14,7 @@ import {
   undoWindowSeconds,
   type CampaignRowFull,
 } from '../api/service';
+import { renderPlanForCampaign } from '../compile-service';
 import { MATERIALIZE_STATEMENT_TIMEOUT_MS } from '../constants';
 import { pauseCampaign } from '../control/pause';
 import { runMaterializeLoop, type LoopDeps, type MaterializeLoopInput } from '../materialize/loop';
@@ -27,7 +26,7 @@ import {
   startMaterialization,
 } from '../repo/audience-progress';
 import { readCampaignStatus, transitionStatus } from '../repo/campaign';
-import { cancelPendingBatch, materializeBatch, type RenderPlan } from '../repo/outbox';
+import { cancelPendingBatch, materializeBatch } from '../repo/outbox';
 import { rawSql } from '../repo/raw-sql';
 import type { KnownCampaignStatus } from '../types';
 import type { MaterializeDeps, MaterializeJobPayload } from './materialize';
@@ -56,53 +55,6 @@ import type { MaterializeDeps, MaterializeJobPayload } from './materialize';
  */
 function workspaceTimezone(): string {
   return loadConfig().DEFAULT_TIMEZONE;
-}
-
-/**
- * Plán pro render z ULOŽENÉ `campaigns.compile_meta`.
- *
- * Čte se přímo tady, ne přes `getCampaignFull`: seznam sloupců v `api/service.ts`
- * slouží odpovědi API a `compile_meta` do ní nepatří (je to vnitřek kompilace,
- * ne veřejné pole). Sloupec doplnila migrace `0008_campaigns_compile_meta`.
- *
- * Chybějící nebo neúplná hodnota se hlásí VÝJIMKOU, nikdy náhradním prázdným
- * plánem. Prázdný `usedPaths` by vyrobil zprávy s prázdnou `render_data`
- * a prázdný `presence` by nechal mapu `_present` prázdnou, takže by se každý
- * podmíněný blok v odeslaném mailu tiše skryl (požadavek R11 plánu P08).
- * Handler výjimku zachytí a kampaň převede do `failed` s kódem
- * `campaign_not_compiled`.
- */
-async function readRenderPlan(ctx: WorkspaceContext, campaignId: string): Promise<RenderPlan> {
-  const meta = await withWorkspace(ctx, async (tx) => {
-    const r = await tx.execute<{ compile_meta: unknown }>(
-      rawSql(
-        `SELECT compile_meta FROM campaigns
-          WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL`,
-        [campaignId, ctx.workspaceId],
-      ),
-    );
-    return r.rows[0]?.compile_meta ?? null;
-  });
-
-  const parsed = meta as { usedPaths?: unknown; renderSchema?: RenderSchema } | null;
-  if (
-    parsed === null ||
-    !Array.isArray(parsed.usedPaths) ||
-    parsed.renderSchema === undefined ||
-    !Array.isArray(parsed.renderSchema.fields) ||
-    !Array.isArray(parsed.renderSchema.presence)
-  ) {
-    throw new Error(
-      `Kampaň ${campaignId} nemá použitelnou compile_meta, materializace se nesmí rozjet.`,
-    );
-  }
-
-  // Zúžení přes `toPreparedSchema`, nikdy přetypováním: `RenderSchema` znamená
-  // v P08 a v kontraktech DVĚ RŮZNÉ VĚCI a přetypování by kontrolu ztratilo úplně.
-  return {
-    usedPaths: parsed.usedPaths as string[],
-    preparedSchema: toPreparedSchema(parsed.renderSchema),
-  };
 }
 
 /** Publikum kampaně z uloženého sloupce `audience`. */
@@ -258,7 +210,19 @@ export function materializeDeps(payload: MaterializeJobPayload): MaterializeDeps
       });
     },
     setGateCounters: (campaignId, gates) => setGateCounters(ctx, campaignId, gates),
-    renderPlan: (campaignId) => readRenderPlan(ctx, campaignId),
+    /*
+     * Plán pro render z ULOŽENÉ `campaigns.compile_meta`. Čte ho `compile-service`,
+     * tedy tentýž modul, který ji zapisuje; druhá kopie čtení by se s tvarem
+     * uložených dat rozešla.
+     *
+     * Chybějící nebo neúplná hodnota se hlásí VÝJIMKOU, nikdy náhradním prázdným
+     * plánem. Prázdný `usedPaths` by vyrobil zprávy s prázdnou `render_data`
+     * a prázdný `presence` by nechal mapu `_present` prázdnou, takže by se každý
+     * podmíněný blok v odeslaném mailu tiše skryl (požadavek R11 plánu P08).
+     * Handler výjimku zachytí a kampaň převede do `failed` s kódem
+     * `campaign_not_compiled`.
+     */
+    renderPlan: (campaignId) => renderPlanForCampaign(ctx, campaignId),
     sampleContactIds: async () => {
       const manifest = await withWorkspace(ctx, (tx) => readDemoManifest(tx, ctx.workspaceId));
       return manifest?.contactIds ?? [];

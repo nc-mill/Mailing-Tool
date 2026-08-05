@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 // Fixture vlastní tenhle plán, viz rozhodnutí R4 a poznámka v `account.test.ts`.
 import custom from './fixtures/ses/get-email-identity-custom-hosted-zone.json' with { type: 'json' };
 import { normalizeDomain, buildDnsRecords, mapIdentity } from '../ses/identity';
+import { ApiError } from '../../errors/api-error';
 
 describe('odesilaci domena', () => {
   it.each([
@@ -12,8 +13,25 @@ describe('odesilaci domena', () => {
     expect(normalizeDomain(input)).toBe(expected);
   });
 
-  it('verejny sufix se odmita', () => {
-    expect(() => normalizeDomain('co.uk')).toThrowError(/registrovatelná doména/);
+  /**
+   * Regrese: `co.uk` je verejna pripona, ne registrovatelna domena. Drive se tady
+   * hazela obycejna `Error`, takze vstup skoncil jako 500 `internal_error` misto
+   * rady u pole. Test drzi, ze je to ApiError s kodem `validation_failed`, se
+   * statusem 422 a s cestou na pole `domain`.
+   */
+  it.each(['co.uk', 'localhost', 'cz'])('neregistrovatelny vstup %s je ApiError, ne pad', (bad) => {
+    let caught: unknown;
+    try {
+      normalizeDomain(bad);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(ApiError);
+    const err = caught as ApiError;
+    expect(err.code).toBe('validation_failed');
+    expect(err.status).toBe(422);
+    expect(err.errors?.[0]).toMatchObject({ path: 'domain' });
+    expect(err.errors?.[0]!.message).toMatch(/registrovatelná doména/);
   });
 
   it('CNAME hodnota se sklada ze SigningHostedZone z API, ne natvrdo', () => {

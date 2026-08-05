@@ -31,6 +31,12 @@ export const AUTH_ERROR_KEYS = {
     title: 'errors.serviceUnavailable.title',
     body: 'errors.serviceUnavailable.body',
   },
+  // Vlastní text, ne `service_unavailable`. Chybí nastavení, ne spojení, takže
+  // rada „zkuste to znovu" by uživatele poslala do kruhu.
+  system_mail_unavailable: {
+    title: 'errors.systemMailUnavailable.title',
+    body: 'errors.systemMailUnavailable.body',
+  },
   dependency_timeout: {
     title: 'errors.dependencyTimeout.title',
     body: 'errors.dependencyTimeout.body',
@@ -79,6 +85,12 @@ export const SETTINGS_ERROR_KEYS = {
   service_unavailable: {
     title: 'errors.serviceUnavailable.title',
     body: 'errors.serviceUnavailable.body',
+  },
+  // Vlastní text, ne `service_unavailable`. Chybí nastavení, ne spojení, takže
+  // rada „zkuste to znovu" by uživatele poslala do kruhu.
+  system_mail_unavailable: {
+    title: 'errors.systemMailUnavailable.title',
+    body: 'errors.systemMailUnavailable.body',
   },
   dependency_timeout: {
     title: 'errors.dependencyTimeout.title',

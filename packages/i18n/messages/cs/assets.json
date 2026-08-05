@@ -1,0 +1,84 @@
+{
+  "library": {
+    "title": "Knihovna médií",
+    "lead": "Obrázky projektu. Nahrané soubory se převedou do JPEG nebo PNG, protože jiné formáty část poštovních klientů nezobrazí.",
+    "count": "{count, plural, =0 {Žádný obrázek} one {# obrázek} few {# obrázky} many {# obrázku} other {# obrázků}}",
+    "countFiltered": "{count, plural, =0 {Hledání nic nenašlo} one {# nalezený obrázek} few {# nalezené obrázky} many {# nalezeného obrázku} other {# nalezených obrázků}}",
+    "loadFailed": "Knihovnu se nepodařilo načíst.",
+    "refresh": "Načíst znovu"
+  },
+  "search": {
+    "label": "Hledat v knihovně",
+    "placeholder": "Název souboru nebo popis",
+    "clear": "Zrušit hledání"
+  },
+  "empty": {
+    "title": "Zatím tu není žádný obrázek",
+    "explanation": "Přetáhněte obrázky do plochy výš, nebo je vyberte tlačítkem. Uložené obrázky pak vložíte do e-mailu blokem Obrázek.",
+    "action": "Vybrat obrázky",
+    "filteredTitle": "Hledání nic nenašlo",
+    "filteredExplanation": "Zkuste kratší výraz. Hledá se v názvu souboru a v popisu obrázku.",
+    "filteredAction": "Zrušit hledání"
+  },
+  "upload": {
+    "dropzone": "Přetáhněte obrázky sem",
+    "hint": "JPEG, PNG, GIF, WebP, AVIF nebo SVG. WebP, AVIF a SVG se převedou. Nejvýš {limit} na soubor.",
+    "chooseFiles": "Vybrat obrázky",
+    "fileInput": "Vybrat obrázky k nahrání",
+    "progress": "Nahrávání: {done} z {total}",
+    "progressLabel": "Průběh nahrávání",
+    "uploading": "Nahrávám {name}",
+    "done": "{count, plural, =0 {Nenahrálo se nic} one {Nahrán # obrázek} few {Nahrány # obrázky} many {Nahráno # obrázku} other {Nahráno # obrázků}}",
+    "duplicate": "{name}: tenhle obrázek už v knihovně je",
+    "failed": "{name}: {reason}",
+    "dismiss": "Skrýt výsledek nahrávání",
+    "results": "Výsledek nahrávání"
+  },
+  "errors": {
+    "asset_unsupported_format": "Tenhle formát nahrát nejde. Použijte JPEG, PNG, GIF, WebP, AVIF nebo SVG.",
+    "asset_corrupt": "Soubor se nepodařilo přečíst jako obrázek.",
+    "asset_too_many_pixels": "Obrázek má příliš mnoho bodů. Zmenšete ho a zkuste to znovu.",
+    "payload_too_large": "Soubor je větší než {limit}.",
+    "asset_quota_exceeded": "Projekt vyčerpal místo pro obrázky.",
+    "asset_referenced_by_sent_campaign": "Obrázek používá kampaň, která už odešla.",
+    "forbidden": "Na tuhle akci nemáte oprávnění.",
+    "tooLargeLocal": "Soubor je větší než {limit}, na server se ani neposílal.",
+    "wrongTypeLocal": "Tenhle typ souboru knihovna nebere.",
+    "unknown": "Nepodařilo se to. Zkuste to prosím znovu."
+  },
+  "tile": {
+    "select": "Vybrat obrázek {name}",
+    "dimensions": "{width} × {height} px",
+    "uploaded": "Nahráno {date}",
+    "noAlt": "Bez popisu",
+    "open": "Otevřít obrázek v nové kartě"
+  },
+  "usage": {
+    "unused": "Nepoužitý",
+    "used": "{count, plural, =0 {Nepoužitý} one {Použit # ×} few {Použit # ×} many {Použit # ×} other {Použit # ×}}",
+    "inTemplate": "Šablona {name}",
+    "inCampaign": "Kampaň {name}",
+    "unnamed": "bez názvu",
+    "loading": "Zjišťuji, kde se obrázek používá"
+  },
+  "selection": {
+    "bar": "{count, plural, =0 {Nevybrali jste nic} one {Vybrán # obrázek} few {Vybrány # obrázky} many {Vybráno # obrázku} other {Vybráno # obrázků}}",
+    "clear": "Zrušit výběr",
+    "selectAll": "Vybrat všechny na stránce",
+    "delete": "Smazat vybrané"
+  },
+  "delete": {
+    "title": "{count, plural, =0 {Smazat obrázky} one {Smazat # obrázek} few {Smazat # obrázky} many {Smazat # obrázku} other {Smazat # obrázků}}",
+    "safeLead": "Obrázky zmizí z knihovny. Soubor zůstane 30 dní na disku, takže se v už odeslaných e-mailech nic nerozbije.",
+    "usedLead": "Část vybraných obrázků se používá. Smazáním se odkaz na ně rozpadne a v rozepsaných e-mailech zůstane prázdné místo.",
+    "usedHeading": "Kde se používají",
+    "blockedHeading": "Tyhle smazat nejde",
+    "blockedLead": "Obrázek používá kampaň, která už odešla. Příjemci ho mají ve schránce a smazáním by jim z e-mailu zmizel.",
+    "confirmUnderstood": "Rozumím, že se odkazy rozpadnou",
+    "cancel": "Nechat v knihovně",
+    "confirm": "Smazat",
+    "pending": "Mažu",
+    "resultOk": "{count, plural, =0 {Nesmazalo se nic} one {Smazán # obrázek} few {Smazány # obrázky} many {Smazáno # obrázku} other {Smazáno # obrázků}}",
+    "resultFailed": "{count, plural, =0 {} one {# obrázek smazat nešlo} few {# obrázky smazat nešly} many {# obrázku smazat nešlo} other {# obrázků smazat nešlo}}"
+  }
+}

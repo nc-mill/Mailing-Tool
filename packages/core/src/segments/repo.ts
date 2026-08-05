@@ -96,15 +96,37 @@ export async function compileAudienceToSql(
       compileSegmentRefCondition(opts.alias, segmentId, 'in', target, bag, (childAlias) => {
         const childAst = target.ast;
         if (childAst === undefined) throw new Error('dynamic segment without ast');
-        return compileSegmentSql(childAst, {
+        /*
+         * Vnořená kompilace musí navazovat na SKUTEČNÝ stav vnějšího pytle
+         * parametrů a své hodnoty do něj odevzdat.
+         *
+         * Dřívější znění bralo z výsledku jenom `.sql` a `.params` zahazovalo,
+         * navíc s pevným `paramOffset`. Vnořený predikát tedy odkazoval na
+         * `$4` a dál, jenže vnější pytel měl pořád jen tři pevné hodnoty
+         * (workspace, čas, zóna). Postgres to odmítl a preflight kampaně
+         * skončil pětistovkou, jakmile měl uživatel v publiku DYNAMICKÝ
+         * segment:
+         *
+         *   Error: placeholder $4 has no value (3 params given)
+         *   GET /api/v1/campaigns/{id}/preflight → 500 internal_error
+         *
+         * Větev nad tímhle cyklem (`audience.ast`) to dělá správně: vezme
+         * `inner.params` a nasype je do pytle. Tady to chybělo.
+         *
+         * Offset se počítá až TEĎ, uvnitř callbacku, protože pytel mezitím
+         * mohl narůst o seznamy a o předchozí segmenty.
+         */
+        const compiled = compileSegmentSql(childAst, {
           alias: childAlias,
-          paramOffset: opts.paramOffset,
+          paramOffset: opts.paramOffset + bag.values.length,
           workspaceId: ctx.workspaceId,
           asOf: opts.asOf,
           timezone: opts.timezone,
           fieldClasses: refs.fieldClasses,
           segmentKinds: refs.segmentKinds,
-        }).sql;
+        });
+        bag.values.push(...compiled.params);
+        return compiled.sql;
       }),
     );
   }

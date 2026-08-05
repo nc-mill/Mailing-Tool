@@ -15,10 +15,25 @@ export type HostedFormProps = {
 };
 
 /**
+ * Značka pole na typ vstupu HTML. `datetime` je `datetime-local`, protože `datetime`
+ * jako typ vstupu prohlížeče dávno nepodporují; ostatní se jmenují stejně.
+ */
+function inputTypeFor(type: FormField['type']): string {
+  if (type === 'datetime') return 'datetime-local';
+  if (type === 'hidden') return 'hidden';
+  return type;
+}
+
+/**
  * Hostovaná stránka formuláře. Používá se jako cíl rámečku a jako varianta
  * „Použiju hotovou stránku, zatím nemáme web".
  *
  * Je to obyčejný formulář: funguje bez JavaScriptu a odeslání vede na 303.
+ *
+ * NA ROZDÍL OD VKLÁDANÉHO FORMULÁŘE tahle stránka styly mít smí a má: je NAŠE,
+ * běží na naší adrese a musí vypadat jako od nás. Sem se taky uplatní
+ * `forms.custom_css`. Vkládaný formulář naopak nenese ani jedno pravidlo,
+ * viz `features/public/embed-script.ts`.
  */
 export function HostedFormPage(props: HostedFormProps): ReactElement {
   const { t } = props;
@@ -30,20 +45,40 @@ export function HostedFormPage(props: HostedFormProps): ReactElement {
 
         {props.fields.map((field) => {
           const name = formFieldName(field);
+          const id = `ml-${name}`;
+          const placeholder =
+            field.placeholder === undefined
+              ? undefined
+              : localizedText(field.placeholder, props.locale);
+
           return (
             <div key={name}>
-              <label htmlFor={`ml-${name}`}>{localizedText(field.label, props.locale)}</label>
-              <input
-                id={`ml-${name}`}
-                type={field.type === 'email' ? 'email' : 'text'}
-                name={name}
-                required={field.required}
-                placeholder={
-                  field.placeholder === undefined
-                    ? undefined
-                    : localizedText(field.placeholder, props.locale)
-                }
-              />
+              <label htmlFor={id}>{localizedText(field.label, props.locale)}</label>
+              {/*
+                Vykreslení se řídí značkou pole, ne jen tím, jestli je to e-mail.
+                Hostovaná stránka a vkládaný formulář musí sbírat TOTÉŽ: kdyby se
+                lišily, dala by se hodnota zadat na jedné straně a na druhé ne
+                a rozdíl by se projevil až chybějícími daty.
+              */}
+              {field.type === 'textarea' ? (
+                <textarea id={id} name={name} required={field.required} {...{ placeholder }} />
+              ) : field.type === 'select' ? (
+                <select id={id} name={name} required={field.required}>
+                  {(field.options ?? []).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {localizedText(option.label, props.locale)}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id={id}
+                  type={inputTypeFor(field.type)}
+                  name={name}
+                  required={field.required}
+                  {...{ placeholder }}
+                />
+              )}
             </div>
           );
         })}

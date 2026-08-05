@@ -24,6 +24,26 @@ describe('slovník a zakázané znaky', () => {
     expect(violations.map((v) => `${v.key}: "${v.term}" use "${v.use}"`)).toEqual([]);
   });
 
+  /**
+   * Pravidlo, jehož doporučený tvar sám sebe označí za porušení, se nedá
+   * splnit: text podle doporučení je červený stejně jako text bez něj.
+   * Naměřeno na `{ term: 'sandbox', use: 'Amazon sandbox' }`, kde brána
+   * shodila jedinou formulaci, která byla podle slovníku správná.
+   */
+  it('doporučený tvar každého pravidla svoje vlastní pravidlo splňuje', () => {
+    for (const [name, banned] of [
+      ['cs', BANNED_CS],
+      ['en', BANNED_EN],
+    ] as const) {
+      for (const entry of banned) {
+        const violations = findViolations({ 'kontrola.pravidla': entry.use }, [entry]);
+        expect(
+          violations.map((v) => `${name}: „${v.use}" narazí na vlastní zákaz „${v.term}"`),
+        ).toEqual([]);
+      }
+    }
+  });
+
   it('nikde není hodnota subscribed jako stav přihlášení', async () => {
     for (const locale of ['cs', 'en'] as const) {
       const violations = findViolations(await loadMessages(locale), [

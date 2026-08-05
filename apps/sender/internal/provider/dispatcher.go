@@ -52,7 +52,19 @@ type Verdict struct {
 	Class        errcatalog.ErrorClass
 	Code         string
 	ProviderCode string
-	RetryAfter   *time.Duration
+	// ProviderDetail je VĚTA od provideru, ne jen jeho kód.
+	//
+	// Existuje kvůli konkrétní ztrátě: u SES nese `MessageRejected` v kódu jen
+	// tolik, že se zpráva odmítla, kdežto ve větě stojí, KTERÁ identita neprošla
+	// a ve KTERÉM regionu (například „Email address is not verified. The following
+	// identities failed the check in region EU-WEST-1: …"). Bez toho se uživatel
+	// dozví, že to nešlo, ale ne proč, a přesně to stálo čtyři dny.
+	//
+	// Adresy se do něj NEDOSTANOU v otevřené podobě. Plní ho výhradně provider
+	// a je jeho povinnost je zamaskovat: pole končí v logu a v `pause_reason`,
+	// kam podle kapitoly 4.4 části 4b adresa příjemce nesmí.
+	ProviderDetail string
+	RetryAfter     *time.Duration
 }
 
 // Dispatcher odešle jednu hotovou MIME zprávu.

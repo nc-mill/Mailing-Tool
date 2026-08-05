@@ -21,6 +21,19 @@ export type CampaignStatsRead = {
   trackOpens: boolean;
   trackClicks: boolean;
   deliveredSource: DeliveredSource;
+  /**
+   * Víme vůbec, kolik zpráv dorazilo?
+   *
+   * „Doručeno 0" a „doručenost neznáme" jsou dvě různá tvrzení a bez tohohle
+   * příznaku je obrazovka nerozliší. U poskytovatele typu `ses` se doručení
+   * dozvíme jedině z událostí, které chodí webhookem přes SNS; dokud nedorazila
+   * ani jedna, není nula údaj, ale absence údaje. Ve vývoji je to trvalý stav,
+   * protože odběr u Amazonu se nepotvrdí, když webhook běží na `localhost`.
+   *
+   * Falešně kladný výsledek nehrozí: kdyby dorazila jediná událost o doručení,
+   * odrazu nebo stížnosti, doručenost už měříme.
+   */
+  deliveredKnown: boolean;
   counts: StatsCounts;
   deliveredEffective: number;
   rates: Rates;
@@ -47,6 +60,21 @@ export function resolveDeliveredSource(
   if (providerType === 'smtp') return 'derived_from_sent';
   if (providerType === 'ses') return 'provider_events';
   return counts.delivered > 0 ? 'provider_events' : 'derived_from_sent';
+}
+
+/**
+ * Máme od poskytovatele aspoň jednu událost o osudu zprávy?
+ *
+ * Počítá se ze SOUČTU všech doručovacích typů, ne jen z `delivered`. Kampaň,
+ * ze které se všechno odrazilo, doručenost měřenou má, jen je nulová, a to je
+ * úplně jiná informace než „poskytovatel nám nic neposílá".
+ *
+ * U `derived_from_sent` (SMTP) je odpověď vždycky ano: doručenost se tam
+ * nedozvídáme, ale dopočítáváme z odeslaných, takže číslo platí.
+ */
+export function isDeliveredKnown(counts: StatsCounts, source: DeliveredSource): boolean {
+  if (source === 'derived_from_sent') return true;
+  return counts.delivered + counts.bouncedHard + counts.bouncedSoft + counts.complained > 0;
 }
 
 export async function readCampaignStats(
@@ -100,6 +128,7 @@ export async function readCampaignStats(
     trackOpens,
     trackClicks,
     deliveredSource,
+    deliveredKnown: isDeliveredKnown(counts, deliveredSource),
     counts,
     deliveredEffective: de,
     rates: computeRates(counts, deliveredSource, { trackOpens, trackClicks }),

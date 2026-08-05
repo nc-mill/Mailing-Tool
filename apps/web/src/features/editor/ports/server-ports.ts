@@ -46,6 +46,12 @@ export async function loadEditorData(input: {
   document: EditorDocument;
   designHash: string;
   name: string;
+  /**
+   * Druh řádku. Obrazovka podle něj pozná, jestli má nabídnout přejmenování:
+   * `system` je pracovní obsah kampaně, který se v knihovně neukazuje, takže
+   * by se přejmenoval do prázdna. Podrobněji u `templateName` ve skořápce editoru.
+   */
+  kind: string;
   fieldCatalog: FieldCatalog;
 } | null> {
   const ctx = await createWorkspaceContext({
@@ -63,6 +69,7 @@ export async function loadEditorData(input: {
           design: schema.templates.design,
           designHash: schema.templates.designHash,
           name: schema.templates.name,
+          kind: schema.templates.kind,
         })
         .from(schema.templates)
         .where(
@@ -83,6 +90,7 @@ export async function loadEditorData(input: {
     document: row.design as EditorDocument,
     designHash: Buffer.from(row.designHash).toString('hex'),
     name: row.name,
+    kind: row.kind,
     fieldCatalog,
   };
 }

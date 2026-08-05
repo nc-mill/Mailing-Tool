@@ -118,9 +118,16 @@ describe('registr front pg-boss', () => {
     }
   });
 
-  it('má právě šedesát jedna front (registr je uzavřený, uzávěr S8)', () => {
+  it('má právě šedesát dva front (registr je uzavřený, uzávěr S8)', () => {
     // Exaktní číslo je záměr. Doménový plán frontu nezakládá, takže každá změna
     // téhle hodnoty musí projít změnou plánu P01, ne commitem z jiné větve.
-    expect(QUEUE_REGISTRY).toHaveLength(61);
+    //
+    // 61 → 62: přibyla `transactional.purge_render_data`. V `render_data`
+    // transakční zprávy leží odkaz s jednorázovým tokenem na reset hesla
+    // a obecná retence outboxu dnes NEBĚŽÍ: `retention.drop_message_partitions`
+    // je v registru bez obsluhy, `dropPartitionsBefore()` nemá volajícího
+    // a `MESSAGE_RETENTION_DAYS` se v běhovém kódu nečte. Bez téhle fronty by
+    // token v databázi zůstal navždy. Rozhodnutí zadavatele z 5. 8. 2026.
+    expect(QUEUE_REGISTRY).toHaveLength(62);
   });
 });

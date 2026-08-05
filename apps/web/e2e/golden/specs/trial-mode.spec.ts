@@ -4,6 +4,7 @@ import { freshInstallation } from '../fixtures/installation';
 import { SetupPage } from '../pages/setup.page';
 import { SendingPage } from '../pages/sending.page';
 import { ImportPage } from '../pages/import.page';
+import { SegmentPage } from '../pages/segment.page';
 import { TemplatePage } from '../pages/template.page';
 import { CampaignPage } from '../pages/campaign.page';
 
@@ -28,10 +29,16 @@ test('zkušební režim říká na publiku, kolika lidem se opravdu odešle', as
   await sending.verifyRecipient();
 
   await new ImportPage(page, slug).importFifty();
-  await new TemplatePage(page, slug).createFromStarter();
+  const templateName = await new TemplatePage(page, slug).createFromStarter();
+  // Publikum kampaně stojí na segmentu, takže ho scénář musí založit sám.
+  // Dřív se spoléhal na to, že nějaký existuje, a nabídka publika byla prázdná.
+  await new SegmentPage(page, slug).createActiveNinetyDays();
 
   const campaign = new CampaignPage(page, slug);
-  await campaign.createFromTemplateAndSegment();
+  await campaign.createFromTemplateAndSegment(templateName);
+  // Pruh podle 8.2.9 žije na kontrolním seznamu připravenosti, ne na obrazovce
+  // nastavení: ta o zkušebním režimu nic neříká. Ověřeno v prohlížeči.
+  await campaign.openSendCheck();
 
   const notice = campaign.trialModeNotice;
   await expect(notice).toBeVisible();
@@ -59,10 +66,13 @@ test('kampaň ve zkušebním režimu odejde jen na ověřené adresy', async ({ 
   await sending.connectSmtpInTrialMode();
   await sending.verifyRecipient();
   await new ImportPage(page, slug).importFifty();
-  await new TemplatePage(page, slug).createFromStarter();
+  const templateName = await new TemplatePage(page, slug).createFromStarter();
+  // Publikum kampaně stojí na segmentu, takže ho scénář musí založit sám.
+  // Dřív se spoléhal na to, že nějaký existuje, a nabídka publika byla prázdná.
+  await new SegmentPage(page, slug).createActiveNinetyDays();
 
   const campaign = new CampaignPage(page, slug);
-  await campaign.createFromTemplateAndSegment();
+  await campaign.createFromTemplateAndSegment(templateName);
   await campaign.send();
   await campaign.expectLiveProgress();
   await page.waitForTimeout(10_000);

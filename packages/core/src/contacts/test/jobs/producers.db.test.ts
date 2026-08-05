@@ -40,6 +40,35 @@ describe('producent contacts.recompute_greeting', () => {
     expect((await findByEmail(ctx, 'jana@x.cz')).greeting).toBe('Ahoj Jano');
   });
 
+  /**
+   * ZMĚNA JAZYKA PROJEKTU. Kontakty zdědily jazyk projektu při vzniku, takže po
+   * přepnutí na češtinu měly dál `locale = 'en'`, ve sloupci vokativu nominativ
+   * a v oslovení anglickou předlohu. Bez tohohle producenta byla jediná náprava
+   * otevřít každý kontakt zvlášť.
+   */
+  it('změna jazyka projektu zařadí přepočet, který sjednotí i jazyk kontaktů', async () => {
+    const ctx = await testContext();
+    await withWorkspace(ctx, (tx) => updateWorkspace(tx, ctx, { locale: 'en' }, 'test'));
+    await writeContact(ctx, { email: 'petr@x.cz', firstName: 'Petr', attributes: {} });
+    expect((await findByEmail(ctx, 'petr@x.cz')).greeting).toBe('Hello Petr');
+
+    await withWorkspace(ctx, (tx) => updateWorkspace(tx, ctx, { locale: 'cs' }, 'test'));
+
+    const jobs = await enqueuedJobs('contacts.recompute_greeting');
+    const mine = jobs.filter(
+      (job) => (job.data as { workspaceId?: string }).workspaceId === ctx.workspaceId,
+    );
+    // Dva běhy: první za přepnutí na angličtinu, druhý za návrat k češtině.
+    expect(mine).toHaveLength(2);
+    expect(mine[1]!.data).toMatchObject({ alignLocale: { to: 'cs', from: 'en' } });
+
+    await recomputeGreeting(mine[1]!.data as RecomputeGreetingPayload);
+    const row = await findByEmail(ctx, 'petr@x.cz');
+    expect(row.locale).toBe('cs');
+    expect(row.first_name_vocative).toBe('Petře');
+    expect(row.greeting).toBe('Dobrý den, Petře');
+  });
+
   it('změna, která se oslovení netýká, úlohu nezařadí', async () => {
     const ctx = await testContext();
     await withWorkspace(ctx, (tx) => updateWorkspace(tx, ctx, { name: 'Jiné jméno' }, 'test'));

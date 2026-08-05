@@ -107,7 +107,11 @@ export const messages = pgTable(
     workspaceId: uuid().notNull(),
     campaignId: uuid(), // NULL = nekampáňová zpráva, rezerva pro MVP 1
     contentVariantId: uuid(), // NULL = obsah ze sloupců kampaně, rezerva pro MVP 1
-    kind: text().$type<'campaign' | 'test'>().notNull().default('campaign'),
+    // Výčet drží `ck_messages__kind` (migrace 0003, rozšířeno v 0016).
+    kind: text()
+      .$type<'campaign' | 'test' | 'transactional' | 'automation'>()
+      .notNull()
+      .default('campaign'),
     /**
      * GENEROVANÝ (migrace 0010, požadavek R-P03.7 plánu P13). Nikdo do něj
      * nezapisuje, PostgreSQL ho počítá jako

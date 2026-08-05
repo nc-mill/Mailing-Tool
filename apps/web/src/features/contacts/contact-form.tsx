@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useRef, useState, useTransition } from 'react';
+import { useActionState, useEffect, useId, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@mlain/i18n/navigation';
 import { Checkbox } from '@mlain/ui/components/checkbox';
@@ -9,6 +9,7 @@ import { Label } from '@mlain/ui/components/label';
 import { Textarea } from '@mlain/ui/components/textarea';
 import { SelectField } from '@/lib/forms/select-field';
 import { FieldError, fieldAria } from '@/lib/forms/field-error';
+import type { FieldErrors } from '@/lib/errors/field-errors';
 import { SubmitButton } from '@/lib/forms/submit-button';
 import { useFormErrorFocus } from '@/lib/forms/use-form-error-focus';
 import { IDLE, type ActionState } from '@/lib/feedback/action-result';
@@ -61,8 +62,45 @@ export type ContactFormProps = {
 };
 
 /**
+ * Pole, která u založení nejsou vidět hned, ale až po rozbalení „Další údaje".
+ *
+ * Slouží k jedinému rozhodnutí: jestli se má schovaná část otevřít sama, protože
+ * je v ní chyba. Bez toho by uživatel dostal hlášku „opravte formulář" a chybu by
+ * neviděl, protože by byla schovaná.
+ */
+const ADVANCED_FIELDS = ['title_prefix', 'title_suffix', 'gender'] as const;
+
+function hasAdvancedError(errors: FieldErrors): boolean {
+  return Object.keys(errors).some(
+    (key) =>
+      (ADVANCED_FIELDS as readonly string[]).includes(key) ||
+      // Vlastní pole chodí ze serveru jako `attributes.mesto`, tedy s tečkou.
+      key.startsWith('attributes.'),
+  );
+}
+
+/** Je ve schované části něco vyplněného? Pak nemá smysl ji před uživatelem zavírat. */
+function hasAdvancedValue(values: ContactFormValues): boolean {
+  return (
+    values.title_prefix.trim() !== '' ||
+    values.title_suffix.trim() !== '' ||
+    values.gender !== 'unknown' ||
+    values.fields.some((field) => field.value.trim() !== '')
+  );
+}
+
+/**
  * Formulář kontaktu. Jeden pro založení i pro úpravu, protože je to týž formulář:
  * liší se jedním polem (adresa) a jednou větou nad seznamy.
+ *
+ * CO STAČÍ VYPLNIT, MUSÍ BÝT VIDĚT NA PRVNÍ POHLED. Povinná je jediná věc, adresa,
+ * ale dokud byl formulář jeden dlouhý sloupec polí, vypadal, že chce všechno. U založení
+ * je proto nahoře adresa a jméno a zbytek (tituly, rod, oslovení, vlastní pole) je
+ * v rozbalovací části. Nic se neodstranilo, jen schovalo, a schovaná pole zůstávají
+ * v DOM, takže se odešlou i zavřená.
+ *
+ * U ÚPRAVY SE NIC NESCHOVÁVÁ. Tam se pole většinou už vyplněná jsou a hlavně se tam
+ * chodí kvůli kontrole oslovení, takže by rozbalovátko přidávalo klik ke každé opravě.
  *
  * NÁHLED OSLOVENÍ JE HLAVNÍ VĚC NA TÉHLE OBRAZOVCE, ne ozdoba. Celý produkt stojí na
  * tom, že se česky oslovuje pátým pádem, a jestli z „Ondřej" vypadne „Ondřeji", se bez
@@ -89,6 +127,27 @@ export function ContactForm({
   const [gender, setGender] = useState(values.gender);
   const [preview, setPreview] = useState<GreetingPreview | null>(null);
   const [, startPreview] = useTransition();
+
+  const advancedId = useId();
+  /**
+   * Rozbalovací část se skládá ze DVOU důvodů k otevření a každý má jinou váhu.
+   *
+   * Vyplněný obsah nastaví jen VÝCHOZÍ stav; uživatel ji smí zase zavřít. Chyba
+   * naproti tomu otevírá NATVRDO, protože zavřít ji nad neopravenou chybou znamená
+   * formulář, který se nedá odeslat a neřekne proč. Proto je to `||`, ne stav
+   * měněný efektem: efekt by po zavření chybu opět neschoval jen náhodou, podle
+   * toho, jestli se mezitím překreslilo.
+   */
+  const [advancedOpen, setAdvancedOpen] = useState(() => hasAdvancedValue(values));
+  const advancedForced = hasAdvancedError(fieldErrors);
+  const advancedVisible = advancedOpen || advancedForced;
+
+  /**
+   * Volba správce. Drží se ve stavu, ne jen v `defaultChecked`, protože na ní visí
+   * i věta u seznamů: zaškrtnutí seznamu znamená u přihlášeného něco jiného než
+   * u nepotvrzeného a uživatel to musí vidět dřív, než odešle.
+   */
+  const [subscription, setSubscription] = useState<'confirmed' | 'pending'>('confirmed');
 
   /**
    * Náhled se přepočítává se zpožděním 400 ms po posledním úhozu. Bez zpoždění by
@@ -117,6 +176,110 @@ export function ContactForm({
   }, [firstName, lastName, titlePrefix, gender, workspaceId]);
 
   const formErrors = formLevelErrors(fieldErrors);
+
+  /**
+   * Údaje, které u založení nejsou vidět hned. Jsou to tytéž prvky jako dřív, jen
+   * vytažené do proměnné, aby je šlo u úpravy vykreslit rovnou a u založení do
+   * rozbalovací části, bez druhé kopie JSX.
+   */
+  const advanced = (
+    <>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="title_prefix">{t('form.titlePrefix')}</Label>
+          <Input
+            id="title_prefix"
+            name="title_prefix"
+            value={titlePrefix}
+            onChange={(event) => setTitlePrefix(event.target.value)}
+            {...fieldAria('title_prefix', fieldErrors)}
+          />
+          <p className="mt-1 text-sm text-text-muted">{t('form.titlePrefixHint')}</p>
+          <FieldError name="title_prefix" errors={fieldErrors} />
+        </div>
+        <div>
+          <Label htmlFor="title_suffix">{t('form.titleSuffix')}</Label>
+          <Input
+            id="title_suffix"
+            name="title_suffix"
+            defaultValue={values.title_suffix}
+            {...fieldAria('title_suffix', fieldErrors)}
+          />
+          <FieldError name="title_suffix" errors={fieldErrors} />
+        </div>
+      </div>
+
+      <SelectField
+        name="gender"
+        label={t('form.gender')}
+        placeholder={t('detail.genderUnknown')}
+        defaultValue={values.gender}
+        options={[
+          { value: 'female', label: t('detail.genderFemale') },
+          { value: 'male', label: t('detail.genderMale') },
+          { value: 'unknown', label: t('detail.genderUnknown') },
+        ]}
+        hint={t('form.genderHint')}
+        errors={fieldErrors}
+        onSelected={(next) => setGender(next as ContactFormValues['gender'])}
+      />
+
+      <div
+        data-testid="greeting-preview"
+        className="rounded-[var(--radius-surface)] border border-border bg-surface-muted p-4"
+      >
+        <h3 className="text-sm font-medium text-text">{t('form.greetingPreviewTitle')}</h3>
+        {values.greeting_locked ? (
+          <p className="mt-1 text-sm text-warning-text">{t('form.greetingLocked')}</p>
+        ) : null}
+        {preview === null ? (
+          <p className="mt-1 text-sm text-text-muted">{t('form.greetingPreviewEmpty')}</p>
+        ) : (
+          <>
+            <p className="mt-1 text-base text-text">
+              {t('form.greetingPreviewValue', { greeting: preview.greeting })}
+            </p>
+            {preview.vocative_confidence === 'low' ? (
+              <p className="mt-1 text-sm text-warning-text">{t('form.greetingUncertain')}</p>
+            ) : null}
+            {preview.gender === 'unknown' ? (
+              <p className="mt-1 text-sm text-text-muted">{t('form.greetingGenderUnknown')}</p>
+            ) : null}
+          </>
+        )}
+      </div>
+
+      {values.fields.length > 0 ? (
+        <div className="flex flex-col gap-4">
+          <h3 className="font-semibold text-text">{t('detail.sectionData')}</h3>
+          {values.fields.map((field) => (
+            <div key={field.key}>
+              {/* Typ jde na server ve skrytém poli, protože formulář posílá všechno
+                  jako text a JSONB si typ pamatuje. Kdyby se číslo uložilo jako "42",
+                  segment s podmínkou nad číslem by kontakt nenašel a nic by nespadlo. */}
+              <input type="hidden" name={`attrtype:${field.key}`} value={field.type} readOnly />
+              <Label htmlFor={`attr-${field.key}`}>{field.label}</Label>
+              {field.type === 'long_text' ? (
+                <Textarea
+                  id={`attr-${field.key}`}
+                  name={`attr:${field.key}`}
+                  defaultValue={field.value}
+                />
+              ) : (
+                <Input
+                  id={`attr-${field.key}`}
+                  name={`attr:${field.key}`}
+                  defaultValue={field.value}
+                  {...(field.type === 'number' ? { inputMode: 'decimal' as const } : {})}
+                />
+              )}
+              <FieldError name={`attributes.${field.key}`} errors={fieldErrors} />
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
 
   return (
     <article className="flex flex-col gap-6">
@@ -198,96 +361,69 @@ export function ContactForm({
               />
               <FieldError name="last_name" errors={fieldErrors} />
             </div>
-            <div>
-              <Label htmlFor="title_prefix">{t('form.titlePrefix')}</Label>
-              <Input
-                id="title_prefix"
-                name="title_prefix"
-                value={titlePrefix}
-                onChange={(event) => setTitlePrefix(event.target.value)}
-                {...fieldAria('title_prefix', fieldErrors)}
-              />
-              <p className="mt-1 text-sm text-text-muted">{t('form.titlePrefixHint')}</p>
-            </div>
-            <div>
-              <Label htmlFor="title_suffix">{t('form.titleSuffix')}</Label>
-              <Input
-                id="title_suffix"
-                name="title_suffix"
-                defaultValue={values.title_suffix}
-                {...fieldAria('title_suffix', fieldErrors)}
-              />
-            </div>
           </div>
 
-          <SelectField
-            name="gender"
-            label={t('form.gender')}
-            placeholder={t('detail.genderUnknown')}
-            defaultValue={values.gender}
-            options={[
-              { value: 'female', label: t('detail.genderFemale') },
-              { value: 'male', label: t('detail.genderMale') },
-              { value: 'unknown', label: t('detail.genderUnknown') },
-            ]}
-            hint={t('form.genderHint')}
-            errors={fieldErrors}
-            onSelected={(next) => setGender(next as ContactFormValues['gender'])}
-          />
-
-          <div
-            data-testid="greeting-preview"
-            className="rounded-[var(--radius-surface)] border border-border bg-surface-muted p-4"
-          >
-            <h3 className="text-sm font-medium text-text">{t('form.greetingPreviewTitle')}</h3>
-            {values.greeting_locked ? (
-              <p className="mt-1 text-sm text-warning-text">{t('form.greetingLocked')}</p>
-            ) : null}
-            {preview === null ? (
-              <p className="mt-1 text-sm text-text-muted">{t('form.greetingPreviewEmpty')}</p>
-            ) : (
-              <>
-                <p className="mt-1 text-base text-text">
-                  {t('form.greetingPreviewValue', { greeting: preview.greeting })}
-                </p>
-                {preview.vocative_confidence === 'low' ? (
-                  <p className="mt-1 text-sm text-warning-text">{t('form.greetingUncertain')}</p>
-                ) : null}
-                {preview.gender === 'unknown' ? (
-                  <p className="mt-1 text-sm text-text-muted">{t('form.greetingGenderUnknown')}</p>
-                ) : null}
-              </>
-            )}
-          </div>
+          {mode === 'edit' ? advanced : null}
         </section>
 
-        {values.fields.length > 0 ? (
-          <section className="flex flex-col gap-4">
-            <h2 className="font-semibold text-text">{t('detail.sectionData')}</h2>
-            {values.fields.map((field) => (
-              <div key={field.key}>
-                {/* Typ jde na server ve skrytém poli, protože formulář posílá všechno
-                    jako text a JSONB si typ pamatuje. Kdyby se číslo uložilo jako "42",
-                    segment s podmínkou nad číslem by kontakt nenašel a nic by nespadlo. */}
-                <input type="hidden" name={`attrtype:${field.key}`} value={field.type} readOnly />
-                <Label htmlFor={`attr-${field.key}`}>{field.label}</Label>
-                {field.type === 'long_text' ? (
-                  <Textarea
-                    id={`attr-${field.key}`}
-                    name={`attr:${field.key}`}
-                    defaultValue={field.value}
+        {mode === 'create' ? (
+          <section className="flex flex-col gap-3">
+            <fieldset className="flex flex-col gap-2">
+              <legend className="font-semibold text-text">{t('form.subscriptionTitle')}</legend>
+              {/* Volba správce, ne otázka na kontakt. Adresu odněkud má a je to on,
+                  kdo za tvrzení o souhlasu ručí; nástroj mu ho nemá co vyvracet.
+                  Výchozí je proto přihlášený. */}
+              {(['confirmed', 'pending'] as const).map((option) => (
+                <label
+                  key={option}
+                  className="flex items-start gap-3 rounded-[var(--radius-surface)] border border-border p-3"
+                >
+                  <input
+                    type="radio"
+                    name="subscription"
+                    value={option}
+                    className="mt-1"
+                    checked={subscription === option}
+                    onChange={() => setSubscription(option)}
                   />
-                ) : (
-                  <Input
-                    id={`attr-${field.key}`}
-                    name={`attr:${field.key}`}
-                    defaultValue={field.value}
-                    {...(field.type === 'number' ? { inputMode: 'decimal' as const } : {})}
-                  />
-                )}
-                <FieldError name={`attributes.${field.key}`} errors={fieldErrors} />
-              </div>
-            ))}
+                  <span>
+                    <span className="block font-medium text-text">
+                      {option === 'confirmed'
+                        ? t('form.subscriptionConfirmed')
+                        : t('form.subscriptionPending')}
+                    </span>
+                    {/* Jedna věta o tom, co to znamená pro odesílání. Ne poučování
+                        o právu: uživatel potřebuje vědět, jestli mu ten člověk přijde
+                        do kampaně, nebo ne. */}
+                    <span className="mt-1 block text-sm text-text-muted">
+                      {option === 'confirmed'
+                        ? t('form.subscriptionConfirmedHint')
+                        : t('form.subscriptionPendingHint')}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          </section>
+        ) : null}
+
+        {mode === 'create' ? (
+          <section className="flex flex-col gap-3">
+            {/* Rozbalovátko, ne odkaz na druhou obrazovku: schovaná pole zůstávají
+                v DOM a odešlou se i zavřená, takže rozbalení nic neztratí ani nepřidá. */}
+            <button
+              type="button"
+              aria-expanded={advancedVisible}
+              aria-controls={advancedId}
+              onClick={() => setAdvancedOpen(!advancedVisible)}
+              className="self-start text-left font-semibold text-text underline-offset-4 hover:underline"
+            >
+              {t('form.moreDetails')}
+            </button>
+            <p className="text-sm text-text-muted">{t('form.moreDetailsHint')}</p>
+            <div id={advancedId} hidden={!advancedVisible} className="flex flex-col gap-4">
+              {advanced}
+            </div>
           </section>
         ) : null}
 
@@ -317,7 +453,11 @@ export function ContactForm({
         <section className="flex flex-col gap-3">
           <h2 className="font-semibold text-text">{t('detail.lists')}</h2>
           <p className="text-sm text-text-muted">
-            {mode === 'create' ? t('form.listsHintCreate') : t('form.listsHintEdit')}
+            {mode === 'edit'
+              ? t('form.listsHintEdit')
+              : subscription === 'confirmed'
+                ? t('form.listsHintCreateConfirmed')
+                : t('form.listsHintCreatePending')}
           </p>
           {values.lists.length === 0 ? (
             <p className="text-sm text-text-muted">{t('detail.noLists')}</p>

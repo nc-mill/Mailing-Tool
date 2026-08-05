@@ -265,10 +265,24 @@ describe('readCampaignRecipients', () => {
   it('stránka příjemců se čte z indexu, ne přes řazení celého oddílu (R20)', async () => {
     const ws = await seedWorkspace(db);
     const campaign = await seedCampaign(db, ws.workspaceId);
-    for (let i = 0; i < 40; i += 1) {
+    // POČET ŘÁDKŮ JE SOUČÁST TVRZENÍ, ne libovolná konstanta.
+    //
+    // Původních čtyřicet nestačilo ani s `ANALYZE`: rozdíl v odhadované ceně
+    // mezi průchodem indexem a řazením je nad tak malou tabulkou v řádu šumu,
+    // takže volba plánu kolísala podle zatížení stroje. Test padal zhruba
+    // jednou ze čtyř úplných běhů, a to na jiných místech než v samostatném
+    // běhu souboru, což vypadalo jako závislost na cizích datech. Nebyla to
+    // ona; byla to tahle konstanta.
+    //
+    // Se třemi sty řádky je průchod indexem levnější řádově a plánovač nemá
+    // o čem váhat. Cena je zhruba vteřina navíc, což je za stabilní tvrzení
+    // o výkonnostním kontraktu levné.
+    for (let i = 0; i < 300; i += 1) {
       const contact = await seedContact(db, ws.workspaceId, { email: `x${i}@example.cz` });
       await seedMessage(ws.workspaceId, campaign.campaignId, campaign.audienceBuiltAt, contact);
     }
+    // ANALYZE je povinný: bez čerstvých statistik se plánovač rozhoduje podle
+    // odhadu z prázdné tabulky a počet řádků výš by byl k ničemu.
     await db.pool.query('ANALYZE messages');
     // DVĚ ODCHYLKY OD PLÁNU, obě vynucené tím, jak se `messages` skutečně chová.
     //
@@ -294,6 +308,14 @@ describe('readCampaignRecipients', () => {
     try {
       await client.query('SET enable_seqscan = off');
       await client.query('SET enable_bitmapscan = off');
+      // ANALYZE je tu POVINNÝ, ne opatrnost. Plánovač se rozhoduje podle
+      // statistik, a ty po čerstvém zápisu do prázdné tabulky neexistují.
+      // Bez něj závisel výsledek na tom, kolik řádků po sobě nechaly SOUSEDNÍ
+      // testy: v celé doméně reportů jich bylo dost a plán vyšel podle
+      // očekávání, kdežto při běhu samotného souboru plánovač nad hrstkou
+      // řádků zvolil jinou cestu a test spadl. Tvrzení o plánu, které platí jen
+      // při určitém množství cizích dat, netestuje dotaz, ale pořadí testů.
+      await client.query('ANALYZE messages');
       const { rows } = await client.query<{ 'QUERY PLAN': string }>(
         `EXPLAIN (FORMAT TEXT)
        SELECT m.id, m.contact_id FROM messages m

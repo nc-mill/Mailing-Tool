@@ -23,6 +23,10 @@ const PUBLIC_PREFIXES = [
   '/p/', // nastavení odběru
   '/s/c/', // potvrzení přihlášení
   '/r/', // přesměrování
+  // Zobrazení zprávy v prohlížeči. Adresu vyrábí odesílač jako `{{ webview_url }}`
+  // a klikají na ni příjemci e-mailů, kteří žádnou session nemají; bez tohohle
+  // řádku by je proxy poslala na přihlašovací stránku.
+  '/v/',
   '/f/', // vložený formulář
   '/d/', // delegovaná stránka DNS
   '/api/webhooks/', // příchozí webhooky provideru

@@ -1,14 +1,14 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import sharp from 'sharp';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as schema from '@mlain/db/schema';
 import type { MlainConfig } from '../config';
 import { seedWorkspaceForCoreTests, type SeededWorkspace } from '../identity/test-helpers';
 import { startPgHarness, type PgHarness } from '../test-support/pg-harness';
-import { closePools, withWorkspace } from '../tx';
+import { closePools, withoutContext, withWorkspace } from '../tx';
 import { resolvePublicAsset } from './public';
 import {
   findAssetById,
@@ -70,6 +70,29 @@ async function jpeg(width: number, height: number, tint = 40): Promise<Buffer> {
   })
     .jpeg()
     .toBuffer();
+}
+
+/**
+ * Posune `hidden_at` do minulosti HODINAMI DATABÁZE.
+ *
+ * Testy úklidu původně skrývaly asset „teď" a ptaly se na kandidáty se lhůtou
+ * NULA dní, tedy na podmínku `hidden_at < now()`. Vypadalo to nevinně a bylo
+ * to rozbité: mezi „projde" a „neprojde" byla rezerva POD 10 ms (naměřeno
+ * posouváním `hidden_at` po milisekundách proti sdílenému harnessu), takže
+ * o výsledku rozhodovala shoda hodin dvou strojů a pořadí transakcí. U autora
+ * prošlo, u vedoucího padalo, a to je nejhorší druh testu, jaký může existovat.
+ *
+ * Nově se čas nastaví JEDNOU HODNOTOU DALEKO V MINULOSTI a ptáme se SKUTEČNOU
+ * lhůtou 30 dní z produkce, ne degenerovanou nulou. Rezerva je tím den, ne
+ * milisekunda, a test navíc ověřuje ten parametr, který doopravdy platí.
+ */
+async function skryjPredDny(seeded: SeededWorkspace, assetId: string, dnu: number): Promise<void> {
+  await withWorkspace(seeded.ctx, (tx) =>
+    tx
+      .update(schema.assets)
+      .set({ hiddenAt: sql`now() - make_interval(days => ${dnu})` })
+      .where(eq(schema.assets.id, assetId)),
+  );
 }
 
 describe('nahrání obrázku', () => {
@@ -275,23 +298,69 @@ describe('veřejný výdej', () => {
     expect(await resolvePublicAsset('kratky', 'orig.jpg')).toBeNull();
   });
 
-  it('výjimka z izolace NEUMÍ VYJMENOVAT: bez public_id nevydá řádek', async () => {
+  /**
+   * TŘI MĚŘENÍ, NE ÚVAHA.
+   *
+   * Politika `asset_public_lookup` z migrace 0011 je výjimka z izolace projektů
+   * a věta „vyjmenovat se přes ni nedá nic" je tvrzení, dokud ho nepotvrdí
+   * spuštění. Testuje se proto přímo pod rolí `mlain_app` (tou jede aplikace
+   * a RLS na ni dopadá), bez kontextu projektu, tedy přesně v situaci, ve které
+   * běží veřejná trasa výdeje obrázku.
+   *
+   * `count(*)` je tu schválně místo `SELECT id`: agregace projde i tehdy, když
+   * politika nepustí ani řádek, takže rozlišuje „nula řádků" od „dotaz spadl".
+   * Kdyby vrátila nenulu, znamenalo by to, že si kdokoli z internetu umí
+   * spočítat, kolik obrázků má instalace, a odtud vyjmenovat cizí projekty.
+   */
+  it('výjimka z izolace NEUMÍ VYJMENOVAT: bez public_id vrátí count(*) nulu', async () => {
     const a = await seedWorkspaceForCoreTests();
-    await uploadAsset(service(a), { content: await jpeg(200, 100, 44), filename: 'x.jpg' });
-
-    // Přesně to, co dělá `resolvePublicAsset` v prvním kroku, ale BEZ nastavené
-    // proměnné `mlain.asset_public_id`. Politika `asset_public_lookup` má
-    // porovnání s ní v podmínce, takže tenhle dotaz musí vrátit nulu řádků.
-    // Kdyby vrátil řádek, znamenalo by to, že veřejná cesta umí vypsat assety
-    // všech projektů v instalaci.
-    const { withoutContext } = await import('../tx');
-    const leaked = await withoutContext(async (tx) => {
-      const { rows } = await tx.execute<{ id: string }>(
-        (await import('drizzle-orm')).sql`SELECT id FROM assets`,
-      );
-      return rows;
+    const created = await uploadAsset(service(a), {
+      content: await jpeg(200, 100, 44),
+      filename: 'x.jpg',
     });
-    expect(leaked).toEqual([]);
+
+    // Kontrolní měření: řádky v tabulce SKUTEČNĚ JSOU. Bez něj by test byl
+    // zelený i nad prázdnou tabulkou, tedy by nedokazoval vůbec nic.
+    const skutecne = await withWorkspace(a.ctx, async (tx) => {
+      const { rows } = await tx.execute<{ count: string }>(
+        sql`SELECT count(*) AS count FROM assets`,
+      );
+      return Number(rows[0]?.count ?? -1);
+    });
+    expect(skutecne).toBeGreaterThan(0);
+
+    // 1) Bez nastavené proměnné `mlain.asset_public_id`.
+    const bezPromenne = await withoutContext(async (tx) => {
+      const { rows } = await tx.execute<{ count: string }>(
+        sql`SELECT count(*) AS count FROM assets`,
+      );
+      return Number(rows[0]?.count ?? -1);
+    });
+    expect(bezPromenne).toBe(0);
+
+    // 2) Se ŠPATNÝM `public_id`. Tvarem platný, existencí ne.
+    const spatnePublicId = await withoutContext(async (tx) => {
+      await tx.execute(sql`SELECT set_config('mlain.asset_public_id', ${'Z'.repeat(22)}, true)`);
+      const { rows } = await tx.execute<{ count: string }>(
+        sql`SELECT count(*) AS count FROM assets`,
+      );
+      return Number(rows[0]?.count ?? -1);
+    });
+    expect(spatnePublicId).toBe(0);
+
+    // 3) A pro kontrast se SPRÁVNÝM `public_id` právě jeden řádek, ne víc.
+    // Bez téhle třetí větve by test prošel i nad politikou, která nepouští nic,
+    // a veřejný výdej obrázku by nefungoval vůbec.
+    const spravnePublicId = await withoutContext(async (tx) => {
+      await tx.execute(
+        sql`SELECT set_config('mlain.asset_public_id', ${created.asset.publicId}, true)`,
+      );
+      const { rows } = await tx.execute<{ count: string }>(
+        sql`SELECT count(*) AS count FROM assets`,
+      );
+      return Number(rows[0]?.count ?? -1);
+    });
+    expect(spravnePublicId).toBe(1);
   });
 });
 
@@ -330,9 +399,55 @@ describe('mazání a úklid', () => {
     expect(await withWorkspace(a.ctx, (tx) => listPurgeCandidates(tx, a.ctx, 30, 10))).toHaveLength(
       0,
     );
-    // Lhůta nula dní ho vybere.
-    const due = await withWorkspace(a.ctx, (tx) => listPurgeCandidates(tx, a.ctx, 0, 10));
+    // Po uplynutí lhůty se objeví. Čas se posouvá o den za hranici, ne o
+    // milisekundu, takže výsledek nezávisí na shodě hodin ani na pořadí.
+    await skryjPredDny(a, created.asset.id, 31);
+    const due = await withWorkspace(a.ctx, (tx) => listPurgeCandidates(tx, a.ctx, 30, 10));
     expect(due.map((row) => row.id)).toContain(created.asset.id);
+  });
+
+  /**
+   * DÍRA V POKRYTÍ, kterou odhalilo až zavedení vady.
+   *
+   * Když jsem z `listPurgeCandidates` odstranil podmínku `reference_count = 0`,
+   * celá sada zůstala ZELENÁ. Úklid by tedy směl smazat soubor, na který někdo
+   * odkazuje, a nikdo by si toho nevšiml, dokud by lidem ve schránkách nezmizely
+   * obrázky. Podmínka je v dotazu zdvojená schválně (skrýt jde i asset, který se
+   * používá), takže test musí hlídat právě ten druhý průchod.
+   */
+  it('odkazovaný asset NENÍ kandidát úklidu, ani když je skrytý dost dlouho', async () => {
+    const a = await seedWorkspaceForCoreTests();
+    const created = await uploadAsset(service(a), {
+      content: await jpeg(280, 140, 66),
+      filename: 'pouzivany.jpg',
+    });
+    await deleteAsset(service(a), created.asset.id);
+    await skryjPredDny(a, created.asset.id, 31);
+
+    // Mezitím na něj někdo v šabloně odkázal, takže `reference_count` stoupl.
+    await withWorkspace(a.ctx, (tx) =>
+      tx
+        .update(schema.assets)
+        .set({ referenceCount: 1 })
+        .where(eq(schema.assets.id, created.asset.id)),
+    );
+
+    const due = await withWorkspace(a.ctx, (tx) => listPurgeCandidates(tx, a.ctx, 30, 10));
+    expect(
+      due.map((row) => row.id),
+      'úklid by smazal soubor, na který se pořád odkazuje',
+    ).not.toContain(created.asset.id);
+
+    // A jakmile reference zmizí, kandidátem se stane. Bez téhle druhé půlky by
+    // test prošel i nad dotazem, který nevrací nikdy nic.
+    await withWorkspace(a.ctx, (tx) =>
+      tx
+        .update(schema.assets)
+        .set({ referenceCount: 0 })
+        .where(eq(schema.assets.id, created.asset.id)),
+    );
+    const potom = await withWorkspace(a.ctx, (tx) => listPurgeCandidates(tx, a.ctx, 30, 10));
+    expect(potom.map((row) => row.id)).toContain(created.asset.id);
   });
 
   it('úklid smaže soubory, označí purged_at a veřejná adresa přestane platit', async () => {
@@ -342,8 +457,9 @@ describe('mazání a úklid', () => {
       filename: 'pryc.jpg',
     });
     await deleteAsset(service(a), created.asset.id);
-    const [candidate] = await withWorkspace(a.ctx, (tx) => listPurgeCandidates(tx, a.ctx, 0, 10));
-    expect(candidate).toBeDefined();
+    await skryjPredDny(a, created.asset.id, 31);
+    const [candidate] = await withWorkspace(a.ctx, (tx) => listPurgeCandidates(tx, a.ctx, 30, 10));
+    expect(candidate, 'asset skrytý před 31 dny musí být kandidátem úklidu').toBeDefined();
 
     await purgeAsset(service(a), candidate!);
 
@@ -369,7 +485,9 @@ describe('mazání a úklid', () => {
     // `WHERE purged_at IS NULL`), takže druhé nahrání téhož obsahu založí NOVÝ
     // řádek se STEJNOU obsahově adresovanou cestou.
     await deleteAsset(service(a), first.asset.id);
-    const [due] = await withWorkspace(a.ctx, (tx) => listPurgeCandidates(tx, a.ctx, 0, 10));
+    await skryjPredDny(a, first.asset.id, 31);
+    const [due] = await withWorkspace(a.ctx, (tx) => listPurgeCandidates(tx, a.ctx, 30, 10));
+    expect(due, 'asset skrytý před 31 dny musí být kandidátem úklidu').toBeDefined();
     await purgeAsset(service(a), due!);
 
     const second = await uploadAsset(service(a), { content, filename: 'p.jpg' });

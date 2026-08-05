@@ -49,6 +49,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll } from 'vitest';
 import { createWorkspaceAsUser } from '@mlain/db';
+import { blockDefaults, DEFAULT_THEME } from '@mlain/emails/document/defaults';
 import { createSystemContext } from '../../identity/context';
 import { hashPassword } from '../../identity/password';
 import { startPgHarness, type PgHarness } from '../../test-support/pg-harness';
@@ -202,6 +203,67 @@ export async function seedContacts(
   return ids;
 }
 
+/**
+ * Dokument o jedné sekci s daným obsahem a patičkou na konci.
+ *
+ * DOPLNĚK FÁZE J (úkol 47). Dřív se zakládal tvar `{ version: 1, blocks: [] }`, který
+ * kompilace neuznává (chybí `schemaVersion`, `meta` i `theme`). Nevadilo to, dokud
+ * kompilaci nikdo nevolal; od chvíle, kdy ji volá kontrola před odesláním, by každá
+ * zaseknutá kampaň skončila chybou o rozbité šabloně místo té chyby, kterou test čeká.
+ *
+ * Patička je tam kvůli odhlašovacímu odkazu: bez něj hlásí předletová kontrola
+ * `campaign_no_unsubscribe` a kampaň se neodešle. Odkaz v dokumentu ŽÁDNÝ NENÍ,
+ * takže čerstvá kompilace vydá prázdné `links` a nulový počet značek, tedy přesně
+ * to, co má ve `compile_meta` kampaň zaseděná s `compiled: true`.
+ */
+function designWith(children: unknown[]): unknown {
+  return {
+    schemaVersion: 1,
+    meta: { name: 'Kampaň', previewText: 'Náhled', language: 'cs' },
+    theme: DEFAULT_THEME,
+    blocks: [
+      {
+        id: 'b_000000000001',
+        type: 'section',
+        props: blockDefaults('section'),
+        children: [
+          ...children,
+          { id: 'b_000000000099', type: 'footer', props: blockDefaults('footer') },
+        ],
+      },
+    ],
+  };
+}
+
+/**
+ * Výchozí obsah kampaně: JEDEN textový blok a patička.
+ *
+ * Textový blok tu nebyl a musel přibýt. Kontrola před odesláním od opravy vady
+ * s prázdným e-mailem odmítá kampaň, ve které není nic než patička, takže by na
+ * ni od téhle chvíle padaly všechny testy, které chtějí kampaň odeslatelnou.
+ * Prázdný dokument se v testech zakládá výslovně přes `footerOnlyDesign()`.
+ */
+function defaultDesign(): unknown {
+  return designWith([
+    {
+      id: 'b_000000000010',
+      type: 'text',
+      props: {
+        ...blockDefaults('text'),
+        content: [{ t: 'p', children: [{ t: 's', v: 'Ahoj.' }] }],
+      },
+    },
+  ]);
+}
+
+/**
+ * Dokument, ve kterém není nic než patička. Přesně ten tvar, jaký odešel na tři
+ * adresy jako prázdný e-mail, a jaký vydá založení nového obsahu kampaně.
+ */
+export function footerOnlyDesign(): unknown {
+  return designWith([]);
+}
+
 export type SeedCampaignInput = {
   status: string;
   includeLists?: string[];
@@ -267,7 +329,7 @@ export async function seedCampaign(ctx: TestWorkspace, input: SeedCampaignInput)
           input.subject ?? 'Předmět',
           JSON.stringify(audience),
           input.audienceBuiltAt ?? null,
-          JSON.stringify(input.design ?? { version: 1, blocks: [] }),
+          JSON.stringify(input.design ?? defaultDesign()),
           input.compiled ? '<p>ok</p>' : null,
           ctx.userId,
           compileMeta ? JSON.stringify(compileMeta) : null,

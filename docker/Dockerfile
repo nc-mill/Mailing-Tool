@@ -98,22 +98,27 @@ RUN find /app/apps -name '*.js.map' -type f -delete
 #     imported from /app/apps/cli/dist/main.js
 #
 # Externalizace bez doručení balíčku je jen přesunutí pádu z buildu do prvního
-# spuštění. Balíček tedy musí do image přijet zvlášť.
+# spuštění. Balíčky tedy musí do image přijet zvlášť.
 #
-# `cp -RL` dereferencuje symlinky: v rozvržení pnpm je `node_modules/@node-rs`
-# odkaz do `.pnpm` a prostá kopie by přenesla rozbitý odkaz. Kopíruje se celý
-# adresář `@node-rs`, ne jen `argon2`, protože nativní vazba sedí ve zvlášť
-# balíčku podle platformy (`argon2-linux-*-musl`) a `index.js` ho hledá jménem.
+# Sběr dělá `docker/collect-runtime-deps.mjs`, ne příkaz na tomhle řádku.
+# Důvod je v tom souboru popsaný: víceřádkový skript uvnitř `RUN node -e "…"`
+# prochází shellem, který ve dvojitých uvozovkách provede všechno ve zpětných
+# apostrofech, takže se komentář se jmény balíčků tiše vykoná jako příkaz.
 #
 # Fáze builderu i runtime stojí na `node:24.18.1-alpine`, takže je to táž
-# platforma a varianta pro musl sedí.
+# platforma a varianty pro musl sedí.
+COPY docker/collect-runtime-deps.mjs /tmp/collect-runtime-deps.mjs
 RUN set -eux; \
     mkdir -p /runtime-deps/node_modules; \
-    cp -RL "$(node -e "process.stdout.write(require('node:path').resolve(require.resolve('@node-rs/argon2', { paths: ['/app/packages/core'] }), '../..'))")" \
-       /runtime-deps/node_modules/@node-rs; \
-    node -e "const a=require('/runtime-deps/node_modules/@node-rs/argon2'); if (typeof a.hashSync !== 'function') { throw new Error('argon2 se načetl, ale nemá hashSync'); } console.log('argon2 ověřen:', a.hashSync('x').slice(0, 12));"
-# Poslední řádek modul SKUTEČNĚ načte a zavolá. Bez toho by se chyba v kopii
-# projevila až v běžícím kontejneru, což je přesně to, co tahle vrstva řeší.
+    node /tmp/collect-runtime-deps.mjs; \
+    rm /tmp/collect-runtime-deps.mjs; \
+    node -e "const a=require('/runtime-deps/node_modules/@node-rs/argon2'); if (typeof a.hashSync !== 'function') { throw new Error('argon2 se nacetl, ale nema hashSync'); } console.log('argon2 overen:', a.hashSync('x').slice(0, 12));"; \
+    node -e "const s=require('/runtime-deps/node_modules/sharp'); if (typeof s !== 'function') { throw new Error('sharp se nacetl, ale neni funkce'); } console.log('sharp overen, verze libvips:', s.versions.vips);"
+# Oba moduly se SKUTEČNĚ načtou a zavolají, tedy provede se i načtení nativní
+# knihovny. Bez toho by se chyba projevila až v běžícím kontejneru, což je
+# přesně to, co tahle vrstva řeší. U sharpu se čte verze libvips, protože ta
+# pochází z nativní části; samotné `typeof === function` by prošlo i tehdy,
+# kdyby knihovna chyběla.
 
 # --- 5) Runtime --------------------------------------------------------------
 FROM node:24.18.1-alpine AS runtime

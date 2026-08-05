@@ -236,14 +236,15 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     name: 'contacts.recompute_greeting',
     domain: 'contacts',
     owner: 'P07',
-    description: 'Přepočet oslovení po změně nastavení projektu.',
+    description:
+      'Přepočet oslovení po změně nastavení projektu, volitelně se sjednocením jazyka kontaktů.',
     retryLimit: 3,
     retryBackoff: true,
     retryDelaySeconds: 30,
     expireInSeconds: 2 * HOUR,
     singletonKeyTemplate: '<workspace_id>',
     deadLetter: true,
-    payloadFields: ['workspace_id', 'cursor'],
+    payloadFields: ['workspace_id', 'cursor', 'align_locale'],
     source: 'část 2, 4.5',
   },
   {
@@ -722,6 +723,25 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     deadLetter: true,
     payloadFields: [],
     source: 'část 4a, 4.5',
+  },
+
+  // --- Transakční pošta přes API --------------------------------------------
+  {
+    name: 'transactional.purge_render_data',
+    domain: 'campaigns',
+    owner: 'P13',
+    description:
+      'Vynuluje render_data odeslaných transakčních zpráv. Leží v nich odkaz ' +
+      's jednorázovým tokenem (reset hesla) a obecná retence outboxu dnes neběží.',
+    cron: '15 * * * *',
+    retryLimit: 3,
+    retryBackoff: true,
+    retryDelaySeconds: 60,
+    expireInSeconds: 15 * MINUTE,
+    singletonKeyTemplate: 'global',
+    deadLetter: false,
+    payloadFields: [],
+    source: 'rozhodnutí zadavatele 5. 8. 2026',
   },
 
   // --- Tracking a události, část 5 ------------------------------------------

@@ -4,6 +4,7 @@ import { Input } from '@mlain/ui/components/input';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { type FieldCatalog, toCatalogPath } from '../../model/field-catalog';
+import { greetingGuidanceFor } from './greeting-guidance';
 
 /**
  * Pět celých formátů z kontraktu. Zadávají se výběrem, ne psaním (část 3, 3.7.2).
@@ -35,9 +36,25 @@ export function TokenInspector(props: {
   const isDate = entry?.type === 'date' || entry?.type === 'datetime';
   const isLongText = entry?.path.startsWith('attr.') && entry.type === 'string';
 
+  // Která ze tří rolí to je: hotové oslovení, surovina jména, nebo běžné pole.
+  const guidance = greetingGuidanceFor(props.attrs.expr);
+
   return (
     <div className="space-y-2">
       <p className="text-xs text-text-muted">{t('token.title')}</p>
+      {/* Vysvětlení role značky. U suroviny jména je to varování, ne popisek:
+          přesně z ní si uživatel skládal „Dobrý den, " + jméno a dostával 1. pád
+          u kontaktů v jazyce bez vokativu a visící čárku u kontaktů bez jména. */}
+      {guidance === 'greeting' ? (
+        <p data-testid="token-greeting-hint" className="text-xs text-text-muted">
+          {t('token.greetingHint')}
+        </p>
+      ) : null}
+      {guidance === 'nameFragment' ? (
+        <p data-testid="token-fragment-warning" className="text-xs text-warning-text">
+          {t('token.fragmentWarning')}
+        </p>
+      ) : null}
       <label className="block text-xs">
         {t('token.fallbackLabel')}
         <Input

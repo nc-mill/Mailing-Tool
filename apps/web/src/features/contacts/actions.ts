@@ -66,7 +66,22 @@ export async function exportContactsAction(
   return result.ok ? { status: 'success' } : { status: 'error', code: result.problem.code };
 }
 
-/** Hromadné přiřazení a odebrání štítků. Vratná operace, proto smí být optimistická. */
+/**
+ * Hromadné přiřazení a odebrání štítků. Vratná operace, proto smí být optimistická.
+ *
+ * TĚLO SE SKLÁDÁ ZVLÁŠŤ, ne přes `scopeToBody`, a je to oprava vady, kvůli které
+ * tahle akce NIKDY NEFUNGOVALA. Endpoint štítků chce `filter.contact_ids`
+ * (`BulkTagBody` v `packages/core/src/contacts/api/tags.routes.ts`), kdežto
+ * `scopeToBody` vyrábí `{ ids }` pro výběr a `{ filter }` pro „vše odpovídající
+ * filtru", což je tvar hromadného mazání. Schéma je `.strict()`, takže obojí
+ * skončilo na 422 `validation_failed` a uživatel viděl jen „Štítek se nepodařilo
+ * změnit. Technický detail: validation_failed".
+ *
+ * Režim „vše odpovídající filtru" endpoint NEPODPORUJE a je to vědomé rozhodnutí
+ * domény, popsané přímo u schématu: `bulkTagContacts` umí jen výčet id, protože
+ * jen nad ním jde spolehlivě rozhodnout, kdy se operace přesune do fronty.
+ * Vracíme proto srozumitelný kód místo požadavku, který server stejně odmítne.
+ */
 export async function bulkTagContactsAction(
   input: WithWorkspace & {
     scope: BulkScope;
@@ -74,9 +89,16 @@ export async function bulkTagContactsAction(
     remove?: string[];
   },
 ): Promise<BulkResult> {
+  if (input.scope.mode !== 'ids') {
+    return { status: 'error', code: 'bulk_tag_needs_selection' };
+  }
   const result = await apiMutate<void>('/api/v1/contacts/tags:bulk', {
     method: 'POST',
-    body: { ...scopeToBody(input.scope), add: input.add ?? [], remove: input.remove ?? [] },
+    body: {
+      filter: { contact_ids: input.scope.ids },
+      add: input.add ?? [],
+      remove: input.remove ?? [],
+    },
     workspaceId: input.workspaceId,
   });
   if (!result.ok) return { status: 'error', code: result.problem.code };
@@ -222,18 +244,22 @@ export async function addSuppressionAction(
   return { status: 'success' };
 }
 
-/** Zobrazení celé adresy. Server ho zapíše do auditu, proto to není čtení z už načtené stránky. */
-export async function revealSuppressionEmailAction(
-  input: WithWorkspace & { id: string },
-): Promise<BulkResult & { email?: string }> {
-  const result = await apiMutate<{ email: string }>(`/api/v1/suppressions/${input.id}/reveal`, {
-    method: 'POST',
-    workspaceId: input.workspaceId,
-  });
-  return result.ok
-    ? { status: 'success', email: result.data.email }
-    : { status: 'error', code: result.problem.code };
-}
+/*
+ * ODKRYTÍ CELÉ ADRESY TU ZÁMĚRNĚ NENÍ.
+ *
+ * Byla tu akce `revealSuppressionEmailAction`, která volala
+ * `POST /api/v1/suppressions/{id}/reveal`. Taková cesta v API NIKDY nebyla:
+ * `suppressions.routes.ts` zná jen výpis, přidání a odebrání a v kontraktu
+ * (`packages/contracts/openapi.json`) jsou jen `/api/v1/suppressions`
+ * a `/api/v1/suppressions/{id}`. Tlačítko „Zobrazit celou adresu" tedy
+ * spolehlivě padalo na 404 a adresa se nikdy neodkryla.
+ *
+ * Maskování je v seznamu blokovaných adres záměr, ne nedopatření: schéma
+ * odpovědi vrací jen `masked_email` a auditní tabulka nemá akci
+ * `suppression.revealed`, kterou by odkrytí muselo zapsat. Doplnit endpoint
+ * proto není jednořádková oprava a patří do vlastního úkolu; do té doby se
+ * konkrétní adresa hledá filtrem `q` nad seznamem.
+ */
 
 export async function archiveFieldAction(
   input: WithWorkspace & { id: string },
@@ -295,6 +321,81 @@ export async function setConfirmationModeAction(
   });
   if (!result.ok) return { status: 'error', code: result.problem.code };
   revalidatePath(`${LISTS_PATH}/[id]`, 'page');
+  return { status: 'success' };
+}
+
+/**
+ * Přepnutí seznamu mezi jednofázovým a dvoufázovým přihlášením.
+ *
+ * Platí až pro přihlášení, která přijdou po změně; kdo už čeká na potvrzení, čeká dál
+ * (na ty je „Potvrdit čekající"). Zpětně by to nešlo ani udělat: `pending` řádek nenese
+ * informaci, jestli by při jiném nastavení vznikl rovnou potvrzený.
+ */
+export async function setOptInAction(
+  input: WithWorkspace & { id: string; optIn: 'single' | 'double' },
+): Promise<BulkResult> {
+  const result = await apiMutate<void>(`/api/v1/lists/${input.id}`, {
+    method: 'PATCH',
+    body: { opt_in: input.optIn },
+    workspaceId: input.workspaceId,
+  });
+  if (!result.ok) return { status: 'error', code: result.problem.code };
+  revalidatePath(`${LISTS_PATH}/[id]`, 'page');
+  revalidatePath(LISTS_PATH, 'page');
+  return { status: 'success' };
+}
+
+/**
+ * Hromadné potvrzení čekajících přihlášení seznamu. Prohlášení o doloženém souhlasu
+ * posílá obrazovka natvrdo `true`, protože tlačítko je za potvrzovacím dialogem, který
+ * se na to ptá slovy; server bez něj neudělá nic.
+ */
+export async function confirmPendingAction(
+  input: WithWorkspace & { id: string },
+): Promise<BulkResult & { pending?: number; confirmed?: number; skipped?: number }> {
+  const result = await apiMutate<{ pending: number; confirmed: number; skipped: number }>(
+    `/api/v1/lists/${input.id}/subscriptions:confirm-pending`,
+    { method: 'POST', body: { declaration: true }, workspaceId: input.workspaceId },
+  );
+  if (!result.ok) return { status: 'error', code: result.problem.code };
+  revalidatePath(`${LISTS_PATH}/[id]`, 'page');
+  revalidatePath(LISTS_PATH, 'page');
+  return { status: 'success', ...result.data };
+}
+
+/**
+ * Veřejné nabízení seznamu: nabízí se v centru předvoleb k přihlášení, a pod jakým
+ * názvem.
+ *
+ * PROČ TO NENÍ KOSMETIKA. Zapnuté nabízení znamená, že se do seznamu smí sám přihlásit
+ * kdokoli, kdo drží odhlašovací odkaz z libovolného našeho e-mailu. U seznamu, který
+ * znamená nárok („VIP", „Zákazníci se slevou"), je to nárok zdarma. Výchozí stav je
+ * proto vypnuto a zapíná se vědomě.
+ *
+ * Prázdný veřejný název se posílá jako `null`, ne jako prázdný řetězec: „nevyplněno"
+ * a „prázdné jméno" jsou dvě různé věci a databáze to druhé nedovolí.
+ */
+export async function setListPublicVisibilityAction(
+  input: WithWorkspace & {
+    id: string;
+    publicVisible: boolean;
+    publicName: string;
+    publicDescription: string;
+  },
+): Promise<BulkResult> {
+  const result = await apiMutate<void>(`/api/v1/lists/${input.id}`, {
+    method: 'PATCH',
+    body: {
+      public_visible: input.publicVisible,
+      public_name: input.publicName.trim() === '' ? null : input.publicName.trim(),
+      public_description:
+        input.publicDescription.trim() === '' ? null : input.publicDescription.trim(),
+    },
+    workspaceId: input.workspaceId,
+  });
+  if (!result.ok) return { status: 'error', code: result.problem.code };
+  revalidatePath(`${LISTS_PATH}/[id]`, 'page');
+  revalidatePath(LISTS_PATH, 'page');
   return { status: 'success' };
 }
 

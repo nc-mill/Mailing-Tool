@@ -21,7 +21,8 @@ export type RuleName =
   | 'api_key_read'
   | 'api_key_write'
   | 'contacts_import'
-  | 'campaign_send';
+  | 'campaign_send'
+  | 'transactional_send';
 
 export type Rule = { points: number; durationSec: number; configurable: boolean };
 
@@ -69,6 +70,17 @@ export function rateLimitRules(): Record<RuleName, Rule> {
       configurable: true,
     },
     campaign_send: { points: 30, durationSec: 3600, configurable: false },
+    /**
+     * Transakční odeslání. Klíčuje se na PROJEKT, ne na klíč, na rozdíl od
+     * `api_key_read` a `api_key_write`. Deset klíčů by jinak znamenalo
+     * desetinásobný strop, což u pošty, kterou spouští cizí aplikace, není
+     * strop, ale doporučení.
+     *
+     * Skutečnou rychlost odesílání stejně drží token bucket v senderu podle
+     * `sending_providers.quota_max_send_rate`. Tohle je ochrana před tím, aby
+     * smyčka v cizí aplikaci vyžrala denní kvótu SES za pět minut.
+     */
+    transactional_send: { points: 60, durationSec: 60, configurable: false },
     contacts_import: { points: 10, durationSec: 3600, configurable: false },
     login_ip: { points: 20, durationSec: 300, configurable: false },
     login_ip_email: { points: 5, durationSec: 300, configurable: false },

@@ -18,6 +18,16 @@ export type StatsPayload = {
   track_opens: boolean;
   track_clicks: boolean;
   delivered_source: 'provider_events' | 'derived_from_sent';
+  /**
+   * PLATÍ ČÍSLO DORUČENOSTI, nebo ho jen nemáme? Samostatné pole schválně:
+   * třetí hodnota v `delivered_source` by rozbila každého klienta, který nad
+   * tím výčtem dělá vyčerpávající rozskok.
+   *
+   * `false` znamená, že od odesílací služby nedorazila ani jedna událost
+   * o osudu zprávy. Ve vývoji je to trvalý stav, protože odběr oznámení se
+   * u Amazonu nepotvrdí, když webhook běží na `localhost`.
+   */
+  delivered_known: boolean;
   counts: Record<string, number>;
   rates: Record<string, number | null>;
   open_breakdown: {
@@ -84,18 +94,36 @@ export function headlineTiles(payload: StatsPayload): HeadlineTile[] {
       count: delivered,
       labelKey: 'report.delivered.label',
       denominatorKey: 'report.delivered.denominator',
-      hintKey: null,
       /*
-       * Doručení se měří vždycky, tracking se ho netýká. `enabled: true` je
-       * tedy fakt o metrice, ne obcházení příznaku: `disabledReason` se u ní
-       * nikdy nepoužije.
+       * ODKUD se doručenost bere, patří K ČÍSLU, ne jen do rozbalené
+       * diagnostiky na konci stránky. U SMTP účtu žádné potvrzení o doručení
+       * nechodí (`derived_from_sent`) a číslo je dopočet „odesláno minus
+       * odmítnutá a selhaná". Bez téhle věty vypadá stejně jako potvrzení
+       * od odesílací služby, což je jiná informace.
+       */
+      hintKey: !payload.delivered_known
+        ? 'report.delivered.hintUnknown'
+        : payload.delivered_source === 'provider_events'
+          ? 'report.delivered.hintProvider'
+          : 'report.delivered.hintDerived',
+      /*
+       * NULA MÍSTO ÚDAJE BYLA TŘETÍ PODOBA TÉŽE ZÁMĚNY, kterou tenhle model
+       * hlídá u otevření a prokliků. Doručení se sice vypnout nedá, ale dokud
+       * od odesílací služby nedorazila jediná událost o osudu zpráv, není
+       * z čeho ho vzít, a „Doručeno 0" pak tvrdí, že rozesílka nedošla nikomu.
+       * Přesně tohle viděl zadavatel u kampaně, která normálně dorazila.
+       *
+       * `enabled` proto nese `delivered_known` a není to obcházení příznaku
+       * vypnutého měření: rozdíl mezi „správce měření vypnul" a „služba nám
+       * zatím nic neřekla" nese vlastní důvod `delivery_unknown`, protože
+       * uživatel s každým z nich udělá něco jiného.
        */
       display: metricDisplay({
         rate: safeRatio(payload.counts.delivered_effective, payload.counts.sent),
         absolute: delivered,
-        enabled: true,
+        enabled: payload.delivered_known,
         smallSample: payload.small_sample,
-        disabledReason: 'clicks_disabled',
+        disabledReason: 'delivery_unknown',
       }),
     },
     {

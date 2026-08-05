@@ -49,7 +49,15 @@ export type ContactUpsertRow = {
   sourceRef?: string | null;
 };
 
-export type UpsertResult = { id: string; inserted: boolean };
+/**
+ * `email` je v návratové hodnotě schválně. Dávkový zápis vrací JEN skutečně zapsané
+ * řádky (potlačené adresy v něm nejsou, viz pravidlo 4 níž), takže se pořadí ani počet
+ * nemusí shodovat se vstupem a volající nemá jak přiřadit `id` ke svému řádku. Import
+ * na tom stojí: bez adresy by neměl podle čeho k zapsanému kontaktu doplnit štítky,
+ * přihlášení do seznamu a souhlas, a spoléhat na pořadí `RETURNING` je past, protože
+ * u řádku, který ON CONFLICT vynechá, se celý zbytek pole posune o jedna.
+ */
+export type UpsertResult = { id: string; email: string; inserted: boolean };
 
 /**
  * Dávkový upsert kontaktů. Jediné VEŘEJNÉ místo v produktu, kde kontakt vzniká nebo se
@@ -152,7 +160,9 @@ async function upsertRows(
         u.first_name_key, u.last_name_key, u.search_key, u.status, u.external_id,
         u.gender, u.gender_source, u.first_name_vocative, u.last_name_vocative,
         u.vocative_confidence, u.greeting, u.greeting_neutral, u.name_split_confidence,
-        u.attributes, u.locale, u.source, u.source_ref, now(), now()
+        -- Řádek bez jazyka zakládá kontakt v češtině, tedy ve výchozí hodnotě sloupce
+        -- z DDL. Volající, kterému na jazyku záleží (writeContact), ho posílá vždy.
+        u.attributes, coalesce(u.locale, 'cs'), u.source, u.source_ref, now(), now()
       FROM unnest(
         ${sql.param(rows.map((r) => r.email))}::citext[],
         ${sql.param(rows.map((r) => byteaArrayLiteral(r.emailFingerprints ?? [])))}::text[],
@@ -175,7 +185,7 @@ async function upsertRows(
         ${sql.param(rows.map((r) => r.greetingNeutral ?? ''))}::text[],
         ${sql.param(rows.map((r) => r.nameSplitConfidence ?? 'none'))}::text[],
         ${sql.param(rows.map((r) => JSON.stringify(r.attributes)))}::jsonb[],
-        ${sql.param(rows.map((r) => r.locale ?? 'cs'))}::text[],
+        ${sql.param(rows.map((r) => r.locale ?? null))}::text[],
         ${sql.param(rows.map((r) => r.source ?? 'api'))}::text[],
         ${sql.param(rows.map((r) => r.sourceRef ?? null))}::text[]
       ) AS u(
@@ -280,12 +290,26 @@ async function upsertRows(
           WHEN ${skip} OR contacts.vocative_locked THEN contacts.vocative_confidence
           WHEN ${nameMissing} THEN contacts.vocative_confidence
           ELSE excluded.vocative_confidence END,
+        -- Zámek chrání i HOTOVOU VĚTU, ne jen tvar ve first_name_vocative.
+        --
+        -- Bez toho platil zámek jen na půl: import se stejným jménem nechal zamknuté
+        -- „Peťulko" ve sloupci vokativu, ale do greeting zapsal větu spočítanou
+        -- z automatického tvaru, takže kontakt měl uložené „Peťulko" a rozeslalo se
+        -- mu „Dobrý den, Petře". Rozhoduje greeting, protože právě ten sloupec čte
+        -- šablona; ruční oprava by tím byla k ničemu.
+        --
+        -- Když se jméno SKUTEČNĚ změní, uvolní writeContact zámek samostatným
+        -- UPDATE ještě před tímhle příkazem (pravidlo 6), takže
+        -- contacts.vocative_locked je v tu chvíli už false a věta se přepočítá.
+        --
+        -- ZPĚTNÁ APOSTROFA SE DO TĚCHHLE KOMENTÁŘŮ PSÁT NESMÍ. Celý příkaz je šablonový
+        -- řetězec, takže první zpětná apostrofa ho ukončí a soubor se přestane překládat.
         greeting = CASE
-          WHEN ${skip} THEN contacts.greeting
+          WHEN ${skip} OR contacts.vocative_locked THEN contacts.greeting
           WHEN ${nameMissing} THEN contacts.greeting
           ELSE excluded.greeting END,
         greeting_neutral = CASE
-          WHEN ${skip} THEN contacts.greeting_neutral
+          WHEN ${skip} OR contacts.vocative_locked THEN contacts.greeting_neutral
           WHEN ${nameMissing} THEN contacts.greeting_neutral
           ELSE excluded.greeting_neutral END,
         name_split_confidence = CASE
@@ -300,12 +324,16 @@ async function upsertRows(
         attributes = CASE
           WHEN ${skip} THEN contacts.attributes
           ELSE jsonb_strip_nulls(contacts.attributes || excluded.attributes) END,
+        -- Jazyk se přepíše jen tehdy, když ho příchozí řádek SKUTEČNĚ nese. Dávka bez
+        -- jazyka (import bez sloupce locale) ho jinak srovnala všem na češtinu
+        -- a kontaktu s vlastním jazykem tím tiše přepsala oslovení do jiného jazyka.
         locale = CASE
-          WHEN ${skip} THEN contacts.locale ELSE excluded.locale END,
+          WHEN ${skip} THEN contacts.locale
+          ELSE coalesce(excluded.locale, contacts.locale) END,
         source_ref = coalesce(excluded.source_ref, contacts.source_ref),
         updated_at = now()
       WHERE contacts.deleted_at IS NULL
-      RETURNING id, (xmax = 0) AS inserted;
+      RETURNING id, email::text AS email, (xmax = 0) AS inserted;
     `);
 
   // POZOR: `written` je destrukturované `.rows`, ne návratová hodnota execute().
@@ -409,7 +437,20 @@ export async function writeContact(
 
     const settings = await readContactsSettings(tx, ctx);
     const workspace = await loadWorkspaceDefaults(tx, ctx);
-    const locale = input.locale ?? workspace.locale;
+
+    // JAZYK EXISTUJÍCÍHO KONTAKTU SE ZÁPISEM NEPŘEPISUJE.
+    //
+    // Jazyk projektu je jen VÝCHOZÍ hodnota pro nově zakládaný kontakt. Dokud se tady
+    // dosazoval i u existujícího kontaktu, přepsalo přihlášení do seznamu (které jazyk
+    // vůbec nenese) kontaktu s `locale = 'cs'` jazyk na `en` jen proto, že projekt
+    // vznikl z anglického průvodce. Jazyk přitom rozhoduje o CELÉM oslovení: skládá
+    // se z něj věta („Dobrý den" versus „Hello") a počítá se podle něj 5. pád, takže
+    // tichá změna jazyka je tichá změna oslovení.
+    //
+    // Změnit jazyk kontaktu jde dvěma cestami, obě výslovné: uložením kontaktu s polem
+    // `locale` (formulář, import, API) a hromadným sjednocením jazyka v nastavení
+    // projektu (`contacts.recompute_greeting` s `alignLocale`).
+    const locale = input.locale ?? existing?.locale ?? workspace.locale;
 
     const name = resolveName(
       {
@@ -435,8 +476,12 @@ export async function writeContact(
     // Pravidlo 6: uvolnění zámku vokativu se zapisuje ZVLÁŠŤ a před upsertem, protože
     // upsert sám zamknutou hodnotu z principu nepřepisuje.
     if (decision.releaseVocativeLock) {
+      // `vocative_locked_for` se nuluje spolu se zámkem. Sloupec nese jméno, ke kterému
+      // se zámek vázal, a nechat ho v něm po uvolnění by znamenalo tvrzení o zámku,
+      // který už neplatí. Obě místa, která ho plní (`greeting-override.ts`
+      // a `vocative-review/actions.ts`), ho při uvolnění nulují také.
       await tx.execute(sql`
-        UPDATE contacts SET vocative_locked = false, updated_at = now()
+        UPDATE contacts SET vocative_locked = false, vocative_locked_for = NULL, updated_at = now()
          WHERE workspace_id = ${ctx.workspaceId}::uuid AND email = ${email}::citext
            AND deleted_at IS NULL
       `);
@@ -518,6 +563,7 @@ async function loadExisting(
   vocativeLocked: boolean;
   firstName: string | null;
   lastName: string | null;
+  locale: string;
 } | null> {
   const { rows } = await tx.execute<{
     email: string;
@@ -525,8 +571,9 @@ async function loadExisting(
     vocative_locked: boolean;
     first_name: string | null;
     last_name: string | null;
+    locale: string;
   }>(sql`
-    SELECT email::text AS email, status, vocative_locked, first_name, last_name
+    SELECT email::text AS email, status, vocative_locked, first_name, last_name, locale
       FROM contacts
      WHERE workspace_id = ${ctx.workspaceId}::uuid AND email = ${email}::citext
        AND deleted_at IS NULL
@@ -539,6 +586,7 @@ async function loadExisting(
     vocativeLocked: row.vocative_locked,
     firstName: row.first_name,
     lastName: row.last_name,
+    locale: row.locale,
   };
 }
 

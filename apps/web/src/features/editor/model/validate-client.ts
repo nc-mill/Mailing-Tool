@@ -1,4 +1,5 @@
 import { checkSemantics } from '@mlain/emails/document/semantic';
+import type { ValidationProfile } from '@mlain/emails/document/profile';
 import type { EditorBlock, EditorDocument, EditorIssue } from './document-types';
 import type { FieldCatalog } from './field-catalog';
 
@@ -22,13 +23,13 @@ export type { EditorIssue } from './document-types';
 export function validateDocumentClient(
   document: EditorDocument,
   catalog: FieldCatalog,
-  options: { assetIds: Set<string>; templateKind?: 'campaign' | 'transactional' | 'system' },
+  options: { assetIds: Set<string>; templateKind: ValidationProfile },
 ): EditorIssue[] {
   // Odhad velikosti stačí: přesné číslo zná až renderer a pravidlo S9 s tím počítá.
   const estimatedHtmlBytes = new TextEncoder().encode(JSON.stringify(document)).length * 3;
 
   return checkSemantics(document as never, {
-    templateKind: options.templateKind ?? 'campaign',
+    templateKind: options.templateKind,
     fields: catalog,
     assetIds: options.assetIds,
     estimatedHtmlBytes,

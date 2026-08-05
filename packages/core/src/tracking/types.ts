@@ -55,6 +55,32 @@ export type OpenClass = 'human' | 'proxy_apple' | 'proxy_image' | 'bot' | 'unkno
 export type ClickClass = 'human' | 'scanner' | 'bot' | 'prefetch';
 
 /**
+ * Podtyp události `click` pro SYSTÉMOVÉ odkazy v patičce: odhlášení (`/u/`),
+ * centrum předvoleb (`/p/`) a zobrazení v prohlížeči (`/v/`).
+ *
+ * Není to hodnota `ClickClass`. Ta odpovídá na otázku „klikl člověk, nebo
+ * stroj", kdežto tenhle podtyp odpovídá na otázku „na co se kliklo". Proto
+ * stojí vedle výčtu, ne v něm: kdyby v něm byl, musela by ho zpracovat každá
+ * větev klasifikace, která rozhoduje o robotech, a to s ním nemá co dělat.
+ *
+ * ROZHODNUTÍ, PROČ SE SYSTÉMOVÝ PROKLIK MĚŘÍ ZVLÁŠŤ. Do míry prokliku se
+ * NEZAPOČÍTÁVÁ. Míra prokliku měří zájem o obsah a odhlášení je pravý opak;
+ * kdyby ho zvedalo, číslo by rostlo přesně ve chvíli, kdy zájem klesá, a nešlo
+ * by srovnat s žádným jiným nástrojem na trhu. Zároveň se ale nesmí ztratit:
+ * pro odesílatele je „člověk otevřel předvolby" cenná informace a na localhostu
+ * je to dokonce JEDINÁ interakce z Gmailu, která vůbec může dorazit (pixel jde
+ * přes proxy Googlu, systémový odkaz otevírá prohlížeč příjemce).
+ *
+ * Technicky se to drží samo: událost má `link_id = NULL`, a agregace
+ * `process-engagement` bere do `campaign_stats` jen prokliky s odkazem.
+ */
+export const SYSTEM_CLICK_SUBTYPE = 'system';
+
+/** Který systémový odkaz to byl. Zapisuje se do `metadata.system_link`. */
+export const SYSTEM_LINK_KINDS = ['unsubscribe_page', 'preferences', 'webview'] as const;
+export type SystemLinkKind = (typeof SYSTEM_LINK_KINDS)[number];
+
+/**
  * Registr hodnot sloupce web_events.source. Vlastníkem je tahle část.
  * Přidání hodnoty znamená migraci CHECK plus doplnění do TimelineItem.source.
  */

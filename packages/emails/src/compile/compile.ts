@@ -69,6 +69,8 @@ export async function compileDocument(doc: Document, ctx: CompileContext): Promi
   if (links.issues.length > 0) return { ok: false, issues: links.issues };
 
   const trackOpens = ctx.trackOpens && ctx.templateKind !== 'system';
+  // Vynechaná volba znamená ZAPNUTO, viz `CompileContext.preferenceCenterEnabled`.
+  const preferenceCenterEnabled = ctx.preferenceCenterEnabled !== false;
 
   const renderedHtml = await renderDocumentHtml({
     normalized,
@@ -79,8 +81,13 @@ export async function compileDocument(doc: Document, ctx: CompileContext): Promi
     trackClicks: ctx.trackClicks,
     preheader: ctx.preheader ?? normalized.doc.meta.previewText,
     rawNonce: ctx.rawNonce,
+    preferenceCenterEnabled,
   });
-  const renderedText = renderDocumentText({ normalized, linkHref: links.hrefFor });
+  const renderedText = renderDocumentText({
+    normalized,
+    linkHref: links.hrefFor,
+    preferenceCenterEnabled,
+  });
 
   // AŽ TADY. React escapuje textové uzly, takže uvozovka vložená dřív
   // by se změnila na &quot; a Liquid by přestal být platný.
@@ -112,6 +119,7 @@ export async function compileDocument(doc: Document, ctx: CompileContext): Promi
   const schema = buildRenderSchema(normalized.doc, {
     fields: ctx.fields,
     skippedBlockIds: normalized.skippedBlockIds,
+    preferenceCenterEnabled,
   });
 
   const meta: CompileMeta = {

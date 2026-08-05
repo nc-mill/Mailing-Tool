@@ -4,9 +4,40 @@ import { EmailPreview } from '@mlain/ui/patterns/email-preview';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { PREVIEW_WIDTHS } from '../../config';
-import type { EditorPorts, PreviewData } from '../../ports/types';
-import { AudiencePicker } from './audience-picker';
-import { PreviewToolbar, type PreviewMode } from './preview-toolbar';
+import type { EditorPorts } from '../../ports/types';
+import { useView } from '../view/view-state';
+
+/**
+ * Závazný náhled ze serveru.
+ *
+ * VLASTNÍ OVLADAČE UŽ NEMÁ. Zařízení, tmavý režim i volba „Zobrazit jako" sedí
+ * v hlavičce editoru a řídí zároveň plátno, takže tahle komponenta jen kreslí
+ * to, co si uživatel navolil. Dvě sady přepínačů by znamenaly dva stavy, které
+ * se rozejdou: v hlavičce Mobil, v náhledu Počítač a nikdo neví, co platí.
+ */
+/**
+ * Adresa, kterou vzorová data dosazují za systémové odkazy.
+ *
+ * `sampleRenderData` v `@mlain/emails` ji vyplňuje SCHVÁLNĚ: odhlašovací odkaz
+ * se podepisuje až při odeslání a pro cizí kontakt se kvůli náhledu nepodepisuje.
+ * Skutečné adresy staví odesílací vrstva z podepsaného tokenu.
+ */
+const PREVIEW_LINK_PLACEHOLDER = '#preview-disabled';
+
+/**
+ * Vysvětlení místo záhadné značky.
+ *
+ * V textové verzi náhledu se odkazy vypisují, takže uživatel viděl tři řádky
+ * „Odhlásit se z odběru: #preview-disabled" a musel se ptát, co to je. Hodnota
+ * je správně, jen mlčí. Nahrazuje se proto až v NÁHLEDU, ne ve vzorových
+ * datech: ta patří `@mlain/emails` a jejich podoba je součástí kontraktu.
+ *
+ * Náhrada nesmí vypadat jako platná adresa, aby si ji nikdo nezkopíroval.
+ * V textu je to proto věta v závorce, v HTML kotva bez cíle.
+ */
+export function explainPreviewLinks(value: string, sentence: string): string {
+  return value.split(PREVIEW_LINK_PLACEHOLDER).join(sentence);
+}
 
 export function PreviewPane(props: {
   templateId: string;
@@ -14,62 +45,68 @@ export function PreviewPane(props: {
   flush: () => Promise<void>;
 }) {
   const t = useTranslations('editor');
-  const [mode, setMode] = useState<PreviewMode>('desktop');
-  const [dark, setDark] = useState(false);
-  const [data, setData] = useState<PreviewData>({ type: 'sample', variant: 'default' });
+  const view = useView();
   const [result, setResult] = useState<{ html: string; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const { flush, ports, templateId } = props;
+  const previewData = view.previewData;
 
-  // Závislosti jsou schválně jen `data`: přepnutí tmavého režimu ani šířky
-  // nový náhled nevyžaduje, obojí kreslí komponenta K6 v prohlížeči. Kdyby
-  // tu byl `dark`, každé cvaknutí přepínače by znamenalo cestu na server.
+  // Závislosti jsou schválně jen `previewData`: přepnutí tmavého režimu ani
+  // šířky nový náhled nevyžaduje, obojí kreslí komponenta K6 v prohlížeči.
+  // Kdyby tu byl `dark`, každé cvaknutí přepínače by znamenalo cestu na server.
   const load = useCallback(async () => {
     setError(null);
     await flush(); // náhled kreslí právě to, co je v editoru
     try {
-      setResult(await ports.preview({ templateId, previewData: data }));
+      setResult(await ports.preview({ templateId, previewData }));
     } catch {
       setResult(null);
       setError(t('preview.failed'));
     }
-  }, [data, flush, ports, t, templateId]);
+  }, [flush, ports, previewData, t, templateId]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const width = mode === 'mobile' ? PREVIEW_WIDTHS.mobile : PREVIEW_WIDTHS.desktop;
+  const width = view.mode === 'mobile' ? PREVIEW_WIDTHS.mobile : PREVIEW_WIDTHS.desktop;
+  // Text vysvětluje větou, HTML kotvou bez cíle: v HTML je adresa v atributu
+  // a věta se závorkami by ze zdroje udělala nečitelnou kaši.
+  const text = result ? explainPreviewLinks(result.text, t('preview.linkOnSend')) : '';
+  const html = result ? explainPreviewLinks(result.html, '#odkaz-vznikne-az-pri-odeslani') : '';
 
   return (
     <div className="flex flex-1 flex-col">
-      <PreviewToolbar mode={mode} onMode={setMode} dark={dark} onDark={setDark} />
-      <AudiencePicker ports={props.ports} value={data} onChange={setData} />
       <div className="flex flex-1 justify-center overflow-auto bg-surface-muted p-4">
         {error ? <p role="alert">{error}</p> : null}
-        {result && mode === 'text' ? (
+        {result && view.mode === 'text' ? (
           <pre
             data-testid="preview-text"
             className="w-full whitespace-pre-wrap bg-surface p-4 text-sm"
           >
-            {result.text}
+            {text}
           </pre>
         ) : null}
-        {result && mode === 'source' ? (
+        {result && view.mode === 'source' ? (
           <div className="w-full">
             <p className="mb-1 text-xs text-text-muted">
-              {t('preview.sizeKb', { size: Math.round(new Blob([result.html]).size / 1024) })}
+              {t('preview.sizeKb', { size: Math.round(new Blob([html]).size / 1024) })}
             </p>
-            <pre className="overflow-x-auto bg-surface p-4 font-mono text-xs">{result.html}</pre>
+            <pre
+              data-testid="preview-source"
+              className="overflow-x-auto bg-surface p-4 font-mono text-xs"
+            >
+              {html}
+            </pre>
           </div>
         ) : null}
-        {result && (mode === 'desktop' || mode === 'mobile') ? (
+        {result && (view.mode === 'desktop' || view.mode === 'mobile') ? (
           <div data-testid="preview-frame" data-width={width}>
             <EmailPreview
-              html={result.html}
+              html={html}
               width={width}
-              dark={dark}
+              dark={view.dark}
               title={t('preview.frameTitle')}
             />
           </div>

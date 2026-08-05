@@ -46,6 +46,32 @@ describe('document-types', () => {
     ]);
     expect(doc.blocks[0]!.id).toMatch(/^b_[0-9a-z]{12}$/);
     expect(doc.blocks[0]!.props).toHaveProperty('padding');
-    expect(doc.blocks[0]!.children).toEqual([]);
+  });
+
+  /**
+   * Sekce NENÍ prázdná a nesmí být.
+   *
+   * Dřívější znění tvrdilo `children).toEqual([])`, jenže takový dokument
+   * server odmítl doménovým pravidlem S4:
+   *
+   *   POST /api/v1/templates → 422 template_document_invalid
+   *   findings: [{ code: 'content_missing_unsubscribe' }]
+   *
+   * Šablonu proto nešlo z rozhraní založit vůbec; uživatel viděl jen
+   * „Šablonu se nepodařilo vytvořit." Patička je dítě sekce, ne blok nejvyšší
+   * úrovně: nahoře smí být jedině sekce.
+   */
+  it('prázdný dokument má v sekci patičku, jinak neprojde pravidlem o odhlášení', () => {
+    const doc = emptyDocument('cs');
+    const children = doc.blocks[0]!.children ?? [];
+    expect(children).toHaveLength(1);
+    expect(children[0]!.type).toBe('footer');
+    expect(children[0]!.id).toMatch(/^b_[0-9a-z]{12}$/);
+    expect(children[0]!.props).toHaveProperty('showUnsubscribe');
+  });
+
+  it('meta.name není prázdné, schéma má minLength 1', () => {
+    expect(emptyDocument('cs').meta.name.length).toBeGreaterThan(0);
+    expect(emptyDocument('cs', 'Vítací e-mail').meta.name).toBe('Vítací e-mail');
   });
 });

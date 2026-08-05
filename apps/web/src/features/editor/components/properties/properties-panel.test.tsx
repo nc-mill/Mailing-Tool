@@ -36,6 +36,7 @@ function setup(selected: string | null) {
           canWriteHtml={false}
           fieldCatalog={{ fields: [], version: 'v1' }}
           ports={null}
+          templateKind="campaign"
         />
       </EditorStoreProvider>
     </NextIntlClientProvider>,
@@ -72,6 +73,20 @@ describe('PropertiesPanel', () => {
 
   it('u vlastnosti s poznámkou o Outlooku je vysvětlující ikona', () => {
     setup('b_sp1');
-    expect(screen.getByTestId('hint-heightMobile')).toBeInTheDocument();
+    expect(screen.getByTestId('hint-hideOnMobile')).toBeInTheDocument();
+  });
+
+  /**
+   * Co nemá vliv, se nedá nastavit.
+   *
+   * `SpacerBlockView` v emitteru posílá do rámu natvrdo nulové odsazení
+   * a `heightMobile` nečte ani emitter, ani `buildHeadCss`. Obojí se dřív
+   * nastavit dalo a nemělo to žádný následek ani v e-mailu, ani na plátně.
+   */
+  it('mezera nenabízí odsazení ani mobilní výšku, protože je emitter ignoruje', () => {
+    setup('b_sp1');
+    expect(screen.getByTestId('prop-height')).toBeInTheDocument();
+    expect(screen.queryByTestId('prop-padding')).toBeNull();
+    expect(screen.queryByTestId('prop-heightMobile')).toBeNull();
   });
 });

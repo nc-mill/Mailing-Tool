@@ -134,6 +134,22 @@ export const ContactUpsertRequestSchema = z
     title_prefix: z.string().max(50).nullable().optional(),
     title_suffix: z.string().max(50).nullable().optional(),
     gender: z.enum(['female', 'male', 'unknown']).optional(),
+    /**
+     * Stav kontaktu, který volající TVRDÍ. Schválně jen dvě hodnoty z šesti, které
+     * sloupec `contacts.status` zná.
+     *
+     * `unsubscribed`, `bounced` a `complained` jsou VÝSLEDKY, ne přání: vznikají
+     * odhlášením člověka, odrazem od poštovního serveru nebo stížností a mají vlastní
+     * cestu se záznamem v auditu. `deleted` patří mazání. Kdyby je šlo nastavit zápisem,
+     * dala by se přes tenhle endpoint vyrobit stížnost, která se nikdy nestala, a
+     * `applyWriteRules` by ji navíc zamklo (`LOCKED_STATUSES`), takže by z ní nebylo cesty ven.
+     *
+     * Povýšit `unconfirmed` na `active` smí jen ten, kdo za tvrzení nese odpovědnost:
+     * správce u ručního zadání nebo import s prohlášením o doloženém souhlasu. Pravidlo 3
+     * ze 4.1.2 části 2 dál platí a hlídá `applyWriteRules`: zamknutý stav se tímhle polem
+     * přepsat NEDÁ.
+     */
+    status: z.enum(['active', 'unconfirmed']).optional(),
     /** Zadání vokativu zamkne přepočet, viz 4.4.8 části 2. */
     first_name_vocative: z.string().max(100).nullable().optional(),
     last_name_vocative: z.string().max(100).nullable().optional(),

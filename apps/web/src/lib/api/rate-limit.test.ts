@@ -31,6 +31,11 @@ describe('katalog limitů', () => {
       'password_reset_ip',
       'session_user',
       'setup_ip',
+      // Transakční pošta má vlastní limit, protože ji volá cizí aplikace ve
+      // smyčce (reset hesla, uvítací e-mail), a ne člověk v prohlížeči. Klíčuje
+      // se na PROJEKT, ne na klíč k API: deset klíčů by jinak znamenalo
+      // desetinásobný strop a limit by nechránil před ničím.
+      'transactional_send',
     ]);
   });
 

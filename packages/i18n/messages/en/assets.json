@@ -1,0 +1,84 @@
+{
+  "library": {
+    "title": "Media library",
+    "lead": "Images in this project. Uploads are converted to JPEG or PNG, because other formats fail to render in some mail clients.",
+    "count": "{count, plural, =0 {No images} one {# image} other {# images}}",
+    "countFiltered": "{count, plural, =0 {Nothing matched} one {# match} other {# matches}}",
+    "loadFailed": "The library could not be loaded.",
+    "refresh": "Load again"
+  },
+  "search": {
+    "label": "Search the library",
+    "placeholder": "File name or description",
+    "clear": "Clear search"
+  },
+  "empty": {
+    "title": "No images yet",
+    "explanation": "Drag images into the area above, or pick them with the button. Saved images go into an email through the Image block.",
+    "action": "Choose images",
+    "filteredTitle": "Nothing matched",
+    "filteredExplanation": "Try a shorter term. The search covers the file name and the image description.",
+    "filteredAction": "Clear search"
+  },
+  "upload": {
+    "dropzone": "Drag images here",
+    "hint": "JPEG, PNG, GIF, WebP, AVIF or SVG. WebP, AVIF and SVG are converted. At most {limit} per file.",
+    "chooseFiles": "Choose images",
+    "fileInput": "Choose images to upload",
+    "progress": "Uploading: {done} of {total}",
+    "progressLabel": "Upload progress",
+    "uploading": "Uploading {name}",
+    "done": "{count, plural, =0 {Nothing was uploaded} one {# image uploaded} other {# images uploaded}}",
+    "duplicate": "{name}: this image is already in the library",
+    "failed": "{name}: {reason}",
+    "dismiss": "Hide the upload result",
+    "results": "Upload result"
+  },
+  "errors": {
+    "asset_unsupported_format": "This format cannot be uploaded. Use JPEG, PNG, GIF, WebP, AVIF or SVG.",
+    "asset_corrupt": "The file could not be read as an image.",
+    "asset_too_many_pixels": "The image has too many pixels. Scale it down and try again.",
+    "payload_too_large": "The file is larger than {limit}.",
+    "asset_quota_exceeded": "This project has run out of image storage.",
+    "asset_referenced_by_sent_campaign": "The image is used by a campaign that has already been sent.",
+    "forbidden": "You do not have permission for this action.",
+    "tooLargeLocal": "The file is larger than {limit}, so it was never sent to the server.",
+    "wrongTypeLocal": "The library does not accept this file type.",
+    "unknown": "That did not work. Please try again."
+  },
+  "tile": {
+    "select": "Select image {name}",
+    "dimensions": "{width} × {height} px",
+    "uploaded": "Uploaded {date}",
+    "noAlt": "No description",
+    "open": "Open the image in a new tab"
+  },
+  "usage": {
+    "unused": "Unused",
+    "used": "{count, plural, =0 {Unused} one {Used # ×} other {Used # ×}}",
+    "inTemplate": "Template {name}",
+    "inCampaign": "Campaign {name}",
+    "unnamed": "untitled",
+    "loading": "Checking where the image is used"
+  },
+  "selection": {
+    "bar": "{count, plural, =0 {Nothing selected} one {# image selected} other {# images selected}}",
+    "clear": "Clear selection",
+    "selectAll": "Select all on this page",
+    "delete": "Delete selected"
+  },
+  "delete": {
+    "title": "{count, plural, =0 {Delete images} one {Delete # image} other {Delete # images}}",
+    "safeLead": "The images disappear from the library. The file stays on disk for 30 days, so nothing breaks in emails that already went out.",
+    "usedLead": "Some of the selected images are in use. Deleting them breaks the reference and leaves an empty spot in drafts.",
+    "usedHeading": "Where they are used",
+    "blockedHeading": "These cannot be deleted",
+    "blockedLead": "The image is used by a campaign that has already been sent. Recipients have it in their inbox and deleting it would remove it from their email.",
+    "confirmUnderstood": "I understand the references will break",
+    "cancel": "Keep in library",
+    "confirm": "Delete",
+    "pending": "Deleting",
+    "resultOk": "{count, plural, =0 {Nothing was deleted} one {# image deleted} other {# images deleted}}",
+    "resultFailed": "{count, plural, =0 {} one {# image could not be deleted} other {# images could not be deleted}}"
+  }
+}

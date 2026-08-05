@@ -11,9 +11,12 @@ vi.mock('@mlain/i18n/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }));
 
+const setPublic = vi.fn().mockResolvedValue({ status: 'success' });
+
 vi.mock('./actions', () => ({
   setConfirmationModeAction: (...args: unknown[]) => setMode(...args),
   archiveListAction: vi.fn().mockResolvedValue({ status: 'success' }),
+  setListPublicVisibilityAction: (...args: unknown[]) => setPublic(...args),
 }));
 
 const list: ListDetailData = {
@@ -24,6 +27,11 @@ const list: ListDetailData = {
   double_opt_in: true,
   confirmation_mode: 'one_step',
   archived: false,
+  // Výchozí stav je „nenabízet". Seznam je nositelem oprávnění k rozesílce, takže
+  // zapnuté nabízení znamená, že se do něj smí přihlásit kdokoli s odhlašovacím odkazem.
+  public_visible: false,
+  public_name: '',
+  public_description: '',
 };
 
 function renderDetail(overrides: Partial<ListDetailData> = {}) {
@@ -71,5 +79,42 @@ describe('ListDetail', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Platí pro potvrzovací e-maily odeslané od teď.',
     );
+  });
+});
+
+/**
+ * Bezpečnostní vada: veřejné centrum předvoleb nabízelo VŠECHNY seznamy projektu,
+ * takže se držitel jakéhokoli odhlašovacího odkazu mohl sám přihlásit i do seznamu,
+ * který znamená nárok. Nastavení, které to řídí, musí být vidět v detailu seznamu.
+ */
+describe('veřejné nabízení seznamu', () => {
+  beforeEach(() => setPublic.mockClear());
+
+  it('je ve výchozím stavu vypnuté a texty pro příjemce se neptají', () => {
+    renderDetail();
+    expect(screen.getByTestId('list-public-visible')).toHaveAttribute('data-state', 'unchecked');
+    expect(screen.queryByTestId('list-public-name')).toBeNull();
+  });
+
+  it('zapnutí se uloží a teprve pak se ptá na veřejný název', async () => {
+    renderDetail();
+    await userEvent.click(screen.getByTestId('list-public-visible'));
+
+    expect(setPublic).toHaveBeenCalledWith({
+      workspaceId: 'w-1',
+      id: 'l-1',
+      publicVisible: true,
+      publicName: '',
+      publicDescription: '',
+    });
+    expect(screen.getByTestId('list-public-name')).toBeTruthy();
+  });
+
+  it('nevyplněný veřejný název nabídne pracovní název jako to, co příjemce uvidí', () => {
+    renderDetail({ public_visible: true });
+    // Správce musí vědět, co se místo prázdného pole ukáže, jinak by mu unikla
+    // pracovní poznámka do e-mailu příjemci. (Nadpis stránky nese totéž jméno,
+    // proto se hledá celá nápověda, ne jen jméno seznamu.)
+    expect(screen.getByText(/uvidí váš pracovní název „Newsletter“/)).toBeTruthy();
   });
 });

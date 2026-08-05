@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, ne } from 'drizzle-orm';
 import * as schema from '@mlain/db/schema';
 import type { Tx } from '../../tx';
 
@@ -86,17 +86,19 @@ function toTypography(value: unknown): BrandTypography {
   };
 }
 
-export type NewBrandProfile = {
+export type ExtractedBrandProfile = {
   /**
    * Vyplňuje se, přestože RLS projekt vybírá sama: `workspace_id` je NOT NULL
    * bez DEFAULT, takže vynechání skončí chybou 23502, ne tichým doplněním
    * z kontextu.
    */
   workspaceId: string;
+  /**
+   * Návrh jména pro PRVNÍ značku projektu, typicky doména staženého webu.
+   * Existující značku extrakce nepřejmenovává: jméno patří uživateli.
+   */
   name: string;
   sourceUrl: string | null;
-  logoAssetId: string | null;
-  logoDarkAssetId: string | null;
   /** `palette` i `typography` jsou NOT NULL bez DEFAULT, obojí. */
   palette: unknown;
   typography: unknown;
@@ -104,30 +106,93 @@ export type NewBrandProfile = {
 };
 
 /**
- * Založení profilu extrakcí značky.
+ * PROJEKT MÁ PRÁVĚ JEDNU ZNAČKU.
  *
- * `defaultProfile` se ZÁMĚRNĚ nenastavuje. Nad tabulkou je částečný unikátní
- * index `uq_brand_profiles__workspace_default`, takže druhá extrakce v témž
- * projektu by na něm spadla a celý běh by skončil jako `failed`, přestože se
- * značka stáhla i analyzovala. Výchozí značku volí uživatel; dokud žádnou
- * nezvolil, `findDefaultBrandProfile` vrací nejnovější profil.
+ * Rozhodnuto 4. 8. 2026 podle specifikace: obrazovka 8.5.4 (část 6) ukazuje
+ * jedno pole s adresou, jedno tlačítko a pod ním výsledek, žádný seznam
+ * a žádné přepínání. Nikde v produktu se značka nevybírá: skládání e-mailu
+ * i panel asistenta berou `findDefaultBrandProfile`, tedy jednu jedinou.
+ * Tabulka víc řádků unese, ale produkt pro ně nemá ani obrazovku, ani smysl.
+ *
+ * Předchozí podoba zakládala novou značku při KAŽDÉM stažení, takže šesté
+ * kliknutí na „Stáhnout" znamenalo šest řádků téhož webu a seznam, se kterým
+ * nešlo nic dělat. Odteď stažení PŘEPÍŠE tu jednu, kterou projekt má.
+ *
+ * Zbytek řádků se rovnou uklidí (`pruneOtherBrandProfiles`), aby se projekty
+ * poznamenané starým chováním spravily samy tím, že se značka jednou uloží
+ * nebo stáhne. Ruční SQL ani migrace na to nejsou potřeba.
  */
-export async function insertBrandProfile(tx: Tx, row: NewBrandProfile): Promise<{ id: string }> {
+export async function saveExtractedBrandProfile(
+  tx: Tx,
+  row: ExtractedBrandProfile,
+): Promise<{ id: string; removedProfiles: number }> {
+  const table = schema.brandProfiles;
+  const current = await findDefaultBrandProfile(tx);
+
+  if (current !== null) {
+    /*
+     * Úklid PŘED zápisem, ne po něm: teprve když v projektu nezůstane jiný
+     * řádek, se smí `default_profile` nastavit na true. Částečný unikátní
+     * index `uq_brand_profiles__workspace_default` jinak druhou výchozí
+     * značku odmítne a spadl by celý běh extrakce.
+     */
+    const removedProfiles = await pruneOtherBrandProfiles(tx, current.id);
+    await tx
+      .update(table)
+      .set({
+        /*
+         * `name` ani `logoAssetId` se nepřepisují. Jméno si mohl uživatel
+         * změnit a logo vybrat z knihovny médií; extrakce ani jedno nedodává
+         * (logo zůstává na uživateli, viz `buildBrandProfile`), takže by je
+         * zápisem jen vymazala.
+         */
+        sourceUrl: row.sourceUrl,
+        palette: row.palette as never,
+        typography: row.typography as never,
+        ...(row.tone === undefined ? {} : { tone: row.tone as never }),
+        defaultProfile: true,
+        extractedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(table.id, current.id));
+    return { id: current.id, removedProfiles };
+  }
+
+  /*
+   * První značka projektu se rovnou označí za výchozí. Na částečném unikátním
+   * indexu `uq_brand_profiles__workspace_default` to spadnout nemůže: sem se
+   * běh dostane jedině tehdy, když projekt nemá ani jeden profil.
+   */
   const inserted = await tx
-    .insert(schema.brandProfiles)
+    .insert(table)
     .values({
       workspaceId: row.workspaceId,
       name: row.name,
       sourceUrl: row.sourceUrl,
-      logoAssetId: row.logoAssetId,
-      logoDarkAssetId: row.logoDarkAssetId,
+      logoAssetId: null,
+      logoDarkAssetId: null,
       palette: row.palette as never,
       typography: row.typography as never,
       tone: (row.tone ?? {}) as never,
+      defaultProfile: true,
       extractedAt: new Date(),
     })
-    .returning({ id: schema.brandProfiles.id });
-  return inserted[0]!;
+    .returning({ id: table.id });
+  return { id: inserted[0]!.id, removedProfiles: 0 };
+}
+
+/**
+ * Úklid značek, které vznikly opakovaným stažením, než se vada opravila.
+ *
+ * Maže se pod RLS, takže se dotaz nemůže dostat mimo projekt otevřené
+ * transakce. `brand_extractions.brand_profile_id` má `ON DELETE SET NULL`,
+ * takže historie běhů zůstane; co který běh vytáhl, drží `result`, ne odkaz
+ * na profil.
+ */
+export async function pruneOtherBrandProfiles(tx: Tx, keepId: string): Promise<number> {
+  const table = schema.brandProfiles;
+  const removed = await tx.delete(table).where(ne(table.id, keepId)).returning({ id: table.id });
+  return removed.length;
 }
 
 export async function listBrandProfiles(tx: Tx): Promise<BrandProfileSummary[]> {
@@ -182,4 +247,76 @@ export async function findBrandProfile(
 export async function findDefaultBrandProfile(tx: Tx): Promise<BrandProfileSummary | null> {
   const profiles = await listBrandProfiles(tx);
   return profiles.find((profile) => profile.defaultProfile) ?? profiles[0] ?? null;
+}
+
+export type BrandProfileInput = {
+  name: string;
+  palette: BrandPalette;
+  typography: BrandTypography;
+  logoAssetId: string | null;
+};
+
+/**
+ * Uložení značky z obrazovky Nastavení → Značka projektu.
+ *
+ * Píše se do TÉHOŽ profilu, který obrazovka ukazuje, tedy do toho, který
+ * vrací `findDefaultBrandProfile`. Kdyby se zakládal nový, uživatel by po
+ * změně jedné barvy dostal druhou položku v seznamu značek a asistent by
+ * skládal e-maily podle té staré: `findDefaultBrandProfile` bere výchozí,
+ * a tou by nová nebyla.
+ *
+ * Když projekt zatím nemá ani jeden profil, založí se a rovnou se označí za
+ * výchozí. Na částečném unikátním indexu `uq_brand_profiles__workspace_default`
+ * to spadnout nemůže, protože se vkládá jen tehdy, když žádný profil neexistuje,
+ * takže žádný jiný výchozí být nemůže. Stejný postup jako u
+ * `saveExtractedBrandProfile`: projekt má právě jednu značku a obě cesty píší
+ * do téhož řádku.
+ *
+ * `extractedAt` zůstává `null`. Ručně zadaná značka se odnikud nestahovala
+ * a datum stažení by o ní lhalo; obrazovka podle něj pozná, že u barev nemá
+ * co ukazovat jako „odkud jsme ji vzali".
+ */
+export async function saveDefaultBrandProfile(
+  tx: Tx,
+  workspaceId: string,
+  input: BrandProfileInput,
+): Promise<{ id: string }> {
+  const table = schema.brandProfiles;
+  const current = await findDefaultBrandProfile(tx);
+
+  if (current !== null) {
+    // Úklid po starém chování, kdy každé stažení zakládalo další značku.
+    // Projekt s jedinou značkou tady smaže nula řádků. Musí být PŘED zápisem,
+    // protože až pak smí `default_profile` přejít na true, viz
+    // `saveExtractedBrandProfile`.
+    await pruneOtherBrandProfiles(tx, current.id);
+    await tx
+      .update(table)
+      .set({
+        name: input.name,
+        palette: input.palette as never,
+        typography: input.typography as never,
+        logoAssetId: input.logoAssetId,
+        defaultProfile: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(table.id, current.id));
+    return { id: current.id };
+  }
+
+  const inserted = await tx
+    .insert(table)
+    .values({
+      workspaceId,
+      name: input.name,
+      sourceUrl: null,
+      logoAssetId: input.logoAssetId,
+      logoDarkAssetId: null,
+      palette: input.palette as never,
+      typography: input.typography as never,
+      tone: {} as never,
+      defaultProfile: true,
+    })
+    .returning({ id: table.id });
+  return inserted[0]!;
 }

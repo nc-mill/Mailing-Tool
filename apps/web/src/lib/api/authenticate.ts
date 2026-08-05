@@ -91,6 +91,17 @@ const CONTEXT_FREE_PATTERNS = [/^\/api\/v1\/workspaces\/[^/]+\/restore$/];
 const TEST_PREFIX = '/api/v1/__test';
 
 /**
+ * Je tohle volání transakčního odeslání?
+ *
+ * Cesta se porovnává doslova, ne vzorem: pravidlo je bezpečnostní opatření
+ * a shoda vzorem by se dala rozšířit budoucí podcestou, aniž by si toho někdo
+ * všiml. Nová transakční cesta se sem musí dopsat vědomě.
+ */
+function isTransactionalSendPath(path: string, method: string): boolean {
+  return method === 'POST' && path === '/api/v1/transactional';
+}
+
+/**
  * Rozpozná aktéra a sestaví WorkspaceContext pro projektové cesty /api/v1/**.
  */
 export function authenticate(): MiddlewareHandler<ApiEnv> {
@@ -115,11 +126,19 @@ export function authenticate(): MiddlewareHandler<ApiEnv> {
       );
 
       // 4.5: čtení a zápis mají vlastní limit na klíč.
+      //
+      // Transakční odeslání spotřebuje NAVÍC vlastní pravidlo klíčované na
+      // PROJEKT. Limit na klíč u něj nestačí: deset klíčů by znamenalo
+      // desetinásobný strop, a tuhle cestu spouští cizí aplikace, takže
+      // smyčka v ní může vyjet denní kvótu providera za pár minut.
       const headers = await consumeAll(limiterRegistry(), [
         {
           rule: WRITE_METHODS.has(c.req.method) ? 'api_key_write' : 'api_key_read',
           key: verified.apiKeyId,
         },
+        ...(isTransactionalSendPath(path, c.req.method)
+          ? [{ rule: 'transactional_send' as const, key: verified.workspaceId }]
+          : []),
       ]);
       for (const [k, v] of Object.entries(headers)) c.header(k, v);
 

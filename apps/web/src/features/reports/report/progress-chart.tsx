@@ -21,19 +21,46 @@ export type ProgressPoint = {
   clicks_unique: number;
 };
 
+/**
+ * Které řady se v grafu smějí kreslit.
+ *
+ * TOTÉŽ PRAVIDLO JAKO U DLAŽDIC, JEN V GRAFU. Dlaždice doručenosti přestala
+ * ukazovat nulu, když od odesílací služby nedorazila jediná zpráva o osudu
+ * e-mailů, a začala říkat „Zatím nevíme". Graf o tom nevěděl a kreslil řadu
+ * Doručeno jako plochou čáru na nule, tedy tvrdil na téže stránce opak.
+ * Nezměřená řada se proto nekreslí vůbec a místo ní stojí věta proč; prázdná
+ * čára na nule je horší než chybějící čára, protože vypadá jako měření.
+ */
+export type MeasuredSeries = { delivered: boolean; opens: boolean; clicks: boolean };
+
 export function ProgressChart({
   points,
   granularity,
   onGranularityChange,
   compacted,
+  measured,
 }: {
   points: ProgressPoint[];
   granularity: '5m' | 'hour' | 'day';
   onGranularityChange: (value: '5m' | 'hour' | 'day') => void;
   compacted: boolean;
+  measured: MeasuredSeries;
 }) {
   const t = useTranslations('reports');
   const format = useFormatter();
+
+  const series = [
+    { key: 'sent', label: t('report.chart.columnSent') },
+    ...(measured.delivered ? [{ key: 'delivered', label: t('report.chart.columnDelivered') }] : []),
+    ...(measured.opens ? [{ key: 'opens_unique', label: t('report.chart.columnOpens') }] : []),
+    ...(measured.clicks ? [{ key: 'clicks_unique', label: t('report.chart.columnClicks') }] : []),
+  ];
+
+  const omitted = [
+    measured.delivered ? null : 'report.chart.omittedDelivered',
+    measured.opens ? null : 'report.chart.omittedOpens',
+    measured.clicks ? null : 'report.chart.omittedClicks',
+  ].filter((key): key is string => key !== null);
 
   return (
     <section
@@ -80,12 +107,7 @@ export function ProgressChart({
         formatPeriod={(iso) =>
           format.dateTime(new Date(iso), { dateStyle: 'short', timeStyle: 'short' })
         }
-        series={[
-          { key: 'sent', label: t('report.chart.columnSent') },
-          { key: 'delivered', label: t('report.chart.columnDelivered') },
-          { key: 'opens_unique', label: t('report.chart.columnOpens') },
-          { key: 'clicks_unique', label: t('report.chart.columnClicks') },
-        ]}
+        series={series}
         points={points.map((point) => ({
           at: point.at,
           values: {
@@ -96,6 +118,11 @@ export function ProgressChart({
           },
         }))}
       />
+      {omitted.map((key) => (
+        <p key={key} data-testid="chart-omitted-series" className="mt-2 text-xs text-text-muted">
+          {t(key)}
+        </p>
+      ))}
     </section>
   );
 }

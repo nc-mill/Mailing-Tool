@@ -19,7 +19,23 @@ export type ExtractionSnapshot = {
  * obrazovka nesmí být závislá na živém spojení pro základní funkci, a stav
  * s uplynulým časem je všechno, co obrazovka 8.5.4 potřebuje.
  */
-export function useExtractionPoll(extractionId: string | null): {
+export function useExtractionPoll(
+  extractionId: string | null,
+  /**
+   * Projekt, pod kterým se dotaz posílá.
+   *
+   * POVINNÝ, i když má výchozí hodnotu jen kvůli starším voláním v testech.
+   * Autentizační middleware bere projekt z hlavičky `X-Workspace-Id`, protože
+   * `/api/v1/**` žádný slug v cestě nemá. Bez ní se dotaz k obsluze nedostane
+   * a vrátí 404 s `workspace_id: null` v logu.
+   *
+   * NAMĚŘENO 4. 8. 2026: založení běhu odpovědělo 202, běh v databázi doběhl do
+   * stavu `succeeded` za čtyři sekundy, a obrazovka přesto po třiceti sekundách
+   * napsala „Web neodpověděl včas", protože KAŽDÝ dotaz na stav vracel 404.
+   * Chyběla tady jedna hlavička; POST ji posílal celou dobu.
+   */
+  workspaceId: string | null = null,
+): {
   snapshot: ExtractionSnapshot | null;
   elapsedMs: number;
   timedOut: boolean;
@@ -42,7 +58,10 @@ export function useExtractionPoll(extractionId: string | null): {
       setElapsedMs(Date.now() - startedAt.current);
       try {
         const response = await fetch(`/api/v1/brand/extractions/${extractionId}`, {
-          headers: { accept: 'application/json' },
+          headers: {
+            accept: 'application/json',
+            ...(workspaceId === null ? {} : { 'X-Workspace-Id': workspaceId }),
+          },
         });
         if (response.ok) {
           const data = (await response.json()) as ExtractionSnapshot;
@@ -66,7 +85,7 @@ export function useExtractionPoll(extractionId: string | null): {
       cancelled = true;
       if (timer !== undefined) clearTimeout(timer);
     };
-  }, [extractionId]);
+  }, [extractionId, workspaceId]);
 
   return { snapshot, elapsedMs, timedOut };
 }

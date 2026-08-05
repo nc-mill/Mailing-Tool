@@ -42,24 +42,28 @@ describe('IssueBar', () => {
     expect(screen.queryByRole('region', { name: /Nálezy/ })).toBeNull();
   });
 
-  it('ukazuje počty chyb a varování v ICU tvaru včetně nuly', () => {
+  it('ukazuje počet chyb v ICU tvaru', () => {
     setup([{ code: 'liquid_unknown_field', severity: 'error', blockId: 'b_t1' }]);
     expect(screen.getByText(/1 chyba/)).toBeInTheDocument();
-    expect(screen.getByText(/žádné varování/i)).toBeInTheDocument();
+  });
+
+  it('o varováních v souhrnu nemluví, ani slovem „žádné"', () => {
+    setup([{ code: 'liquid_unknown_field', severity: 'error', blockId: 'b_t1' }]);
+    expect(screen.queryByText(/varování/i)).toBeNull();
   });
 
   it('známý kód přeloží z katalogu, i když klient žádnou větu nedostal', () => {
     // Klientská validace vrací kód a parametry, ne hotovou větu. Kdyby se
-    // spoléhalo na `message`, ukázal by se uživateli holý `content_low_contrast`.
-    setup([{ code: 'content_low_contrast', severity: 'warning', blockId: 'b_t1' }]);
-    expect(screen.getByText(/špatně čitelný/)).toBeInTheDocument();
+    // spoléhalo na `message`, ukázal by se uživateli holý kód.
+    setup([{ code: 'content_missing_unsubscribe', severity: 'error', blockId: 'b_t1' }]);
+    expect(screen.getByText(/odkaz na odhlášení/)).toBeInTheDocument();
   });
 
   it('kliknutí na nález vybere blok, kterého se týká', async () => {
     const store = setup([
-      { code: 'content_image_missing_alt', severity: 'warning', blockId: 'b_t1' },
+      { code: 'content_missing_unsubscribe', severity: 'error', blockId: 'b_t1' },
     ]);
-    await userEvent.click(screen.getByRole('button', { name: /Obrázek nemá popis/ }));
+    await userEvent.click(screen.getByRole('button', { name: /odkaz na odhlášení/ }));
     expect(store.getState().selectedId).toBe('b_t1');
   });
 
@@ -71,5 +75,63 @@ describe('IssueBar', () => {
   it('u neznámého kódu bez detailu zobrazí aspoň kód, ne prázdný řádek', () => {
     setup([{ code: 'teapot', severity: 'error' }]);
     expect(screen.getByText('teapot')).toBeInTheDocument();
+  });
+
+  /*
+   * Rozhodnutí zadavatele: „Chyby tam nech, ale upozornění nechci zobrazovat
+   * žádné." Hlavní filtr sedí na vstupu do stavu (`use-validation.ts`), tyhle
+   * testy hlídají pojistku v samotném pruhu, protože komponentu jde vykreslit
+   * i s ručně dodanými nálezy, přesně jak to dělá `setup` nad nimi.
+   */
+  it('varování se nevykreslí vůbec, ani jako řádek', () => {
+    setup([{ code: 'content_low_contrast', severity: 'warning', blockId: 'b_t1' }]);
+    expect(screen.queryByRole('region', { name: /Nálezy/ })).toBeNull();
+    expect(screen.queryByText(/špatně čitelný/)).toBeNull();
+  });
+
+  it('mezi samými varováními nezůstane ani odkaz Přejít na blok', () => {
+    setup([
+      { code: 'content_low_contrast', severity: 'warning', blockId: 'b_t1' },
+      { code: 'content_image_missing_alt', severity: 'warning', blockId: 'b_t1' },
+    ]);
+    expect(screen.queryByText(/Přejít na blok/)).toBeNull();
+  });
+
+  it('vedle chyby se varování nezapočítá do počtu ani nevypíše', () => {
+    setup([
+      { code: 'liquid_unknown_field', severity: 'error', blockId: 'b_t1' },
+      { code: 'content_low_contrast', severity: 'warning', blockId: 'b_t1' },
+      { code: 'content_image_missing_alt', severity: 'warning', blockId: 'b_t1' },
+    ]);
+    // Jedna chyba, ne „1 chyba, 2 varování".
+    expect(screen.getByText(/1 chyba/)).toBeInTheDocument();
+    expect(screen.queryByText(/špatně čitelný/)).toBeNull();
+    expect(screen.queryByText(/Obrázek nemá popis/)).toBeNull();
+  });
+
+  it('nález typu info se taky nevykreslí, protože chyba to není', () => {
+    setup([{ code: 'teapot', severity: 'info', message: 'Jen tak pro informaci.' }]);
+    expect(screen.queryByRole('region', { name: /Nálezy/ })).toBeNull();
+  });
+
+  it('zastaralý nález ze serveru se ukáže, ale řekne o sobě pravdu', () => {
+    setup([
+      {
+        code: 'precheck_app_url_not_public',
+        severity: 'error',
+        message: 'Adresa aplikace není veřejná.',
+        stale: true,
+      },
+    ]);
+
+    // Neschovává se: chyba ze serveru se nesmí ztratit jen proto, že uživatel
+    // něco upravil. Jen se u ní řekne, že o té úpravě ještě neví.
+    expect(screen.getByText(/Adresa aplikace není veřejná/)).toBeInTheDocument();
+    expect(screen.getByTestId('issue-stale')).toHaveTextContent(/po uložení se přepočítá/);
+  });
+
+  it('čerstvý nález popisek o zastaralosti nemá', () => {
+    setup([{ code: 'liquid_unknown_field', severity: 'error', blockId: 'b_t1' }]);
+    expect(screen.queryByTestId('issue-stale')).toBeNull();
   });
 });

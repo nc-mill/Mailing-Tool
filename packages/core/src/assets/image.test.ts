@@ -9,7 +9,17 @@ import { detectFormat } from './detect';
 import { AssetProcessingError, normalizeUpload, renderVariants } from './image';
 import { generatePublicId, PUBLIC_ID_PATTERN } from './public-id';
 import { parseVariantFile, safeDownloadFilename } from './public';
-import { MAX_STORED_DIMENSION, variantsFor } from './registry';
+import {
+  EXTENSION_BY_MIME,
+  MAX_STORED_DIMENSION,
+  MIME_BY_EXTENSION,
+  NEVER_STORED_MIME_TYPES,
+  STORED_MIME_TYPES,
+  UPLOAD_ACCEPT_ATTRIBUTE,
+  UPLOAD_ACCEPT_MIME_TYPES,
+  isStoredMimeType,
+  variantsFor,
+} from './registry';
 import { assetStorageKey, createFileAssetStorage } from './storage';
 import { publicAssetUrl, signAssetPath, verifyAssetSignature } from './urls';
 
@@ -144,6 +154,107 @@ describe('normalizace nahraného obrázku', () => {
 
     const normalized = await normalizeUpload(withExif);
     expect((await sharp(normalized.data).metadata()).exif).toBeUndefined();
+  });
+});
+
+/**
+ * Brána na formát výstupu.
+ *
+ * Ověřuje se SKUTEČNÝ OBSAH BAJTŮ přes `sharp().metadata().format`, ne to, co
+ * o sobě tvrdí `mimeType` v návratové hodnotě. Kdyby se porovnávalo jen tvrzení
+ * proti tvrzení, test by prošel i tehdy, kdyby se na disk ukládal WebP
+ * označený jako JPEG, což je přesně ta vada, kterou má chytit: veřejná trasa
+ * hlavičku bere z databáze, takže by poštovní klient dostal `Content-Type:
+ * image/jpeg` a v těle WebP.
+ */
+describe('do e-mailu nikdy WebP ani AVIF', () => {
+  /** Skutečný formát uložených bajtů, přečtený z obsahu. */
+  async function actualFormat(data: Buffer): Promise<string> {
+    return (await sharp(data).metadata()).format ?? 'neznámý';
+  }
+
+  const EMAIL_SAFE = ['jpeg', 'png', 'gif'];
+
+  async function encoded(format: 'webp' | 'avif', alpha: boolean): Promise<Buffer> {
+    const image = sharp({
+      create: {
+        width: 40,
+        height: 30,
+        channels: alpha ? 4 : 3,
+        background: alpha ? { r: 7, g: 8, b: 9, alpha: 0.4 } : { r: 7, g: 8, b: 9 },
+      },
+    });
+    return format === 'webp' ? image.webp().toBuffer() : image.avif().toBuffer();
+  }
+
+  it('uložený výčet typů neobsahuje jediný moderní formát', () => {
+    for (const banned of NEVER_STORED_MIME_TYPES) {
+      expect(STORED_MIME_TYPES as readonly string[]).not.toContain(banned);
+      expect(isStoredMimeType(banned)).toBe(false);
+    }
+    expect(STORED_MIME_TYPES).toEqual(['image/jpeg', 'image/png', 'image/gif']);
+  });
+
+  it('adresa obrázku nemá příponu pro WebP ani AVIF v žádném směru převodu', () => {
+    expect(Object.values(EXTENSION_BY_MIME)).toEqual(['jpg', 'png', 'gif']);
+    for (const extension of ['webp', 'avif', 'heic', 'tif', 'bmp', 'svg', 'jxl']) {
+      expect(MIME_BY_EXTENSION[extension]).toBeUndefined();
+    }
+  });
+
+  it.each([
+    ['webp', false],
+    ['webp', true],
+    ['avif', false],
+    ['avif', true],
+  ] as const)(
+    '%s (alfa %s) se uloží jako JPEG nebo PNG, nikdy jako vstupní formát',
+    async (format, alpha) => {
+      const normalized = await normalizeUpload(await encoded(format, alpha));
+
+      expect(normalized.mimeType).toBe(alpha ? 'image/png' : 'image/jpeg');
+      // Klíčové tvrzení: bajty na disku opravdu NEJSOU WebP ani AVIF.
+      expect(await actualFormat(normalized.data)).toBe(alpha ? 'png' : 'jpeg');
+      expect(await actualFormat(normalized.data)).not.toBe(format);
+    },
+  );
+
+  it('ani jedna odvozená velikost nevybočí z JPEG, PNG a GIF', async () => {
+    for (const source of [
+      await jpeg(1600, 900),
+      await png(1600, 900),
+      await png(1600, 900, true),
+      await encoded('webp', false),
+      await encoded('avif', true),
+    ]) {
+      const normalized = await normalizeUpload(source);
+      expect(EMAIL_SAFE).toContain(await actualFormat(normalized.data));
+
+      for (const variant of await renderVariants(normalized)) {
+        expect(STORED_MIME_TYPES as readonly string[]).toContain(variant.mimeType);
+        expect(EMAIL_SAFE).toContain(await actualFormat(variant.data));
+        // Varianta si drží typ originálu, takže se s ním nesmí rozejít ani tady.
+        expect(variant.mimeType).toBe(normalized.mimeType);
+      }
+    }
+  });
+
+  it('SVG skončí jako PNG, ne jako vektor na veřejné adrese', async () => {
+    const normalized = await normalizeUpload(
+      Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"/>', 'utf8'),
+    );
+    expect(normalized.mimeType).toBe('image/png');
+    expect(await actualFormat(normalized.data)).toBe('png');
+  });
+
+  it('vstupní seznam pro dialog nenabízí nic, co server odmítne', () => {
+    // `image/*` by v dialogu operačního systému nabídlo HEIC, TIFF i BMP.
+    expect(UPLOAD_ACCEPT_ATTRIBUTE).not.toContain('image/*');
+    for (const type of UPLOAD_ACCEPT_MIME_TYPES) {
+      expect(UPLOAD_ACCEPT_ATTRIBUTE).toContain(type);
+    }
+    // HEIC se nenabízí, protože `sharp` ho bez libheif nepřečte.
+    expect(UPLOAD_ACCEPT_ATTRIBUTE).not.toContain('heic');
   });
 });
 

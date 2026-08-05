@@ -81,7 +81,14 @@
     },
     "event": "Did an action",
     "unindexed": "Searching by this field is slower. On a large database the calculation can take longer.",
-    "unindexedBadge": "field without an index"
+    "unindexedBadge": "field without an index",
+    "engagementInCampaign": {
+      "sent": "Received {campaign}",
+      "delivered": "{campaign} was delivered to them",
+      "opened": "Opened {campaign}",
+      "clicked": "Clicked in {campaign}",
+      "bounced": "{campaign} bounced for them"
+    }
   },
   "operators": {
     "eq": "is",
@@ -240,5 +247,12 @@
     "gateLink": "Show these people",
     "willSend": "The campaign will go out to {count, plural, =0 {nobody} one {# person} few {# people} many {# people} other {# people}}"
   },
-  "emptyTitle": "There are no segments yet"
+  "emptyTitle": "There are no segments yet",
+  "fromCampaign": {
+    "clickedName": "Clicked in {campaign}",
+    "notOpenedName": "Did not open {campaign}",
+    "unknownCampaign": "untitled",
+    "prefilledNotice": "We prefilled the condition from the campaign report. Check it, adjust it if you like, and save.",
+    "notOpenedNotice": "People who clicked in the campaign are not counted as non-openers: a click proves they saw the message, which is why the report counts it as an open."
+  }
 }

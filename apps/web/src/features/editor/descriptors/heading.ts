@@ -1,4 +1,4 @@
-import { ALIGN_OPTIONS, COMMON_DEFAULTS, contentGroups, FONT_STACK_OPTIONS } from './common';
+import { ALIGN_OPTIONS, COMMON_DEFAULTS, contentGroups } from './common';
 import type { BlockDescriptor } from './types';
 
 export const HEADING_DESCRIPTOR: BlockDescriptor = {
@@ -34,12 +34,18 @@ export const HEADING_DESCRIPTOR: BlockDescriptor = {
       props: [
         { kind: 'color', key: 'color', label: 'prop.color', allowThemeRef: true },
         { kind: 'select', key: 'align', label: 'prop.align', options: ALIGN_OPTIONS },
-        {
-          kind: 'select',
-          key: 'fontFamily',
-          label: 'prop.fontFamily',
-          options: FONT_STACK_OPTIONS,
-        },
+        /*
+         * PÍSMO SE TU UŽ NENABÍZÍ, protože emitter vlastnost bloku nepoužívá:
+         *
+         *   fontFamily: props.fontFamily ? theme.fonts.heading : theme.fonts.heading
+         *
+         * Obě větve podmínky jsou totožné, takže nadpis dostane vždy písmo
+         * z motivu, ať uživatel v panelu vybere cokoliv. Rozbalovátko s devíti
+         * písmy tedy devětkrát nedělalo nic.
+         *
+         * Písmo se nastavuje v panelu motivu (nadpisy zvlášť, text zvlášť) a to
+         * funguje. Vlastnost bloku zůstává ve schématu i v uložených šablonách.
+         */
         {
           kind: 'number',
           key: 'fontSize',

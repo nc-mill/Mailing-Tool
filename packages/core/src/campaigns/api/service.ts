@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { CONTENT_BLOCK_TYPES } from '@mlain/emails/document/content-stats';
 import { loadConfig } from '../../config/index';
 import { ApiError } from '../../errors/api-error';
 import { queue } from '../../queues/registry';
@@ -35,6 +36,8 @@ export type CampaignRowFull = {
   audience_built_at: string | null;
   provider_id: string | null;
   sender_domain_id: string | null;
+  /** Předvolba odesílatele, ze které se pět polí výš předvyplnilo. */
+  sender_identity_id: string | null;
   unsubscribe_list_id: string | null;
   track_opens: boolean;
   track_clicks: boolean;
@@ -45,6 +48,25 @@ export type CampaignRowFull = {
   pause_reason: unknown;
   compiled_html: string | null;
   compiled_fields: string[];
+  /**
+   * Má kampaň vlastní dokument? Odpovědi API se posílá jen tenhle příznak, ne celý
+   * dokument: obrazovka nastavení podle něj pozná, že převzetí jiné šablony obsah
+   * PŘEPÍŠE, a stihne se zeptat. Dokument sám má stovky kilobajtů a nikdo ho tam nečte.
+   *
+   * NEŘÍKÁ NIC O TOM, JESTLI V DOKUMENTU NĚCO JE. Přesně na tomhle rozdílu vada
+   * stála: kampaň s dokumentem, ve kterém nebylo nic než patička, měla `design`
+   * vyplněný, takže se tvářila jako hotová a odešla prázdná.
+   */
+  has_design: boolean;
+  /**
+   * Počet obsahových bloků v celé hloubce dokumentu. Nula znamená e-mail, ve kterém
+   * není nic než patička, rozvržení a výplň, tedy prázdný e-mail.
+   *
+   * Počítá se v SQL, aby se kvůli jednomu číslu netahal celý dokument (u výpisu by
+   * to bylo sto dokumentů na jeden požadavek). Seznam typů se skládá z konstanty
+   * `CONTENT_BLOCK_TYPES`, takže druhá kopie pravidla nevzniká.
+   */
+  content_block_count: number;
   total_count: number;
   sent_count: number;
   failed_count: number;
@@ -59,12 +81,35 @@ export type CampaignRowFull = {
   updated_at: string;
 };
 
+/**
+ * Počet obsahových bloků dokumentu, spočítaný v databázi.
+ *
+ * `jsonb_path_query(design, '$.blocks.**')` projde dokument do libovolné hloubky,
+ * takže se započítá i to, co leží ve sloupcích nebo v cyklu. Filtr na
+ * `jsonb_typeof(...) = 'object'` je tam proto, že rekurzivní průchod vrací i pole
+ * a skaláry, na kterých by `->> 'type'` nedávalo smysl.
+ *
+ * Seznam typů se skládá z `CONTENT_BLOCK_TYPES`, tedy z TÉŽE konstanty, kterou
+ * používá `countContentBlocks` v TypeScriptu. Kdyby se ten seznam napsal do SQL
+ * ručně, rozešel by se a rozdíl by se projevil tím, že obrazovka kampaně tvrdí
+ * něco jiného než kontrola před odesláním. Hodnoty jsou vlastní konstanty kódu,
+ * ne vstup uživatele, takže vložení do dotazu je bezpečné.
+ */
+const CONTENT_BLOCK_COUNT_SQL = `(
+    SELECT count(*)::int FROM jsonb_path_query(design, '$.blocks.**') AS block
+     WHERE jsonb_typeof(block) = 'object'
+       AND block ->> 'type' IN (${CONTENT_BLOCK_TYPES.map((type) => `'${type}'`).join(', ')})
+  )`;
+
 const COLUMNS = `id, workspace_id, name, status, subject, preheader, from_name, from_email,
   reply_to, template_id, audience, audience_size, audience_breakdown, audience_built_at,
-  provider_id, sender_domain_id, unsubscribe_list_id, track_opens, track_clicks, revision,
+  provider_id, sender_domain_id, sender_identity_id, unsubscribe_list_id,
+  track_opens, track_clicks, revision,
   release_at, scheduled_at, schedule_timezone, pause_reason, compiled_html, compiled_fields,
   total_count, sent_count, failed_count, skipped_count, delivered_count, bounce_count,
-  complaint_count, started_at, finished_at, paused_at, created_at, updated_at`;
+  complaint_count, started_at, finished_at, paused_at, created_at, updated_at,
+  (design IS NOT NULL) AS has_design,
+  ${CONTENT_BLOCK_COUNT_SQL} AS content_block_count`;
 
 export function counters(row: CampaignRowFull): CampaignCounters {
   return withPending({
@@ -133,6 +178,7 @@ export type CreateCampaignInput = {
   audience?: unknown;
   provider_id?: string | null | undefined;
   sender_domain_id?: string | null | undefined;
+  sender_identity_id?: string | null | undefined;
   unsubscribe_list_id?: string | null | undefined;
   createdBy?: string | null | undefined;
 };
@@ -146,10 +192,11 @@ export async function createCampaign(
       rawSql(
         `INSERT INTO campaigns
            (workspace_id, name, subject, preheader, from_name, from_email, reply_to,
-            template_id, audience, provider_id, sender_domain_id, unsubscribe_list_id, created_by)
+            template_id, audience, provider_id, sender_domain_id, unsubscribe_list_id, created_by,
+            sender_identity_id)
          VALUES ($1, $2, COALESCE($3,''), COALESCE($4,''), COALESCE($5,''), lower(COALESCE($6,'')),
                  $7, $8, COALESCE($9::jsonb, '{"include":{"lists":[],"segments":[]},"exclude":{"lists":[],"segments":[]}}'::jsonb),
-                 $10, $11, $12, $13)
+                 $10, $11, $12, $13, $14)
          RETURNING ${COLUMNS}`,
         [
           ctx.workspaceId,
@@ -165,6 +212,7 @@ export async function createCampaign(
           input.sender_domain_id ?? null,
           input.unsubscribe_list_id ?? null,
           input.createdBy ?? null,
+          input.sender_identity_id ?? null,
         ],
       ),
     );
@@ -184,6 +232,7 @@ const PATCHABLE: Record<string, string> = {
   audience: 'audience',
   provider_id: 'provider_id',
   sender_domain_id: 'sender_domain_id',
+  sender_identity_id: 'sender_identity_id',
   unsubscribe_list_id: 'unsubscribe_list_id',
   track_opens: 'track_opens',
   track_clicks: 'track_clicks',
@@ -210,6 +259,30 @@ const REVISION_BUMPING = new Set([
   'unsubscribe_list_id',
 ]);
 
+/**
+ * První vyplnění obsahu kampaně z šablony. NIKDY přepsání.
+ *
+ * Obsah kampaně žije v `campaigns.design`, `template_id` je jen záznam o původu.
+ * `design` sám o sobě zapisovatelný není (není v `PatchCampaignRequest` ani
+ * v `PATCHABLE`) a je to schválně: obsah je jediná věc, o kterou uživatel může
+ * přijít nenávratně, takže se do něj nesahá klíčem v částečném zápisu.
+ *
+ * Tenhle výraz proto plní `design` jen tehdy, když je PRÁZDNÝ. Kdyby uměl
+ * přepisovat, ztratila by se rozdělaná práce jediným uložením nastavení, protože
+ * formulář posílá `template_id` při každém uložení. Přepis vlastní výhradně
+ * `POST /campaigns/{id}/apply-template`, kde se na něj UI stihne zeptat.
+ *
+ * Podmínka čte STARÉ hodnoty sloupců: v `UPDATE` se pravá strana všech přiřazení
+ * vyhodnocuje nad řádkem před změnou, takže `design IS NULL` platí i tehdy, když
+ * tentýž příkaz nastavuje `template_id`.
+ */
+const FILL_TEMPLATE_DESIGN = `design = CASE
+    WHEN %TID% IS NOT NULL AND design IS NULL
+      THEN (SELECT t.design FROM templates t
+             WHERE t.id = %TID% AND t.workspace_id = $2 AND t.deleted_at IS NULL)
+    ELSE design
+  END`;
+
 export async function updateCampaign(
   ctx: WorkspaceContext,
   id: string,
@@ -227,6 +300,11 @@ export async function updateCampaign(
   });
   const values = keys.map((k) => (k === 'audience' ? JSON.stringify(patch[k]) : patch[k]));
 
+  const templateIndex = keys.indexOf('template_id');
+  if (templateIndex >= 0) {
+    assignments.push(FILL_TEMPLATE_DESIGN.replaceAll('%TID%', `$${templateIndex + 3}::uuid`));
+  }
+
   return withWorkspace(ctx, async (tx) => {
     const r = await tx.execute<CampaignRowFull>(
       rawSql(
@@ -243,7 +321,38 @@ export async function updateCampaign(
   });
 }
 
-/** Smazat jde jen rozepsaná kampaň. Odeslaná je doklad o tom, co komu odešlo. */
+/**
+ * Stavy, ze kterých se kampaň smí smazat. Je to TÝŽ výčet, jaký pouští `PATCH`
+ * k úpravám, a schválně: kampaň, kterou jde ještě přepsat, se ještě nikomu
+ * neodeslala, takže se s ní nemaže žádná historie.
+ *
+ * `schedule_missed` je propásnutý plán, tedy kampaň, která nikdy neodešla.
+ * Dokud tady chyběl, nešla taková kampaň z rozhraní smazat vůbec: `unschedule`
+ * na ni nesedí (žádný plán už neběží) a jiná cesta pryč neexistovala.
+ *
+ * Odeslaná, běžící ani naplánovaná kampaň tu být nesmí. Odeslaná je doklad
+ * o tom, co komu odešlo, běžící by se mazala pod rukama odesílacímu procesu
+ * a naplánovaná musí nejdřív přes `unschedule`, aby uživatel viděl, že rušením
+ * plánu nic neodešle.
+ */
+const DELETABLE_STATUSES: readonly string[] = ['draft', 'schedule_missed'];
+
+/**
+ * Měkké smazání kampaně, tedy přesun do koše. Řádek zůstává, jen ho všechna
+ * čtení přeskočí (`deleted_at IS NULL` je v každém dotazu domény).
+ *
+ * ODESÍLACÍ DOMÉNA A ÚČET SE ODPOJUJÍ. `campaigns.sender_domain_id`
+ * i `campaigns.provider_id` mají cizí klíč `ON DELETE RESTRICT` a ten se dívá
+ * na existenci řádku, ne na `deleted_at`. Kampaň v koši by proto doménu držela
+ * napořád a `DELETE /domains/{id}` by hlásil `domain_has_campaigns` s radou
+ * kampaň smazat natrvalo, jenže trvalé mazání kampaní API nezná. Byla by to
+ * slepá ulička. Odpojit se to smí bez ztráty: mazat jde jen kampaň, která
+ * nikdy neodešla, takže v těch dvou sloupcích není žádný doklad o minulosti.
+ *
+ * Cizí klíče MÍŘÍCÍ na kampaň se tímhle netrápí. Měkké smazání je `UPDATE`,
+ * takže se `ON DELETE` pravidla dětských tabulek vůbec nevyhodnocují a chyba
+ * 23503 tu vzniknout nemůže.
+ */
 export async function softDeleteCampaign(
   ctx: WorkspaceContext,
   id: string,
@@ -251,9 +360,14 @@ export async function softDeleteCampaign(
   return withWorkspace(ctx, async (tx) => {
     const r = await tx.execute(
       rawSql(
-        `UPDATE campaigns SET deleted_at = now(), updated_at = now()
-          WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND status = 'draft'`,
-        [id, ctx.workspaceId],
+        `UPDATE campaigns
+            SET deleted_at = now(),
+                updated_at = now(),
+                sender_domain_id = NULL,
+                provider_id = NULL
+          WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
+            AND status = ANY($3::text[])`,
+        [id, ctx.workspaceId, DELETABLE_STATUSES],
       ),
     );
     return { deleted: (r.rowCount ?? 0) > 0 };
@@ -275,10 +389,11 @@ export async function duplicateCampaign(
         `INSERT INTO campaigns
            (workspace_id, name, status, subject, preheader, from_name, from_email, reply_to,
             template_id, design, audience, provider_id, sender_domain_id, unsubscribe_list_id,
-            track_opens, track_clicks, created_by)
+            track_opens, track_clicks, created_by, sender_identity_id)
          SELECT workspace_id, left(name || ' (kopie)', 200), 'draft', subject, preheader,
                 from_name, from_email, reply_to, template_id, design, audience, provider_id,
-                sender_domain_id, unsubscribe_list_id, track_opens, track_clicks, created_by
+                sender_domain_id, unsubscribe_list_id, track_opens, track_clicks, created_by,
+                sender_identity_id
            FROM campaigns
           WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND kind = 'campaign'
          RETURNING ${COLUMNS}`,
@@ -330,26 +445,12 @@ export async function listCampaignMessages(
   });
 }
 
-/**
- * Nejisté odeslání je u SES běžný důsledek pádu, ne anomálie (rozhodnutí D16),
- * takže se počítá zvlášť a v UI stojí mimo selhání.
+/*
+ * Nejisté odeslání (rozhodnutí D16) mělo dřív vlastní funkci `ambiguousCount`
+ * s vlastním dotazem. Přestěhovalo se do `repo/live-progress.ts`, kde se počítá
+ * jedním průchodem spolu se zbytkem průběhu: druhý dotaz nad toutéž tabulkou
+ * ve stejném požadavku byl jen dražší způsob, jak dostat totéž číslo.
  */
-export async function ambiguousCount(ctx: WorkspaceContext, campaignId: string): Promise<number> {
-  return withWorkspace(ctx, async (tx) => {
-    const r = await tx.execute<{ n: number }>(
-      rawSql(
-        `SELECT count(*)::int AS n
-           FROM messages m
-           JOIN campaigns c ON c.id = m.campaign_id AND c.workspace_id = m.workspace_id
-          WHERE m.workspace_id = $1 AND m.campaign_id = $2
-            AND m.created_at = c.audience_built_at
-            AND m.error_code = 'ambiguous_dispatch'`,
-        [ctx.workspaceId, campaignId],
-      ),
-    );
-    return r.rows[0]?.n ?? 0;
-  });
-}
 
 export type WorkspaceCampaignSettings = {
   undo_window_seconds?: number;

@@ -81,7 +81,14 @@
     },
     "event": "Provedl akci",
     "unindexed": "Podle tohohle pole se hledá pomaleji. U velké databáze může výpočet trvat déle.",
-    "unindexedBadge": "neindexované pole"
+    "unindexedBadge": "neindexované pole",
+    "engagementInCampaign": {
+      "sent": "Dostal kampaň {campaign}",
+      "delivered": "Doručila se mu kampaň {campaign}",
+      "opened": "Otevřel kampaň {campaign}",
+      "clicked": "Klikl v kampani {campaign}",
+      "bounced": "Nedoručila se mu kampaň {campaign}"
+    }
   },
   "operators": {
     "eq": "je",
@@ -240,5 +247,12 @@
     "gateLink": "Zobrazit tyhle lidi",
     "willSend": "Kampaň se odešle {count, plural, =0 {nikomu} one {# člověku} few {# lidem} many {# člověku} other {# lidem}}"
   },
-  "emptyTitle": "Zatím tu nejsou žádné segmenty"
+  "emptyTitle": "Zatím tu nejsou žádné segmenty",
+  "fromCampaign": {
+    "clickedName": "Klikli v kampani {campaign}",
+    "notOpenedName": "Neotevřeli kampaň {campaign}",
+    "unknownCampaign": "bez názvu",
+    "prefilledNotice": "Podmínku jsme předvyplnili z reportu kampaně. Zkontrolujte ji, případně upravte, a uložte.",
+    "notOpenedNotice": "Mezi neotevřevší nepočítáme ty, kdo v kampani klikli: proklik je důkaz, že zprávu viděli, a report je proto počítá mezi otevření."
+  }
 }

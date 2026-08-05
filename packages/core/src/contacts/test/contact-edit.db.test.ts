@@ -147,7 +147,7 @@ describe('replaceContact, úprava kontaktu z formuláře', () => {
  * po stížnosti.
  */
 describe('ruční založení kontaktu', () => {
-  it('vzniká jako unconfirmed, ne active', async () => {
+  it('bez zvoleného stavu vzniká jako unconfirmed, ne active', async () => {
     const ctx = await testContext();
     const { contact, created } = await upsertContactFromApi(ctx, {
       email: 'rucne@example.cz',
@@ -168,6 +168,117 @@ describe('ruční založení kontaktu', () => {
       source: 'manual',
     });
     expect(contact.source).toBe('manual');
+  });
+
+  /**
+   * VOLBA SPRÁVCE. Zadavatel: „Když přidávám ručně kontakt, tak nemusí být ověřený.
+   * Je na mě jako správci, jestli mám nebo nemám e-maily, které přidávám, ověřené."
+   *
+   * Stav kontaktu a stav přihlášení drží jedna volba a musí dojít až do databáze.
+   * Kdyby se `status` cestou ztratil, odpověď by pořád vypadala v pořádku a rozdíl
+   * by se ukázal až tím, že kontakt nepřijde do kampaně.
+   */
+  it('zvolený stav active dojde až do databáze i do přihlášení', async () => {
+    const ctx = await testContext();
+    const list = await createList(ctx, { name: 'Přihlášení' });
+    const { contact } = await upsertContactFromApi(ctx, {
+      email: 'prihlaseny@example.cz',
+      first_name: 'Petr',
+      source: 'manual',
+      status: 'active',
+      lists: [{ list_id: list.id, status: 'confirmed' }],
+    });
+
+    expect(contact.status).toBe('active');
+    expect((await findByEmail(ctx, 'prihlaseny@example.cz')).status).toBe('active');
+
+    const { rows } = await asMigrator().query<{ status: string; confirmed_at: Date | null }>(
+      `SELECT status, confirmed_at FROM list_subscriptions WHERE contact_id = $1 AND list_id = $2`,
+      [contact.id, list.id],
+    );
+    expect(rows[0]?.status).toBe('confirmed');
+    // Potvrzený odběr bez data potvrzení by byl nedoložitelný a doklad je tu smysl věci.
+    expect(rows[0]?.confirmed_at).not.toBeNull();
+  });
+
+  it('zvolený stav unconfirmed nechá kontakt i přihlášení nepotvrzené', async () => {
+    const ctx = await testContext();
+    const list = await createList(ctx, { name: 'Nepotvrzení' });
+    const { contact } = await upsertContactFromApi(ctx, {
+      email: 'nepotvrzeny@example.cz',
+      first_name: 'Petr',
+      source: 'manual',
+      status: 'unconfirmed',
+      lists: [{ list_id: list.id, status: 'pending' }],
+    });
+
+    expect(contact.status).toBe('unconfirmed');
+    const { rows } = await asMigrator().query<{ status: string }>(
+      `SELECT status FROM list_subscriptions WHERE contact_id = $1 AND list_id = $2`,
+      [contact.id, list.id],
+    );
+    expect(rows[0]?.status).toBe('pending');
+  });
+
+  /**
+   * Souhlas se zapisuje ve stejném tvaru jako u importu ze souboru. Zdroj je `admin`,
+   * ne `api`: `ck_consents__source` hodnotu `manual` nezná a „přes API" a „správce to
+   * odklikal" jsou dvě různá tvrzení o tom, kdo za souhlas ručí.
+   *
+   * NÁLEZ, KTERÝ TENHLE TEST HLÍDÁ: `evidence` se z těla požadavku dřív vůbec
+   * nepředávala, takže se doklad tiše zahodil a v odpovědi byl souhlas „zapsaný".
+   */
+  it('zapíše souhlas se zdrojem admin a s prohlášením v evidenci', async () => {
+    const ctx = await testContext();
+    const { contact } = await upsertContactFromApi(ctx, {
+      email: 'souhlas@example.cz',
+      first_name: 'Petr',
+      source: 'manual',
+      status: 'active',
+      consent: [
+        {
+          purpose: 'email_marketing',
+          status: 'granted',
+          legal_basis: 'consent',
+          evidence: { declaration: true },
+        },
+      ],
+    });
+
+    const { rows } = await asMigrator().query<{
+      source: string;
+      legal_basis: string;
+      status: string;
+      evidence: { declaration?: boolean };
+    }>(`SELECT source, legal_basis, status, evidence FROM consents WHERE contact_id = $1`, [
+      contact.id,
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.source).toBe('admin');
+    expect(rows[0]?.legal_basis).toBe('consent');
+    expect(rows[0]?.status).toBe('granted');
+    expect(rows[0]?.evidence.declaration).toBe(true);
+  });
+
+  /**
+   * Pravidlo 3 ze 4.1.2 části 2 platí i pro zvolený stav. Bez toho by ruční založení
+   * bylo nejjednodušší způsob, jak vrátit do rozesílky člověka, který se odhlásil.
+   */
+  it('volbou active nejde povýšit odhlášený kontakt', async () => {
+    const ctx = await testContext();
+    await writeContact(ctx, {
+      email: 'odhlaseny@example.cz',
+      status: 'unsubscribed',
+      attributes: {},
+    });
+
+    const { contact } = await upsertContactFromApi(ctx, {
+      email: 'odhlaseny@example.cz',
+      source: 'manual',
+      status: 'active',
+    });
+
+    expect(contact.status).toBe('unsubscribed');
   });
 
   it('přihlášení do seznamu zakládá jako pending, ne confirmed', async () => {

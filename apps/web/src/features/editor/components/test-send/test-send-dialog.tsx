@@ -3,7 +3,6 @@
 import { Button } from '@mlain/ui/components/button';
 import { Dialog, DialogBody, DialogFooter, DialogTitle } from '@mlain/ui/components/dialog';
 import { Input } from '@mlain/ui/components/input';
-import { Switch } from '@mlain/ui/components/switch';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import type { EditorPorts, PreviewData } from '../../ports/types';
@@ -25,7 +24,6 @@ export function TestSendDialog(props: {
 }) {
   const t = useTranslations('editor');
   const [raw, setRaw] = useState('');
-  const [prefix, setPrefix] = useState(true);
   const [problem, setProblem] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
@@ -48,7 +46,6 @@ export function TestSendDialog(props: {
     const result = await props.ports.testSend({
       templateId: props.templateId,
       recipients,
-      addTestPrefix: prefix,
       previewData: props.previewData ?? { type: 'sample', variant: 'default' },
     });
     if (result.ok) {
@@ -82,10 +79,13 @@ export function TestSendDialog(props: {
         <p className="text-xs text-text-muted">
           {t('testSend.recipientsHint', { max: MAX_RECIPIENTS })}
         </p>
-        <label className="flex items-center gap-2 text-sm">
-          <Switch checked={prefix} onCheckedChange={setPrefix} aria-label={t('testSend.prefix')} />
-          {t('testSend.prefix')}
-        </label>
+        {/*
+          Přepínač „přidat předponu [TEST]" tu BYL a je pryč. Rozhodnutí D21
+          plánu P13 prefix ruší: testovací e-mail má dorazit přesně v té podobě,
+          v jaké ho dostanou příjemci. Server ten klíč od té chvíle nepřijímá
+          (`.strict()`), takže ho rozhraní posílalo do 422 a uživatel viděl jen
+          „Test se nepodařilo odeslat".
+        */}
         <p className="text-xs text-text-muted">{t('testSend.explain')}</p>
         {problem ? (
           <p role="alert" className="text-sm text-danger-text">

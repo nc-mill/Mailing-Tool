@@ -17,15 +17,19 @@ import {
   createProviderFromApi,
   deleteDomain,
   domainRecords,
+  emailIdentityStatus,
   listDomains,
+  listProviderIdentities,
   listProviders,
   presentProvider,
   providerRegion,
   refreshQuota,
+  requestProductionAccess,
   secondsSinceLastCheck,
   setMailFrom,
   testProviderConnection,
   updateProviderFromApi,
+  verifyEmailIdentity,
 } from './service';
 import type { ProvidersEnv } from './index';
 
@@ -76,11 +80,21 @@ const CreateProviderRequest = z
   ])
   .openapi('CreateSendingProviderRequest');
 
+/*
+ * Tělo úpravy je záměrně bez `type`: typ účtu se nemění, mění se jeho nastavení.
+ * Tajemství se posílají JEN když je uživatel opravdu vyplnil, protože zpátky se
+ * nikdy nevracejí a prázdná hodnota by znamenala „vymaž mi klíč".
+ *
+ * `region` a `configuration_set_name` doplnil požadavek na opravu údajů: bez nich
+ * se špatně zadaný region nedal spravit jinak než smazáním celého účtu.
+ */
 const PatchProviderRequest = z
   .object({
     name: z.string().min(1).max(120).optional(),
     access_key_id: z.string().min(16).max(128).optional(),
     secret_access_key: z.string().min(16).max(256).optional(),
+    region: z.string().min(1).max(40).optional(),
+    configuration_set_name: z.string().min(1).max(64).optional(),
     host: z.string().min(1).max(255).optional(),
     port: z.number().int().optional(),
     username: z.string().min(1).max(255).optional(),
@@ -177,13 +191,39 @@ const testProviderRoute = createRoute({
     200: {
       description: 'Připojení funguje',
       content: {
-        'application/json': { schema: z.object({ ok: z.literal(true), detail: z.string() }) },
+        'application/json': {
+          schema: z.object({
+            ok: z.literal(true),
+            detail: z.string(),
+            /** Účet v sandboxu je funkční účet s omezením, ne chyba. */
+            sandbox: z.boolean(),
+            /**
+             * Stav účtu PO zápisu, ne před ním. Obrazovka z něj kreslí odznak,
+             * takže odznak a výsledek testu pocházejí z jedné odpovědi a nemají
+             * jak tvrdit opak. Dřív odznak vycházel z odděleně načteného seznamu
+             * a vznikaly snímky s odznakem „Neověřený" vedle věty „Ověřeno".
+             */
+            status: z.string(),
+            status_detail: z.record(z.string(), z.unknown()),
+          }),
+        },
       },
     },
     401: problemResponse('unauthenticated'),
     403: problemResponse('forbidden', 'insufficient_scope'),
     404: problemResponse('not_found'),
-    422: problemResponse('provider_smtp_auth_failed', 'provider_credentials_invalid'),
+    // Výčet je úplný, ne zkrácený: `verifySmtp` vrací všech sedm kódů a dokument,
+    // který zná jen dva z nich, je dokument, podle kterého se klient nezařídí.
+    422: problemResponse(
+      'provider_credentials_invalid',
+      'provider_smtp_auth_failed',
+      'provider_smtp_host_unknown',
+      'provider_smtp_connection_refused',
+      'provider_smtp_tls_invalid',
+      'provider_smtp_timeout',
+      'provider_smtp_starttls_unsupported',
+      'provider_smtp_greeting_invalid',
+    ),
   },
 });
 
@@ -220,6 +260,162 @@ const defaultRoute = createRoute({
     401: problemResponse('unauthenticated'),
     403: problemResponse('forbidden', 'insufficient_scope'),
     404: problemResponse('not_found'),
+  },
+});
+
+/*
+ * OVĚŘENÍ ADRESY ODESÍLATELE PŘÍMO Z NAŠÍ APLIKACE.
+ *
+ * Tři koncové body, které dohromady nahrazují cestu do konzole Amazonu:
+ * seznam toho, co je v regionu ověřené, založení identity pro jednu adresu
+ * a dotaz na její stav. Region je součástí KAŽDÉ odpovědi, protože seznam
+ * identit bez uvedení regionu je tvrzení, které se nedá ověřit.
+ */
+const IdentitySchema = z
+  .object({
+    identity: z.string(),
+    kind: z.enum(['domain', 'email', 'unknown']),
+    verified: z.boolean(),
+    status: z.enum([
+      'verified',
+      'pending',
+      'failed',
+      'temporary_failure',
+      'not_started',
+      'unknown',
+    ]),
+  })
+  .openapi('SesIdentity');
+
+const EmailIdentitySchema = z
+  .object({
+    region: z.string(),
+    email: z.string(),
+    status: z.enum([
+      'verified',
+      'pending',
+      'failed',
+      'temporary_failure',
+      'not_started',
+      'unknown',
+    ]),
+    verified: z.boolean(),
+    already_existed: z.boolean(),
+  })
+  .openapi('SesEmailIdentity');
+
+const listIdentitiesRoute = createRoute({
+  method: 'get',
+  path: '/providers/{id}/identities',
+  tags: [TAG],
+  summary: 'Co má účet ověřené v regionu účtu',
+  security: [{ bearerAuth: ['providers:read'] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: 'Region účtu a identity, které v něm Amazon zná',
+      content: {
+        'application/json': {
+          schema: z.object({ region: z.string(), identities: z.array(IdentitySchema) }),
+        },
+      },
+    },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    422: problemResponse('validation_failed', 'provider_credentials_invalid'),
+  },
+});
+
+const verifyIdentityRoute = createRoute({
+  method: 'post',
+  path: '/providers/{id}/identities',
+  tags: [TAG],
+  summary: 'Ověření adresy odesílatele u Amazonu',
+  security: [{ bearerAuth: ['providers:write'] }],
+  request: {
+    params: IdParam,
+    body: {
+      content: {
+        'application/json': { schema: z.object({ email: z.string().min(6).max(254) }).strict() },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Amazon adresu přijal a poslal na ni potvrzovací e-mail',
+      content: { 'application/json': { schema: EmailIdentitySchema } },
+    },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    409: problemResponse('conflict'),
+    422: problemResponse('validation_failed', 'provider_credentials_invalid'),
+  },
+});
+
+const identityStatusRoute = createRoute({
+  method: 'get',
+  path: '/providers/{id}/identities/{identity}',
+  tags: [TAG],
+  summary: 'Stav jedné ověřované adresy',
+  security: [{ bearerAuth: ['providers:read'] }],
+  request: { params: z.object({ id: Uuid, identity: z.string().min(1).max(254) }) },
+  responses: {
+    200: {
+      description: 'Stav adresy podle Amazonu',
+      content: { 'application/json': { schema: EmailIdentitySchema } },
+    },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    422: problemResponse('validation_failed', 'provider_credentials_invalid'),
+  },
+});
+
+/*
+ * Žádost o produkční přístup. Povinné údaje jsou přesně ty, které chce Amazon
+ * (`MailType` a `WebsiteURL`); zbytek je nepovinný a odpovídá `PutAccountDetails`.
+ * `use_case_description` tady VĚDOMĚ NENÍ: dokumentace ho označuje za deprecated.
+ */
+const productionAccessRoute = createRoute({
+  method: 'post',
+  path: '/providers/{id}/production-access',
+  tags: [TAG],
+  summary: 'Žádost o vyřazení z testovacího režimu u Amazonu',
+  security: [{ bearerAuth: ['providers:write'] }],
+  request: {
+    params: IdParam,
+    body: {
+      content: {
+        'application/json': {
+          schema: z
+            .object({
+              mail_type: z.enum(['MARKETING', 'TRANSACTIONAL']),
+              website_url: z.string().min(1).max(1000),
+              additional_contact_emails: z.array(z.string().min(6).max(254)).max(4).optional(),
+              contact_language: z.enum(['EN', 'JA']).optional(),
+            })
+            .strict(),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Žádost odešla a Amazon ji posuzuje',
+      content: {
+        'application/json': {
+          schema: z.object({ region: z.string(), submitted: z.literal(true) }),
+        },
+      },
+    },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    // 409 znamená „jednu žádost už posuzujeme", ne chybu ve vstupu.
+    409: problemResponse('conflict'),
+    422: problemResponse('validation_failed', 'provider_credentials_invalid'),
   },
 });
 
@@ -490,10 +686,36 @@ export function registerProviderRoutes(app: OpenAPIHono<ProvidersEnv>): void {
     const result = await testProviderConnection(ctx, c.req.valid('param').id);
     if (!result.ok) {
       // Výsledek jde INLINE k formuláři, ne jako oznámení, a nese mapovaný kód,
-      // aby obrazovka mohla poradit konkrétní opravu.
-      throw new ApiError(result.code as never, { params: { detail: result.detail } });
+      // aby obrazovka mohla poradit konkrétní opravu. U SES je registrovaný kód
+      // jen jeden, takže se vedle něj posílá ještě `reason`; bez něj by obrazovka
+      // uměla říct pouze „Amazon to odmítl" a uživatel by nevěděl, co opravit.
+      throw new ApiError(result.code as never, {
+        params: {
+          detail: result.detail,
+          ...(result.reason === null ? {} : { reason: result.reason }),
+          // Zapsaný stav jde i s chybou. Bez něj by obrazovka po nezdaru
+          // kreslila odznak z předchozího načtení, tedy ze stavu, který
+          // právě přestal platit.
+          status: result.status,
+          blockers: result.status_detail.blockers,
+          // Region jde i s chybou. Uživatel se právě dozvěděl, že mu účet
+          // nefunguje, a musí u toho vidět, KTERÉHO REGIONU se to týká.
+          region: result.status_detail.region,
+          verified_identities: result.status_detail.verified_identities,
+          verified_identity_count: result.status_detail.verified_identity_count,
+        },
+      });
     }
-    return c.json({ ok: true as const, detail: result.detail }, 200);
+    return c.json(
+      {
+        ok: true as const,
+        detail: result.detail,
+        sandbox: result.sandbox,
+        status: result.status,
+        status_detail: result.status_detail as unknown as Record<string, unknown>,
+      },
+      200,
+    );
   });
 
   app.openapi(quotaRoute, async (c) => {
@@ -509,6 +731,51 @@ export function registerProviderRoutes(app: OpenAPIHono<ProvidersEnv>): void {
     if (!(await getProviderById(ctx, id))) throw new ApiError('not_found');
     await setDefaultProvider(ctx, id);
     return c.json({ ok: true }, 200);
+  });
+
+  app.openapi(listIdentitiesRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    assertPermission(ctx, 'providers:read');
+    return c.json(await listProviderIdentities(ctx, c.req.valid('param').id), 200);
+  });
+
+  app.openapi(verifyIdentityRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    assertPermission(ctx, 'providers:write');
+    const result = await verifyEmailIdentity(
+      ctx,
+      c.req.valid('param').id,
+      c.req.valid('json').email,
+    );
+    return c.json(result, 200);
+  });
+
+  app.openapi(identityStatusRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    assertPermission(ctx, 'providers:read');
+    const params = c.req.valid('param');
+    // Adresa je v cestě, takže dorazí zakódovaná. Bez dekódování by se u Amazonu
+    // hledala identita se znaky `%40` místo zavináče a odpověď by byla 404
+    // u adresy, kterou uživatel prokazatelně má.
+    return c.json(
+      await emailIdentityStatus(ctx, params.id, decodeURIComponent(params.identity)),
+      200,
+    );
+  });
+
+  app.openapi(productionAccessRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    assertPermission(ctx, 'providers:write');
+    const body = c.req.valid('json');
+    const result = await requestProductionAccess(ctx, c.req.valid('param').id, {
+      mail_type: body.mail_type,
+      website_url: body.website_url,
+      ...(body.additional_contact_emails === undefined
+        ? {}
+        : { additional_contact_emails: body.additional_contact_emails }),
+      ...(body.contact_language === undefined ? {} : { contact_language: body.contact_language }),
+    });
+    return c.json(result, 200);
   });
 
   app.openapi(listDomainsRoute, async (c) => {

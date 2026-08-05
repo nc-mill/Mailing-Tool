@@ -13,11 +13,7 @@ import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
 import { Alert, EmptyState, FilteredEmptyState } from '@mlain/ui/patterns/states';
 import { useToast } from '@mlain/ui/patterns/toast';
 import { useConfirmDialogLabels } from '@/lib/feedback/confirm-labels';
-import {
-  addSuppressionAction,
-  removeSuppressionAction,
-  revealSuppressionEmailAction,
-} from './actions';
+import { addSuppressionAction, removeSuppressionAction } from './actions';
 import { useContactsTableLabels } from './table-labels';
 import {
   bulkRemovalSummary,
@@ -28,7 +24,7 @@ import {
 
 export type SuppressionsTableProps = {
   basePath: string;
-  /** Projekt pro odebrání a odkrytí adresy. Bez něj server vrátí 404 na existující řádek. */
+  /** Projekt pro odebrání adresy. Bez něj server vrátí 404 na existující řádek. */
   workspaceId: string;
   rows: SuppressionRow[];
   role: WorkspaceRole;
@@ -70,8 +66,16 @@ export function SuppressionsTable({
     selectAllOnPage: t('suppressions.selectPage'),
   });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [revealed, setRevealed] = useState<Record<string, string>>({});
-  const [removing, setRemoving] = useState<SuppressionRow | null>(null);
+  /**
+   * Otevřené odebrání: buď jeden řádek, nebo hromadný výběr. Obojí jde přes stejný
+   * dialog, protože obojí volá týž `DELETE /suppressions/{id}` a ten u obou vyžaduje
+   * poznámku. Hromadné odebrání ji dřív neposílalo vůbec a končilo na 422.
+   */
+  const [removing, setRemoving] = useState<
+    { kind: 'single'; row: SuppressionRow } | { kind: 'bulk' } | null
+  >(null);
+  /** Poznámka do auditu. Prázdnou schéma odmítne, proto ji dialog vyžaduje. */
+  const [removeNote, setRemoveNote] = useState('');
   const [adding, setAdding] = useState(false);
   const [addEmail, setAddEmail] = useState('');
   const [addDetail, setAddDetail] = useState('');
@@ -140,12 +144,36 @@ export function SuppressionsTable({
 
   const summary = bulkRemovalSummary(rows, new Set(selectedIds), role, now);
 
-  async function reveal(row: SuppressionRow) {
-    const result = await revealSuppressionEmailAction({ workspaceId, id: row.id });
-    if (result.status === 'success' && result.email !== undefined) {
-      const email = result.email;
-      setRevealed((current) => ({ ...current, [row.id]: email }));
+  function openRemoval(target: { kind: 'single'; row: SuppressionRow } | { kind: 'bulk' }) {
+    setRemoveNote('');
+    setRemoving(target);
+  }
+
+  /**
+   * Odebrání jednoho řádku i celého výběru. Poznámka jde do těla požadavku, protože
+   * `removal_note` je to jediné, z čeho se později pozná, PROČ někdo blokaci sundal.
+   */
+  async function submitRemoval() {
+    if (removing === null) return;
+    const ids = removing.kind === 'single' ? [removing.row.id] : summary.removableIds;
+    let removed = 0;
+    for (const id of ids) {
+      const result = await removeSuppressionAction({ workspaceId, id, note: removeNote });
+      if (result.status === 'success') removed += 1;
     }
+    if (removed < ids.length) {
+      toast.error(t('suppressions.removeFailed'));
+      return;
+    }
+    if (removing.kind === 'single') {
+      toast.success(t('suppressions.removed', { email: removing.row.masked_email }));
+    } else {
+      toast.success(t('suppressions.bulkRemoved', { count: removed }));
+      setSelectedIds([]);
+    }
+    setRemoving(null);
+    setRemoveNote('');
+    router.refresh();
   }
 
   function renderAffordance(row: SuppressionRow) {
@@ -164,7 +192,7 @@ export function SuppressionsTable({
     const affordance = suppressionAffordance(row, role, now);
     if (affordance.kind === 'removable') {
       return (
-        <Button variant="secondary" onClick={() => setRemoving(row)}>
+        <Button variant="secondary" onClick={() => openRemoval({ kind: 'single', row })}>
           {t('suppressions.remove')}
         </Button>
       );
@@ -230,14 +258,12 @@ export function SuppressionsTable({
           <span data-testid="suppressions-bulk" className="flex flex-wrap items-center gap-2">
             <Button
               variant="destructive"
-              onClick={async () => {
+              onClick={() => {
                 // Hromadné odebrání jde jen u toho, co matice dovoluje. Zbytek se nezahrne
                 // a uživatel to ví dopředu z věty pod tlačítkem, ne z chyby po kliknutí.
-                for (const id of summary.removableIds) {
-                  await removeSuppressionAction({ workspaceId, id, note: '' });
-                }
-                setSelectedIds([]);
-                router.refresh();
+                // Nic se neděje hned: i hromadné odebrání potřebuje poznámku do auditu.
+                if (summary.removable === 0) return;
+                openRemoval({ kind: 'bulk' });
               }}
             >
               {t('suppressions.bulkRemove', {
@@ -261,15 +287,12 @@ export function SuppressionsTable({
             id: 'email',
             header: t('columns.email'),
             cell: (row) => (
+              // Adresa zůstává maskovaná. Tlačítko „Zobrazit celou adresu" tu bylo,
+              // ale volalo `POST /suppressions/{id}/reveal`, což je cesta, jaká v API
+              // nikdy nebyla: končilo to na 404 a adresa se neodkryla. Odpověď výpisu
+              // nese jen `masked_email`, takže odkrýt není z čeho.
               <span data-testid={`suppression-${row.id}`} className="flex flex-col gap-1">
-                <span>{revealed[row.id] ?? row.masked_email}</span>
-                {revealed[row.id] ? (
-                  <span className="text-sm text-text-muted">{t('suppressions.revealNote')}</span>
-                ) : (
-                  <Button variant="link" onClick={() => void reveal(row)}>
-                    {t('suppressions.reveal')}
-                  </Button>
-                )}
+                <span>{row.masked_email}</span>
                 {renderAffordance(row)}
               </span>
             ),
@@ -296,23 +319,41 @@ export function SuppressionsTable({
         open={removing !== null}
         onOpenChange={(open) => setRemoving(open ? removing : null)}
         level="N2"
-        title={t('suppressions.removeTitle', { email: removing?.masked_email ?? '' })}
-        consequences={[
-          t('suppressions.removeConsequenceSend'),
-          t('suppressions.removeConsequenceAudit'),
-        ]}
-        confirmLabel={t('suppressions.removeConfirm')}
-        cancelLabel={t('suppressions.removeCancel')}
-        labels={confirmLabels}
-        onConfirm={async () => {
-          if (!removing) return;
-          const result = await removeSuppressionAction({ workspaceId, id: removing.id, note: '' });
-          if (result.status === 'success') {
-            toast.success(t('suppressions.removed', { email: removing.masked_email }));
-            setRemoving(null);
-            router.refresh();
-          }
+        title={
+          removing?.kind === 'bulk'
+            ? t('suppressions.bulkRemoveTitle', { count: summary.removable })
+            : t('suppressions.removeTitle', { email: removing?.row.masked_email ?? '' })
+        }
+        consequences={
+          removing?.kind === 'bulk'
+            ? [
+                t('suppressions.bulkRemoveConsequenceSend'),
+                t('suppressions.bulkRemoveConsequenceAudit'),
+              ]
+            : [t('suppressions.removeConsequenceSend'), t('suppressions.removeConsequenceAudit')]
+        }
+        // Poznámka je povinná i na serveru (`z.string().min(1)`), takže ji obrazovka
+        // musí opravdu vybrat od uživatele. Dřív posílala prázdný řetězec a odebrání
+        // skončilo na 422 pokaždé, ručně i hromadně.
+        note={{
+          label: t('suppressions.removeNote'),
+          hint: t('suppressions.removeNoteHint'),
+          value: removeNote,
+          onChange: setRemoveNote,
+          missingReason: t('suppressions.removeNoteMissing'),
         }}
+        confirmLabel={
+          removing?.kind === 'bulk'
+            ? t('suppressions.bulkRemoveConfirm')
+            : t('suppressions.removeConfirm')
+        }
+        cancelLabel={
+          removing?.kind === 'bulk'
+            ? t('suppressions.bulkRemoveCancel')
+            : t('suppressions.removeCancel')
+        }
+        labels={confirmLabels}
+        onConfirm={() => void submitRemoval()}
       />
     </section>
   );

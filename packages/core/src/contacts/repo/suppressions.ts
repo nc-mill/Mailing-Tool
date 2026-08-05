@@ -448,6 +448,115 @@ export async function removeUnsubscribeSuppressionForContact(
   });
 }
 
+/**
+ * Důvody blokace, které smí sundat VÝSLOVNÉ ROZHODNUTÍ SPRÁVCE při ručním potvrzení
+ * kontaktu. Je to táž úvaha jako u `removeUnsubscribeSuppressionForContact`, jen se
+ * doklad neopírá o kliknutí v e-mailu, ale o prohlášení správce zapsané do souhlasu
+ * a do auditu.
+ *
+ * VÝČET JE POVOLENÍ, NE ZÁKAZ, a to, co v něm NENÍ, je ta důležitější polovina:
+ *  - `complaint` a `gdpr_erasure` nesundá nikdo a nikdy (4.10.2). Stížnost je nejsilnější
+ *    negativní signál od příjemce a hromadné obcházení stížností je nejrychlejší cesta
+ *    k pozastavení účtu u odesílacího providera,
+ *  - `hard_bounce` a `ses_suppressed` nejsou projev vůle příjemce, ale tvrzení jeho
+ *    poštovního serveru. Odblokovat je ručním potvrzením by znamenalo posílat na adresu,
+ *    která prokazatelně neexistuje, a poškodit reputaci odesílatele. `hard_bounce` má
+ *    navíc vlastní cestu s třicetidenní lhůtou v `canRemove`.
+ *
+ * Kontakt s takovou blokací se povýšit DÁ, ale adresa zůstává na seznamu zablokovaných
+ * a `evaluateMailability` ho vyloučí bez ohledu na `contacts.status`. Volající tuhle
+ * skutečnost dostane v návratové hodnotě a MUSÍ ji uživateli říct; zamlčet ji by
+ * znamenalo ohlásit úspěch u kontaktu, kterému se dál neodešle.
+ */
+export const MANUAL_CONFIRM_CLEARABLE_REASONS: readonly SuppressionReason[] = [
+  'global_unsubscribe',
+  'one_click_unsubscribe',
+  'soft_bounce_threshold',
+  'invalid',
+  'import',
+  'manual',
+];
+
+export type ManualConfirmSuppressionResult = {
+  /** Důvody, jejichž blokace se právě sundala. Prázdné pole je běžný stav. */
+  removed: SuppressionReason[];
+  /** Blokace, která na adrese zůstává i po povýšení, nebo null. */
+  blocking: { reason: SuppressionReason } | null;
+};
+
+/**
+ * Sundá blokace adresy, které smí sundat ruční potvrzení kontaktu, a řekne pravdu
+ * o tom, co zůstalo.
+ *
+ * TENHLE DOTAZ LEŽÍ TADY ZE STEJNÉHO DŮVODU jako `removeUnsubscribeSuppressionForContact`:
+ * `UPDATE suppressions` smí být podle `test/repo/suppressions.query-shape.test.ts` jedině
+ * v tomhle souboru. Kdyby si ho potvrzovací cesta napsala sama, byla by to druhá brána
+ * do suppression listu a nikdo by ji nehlídal.
+ *
+ * Otisk se počítá přes VŠECHNA pokolení klíče: blokace mohla vzniknout před rotací
+ * `SECRET_KEY` a její řádek se nedá přepočítat, protože plaintext po výmazu neexistuje.
+ */
+export async function releaseSuppressionsForManualConfirm(
+  ctx: WorkspaceContext,
+  contactId: string,
+  input: { note: string; tx?: Tx },
+): Promise<ManualConfirmSuppressionResult> {
+  const run = async (tx: Tx): Promise<ManualConfirmSuppressionResult> => {
+    const contact = await tx.execute<{ email: string }>(sql`
+      SELECT email::text AS email FROM contacts
+       WHERE id = ${contactId}::uuid AND workspace_id = ${ctx.workspaceId}::uuid
+    `);
+    const email = contact.rows[0]?.email;
+    if (email === undefined) return { removed: [], blocking: null };
+
+    const fingerprints = computeAllFingerprintsBatch(keyringFromEnv(), [email]);
+    const fingerprintArray = byteaArrayLiteral(fingerprints);
+    const clearable = [...MANUAL_CONFIRM_CLEARABLE_REASONS];
+
+    const cleared = await tx.execute<{ id: string; reason: SuppressionReason }>(sql`
+      UPDATE suppressions
+         SET removed_at = now(),
+             removed_by = ${ctx.actor.type === 'user' ? ctx.actor.userId : null}::uuid,
+             removal_note = ${input.note}
+       WHERE workspace_id = ${ctx.workspaceId}::uuid
+         AND removed_at IS NULL
+         AND reason = ANY(${sql.param(clearable)}::text[])
+         AND (email = ${email}::citext
+              OR fingerprint = ANY(${fingerprintArray}::bytea[]))
+      RETURNING id, reason
+    `);
+
+    for (const row of cleared.rows) {
+      await writeAudit(tx, ctx, {
+        action: 'suppression.removed',
+        targetType: 'suppression',
+        targetId: row.id,
+        metadata: { note: input.note, reason: row.reason },
+      });
+    }
+
+    // Zbytek se čte AŽ PO úklidu, ne před ním: jinak by se jako "zůstává blokovaná"
+    // hlásila i blokace, kterou právě tenhle příkaz sundal.
+    const remaining = await tx.execute<{ reason: SuppressionReason }>(sql`
+      SELECT reason FROM suppressions
+       WHERE workspace_id = ${ctx.workspaceId}::uuid
+         AND removed_at IS NULL
+         AND (email = ${email}::citext
+              OR fingerprint = ANY(${fingerprintArray}::bytea[]))
+       ORDER BY ${rankCaseSql('suppressions.reason')}
+       LIMIT 1
+    `);
+
+    const blocking = remaining.rows[0];
+    return {
+      removed: cleared.rows.map((row) => row.reason),
+      blocking: blocking === undefined ? null : { reason: blocking.reason },
+    };
+  };
+
+  return input.tx !== undefined ? run(input.tx) : withWorkspace(ctx, run);
+}
+
 /* ------------------------------------------------------------------------- *
  * Čtení pro REST API a obrazovku blokovaných adres (úkol 53).
  *

@@ -5,6 +5,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -14,6 +15,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
@@ -143,6 +145,84 @@ export const senderDomains = pgTable(
     uniqueIndex('uq_sender_domains__delegation_token')
       .on(t.delegationTokenHash)
       .where(sql`${t.delegationTokenHash} IS NOT NULL`),
+    // Nosník kontroly „doména patří k účtu", kterou dělá složený cizí klíč
+    // z `sender_identities`. Trojice je unikátní triviálně (`id` je primární
+    // klíč), ohlásit to je přesto potřeba: cizí klíč v PostgreSQL míří jen na
+    // sloupce kryté unikátním omezením, jinak skončí chybou 42830.
+    unique('uq_sender_domains__workspace_id_provider').on(t.workspaceId, t.id, t.providerId),
+  ],
+);
+
+/**
+ * Pojmenovaná předvolba odesílatele: jedna řádka = jedna sada pěti údajů, které
+ * uživatel jinak vyplňuje u každé kampaně znovu.
+ *
+ * Předvolba je PŘEDLOHA, ne zdroj pravdy. Kampaň si při výběru hodnoty
+ * zkopíruje do svých vlastních sloupců a od té chvíle na téhle tabulce
+ * nezávisí; proto smazání předvolby nemá jak rozbít kampaň, která už odešla.
+ *
+ * Podrobné odůvodnění tvaru (proč tabulka a ne JSON v `workspaces.settings`,
+ * proč složený cizí klíč a proč zrovna `ON DELETE CASCADE`) je v migraci
+ * 0013_sender_identities.sql. Tady se to neopisuje, aby se ty dva texty
+ * nerozešly.
+ */
+export const senderIdentities = pgTable(
+  'sender_identities',
+  {
+    id: uuid()
+      .primaryKey()
+      .default(sql`uuidv7()`),
+    workspaceId: uuid()
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    /** Co uživatel uvidí v seznamu u kampaně: „Newsletter", „Fakturace". */
+    name: text().notNull(),
+    fromName: text().notNull(),
+    fromEmail: text().notNull(), // normalizováno na lowercase při zápisu
+    /** NULL znamená „stačí adresa odesílatele". Smí být i mimo odesílací doménu. */
+    replyTo: text(),
+    // Oba odkazy nese JEDEN složený cizí klíč níž, ne dvě samostatná
+    // `references()`. Jen tak databáze zaručí i to, že doména patří k účtu.
+    providerId: uuid().notNull(),
+    senderDomainId: uuid().notNull(),
+    isDefault: boolean().notNull().default(false),
+    createdBy: uuid().references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'fk_sender_identities__domain',
+      columns: [t.workspaceId, t.senderDomainId, t.providerId],
+      foreignColumns: [senderDomains.workspaceId, senderDomains.id, senderDomains.providerId],
+    }).onDelete('cascade'),
+    check('ck_sender_identities__name', sql`btrim(${t.name}) <> '' AND length(${t.name}) <= 120`),
+    check(
+      'ck_sender_identities__from_name',
+      sql`btrim(${t.fromName}) <> '' AND length(${t.fromName}) <= 200`,
+    ),
+    check(
+      'ck_sender_identities__from_email',
+      sql`${t.fromEmail} = lower(${t.fromEmail})
+    AND ${t.fromEmail} LIKE '%_@_%.__%'
+    AND length(${t.fromEmail}) <= 254`,
+    ),
+    check(
+      'ck_sender_identities__reply_to',
+      sql`${t.replyTo} IS NULL
+    OR (${t.replyTo} = lower(${t.replyTo})
+        AND ${t.replyTo} LIKE '%_@_%.__%'
+        AND length(${t.replyTo}) <= 254)`,
+    ),
+    uniqueIndex('uq_sender_identities__workspace_name').on(t.workspaceId, sql`lower(${t.name})`),
+    // Právě jedna výchozí předvolba na projekt, týž vzor jako u providerů.
+    uniqueIndex('uq_sender_identities__one_default')
+      .on(t.workspaceId)
+      .where(sql`${t.isDefault}`),
+    index('idx_sender_identities__workspace').on(t.workspaceId, t.createdAt.desc()),
+    // Podpora složeného cizího klíče. Bez indexu na odkazující straně dělá
+    // PostgreSQL při každém smazání domény sekvenční sken téhle tabulky.
+    index('idx_sender_identities__domain').on(t.workspaceId, t.senderDomainId, t.providerId),
   ],
 );
 
@@ -195,6 +275,17 @@ export const campaigns = pgTable(
     audienceBuiltAt: timestamp({ withTimezone: true }),
     providerId: uuid().references(() => sendingProviders.id, { onDelete: 'restrict' }),
     senderDomainId: uuid().references(() => senderDomains.id, { onDelete: 'restrict' }),
+    /**
+     * Předvolba odesílatele, ze které se pět polí výš naposledy předvyplnilo.
+     * K odeslání POTŘEBA NENÍ, sender o téhle tabulce neví; slouží jen k tomu,
+     * aby obrazovka po znovu načtení ukázala vybranou předvolbu.
+     *
+     * `ON DELETE SET NULL` je rozdíl proti oběma odkazům výš a je vědomý:
+     * `provider_id` a `sender_domain_id` jsou doklad o tom, čím se odesílalo,
+     * kdežto tohle je poznámka o původu hodnot. `RESTRICT` by znamenal, že
+     * předvolbu použitou v jediné staré kampani už nikdo nikdy nesmaže.
+     */
+    senderIdentityId: uuid().references(() => senderIdentities.id, { onDelete: 'set null' }),
     trackOpens: boolean().notNull().default(true),
     trackClicks: boolean().notNull().default(true),
     unsubscribeListId: uuid().references(() => lists.id, { onDelete: 'set null' }),
@@ -432,6 +523,8 @@ export type SendingProvider = typeof sendingProviders.$inferSelect;
 export type SendingProviderInsert = typeof sendingProviders.$inferInsert;
 export type SenderDomain = typeof senderDomains.$inferSelect;
 export type SenderDomainInsert = typeof senderDomains.$inferInsert;
+export type SenderIdentity = typeof senderIdentities.$inferSelect;
+export type SenderIdentityInsert = typeof senderIdentities.$inferInsert;
 export type Campaign = typeof campaigns.$inferSelect;
 export type CampaignInsert = typeof campaigns.$inferInsert;
 export type CampaignContentVariant = typeof campaignContentVariants.$inferSelect;

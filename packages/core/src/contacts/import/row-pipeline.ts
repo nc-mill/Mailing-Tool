@@ -38,9 +38,29 @@ export type ProcessedOkRow = {
    */
   contact: ContactUpsertRow;
   attributes: Record<string, unknown>;
+  /**
+   * Štítky ze SLOUPCE souboru, tedy JMÉNA, ne identifikátory.
+   *
+   * Dřív se do stejného pole na začátku vysypaly i `options.tag_ids`, takže seznam byl
+   * směs uuid a volného textu a nikdo z něj nedokázal poznat, co je co. Štítky z voleb
+   * se proto berou z voleb, kde jsou, a zápis dávky je zakládá podle jména
+   * (`ensureTagsIn`), stejně jako to dělá zápis kontaktu přes API, formulář a webhook.
+   */
   tags: string[];
+  /**
+   * Seznamy z mapování sloupců (`{ target: 'list', list_id }`), tedy ty, o kterých
+   * rozhoduje HODNOTA v řádku, ne volba pro celý soubor. Sčítají se s `options.list_ids`
+   * až při zápisu dávky.
+   */
+  listIds: string[];
   subscribe: boolean;
   consent: ImportOptions['consent'];
+  /**
+   * Datum souhlasu ze sloupce `consent_occurred_at` v ISO tvaru, jinak `null`.
+   * Import běžně nese historický souhlas ze staršího nástroje a datum je jeho podstatná
+   * část: bez něj by se všem zapsalo „souhlasil dnes", což je nepravda v dokladu.
+   */
+  consentOccurredAt: string | null;
   warnings: string[];
   rowNumber: number;
 };
@@ -153,7 +173,8 @@ export function processRow(row: RawRow, ctx: RowContext): ProcessedRow {
   // 8. Koerce vlastních polí. Chyba v jednom poli je chyba celého řádku,
   //    ne tichý zápis neúplného kontaktu.
   const attributes: Record<string, unknown> = {};
-  const tags: string[] = [...ctx.options.tag_ids];
+  const tags: string[] = [];
+  const listIds: string[] = [];
   for (const [index, target] of Object.entries(ctx.mapping)) {
     const value = cells[Number(index)] ?? '';
     if (target.target === 'attribute') {
@@ -189,8 +210,54 @@ export function processRow(row: RawRow, ctx: RowContext): ProcessedRow {
           .map((t) => t.trim())
           .filter(Boolean),
       );
+    } else if (target.target === 'list') {
+      // Hodnota se čte jako ano/ne toutéž funkcí jako vlastní pole typu boolean,
+      // takže „ano", „1" i „true" znamenají totéž a nesmysl skončí chybou řádku,
+      // ne tichým nepřihlášením.
+      if (value.length === 0) continue;
+      const coerced = coerceFieldValue(value, { type: 'boolean' }, ctx.options);
+      if (!coerced.ok) {
+        return {
+          kind: 'error',
+          rowNumber: row.rowNumber,
+          errorCode: coerced.code,
+          column: 'list',
+          detail: value,
+          raw: row.raw,
+        };
+      }
+      if (coerced.value === true) listIds.push(target.list_id);
     }
   }
+
+  // 8b. Souhlas ze sloupců. Datum i zdroj jsou VOLITELNÉ upřesnění toho, co uživatel
+  //     zadal ve volbách; bez volby `consent` se nezapisuje souhlas žádný, takže ani
+  //     tyhle sloupce nemají co upřesňovat.
+  const consentDateCell = at('consent_occurred_at') ?? '';
+  let consentOccurredAt: string | null = null;
+  if (consentDateCell.length > 0) {
+    const coerced = coerceFieldValue(consentDateCell, { type: 'datetime' }, ctx.options);
+    if (!coerced.ok) {
+      return {
+        kind: 'error',
+        rowNumber: row.rowNumber,
+        errorCode: coerced.code,
+        column: 'consent_occurred_at',
+        detail: consentDateCell,
+        raw: row.raw,
+      };
+    }
+    for (const w of coerced.warnings) warnings.push(w);
+    consentOccurredAt = typeof coerced.value === 'string' ? coerced.value : null;
+  }
+  const consentSourceCell = at('consent_source') ?? '';
+  const optionConsent = ctx.options.consent;
+  const consent =
+    optionConsent === null
+      ? null
+      : consentSourceCell.length > 0
+        ? { ...optionConsent, source: consentSourceCell.slice(0, 120) }
+        : optionConsent;
 
   // 9. Sestavení řádku do dávky.
   return {
@@ -219,8 +286,12 @@ export function processRow(row: RawRow, ctx: RowContext): ProcessedRow {
     },
     attributes,
     tags,
+    // Měkce potlačená adresa nedostane přihlášení ani souhlas, ať už je v souboru
+    // napsané cokoli: pravidlo 4 platí i pro seznamy ze sloupce.
+    listIds: suppressionReason === undefined ? listIds : [],
     subscribe: suppressionReason === undefined,
-    consent: suppressionReason === undefined ? ctx.options.consent : null,
+    consent: suppressionReason === undefined ? consent : null,
+    consentOccurredAt,
     warnings: [...new Set(warnings)],
   };
 }

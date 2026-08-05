@@ -8,6 +8,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -399,12 +400,44 @@ export const aiUsageDaily = pgTable(
     inputTokens: bigint({ mode: 'number' }).notNull().default(0),
     outputTokens: bigint({ mode: 'number' }).notNull().default(0),
     errors: integer().notNull().default(0),
+    /**
+     * SKUTEČNÁ účtovaná částka od poskytovatele, sečtená přes den. `null`
+     * znamená „poskytovatel nám cenu nehlásí" nebo „ten den se ještě
+     * nezapisovala"; nikdy to neznamená nulu.
+     *
+     * `numeric`, ne `double precision`: jedna odpověď asistenta stojí setiny
+     * až tisíciny jednotky a součet přes den v plovoucí čárce se rozejde.
+     */
+    reportedCost: numeric({ precision: 20, scale: 10, mode: 'number' }),
+    /**
+     * JEDNOTKA té částky, například `openrouter_credit`. Ukládá se s ní
+     * schválně: dokumentace OpenRouteru u `usage.cost` píše „credits" a NIKDE
+     * neuvádí, že kredit je dolar. Bez jednotky by z čísla někdo dřív nebo
+     * později udělal dolary a aplikace by to tvrdila uživateli.
+     */
+    reportedCostUnit: text(),
+    /** Vstupní tokeny přečtené z mezipaměti. `null` = neměřeno, ne nula. */
+    cacheReadTokens: bigint({ mode: 'number' }),
+    /** Vstupní tokeny zapsané do mezipaměti. `null` = neměřeno, ne nula. */
+    cacheWriteTokens: bigint({ mode: 'number' }),
   },
   (t) => [
     primaryKey({
       name: 'pk_ai_usage_daily',
       columns: [t.workspaceId, t.day, t.provider, t.model],
     }),
+    // Částka bez jednotky je číslo, o kterém nikdo neví, co znamená. Přesně
+    // tak vzniká záměna kreditů za dolary, tak ji databáze nepustí dovnitř.
+    check(
+      'ck_ai_usage_daily__reported_cost',
+      sql`(${t.reportedCost} IS NULL AND ${t.reportedCostUnit} IS NULL)
+    OR (${t.reportedCost} IS NOT NULL AND ${t.reportedCostUnit} IS NOT NULL AND ${t.reportedCost} >= 0)`,
+    ),
+    check(
+      'ck_ai_usage_daily__cache_tokens',
+      sql`(${t.cacheReadTokens} IS NULL OR ${t.cacheReadTokens} >= 0)
+    AND (${t.cacheWriteTokens} IS NULL OR ${t.cacheWriteTokens} >= 0)`,
+    ),
   ],
 );
 

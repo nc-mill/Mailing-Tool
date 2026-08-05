@@ -53,4 +53,45 @@ describe('WorkspaceSwitcher', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Newsletter' }));
     expect(onSwitch).toHaveBeenCalledWith('newsletter');
   });
+
+  it('založení projektu stojí až ZA seznamem projektů, ne mezi nimi', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn();
+    render(
+      <WorkspaceSwitcher
+        workspaces={workspaces}
+        currentId={current.id}
+        onSwitch={vi.fn()}
+        onCreate={onCreate}
+        labels={{
+          switcher: 'Přepnout projekt',
+          current: (name) => `Projekt: ${name}`,
+          create: 'Nový projekt',
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /E-shop Kolo/ }));
+    const items = screen.getAllByRole('menuitem').map((item) => item.textContent);
+    expect(items).toEqual(['E-shop Kolo', 'Newsletter', 'Nový projekt']);
+
+    await user.click(screen.getByRole('menuitem', { name: 'Nový projekt' }));
+    expect(onCreate).toHaveBeenCalled();
+  });
+
+  it('bez obsluhy se položka „Nový projekt" vůbec nenabídne', async () => {
+    const user = userEvent.setup();
+    render(
+      <WorkspaceSwitcher
+        workspaces={workspaces}
+        currentId={current.id}
+        onSwitch={vi.fn()}
+        labels={{ switcher: 'Přepnout projekt', current: (name) => `Projekt: ${name}` }}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /E-shop Kolo/ }));
+    expect(screen.queryByRole('menuitem', { name: 'Nový projekt' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('separator')).not.toBeInTheDocument();
+  });
 });

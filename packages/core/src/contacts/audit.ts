@@ -19,11 +19,25 @@ export const CONTACTS_AUDIT_ACTIONS = [
   'contact.restored',
   'contact.email_changed',
   'contact.bulk_deleted',
+  // Hromadné odhlášení ze seznamu ze seznamu kontaktů. Je to zásah správce do odběru
+  // cizích lidí, který se navenek chová stejně jako by se odhlásili sami, takže musí
+  // být dohledatelný: metadata nesou seznam, kolik adres přišlo a kolika se to týkalo.
+  'contact.bulk_unsubscribed',
   'contact.vocative_lock_released',
   'contact.vocative_bulk_confirmed',
+  // Hromadné sjednocení jazyka oslovení. Mění jazyk u kontaktů, které si ho mohly
+  // zvolit samy (stránka předvoleb), takže musí být dohledatelné: metadata nesou
+  // cílový jazyk a kolika kontaktů se to týkalo.
+  'contact.greeting_locale_aligned',
   // Zrušení pozastavení odběru. Je to zásah správce do rozhodnutí, které za sebe
   // udělal sám kontakt na stránce předvoleb, takže musí být dohledatelný.
   'contact.snooze_cancelled',
+  // Ruční povýšení kontaktu na potvrzený. Je to VÝSLOVNÉ ROZHODNUTÍ SPRÁVCE, které
+  // obchází pravidlo 3 ze 4.1.2 části 2, a u odhlášeného nebo stěžujícího si kontaktu
+  // vrací do rozesílky člověka, který se z ní sám odhlásil. Právě proto pravidlo 3
+  // připouští druhou cestu jen se záznamem v auditu: metadata nesou výchozí stav,
+  // počet potvrzených seznamů a osud případné blokace adresy.
+  'contact.manually_confirmed',
   // Zápis prošel, ale seznam nebo souhlas se kvůli živé suppression nezapsal (pravidlo 4).
   // Tiché zahození bez stopy je u projevu vůle příjemce nepřijatelné: kdo se ptá, proč
   // se člověk po importu neobjevil v seznamu, musí najít odpověď, ne mlčení.
@@ -43,11 +57,28 @@ export const CONTACTS_AUDIT_ACTIONS = [
   'list.archived',
   'list.default_changed',
   'list.opt_in_changed',
+  // Zapnutí nebo vypnutí veřejného nabízení seznamu. Patří do auditu ze stejného důvodu
+  // jako změna opt-in: seznam je nositelem oprávnění k rozesílce, takže „kdokoli s
+  // odhlašovacím odkazem se do něj smí přihlásit sám" je bezpečnostní rozhodnutí, ne
+  // vzhled. Kdo se za rok ptá, jak se lidé dostali do seznamu se slevou, musí najít
+  // odpověď, ne mlčení.
+  'list.public_visibility_changed',
   'subscription.forced_confirmed',
+  // Hromadné potvrzení čekajících přihlášení jednoho seznamu. Je to VÝSLOVNÉ ROZHODNUTÍ
+  // SPRÁVCE („souhlas mám doložený"), které za příjemce dokončí to, co měl potvrdit on,
+  // takže musí být dohledatelné jedním řádkem i po položkách: metadata nesou seznam,
+  // kolik přihlášení čekalo, kolik se potvrdilo a kolik se vynechalo kvůli ochraně.
+  'list.pending_confirmed',
   'suppression.added',
   'suppression.reason_promoted',
   'suppression.removed',
   'form.created',
+  // Úprava a smazání formuláře. Formulář je zapisovač do kontaktů, takže „kdo změnil,
+  // do kterého seznamu se lidé z webu přihlašují" a „kdo formulář zrušil" musí být
+  // dohledatelné. Smazání bere s sebou i historii odeslání (kaskáda), a to je přesně
+  // ten druh nevratného kroku, který se za rok hledá.
+  'form.updated',
+  'form.deleted',
   'form.double_opt_in_disabled',
   'inbound.mapping_changed',
   'gdpr.request_created',

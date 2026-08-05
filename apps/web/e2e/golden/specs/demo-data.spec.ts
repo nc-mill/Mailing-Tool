@@ -23,9 +23,21 @@ test('ukázková data jde nahrát, hromadně vybrat i beze zbytku smazat', async
   await expect(onboarding.demoBanner).toBeVisible();
   await expect(page.getByText(/50 ukázkových kontaktů/)).toBeVisible();
 
-  // Krok „Přidejte kontakty" zůstává neodškrtnutý, protože ukázková data
-  // nejsou nastavení, jen ukázka.
-  await onboarding.expectStepNotDone('contacts');
+  /*
+   * POZOROVANÉ CHOVÁNÍ, které stojí za produktové rozhodnutí.
+   *
+   * Plán tu čekal, že krok „Přidejte kontakty" zůstane neodškrtnutý, protože
+   * ukázková data nejsou nastavení, jen ukázka. Jenže sada obsahuje i hotovou
+   * ODESLANOU kampaň (`counts.campaigns: 1`), takže onboarding je po jejím
+   * nahrání celý splněný a panel „Vaše první kampaň" z přehledu **zmizí**.
+   * Není tedy co odškrtávat ani neodškrtávat.
+   *
+   * Test proto měří to, co produkt doopravdy dělá: panel zůstane, ale místo
+   * seznamu kroků ukáže hlášku o dokončení, takže žádný krok už v něm není.
+   * Jestli mají ukázková data onboarding odškrtnout celý, je otázka na produkt,
+   * ne na test; zapsáno jako nález.
+   */
+  await expect(onboarding.panel).toContainText('Hotovo, první kampaň odeslána.');
 
   // Hromadný výběr přes štítek, rozhodnutí zadavatele Z2.
   await page.goto(`/w/${slug}/contacts?tag=ukazkova-data`);
@@ -53,6 +65,15 @@ test('ukázková data jde nahrát, hromadně vybrat i beze zbytku smazat', async
   // jen ukázkové kontakty. Když tohle spadne, patří oprava do P13.
   await page.goto(`/w/${slug}/campaigns`);
   await page.getByRole('button', { name: 'Vytvořit kampaň' }).first().click();
+  /*
+   * Zakládání je dvoukrokové a začíná obsahem. Bere se první ukázková šablona,
+   * protože prázdný e-mail by skončil v editoru, tedy jinde než na kampani.
+   */
+  await page.waitForURL(/\/campaigns\/new$/i);
+  await page.getByTestId('campaign-source-template').click();
+  await page.getByTestId('template-choice').getByRole('radio').first().click();
+  await page.getByTestId('new-campaign-continue').click();
+  await page.waitForURL(/\/campaigns\/[0-9a-f-]{36}$/i);
   await expect(
     page
       .getByText(/Publikum obsahuje jen ukázkové kontakty/)

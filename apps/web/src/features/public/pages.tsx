@@ -97,7 +97,12 @@ export function ConfirmResultPage({
 export type UnsubscribePageProps = {
   t: PublicTranslator;
   action: string;
-  preferencesHref: string;
+  /**
+   * Odkaz na centrum předvoleb, nebo `null`, když ho projekt nenabízí
+   * (`settings.contacts.public_preference_center`). Odhlášení samo se tím NEŘÍDÍ:
+   * to je na stránce vždycky, je to zákonná povinnost.
+   */
+  preferencesHref: string | null;
   senderName: string;
   listName: string | null;
   scoped: boolean;
@@ -133,11 +138,13 @@ export function UnsubscribePage(props: UnsubscribePageProps): ReactElement {
             <button type="submit">{t('unsubscribe.global')}</button>
           </form>
         ) : null}
-        <p>
-          <a className="ml-button ml-button--secondary" href={props.preferencesHref}>
-            {t('unsubscribe.preferencesLink')}
-          </a>
-        </p>
+        {props.preferencesHref === null ? null : (
+          <p>
+            <a className="ml-button ml-button--secondary" href={props.preferencesHref}>
+              {t('unsubscribe.preferencesLink')}
+            </a>
+          </p>
+        )}
       </>
     );
   }
@@ -162,9 +169,11 @@ export function UnsubscribePage(props: UnsubscribePageProps): ReactElement {
           </button>
         </form>
       ) : null}
-      <p className="ml-muted">
-        <a href={props.preferencesHref}>{t('unsubscribe.preferencesLink')}</a>
-      </p>
+      {props.preferencesHref === null ? null : (
+        <p className="ml-muted">
+          <a href={props.preferencesHref}>{t('unsubscribe.preferencesLink')}</a>
+        </p>
+      )}
     </>
   );
 }
@@ -215,6 +224,22 @@ export function ReactivationPromptPage({
   );
 }
 
+/**
+ * Token na `/v/{token}` platí, ale zpráva už není k dispozici: kampaň se smazala,
+ * nikdy se nezkompilovala, nebo zprávu odklidila retenční politika.
+ *
+ * Je to VLASTNÍ stránka, ne „odkaz neplatí". Kdyby se ukázala hláška o poškozeném
+ * odkazu, příjemce by ho zkoušel znovu, přeposílal by si ho a hledal by chybu u sebe.
+ */
+export function WebviewUnavailablePage({ t }: { t: PublicTranslator }): ReactElement {
+  return (
+    <>
+      <h1>{t('webview.unavailableTitle')}</h1>
+      <p>{t('webview.unavailableBody')}</p>
+    </>
+  );
+}
+
 export function ReactivationDonePage({ t }: { t: PublicTranslator }): ReactElement {
   return (
     <>
@@ -241,39 +266,74 @@ export type PreferencesPageProps = {
  * a nenajde ho, klikne na spam.
  *
  * Adresa je maskovaná: odkaz bez expirace může najít kdokoliv.
+ *
+ * DVĚ VĚCI SE DAJÍ VYPNOUT A JEDNA NE.
+ *
+ * `data.preferenceCenter === false` znamená, že projekt centrum předvoleb vůbec
+ * nenabízí. Pak zůstane JEN odhlášení, protože to je zákonná povinnost a vypnout
+ * ho nejde. Ostatní bloky by bez toho slibovaly nastavení, které server stejně
+ * odmítne provést.
+ *
+ * `data.lists` je prázdné, když správce veřejně nenabízí žádný seznam. Blok se pak
+ * NEVYKRESLÍ vůbec; prázdný rámeček s nadpisem „Odběry" vypadá jako chyba stránky.
  */
 export function PreferencesPage(props: PreferencesPageProps): ReactElement {
   const { t, data } = props;
+
+  if (!data.preferenceCenter) {
+    return (
+      <>
+        <h1>{t('preferences.masked', { maskedEmail: props.maskedEmail })}</h1>
+        <p className="ml-muted">{t('preferences.unsubscribeOnly')}</p>
+        <form method="post" action={props.action}>
+          <input type="hidden" name="action" value="unsubscribe_all" />
+          <button type="submit">{t('preferences.unsubscribeAll')}</button>
+        </form>
+      </>
+    );
+  }
+
   return (
     <>
       {/* 1. Identita. */}
       <h1>{t('preferences.masked', { maskedEmail: props.maskedEmail })}</h1>
 
-      {/* 2. Seznamy se stavem a datem přihlášení. */}
-      <form method="post" action={props.action}>
-        <input type="hidden" name="action" value="update_lists" />
-        <fieldset>
-          <legend>{t('preferences.lists')}</legend>
-          {data.lists.map((list) => (
-            <label key={list.id} htmlFor={`ml-list-${list.id}`}>
-              <input
-                id={`ml-list-${list.id}`}
-                type="checkbox"
-                name="list"
-                value={list.id}
-                defaultChecked={list.subscribed}
-              />{' '}
-              {list.name}{' '}
-              {list.subscribedAt === null ? null : (
-                <span className="ml-muted">
-                  {t('preferences.since', { date: props.formatDate(list.subscribedAt) })}
-                </span>
-              )}
-            </label>
-          ))}
-        </fieldset>
-        <button type="submit">{t('preferences.save')}</button>
-      </form>
+      {/* 2. Nabízené seznamy se stavem a datem přihlášení. Jen ty veřejné. */}
+      {data.lists.length === 0 ? null : (
+        <form method="post" action={props.action}>
+          <input type="hidden" name="action" value="update_lists" />
+          <fieldset>
+            <legend>{t('preferences.lists')}</legend>
+            {data.lists.map((list) => (
+              <label key={list.id} htmlFor={`ml-list-${list.id}`}>
+                <input
+                  id={`ml-list-${list.id}`}
+                  type="checkbox"
+                  name="list"
+                  value={list.id}
+                  defaultChecked={list.subscribed}
+                />{' '}
+                {list.name}{' '}
+                {list.subscribedAt === null ? null : (
+                  <span className="ml-muted">
+                    {t('preferences.since', { date: props.formatDate(list.subscribedAt) })}
+                  </span>
+                )}
+                {/* Čekající přihlášení se musí říct. Kdo se dřív odhlásil a teď se
+                    zaškrtnutím vrací, skončí na „čeká na potvrzení", zaškrtnutí se
+                    po uložení samo odškrtne, a bez téhle věty to vypadá rozbitě. */}
+                {list.pending ? (
+                  <span className="ml-muted ml-block">{t('preferences.pending')}</span>
+                ) : null}
+                {list.description === null ? null : (
+                  <span className="ml-muted ml-block">{list.description}</span>
+                )}
+              </label>
+            ))}
+          </fieldset>
+          <button type="submit">{t('preferences.save')}</button>
+        </form>
+      )}
 
       {/* 3. Frekvence. Nabídnuté PŘED odhlášením. */}
       <form method="post" action={props.action}>

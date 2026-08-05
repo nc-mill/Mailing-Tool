@@ -280,9 +280,11 @@ export async function updateAsset(
   id: string,
   patch: { altText?: string | null; hidden?: boolean },
 ): Promise<AssetRow | null> {
-  const values: Partial<typeof schema.assets.$inferInsert> = {};
-  if (patch.altText !== undefined) values.altText = patch.altText;
-  if (patch.hidden !== undefined) values.hiddenAt = patch.hidden ? new Date() : null;
+  const values: Record<string, unknown> = {};
+  if (patch.altText !== undefined) values['altText'] = patch.altText;
+  // `now()`, ne `new Date()`. Zdůvodnění je u `hideAsset`; platí tu doslova,
+  // protože tahle cesta zapisuje TÝŽ sloupec, který úklid porovnává.
+  if (patch.hidden !== undefined) values['hiddenAt'] = patch.hidden ? sql`now()` : null;
   if (Object.keys(values).length === 0) return findAssetById(tx, ctx, id);
 
   const [row] = await tx
@@ -354,7 +356,22 @@ export async function referencedBySentCampaign(
   return rows.length > 0;
 }
 
-/** Skrytí z knihovny. Soubor zůstává, adresa v odeslaném e-mailu funguje dál. */
+/**
+ * Skrytí z knihovny. Soubor zůstává, adresa v odeslaném e-mailu funguje dál.
+ *
+ * ČAS RAZÍ DATABÁZE (`now()`), NE APLIKACE (`new Date()`), a není to kosmetika.
+ * Tenhle sloupec se nikde nezobrazuje sám o sobě; jeho jediný čtenář je úklid,
+ * který ho porovnává s `now() - lhůta`, tedy s hodinami DATABÁZE. Zápis
+ * aplikačními hodinami by do jednoho porovnání pustil dvoje hodiny, a stačí,
+ * aby se rozešly, a `hidden_at` vyjde v budoucnosti databáze: řádek pak
+ * podmínku nesplní a úklid ho NIKDY nesebere.
+ *
+ * Naměřeno na sdíleném testovacím Postgresu v kontejneru: rozdíl obou hodin
+ * byl 0 až 2 ms, ale celá rezerva mezi „projde" a „neprojde" je pod 10 ms.
+ * V provozu to při třicetidenní lhůtě neuvidíš, zato ve zkrácené lhůtě
+ * (a v testech, které ji zkracují) rozhoduje pár milisekund shody dvou strojů.
+ * Jednoduché pravidlo: co porovnává `now()`, ať `now()` i zapisuje.
+ */
 export async function hideAsset(
   tx: Tx,
   ctx: WorkspaceContext,
@@ -362,7 +379,7 @@ export async function hideAsset(
 ): Promise<AssetRow | null> {
   const [row] = await tx
     .update(schema.assets)
-    .set({ hiddenAt: new Date() })
+    .set({ hiddenAt: sql`now()` })
     .where(
       and(
         wsEq(ctx, schema.assets),
@@ -409,10 +426,11 @@ export async function listPurgeCandidates(
     .limit(limit);
 }
 
+/** Označení uklizeného assetu. Čas razí databáze, ze stejného důvodu jako u `hideAsset`. */
 export async function markPurged(tx: Tx, ctx: WorkspaceContext, id: string): Promise<void> {
   await tx
     .update(schema.assets)
-    .set({ purgedAt: new Date() })
+    .set({ purgedAt: sql`now()` })
     .where(and(wsEq(ctx, schema.assets), eq(schema.assets.id, id)));
 }
 

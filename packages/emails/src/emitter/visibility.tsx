@@ -1,31 +1,18 @@
 import type { ReactElement, ReactNode } from 'react';
 import type { VisibilityCondition } from '../document/types';
+import { visibilityTags } from './visibility-tags';
 
 /**
- * Klíč do pomocné mapy `_present`: cesta pole s tečkami nahrazenými dvěma podtržítky.
- * Dva segmenty i u vlastního pole, takže se zůstává pod kontraktním limitem tří segmentů.
+ * Komponenta viditelnosti. Čisté funkce bydlí vedle ve `visibility-tags.ts`
+ * a jsou odtud reexportované, aby se vykreslovačům bloků nezměnila cesta
+ * importu. Důvod dělení je popsaný tam.
+ *
+ * Jméno `visibility-tags` je schválně JINÉ, ne `visibility.ts`. Kdyby se ten
+ * čistý soubor jmenoval stejně, přebil by při rozřešení `./visibility` tenhle
+ * `.tsx` (přípona `.ts` se zkouší dřív) a komponenta `Visible` by z té cesty
+ * zmizela. Vyzkoušeno omylem: 95 testů emitteru spadlo naráz.
  */
-export function presenceKey(field: string): string {
-  return field.split('.').join('__');
-}
-
-/**
- * Emitovaná konstrukce neobsahuje uvozovku, literál `blank`, literál `empty`
- * ani operátor porovnání, tedy nic ze zakázaných konstrukcí. Nález K4 se tím
- * obchází úplně a past prázdného řetězce se zavírá v datech, ne v šabloně.
- */
-export function visibilityTags(condition: VisibilityCondition): [string, string] {
-  switch (condition.op) {
-    case 'present':
-      return [`{% if _present.${presenceKey(condition.field)} %}`, '{% endif %}'];
-    case 'blank':
-      return [`{% unless _present.${presenceKey(condition.field)} %}`, '{% endunless %}'];
-    case 'true':
-      return [`{% if ${condition.field} %}`, '{% endif %}'];
-    case 'false':
-      return [`{% unless ${condition.field} %}`, '{% endunless %}'];
-  }
-}
+export { presenceKey, visibilityTags } from './visibility-tags';
 
 export function Visible({
   when,

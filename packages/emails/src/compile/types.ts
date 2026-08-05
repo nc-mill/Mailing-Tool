@@ -62,6 +62,23 @@ export type CompileContext = {
   preheader?: string;
   /** Doplněno rozhodnutím D2. Vstup, ne new Date(), kvůli determinismu. */
   currentYear: number;
+  /**
+   * Nabízí projekt veřejné centrum předvoleb?
+   *
+   * `false` VYŘADÍ odkaz „Nastavit předvolby" z patičky, a to z HTML, z prostého textu
+   * i ze schématu (`systemTags`), aby si ty tři podoby neodporovaly. Patička má vlastní
+   * přepínač `showPreferences`, ale ten patří ŠABLONĚ, kdežto tenhle patří PROJEKTU:
+   * když správce předvolby nenabízí, nesmí na ně odkazovat žádná šablona, ani ta, kterou
+   * si někdo uložil dřív.
+   *
+   * Potlačit se to musí TADY, při kompilaci, ne až v odesílači. Odesílač interpoluje
+   * hotové HTML a chybějící hodnota by z odkazu udělala `href=""`, tedy viditelný odkaz
+   * nikam; vyříznout celý `<a>` i s oddělovačem ` | ` z hotového těla nejde spolehlivě.
+   *
+   * Vynechání znamená ZAPNUTO. Je to jediná hodnota, při které zůstávají zlaté vzorky
+   * bajtově stejné, a zároveň odpovídá výchozímu stavu nastavení projektu.
+   */
+  preferenceCenterEnabled?: boolean | undefined;
   /** Jen pro testy: pevný nonce raw slotů. V produkci se nikdy nepředává. */
   rawNonce?: string;
 };

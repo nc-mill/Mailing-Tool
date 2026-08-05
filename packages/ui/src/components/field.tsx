@@ -38,8 +38,14 @@ export function Field({ label, children, hint, error, optionalLabel, className }
     <div className={cn('flex flex-col gap-1.5', className)}>
       <Label htmlFor={inputId}>
         {label}
+        {/* Mezera je psaná, ne jen odsazená stylem: `ml-1` vidí oko, ale
+            přístupné jméno se skládá z textových uzlů, takže hlasové čtení
+            i testy dostávaly slepenec „Konfigurační sada(nepovinné)". */}
         {optionalLabel ? (
-          <span className="ml-1 font-normal text-text-muted">{optionalLabel}</span>
+          <>
+            {' '}
+            <span className="font-normal text-text-muted">{optionalLabel}</span>
+          </>
         ) : null}
       </Label>
       {cloneElement(children, {

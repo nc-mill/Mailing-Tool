@@ -1,5 +1,6 @@
 import pino, { type Logger } from 'pino';
 import { loadConfig, type MlainConfig } from '../config';
+import { ApiError } from '../errors/api-error';
 
 /**
  * Rozhodnutí R7 plánu P04. Systémové e-maily potřebují blokové šablony (P08)
@@ -188,10 +189,36 @@ export async function queueSystemMail(mail: SystemMail): Promise<void> {
     );
 
     const notConfigured = e.code === 'system_mail_not_configured';
+
+    /**
+     * Mimo produkci se odkaz NAVÍC dopíše do logu, ale operace se tím
+     * NEPROHLÁSÍ ZA ÚSPĚŠNOU.
+     *
+     * Dřív se tady rovnou vracelo, takže vývojová instalace bez odesílacího
+     * účtu hlásila „e-mail odeslán". To je přesně ta tichá lež, kvůli které
+     * celá tahle větev existuje, jen posunutá o patro níž: uživatel vývojové
+     * instalace čeká na e-mail zrovna tak jako uživatel produkční a do logu
+     * se nedívá. Zápis do logu zůstává jako pomůcka pro vývojáře, výjimka se
+     * u zpráv, které selhat potichu nesmí, hází dál.
+     */
     if (notConfigured && cfg().NODE_ENV !== 'production') {
       await new LoggingSystemMailer().send(mail);
-      return;
     }
-    if (MUST_NOT_FAIL_SILENTLY.has(mail.template)) throw error;
+    if (MUST_NOT_FAIL_SILENTLY.has(mail.template)) {
+      /**
+       * Ven jde POJMENOVANÁ chyba API, ne vnitřní výjimka odesílatele.
+       *
+       * Vnitřní výjimka končila v obsluze jako neznámý pád, tedy jako pětistovka
+       * s hláškou „něco se pokazilo". Uživatel z toho nemá jak poznat, že mu jen
+       * chybí nastavení, a hledá chybu tam, kde žádná není. Kód
+       * `system_mail_unavailable` má v katalogu vlastní text i návod, takže se
+       * na obrazovce ukáže věcný důvod a cesta k nápravě.
+       *
+       * Původní výjimka zůstává jako `cause`, aby se ze záznamu nedala ztratit
+       * příčina (chybějící účet versus odmítnutí SMTP serverem).
+       */
+      if (notConfigured) throw new ApiError('system_mail_unavailable', { cause: error });
+      throw error;
+    }
   }
 }

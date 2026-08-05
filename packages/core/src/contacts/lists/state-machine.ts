@@ -36,6 +36,12 @@ export type SubscriptionEvent =
       /** Import a API s scope contacts:write smí potvrzení přeskočit, ale jen s prohlášením. */
       skipConfirmation?: boolean;
       declaration?: boolean;
+      /**
+       * Máme pro tenhle seznam DOLOŽENÝ, dosud neodvolaný souhlas? Vyhodnocuje ho
+       * `findEffectiveConsent` nad append-only logem `consents`, ne volající podle nálady.
+       * Význam je „souhlas už v evidenci je", ne „přeskoč potvrzení".
+       */
+      existingConsent?: boolean;
       now: Date;
     }
   | { kind: 'confirm'; token: 'valid' | 'expired' | 'consumed'; now: Date }
@@ -171,6 +177,34 @@ function onSubscribe(
     from !== 'unsubscribed' &&
     !hasLiveSuppression(event)
   ) {
+    return {
+      allowed: true,
+      next: 'confirmed',
+      effects: ['grant_consent', 'send_welcome', 'emit_subscribed'],
+    };
+  }
+
+  /*
+   * DOLOŽENÝ SOUHLAS. Dvoufázové potvrzení slouží k tomu, aby si souhlas vyžádalo
+   * od příjemce tam, kde ho nemáme. Kde ho máme zapsaný, auditovaný a neodvolaný,
+   * není to ochrana příjemce, ale překážka: člověk by nikdy nedostal ani ten potvrzovací
+   * e-mail, na který se čeká, a zůstal by v `pending` navždy.
+   *
+   * Souhlas si tahle funkce nevymýšlí ani nedovozuje z nastavení seznamu. Rozhoduje
+   * o něm `findEffectiveConsent` nad append-only logem `consents`, tedy nad dokladem.
+   *
+   * TŘI POJISTKY, každá zavírá jinou díru:
+   *   - `from !== 'unsubscribed'`: kdo se odhlásil, se takhle nevrátí. Odhlášení je
+   *     projev vůle příjemce a přebíjí jakýkoliv starší souhlas. Odvolání souhlasu
+   *     odhlášení zapisuje taky, takže by sem `existingConsent` normálně vůbec nedošel;
+   *     podmínka je tu proto, že na tomhle nesmí záležet.
+   *   - `!hasLiveSuppression`: živá blokace adresy zavírá zkratku stejně jako u prohlášení.
+   *   - stížnost a čerstvý tvrdý odraz odmítly větve nad tímhle blokem.
+   *
+   * `from === 'confirmed'` sem nedojde, vrátil se výš beze změny, takže se opakovaným
+   * přidáním do seznamu nedá poslat druhý uvítací e-mail.
+   */
+  if (event.existingConsent === true && from !== 'unsubscribed' && !hasLiveSuppression(event)) {
     return {
       allowed: true,
       next: 'confirmed',

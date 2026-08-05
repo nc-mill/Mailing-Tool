@@ -22,7 +22,14 @@ function setup(ports = createFakePorts()) {
 }
 
 describe('TestSendDialog', () => {
-  it('odešle na zadané adresy s prefixem předmětu', async () => {
+  /**
+   * Prefix předmětu je ZRUŠENÝ (rozhodnutí D21 plánu P13): testovací e-mail má
+   * dorazit přesně v té podobě, v jaké ho dostanou příjemci. Dřív tenhle test
+   * tvrdil `addTestPrefix: true`, tedy vlastnost, kterou serverové schéma
+   * nepřijímá; rozhraní ji přesto posílalo a odeslání končilo na 422.
+   * Test proto nově hlídá OPAK: že se ten klíč neposílá.
+   */
+  it('odešle na zadané adresy a prefix předmětu neposílá', async () => {
     const ports = createFakePorts();
     const testSend = vi.spyOn(ports, 'testSend');
     setup(ports);
@@ -30,9 +37,10 @@ describe('TestSendDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: /Poslat test/ }));
     await waitFor(() =>
       expect(testSend).toHaveBeenCalledWith(
-        expect.objectContaining({ recipients: ['a@b.cz', 'c@d.cz'], addTestPrefix: true }),
+        expect.objectContaining({ recipients: ['a@b.cz', 'c@d.cz'] }),
       ),
     );
+    expect(testSend.mock.calls[0]?.[0]).not.toHaveProperty('addTestPrefix');
   });
 
   it('víc než pět adres nepřijme a řekne proč', async () => {

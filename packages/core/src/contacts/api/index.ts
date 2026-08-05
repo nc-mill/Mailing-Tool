@@ -52,7 +52,9 @@ import { registerConsentRoutes } from './consents.routes';
 import { registerContactEditRoutes } from './contact-edit.routes';
 import { registerContactFieldRoutes } from './contact-fields.routes';
 import { registerContactRoutes } from './contacts.routes';
+import { registerFormRoutes } from './forms.routes';
 import { registerGdprRoutes } from './gdpr.routes';
+import { registerGreetingRoutes } from './greeting.routes';
 import { registerListRoutes } from './lists.routes';
 import { registerNameOverrideRoutes } from './name-overrides.routes';
 import { registerRetentionRoutes } from './retention.routes';
@@ -65,6 +67,10 @@ registerContactRoutes(contactsApi);
 registerConsentRoutes(contactsApi);
 registerContactFieldRoutes(contactsApi);
 registerListRoutes(contactsApi);
+// `/forms` je vlastní kořen, se `/contacts/**` ani `/lists/**` se nestíní,
+// takže na pořadí registrace nezáleží. Stojí tu vedle seznamů schválně: formulář
+// je druhá cesta, kterou se do seznamu někdo přihlásí, jen ji spouští návštěvník webu.
+registerFormRoutes(contactsApi);
 registerSuppressionRoutes(contactsApi);
 registerGdprRoutes(contactsApi);
 registerRetentionRoutes(contactsApi);
@@ -74,6 +80,10 @@ registerNameOverrideRoutes(contactsApi);
 // /contacts/{id}/cancel-snooze má o segment navíc a /name-preview je vlastní kořen,
 // takže tady na pořadí nezáleží. Zdůvodnění je u definic v contact-edit.routes.ts.
 registerContactEditRoutes(contactsApi);
+// `/contacts/{id}/greeting` má o segment víc než `/contacts/{id}`, takže se s ním
+// nestíní a na pořadí registrace nezáleží. Stojí tu vedle editace schválně: je to
+// druhá cesta, kterou uživatel mění tvar oslovení, jen užší a se zámkem.
+registerGreetingRoutes(contactsApi);
 
 /**
  * Registrace do hlavní aplikace. Stejný tvar jako `registerApiKeyRoutes` a spol., aby

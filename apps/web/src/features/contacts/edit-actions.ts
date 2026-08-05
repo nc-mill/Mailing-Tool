@@ -218,13 +218,38 @@ export async function saveContactAction(
 }
 
 /**
+ * Volba správce při ručním zadání: zakládám kontakt jako přihlášeného k odběru,
+ * nebo jako nepotvrzeného?
+ *
+ * Výchozí je přihlášený. Ruční zadání dělá správce, který adresu odněkud má, a je to
+ * on, kdo za tvrzení o souhlasu ručí; my mu ho nemáme co vyvracet. Nepotvrzený zůstává
+ * dostupný pro adresy, u kterých si jistý není.
+ *
+ * `pending` NENÍ totéž co „pošleme potvrzovací e-mail". Přihlášení se zapíše rovnou,
+ * jen jako nepotvrzené; potvrzovací e-mail rozesílá samostatná akce z detailu kontaktu.
+ */
+export type ManualSubscription = 'confirmed' | 'pending';
+
+function readSubscriptionChoice(formData: FormData): ManualSubscription {
+  // Cokoliv jiného než výslovné `pending` je `confirmed`, včetně chybějící hodnoty:
+  // výchozí stav formuláře je přihlášený a ten musí platit i tehdy, když se pole
+  // z jakéhokoliv důvodu nepošle.
+  return formData.get('subscription') === 'pending' ? 'pending' : 'confirmed';
+}
+
+/**
  * Ruční založení kontaktu.
  *
  * Neobchází nic, co platí pro import: `POST /contacts` volá `writeContact`, tedy všech
- * šest pravidel ze 4.1.2 části 2 včetně kontroly blokovaných adres. Kontakt vzniká ve
- * stavu `unconfirmed`, ne `active`; povýšení stavu je vyhrazené potvrzení dvojího
- * opt-inu nebo ručnímu zásahu, přesně proto, aby ruční založení nebylo zadními vrátky
- * do rozesílky.
+ * šest pravidel ze 4.1.2 části 2 včetně kontroly blokovaných adres. Zůstává v platnosti
+ * i pravidlo 3: zamknutý stav (odhlášen, odraz, stížnost) tahle akce nepřepíše, ať
+ * správce zvolí cokoliv.
+ *
+ * Co volba mění: stav kontaktu (`active` versus `unconfirmed`), stav přihlášení
+ * do zaškrtnutých seznamů (`confirmed` versus `pending`) a to, jestli vznikne záznam
+ * souhlasu. Trojice se posílá v JEDNOM požadavku schválně: kdyby se stav a přihlášení
+ * zapisovaly zvlášť, mohl by druhý krok selhat a kontakt by zůstal v podobě, kterou
+ * si nikdo nevybral.
  *
  * `on_conflict` se neposílá, takže platí výchozí `update`: když adresa v projektu už
  * je, formulář existující kontakt doplní místo toho, aby spadl na kolizi. Odpověď
@@ -263,6 +288,7 @@ export async function createContactAction(
   const lists = formData
     .getAll('list')
     .filter((value): value is string => typeof value === 'string');
+  const subscription = readSubscriptionChoice(formData);
 
   const result = await apiMutate<{ data: { id: string } }>('/api/v1/contacts', {
     method: 'POST',
@@ -272,10 +298,32 @@ export async function createContactAction(
       // Zdroj `manual` je jedna z hodnot, které dovoluje omezení `ck_contacts__source`.
       // Bez něj by kontakt vypadal, že přišel přes API, a v reportu původu by lhal.
       source: 'manual',
-      // Seznamy se předávají se stavem `pending`, tedy jako nepotvrzené přihlášení.
-      // `confirmed` by tady bylo tvrzení o souhlasu, který nikdo nedoložil.
+      // Stav kontaktu a stav přihlášení do seznamů drží tatáž volba. Rozejít je
+      // by znamenalo kontakt, který je v seznamu potvrzený, ale sám je nepotvrzený,
+      // tedy dvě protichůdné odpovědi na otázku „smím mu poslat e-mail?".
+      status: subscription === 'confirmed' ? 'active' : 'unconfirmed',
       ...(lists.length > 0
-        ? { lists: lists.map((id) => ({ list_id: id, status: 'pending' })) }
+        ? { lists: lists.map((id) => ({ list_id: id, status: subscription })) }
+        : {}),
+      // Souhlas se zapisuje STEJNĚ jako u importu ze souboru, ne vlastním způsobem:
+      // účel `email_marketing`, právní důvod `consent` a prohlášení správce v evidenci
+      // (tvar `ImportOptions.consent` z `packages/core/src/contacts/import/options.ts`).
+      // Tabulka souhlasů je append only, takže tenhle zápis nic nepřepisuje, jen přidá
+      // řádek do dokladové historie kontaktu.
+      //
+      // U nepotvrzeného se souhlas NEZAPISUJE. Správce nic netvrdí, takže by řádek
+      // dokládal projev vůle, který se nestal, a smazat ho už nejde.
+      ...(subscription === 'confirmed'
+        ? {
+            consent: [
+              {
+                purpose: 'email_marketing',
+                status: 'granted',
+                legal_basis: 'consent',
+                evidence: { declaration: true },
+              },
+            ],
+          }
         : {}),
     },
     workspaceId,
@@ -399,33 +447,6 @@ export async function resendConfirmationAction(input: {
   // Jediný výsledek, po kterém opravdu odešel e-mail. `resend_throttled`,
   // `already_confirmed` i `blocked_*` vracejí 200 a znamenají, že se nic neodeslalo;
   // kód se vrací volajícímu, aby uměl říct co a proč.
-  if (result.data.outcome !== 'confirmation_sent') {
-    return { status: 'error', code: result.data.outcome };
-  }
-  revalidatePath(CONTACT_DETAIL_PATH, 'page');
-  return { status: 'success' };
-}
-
-/**
- * Přihlášení odhlášeného kontaktu zpět. Potvrzení se nepřeskakuje schválně: znovu
- * přihlásit člověka, který se sám odhlásil, smí jen on sám. Server pošle e-mail
- * s odkazem a přihlášení dokončí až kliknutí, což je přesně to, co slibuje popisek
- * tlačítka.
- */
-export async function resubscribeAction(input: {
-  workspaceId: string;
-  listId: string;
-  email: string;
-}): Promise<ContactActionResult> {
-  const result = await apiMutate<{ outcome: string }>(`/api/v1/lists/${input.listId}/subscribe`, {
-    method: 'POST',
-    body: { email: input.email, skip_confirmation: false, declaration: false },
-    workspaceId: input.workspaceId,
-  });
-  if (!result.ok) return { status: 'error', code: result.problem.code };
-  // Odeslaný potvrzovací e-mail je jediný úspěch. Ostatní výsledky přijdou taky s 200
-  // a znamenají, že se nestalo nic: limit odeslání, už potvrzené přihlášení, blokovaná
-  // adresa. Bez téhle větve by rozhraní ve všech čtyřech případech hlásilo úspěch.
   if (result.data.outcome !== 'confirmation_sent') {
     return { status: 'error', code: result.data.outcome };
   }

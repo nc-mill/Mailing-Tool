@@ -150,3 +150,41 @@ describe('ovládání zkušebního režimu', () => {
     expect(onToggle).toHaveBeenCalledWith(true);
   });
 });
+
+/**
+ * ROZPORNÉ HLÁŠKY. Zadavatel viděl na jedné obrazovce „brevio.cz, Amazon:
+ * ověřeno" a hned pod tím „Ověření domény čeká na propagaci DNS, což trvá
+ * minuty až hodiny." Dvě tvrzení o téže doméně, obě natvrdo, obě viditelná
+ * naráz. Věta o propagaci DNS proto smí zaznít JEN tehdy, když se na ni
+ * doopravdy čeká.
+ */
+describe('texty zkušebního režimu si neprotiřečí', () => {
+  it('u NEOVĚŘENÉ domény mluví o čekání na propagaci DNS', () => {
+    renderPanel({ has_verified_domain: false });
+    expect(screen.getByTestId('trial-explanation')).toHaveTextContent(
+      'Ověření domény čeká na propagaci DNS',
+    );
+  });
+
+  it('u OVĚŘENÉ domény netvrdí, že se na propagaci DNS čeká', () => {
+    renderPanel({ has_verified_domain: true });
+    const explanation = screen.getByTestId('trial-explanation');
+    // Přesně tahle věta stála na snímku pod odznakem „brevio.cz, Amazon: ověřeno".
+    expect(explanation).not.toHaveTextContent('Ověření domény čeká na propagaci DNS');
+    expect(explanation).toHaveTextContent(/už máte ověřenou/);
+    expect(explanation).toHaveTextContent(/nic nečeká/);
+  });
+
+  /*
+   * Druhý rozpor téže obrazovky: režim drží Amazon, ale text posílal uživatele
+   * do konzole AWS, přestože si o produkční přístup může požádat tlačítkem
+   * o kus výš. Rada, která míří jinam, než kam vede tlačítko, je rozpor stejně
+   * jako dvě protichůdná tvrzení.
+   */
+  it('u testovacího režimu Amazonu odkazuje na tlačítko v aplikaci, ne do konzole', () => {
+    renderPanel({ provider_sandbox: true });
+    const reason = screen.getByTestId('trial-sandbox-reason');
+    expect(reason).toHaveTextContent(/požádat rovnou tady/);
+    expect(reason).not.toHaveTextContent(/požádejte v konzoli AWS/);
+  });
+});

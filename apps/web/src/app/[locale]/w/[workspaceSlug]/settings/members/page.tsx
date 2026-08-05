@@ -7,6 +7,9 @@ import {
 } from '@/features/members/actions-forms';
 import { MembersTable, type MemberRow } from '@/features/members/members-table';
 import { InvitationsSection, type InvitationRow } from '@/features/members/invitations-section';
+import { CreateMemberSection } from '@/features/members/create-member-section';
+import { OrphanedAccounts, type OrphanedAccountRow } from '@/features/members/orphaned-accounts';
+import type { SystemMailStatus } from '@/features/system-mail/types';
 import { SettingsPageShell } from '@/features/settings/settings-page-shell';
 import { SettingsProblem } from '@/features/settings/settings-problem';
 import { ForbiddenSection } from '@/features/settings/forbidden-section';
@@ -59,15 +62,36 @@ export default async function MembersPage({
 
   const canManage = hasPermission(access.data, 'members:update_role');
   const canInvite = hasPermission(access.data, 'members:invite');
+  // Účty bez projektu jsou správa instalace, ne projektu. Váže se na oprávnění
+  // odebírat členy, protože smazání účtu je jeho pokračování: odebráním z projektu
+  // účet nezaniká a bez tohohle výpisu by ho pak nikdo nenašel.
+  const canDeleteAccounts = hasPermission(access.data, 'members:remove');
   const workspaceId = access.data.workspace.id;
 
-  const [me, members, invitations] = await Promise.all([
+  /**
+   * Stav systémové pošty se načítá TADY, ne až po odeslání formuláře.
+   *
+   * Pozvánka odchází systémovým e-mailem a instalace s jediným odesílacím
+   * účtem typu SES ho odeslat neumí. Bez tohohle dotazu obrazovka nabízela
+   * pozvánku, kterou nikdo nikdy nedostal. Když se stav načíst nepodaří,
+   * bere se jako nedostupný: nabídnout pozvánku, o které nevíme, je horší
+   * než ji nenabídnout a ukázat cestu k nastavení.
+   */
+  const [me, members, invitations, systemMail, orphaned] = await Promise.all([
     getCurrentUser(),
     apiFetch<{ data: MemberRow[] }>('/api/v1/members', { workspaceId }),
     canInvite
       ? apiFetch<{ data: InvitationRow[] }>('/api/v1/invitations', { workspaceId })
       : Promise.resolve({ ok: true as const, data: { data: [] as InvitationRow[] } }),
+    canInvite
+      ? apiFetch<{ system_mail: SystemMailStatus }>('/api/v1/system-mail/status', { workspaceId })
+      : Promise.resolve({ ok: false as const }),
+    canDeleteAccounts
+      ? apiFetch<{ data: OrphanedAccountRow[] }>('/api/v1/users/orphaned', { workspaceId })
+      : Promise.resolve({ ok: true as const, data: { data: [] as OrphanedAccountRow[] } }),
   ]);
+  const systemMailAvailable =
+    systemMail.ok && 'data' in systemMail ? systemMail.data.system_mail.available : false;
 
   return (
     <SettingsPageShell title={t('members.title')} lead={t('members.lead')}>
@@ -82,11 +106,21 @@ export default async function MembersPage({
           slug={workspaceSlug}
         />
         {canInvite ? (
-          <InvitationsSection
-            invitations={invitations}
-            workspaceId={workspaceId}
-            slug={workspaceSlug}
-          />
+          <>
+            <InvitationsSection
+              invitations={invitations}
+              workspaceId={workspaceId}
+              slug={workspaceSlug}
+              systemMailAvailable={systemMailAvailable}
+            />
+            {/* Náhradní cesta k pozvánce. Stojí pod ní schválně: kde pošta
+                funguje, je pozvánka pořád první volbou, protože si člověk
+                nastaví heslo sám a nikdo ho nepředává ústně. */}
+            <CreateMemberSection workspaceId={workspaceId} slug={workspaceSlug} />
+          </>
+        ) : null}
+        {canDeleteAccounts ? (
+          <OrphanedAccounts accounts={orphaned} workspaceId={workspaceId} slug={workspaceSlug} />
         ) : null}
       </div>
     </SettingsPageShell>

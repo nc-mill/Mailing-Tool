@@ -211,4 +211,26 @@ describe('field and liquid semantics', () => {
       ).toContain('liquid_unknown_root');
     }
   });
+  // Kořen `data` nese hodnoty předané při volání transakčního API. Kampani ho
+  // nikdo nedodá, takže tam musí zůstat neznámý: render má strictVariables
+  // vypnuté a chybějící hodnota by se tiše proměnila v prázdný řetězec.
+  it('allows the data root only in a transactional template', () => {
+    const text = {
+      id: 'b_000000000002',
+      type: 'text',
+      props: {
+        ...blockDefaults('text'),
+        content: [{ t: 'p', children: [{ t: 'var', expr: 'data.reset_url' }] }],
+      },
+    };
+    expect(run(docOf([section([text])]), 'transactional').map((i) => i.code)).not.toContain(
+      'liquid_unknown_root',
+    );
+    expect(run(docOf([section([text])]), 'campaign').map((i) => i.code)).toContain(
+      'liquid_unknown_root',
+    );
+    expect(run(docOf([section([text])]), 'system').map((i) => i.code)).toContain(
+      'liquid_unknown_root',
+    );
+  });
 });

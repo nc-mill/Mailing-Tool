@@ -1,13 +1,21 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { unsafeWorkspaceContext } from '@mlain/db/unsafe-context';
 import { startTestPostgres, type TestPostgres } from '../support/db';
+import { getFieldCatalog, type FieldCatalog } from '../../src/contacts/fields/catalog';
+import { closePools } from '../../src/tx';
 import { purgeDemoData, readDemoManifest, seedDemoData } from '../../src/demo/index';
 
 let pg: TestPostgres;
 let workspaceId: string;
+/** Skutečný katalog polí projektu. Seed jím ověřuje ukázkové šablony. */
+let fields: FieldCatalog;
 
 beforeAll(async () => {
   pg = await startTestPostgres();
   workspaceId = (await pg.seedMinimalInstallation({ contacts: 0 })).workspaceId;
+  fields = await getFieldCatalog(
+    unsafeWorkspaceContext(workspaceId, { type: 'system', job: 'test' }),
+  );
 }, 240_000);
 
 beforeEach(async () => {
@@ -16,6 +24,8 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  // `getFieldCatalog` jde přes aplikační pool z `src/tx`, ne přes pooly opory.
+  await closePools();
   await pg?.stop();
 });
 
@@ -30,7 +40,7 @@ const count = async (table: string) =>
   );
 
 const seed = () =>
-  pg.inWorkspace(workspaceId, (tx) => seedDemoData(tx, { workspaceId, now: new Date() }));
+  pg.inWorkspace(workspaceId, (tx) => seedDemoData(tx, { workspaceId, now: new Date(), fields }));
 const purge = () => pg.inWorkspace(workspaceId, (tx) => purgeDemoData(tx, { workspaceId }));
 
 describe('purgeDemoData', () => {

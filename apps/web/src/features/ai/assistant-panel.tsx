@@ -17,9 +17,26 @@ export type PanelState =
   | { phase: 'idle' }
   | { phase: 'generating'; step: GenerationStep }
   | { phase: 'done' }
+  /**
+   * Asistent doběhl, ale návrh nevznikl: odpověděl jen textem, typicky když mu
+   * selhal nástroj. Bez tohohle stavu se panel beze slova vrátil na prázdný
+   * formulář a uživatel nevěděl, jestli se něco stalo. Je to tatáž nepoctivost
+   * jako vymyšlený výpadek, jen tichá.
+   */
+  | { phase: 'noDraft'; text: string }
   | { phase: 'error'; code: string; provider?: string; retryAfterSeconds?: number; limit?: number };
 
-const ERROR_KEYS: Record<string, string> = {
+/**
+ * Kódy, ke kterým UMÍME říct něco konkrétního.
+ *
+ * ŽÁDNÁ VÝCHOZÍ HODNOTA. Dřív tu bylo `?? 'providerDown'`, takže se jako
+ * „Služba OpenAI má výpadek" ukázal každý kód, který v mapě chyběl: 404 od
+ * naší autentizace, chyba ověření vstupu i naše vlastní výjimka. Uživatel pak
+ * hledal příčinu u poskytovatele, kde žádná nebyla, a hláška navíc nenesla nic,
+ * podle čeho by šlo cokoliv dohledat. Neznámý kód se proto POJMENUJE, viz
+ * `messageFor` níž.
+ */
+export const ERROR_KEYS: Record<string, string> = {
   ai_credential_missing: 'noCredential',
   ai_invalid_credentials: 'invalidKey',
   ai_insufficient_credit: 'quota',
@@ -30,6 +47,9 @@ const ERROR_KEYS: Record<string, string> = {
   ai_provider_unavailable: 'providerDown',
   ai_context_too_long: 'contextTooLong',
   ai_content_filtered: 'contentFiltered',
+  ai_model_not_found: 'modelNotFound',
+  ai_unsupported_parameter: 'unsupportedParameter',
+  ai_request_failed: 'requestFailed',
 };
 
 const TONES = ['formal', 'friendly', 'playful', 'urgent'] as const;
@@ -168,6 +188,28 @@ export function AssistantPanelView({
 
       {state.phase === 'done' ? <DraftDecision onKeep={onKeep} onRetry={onRetry} /> : null}
 
+      {state.phase === 'noDraft' ? (
+        <Alert
+          tone="warning"
+          action={
+            <Button type="button" variant="secondary" className="mt-2 self-start" onClick={onRetry}>
+              {t('errors.retry')}
+            </Button>
+          }
+        >
+          <p>{t('panel.noDraft')}</p>
+          {state.text === '' ? null : (
+            <p className="mt-2 whitespace-pre-wrap text-sm text-text-muted">{state.text}</p>
+          )}
+          {/*
+            Rada, co s tím. Bez ní je to slepá ulička úplně stejně jako dřívější
+            „Služba OpenAI má výpadek": uživatel ví, že se to nepovedlo, a nemá
+            jedinou stopu, co udělat jinak.
+          */}
+          <p className="mt-2 text-sm text-text-muted">{t('panel.noDraftHint')}</p>
+        </Alert>
+      ) : null}
+
       {state.phase === 'error' && hasCredential ? (
         <Alert
           tone="error"
@@ -178,10 +220,11 @@ export function AssistantPanelView({
           }
         >
           <p>
-            {t(`errors.${ERROR_KEYS[state.code] ?? 'providerDown'}`, {
+            {t(`errors.${ERROR_KEYS[state.code] ?? 'unknown'}`, {
               provider: state.provider ?? '',
               seconds: state.retryAfterSeconds ?? 20,
               limit: state.limit ?? 60,
+              code: state.code,
             })}
           </p>
         </Alert>
@@ -237,6 +280,7 @@ function PanelSelect({
  */
 export function AiAssistantPanel({
   templateId,
+  workspaceId,
   hasCredential,
   brandName,
   providerLabel,
@@ -244,6 +288,8 @@ export function AiAssistantPanel({
   settingsHref,
 }: {
   templateId: string;
+  /** Bez něj chodí volání asistenta bez `X-Workspace-Id` a API vrací 404. */
+  workspaceId: string;
   hasCredential: boolean;
   brandName: string | null;
   /** Jméno poskytovatele výchozího klíče. Hlášky ho jmenují, ať uživatel ví, u koho hledat. */
@@ -252,7 +298,7 @@ export function AiAssistantPanel({
   settingsHref?: string;
 }) {
   const store = useEditorStore();
-  const chat = useAiChat({ templateId });
+  const chat = useAiChat({ templateId, workspaceId });
   const [applied, setApplied] = useState(false);
   const backup = useRef<{ document: EditorDocument; designHash: string } | null>(null);
 
@@ -287,7 +333,11 @@ export function AiAssistantPanel({
         ? { phase: 'generating', step: chat.step }
         : applied
           ? { phase: 'done' }
-          : { phase: 'idle' };
+          : // Doběhlo to, návrh nevznikl, ale asistent něco napsal. Tohle se
+            // uživateli MUSÍ ukázat, jinak vypadá tlačítko jako by nefungovalo.
+            chat.status === 'ready' && chat.text !== ''
+            ? { phase: 'noDraft', text: chat.text }
+            : { phase: 'idle' };
 
   return (
     <AssistantPanelView

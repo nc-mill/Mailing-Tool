@@ -1,0 +1,14 @@
+{
+  "id": "LQ-705",
+  "description": "kořen data v textové části se neescapuje",
+  "level": "authored",
+  "context": "text",
+  "template": "Odkaz platí {{ data.expires_in_minutes }} minut: {{ data.reset_url }}",
+  "data": {
+    "data": {
+      "expires_in_minutes": 30,
+      "reset_url": "https://shop.cz/reset?token=abc&uid=8472"
+    }
+  },
+  "expected": "Odkaz platí 30 minut: https://shop.cz/reset?token=abc&uid=8472"
+}

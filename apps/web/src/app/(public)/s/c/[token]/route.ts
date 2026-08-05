@@ -1,4 +1,5 @@
 import { anonymousBranding, confirmByRef, lookupConfirmation } from '@mlain/core/contacts';
+import { sanitizePublicRef } from '@mlain/core/net/public-link';
 import {
   ConfirmExpiredPage,
   ConfirmPage,
@@ -32,7 +33,9 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ token: string }> },
 ): Promise<Response> {
-  const { token } = await params;
+  // Očištěno o přílepek poštovního klienta, aby se z něj nestala součást
+  // identifikátoru a aby ho `action` formuláře nezopakoval, viz `net/public-link.ts`.
+  const token = sanitizePublicRef((await params).token);
   const lookup = await lookupConfirmation(token);
 
   // Neplatný, neexistující i poškozený token dávají BAJTOVĚ STEJNOU stránku.
@@ -81,7 +84,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ token: string }> },
 ): Promise<Response> {
-  const { token } = await params;
+  const token = sanitizePublicRef((await params).token);
   // Tělo se čte, i když se z něj nic nepoužívá: `action=resend` obsluhuje tatáž
   // doménová cesta a nepřečtené tělo drží spojení otevřené.
   await readFormBody(request);

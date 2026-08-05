@@ -1,7 +1,12 @@
 import { sql } from 'drizzle-orm';
+import { buildRenderSchema } from '@mlain/emails/compile/render-schema';
+import { designHash } from '@mlain/emails/document/canonical';
 import { writeAuditLog } from '../audit/write';
+import type { FieldCatalog } from '../contacts/fields/catalog';
 import { resolveName } from '../contacts/naming/resolve';
 import { EMPTY_OVERRIDES } from '../contacts/naming/types';
+import { SegmentAstV1 } from '../segments/ast';
+import { validateTemplateDocument } from '../templates/validate';
 import type { Tx } from '../tx';
 import { DemoAuditActions } from './audit';
 import {
@@ -29,7 +34,34 @@ export class DemoAlreadySeededError extends Error {
   }
 }
 
-export type SeedInput = { workspaceId: string; now: Date };
+/**
+ * Katalog polí je vstup, ne něco, co si seed dotáhne sám.
+ *
+ * Důvod je transakční: `getFieldCatalog` si otevírá VLASTNÍ spojení z aplikačního
+ * poolu (`listContactFields` volá `withWorkspace`). Volat ho zevnitř seedu by
+ * znamenalo držet druhé spojení, zatímco běží transakce se zámkem nad řádkem
+ * projektu, tedy zbytečné riziko vyčerpání poolu. Volající ho vyzvedne PŘED
+ * otevřením transakce a předá hotový.
+ */
+export type SeedInput = { workspaceId: string; now: Date; fields: FieldCatalog };
+
+/**
+ * Ukázková šablona neprošla validací. Není to chyba uživatele, je to vada sady
+ * v tomhle repozitáři, a seed na ní schválně padá: půl minuty hledání v logu je
+ * lepší než ukázková data, na kterých se kampaň nedá odeslat a nikdo neví proč.
+ */
+export class DemoTemplateInvalidError extends Error {
+  constructor(
+    readonly templateKey: string,
+    readonly issues: readonly { code: string; pointer: string }[],
+  ) {
+    super(
+      `Ukázková šablona ${templateKey} není platný dokument: ` +
+        issues.map((issue) => `${issue.code} (${issue.pointer || '/'})`).join(', '),
+    );
+    this.name = 'DemoTemplateInvalidError';
+  }
+}
 
 export async function readDemoManifest(tx: Tx, workspaceId: string): Promise<DemoManifest | null> {
   const { rows } = await tx.execute<{ settings: Record<string, unknown> }>(
@@ -206,9 +238,22 @@ async function insertAll(
 
   const segmentIds: string[] = [];
   for (const segment of DEMO_SEGMENTS) {
+    /*
+     * Definice se ověřuje TOUTÉŽ cestou, jakou ji ověřuje produkt
+     * (`segments/service.ts` i `segments/api/segments.routes.ts` volají
+     * `SegmentAstV1`), takže se neplatný strom do projektu nedostane ani
+     * omylem. Typ `SegmentAst` na `DEMO_SEGMENTS` hlídá tvar při překladu,
+     * tohle hlídá i hodnoty, tedy třeba operátor, který k poli nepatří.
+     *
+     * Dřív tu žádná kontrola nebyla a vymyšlený tvar `{ op, conditions }`
+     * prošel až do databáze. Kompilátor segmentů na něm padal, takže preflight
+     * kampaně vracel 500, jakmile měl uživatel v publiku jakýkoli segment.
+     */
+    const ast = SegmentAstV1.parse(segment.definition(tagIds));
+
     // `definition_hash bytea` je NOT NULL. Počítá se z kanonického JSON,
     // stejně jako u šablon.
-    const definition = JSON.stringify(segment.definition);
+    const definition = JSON.stringify(ast);
     const { rows } = await tx.execute<{ id: string }>(sql`
       INSERT INTO segments (workspace_id, name, kind, definition, definition_hash)
       VALUES (${ws}, ${segment.name}, 'dynamic', ${definition}::jsonb, sha256(${definition}::bytea))
@@ -218,12 +263,50 @@ async function insertAll(
 
   const templateIds = new Map<string, string>();
   for (const template of DEMO_TEMPLATES) {
+    // Šablona se ověřuje TOUTÉŽ cestou, kterou jde uložení z editoru: migrace
+    // verze dokumentu, JSON Schema, sémantická pravidla. Bez toho by v projektu
+    // skončila šablona se stavem `unknown`, tedy nikdy neověřená, a vada by se
+    // projevila až při kompilaci kampaně jako `template_document_invalid`.
+    // Assety jsou prázdná množina schválně: ukázkové šablony žádný obrázek
+    // nepoužívají, takže není co dohledávat.
+    const validation = validateTemplateDocument(template.design, {
+      templateKind: 'campaign',
+      fields: input.fields,
+      assetIds: new Set<string>(),
+    });
+    if (validation.state !== 'valid') {
+      throw new DemoTemplateInvalidError(template.key, validation.issues);
+    }
+
     // `design jsonb` a `design_hash bytea` jsou NOT NULL; `subject` ani
     // `blocks` na šabloně neexistují, předmět nese kampaň.
-    const design = JSON.stringify(template.design);
+    //
+    // Hash se počítá v TypeScriptu funkcí `designHash`, ne v databázi přes
+    // `sha256(...::bytea)`. Sloupec je definovaný jako otisk KANONICKÉ
+    // serializace (klíče lexikograficky, bez mezer), kdežto `JSON.stringify`
+    // drží pořadí klíčů tak, jak vzniklo. Otisk z databáze by tedy pro tentýž
+    // dokument vyšel jinak než ten, který spočítá `updateTemplateDesign`,
+    // a první uložení beze změny by se tvářilo jako změna.
+    //
+    // `used_fields` se plní rovnou při vložení. Prázdné pole by znamenalo, že
+    // ukázkové šablony nevidí dopadová analýza mazaného kontaktního pole
+    // a uživatel by dostal „používá to 0 šablon" u pole, které se v nich používá.
+    // Sjednocení použitých a podmínkových cest, stejně jako `computeUsedFields`
+    // ve službě šablon: pole použité jen v podmínce nesmí z analýzy vypadnout.
+    const renderSchema = buildRenderSchema(template.design, {
+      fields: input.fields,
+      skippedBlockIds: new Set<string>(),
+    });
+    const usedFields = [
+      ...new Set([...renderSchema.fields.map((field) => field.path), ...renderSchema.presence]),
+    ];
     const { rows } = await tx.execute<{ id: string }>(sql`
-      INSERT INTO templates (workspace_id, name, kind, design, design_hash)
-      VALUES (${ws}, ${template.name}, 'campaign', ${design}::jsonb, sha256(${design}::bytea))
+      INSERT INTO templates
+        (workspace_id, name, kind, schema_version, design, design_hash,
+         used_fields, validation_state, validation_errors)
+      VALUES (${ws}, ${template.name}, 'campaign', ${template.design.schemaVersion},
+              ${JSON.stringify(template.design)}::jsonb, ${designHash(template.design)},
+              ${sql.param(usedFields)}::text[], 'valid', ${JSON.stringify(validation.issues)}::jsonb)
       RETURNING id`);
     templateIds.set(template.key, rows[0]!.id);
   }

@@ -114,6 +114,63 @@ describe('row pipeline', () => {
     expect(out.contact.greeting).toBe('Dobrý den');
   });
 
+  it('keeps only tag NAMES on the row, so ids and names do not end up in one list', () => {
+    const ctx: RowContext = {
+      ...base,
+      mapping: { ...base.mapping, '3': { target: 'tag' } },
+      options: { ...defaultOptions(), tag_ids: ['019fbf52-d8b9-7b0d-b67e-528e8026a385'] },
+    };
+    const out = processRow(row(['jana@firma.cz', 'Jana Nováková', 'Brno', 'VIP|veletrh']), ctx);
+    expect(out.kind).toBe('ok');
+    if (out.kind !== 'ok') return;
+    // Štítky z voleb se aplikují při zápisu dávky, kde je podle čeho poznat, že jsou to
+    // identifikátory. Smíchané s volným textem ze sloupce by je nikdo nerozlišil.
+    expect(out.tags).toEqual(['VIP', 'veletrh']);
+  });
+
+  it('subscribes the row into the mapped list only when the cell says yes', () => {
+    const listId = '019fbf52-d8b9-7b0d-b67e-528e8026a390';
+    const ctx: RowContext = {
+      ...base,
+      mapping: { ...base.mapping, '3': { target: 'list', list_id: listId } },
+    };
+    const yes = processRow(row(['jana@firma.cz', 'Jana Nováková', 'Brno', 'ano']), ctx);
+    const no = processRow(row(['petr@firma.cz', 'Petr Novák', 'Brno', 'ne']), ctx);
+    expect(yes.kind === 'ok' && yes.listIds).toEqual([listId]);
+    expect(no.kind === 'ok' && no.listIds).toEqual([]);
+    // Nesmysl ve sloupci je chyba řádku, ne tiché nepřihlášení.
+    expect(processRow(row(['x@firma.cz', 'A', 'B', 'možná']), ctx)).toMatchObject({
+      kind: 'error',
+      errorCode: 'invalid_boolean',
+    });
+  });
+
+  it('takes the consent date and source from the mapped columns', () => {
+    const consent = {
+      purpose: 'email_marketing' as const,
+      legal_basis: 'consent' as const,
+      source: 'import',
+      declaration: true,
+    };
+    const ctx: RowContext = {
+      ...base,
+      mapping: {
+        ...base.mapping,
+        '3': { target: 'consent_occurred_at' },
+        '4': { target: 'consent_source' },
+      },
+      options: { ...defaultOptions(), consent },
+    };
+    const out = processRow(
+      row(['jana@firma.cz', 'Jana Nováková', 'Brno', '3. 5. 2024', 'veletrh Brno']),
+      ctx,
+    );
+    expect(out.kind).toBe('ok');
+    if (out.kind !== 'ok') return;
+    expect(out.consentOccurredAt).toBe('2024-05-03T00:00:00.000Z');
+    expect(out.consent?.source).toBe('veletrh Brno');
+  });
+
   it('warns about a padded row instead of failing it', () => {
     const out = processRow(row(['jana@firma.cz', 'A', ''], { padded: true }), base);
     expect(out.kind).toBe('ok');

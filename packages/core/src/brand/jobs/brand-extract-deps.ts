@@ -17,7 +17,7 @@ import {
   finishExtraction,
   markRunning,
 } from '../repo/extractions.repo';
-import { insertBrandProfile } from '../repo/profiles.repo';
+import { saveExtractedBrandProfile } from '../repo/profiles.repo';
 import { createBrandRuntime } from '../runtime';
 import { enqueueBrandJob } from './enqueue';
 import type { BrandExtractDeps } from './brand-extract';
@@ -155,29 +155,42 @@ export function createBrandExtractDeps(ctx: WorkspaceContext): BrandExtractDeps 
     collectLogoCandidates: (parsed, baseUrl) => collectLogoCandidates(parsed, baseUrl),
 
     /**
-     * Analýza stažené stránky a založení profilu.
+     * Analýza stažené stránky a zápis do jediné značky projektu.
      *
      * `analyzePage` je čistá funkce: nic neměří ani neukládá, jen odvodí paletu,
      * písmo a kandidáty na logo. Uložení loga jako assetu tady schválně NENÍ,
      * protože měření rozměrů (`sharp`) ani úložiště assetů doména značky nemá;
-     * `analyzePage` to hlásí varováním `logo_not_measured` a profil vzniká
-     * s `logo_asset_id = NULL`. Kritérium 52 tím zůstává splněné: web bez loga
+     * `analyzePage` to hlásí varováním `logo_not_measured` a logo si uživatel
+     * vybere z knihovny médií. Kritérium 52 tím zůstává splněné: web bez loga
      * a bez barev uspěje s výchozí paletou a varováním.
+     *
+     * `saveExtractedBrandProfile`, ne `insert`: projekt má právě jednu značku
+     * a druhé stažení ji PŘEPÍŠE. Dřív se zakládala nová při každém běhu, takže
+     * šest kliknutí na „Stáhnout" znamenalo šest řádků téhož webu.
      */
     buildBrandProfile: async ({ workspaceId, finalUrl, html, assets }) => {
       const analysis = analyzePage({ html, finalUrl, assets });
-      const created = await withWorkspace(ctx, (tx) =>
-        insertBrandProfile(tx, {
+      const saved = await withWorkspace(ctx, (tx) =>
+        saveExtractedBrandProfile(tx, {
           workspaceId,
           name: profileNameFor(finalUrl),
           sourceUrl: finalUrl,
-          logoAssetId: null,
-          logoDarkAssetId: null,
           palette: analysis.palette,
           typography: analysis.typography,
         }),
       );
-      return { brandProfileId: created.id, warnings: analysis.warnings };
+      if (saved.removedProfiles > 0) {
+        logger.debug(
+          { workspaceId, removedProfiles: saved.removedProfiles },
+          'brand profiles consolidated',
+        );
+      }
+      return {
+        brandProfileId: saved.id,
+        palette: analysis.palette,
+        typography: analysis.typography,
+        warnings: analysis.warnings,
+      };
     },
 
     /**

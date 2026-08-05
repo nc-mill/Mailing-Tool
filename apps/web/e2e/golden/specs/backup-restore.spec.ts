@@ -101,6 +101,12 @@ test.describe('zálohy proti běžící instalaci', () => {
         //   psql: error: ... FATAL: role "postgres" does not exist
         '-U',
         'mlain_migrator',
+        // `-d mlain` je povinné. Bez něj se psql připojí do databáze pojmenované
+        // podle uživatele, tedy `mlain_migrator`, a ta neexistuje:
+        //   psql: error: FATAL: database "mlain_migrator" does not exist
+        // Volání pak spadne dřív, než se na cokoli zeptá.
+        '-d',
+        'mlain',
         '-tAc',
         "SELECT count(*) FROM pg_database WHERE datname LIKE 'ml_verify_%'",
       ],

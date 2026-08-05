@@ -24,19 +24,37 @@ afterAll(async () => {
 const catalog: FieldCatalog = { version: 'v1', fields: [] };
 
 const footer = { id: 'b_000000000099', type: 'footer', props: blockDefaults('footer') };
-const design = {
-  schemaVersion: 1,
-  meta: { name: 'Uvítací e-mail', previewText: 'Vítejte', language: 'cs' },
-  theme: DEFAULT_THEME,
-  blocks: [
-    {
-      id: 'b_000000000001',
-      type: 'section',
-      props: blockDefaults('section'),
-      children: [footer],
-    },
-  ],
-} as unknown as Document;
+const text = {
+  id: 'b_000000000010',
+  type: 'text',
+  props: { ...blockDefaults('text'), content: [{ t: 'p', children: [{ t: 's', v: 'Vítejte.' }] }] },
+};
+
+function documentWith(children: unknown[]): Document {
+  return {
+    schemaVersion: 1,
+    meta: { name: 'Uvítací e-mail', previewText: 'Vítejte', language: 'cs' },
+    theme: DEFAULT_THEME,
+    blocks: [
+      {
+        id: 'b_000000000001',
+        type: 'section',
+        props: blockDefaults('section'),
+        children: [...children, footer],
+      },
+    ],
+  } as unknown as Document;
+}
+
+/**
+ * Šablona s obsahem. Textový blok tu nebyl a musel přibýt: testovací odeslání
+ * od opravy vady s prázdným e-mailem odmítá dokument, ve kterém není nic než
+ * patička, takže by na něm padaly všechny ostatní testy tohohle souboru.
+ */
+const design = documentWith([text]);
+
+/** Dokument, ve kterém není nic než patička. Přesně to, co se odeslat nesmí. */
+const emptyDesign = documentWith([]);
 
 /**
  * Projekt připravený k odeslání: kontakt, odesílací účet a jedna uživatelská
@@ -315,6 +333,28 @@ describe('testovací odeslání šablony', () => {
         assetBaseUrl: 'https://assets.test',
       }),
     ).rejects.toThrowError(/test_sending_not_configured/);
+  });
+
+  /**
+   * Testovací e-mail je opravdový e-mail. Kdyby prázdná šablona prošla tudy
+   * a neprošla odesláním kampaně, choval by se nástroj na dvou místech různě
+   * k téže věci a uživatel by se o prázdném obsahu dozvěděl ze schránky.
+   */
+  it('šablona, ve které není nic než patička, se neodešle ani na test', async () => {
+    const { ctx } = await seedSendableWorkspace();
+    const empty = await createTemplate(ctx, { name: 'Prázdná', document: emptyDesign });
+
+    await expect(
+      sendTemplateTest(ctx, {
+        templateId: empty.id,
+        recipients: ['kolega@example.cz'],
+        renderData: {},
+        assetBaseUrl: 'https://assets.test',
+      }),
+    ).rejects.toThrowError(/test_template_empty/);
+
+    // Nic se nezařadilo do outboxu: kontrola je před zápisem zpráv, ne po něm.
+    expect(await messagesOf({ ctx: ctx.ctx })).toHaveLength(0);
   });
 
   it('cizí šablona je not_found', async () => {

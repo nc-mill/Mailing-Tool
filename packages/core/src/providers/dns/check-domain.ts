@@ -17,7 +17,16 @@ export type DomainChecks = {
     findings: Finding[];
     checked_at: string;
   };
-  mx: { ok: boolean | null; records: string[]; findings: Finding[]; checked_at: string };
+  /**
+   * `null` znamena, ze se kontrola NEDELALA, protoze na tehle domene nedava smysl.
+   * MX pro zpatecni adresu se tyka VYHRADNE vlastni MAIL FROM subdomeny. Dokud si
+   * ji uzivatel nezvoli, pouziva SES vlastni zpatecni domenu a zadny MX zaznam
+   * do DNS nepatri. Drive se kontrola pouštela i tak, proti apexu domeny, takze
+   * porovnavala MX uzivatelovy POSTOVNI SCHRANKY s `feedback-smtp...` a hlasila
+   * neshodu, kterou neslo nijak odstranit. Rozdil proti `ok: null` je zasadni:
+   * `ok: null` znamena „nevime", tohle znamena „neni co resit".
+   */
+  mx: { ok: boolean | null; records: string[]; findings: Finding[]; checked_at: string } | null;
 };
 
 /** Odstupnovana frekvence, aby uzivatel nemusel cekat u obrazovky. */
@@ -39,7 +48,8 @@ export async function runDomainChecks(input: {
   spf: () => Promise<Omit<DomainChecks['spf'], 'checked_at'>>;
   dkim: () => Promise<Omit<DomainChecks['dkim'], 'checked_at'>>;
   dmarc: () => Promise<Omit<DomainChecks['dmarc'], 'checked_at'>>;
-  mx: () => Promise<Omit<DomainChecks['mx'], 'checked_at'>>;
+  /** `null` = doména nemá vlastní zpáteční adresu, takže se MX vůbec nekontroluje. */
+  mx: (() => Promise<Omit<NonNullable<DomainChecks['mx']>, 'checked_at'>>) | null;
   overallTimeoutMs: number;
 }): Promise<DomainChecks> {
   const at = new Date().toISOString();
@@ -74,13 +84,15 @@ export async function runDomainChecks(input: {
         findings: [{ code: 'dmarc_unknown', severity: 'warning' as const }],
       }),
     ]),
-    Promise.race([input.mx(), timeout({ ok: null, records: [], findings: [] })]),
+    input.mx === null
+      ? Promise.resolve(null)
+      : Promise.race([input.mx(), timeout({ ok: null, records: [], findings: [] as Finding[] })]),
   ]);
 
   return {
     spf: { ...spf, checked_at: at },
     dkim: { ...dkim, checked_at: at },
     dmarc: { ...dmarc, checked_at: at },
-    mx: { ...mx, checked_at: at },
+    mx: mx === null ? null : { ...mx, checked_at: at },
   };
 }

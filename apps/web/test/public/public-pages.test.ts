@@ -21,6 +21,7 @@ import {
   GET as reactivationGet,
   POST as reactivationPost,
 } from '../../src/app/(public)/r/[token]/route';
+import { GET as webviewGet } from '../../src/app/(public)/v/[token]/route';
 import { GET as formGet } from '../../src/app/(public)/f/[slug]/route';
 import { POST as formSubmit } from '../../src/app/(public)/f/[slug]/submit/route';
 import { GET as thanksGet } from '../../src/app/(public)/f/[slug]/thanks/route';
@@ -34,7 +35,9 @@ import {
   issueConfirmationToken,
   latestConsent,
   publicRequest,
+  seedSentMessage,
   sentEmails,
+  setPreferenceCenter,
   subscribe,
   subscriptionStatus,
   testWorkspace,
@@ -470,7 +473,9 @@ describe('centrum předvoleb', () => {
   async function preferencesSetup() {
     const ctx = await testWorkspace();
     const contactId = await createContact(ctx, { email: 'jana@example.cz', firstName: 'Jana' });
-    const listId = await createList(ctx, { name: 'Newsletter' });
+    // Seznam se nabízí veřejně. Bez toho by se na stránce vůbec neobjevil, a je to
+    // úmyslné: nabízí se jen to, co správce nabídnout chtěl.
+    const listId = await createList(ctx, { name: 'Newsletter', publicVisible: true });
     await subscribe(ctx, { contactId, listId, status: 'confirmed' });
     const token = unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId });
     return { ctx, contactId, listId, token };
@@ -752,10 +757,15 @@ describe('vkládací skript', () => {
     return { body: await response.clone().text(), response };
   }
 
-  it('vejde se do dvanácti kilobajtů po kompresi a vykresluje do zapouzdřeného stromu', async () => {
+  it('vejde se do dvanácti kilobajtů po kompresi a nechá se ostylovat webem', async () => {
     const { body } = await scriptFor();
     expect(gzipSync(Buffer.from(body, 'utf8')).byteLength).toBeLessThan(12 * 1024);
-    expect(body).toContain('attachShadow');
+    // Dřív se tu vyžadoval `attachShadow`, tedy zapouzdřený strom. Zadavatel to
+    // 4. 8. 2026 otočil: formulář nesmí nést žádné CSS a musí jít ostylovat až
+    // na webu, kam se vloží. Zapouzdření obojí znemožňuje, protože izoluje
+    // oběma směry. Formulář se proto vykresluje do stránky a nabízí třídy.
+    expect(body).not.toContain('attachShadow');
+    expect(body).toContain('ml-form');
   }, 60_000);
 
   it('sám o sobě nic nesleduje', async () => {
@@ -778,5 +788,336 @@ describe('vkládací skript', () => {
     const response = await formGet(publicRequest(`/f/${slug}`), params({ slug }));
     expect(response.status).toBe(404);
     expect(await response.text()).toBe('');
+  }, 60_000);
+});
+
+/**
+ * Vada, kterou nahlásil zadavatel: klikl v Gmailu na odhlášení a dostal
+ * „Tenhle odkaz neplatí". Gmail připojuje k odkazu vlastní parametry NAIVNÍM
+ * spojením, tedy `&source=gmail&ust=…&usg=…` i k adrese, která žádné `?` nemá.
+ * Pro Next.js je pak celý ten řetězec jeden segment cesty a přílepek se stane
+ * součástí tokenu.
+ *
+ * Není to kosmetika: odhlášení, které selže, končí tlačítkem spam, a přesně za to
+ * poštovní providery trestají doručitelnost.
+ */
+describe('odkaz přežije parametry, které připojil poštovní klient', () => {
+  const GMAIL = '&source=gmail&ust=1785931489061000&usg=AOvVaw2xyz';
+
+  it('odhlášení: GET vykreslí stránku a formulář míří na OČIŠTĚNOU adresu', async () => {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'j@x.cz' });
+    const token = unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId: null });
+    const dirty = `${token}${GMAIL}`;
+
+    const html = await (
+      await unsubscribeGet(publicRequest(`/u/${dirty}`), params({ token: dirty }))
+    ).text();
+
+    expect(html).not.toMatch(/Tenhle odkaz neplatí/);
+    expect(html).toMatch(/Odhlásit/);
+    // Kdyby se `action` skládala ze syrového parametru, POST by přílepek zopakoval.
+    expect(html).toContain(`action="/u/${token}"`);
+    expect(html).not.toContain('source=gmail');
+  }, 60_000);
+
+  it('odhlášení: POST s přílepkem opravdu odhlásí', async () => {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'j@x.cz' });
+    const listId = await createList(ctx, { name: 'Newsletter' });
+    await subscribe(ctx, { contactId, listId, status: 'confirmed' });
+    const token = unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId });
+    const dirty = `${token}${GMAIL}`;
+
+    await unsubscribePost(
+      publicRequest(`/u/${dirty}`, {
+        method: 'POST',
+        body: 'action=unsubscribe_list',
+        contentType: 'application/x-www-form-urlencoded',
+      }),
+      params({ token: dirty }),
+    );
+    expect(await subscriptionStatus(ctx, contactId, listId)).toBe('unsubscribed');
+  }, 60_000);
+
+  it('předvolby přežijí přílepek', async () => {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'jana@example.cz' });
+    const token = unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId: null });
+    const dirty = `${token}${GMAIL}`;
+
+    const html = await (
+      await preferencesGet(publicRequest(`/p/${dirty}`), params({ token: dirty }))
+    ).text();
+    expect(html).toContain('j***@example.cz');
+    expect(html).toContain(`action="/p/${token}"`);
+  }, 60_000);
+
+  it('reaktivace přežije přílepek', async () => {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'j@x.cz' });
+    const token = unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId: null });
+    const dirty = `${token}${GMAIL}`;
+
+    const html = await (
+      await reactivationGet(publicRequest(`/r/${dirty}`), params({ token: dirty }))
+    ).text();
+    expect(html).not.toMatch(/Tenhle odkaz neplatí/);
+    expect(html).toContain(`action="/r/${token}"`);
+  }, 60_000);
+
+  it('potvrzení přihlášení přežije přílepek', async () => {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'j@x.cz' });
+    const listId = await createList(ctx, { name: 'Newsletter' });
+    const raw = await issueConfirmationToken(ctx, { contactId, listId });
+    const ref = buildConfirmationRef({ workspaceId: ctx.workspaceId, token: raw });
+    const dirty = `${ref}${GMAIL}`;
+
+    const html = await (
+      await confirmGet(publicRequest(`/s/c/${dirty}`), params({ token: dirty }))
+    ).text();
+    expect(html).not.toMatch(/Tenhle odkaz neplatí/);
+    expect(html).toContain(`action="/s/c/${ref}"`);
+  }, 60_000);
+
+  it('poškozený token se přílepkem nedá zachránit', async () => {
+    // Očista NEJE shovívavost: uřízne se jen to, co za tokenem přibylo, podpis
+    // se pořád ověřuje nad tím, co ze zprávy skutečně přišlo.
+    const dirty = `t1rozbitytoken${GMAIL}`;
+    const html = await (
+      await unsubscribeGet(publicRequest(`/u/${dirty}`), params({ token: dirty }))
+    ).text();
+    expect(html).toMatch(/Tenhle odkaz neplatí/);
+  }, 60_000);
+});
+
+/**
+ * Vada, kterou nahlásil zadavatel: odhlásil se, otevřel předvolby, zaškrtl seznam,
+ * uložil a dostal HTTP 500.
+ *
+ * Příčina nebyla v odhlášení. `subscribeToList` posílal do `writeContact` zdroj
+ * `preference_center`, který `ck_contacts__source` nezná, a zápis skončil na 23514.
+ * Padalo to při každém zaškrtnutí seznamu, protože PostgreSQL vyhodnocuje CHECK
+ * nad navrhovaným řádkem ještě před tím, než zjistí konflikt v `ON CONFLICT`.
+ */
+describe('uložení předvoleb odhlášeným kontaktem', () => {
+  it('přihlášení do seznamu po globálním odhlášení nekončí pětistovkou', async () => {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'jana@example.cz' });
+    const listId = await createList(ctx, { name: 'Novinky', publicVisible: true });
+    await subscribe(ctx, { contactId, listId, status: 'confirmed' });
+    const token = unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId: null });
+
+    // 1. Odhlášení ze všeho, přesně jak to udělal zadavatel.
+    await unsubscribePost(
+      publicRequest(`/u/${token}`, {
+        method: 'POST',
+        body: 'action=unsubscribe_all',
+        contentType: 'application/x-www-form-urlencoded',
+      }),
+      params({ token }),
+    );
+    expect(await subscriptionStatus(ctx, contactId, listId)).toBe('unsubscribed');
+
+    // 2. Zaškrtnutí seznamu v předvolbách a uložení.
+    const response = await preferencesPost(
+      publicRequest(`/p/${token}`, {
+        method: 'POST',
+        body: new URLSearchParams({ action: 'update_lists', list: listId }).toString(),
+        contentType: 'application/x-www-form-urlencoded',
+      }),
+      params({ token }),
+    );
+
+    // Před opravou tady letěla neošetřená výjimka z databáze a Next vrátil 500.
+    expect(response.status).toBe(303);
+
+    /*
+     * Stav je `pending`, ne `confirmed`, a je to ÚMYSLNÉ. Stavový automat odmítá
+     * vrátit odhlášeného člověka rovnou do rozesílky (`state-machine.ts`: podmínka
+     * `from !== 'unsubscribed'`), takže mu místo toho odejde potvrzovací e-mail
+     * a do seznamu se vrátí až jeho druhým kliknutím. Vada byla v pětistovce,
+     * ne v tomhle pravidle.
+     */
+    expect(await subscriptionStatus(ctx, contactId, listId)).toBe('pending');
+    expect(sentEmails.filter((e) => e.kind === 'confirmation')).toHaveLength(1);
+  }, 60_000);
+});
+
+/**
+ * Bezpečnostní vada: stránka předvoleb nabízela VŠECHNY seznamy projektu, takže se
+ * držitel jakéhokoli odhlašovacího odkazu mohl sám přihlásit i do seznamu, který
+ * znamená nárok („VIP", „Zákazníci se slevou").
+ */
+describe('veřejné nabízení seznamů', () => {
+  it('nenabízený seznam se na stránce vůbec neobjeví', async () => {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'jana@example.cz' });
+    await createList(ctx, { name: 'VIP' });
+    await createList(ctx, { name: 'Interní jméno', publicVisible: true, publicName: 'Novinky' });
+    const token = unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId: null });
+
+    const html = await (
+      await preferencesGet(publicRequest(`/p/${token}`), params({ token }))
+    ).text();
+
+    expect(html).not.toContain('VIP');
+    // Ukáže se VEŘEJNÝ název, ne pracovní poznámka správce.
+    expect(html).toContain('Novinky');
+    expect(html).not.toContain('Interní jméno');
+  }, 60_000);
+
+  it('do nenabízeného seznamu se nejde přihlásit ani ručně sestaveným tělem', async () => {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'jana@example.cz' });
+    const vipId = await createList(ctx, { name: 'VIP' });
+    const token = unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId: null });
+
+    await preferencesPost(
+      publicRequest(`/p/${token}`, {
+        method: 'POST',
+        body: new URLSearchParams({ action: 'update_lists', list: vipId }).toString(),
+        contentType: 'application/x-www-form-urlencoded',
+      }),
+      params({ token }),
+    );
+
+    expect(await subscriptionStatus(ctx, contactId, vipId)).toBeNull();
+  }, 60_000);
+
+  it('bez jediného nabízeného seznamu se blok odběrů nevykreslí', async () => {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'jana@example.cz' });
+    await createList(ctx, { name: 'VIP' });
+    const token = unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId: null });
+
+    const html = await (
+      await preferencesGet(publicRequest(`/p/${token}`), params({ token }))
+    ).text();
+
+    expect(html).not.toContain('update_lists');
+    // Odhlášení zůstává vždycky, je to zákonná povinnost.
+    expect(html).toContain('unsubscribe_all');
+  }, 60_000);
+
+  it('vypnuté centrum předvoleb nabídne JEN odhlášení', async () => {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'jana@example.cz' });
+    await createList(ctx, { name: 'Novinky', publicVisible: true });
+    await setPreferenceCenter(ctx, false);
+    const token = unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId: null });
+
+    const html = await (
+      await preferencesGet(publicRequest(`/p/${token}`), params({ token }))
+    ).text();
+
+    expect(html).toContain('unsubscribe_all');
+    for (const absent of ['update_lists', 'snooze', 'export_data', 'Novinky']) {
+      expect(html, absent).not.toContain(absent);
+    }
+  }, 60_000);
+
+  it('s vypnutým centrem neodkazuje na předvolby ani stránka odhlášení', async () => {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'jana@example.cz' });
+    await setPreferenceCenter(ctx, false);
+    const token = unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId: null });
+
+    const html = await (
+      await unsubscribeGet(publicRequest(`/u/${token}`), params({ token }))
+    ).text();
+    expect(html).not.toContain(`/p/${token}`);
+    expect(html).toContain('Odhlásit');
+  }, 60_000);
+
+  it('s vypnutým centrem neprojde ani ručně poslaná změna údajů', async () => {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'jana@example.cz', firstName: 'Jana' });
+    await setPreferenceCenter(ctx, false);
+    const token = unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId: null });
+
+    await preferencesPost(
+      publicRequest(`/p/${token}`, {
+        method: 'POST',
+        body: new URLSearchParams({ action: 'update', first_name: 'Podvrh' }).toString(),
+        contentType: 'application/x-www-form-urlencoded',
+      }),
+      params({ token }),
+    );
+
+    expect((await contactRow(ctx, contactId)).first_name).toBe('Jana');
+  }, 60_000);
+});
+
+/**
+ * Vada: odkaz „Zobrazit v prohlížeči" vedl v KAŽDÉM odeslaném e-mailu na 404. Odesílač
+ * adresu `/v/{token}` skládal (`apps/sender/internal/token/urls.go`), web pro ni žádnou
+ * cestu neměl. Nebyl to překlep v tokenu, chyběla celá obrazovka.
+ */
+describe('zobrazení zprávy v prohlížeči', () => {
+  async function webviewSetup() {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'jana@example.cz', firstName: 'Jana' });
+    const { messageId, createdAt } = await seedSentMessage(ctx, {
+      contactId,
+      email: 'jana@example.cz',
+      html:
+        '<html><body><p>Dobrý den {{ contact.first_name }}</p>' +
+        '<a href="{{ unsubscribe_url }}">Odhlásit</a></body></html>',
+      renderData: { contact: { first_name: 'Jana' } },
+    });
+    const token = issueUnsubscribeToken({
+      workspaceId: ctx.workspaceId,
+      messageId,
+      contactId,
+      listId: null,
+      messageCreatedAt: createdAt,
+      keyring: keyringFromEnv(),
+    });
+    return { ctx, contactId, token };
+  }
+
+  it('vykreslí zprávu v podobě PRO TOHOTO příjemce, ne obecné', async () => {
+    const { token } = await webviewSetup();
+    const response = await webviewGet(publicRequest(`/v/${token}`), params({ token }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    // Zpráva se nesmí ukládat do mezipaměti ani indexovat.
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    expect(response.headers.get('x-robots-tag')).toContain('noindex');
+
+    const html = await response.text();
+    expect(html).toContain('Dobrý den Jana');
+    // Liquid výraz nesmí zůstat nenahrazený, ani u systémových adres.
+    expect(html).not.toContain('{{');
+    expect(html).toContain(`/u/${token}`);
+  }, 60_000);
+
+  it('přežije parametry, které připojil poštovní klient', async () => {
+    const { token } = await webviewSetup();
+    const dirty = `${token}&source=gmail&ust=1785931489061000`;
+    const response = await webviewGet(publicRequest(`/v/${dirty}`), params({ token: dirty }));
+    expect(await response.text()).toContain('Dobrý den Jana');
+  }, 60_000);
+
+  it('neplatný token dá tutéž stránku jako u ostatních veřejných cest, ne 404', async () => {
+    const token = 't1rozbity';
+    const response = await webviewGet(publicRequest(`/v/${token}`), params({ token }));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toMatch(/Tenhle odkaz neplatí/);
+  }, 60_000);
+
+  it('platný token bez zprávy to ŘEKNE, netváří se jako poškozený odkaz', async () => {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'jana@example.cz' });
+    const token = unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId: null });
+
+    const response = await webviewGet(publicRequest(`/v/${token}`), params({ token }));
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toMatch(/Zprávu už nemáme/);
+    expect(html).not.toMatch(/Tenhle odkaz neplatí/);
   }, 60_000);
 });

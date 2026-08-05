@@ -24,12 +24,33 @@ export type ResolvedTrialSettings = TrialSettings & { trial_mode: boolean };
  * Výchozí hodnota je ZAPNUTO, dokud projekt nemá ověřenou doménu. Jakmile se uživatel
  * vyjádří, rozhoduje jeho hodnota. Je to táž úvaha, na které stojí `resolveTrialMode`
  * v aplikační vrstvě; ta ji odsud volá, aby pravidlo nebylo na dvou místech.
+ *
+ * DRUHÝ DŮVOD, PROČ ZAPNOUT: testovací režim u Amazonu (`providerSandbox`).
+ *
+ * Amazon v testovacím režimu doručí VÝHRADNĚ na adresy ověřené přímo u něj.
+ * Kampaň na kohokoli jiného odmítne. Dokud se přepínač řídil jen ověřenou
+ * doménou, mohl vzniknout přesně ten stav, který má tenhle projekt: doména
+ * ověřená, tedy zkušební režim vypnutý, a účet přitom u Amazonu v testovacím
+ * režimu. Materializace pak vyrobila zprávy pro celé publikum a Amazon je
+ * odmítal jednu po druhé.
+ *
+ * Se zapnutým režimem se z adres mimo seznam stane `skipped` s důvodem
+ * `trial_not_verified` ještě před odesláním. Je to VIDĚT v rozpadu kampaně,
+ * takže se nikomu nic tiše neztratí, a odeslání na vlastní ověřené adresy
+ * přitom funguje dál.
+ *
+ * `providerSandbox` je nepovinný a `undefined` znamená „nevíme". Nevědomost
+ * režim nezapíná: tvrdit uživateli omezení, které jsme si nepřečetli, je táž
+ * chyba jako mlčet o tom, které jsme si přečetli.
  */
 export function resolveTrialSettings(
   settings: TrialSettings,
-  input: { hasVerifiedDomain: boolean },
+  input: { hasVerifiedDomain: boolean; providerSandbox?: boolean | undefined },
 ): ResolvedTrialSettings {
-  return { ...settings, trial_mode: settings.trial_mode ?? !input.hasVerifiedDomain };
+  return {
+    ...settings,
+    trial_mode: settings.trial_mode ?? (!input.hasVerifiedDomain || input.providerSandbox === true),
+  };
 }
 
 /**

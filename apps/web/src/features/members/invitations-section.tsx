@@ -1,11 +1,12 @@
 'use client';
 
 import { useActionState } from 'react';
+import Link from 'next/link';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Button } from '@mlain/ui/components/button';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
-import { EmptyState, OverLimitState } from '@mlain/ui/patterns/states';
+import { Alert, EmptyState, OverLimitState } from '@mlain/ui/patterns/states';
 import { SelectField } from '@/lib/forms/select-field';
 import type { Result } from '@/lib/api-client/result';
 import { FieldError, fieldAria } from '@/lib/forms/field-error';
@@ -37,6 +38,16 @@ export type InvitationsSectionViewProps = {
   inviteAction: (previous: ActionState, formData: FormData) => Promise<ActionState>;
   revokeAction: (formData: FormData) => void;
   initialState?: ActionState | undefined;
+  /**
+   * Umí instalace odeslat systémový e-mail? Když ne, pozvánka se NENABÍZÍ.
+   *
+   * Není to kosmetika. Pozvánka odchází systémovým e-mailem a instalace
+   * s jediným odesílacím účtem typu SES ho odeslat neumí. Formulář se dřív
+   * odeslal, pozvánka se zapsala a e-mail nikam nedošel; zvoucí viděl „čeká
+   * na přijetí" a pozvaný nedostal nic. API to teď odmítne dřív, než pozvánka
+   * vznikne, a obrazovka to musí říct dopředu, ne až chybou po odeslání.
+   */
+  systemMailAvailable: boolean;
 };
 
 export function InvitationsSectionView(props: InvitationsSectionViewProps) {
@@ -130,7 +141,22 @@ export function InvitationsSectionView(props: InvitationsSectionViewProps) {
         </div>
       )}
 
-      {atLimit ? (
+      {!props.systemMailAvailable ? (
+        /**
+         * Formulář se ani nevykreslí. Zašedlé tlačítko s vysvětlivkou by
+         * uživatele nechalo vyplnit adresu a pak mu ji odmítlo; tady místo něj
+         * stojí důvod, odkaz na nastavení a věta, že náhradní cesta je hned pod
+         * tímhle blokem. Stav S14 (chybějící předpoklad) podle 15.2 části 6.
+         */
+        <div className="mt-6">
+          <Alert tone="warning" title={t('members.invite.mailUnavailableTitle')}>
+            <p>{t('members.invite.mailUnavailableBody')}</p>
+            <Link href={`/w/${props.slug}/settings/system-mail`} className="font-medium underline">
+              {t('members.invite.mailUnavailableLink')}
+            </Link>
+          </Alert>
+        </div>
+      ) : atLimit ? (
         <div className="mt-6">
           <OverLimitState
             title={t('members.invitations.limitTitle')}
@@ -197,6 +223,7 @@ export function InvitationsSection(props: {
   invitations: Result<{ data: InvitationRow[] }>;
   workspaceId: string;
   slug: string;
+  systemMailAvailable: boolean;
 }) {
   return (
     <InvitationsSectionView

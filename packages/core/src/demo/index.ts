@@ -24,7 +24,14 @@ export {
   parseDemoManifest,
 } from './manifest';
 export type { DemoManifest } from './manifest';
-export { DemoAlreadySeededError, readDemoManifest, readDemoTagId, seedDemoData } from './seed';
+export {
+  DemoAlreadySeededError,
+  DemoTemplateInvalidError,
+  readDemoManifest,
+  readDemoTagId,
+  seedDemoData,
+} from './seed';
+export type { SeedInput } from './seed';
 export { purgeDemoData } from './purge';
 export type { PurgeReport } from './purge';
 export { DemoAuditActions } from './audit';

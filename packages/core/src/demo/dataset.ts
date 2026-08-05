@@ -1,3 +1,7 @@
+import { plainToRichText } from '@mlain/emails/base';
+import { blockDefaults, DEFAULT_THEME } from '@mlain/emails/document/defaults';
+import type { Document, SectionBlock, SectionChild } from '@mlain/emails/document/types';
+import type { SegmentAst } from '../segments/ast';
 import { DEMO_SOURCE_REF, DEMO_TAG_NAME } from './manifest';
 
 export type DemoGender = 'male' | 'female' | 'unknown';
@@ -223,64 +227,207 @@ export const DEMO_TAGS: readonly DemoTag[] = [
   { key: 'newsletter', name: 'Newsletter' },
 ];
 
-export type DemoSegment = { key: string; name: string; definition: unknown };
+/**
+ * Definice segmentu je **SegmentAst verze 1**, tedy přesně ten tvar, který
+ * popisuje `packages/core/src/segments/ast.ts` a který produkt sám generuje
+ * (opsáno z tlačítka „Zobrazit definici jako JSON"): obálka `{ version, root }`,
+ * uzly s `type`, potomci v `children` a pole jako `{ kind }`, ne jako řetězec.
+ *
+ * Typ je `SegmentAst`, ne `unknown`, schválně. Dřív tu byl vymyšlený tvar
+ *
+ *   { op: 'and', not: false, conditions: [{ field: 'tag', operator: 'has_any', … }] }
+ *
+ * který žádná vrstva neznala, a protože ho nic netypovalo, prošel až do
+ * databáze. Kompilátor segmentů na něm padal, takže **preflight kampaně
+ * vracel 500 pokaždé, když si uživatel dal do publika jakýkoli segment**:
+ *
+ *   publikum jen ze seznamu        → 200
+ *   publikum s jakýmkoli segmentem → 500 TypeError: Cannot read properties of
+ *                                    undefined (reading 'type')
+ *
+ * Je to táž vada, jakou měly ukázkové šablony s `{ version, sections }`.
+ * Typ ji teď zastaví při překladu, ne až v prohlížeči.
+ */
+/**
+ * Definice se skládá až při seedu, protože podmínka na štítek odkazuje na jeho
+ * **UUID**, ne na slug: kompilátor staví `ct.tag_id = ANY($n::uuid[])`. Slug
+ * v hodnotách skončil na
+ *
+ *   invalid input syntax for type uuid: "ukazkova-data"
+ *
+ * a preflight kampaně kvůli tomu vracel 500. Identifikátory štítků vznikají
+ * teprve vložením, takže konstanta je funkce, ne hotový strom.
+ */
+export type DemoSegment = {
+  key: string;
+  name: string;
+  definition: (tagIds: ReadonlyMap<string, string>) => SegmentAst;
+};
+
+/** Id štítku podle klíče. Chybějící štítek je chyba dat, ne stav k ošetření. */
+function tagId(tagIds: ReadonlyMap<string, string>, key: string): string {
+  const id = tagIds.get(key);
+  if (id === undefined) throw new Error(`ukázkový segment odkazuje na neznámý štítek ${key}`);
+  return id;
+}
 
 export const DEMO_SEGMENTS: readonly DemoSegment[] = [
   {
     key: 'ukazka-praha',
     name: 'Ukázka: kontakty z Prahy',
-    definition: {
-      op: 'and',
-      not: false,
-      conditions: [{ field: 'tag', operator: 'has_any', value: ['praha'] }],
-    },
+    definition: (tagIds) => ({
+      version: 1,
+      root: {
+        type: 'group',
+        op: 'and',
+        children: [
+          {
+            type: 'condition',
+            field: { kind: 'tag' },
+            operator: 'has_any',
+            values: [tagId(tagIds, 'praha')],
+          },
+        ],
+      },
+    }),
   },
   {
     key: 'ukazka-aktivni-90',
     name: 'Ukázka: aktivní za posledních 90 dní',
-    definition: {
-      op: 'and',
-      not: false,
-      conditions: [
-        { field: 'tag', operator: 'has_any', value: ['ukazkova-data'] },
-        { field: 'last_open_at', operator: 'in_last_days', value: 90 },
-      ],
-    },
+    definition: (tagIds) => ({
+      version: 1,
+      root: {
+        type: 'group',
+        op: 'and',
+        children: [
+          {
+            type: 'condition',
+            field: { kind: 'tag' },
+            operator: 'has_any',
+            values: [tagId(tagIds, 'ukazkova-data')],
+          },
+          {
+            // `last_open_at` mezi kontaktními poli NENÍ; poslední aktivita se
+            // jmenuje `last_activity_at`, viz `CONTACT_FIELD_KEYS`.
+            type: 'condition',
+            field: { kind: 'contact', key: 'last_activity_at' },
+            operator: 'in_last_days',
+            value: 90,
+          },
+        ],
+      },
+    }),
   },
 ];
 
 /**
  * Šablona nese `design`, ne `blocks`, a **žádný předmět**: `templates.subject`
  * ve schématu není, předmět je vlastnost kampaně. Obojí ověřeno proti P03.
+ *
+ * `design` je **Mlain Mailer Document v1**, tedy přesně ten tvar, který popisuje
+ * `packages/emails/src/document/types.ts` a vynucuje `schema/document.v1.schema.json`:
+ * `schemaVersion`, `meta`, `theme` a `blocks`, kde kořenem jsou vždy sekce.
+ * Typ je `Document`, ne `unknown`, schválně: dřív tu byl vymyšlený tvar
+ * `{ version, sections: [...] }`, který žádná vrstva neznala, a protože ho nic
+ * netypovalo, prošel až do databáze. Šablona s ním neprošla validací ani
+ * kompilací, takže kampaň z ukázkových dat nešlo odeslat.
  */
-export type DemoTemplate = { key: string; name: string; design: unknown };
+export type DemoTemplate = { key: string; name: string; design: Document };
+
+/** Identifikátor bloku podle 3.1.3: `b_` a dvanáct znaků [0-9a-z]. */
+const blockId = (prefix: string, ordinal: number): string =>
+  `b_${prefix}${String(ordinal).padStart(12 - prefix.length, '0')}`;
+
+/**
+ * Ukázková šablona: nadpis, odstavec s oslovením, tlačítko a patička.
+ *
+ * Identifikátory bloků jsou PEVNÉ, ne z `newBlockId()`. Sada se z tohoto souboru
+ * čte při každém nahrání a náhodné identifikátory by znamenaly jiný `design_hash`
+ * pokaždé, takže by se dvě nahrání téže sady nedala porovnat.
+ *
+ * Patička je jediný nositel odhlašovacího odkazu a `showUnsubscribe` má z výchozích
+ * hodnot `true`. Bez ní je dokument podle pravidla S4 neplatný (`content_missing_unsubscribe`
+ * je u kampaňové šablony chyba, ne varování) a předletová kontrola kampaně by ohlásila
+ * `campaign_no_unsubscribe`.
+ */
+function demoDocument(input: {
+  idPrefix: string;
+  name: string;
+  previewText: string;
+  headline: string;
+  /** Text odstavce. `{{ ... }}` se převede na uzel `var`, ne na text se závorkami. */
+  body: string;
+  cta: { label: string; href: string };
+}): Document {
+  const children: SectionChild[] = [
+    {
+      id: blockId(input.idPrefix, 1),
+      type: 'heading',
+      props: { ...blockDefaults('heading'), level: 1, content: plainToRichText(input.headline) },
+    },
+    {
+      id: blockId(input.idPrefix, 2),
+      type: 'text',
+      props: { ...blockDefaults('text'), content: plainToRichText(input.body) },
+    },
+    {
+      id: blockId(input.idPrefix, 3),
+      type: 'button',
+      props: {
+        ...blockDefaults('button'),
+        label: plainToRichText(input.cta.label),
+        href: input.cta.href,
+      },
+    },
+    {
+      id: blockId(input.idPrefix, 4),
+      type: 'footer',
+      props: blockDefaults('footer'),
+    },
+  ];
+
+  const section: SectionBlock = {
+    id: blockId(input.idPrefix, 9),
+    type: 'section',
+    props: blockDefaults('section'),
+    children,
+  };
+
+  return {
+    schemaVersion: 1,
+    meta: { name: input.name, previewText: input.previewText, language: 'cs' },
+    theme: structuredClone(DEFAULT_THEME),
+    blocks: [section],
+  };
+}
 
 export const DEMO_TEMPLATES: readonly DemoTemplate[] = [
   {
     key: 'ukazka-newsletter',
     name: 'Ukázka: měsíční newsletter',
-    design: {
-      version: 1,
-      sections: [
-        { type: 'heading', level: 1, text: 'Novinky za červenec' },
-        { type: 'text', text: '{{ contact.greeting }}, tady je přehled toho, co je u nás nového.' },
-        { type: 'button', text: 'Podívat se', href: 'https://example.com/novinky' },
-        { type: 'unsubscribe' },
-      ],
-    },
+    design: demoDocument({
+      idPrefix: 'news',
+      name: 'Ukázka: měsíční newsletter',
+      previewText: 'Co je u nás nového',
+      headline: 'Novinky z tohoto měsíce',
+      // Oslovení je hlavní funkce produktu, takže ho ukázková šablona musí předvést.
+      // `contact.greeting` je prvotřídní pole katalogu (skupina salutation), tedy
+      // hotová věta i s vokativem: „Dobrý den, Jano".
+      body: '{{ contact.greeting }}, tady je přehled toho, co je u nás nového.',
+      cta: { label: 'Podívat se', href: 'https://example.com/novinky' },
+    }),
   },
   {
     key: 'ukazka-vyprodej',
     name: 'Ukázka: pozvánka na výprodej',
-    design: {
-      version: 1,
-      sections: [
-        { type: 'heading', level: 1, text: 'Letní výprodej začíná' },
-        { type: 'text', text: '{{ contact.greeting }}, sleva platí do neděle.' },
-        { type: 'button', text: 'Do výprodeje', href: 'https://example.com/vyprodej' },
-        { type: 'unsubscribe' },
-      ],
-    },
+    design: demoDocument({
+      idPrefix: 'sale',
+      name: 'Ukázka: pozvánka na výprodej',
+      previewText: 'Sleva platí do neděle',
+      headline: 'Letní výprodej začíná',
+      body: '{{ contact.greeting }}, sleva platí do neděle.',
+      cta: { label: 'Do výprodeje', href: 'https://example.com/vyprodej' },
+    }),
   },
 ];
 

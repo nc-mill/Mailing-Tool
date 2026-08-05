@@ -36,7 +36,7 @@ const ROWS: InvitationRow[] = [
   },
 ];
 
-function renderSection(invitations: Result<{ data: InvitationRow[] }>) {
+function renderSection(invitations: Result<{ data: InvitationRow[] }>, systemMailAvailable = true) {
   return render(
     <NextIntlClientProvider locale="cs" messages={messages} timeZone="Europe/Prague">
       <InvitationsSectionView
@@ -45,6 +45,7 @@ function renderSection(invitations: Result<{ data: InvitationRow[] }>) {
         slug="eshop"
         inviteAction={vi.fn()}
         revokeAction={vi.fn()}
+        systemMailAvailable={systemMailAvailable}
       />
     </NextIntlClientProvider>,
   );
@@ -125,6 +126,7 @@ describe('InvitationsSectionView', () => {
           slug="eshop"
           inviteAction={vi.fn()}
           revokeAction={vi.fn()}
+          systemMailAvailable
           initialState={{
             status: 'error',
             channel: 'inlineBlock',
@@ -144,6 +146,21 @@ describe('InvitationsSectionView', () => {
     );
     expect(screen.getByText('Tenhle člověk už v projektu je')).toBeInTheDocument();
     expect(screen.getByText(/změnit přímo v seznamu členů/)).toBeInTheDocument();
+  });
+
+  /**
+   * Nejde o kosmetiku: pozvánka odchází systémovým e-mailem a instalace
+   * s jediným účtem typu SES ho odeslat neumí. Formulář se proto vůbec
+   * nevykreslí, místo něj stojí důvod a odkaz na nastavení.
+   */
+  it('bez systémové pošty formulář pozvání vůbec nenabídne', () => {
+    renderSection({ ok: true, data: { data: [] } }, false);
+    expect(screen.getByText('Pozvánku e-mailem teď poslat nejde')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Otevřít nastavení systémové pošty' })).toHaveAttribute(
+      'href',
+      '/w/eshop/settings/system-mail',
+    );
+    expect(screen.queryByRole('button', { name: 'Poslat pozvánku' })).not.toBeInTheDocument();
   });
 
   it('zrušení pozvánky nabízí Pozvat znovu, ne Vrátit zpět', async () => {

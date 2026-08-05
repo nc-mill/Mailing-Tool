@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { unsafeWorkspaceContext } from '@mlain/db/unsafe-context';
 import { startTestPostgres, type TestPostgres } from '../support/db';
+import { getFieldCatalog, type FieldCatalog } from '../../src/contacts/fields/catalog';
+import { closePools } from '../../src/tx';
 import {
   DemoAlreadySeededError,
   readDemoManifest,
@@ -9,10 +12,19 @@ import {
 
 let pg: TestPostgres;
 let workspaceId: string;
+/**
+ * Skutečný katalog polí projektu, ne vymyšlený. Seed jím ověřuje ukázkové
+ * šablony, takže test s prázdným katalogem by ohlásil neznámé pole
+ * u `contact.greeting`, které v katalogu je.
+ */
+let fields: FieldCatalog;
 
 beforeAll(async () => {
   pg = await startTestPostgres();
   workspaceId = (await pg.seedMinimalInstallation({ contacts: 0 })).workspaceId;
+  fields = await getFieldCatalog(
+    unsafeWorkspaceContext(workspaceId, { type: 'system', job: 'test' }),
+  );
 }, 240_000);
 
 beforeEach(async () => {
@@ -21,6 +33,9 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  // `getFieldCatalog` jde přes aplikační pool z `src/tx`, ne přes pooly opory,
+  // takže bez tohohle zavření by běh zůstal viset na otevřeném spojení.
+  await closePools();
   await pg?.stop();
 });
 
@@ -41,7 +56,7 @@ const count = async (table: string) =>
  * politiky RLS při prvním INSERTu.
  */
 const seed = (now = new Date()) =>
-  pg.inWorkspace(workspaceId, (tx) => seedDemoData(tx, { workspaceId, now }));
+  pg.inWorkspace(workspaceId, (tx) => seedDemoData(tx, { workspaceId, now, fields }));
 
 describe('seed sedí se schématem', () => {
   // Tenhle test je tu proto, že seed je jediné místo v plánu, které zapisuje
@@ -92,7 +107,20 @@ describe('seed sedí se schématem', () => {
       ],
     ],
     ['segments', ['workspace_id', 'name', 'kind', 'definition', 'definition_hash']],
-    ['templates', ['workspace_id', 'name', 'kind', 'design', 'design_hash']],
+    [
+      'templates',
+      [
+        'workspace_id',
+        'name',
+        'kind',
+        'schema_version',
+        'design',
+        'design_hash',
+        'used_fields',
+        'validation_state',
+        'validation_errors',
+      ],
+    ],
     [
       'campaigns',
       [
@@ -215,6 +243,46 @@ describe('seedDemoData', () => {
       [workspaceId],
     );
     expect(empty!.n).toBe('0');
+  });
+
+  it('obě ukázkové šablony jsou po nahrání ověřené jako platné', async () => {
+    // Tohle je ta vada, kvůli které se ukázková kampaň nedala odeslat: šablony
+    // nesly vymyšlený tvar dokumentu (`{ version, sections }`), zůstávaly ve
+    // stavu `unknown` a kompilace na nich padala na `template_document_invalid`.
+    await seed();
+    const rows = await pg.sql<{
+      name: string;
+      validation_state: string;
+      errors: string;
+      schema_version: number;
+      used_fields: string[];
+    }>(
+      `SELECT name, validation_state, validation_errors::text AS errors,
+              schema_version, used_fields
+         FROM templates WHERE workspace_id = $1 ORDER BY name`,
+      [workspaceId],
+    );
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.validation_state, `${row.name}: ${row.errors}`).toBe('valid');
+      expect(row.schema_version).toBe(1);
+      // Oslovení je hlavní funkce produktu, takže ho ukázková šablona musí
+      // používat, a dopadová analýza pole to musí vidět. Ukládá se cesta tak,
+      // jak se píše v šabloně, tedy VČETNĚ prefixu `contact.`.
+      expect(row.used_fields).toContain('contact.greeting');
+    }
+  });
+
+  it('dokument šablony má tvar, který zná schéma, ne vymyšlený', async () => {
+    await seed();
+    const [row] = await pg.sql<{ keys: string[]; block_types: string[] }>(
+      `SELECT array(SELECT jsonb_object_keys(design) ORDER BY 1) AS keys,
+              array(SELECT b->>'type' FROM jsonb_array_elements(design->'blocks') b) AS block_types
+         FROM templates WHERE workspace_id = $1 AND name = 'Ukázka: měsíční newsletter'`,
+      [workspaceId],
+    );
+    expect(row!.keys).toEqual(['blocks', 'meta', 'schemaVersion', 'theme']);
+    expect(row!.block_types).toEqual(['section']);
   });
 
   it('kampaň má report s reálnými čísly, ne s nulami', async () => {

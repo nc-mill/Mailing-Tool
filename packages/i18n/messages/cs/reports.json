@@ -23,6 +23,8 @@
   },
   "report": {
     "title": "Report kampaně",
+    "subjectLabel": "Předmět",
+    "toProgress": "Zobrazit průběh odesílání",
     "clicked": {
       "label": "Kliklo",
       "denominator": "z doručených",
@@ -30,7 +32,10 @@
     },
     "delivered": {
       "label": "Doručeno",
-      "denominator": "z odeslaných"
+      "denominator": "z odeslaných",
+      "hintProvider": "Doručení hlásí odesílací služba.",
+      "hintDerived": "Odesílací služba doručení nehlásí. Číslo je dopočet: odeslané minus odmítnuté a selhané.",
+      "hintUnknown": "Odesílací služba nám zatím neposlala jedinou zprávu o osudu e-mailů. Dokud nedorazí, doručenost neměříme a odrazy se stížnostmi taky ne."
     },
     "unsubscribed": {
       "label": "Odhlásilo se",
@@ -73,7 +78,10 @@
       "failed": "Chyby",
       "withinNorm": "v normě",
       "high": "vysoké",
-      "showWho": "Zobrazit komu"
+      "showWho": "Zobrazit komu",
+      "notMeasured": "Neměří se",
+      "notReportedBody": "Odrazy a stížnosti hlásí zpětně odesílací služba. Tenhle účet je neposílá, takže o nich nevíme nic. Není to nula, je to chybějící údaj.",
+      "noEventsBody": "Od odesílací služby k téhle kampani nedorazila ani jedna zpětná zpráva, takže o doručení, odrazech a stížnostech nevíme nic. Není to nula, je to chybějící údaj. Zkontrolujte v Nastavení, jestli má odesílací účet nastavená oznámení o doručení."
     },
     "links": {
       "heading": "Na co lidé klikali",
@@ -87,6 +95,14 @@
       "columnClicks": "Kliknutí",
       "columnPeople": "Lidé"
     },
+    "systemLinks": {
+      "heading": "Kliknutí na odkazy v patičce",
+      "unsubscribePage": "Stránka odhlášení",
+      "preferences": "Centrum předvoleb",
+      "webview": "Zobrazení v prohlížeči",
+      "none": "Na odkazy v patičce zatím nikdo neklikl.",
+      "notInClickRate": "Počítá se, kolik příjemců odkaz otevřelo. Do míry prokliku se to nezapočítává schválně: odhlášení není zájem o sdělení a smíchané číslo by se nedalo srovnat s žádným jiným nástrojem."
+    },
     "chart": {
       "heading": "V čase",
       "granularity5m": "Po 5 minutách",
@@ -98,7 +114,10 @@
       "columnSent": "Odesláno",
       "columnDelivered": "Doručeno",
       "columnOpens": "Otevření",
-      "columnClicks": "Prokliky"
+      "columnClicks": "Prokliky",
+      "omittedDelivered": "Řada Doručeno v grafu není. Odesílací služba nám o doručení nic nehlásí, takže by to byla nula místo údaje.",
+      "omittedOpens": "Řada Otevření v grafu není. Měření otevření je u téhle kampaně vypnuté.",
+      "omittedClicks": "Řada Prokliky v grafu není. Měření prokliků je u téhle kampaně vypnuté."
     },
     "diagnostics": {
       "heading": "Diagnostika",
@@ -106,8 +125,26 @@
       "scannerClicksHint": "Firemní antispam navštíví každý odkaz, aby ho prověřil. Tyhle prokliky do čísel nepočítáme.",
       "lastEvent": "Poslední událost",
       "noEvents": "Zatím nedorazila žádná událost.",
+      "deliveredSource": "Odkud se bere doručenost",
       "deliveredSourceProvider": "Doručení hlásí odesílací služba.",
-      "deliveredSourceDerived": "Odesílací služba doručení nehlásí, počítá se jako odeslané minus odmítnutá."
+      "deliveredSourceDerived": "Odesílací služba doručení nehlásí, počítá se jako odeslané minus odmítnutá.",
+      "deliveredSourceUnknown": "Odesílací služba nám o osudu zpráv zatím neposlala nic, takže doručenost neměříme vůbec."
+    },
+    "sentPreview": {
+      "heading": "Co se doopravdy rozeslalo",
+      "readOnly": "Náhled je jen ke čtení. Ukazuje podobu uloženou při odeslání, takže se změnou šablony už nezmění.",
+      "subject": "Předmět",
+      "compiledAt": "Připraveno k odeslání",
+      "revision": "Verze obsahu",
+      "frameTitle": "Náhled odeslaného e-mailu",
+      "textHeading": "Textová verze",
+      "notCompiledTitle": "Obsah se ještě nepřipravoval",
+      "notCompiledBody": "Kampaň zatím nemá uloženou odeslanou podobu. Vznikne při přípravě obsahu k odeslání a od té chvíle tu bude přesně to, co příjemci dostali.",
+      "personalizedFor": "Osobní údaje podle",
+      "emptyContentTitle": "Tenhle e-mail neměl žádný obsah",
+      "emptyContentBody": "V kampani nebyl jediný obsahový blok, jen systémová patička. Příjemcům tedy odešel prázdný e-mail a náhled níž ukazuje přesně to, co dostali.",
+      "systemLinksNote": "Odkazy na odhlášení, předvolby a webovou verzi jsou v náhledu neaktivní. Každý příjemce dostal svoje, adresné, a report je znovu nevyrábí.",
+      "failed": "Odeslanou podobu kampaně se nepodařilo načíst."
     },
     "banner": {
       "sending": "Odesílání probíhá, čísla se průběžně mění",
@@ -124,10 +161,12 @@
       "justSent": "Odesílání právě začalo, první data se objeví během několika sekund.",
       "trackingOffOpens": "Měření otevření bylo pro tuto kampaň vypnuté",
       "trackingOffClicks": "Měření prokliků bylo pro tuto kampaň vypnuté",
+      "deliveryUnknown": "Zatím nevíme",
       "trackingOffBody": "Sledování bylo pro tuhle kampaň vypnuté, proto tu čísla nejsou.",
       "error": "Report se nepodařilo načíst.",
       "retry": "Zkusit znovu",
-      "smallSample": "Malý vzorek, procenta nemusí nic znamenat"
+      "smallSample": "Malý vzorek, procenta nemusí nic znamenat",
+      "notComputed": "Souhrn téhle kampaně se ještě nespočítal. Čísla níž jsou nuly z prázdného souhrnu, ne naměřené hodnoty. Kolik zpráv opravdu odešlo, ukazuje průběh odesílání."
     },
     "actions": {
       "resendToUnopened": "Poslat znovu neotevřevším",
@@ -187,6 +226,9 @@
       "messageDelivered": "Kampaň {campaign} byla doručena",
       "messageOpened": "{gender, select, female {Otevřela kampaň {campaign}} male {Otevřel kampaň {campaign}} other {Otevření kampaně {campaign}}}",
       "messageClicked": "{gender, select, female {Klikla na {link} v kampani {campaign}} male {Klikl na {link} v kampani {campaign}} other {Kliknutí na {link} v kampani {campaign}}}",
+      "messageClickedUnsubscribePage": "{gender, select, female {Otevřela stránku odhlášení z kampaně {campaign}} male {Otevřel stránku odhlášení z kampaně {campaign}} other {Otevření stránky odhlášení z kampaně {campaign}}}",
+      "messageClickedPreferences": "{gender, select, female {Otevřela centrum předvoleb z kampaně {campaign}} male {Otevřel centrum předvoleb z kampaně {campaign}} other {Otevření centra předvoleb z kampaně {campaign}}}",
+      "messageClickedWebview": "{gender, select, female {Zobrazila si kampaň {campaign} v prohlížeči} male {Zobrazil si kampaň {campaign} v prohlížeči} other {Zobrazení kampaně {campaign} v prohlížeči}}",
       "messageBounced": "Kampaň {campaign} se vrátila jako nedoručitelná",
       "messageComplained": "{gender, select, female {Označila kampaň {campaign} jako spam} male {Označil kampaň {campaign} jako spam} other {Označení kampaně {campaign} jako spam}}",
       "messageUnsubscribed": "{gender, select, female {Odhlásila se z odběru} male {Odhlásil se z odběru} other {Odhlášení z odběru}}",
@@ -231,7 +273,13 @@
     "tileError": "Tuhle dlaždici se nepodařilo načíst.",
     "tileRetry": "Zkusit znovu",
     "emptyFirstRun": "Až odešlete první kampaň, uvidíte tady, jak dopadla.",
-    "emptyNoCampaigns": "Zatím žádná odeslaná kampaň, proto tu nejsou míry."
+    "emptyNoCampaigns": "Zatím žádná odeslaná kampaň, proto tu nejsou míry.",
+    "openedAbsolute": "{count, plural, =0 {žádné otevření} one {# otevření} few {# otevření} many {# otevření} other {# otevření}}",
+    "clickedAbsolute": "{count, plural, =0 {žádný proklik} one {# proklik} few {# prokliky} many {# prokliku} other {# prokliků}}",
+    "rateUnknown": "Míru nespočítáme: u {count, plural, =0 {žádné kampaně} one {# kampaně} few {# kampaní} many {# kampaně} other {# kampaní}} zatím nevíme, kolik zpráv dorazilo.",
+    "problemsUnknown": "zatím nevíme",
+    "problemsUnknownHint": "Odrazy a stížnosti hlásí odesílací služba. Od té zatím nedorazila jediná zpráva o osudu e-mailů, takže nula tady neznamená, že je všechno v pořádku.",
+    "webActiveAction": "Co dělali na webu"
   },
   "stats": {
     "campaignsHeading": "Vývoj v čase",
@@ -244,6 +292,66 @@
     "columnCampaign": "Kampaň",
     "columnSentAt": "Odesláno",
     "emptyTooFew": "Trend se ukáže od třetí odeslané kampaně.",
-    "openWithMachineNote": "U míry otevření je vždy uvedený podíl automatických."
+    "openWithMachineNote": "U míry otevření je vždy uvedený podíl automatických.",
+    "excludedUnknown": "V grafu {count, plural, =0 {nechybí žádná kampaň} one {není # kampaň} few {nejsou # kampaně} many {není # kampaně} other {není # kampaní}}, u {count, plural, =0 {kterých} one {které} other {kterých}} zatím nevíme, kolik zpráv dorazilo. Míra by se počítala z odhadu, ne z měření."
+  },
+  "web": {
+    "campaign": {
+      "heading": "Co lidé dělali na webu",
+      "clicked": "{count, plural, =0 {V téhle kampani zatím nikdo neklikl} one {V téhle kampani klikl # člověk} few {V téhle kampani klikli # lidé} many {V téhle kampani kliklo # člověka} other {V téhle kampani kliklo # lidí}}.",
+      "visited": "{count, plural, =0 {Na web z nich nepřišel nikdo} one {Na web z nich přišel # člověk} few {Na web z nich přišli # lidé} many {Na web z nich přišlo # člověka} other {Na web z nich přišlo # lidí}}.",
+      "browsed": "Prohlédli si {pages, plural, one {# stránku} few {# stránky} many {# stránky} other {# stránek}} a udělali {events, plural, =0 {žádnou další akci} one {# další akci} few {# další akce} many {# další akce} other {# dalších akcí}}.",
+      "rule": "Připisujeme sem návštěvy lidí, kteří v téhle kampani klikli, a to do {hours} hodin od jejich kliknutí. Jinou vazbu mezi e-mailem a webem měření nemá, takže je to spodní odhad: kdo si adresu opsal ručně nebo měření odmítl, v číslech není.",
+      "lastVisit": "Naposled se někdo z téhle kampaně objevil na webu {when}.",
+      "pagesHeading": "Které stránky si prohlédli",
+      "pagesColumnPath": "Stránka",
+      "pagesColumnViews": "Zobrazení",
+      "pagesColumnVisitors": "Lidí",
+      "eventsHeading": "Co na webu udělali",
+      "eventsColumnName": "Akce",
+      "eventsColumnCount": "Počet",
+      "visitorsHeading": "Kdo přišel",
+      "visitorsPages": "{count, plural, =0 {žádná stránka} one {# stránka} few {# stránky} many {# stránky} other {# stránek}}",
+      "visitorsMore": "Vypisujeme prvních {count} lidí podle poslední návštěvy.",
+      "emptyNoClicks": "V téhle kampani zatím nikdo neklikl na odkaz, takže není co spojit s návštěvami webu.",
+      "emptyNoVisits": "Lidé v kampani klikli, ale na webu jsme z nich nikoho nezaznamenali. Buď na webu neběží měřicí značka, nebo stránku hned zavřeli.",
+      "emptyNoVisitsAction": "Zkontrolovat měření webu",
+      "notSent": "Kampaň se ještě neodeslala, takže na webu není co měřit."
+    },
+    "overview": {
+      "title": "Web",
+      "heading": "Co se děje na webu",
+      "question": "Kdo přišel, odkud a co si prohlédl?",
+      "period1": "24 hodin",
+      "period7": "7 dní",
+      "period30": "30 dní",
+      "summaryKnown": "{count, plural, =0 {Nikoho známého jsme nezastihli} one {Byl tu # člověk, kterého známe jménem} few {Byli tu # lidé, které známe jménem} many {Bylo tu # člověka, které známe jménem} other {Bylo tu # lidí, které známe jménem}}.",
+      "summaryAnonymous": "{count, plural, =0 {Nikoho neznámého jsme nezaznamenali} one {K tomu # zatím neznámý návštěvník} few {K tomu # zatím neznámí návštěvníci} many {K tomu # zatím neznámého návštěvníka} other {K tomu # zatím neznámých návštěvníků}}.",
+      "summaryPages": "Dohromady si otevřeli {pages, plural, one {# stránku} few {# stránky} many {# stránky} other {# stránek}} a udělali {events, plural, =0 {žádnou další akci} one {# další akci} few {# další akce} many {# další akce} other {# dalších akcí}}.",
+      "anonymousExplained": "Neznámý návštěvník je prohlížeč, u kterého ještě nevíme, komu patří. Jakmile ten člověk klikne na odkaz v našem e-mailu, jeho dosavadní návštěvy se k němu doplní zpětně.",
+      "visitsHeading": "Poslední návštěvy",
+      "visitsColumnWho": "Kdo",
+      "visitsColumnWhen": "Kdy",
+      "visitsColumnPages": "Stránky",
+      "visitsColumnEntry": "Vstoupil na",
+      "visitsColumnFrom": "Přišel z",
+      "visitsAnonymous": "Zatím neznámý návštěvník",
+      "visitsDirect": "přímo",
+      "pagesHeading": "Nejnavštěvovanější stránky",
+      "pagesColumnPath": "Stránka",
+      "pagesColumnViews": "Zobrazení",
+      "pagesColumnVisitors": "Lidí",
+      "eventsHeading": "Co na webu dělali",
+      "eventsColumnName": "Akce",
+      "eventsColumnCount": "Počet",
+      "referrersHeading": "Odkud přišli",
+      "referrersColumnHost": "Zdroj",
+      "referrersColumnVisits": "Návštěv",
+      "emptyNever": "Z webu k nám zatím nedorazila jediná událost. Nejspíš na něm ještě neběží měřicí značka.",
+      "emptyNeverAction": "Nastavit měření webu",
+      "emptyPeriod": "Za tohle období z webu nic nedorazilo. Naposled se někdo objevil {when}.",
+      "error": "Aktivitu na webu se nepodařilo načíst.",
+      "loading": "Načítáme aktivitu na webu"
+    }
   }
 }

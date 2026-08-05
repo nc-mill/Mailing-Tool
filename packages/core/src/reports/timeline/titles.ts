@@ -10,6 +10,15 @@ const TITLE_KEYS: Record<string, string> = {
   message_delivered: 'timeline.item.messageDelivered',
   message_opened: 'timeline.item.messageOpened',
   message_clicked: 'timeline.item.messageClicked',
+  /*
+   * Systémové odkazy z patičky. Mají vlastní věty, protože obecné „Klikl na
+   * {link} v kampani" u nich vykreslilo díru: systémový odkaz nemá řádek
+   * v `campaign_links`, takže slot `{link}` byl prázdný. Věta navíc říká něco
+   * jiného a užitečnějšího: člověk si otevřel předvolby, ne že klikl na obsah.
+   */
+  message_clicked_unsubscribe_page: 'timeline.item.messageClickedUnsubscribePage',
+  message_clicked_preferences: 'timeline.item.messageClickedPreferences',
+  message_clicked_webview: 'timeline.item.messageClickedWebview',
   message_bounced: 'timeline.item.messageBounced',
   message_complained: 'timeline.item.messageComplained',
   message_unsubscribed: 'timeline.item.messageUnsubscribed',

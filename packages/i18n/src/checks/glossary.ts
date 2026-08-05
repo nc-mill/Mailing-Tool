@@ -111,13 +111,33 @@ function matchesAtWordStart(haystack: string, needle: string, wholeWord = false)
   }
 }
 
+/**
+ * Přebije výskyty DOPORUČENÉHO tvaru mezerami, aby se v nich zakázaný výraz
+ * nehledal.
+ *
+ * Bez tohohle je pravidlo, jehož doporučený tvar obsahuje zakázaný výraz,
+ * neproveditelné: `{ term: 'sandbox', use: 'Amazon sandbox' }` označí za
+ * porušení i text, který se řídí jeho vlastním doporučením. Naměřeno na
+ * nápovědě k odesílacím účtům, kde se to projevilo jako červená brána, kterou
+ * nešlo uklidit jinak než tím, že se doporučený výraz nepoužije.
+ *
+ * Nahrazuje se mezerami STEJNÉ DÉLKY, ne prázdným řetězcem: kratší text by
+ * slepil sousední slova dohromady a vyrobil hranici slova tam, kde žádná není.
+ */
+function maskRecommended(haystack: string, term: string, use: string): string {
+  const recommended = use.toLocaleLowerCase('cs');
+  if (recommended === '' || !recommended.includes(term)) return haystack;
+  return haystack.split(recommended).join(' '.repeat(recommended.length));
+}
+
 export function findViolations(tree: unknown, banned: BannedTerm[]): Violation[] {
   const found: Violation[] = [];
   walk(tree, '', (key, value) => {
-    const haystack = value.toLocaleLowerCase('cs');
+    const lowered = value.toLocaleLowerCase('cs');
     for (const entry of banned) {
       if (entry.except.some((prefix) => key.startsWith(prefix))) continue;
       const term = entry.term.toLocaleLowerCase('cs');
+      const haystack = maskRecommended(lowered, term, entry.use);
       const shortened = entry.exact === true ? null : stem(term);
       const matches =
         matchesAtWordStart(haystack, term, entry.exact === true) ||

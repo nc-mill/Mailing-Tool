@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/nc-mill/mlain/apps/sender/internal/errcatalog"
+	"github.com/nc-mill/mlain/apps/sender/internal/outbox"
 	"github.com/nc-mill/mlain/apps/sender/internal/provider"
 )
 
@@ -141,5 +142,126 @@ func TestCheckMessageSizeAcceptsErrorsIs(t *testing.T) {
 	err := CheckMessageSize(make([]byte, 10*1024*1024), 0)
 	if !errors.As(err, new(*RenderError)) {
 		t.Fatal("chyba musí být RenderError, aby ji volající uměl přeložit na kód")
+	}
+}
+
+// Transakční zpráva nesmí nést List-Unsubscribe ani Precedence: bulk, a to ani
+// tehdy, když je v konfiguraci nastavená mailto adresa pro odhlášení. Ta totiž
+// nejde z renderu, takže by se přilepila i k prázdnému odhlašovacímu odkazu.
+func TestTransactionalMIMEHasNoUnsubscribeHeaders(t *testing.T) {
+	h := testHeader(t, `<html><body>Reset</body></html>`, "Reset")
+	msg := testMessage()
+	msg.Kind = outbox.KindTransactional
+	rendered, err := testRenderer(t).Render(h, msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := BuildMIME(h, msg, rendered, MIMEOptions{
+		Boundary:       "----=_OE_00000000000000000000",
+		PrecedenceBulk: true,
+		MailtoUnsub:    "unsubscribe@mail.example.cz",
+		ProviderKind:   "smtp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	for _, header := range []string{"List-Unsubscribe:", "List-Unsubscribe-Post:", "Precedence: bulk"} {
+		if strings.Contains(s, header) {
+			t.Errorf("transakční zpráva nese hlavičku %s", header)
+		}
+	}
+	if !strings.Contains(s, "Auto-Submitted: auto-generated") {
+		t.Error("chybí Auto-Submitted, na reset hesla by odpověděla automatická odpověď")
+	}
+	if !strings.Contains(s, "X-Auto-Response-Suppress: All") {
+		t.Error("chybí X-Auto-Response-Suppress")
+	}
+}
+
+// Kampaňová zpráva hlavičky mít MUSÍ. Výjimka se nesmí rozlít.
+func TestCampaignMIMEStillCarriesUnsubscribeHeaders(t *testing.T) {
+	h := testHeader(t, `<html><body>{{ unsubscribe_url }}</body></html>`, "x")
+	msg := testMessage()
+	rendered, err := testRenderer(t).Render(h, msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := BuildMIME(h, msg, rendered, MIMEOptions{
+		Boundary:       "----=_OE_00000000000000000000",
+		PrecedenceBulk: true,
+		MailtoUnsub:    "unsubscribe@mail.example.cz",
+		ProviderKind:   "smtp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	if !strings.Contains(s, "List-Unsubscribe:") || !strings.Contains(s, "List-Unsubscribe-Post:") {
+		t.Error("kampaňová zpráva přišla o odhlašovací hlavičky")
+	}
+	if strings.Contains(s, "Auto-Submitted:") {
+		t.Error("kampaňová zpráva nemá být auto-generated")
+	}
+}
+
+// CELÝ TOK JEDNÉ TRANSAKČNÍ ZPRÁVY, od render_data po hotové MIME.
+//
+// Tenhle test je doklad k zadání: odkaz předaný při volání API je v tlačítku
+// odeslané zprávy, a odhlašovací odkaz v ní NENÍ ani v těle, ani v hlavičce.
+func TestTransactionalMIMECarriesResetLinkAndNoUnsubscribe(t *testing.T) {
+	const resetURL = "https://shop.cz/reset?token=eyJhbGciOi&amp;uid=8472"
+	html := `<html><body>` +
+		`<a href="{{ data.reset_url }}">Nastavit nové heslo</a>` +
+		`<p>Odkaz platí {{ data.expires_in_minutes }} minut.</p>` +
+		`</body></html>`
+	h := testHeader(t, html, "{{ data.reset_url }}")
+
+	msg := testMessage()
+	msg.Kind = outbox.KindTransactional
+	msg.RenderData = []byte(`{"data":{"reset_url":"https://shop.cz/reset?token=eyJhbGciOi&uid=8472","expires_in_minutes":30}}`)
+
+	rendered, err := testRenderer(t).Render(h, msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := BuildMIME(h, msg, rendered, MIMEOptions{
+		Boundary:       "----=_OE_00000000000000000000",
+		PrecedenceBulk: true,
+		MailtoUnsub:    "unsubscribe@mail.example.cz",
+		ProviderKind:   "smtp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Tělo se kontroluje PŘED zakódováním do MIME: quoted-printable rozseká
+	// řádky a přepíše "=" na "=3D", takže hledat v něm URL doslova nejde.
+	// Hlavičky se kontrolují v hotovém MIME, tam kódované nejsou.
+	if !strings.Contains(rendered.HTML, `href="`+resetURL+`"`) {
+		t.Errorf("v těle chybí odkaz na reset v atributu href:\n%s", rendered.HTML)
+	}
+	if !strings.Contains(rendered.HTML, "Odkaz platí 30 minut.") {
+		t.Errorf("v těle chybí dosazená doba platnosti:\n%s", rendered.HTML)
+	}
+
+	// 2. Odhlašovací odkaz v ní není. Ani v těle, ani v hlavičce.
+	if rendered.UnsubscribeURL != "" {
+		t.Errorf("render vyrobil odhlašovací odkaz %q", rendered.UnsubscribeURL)
+	}
+	if strings.Contains(rendered.HTML, "/u/") {
+		t.Errorf("v těle je odhlašovací odkaz:\n%s", rendered.HTML)
+	}
+	s := string(raw)
+	for _, forbidden := range []string{"List-Unsubscribe", "unsubscribe@mail.example.cz", "Precedence: bulk"} {
+		if strings.Contains(s, forbidden) {
+			t.Errorf("transakční zpráva obsahuje %q, což je odhlašovací nebo hromadná plocha", forbidden)
+		}
+	}
+
+	// 3. Žádné sledování otevření ani prokliků.
+	for _, forbidden := range []string{"/t/o/", "/t/c/"} {
+		if strings.Contains(rendered.HTML, forbidden) {
+			t.Errorf("transakční zpráva obsahuje sledovací adresu %q", forbidden)
+		}
 	}
 }

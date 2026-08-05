@@ -35,6 +35,15 @@ export type AiChatState = {
 
 const KNOWN_CODE = /\b(ai_[a-z_]+|rate_limited|not_found|forbidden|unauthenticated)\b/;
 
+/**
+ * Kód, pod kterým se hlásí selhání, o kterém nevíme nic bližšího.
+ *
+ * ZÁMĚRNĚ NENÍ `ai_provider_unavailable`. Dokud jím byl, tvářilo se jako
+ * výpadek poskytovatele úplně všechno, včetně 404 od naší vlastní autentizace,
+ * a uživatel hledal chybu u OpenAI, kde žádná nebyla.
+ */
+export const UNKNOWN_ERROR_CODE = 'ai_unknown';
+
 export function errorCodeOf(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value === 'object' && 'code' in value) {
@@ -43,7 +52,7 @@ export function errorCodeOf(value: unknown): string | null {
   }
   const message = value instanceof Error ? value.message : String(value);
   const found = KNOWN_CODE.test(message) ? message.match(KNOWN_CODE) : null;
-  return found?.[1] ?? 'ai_provider_unavailable';
+  return found?.[1] ?? UNKNOWN_ERROR_CODE;
 }
 
 /** Z výstupu nástroje vytáhne dokument, ať přijde holý, nebo zabalený. */
@@ -58,6 +67,17 @@ export function draftFromToolOutput(output: unknown): ComposedDraft | null {
 
 export function useAiChat(params: {
   templateId: string;
+  /**
+   * PROJEKT, ZE KTERÉHO SE PTÁME. Bez něj jde požadavek bez hlavičky
+   * `X-Workspace-Id` a `authenticate()` ho na cestě `/api/internal/**` odmítne
+   * s 404 dřív, než se spustí handler: cesta nemá segment `/w/{slug}`, ze
+   * kterého by se projekt dal odvodit, a u zápisu se query parametr nečte.
+   *
+   * Tohle byla skutečná příčina hlášky „Služba OpenAI má výpadek": panel poslal
+   * požadavek bez hlavičky, dostal 404 s kódem `not_found` a ten se v hláškách
+   * nenašel, takže spadl na výchozí větu o výpadku.
+   */
+  workspaceId: string;
   credentialId?: string | undefined;
   model?: string | undefined;
 }): AiChatState {
@@ -134,7 +154,10 @@ export function useAiChat(params: {
         try {
           const response = await fetch('/api/internal/ai/chat', {
             method: 'POST',
-            headers: { 'content-type': 'application/json; charset=utf-8' },
+            headers: {
+              'content-type': 'application/json; charset=utf-8',
+              'X-Workspace-Id': params.workspaceId,
+            },
             signal: controller.signal,
             body: JSON.stringify({
               conversationId: conversationId.current,
@@ -147,7 +170,10 @@ export function useAiChat(params: {
 
           if (!response.ok || response.body === null) {
             const problem = (await response.json().catch(() => null)) as unknown;
-            setErrorCode(errorCodeOf(problem));
+            // Když odpověď není JSON (třeba výchozí 404 od Hona), nezůstane se
+            // bez kódu: stavový kód je pořád víc než mlčení. Dřív se v takovém
+            // případě nastavil `null` a panel se tvářil, že se nic nestalo.
+            setErrorCode(errorCodeOf(problem) ?? `http_${String(response.status)}`);
             setStatus('error');
             return;
           }
@@ -175,7 +201,7 @@ export function useAiChat(params: {
         }
       })();
     },
-    [params.credentialId, params.model, params.templateId],
+    [params.credentialId, params.model, params.templateId, params.workspaceId],
   );
 
   return {

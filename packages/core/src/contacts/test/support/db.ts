@@ -158,6 +158,13 @@ export type ContactRow = {
   status: string;
   greeting: string;
   greeting_neutral: string;
+  // Sloupce oslovení. Čtení je `SELECT *`, takže je vracelo odjakživa; chyběly jen
+  // v typu, a testy oslovení se bez nich neobejdou.
+  first_name_vocative: string | null;
+  last_name_vocative: string | null;
+  vocative_confidence: 'high' | 'low' | 'none';
+  vocative_locked: boolean;
+  locale: string;
   attributes: Record<string, unknown>;
   email_fingerprints: Buffer[];
   deleted_at: Date | null;
@@ -326,6 +333,22 @@ export async function createSubscription(
        snooze_until = excluded.snooze_until`,
     [input.contactId, input.listId, ctx.workspaceId, input.status, input.snoozeUntil ?? null],
   );
+}
+
+/**
+ * Kolik ŘÁDKŮ přihlášení seznam má, bez ohledu na to, jestli kontakt ještě žije.
+ * Doplněk k `lists.stats`, které počítá lidi: testy potřebují obojí, aby šlo ukázat,
+ * že řádek po měkkém smazání zůstal a jen se přestal počítat.
+ */
+export async function countSubscriptionRows(
+  ctx: WorkspaceContext,
+  listId: string,
+): Promise<number> {
+  const { rows } = await asMigrator().query<{ total: string }>(
+    `SELECT count(*) AS total FROM list_subscriptions WHERE workspace_id = $1 AND list_id = $2`,
+    [ctx.workspaceId, listId],
+  );
+  return Number(rows[0]!.total);
 }
 
 export async function countContactTags(ctx: WorkspaceContext, contactId: string): Promise<number> {

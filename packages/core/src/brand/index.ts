@@ -57,14 +57,17 @@ export {
   DEFAULT_TYPOGRAPHY,
   findBrandProfile,
   findDefaultBrandProfile,
-  insertBrandProfile,
   listBrandProfiles,
+  pruneOtherBrandProfiles,
+  saveDefaultBrandProfile,
+  saveExtractedBrandProfile,
 } from './repo/profiles.repo';
 export type {
   BrandPalette,
+  BrandProfileInput,
   BrandProfileSummary,
   BrandTypography,
-  NewBrandProfile,
+  ExtractedBrandProfile,
 } from './repo/profiles.repo';
 
 export {
@@ -72,11 +75,14 @@ export {
   failStaleExtractions,
   findExtraction,
   finishExtraction,
+  listBrandExtractionHistory,
   listRecentExtractions,
   markRunning,
+  toHistoryItem,
   toPublicExtraction,
 } from './repo/extractions.repo';
 export type {
+  BrandExtractionHistoryItem,
   ExtractionRow,
   ExtractionStatus,
   FinishExtractionInput,

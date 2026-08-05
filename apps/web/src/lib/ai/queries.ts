@@ -7,7 +7,12 @@ import {
   type PublicCredential,
   type UsageReport,
 } from '@mlain/core/ai';
-import { listBrandProfiles, type BrandProfileSummary } from '@mlain/core/brand';
+import {
+  listBrandExtractionHistory,
+  listBrandProfiles,
+  type BrandExtractionHistoryItem,
+  type BrandProfileSummary,
+} from '@mlain/core/brand';
 import { createWorkspaceContext } from '@mlain/core/identity/context';
 import { withReadOnly } from '@mlain/core/tx';
 import type { WorkspaceContext } from '@mlain/core/identity/types';
@@ -22,7 +27,7 @@ import type { WorkspaceContext } from '@mlain/core/identity/types';
  */
 const READ_ONLY = { statementTimeoutMs: 5_000 } as const;
 
-export type { PublicCredential, UsageReport, BrandProfileSummary };
+export type { PublicCredential, UsageReport, BrandExtractionHistoryItem, BrandProfileSummary };
 
 /**
  * Kontext projektu se nedá složit z řetězce, typ je branded. Jediná legitimní
@@ -69,6 +74,19 @@ export async function fetchUsage(ctx: WorkspaceContext, days: number): Promise<U
 
 export async function fetchBrandProfiles(ctx: WorkspaceContext): Promise<BrandProfileSummary[]> {
   return withReadOnly(ctx, READ_ONLY, (tx) => listBrandProfiles(tx));
+}
+
+/**
+ * Historie stažení značky, nejnovější první.
+ *
+ * Je to historie BĚHŮ, ne seznam značek: projekt má jednu značku a každé
+ * stažení ji přepíše. Barvy, které který běh vytáhl, drží `brand_extractions.result`.
+ */
+export async function fetchBrandExtractions(
+  ctx: WorkspaceContext,
+  limit: number,
+): Promise<BrandExtractionHistoryItem[]> {
+  return withReadOnly(ctx, READ_ONLY, (tx) => listBrandExtractionHistory(tx, limit));
 }
 
 export { PRICING_UPDATED_AT };

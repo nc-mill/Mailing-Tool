@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContactForm, type ContactFormValues } from './contact-form';
+import { failed, type ActionState } from '@/lib/feedback/action-result';
 import { renderWithProviders } from './test-utils';
 
 vi.mock('@mlain/i18n/navigation', () => ({
@@ -45,14 +46,36 @@ const values: ContactFormValues = {
 /** Zachytí FormData, se kterou se formulář odeslal, aby šlo tvrdit o obsahu, ne o klikání. */
 let submitted: FormData | null = null;
 
+/**
+ * Odpověď akce, kterou formulář dostane po odeslání. Ve výchozím stavu `idle`;
+ * testy na chyby si sem podstrčí `error`, protože jinak než přes návratovou hodnotu
+ * akce se `fieldErrors` do formuláře nedostane.
+ */
+let nextState: ActionState = { status: 'idle' };
+
+/** Chyba validace u jednoho pole, ve tvaru, jaký vyrábí `failed()` z odpovědi serveru. */
+function validationFailure(path: string, message: string): ActionState {
+  return failed('inlineBlock', {
+    type: 'https://docs.mlain.dev/errors/validation_failed',
+    title: 'Validation failed',
+    status: 422,
+    detail: '',
+    instance: '/api/v1/contacts',
+    code: 'validation_failed',
+    request_id: '',
+    errors: [{ path, code: 'invalid_value', message }],
+  });
+}
+
 function renderForm(overrides: Partial<ContactFormValues> = {}, mode: 'create' | 'edit' = 'edit') {
   submitted = null;
+  nextState = { status: 'idle' };
   return renderWithProviders(
     <ContactForm
       mode={mode}
       action={async (_previous, formData) => {
         submitted = formData;
-        return { status: 'idle' };
+        return nextState;
       }}
       workspaceId="w-1"
       workspaceSlug="eshop"
@@ -61,6 +84,21 @@ function renderForm(overrides: Partial<ContactFormValues> = {}, mode: 'create' |
     />,
   );
 }
+
+/** Prázdný kontakt, tedy to, co formulář dostane na obrazovce založení. */
+const EMPTY: Partial<ContactFormValues> = {
+  id: null,
+  email: '',
+  first_name: '',
+  last_name: '',
+  title_prefix: '',
+  title_suffix: '',
+  gender: 'unknown',
+  greeting: null,
+  fields: [],
+  tags: [],
+  lists: [],
+};
 
 beforeEach(() => {
   previewGreetingAction.mockReset();
@@ -176,8 +214,131 @@ describe('ContactForm', () => {
     expect(screen.getByText(/pošleme kontaktu potvrzovací e-mail/)).toBeInTheDocument();
   });
 
-  it('u založení říká, že kontakt vzniká jako nepotvrzený', () => {
-    renderForm({ id: null, email: '' }, 'create');
-    expect(screen.getByText(/přidáme jako nepotvrzený/)).toBeInTheDocument();
+  /**
+   * ZADÁNÍ ZADAVATELE: „Když přidávám ručně kontakt, tak nemusí být ověřený. Je na mě
+   * jako správci, jestli mám nebo nemám e-maily, které přidávám, ověřené."
+   *
+   * Výchozí hodnota je proto přihlášený, ne nepotvrzený. Ruční zadání dělá správce,
+   * který adresu odněkud má.
+   */
+  it('u založení nabízí volbu stavu a ve výchozím stavu zakládá přihlášeného', async () => {
+    const user = userEvent.setup();
+    renderForm(EMPTY, 'create');
+
+    const subscribed = screen.getByRole('radio', { name: /Přihlášeného k odběru/ });
+    expect(subscribed).toBeChecked();
+    // U volby musí být věta o tom, co to znamená pro odesílání.
+    expect(screen.getByText(/rovnou v rozesílkách/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Založit kontakt' }));
+
+    await waitFor(() => expect(submitted).not.toBeNull());
+    expect(submitted!.get('subscription')).toBe('confirmed');
+  });
+
+  it('u založení umí správce zvolit nepotvrzený kontakt', async () => {
+    const user = userEvent.setup();
+    renderForm(EMPTY, 'create');
+
+    await user.click(screen.getByRole('radio', { name: /Nepotvrzeného/ }));
+    expect(screen.getByText(/do rozesílek se nedostane/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Založit kontakt' }));
+
+    await waitFor(() => expect(submitted).not.toBeNull());
+    expect(submitted!.get('subscription')).toBe('pending');
+  });
+
+  /** Volba mění i to, co se stane se zaškrtnutými seznamy, a musí to být vidět předem. */
+  it('věta u seznamů se řídí zvolenou variantou', async () => {
+    const user = userEvent.setup();
+    renderForm({ ...EMPTY, lists: [{ id: 'l-1', name: 'Novinky', selected: false }] }, 'create');
+
+    expect(screen.getByText(/rovnou přihlásíme/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /Nepotvrzeného/ }));
+    expect(screen.getByText(/zapíšeme jako nepotvrzeného/)).toBeInTheDocument();
+  });
+
+  /**
+   * Jádro druhé poloviny zadání: „musím vyplnit milion údajů, než kontakt přidám".
+   * Povinná je jediná věc, adresa, a to musí být vidět na první pohled.
+   */
+  it('u založení je zbytek údajů schovaný, ale odešle se i zavřený', async () => {
+    const user = userEvent.setup();
+    renderForm(
+      { ...EMPTY, fields: [{ key: 'city', label: 'Město', type: 'text', value: '' }] },
+      'create',
+    );
+
+    const toggle = screen.getByRole('button', { name: 'Další údaje' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    // E-mail a jméno zůstávají nahoře, mimo schovanou část.
+    expect(screen.getByLabelText('E-mail')).toBeInTheDocument();
+    expect(screen.getByLabelText('Křestní jméno')).toBeInTheDocument();
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    await user.type(screen.getByLabelText('Titul před jménem'), 'Ing.');
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    // Zavřená část je pořád v DOM, takže se hodnota neztratí.
+    await user.click(screen.getByRole('button', { name: 'Založit kontakt' }));
+    await waitFor(() => expect(submitted).not.toBeNull());
+    expect(submitted!.get('title_prefix')).toBe('Ing.');
+  });
+
+  /**
+   * Bez tohohle by uživatel dostal hlášku „opravte formulář" a chybu by neviděl,
+   * protože by byla ve schované části.
+   */
+  it('schovaná část se sama otevře, když je v ní chyba', async () => {
+    const user = userEvent.setup();
+    renderForm(
+      { ...EMPTY, fields: [{ key: 'city', label: 'Město', type: 'text', value: '' }] },
+      'create',
+    );
+
+    const toggle = screen.getByRole('button', { name: 'Další údaje' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    nextState = validationFailure('attributes.city', 'Město neznáme.');
+    await user.click(screen.getByRole('button', { name: 'Založit kontakt' }));
+
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'));
+    expect(screen.getByText('Město neznáme.')).toBeInTheDocument();
+  });
+
+  it('chybu ve schované části nejde schovat zpátky', async () => {
+    const user = userEvent.setup();
+    renderForm(EMPTY, 'create');
+
+    nextState = validationFailure('title_prefix', 'Titul je moc dlouhý.');
+    await user.click(screen.getByRole('button', { name: 'Založit kontakt' }));
+
+    const toggle = screen.getByRole('button', { name: 'Další údaje' });
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'));
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  /** Vyplněné údaje se neschovávají: uživatel by netušil, že tam něco je. */
+  it('u založení s předvyplněnými dalšími údaji je část otevřená rovnou', () => {
+    renderForm({ ...EMPTY, title_prefix: 'Ing.' }, 'create');
+    expect(screen.getByRole('button', { name: 'Další údaje' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  /** U úpravy se nic neschovává, chodí se tam hlavně kvůli kontrole oslovení. */
+  it('u úpravy zůstávají všechny údaje vidět bez rozbalování', () => {
+    renderForm();
+    expect(screen.queryByRole('button', { name: 'Další údaje' })).toBeNull();
+    expect(screen.getByLabelText('Titul před jménem')).toBeInTheDocument();
+    expect(screen.getByTestId('greeting-preview')).toBeInTheDocument();
   });
 });

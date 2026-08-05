@@ -111,6 +111,10 @@ export const handler = async (job: {
     await writeBatch(ctx, {
       importId: job.data.importId,
       mode: run.options.on_conflict,
+      // Celé volby, ne jen `on_conflict`: seznamy, štítky a souhlas se aplikují uvnitř
+      // transakce dávky. Dřív se sem předával jen režim konfliktu, takže zbytek voleb
+      // se sice uložil a validoval, ale na datech se nikdy neprojevil.
+      options: run.options,
       rows: deduped.rows,
       errors: allErrors,
       checkpointRow,

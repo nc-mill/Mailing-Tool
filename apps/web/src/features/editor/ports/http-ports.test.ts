@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createHttpPorts } from './http-ports';
+import type { EditorPorts } from './types';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -13,18 +14,99 @@ describe('http ports', () => {
    * produkční image:
    *   {"route":"/api/v1/templates","status":404,"workspace_id":null}
    */
-  it('posílá X-Workspace-Id v každém volání', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(json({ id: 't1' }, 201));
+  /**
+   * VŠECHNY porty naráz, ne jen jeden.
+   *
+   * Předchozí znění téhle kontroly volalo `createTemplate` a z toho usuzovalo
+   * na zbytek. Neplatilo to: `uploadAsset` šel přes holý `fetch` bez jediné
+   * hlavičky, protože tělo je `FormData` a `content-type` se u něj nastavovat
+   * NESMÍ (prohlížeč by nedoplnil `boundary`). Autor tedy obešel společnou
+   * funkci `call` a s ní i `X-Workspace-Id`, a test to nezachytil, protože se
+   * na ten port nikdy nezeptal.
+   *
+   * Je to počtvrté, co tahle vada v repozitáři vznikla. Vzor je proto opsaný
+   * z `features/contacts/actions.test.ts`: výčet se kontroluje proti
+   * SKUTEČNÉMU seznamu portů, takže kdo přidá desátý port a zapomene na
+   * hlavičku, shodí test tady, ne až na produkční image.
+   */
+  const CALLS: Record<string, (ports: EditorPorts) => Promise<unknown>> = {
+    createTemplate: (p) => p.createTemplate({ name: 'N', document: { blocks: [] } as never }),
+    save: (p) => p.save({ templateId: 't1', document: { blocks: [] } as never, ifDesignHash: 'a' }),
+    rename: (p) => p.rename({ templateId: 't1', name: 'Nové jméno' }),
+    preview: (p) => p.preview({ templateId: 't1', previewData: { type: 'sample' } }),
+    validate: (p) => p.validate({ templateId: 't1' }),
+    testSend: (p) =>
+      p.testSend({
+        templateId: 't1',
+        recipients: ['a@b.cz'],
+        previewData: { type: 'sample' },
+      }),
+    applyToCampaign: (p) => p.applyToCampaign({ campaignId: 'c1', templateId: 't1' }),
+    searchContacts: (p) => p.searchContacts('novak'),
+    randomContact: (p) => p.randomContact(),
+    listAssets: (p) => p.listAssets(''),
+    uploadAsset: (p) => p.uploadAsset(new File([new Uint8Array([1, 2, 3])], 'a.png')),
+  };
+
+  it('výčet v testu pokrývá všechny porty editoru', () => {
+    const ports = createHttpPorts({ workspaceId: WORKSPACE_ID, fetch: vi.fn() });
+    const actual = Object.entries(ports)
+      .filter(([, value]) => typeof value === 'function')
+      .map(([name]) => name)
+      .sort();
+    expect(actual).toEqual(Object.keys(CALLS).sort());
+  });
+
+  for (const [name, call] of Object.entries(CALLS)) {
+    it(`${name} posílá X-Workspace-Id`, async () => {
+      // Odpověď musí projít každým portem: `data` pro seznamy, `findings` pro
+      // kontrolu, `id` a `design_hash` pro zápisy. Jedno tělo pro všechny je
+      // tu proto, aby test měřil hlavičku, ne tvar odpovědi.
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(
+          json(
+            { id: 't1', design_hash: 'a', updated_at: '', data: [], findings: [], url: '' },
+            200,
+          ),
+        );
+      const ports = createHttpPorts({
+        workspaceId: WORKSPACE_ID,
+        baseUrl: '/api/v1',
+        fetch: fetchMock,
+      });
+
+      await call(ports);
+
+      expect(fetchMock.mock.calls.length, `${name} nezavolal fetch`).toBeGreaterThan(0);
+      for (const [url, init] of fetchMock.mock.calls) {
+        const headers = (init as RequestInit | undefined)?.headers as
+          Record<string, string> | undefined;
+        expect(
+          headers?.['X-Workspace-Id'],
+          `${name} volá ${String(url)} bez X-Workspace-Id, takže middleware vrátí 404 před handlerem`,
+        ).toBe(WORKSPACE_ID);
+      }
+    });
+  }
+
+  /**
+   * Zrcadlo k předchozímu: `uploadAsset` hlavičku posílat MUSÍ, ale
+   * `content-type` posílat NESMÍ. Kdyby ho nastavil, prohlížeč nedoplní
+   * `boundary=` a server multipart nerozebere, tedy vada opačným směrem.
+   */
+  it('uploadAsset nechá content-type na prohlížeči, jinak se ztratí boundary', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json({ id: 'a1', url: '' }, 201));
     const ports = createHttpPorts({
       workspaceId: WORKSPACE_ID,
       baseUrl: '/api/v1',
       fetch: fetchMock,
     });
 
-    await ports.createTemplate({ name: 'Nová', document: { blocks: [] } as never });
+    await ports.uploadAsset(new File([new Uint8Array([1, 2, 3])], 'a.png'));
 
     const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>;
-    expect(headers['X-Workspace-Id']).toBe(WORKSPACE_ID);
+    expect(Object.keys(headers).map((k) => k.toLowerCase())).not.toContain('content-type');
   });
 
   it('uloží dokument s optimistickým zámkem', async () => {
@@ -133,7 +215,6 @@ describe('http ports', () => {
     const result = await ports.testSend({
       templateId: 't1',
       recipients: ['a@b.cz'],
-      addTestPrefix: true,
       previewData: { type: 'sample' },
     });
     expect(result).toEqual({

@@ -23,12 +23,15 @@ import { resetImportEnqueueConfig } from './jobs/enqueue';
 import { recoverStaleImports } from './jobs/recover-stale';
 import { handler as runImport } from './jobs/run-import';
 import { runRetention } from './jobs/retention';
+import { addSuppression } from '../repo/suppressions';
+import { ImportOptionsSchema, type ImportOptions } from './options';
 import type { ProcessedOkRow } from './row-pipeline';
 import {
   cancelImport,
   confirmImport,
   createImport,
   detectAndPreview,
+  patchImport,
   resumeImport,
   setTotalRows,
 } from './service';
@@ -195,8 +198,10 @@ const ok = (email: string, rowNumber: number): ProcessedOkRow => ({
   rowNumber,
   subscribe: true,
   consent: null,
+  consentOccurredAt: null,
   warnings: [],
   tags: [],
+  listIds: [],
   attributes: {},
   // Klíče jmen jsou tu schválně: bez nich by fronta ke kontrole oslovení,
   // která na částečném indexu nad nimi stojí, zůstala po importu prázdná.
@@ -221,6 +226,117 @@ const err = (rowNumber: number, errorCode: string, severity: 'error' | 'warning'
 });
 
 const base = { mode: 'update' as const, errors: [], suppressedCount: 0, maxStoredErrors: 10_000 };
+
+// --- pomocníci k volbám importu ----------------------------------------------
+
+async function createList(
+  own: WorkspaceContext,
+  optIn: 'single' | 'double',
+  name = `Seznam ${Math.random()}`,
+): Promise<string> {
+  const { rows } = await withWorkspace(own, (tx) =>
+    tx.execute<{ id: string }>(sql`
+      INSERT INTO lists (workspace_id, name, opt_in)
+      VALUES (${own.workspaceId}::uuid, ${name}, ${optIn}) RETURNING id`),
+  );
+  const row = rows[0];
+  if (row === undefined) throw new Error('seznam nevznikl');
+  return row.id;
+}
+
+async function createTagRow(own: WorkspaceContext, name: string): Promise<string> {
+  const { rows } = await withWorkspace(own, (tx) =>
+    tx.execute<{ id: string }>(sql`
+      INSERT INTO tags (workspace_id, name)
+      VALUES (${own.workspaceId}::uuid, ${name}) RETURNING id`),
+  );
+  const row = rows[0];
+  if (row === undefined) throw new Error('štítek nevznikl');
+  return row.id;
+}
+
+async function subscriptionsOf(
+  own: WorkspaceContext,
+  email: string,
+): Promise<{ list_id: string; status: string; source: string; confirmed_at: Date | null }[]> {
+  const { rows } = await withWorkspace(own, (tx) =>
+    tx.execute<{ list_id: string; status: string; source: string; confirmed_at: Date | null }>(sql`
+      SELECT s.list_id, s.status, s.source, s.confirmed_at
+        FROM list_subscriptions s JOIN contacts c ON c.id = s.contact_id
+       WHERE s.workspace_id = ${own.workspaceId}::uuid AND c.email = ${email}::citext`),
+  );
+  return rows;
+}
+
+async function tagNamesOf(own: WorkspaceContext, email: string): Promise<string[]> {
+  const { rows } = await withWorkspace(own, (tx) =>
+    tx.execute<{ name: string }>(sql`
+      SELECT t.name FROM contact_tags ct
+        JOIN tags t ON t.id = ct.tag_id
+        JOIN contacts c ON c.id = ct.contact_id
+       WHERE ct.workspace_id = ${own.workspaceId}::uuid AND c.email = ${email}::citext
+       ORDER BY t.name`),
+  );
+  return rows.map((row) => row.name);
+}
+
+async function consentsOf(
+  own: WorkspaceContext,
+  email: string,
+): Promise<
+  {
+    purpose: string;
+    status: string;
+    legal_basis: string;
+    source: string;
+    source_ref: string | null;
+    evidence: Record<string, unknown>;
+  }[]
+> {
+  const { rows } = await withWorkspace(own, (tx) =>
+    tx.execute<{
+      purpose: string;
+      status: string;
+      legal_basis: string;
+      source: string;
+      source_ref: string | null;
+      evidence: Record<string, unknown>;
+    }>(sql`
+      SELECT k.purpose, k.status, k.legal_basis, k.source, k.source_ref, k.evidence
+        FROM consents k JOIN contacts c ON c.id = k.contact_id
+       WHERE k.workspace_id = ${own.workspaceId}::uuid AND c.email = ${email}::citext`),
+  );
+  return rows;
+}
+
+async function consentStateOf(
+  own: WorkspaceContext,
+  email: string,
+): Promise<{ status: string; legal_basis: string } | null> {
+  const { rows } = await withWorkspace(own, (tx) =>
+    tx.execute<{ status: string; legal_basis: string }>(sql`
+      SELECT s.status, s.legal_basis
+        FROM contact_consent_state s JOIN contacts c ON c.id = s.contact_id
+       WHERE s.workspace_id = ${own.workspaceId}::uuid AND c.email = ${email}::citext`),
+  );
+  return rows[0] ?? null;
+}
+
+const withConsent = {
+  purpose: 'email_marketing' as const,
+  legal_basis: 'consent' as const,
+  source: 'veletrh Brno 2026',
+  declaration: true,
+};
+
+/**
+ * Volby importu se STEJNOU cestou, jakou je ukládá API: přes `ImportOptionsSchema`.
+ * Ručně poskládaný objekt by mohl obsahovat tvar, který by se přes PATCH nikdy
+ * neuložil, a test by pak potvrzoval něco, co v provozu nenastane.
+ */
+function options(patch: Record<string, unknown>): ImportOptions {
+  return ImportOptionsSchema.parse(patch);
+}
 
 describe('batch write', () => {
   it('writes contacts and the checkpoint in one transaction', async () => {
@@ -352,6 +468,304 @@ describe('batch write', () => {
     const row = await readImport(ctx, importId);
     expect(row.error_summary).toEqual({ email_invalid: 2, email_missing: 1 });
     expect(Number(row.error_rows)).toBe(3);
+  });
+});
+
+/**
+ * Uložené volby importu na datech, ne na tvaru vstupu.
+ *
+ * Tahle sada MUSÍ být proti databázi. Vada, kterou hlídá, spočívala v tom, že se volby
+ * korektně uložily, korektně zvalidovaly a při zápisu dávky se prostě nepoužily: do
+ * `upsertContacts` šel jen kontakt. Test nad čistou funkcí by tvrdil, že `writeBatch`
+ * dostal správný vstup, a přesně to platilo i před opravou. Poznat to jde jedině tak,
+ * že se po importu někdo zeptá tabulek `list_subscriptions`, `contact_tags` a `consents`.
+ */
+describe('batch write applies the saved options', () => {
+  it('subscribes the contacts into the chosen list instead of leaving it empty', async () => {
+    const own = await testContext();
+    const listId = await createList(own, 'double');
+    const importId = await createImportRow(own);
+
+    await writeBatch(own, {
+      ...base,
+      importId,
+      options: options({ list_ids: [listId] }),
+      rows: [ok('sub@x.cz', 1)],
+      checkpointRow: 1,
+      checkpointByte: 10,
+    });
+
+    const subscriptions = await subscriptionsOf(own, 'sub@x.cz');
+    expect(subscriptions).toHaveLength(1);
+    expect(subscriptions[0]).toMatchObject({
+      list_id: listId,
+      status: 'pending',
+      source: 'import',
+    });
+  });
+
+  it('confirms the subscription only with the declaration, and records when it happened', async () => {
+    const own = await testContext();
+    const listId = await createList(own, 'double');
+    const importId = await createImportRow(own);
+
+    await writeBatch(own, {
+      ...base,
+      importId,
+      options: options({
+        list_ids: [listId],
+        subscription_status: 'confirmed',
+        consent: withConsent,
+      }),
+      rows: [{ ...ok('conf@x.cz', 1), consent: withConsent }],
+      checkpointRow: 1,
+      checkpointByte: 10,
+    });
+
+    const subscriptions = await subscriptionsOf(own, 'conf@x.cz');
+    expect(subscriptions[0]?.status).toBe('confirmed');
+    expect(subscriptions[0]?.confirmed_at).not.toBeNull();
+  });
+
+  it('leaves a double opt-in list at pending when the declaration is missing', async () => {
+    const own = await testContext();
+    const listId = await createList(own, 'double');
+    const importId = await createImportRow(own);
+
+    await writeBatch(own, {
+      ...base,
+      importId,
+      // Stav „potvrzené" bez prohlášení. O výsledku rozhoduje automat, ne volba.
+      options: options({ list_ids: [listId], subscription_status: 'confirmed' }),
+      rows: [ok('nodecl@x.cz', 1)],
+      checkpointRow: 1,
+      checkpointByte: 10,
+    });
+
+    expect((await subscriptionsOf(own, 'nodecl@x.cz'))[0]?.status).toBe('pending');
+  });
+
+  it('NEVRACÍ odhlášeného člověka do rozesílky, ani s prohlášením', async () => {
+    const own = await testContext();
+    const listId = await createList(own, 'single');
+    const importId = await createImportRow(own);
+    const first = {
+      ...base,
+      importId,
+      options: options({ list_ids: [listId] }),
+      rows: [ok('gone@x.cz', 1)],
+      checkpointRow: 1,
+      checkpointByte: 10,
+    };
+    await writeBatch(own, first);
+    await withWorkspace(own, (tx) =>
+      tx.execute(sql`
+        UPDATE list_subscriptions SET status = 'unsubscribed', unsubscribed_at = now()
+         WHERE workspace_id = ${own.workspaceId}::uuid AND list_id = ${listId}::uuid`),
+    );
+
+    // Tentýž soubor podruhé, tentokrát s prohlášením a se stavem „potvrzené".
+    await writeBatch(own, {
+      ...first,
+      options: options({
+        list_ids: [listId],
+        subscription_status: 'confirmed',
+        consent: withConsent,
+      }),
+      rows: [{ ...ok('gone@x.cz', 1), consent: withConsent }],
+      checkpointRow: 2,
+    });
+
+    // Návrat je vždycky přes pending, tedy přes projev vůle příjemce.
+    expect((await subscriptionsOf(own, 'gone@x.cz'))[0]?.status).toBe('pending');
+  });
+
+  it('adds the tags from the options and from the file column', async () => {
+    const own = await testContext();
+    const tagId = await createTagRow(own, 'import-2026-08-01');
+    const importId = await createImportRow(own);
+
+    await writeBatch(own, {
+      ...base,
+      importId,
+      options: options({ tag_ids: [tagId] }),
+      rows: [{ ...ok('tagged@x.cz', 1), tags: ['VIP', 'veletrh'] }],
+      checkpointRow: 1,
+      checkpointByte: 10,
+    });
+
+    expect(await tagNamesOf(own, 'tagged@x.cz')).toEqual(['VIP', 'import-2026-08-01', 'veletrh']);
+  });
+
+  it('survives a tag that was deleted between the options step and the run', async () => {
+    const own = await testContext();
+    const tagId = await createTagRow(own, 'zmizel');
+    await withWorkspace(own, (tx) => tx.execute(sql`DELETE FROM tags WHERE id = ${tagId}::uuid`));
+    const importId = await createImportRow(own);
+
+    await writeBatch(own, {
+      ...base,
+      importId,
+      options: options({ tag_ids: [tagId] }),
+      rows: [ok('stale-tag@x.cz', 1)],
+      checkpointRow: 1,
+      checkpointByte: 10,
+    });
+
+    // Import doběhne. Kdyby se neexistující id poslalo do contact_tags, cizí klíč
+    // by shodil celou dávku a job s retryLimit = 0 by se už nerozjel.
+    expect(await tagNamesOf(own, 'stale-tag@x.cz')).toEqual([]);
+    expect(Number((await readImport(own, importId)).created_rows)).toBe(1);
+  });
+
+  it('records the consent from the options, with the declaration in the evidence', async () => {
+    const own = await testContext();
+    const importId = await createImportRow(own);
+
+    await writeBatch(own, {
+      ...base,
+      importId,
+      options: options({ consent: withConsent }),
+      rows: [{ ...ok('consent@x.cz', 1), consent: withConsent }],
+      checkpointRow: 1,
+      checkpointByte: 10,
+    });
+
+    const consents = await consentsOf(own, 'consent@x.cz');
+    expect(consents).toHaveLength(1);
+    expect(consents[0]).toMatchObject({
+      purpose: 'email_marketing',
+      status: 'granted',
+      legal_basis: 'consent',
+      // Kanál patří do sloupce s číselníkem, uživatelův popis původu do evidence.
+      source: 'import',
+      source_ref: importId,
+    });
+    expect(consents[0]?.evidence).toMatchObject({
+      declaration: true,
+      declared_source: 'veletrh Brno 2026',
+      import_id: importId,
+    });
+    // Segmentace čte odvozený stav, ne append-only log. Musí vzniknout v téže transakci.
+    expect(await consentStateOf(own, 'consent@x.cz')).toMatchObject({ status: 'granted' });
+  });
+
+  it('writes nothing extra for a softly suppressed row: no list, no consent', async () => {
+    const own = await testContext();
+    const listId = await createList(own, 'single');
+    const importId = await createImportRow(own);
+
+    await writeBatch(own, {
+      ...base,
+      importId,
+      options: options({ list_ids: [listId], consent: withConsent }),
+      // Tak vypadá řádek, jehož adresa je na suppression listu z mírného důvodu:
+      // kontakt se zapíše, ale přihlášení ani souhlas dostat nesmí.
+      rows: [{ ...ok('soft@x.cz', 1), subscribe: false, consent: null }],
+      checkpointRow: 1,
+      checkpointByte: 10,
+    });
+
+    expect(await subscriptionsOf(own, 'soft@x.cz')).toEqual([]);
+    expect(await consentsOf(own, 'soft@x.cz')).toEqual([]);
+    expect(Number((await readImport(own, importId)).created_rows)).toBe(1);
+  });
+
+  it('subscribes into a list that came from the mapped column, not just from the options', async () => {
+    const own = await testContext();
+    const fromOptions = await createList(own, 'double', `volby ${Math.random()}`);
+    const fromColumn = await createList(own, 'double', `sloupec ${Math.random()}`);
+    const importId = await createImportRow(own);
+
+    await writeBatch(own, {
+      ...base,
+      importId,
+      options: options({ list_ids: [fromOptions] }),
+      rows: [{ ...ok('bothlists@x.cz', 1), listIds: [fromColumn] }],
+      checkpointRow: 1,
+      checkpointByte: 10,
+    });
+
+    expect((await subscriptionsOf(own, 'bothlists@x.cz')).map((s) => s.list_id).sort()).toEqual(
+      [fromOptions, fromColumn].sort(),
+    );
+  });
+
+  it('records the consent with the date from the file, not with today', async () => {
+    const own = await testContext();
+    const importId = await createImportRow(own);
+
+    await writeBatch(own, {
+      ...base,
+      importId,
+      options: options({ consent: withConsent }),
+      rows: [
+        {
+          ...ok('old-consent@x.cz', 1),
+          consent: withConsent,
+          consentOccurredAt: '2019-04-02T00:00:00.000Z',
+        },
+      ],
+      checkpointRow: 1,
+      checkpointByte: 10,
+    });
+
+    const { rows } = await withWorkspace(own, (tx) =>
+      tx.execute<{ occurred_at: string | Date }>(sql`
+        SELECT k.occurred_at FROM consents k JOIN contacts c ON c.id = k.contact_id
+         WHERE k.workspace_id = ${own.workspaceId}::uuid AND c.email = 'old-consent@x.cz'::citext`),
+    );
+    expect(new Date(String(rows[0]?.occurred_at)).getUTCFullYear()).toBe(2019);
+  });
+
+  it('keeps the tag limit per contact and says so instead of exceeding it quietly', async () => {
+    const own = await testContext();
+    const importId = await createImportRow(own);
+    // O jeden štítek víc, než kontakt unese.
+    const names = Array.from({ length: 51 }, (_, i) => `stitek-${i}`);
+
+    await writeBatch(own, {
+      ...base,
+      importId,
+      rows: [{ ...ok('manytags@x.cz', 7), tags: names }],
+      checkpointRow: 1,
+      checkpointByte: 10,
+    });
+
+    expect(await tagNamesOf(own, 'manytags@x.cz')).toHaveLength(50);
+    const row = await readImport(own, importId);
+    // Přebytek se nezahodí potichu: je vidět v počtu varování i v souhrnu.
+    expect(Number(row.warning_rows)).toBe(1);
+    expect(row.error_summary['contact_tag_limit_reached']).toBe(1);
+    const { rows } = await withWorkspace(own, (tx) =>
+      tx.execute<{ row_number: number; severity: string }>(sql`
+        SELECT row_number, severity FROM import_errors
+         WHERE import_id = ${importId}::uuid AND error_code = 'contact_tag_limit_reached'`),
+    );
+    expect(rows[0]).toMatchObject({ severity: 'warning' });
+    expect(Number(rows[0]?.row_number)).toBe(7);
+  });
+
+  it('pairs the tags with contacts by address, not by position in the batch', async () => {
+    const own = await testContext();
+    const importId = await createImportRow(own);
+    // Adresa se stížností se do contacts vůbec nezapíše, takže výsledek upsertu je
+    // o řádek kratší než dávka. Kdyby se párovalo podle pořadí, štítek „druhy" by
+    // skončil u prvního kontaktu.
+    await addSuppression(own, { email: 'blocked@x.cz', reason: 'complaint', source: 'manual' });
+
+    await writeBatch(own, {
+      ...base,
+      importId,
+      rows: [
+        { ...ok('blocked@x.cz', 1), tags: ['prvni'] },
+        { ...ok('druhy@x.cz', 2), tags: ['druhy'] },
+      ],
+      checkpointRow: 2,
+      checkpointByte: 20,
+    });
+
+    expect(await tagNamesOf(own, 'druhy@x.cz')).toEqual(['druhy']);
   });
 });
 
@@ -536,6 +950,48 @@ describe('import worker', () => {
     );
     expect(rows[0]?.status).toBe('completed');
     expect(Number(rows[0]?.created_rows)).toBe(2);
+  });
+
+  /**
+   * Celá cesta od volby uživatele k datům, jedním průchodem: PATCH uloží volby,
+   * confirm spustí import, worker přečte soubor a zapíše dávku. Kdyby se kterýkoli
+   * z těch článků rozešel (a přesně to se stalo mezi `imports.options` a `writeBatch`),
+   * kontakty by vznikly a seznam by po úspěšném importu zůstal prázdný.
+   */
+  it('carries the saved options all the way to the data: list, tag and consent', async () => {
+    const own = await testContext();
+    const listId = await createList(own, 'double');
+    const tagId = await createTagRow(own, 'import-brno');
+    const created = await createImport(own, {
+      stream: Readable.from([Buffer.from(WHOLE_FILE, 'utf8')]),
+      filename: 'options.csv',
+    });
+    await detectAndPreview(own, created.id);
+    await patchImport(own, created.id, {
+      options: options({
+        list_ids: [listId],
+        subscription_status: 'confirmed',
+        tag_ids: [tagId],
+        consent: withConsent,
+      }),
+    });
+    await confirmImport(own, created.id);
+
+    const out = await runImport({
+      data: { workspaceId: own.workspaceId, importId: created.id, phase: 'run' },
+    });
+
+    expect(out.processed).toBe(2);
+    expect((await subscriptionsOf(own, 'a@x.cz'))[0]).toMatchObject({
+      list_id: listId,
+      status: 'confirmed',
+    });
+    expect(await tagNamesOf(own, 'a@x.cz')).toEqual(['import-brno']);
+    expect((await consentsOf(own, 'b@x.cz'))[0]).toMatchObject({
+      source: 'import',
+      legal_basis: 'consent',
+      status: 'granted',
+    });
   });
 
   it('resumes from the checkpoint byte instead of importing the first row twice', async () => {

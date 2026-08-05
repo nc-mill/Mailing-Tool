@@ -60,6 +60,13 @@ export function ContactsEmptyState({
           onClick: () => router.push(`${basePath}/import`),
           description: t('list.emptyImportHint'),
         },
+        // Vložení textem patří hned za import ze souboru: u krátkého seznamu
+        // z e-mailu je to rychlejší cesta než vyrábět kvůli deseti adresám CSV.
+        {
+          label: t('paste.entry'),
+          onClick: () => router.push(`${basePath}/paste`),
+          description: t('paste.entryHint'),
+        },
         {
           label: t('list.emptyFormAction'),
           onClick: () => router.push(`${workspacePath}/forms/new`),

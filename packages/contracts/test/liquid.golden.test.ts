@@ -71,12 +71,14 @@ afterAll(async () => {
 });
 
 describe('Liquid golden fixtures', () => {
-  it('je jich přesně 55 a skupiny sedí se součtem tabulky', () => {
+  it('je jich přesně 57 a skupiny sedí se součtem tabulky', () => {
     const group = (id: string): string => `LQ-${id.slice(3, 4)}xx`;
     const byGroup: Record<string, number> = {};
     for (const fixture of fixtures)
       byGroup[group(fixture.id)] = (byGroup[group(fixture.id)] ?? 0) + 1;
-    expect(fixtures).toHaveLength(55);
+    // 55 + LQ-704 a LQ-705, tedy kořen `data` z transakčního volání v HTML
+    // i v textové části. Žádná stávající fixture se nezměnila.
+    expect(fixtures).toHaveLength(57);
     expect(byGroup).toEqual({
       'LQ-0xx': 8,
       'LQ-1xx': 10,
@@ -85,7 +87,7 @@ describe('Liquid golden fixtures', () => {
       'LQ-4xx': 4,
       'LQ-5xx': 11,
       'LQ-6xx': 4,
-      'LQ-7xx': 4,
+      'LQ-7xx': 6,
     });
   });
 

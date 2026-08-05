@@ -1,13 +1,14 @@
 import { and, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import * as schema from '@mlain/db/schema';
 import { prepareRenderData } from '@mlain/contracts/liquid/prepare-render-data';
+import { hasContentBlocks } from '@mlain/emails/document/content-stats';
 import type { Document } from '@mlain/emails/document/types';
 import { toPreparedSchema } from '@mlain/emails/paths';
 import { wsEq } from '../identity/scope';
 import type { WorkspaceContext } from '../identity/types';
 import { withWorkspace, type Tx } from '../tx';
 import { compileTemplate } from './compile';
-import { findTemplateById, type TemplateRow } from './repository';
+import { findTemplateById, validationProfileFor, type TemplateRow } from './repository';
 import type { ServiceContext } from './service';
 
 /** Strop z `campaigns/constants.ts` (TEST_SEND_MAX_RECIPIENTS), opsaný sem, aby doména šablon nezávisela na doméně kampaní. */
@@ -105,6 +106,20 @@ export async function sendTemplateTest(
     await assertUnderRateLimit(tx, ctx.ctx, windowStart, recipients.length);
     await assertRecipientsAllowed(tx, ctx.ctx, recipients);
 
+    /*
+     * PRÁZDNÁ ŠABLONA SE NETESTUJE, stejně jako se neodešle prázdná kampaň.
+     *
+     * Testovací e-mail je opravdový e-mail: odchází přes providera do cizí
+     * schránky. Kdyby prázdná šablona prošla tudy a neprošla odesláním kampaně,
+     * choval by se nástroj na dvou místech různě k téže věci a uživatel by se
+     * o prázdném obsahu dozvěděl ze schránky, tedy přesně tak, jak se to stalo
+     * u kampaně. Kontrola je tady, ne až v kompilaci: dokument s pouhou patičkou
+     * je platný a zkompiluje se bez jediné výhrady.
+     */
+    if (!hasContentBlocks(template.design)) {
+      throw new TestSendError('test_template_empty');
+    }
+
     const identity = await senderIdentity(tx, ctx.ctx);
     const contactId = await resolveTestContactId(tx, ctx.ctx);
 
@@ -112,7 +127,7 @@ export async function sendTemplateTest(
       tx,
       ctx: ctx.ctx,
       document: template.design as Document,
-      templateKind: template.kind,
+      templateKind: validationProfileFor(template.kind),
       fields: ctx.fields,
       language: (template.design as Document).meta.language,
       assetBaseUrl: input.assetBaseUrl,

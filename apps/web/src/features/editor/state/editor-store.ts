@@ -19,7 +19,17 @@ import {
   setVisibility,
 } from '../model/ops';
 
-export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error' | 'conflict';
+/**
+ * `invalid` je oddělené od `error` schválně.
+ *
+ * `error` znamená „nepovedlo se to poslat, zkoušíme znovu" a je to dočasné.
+ * `invalid` znamená „server obsah odmítl jako neplatný" a samo to nepřejde:
+ * musí zasáhnout uživatel. Dokud byl obojí týž stav, hlásil editor u nového
+ * bloku obrázku donekonečna „Nepodařilo se uložit, zkoušíme to znovu",
+ * což bylo dvakrát nepravda: nezkoušelo se to znovu smysluplně a chyba
+ * nebyla v ukládání, ale v obsahu.
+ */
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error' | 'conflict' | 'invalid';
 
 /** Typ nálezu se tady nedefinuje, bydlí v `model/document-types.ts` (úkol 1). */
 export type { EditorIssue };
@@ -200,10 +210,53 @@ export function createEditorStore(input: {
       savedDocument = state.document;
       set({ designHash, savedAt: at, status: 'saved' });
     },
-    replaceDocument(document: EditorDocument, designHash: string) {
+    /**
+     * Převzetí přejmenování, které právě proběhlo na serveru.
+     *
+     * Mění se dokument (`meta.name`) i hash, protože server mění obojí: jméno
+     * dokumentu je předmět odesílaného e-mailu, ne kopie jména řádku.
+     *
+     * HISTORIE ZŮSTÁVÁ. `replaceDocument` by ji zahodila, jenže tady se
+     * nevyměňuje obsah, mění se jedna vlastnost, a přijít kvůli přejmenování
+     * o možnost vrátit hodinu práce zpět by byla nepříjemná pokuta za překlep
+     * v názvu.
+     *
+     * Volá se AŽ PO `flush()`. Nastavením `savedDocument` na nový dokument
+     * zmizí příznak neuložených změn, takže kdyby se volalo nad rozdělanou
+     * úpravou, editor by ji prohlásil za uloženou a automatické ukládání by
+     * se o ni už nepokusilo.
+     */
+    applyName(name: string, designHash: string, at: number) {
+      const document = { ...state.document, meta: { ...state.document.meta, name } };
+      savedDocument = document;
+      set({ document, designHash, savedAt: at, status: 'saved' });
+    },
+    /**
+     * Vymění celý dokument a zahodí historii.
+     *
+     * `saved` říká, jestli nový dokument UŽ JE na serveru:
+     * - `true` u převzetí cizí verze při konfliktu, protože ta ze serveru přišla,
+     * - `false` (výchozí) u návrhu od AI asistenta, protože ten nikde uložený není.
+     *
+     * VÝCHOZÍ HODNOTA JE ZÁMĚRNĚ `false`. Dokud se dokument značil jako uložený
+     * vždycky, byl po vložení návrhu `isDirty` rovnou `false`, automatické
+     * ukládání se nespustilo (`use-autosave.ts` na `isDirty` stojí dvakrát)
+     * a hlavička neukázala ani „Neuloženo", protože `status` zůstal `idle`.
+     * Uživateli to přišlo tak, že šablonu nejde uložit a chybí tlačítko:
+     * ono se opravdu neukládalo nic a nic o tom neřeklo. Po znovunačtení
+     * stránky byl celý návrh pryč.
+     *
+     * Jediný skutečný volající je dnes panel AI asistenta, tedy přesně ten
+     * případ, kde „už uloženo" neplatí.
+     */
+    replaceDocument(
+      document: EditorDocument,
+      designHash: string,
+      options: { saved?: boolean } = {},
+    ) {
       past = [];
       future = [];
-      savedDocument = document;
+      if (options.saved === true) savedDocument = document;
       set({ document, designHash, selectedId: null, status: 'idle' });
     },
   };

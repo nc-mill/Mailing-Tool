@@ -264,7 +264,31 @@ export async function updateWorkspace(
   // nezůstala úloha, která přepočítá oslovení podle nastavení, které se nakonec
   // neuložilo. `singletonKey` je ID projektu, protože dvojí souběžný přepočet
   // nad jedním projektem je jen dvojí práce.
-  if (before.address_form !== after.address_form) {
+  //
+  // ZMĚNA JAZYKA PROJEKTU JE TÁŽ VĚC, JEN VÁŽNĚJŠÍ. Jazyk určuje nejen větu
+  // („Dobrý den" versus „Hello"), ale i to, jestli se vůbec počítá 5. pád. Projekt
+  // založený anglickým průvodcem uložil kontaktům `locale = 'en'`, takže po přepnutí
+  // na češtinu měly dál ve sloupci vokativu nominativ a v oslovení „Hello Petr“.
+  // Doloženo na živé databázi: kontakty s `first_name = 'Petr'` a `locale = 'en'`
+  // nesly oslovení „Hello Petře“ i poté, co uživatel projekt přepnul na češtinu.
+  //
+  // Sjednocení se týká JEN kontaktů, které měly dosavadní jazyk projektu, tedy těch,
+  // které si ho nezvolily, ale zdědily. Kontakt s jazykem třetím (Slovák v českém
+  // projektu) je výslovná volba a ta se nepřepisuje. Kdo potřebuje srovnat i ty,
+  // má na to hromadnou akci v nastavení, která `from` neuvádí.
+  if (before.locale !== after.locale) {
+    await enqueueContactsJob(
+      tx,
+      'contacts.recompute_greeting',
+      {
+        workspaceId: ctx.workspaceId,
+        alignLocale: { to: after.locale, from: before.locale },
+      },
+      { singletonKey: ctx.workspaceId },
+    );
+    // Změna obojího najednou stačí jedním během: přepočet skládá větu vždy podle
+    // AKTUÁLNÍHO nastavení projektu, takže vykání i tykání se do ní promítne také.
+  } else if (before.address_form !== after.address_form) {
     await enqueueContactsJob(
       tx,
       'contacts.recompute_greeting',

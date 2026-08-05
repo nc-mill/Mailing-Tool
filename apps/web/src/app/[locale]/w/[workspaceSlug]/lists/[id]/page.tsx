@@ -33,6 +33,9 @@ type ListApi = {
   opt_in: 'single' | 'double';
   confirmation_mode: 'one_step' | 'two_step';
   archived_at: string | null;
+  public_visible: boolean;
+  public_name: string | null;
+  public_description: string | null;
 };
 
 type ListStats = { pending: number; confirmed: number };
@@ -65,6 +68,11 @@ export default async function ListDetailPage({ params }: PageProps) {
     double_opt_in: detail.data.data.opt_in === 'double',
     confirmation_mode: detail.data.data.confirmation_mode,
     archived: detail.data.data.archived_at !== null,
+    public_visible: detail.data.data.public_visible,
+    // Formulářová pole pracují s prázdným řetězcem, doména s null: „nevyplněno"
+    // a „prázdné jméno" jsou dvě různé věci a překlad se dělá na téhle hranici.
+    public_name: detail.data.data.public_name ?? '',
+    public_description: detail.data.data.public_description ?? '',
   };
 
   return (

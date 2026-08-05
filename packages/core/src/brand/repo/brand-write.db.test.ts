@@ -23,7 +23,8 @@ const { rawSql } = await import('../../campaigns/repo/raw-sql');
 const { withWorkspace } = await import('../../tx');
 const { failStaleExtractions, findExtraction, finishExtraction, markRunning } =
   await import('./extractions.repo');
-const { insertBrandProfile } = await import('./profiles.repo');
+const { listBrandProfiles, saveDefaultBrandProfile, saveExtractedBrandProfile } =
+  await import('./profiles.repo');
 
 type ExtractionSnapshot = {
   status: string;
@@ -79,12 +80,10 @@ describe('zápisová část brand_extractions proti databázi', () => {
     expect((await snapshot(id))?.status, 'MEZITÍM: běh je převzatý').toBe('running');
 
     const profile = await withWorkspace(ws.workspace, (tx) =>
-      insertBrandProfile(tx, {
+      saveExtractedBrandProfile(tx, {
         workspaceId: ws.workspaceId,
         name: 'kolo-shop.cz',
         sourceUrl: 'https://kolo-shop.cz/',
-        logoAssetId: null,
-        logoDarkAssetId: null,
         palette: { primary: '#c41e3a', source: { primary: 'meta' } },
         typography: { headingStack: 'arial', bodyStack: 'arial', radius: 4 },
       }),
@@ -214,5 +213,137 @@ describe('zápisová část brand_extractions proti databázi', () => {
     expect(await withWorkspace(stranger.workspace, (tx) => findExtraction(tx, id))).toBeNull();
     expect(await withWorkspace(stranger.workspace, (tx) => markRunning(tx, id))).toBe(false);
     expect((await snapshot(id))?.status).toBe('pending');
+  });
+});
+
+/**
+ * PROJEKT MÁ PRÁVĚ JEDNU ZNAČKU.
+ *
+ * Vada, kvůli které tenhle blok vznikl: každé stažení zakládalo další řádek,
+ * takže šest kliknutí na „Stáhnout" znamenalo šest značek téhož webu a seznam,
+ * ve kterém se nedalo nic vybrat ani změnit. Naměřeno na produkčních datech
+ * 4. 8. 2026: `brand_profiles` mělo 6 řádků a `brand_extractions` 6 běhů.
+ */
+describe('jedna značka na projekt', () => {
+  const extracted = (workspaceId: string, primary: string) => ({
+    workspaceId,
+    name: 'kolo-shop.cz',
+    sourceUrl: 'https://kolo-shop.cz/',
+    palette: { primary, source: { primary: 'css' } },
+    typography: { headingStack: 'arial', bodyStack: 'arial', radius: 4 },
+  });
+
+  it('druhé stažení značku přepíše, nezaloží další', async () => {
+    const ws = await withTestWorkspace();
+
+    const first = await withWorkspace(ws.workspace, (tx) =>
+      saveExtractedBrandProfile(tx, extracted(ws.workspaceId, '#c41e3a')),
+    );
+    const second = await withWorkspace(ws.workspace, (tx) =>
+      saveExtractedBrandProfile(tx, extracted(ws.workspaceId, '#1a1a1a')),
+    );
+
+    expect(second.id, 'druhé stažení píše do TÉHOŽ řádku').toBe(first.id);
+
+    const profiles = await withWorkspace(ws.workspace, (tx) => listBrandProfiles(tx));
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]?.palette.primary, 'platí poslední stažení').toBe('#1a1a1a');
+    expect(profiles[0]?.defaultProfile, 'první značka je rovnou výchozí').toBe(true);
+  });
+
+  /**
+   * Ruční logo a jméno musí stažení přežít. Extrakce ani jedno nedodává (logo
+   * si uživatel vybírá z knihovny médií), takže zápisem by je jen vymazala.
+   */
+  it('stažení nepřepíše jméno ani logo, které zadal uživatel', async () => {
+    const ws = await withTestWorkspace();
+    await withWorkspace(ws.workspace, (tx) =>
+      saveExtractedBrandProfile(tx, extracted(ws.workspaceId, '#c41e3a')),
+    );
+
+    const assetId = randomUUID();
+    await withWorkspace(ws.workspace, (tx) =>
+      tx.execute(
+        rawSql(
+          `INSERT INTO assets (id, workspace_id, public_id, sha256, byte_size, mime_type,
+                               original_filename, storage_key)
+           VALUES ($1, $2, $3, decode(repeat('ab', 32), 'hex'), 10, 'image/png', 'logo.png', $4)`,
+          [assetId, ws.workspaceId, assetId.replaceAll('-', '').slice(0, 22), `k/${assetId}`],
+        ),
+      ),
+    );
+    await withWorkspace(ws.workspace, (tx) =>
+      saveDefaultBrandProfile(tx, ws.workspaceId, {
+        name: 'Kolo Shop',
+        palette: {
+          primary: '#c41e3a',
+          secondary: '#1a1a1a',
+          accent: '#c41e3a',
+          background: '#ffffff',
+          text: '#111827',
+          source: {},
+        },
+        typography: { headingStack: 'arial', bodyStack: 'arial', radius: 4 },
+        logoAssetId: assetId,
+      }),
+    );
+
+    await withWorkspace(ws.workspace, (tx) =>
+      saveExtractedBrandProfile(tx, extracted(ws.workspaceId, '#0055ff')),
+    );
+
+    const profiles = await withWorkspace(ws.workspace, (tx) => listBrandProfiles(tx));
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]?.name, 'jméno patří uživateli').toBe('Kolo Shop');
+    expect(profiles[0]?.logoAssetId, 'logo z knihovny médií zůstává').toBe(assetId);
+    expect(profiles[0]?.palette.primary, 'barvy se stáhly nové').toBe('#0055ff');
+  });
+
+  /**
+   * Úklid projektů poznamenaných starým chováním. Ruční SQL ani migrace na to
+   * nejsou potřeba: stačí jednou uložit nebo stáhnout značku.
+   */
+  it('uložení uklidí značky, které nasbíralo staré chování', async () => {
+    const ws = await withTestWorkspace();
+    for (let i = 0; i < 6; i += 1) {
+      await withWorkspace(ws.workspace, (tx) =>
+        tx.execute(
+          rawSql(
+            `INSERT INTO brand_profiles (workspace_id, name, source_url, palette, typography)
+             VALUES ($1, 'petrnovak.com', 'https://petrnovak.com/', '{}'::jsonb, '{}'::jsonb)`,
+            [ws.workspaceId],
+          ),
+        ),
+      );
+    }
+    expect(await withWorkspace(ws.workspace, (tx) => listBrandProfiles(tx))).toHaveLength(6);
+
+    await withWorkspace(ws.workspace, (tx) =>
+      saveExtractedBrandProfile(tx, extracted(ws.workspaceId, '#c41e3a')),
+    );
+
+    const profiles = await withWorkspace(ws.workspace, (tx) => listBrandProfiles(tx));
+    expect(profiles, 'z šesti řádků zbude jedna značka').toHaveLength(1);
+    expect(profiles[0]?.palette.primary).toBe('#c41e3a');
+  });
+
+  /** Úklid nesmí přeskočit do cizího projektu; drží ho RLS, ne WHERE. */
+  it('úklid se nedotkne značky cizího projektu', async () => {
+    const owner = await withTestWorkspace();
+    const stranger = await withTestWorkspace();
+
+    await withWorkspace(stranger.workspace, (tx) =>
+      saveExtractedBrandProfile(tx, extracted(stranger.workspaceId, '#00aa00')),
+    );
+    await withWorkspace(owner.workspace, (tx) =>
+      saveExtractedBrandProfile(tx, extracted(owner.workspaceId, '#c41e3a')),
+    );
+    await withWorkspace(owner.workspace, (tx) =>
+      saveExtractedBrandProfile(tx, extracted(owner.workspaceId, '#1a1a1a')),
+    );
+
+    const theirs = await withWorkspace(stranger.workspace, (tx) => listBrandProfiles(tx));
+    expect(theirs).toHaveLength(1);
+    expect(theirs[0]?.palette.primary).toBe('#00aa00');
   });
 });

@@ -5,6 +5,7 @@ import { SUPPORTED_LOCALES } from '@mlain/i18n/locales';
 import { updateWorkspaceAction } from '@/features/workspace-settings/actions';
 import { GeneralForm } from '@/features/workspace-settings/general-form';
 import { AddressFormSection } from '@/features/workspace-settings/address-form-section';
+import { GreetingLocaleSection } from '@/features/workspace-settings/greeting-locale-section';
 import { DangerZone } from '@/features/workspace-settings/danger-zone';
 import { SettingsPageShell } from '@/features/settings/settings-page-shell';
 import { SettingsProblem } from '@/features/settings/settings-problem';
@@ -55,6 +56,17 @@ export default async function GeneralSettingsPage({
     workspaceId: access.data.workspace.id,
   });
 
+  // Rozpad jazyků kontaktů. Když selže, sekce o jazyku oslovení se nevykreslí vůbec:
+  // nabízet hromadný přepočet bez počtu dotčených kontaktů znamená klikat naslepo.
+  const greetingLocale = await apiFetch<{
+    data: {
+      workspace_locale: string;
+      total: number;
+      mismatched: number;
+      by_locale: { locale: string; count: number }[];
+    };
+  }>('/api/v1/greeting-locale', { workspaceId: access.data.workspace.id });
+
   return (
     <SettingsPageShell
       title={t('general.title')}
@@ -83,6 +95,13 @@ export default async function GeneralSettingsPage({
           canWrite={canWrite}
           contactCount={contactCount.ok ? contactCount.data.count : 0}
         />
+        {greetingLocale.ok ? (
+          <GreetingLocaleSection
+            workspaceId={access.data.workspace.id}
+            canWrite={canWrite}
+            summary={greetingLocale.data.data}
+          />
+        ) : null}
         {canDelete ? <DangerZone workspace={access.data.workspace} /> : null}
       </div>
     </SettingsPageShell>

@@ -23,6 +23,25 @@ function validationProblem(
   };
 }
 
+/**
+ * Cesta SOUBORU stránky, ne adresa v prohlížeči.
+ *
+ * `revalidatePath('/w/eshop-kolo/settings/general')` nedělalo nic ze dvou
+ * důvodů najednou. Za prvé next-intl adresu bez jazykového prefixu PŘEPISUJE
+ * na `/cs/w/…`, takže záznam v cache leží pod jinou cestou, než jakou akce
+ * uváděla (dokumentace `revalidatePath`: u přepisu se uvádí cílová cesta,
+ * ne ta, kterou vidí prohlížeč). Za druhé cesta s dynamickými segmenty
+ * potřebuje druhý argument `'page'`; bez něj Next volání jen odloží s
+ * varováním do konzole serveru a neudělá nic.
+ *
+ * Následek byl přesně ten, kvůli kterému přišlo hlášení „tlačítko nic
+ * nedělá": změna se do databáze uložila, ale serverová stránka se
+ * nepřekreslila, takže přepínač zůstal na staré hodnotě. Tvar
+ * `'/[locale]/w/[workspaceSlug]/…'` s `'page'` používá zbytek aplikace,
+ * viz `features/contacts/actions.ts`.
+ */
+const GENERAL_PAGE_PATH = '/[locale]/w/[workspaceSlug]/settings/general';
+
 const GeneralSchema = z.object({
   workspace_id: z.string().min(1),
   name: z.string().trim().min(1).max(200),
@@ -61,19 +80,39 @@ export async function updateWorkspaceAction(
   }
 
   const { workspace_id: workspaceId, ...body } = parsed.data;
-  const result = await apiMutate<{ slug: string }>(`/api/v1/workspaces/${workspaceId}`, {
-    method: 'PATCH',
-    body,
-    workspaceId,
-  });
+  /**
+   * OPRAVA VADY „uložení skočí na /w/undefined/settings/general".
+   *
+   * Typový parametr tu dřív zněl `{ slug: string }`, jenže to bylo TVRZENÍ,
+   * ne kontrola: `readResponse` vrací tělo odpovědi tak, jak přišlo, a nic
+   * nerozbaluje. `PATCH /api/v1/workspaces/{id}` přitom vrací projekt
+   * ZABALENÝ do `{ workspace: … }` (viz `c.json({ workspace }, 200)`
+   * v `packages/core/src/identity/api/workspaces.routes.ts` a schéma
+   * odpovědi 200 v `packages/contracts/openapi.json`). `result.data.slug`
+   * byl proto vždycky `undefined`, podmínka „slug se změnil" platila při
+   * KAŽDÉM uložení a uživatel skončil na `/w/undefined/settings/general`,
+   * tedy na 404, i když adresu vůbec neměnil.
+   *
+   * Stejné rozbalení už jednou opravoval `lib/identity/workspace-access.ts`.
+   */
+  const result = await apiMutate<{ workspace: { slug: string } }>(
+    `/api/v1/workspaces/${workspaceId}`,
+    { method: 'PATCH', body, workspaceId },
+  );
   if (!result.ok) return failed('inline', result.problem);
 
-  // Slug je součástí cesty, takže po jeho změně musí uživatel skončit na nové adrese.
-  if (result.data.slug !== formData.get('current_slug')) {
-    redirect(`/w/${result.data.slug}/settings/general`);
+  // Překreslení patří PŘED `redirect()`: ten vyhazuje výjimku, takže cokoli
+  // za ním se u změněné adresy nikdy neprovede.
+  revalidatePath(GENERAL_PAGE_PATH, 'page');
+
+  // Slug je součástí cesty, takže po jeho změně musí uživatel skončit na nové
+  // adrese. Podmínka `nextSlug` je pojistka: na prázdnou hodnotu se
+  // nepřesměrovává nikdy, přesně tak vznikla adresa /w/undefined/…
+  const nextSlug = result.data.workspace.slug;
+  if (nextSlug && nextSlug !== formData.get('current_slug')) {
+    redirect(`/w/${nextSlug}/settings/general`);
   }
 
-  revalidatePath(`/w/${result.data.slug}/settings/general`);
   return succeeded({ channel: 'inline', messageKey: 'shared.saved' });
 }
 
@@ -107,8 +146,47 @@ export async function updateAddressFormAction(
   });
   if (!result.ok) return failed('page', result.problem);
 
-  revalidatePath(`/w/${String(formData.get('slug'))}/settings/general`);
+  revalidatePath(GENERAL_PAGE_PATH, 'page');
   return succeeded({ channel: 'page', messageKey: 'general.addressForm.started' });
+}
+
+const GreetingLocaleSchema = z.object({ workspace_id: z.string().min(1) });
+
+/**
+ * HROMADNÉ SJEDNOCENÍ JAZYKA OSLOVENÍ.
+ *
+ * Zápis dělá API (`POST /api/v1/greeting-locale:align`), ne tahle akce: přepočet
+ * sahá na jazyk, 5. pád i hotovou větu u každého kontaktu projektu, takže jde přes
+ * frontu a odpovídá 202. Vlastní SQL by znamenalo druhou implementaci pravidel
+ * oslovení a obešlo by zámek ručně potvrzených tvarů i audit.
+ *
+ * Hlásí se „přepočítáváme", ne „přepočítáno": job běží na pozadí a lhát o rychlosti
+ * u operace nad desítkami tisíc řádků nemá smysl.
+ */
+export async function alignGreetingLocaleAction(
+  _previous: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const parsed = GreetingLocaleSchema.safeParse({ workspace_id: formData.get('workspace_id') });
+  if (!parsed.success) {
+    return failed(
+      'page',
+      validationProblem('/api/v1/greeting-locale:align', [
+        { path: 'workspace_id', code: 'required', message: 'Chybí identifikátor projektu.' },
+      ]),
+    );
+  }
+
+  const workspaceId = parsed.data.workspace_id;
+  const result = await apiMutate<{ mode: 'queued' }>('/api/v1/greeting-locale:align', {
+    method: 'POST',
+    body: {},
+    workspaceId,
+  });
+  if (!result.ok) return failed('page', result.problem);
+
+  revalidatePath(GENERAL_PAGE_PATH, 'page');
+  return succeeded({ channel: 'page', messageKey: 'general.greetingLocale.started' });
 }
 
 const DeleteSchema = z.object({

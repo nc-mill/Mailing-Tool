@@ -54,6 +54,20 @@ export function DashboardGrid({
   if (!payload)
     return <div aria-busy="true" className="h-64 animate-pulse rounded-lg bg-surface-muted" />;
 
+  /**
+   * Kolik kampaní stojí mimo míry, protože u nich neznáme doručenost.
+   *
+   * Dlaždice ho ukazuje MÍSTO procenta, ne vedle něj. Server míru u takové
+   * kampaně vůbec nespočítá (viz `dashboard/read.ts`), protože jmenovatel by
+   * byl odhad; obrazovka na to musí odpovědět větou, ne prázdným místem.
+   * Bez ní tu stálo „Otevřelo 185,7 %", což je součet otevření dělený počtem
+   * odeslaných zpráv, tedy číslo bez významu.
+   */
+  const dataOf = (tile: Tile | undefined): Record<string, unknown> | null =>
+    tile?.status === 'ok' ? tile.data : null;
+  const unknownOf = (tile: Tile | undefined): number =>
+    Number((dataOf(tile)?.unknown as { campaigns?: number } | undefined)?.campaigns ?? 0);
+
   const running = payload.tiles.running;
   const clicks = payload.tiles.click_rate;
   const opens = payload.tiles.open_rate;
@@ -104,6 +118,15 @@ export function DashboardGrid({
             <p className="text-5xl font-semibold">
               {format.number(clicks.data.rate, { style: 'percent', maximumFractionDigits: 1 })}
             </p>
+          ) : unknownOf(clicks) > 0 ? (
+            <>
+              <p className="text-5xl font-semibold" data-testid="clicks-absolute">
+                {t('dashboard.clickedAbsolute', { count: Number(dataOf(clicks)?.clicks ?? 0) })}
+              </p>
+              <p className="text-xs text-text-muted">
+                {t('dashboard.rateUnknown', { count: unknownOf(clicks) })}
+              </p>
+            </>
           ) : (
             <p>{t('dashboard.emptyNoCampaigns')}</p>
           )}
@@ -135,6 +158,15 @@ export function DashboardGrid({
                 })}
               </p>
             </>
+          ) : unknownOf(opens) > 0 ? (
+            <>
+              <p className="text-3xl" data-testid="opens-absolute">
+                {t('dashboard.openedAbsolute', { count: Number(dataOf(opens)?.opens ?? 0) })}
+              </p>
+              <p className="text-xs text-text-muted">
+                {t('dashboard.rateUnknown', { count: unknownOf(opens) })}
+              </p>
+            </>
           ) : (
             <p>{t('dashboard.emptyNoCampaigns')}</p>
           )}
@@ -143,11 +175,18 @@ export function DashboardGrid({
         <section aria-labelledby="tile-problems" className="rounded-lg border border-border p-4">
           <h2 id="tile-problems">{t('dashboard.problems')}</h2>
           {problems?.status === 'ok' ? (
-            <p>
-              {problems.data.level === 'ok'
-                ? t('dashboard.problemsOk')
-                : t('dashboard.problemsBad')}
-            </p>
+            problems.data.level === 'unknown' ? (
+              <>
+                <p data-testid="problems-unknown">{t('dashboard.problemsUnknown')}</p>
+                <p className="text-xs text-text-muted">{t('dashboard.problemsUnknownHint')}</p>
+              </>
+            ) : (
+              <p>
+                {problems.data.level === 'ok'
+                  ? t('dashboard.problemsOk')
+                  : t('dashboard.problemsBad')}
+              </p>
+            )
           ) : (
             <p role="alert">{t('dashboard.tileError')}</p>
           )}
@@ -158,6 +197,17 @@ export function DashboardGrid({
           {web?.status === 'ok' ? (
             <>
               <p>{t('dashboard.webActiveValue', { count: Number(web.data.contacts) })}</p>
+              {/*
+               * Dlaždice musí někam vést. Do teď to bylo jediné číslo na
+               * přehledu, ze kterého se nedalo nikam kliknout, a „3 kontakty
+               * za 24 h" samo o sobě neodpovídá na nic: uživatel chce vědět,
+               * kdo to byl a co si prohlédl.
+               */}
+              <p className="mt-1 text-sm">
+                <Link href={`/w/${workspaceSlug}/stats/web`} data-testid="web-active-link">
+                  {t('dashboard.webActiveAction')}
+                </Link>
+              </p>
               {isStale(web.computed_at, 300_000, new Date()) ? (
                 <p className="text-xs text-text-muted">
                   {t('dashboard.computedAt', {
@@ -183,15 +233,24 @@ export function DashboardGrid({
                   campaignId: string;
                   name: string;
                   clickRate: number | null;
+                  deliveredKnown?: boolean;
+                  clicks?: number;
                 }>
               ).map((item) => (
                 <li key={item.campaignId}>
                   <Link href={`/w/${workspaceSlug}/campaigns/${item.campaignId}/report`}>
                     {item.name}
                   </Link>{' '}
-                  {item.clickRate === null
-                    ? '–'
-                    : format.number(item.clickRate, { style: 'percent', maximumFractionDigits: 1 })}
+                  {/*
+                   * U kampaně s neznámou doručeností se ukáže POČET prokliků,
+                   * ne procento. Dřív tu u čerstvě odeslané kampaně stálo
+                   * „100 %", protože jmenovatel byl dopočtený z odeslaných.
+                   */}
+                  {item.clickRate !== null
+                    ? format.number(item.clickRate, { style: 'percent', maximumFractionDigits: 1 })
+                    : item.deliveredKnown === false
+                      ? t('dashboard.clickedAbsolute', { count: Number(item.clicks ?? 0) })
+                      : '–'}
                 </li>
               ))}
             </ul>

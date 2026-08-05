@@ -1,4 +1,5 @@
 import psl from 'psl';
+import { ApiError } from '../../errors/api-error';
 
 export type DnsRecord = {
   type: 'CNAME' | 'TXT' | 'MX';
@@ -9,6 +10,15 @@ export type DnsRecord = {
   required: boolean;
 };
 
+/**
+ * Vstup od uživatele na registrovatelnou doménu.
+ *
+ * Neregistrovatelný vstup je CHYBA UŽIVATELE, ne pád serveru. Dokud se tady
+ * házela obyčejná `Error`, skončil `co.uk` (veřejná přípona, doména se pod ní
+ * jen registruje) nebo `localhost` jako 500 `internal_error` a uživatel dostal
+ * „něco se pokazilo" místo rady. `ApiError('validation_failed')` se přeloží na
+ * 422 s cestou na pole `domain`, takže se hláška ukáže rovnou u vyplněného pole.
+ */
 export function normalizeDomain(input: string): string {
   const cleaned = input
     .trim()
@@ -19,7 +29,16 @@ export function normalizeDomain(input: string): string {
     .replace(/\.$/, '');
   const parsed = psl.parse(cleaned);
   if ('error' in parsed || !parsed.domain) {
-    throw new Error(`${cleaned} není registrovatelná doména.`);
+    throw new ApiError('validation_failed', {
+      errors: [
+        {
+          path: 'domain',
+          code: 'invalid_value',
+          message: `${cleaned} není registrovatelná doména.`,
+        },
+      ],
+      params: { domain: cleaned },
+    });
   }
   return cleaned;
 }

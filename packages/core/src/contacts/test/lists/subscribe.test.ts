@@ -20,6 +20,7 @@ function makePorts(overrides: Partial<SubscribePorts> = {}): SubscribePorts {
     readSubscription: vi.fn().mockResolvedValue(null),
     writeSubscription: vi.fn().mockResolvedValue(undefined),
     countResends: vi.fn().mockResolvedValue(0),
+    findConsent: vi.fn().mockResolvedValue(null),
     issueConfirmation: vi.fn().mockResolvedValue({ token: 't'.repeat(43) }),
     recordConsent: vi.fn().mockResolvedValue(undefined),
     sendConfirmationEmail: vi.fn().mockResolvedValue(undefined),

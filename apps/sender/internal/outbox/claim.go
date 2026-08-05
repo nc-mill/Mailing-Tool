@@ -41,12 +41,17 @@ func (s *Store) ClaimBatch(ctx context.Context, campaignID uuid.UUID, batchSize,
 	return scanMessages(rows)
 }
 
-// ClaimTestBatch claimuje testovací odeslání napříč kampaněmi a přednostně.
-// Volá se na začátku každého tiku, ještě před běžnými dávkami.
-func (s *Store) ClaimTestBatch(ctx context.Context, batchSize, ttlSeconds int) ([]Message, error) {
-	rows, err := s.pool.Query(ctx, StmtClaimTestBatch, s.senderID, batchSize, ttlSeconds)
+// ClaimNonCampaignBatch claimuje zprávy mimo kampaň napříč kampaněmi, tedy
+// testovací odeslání, transakční poštu a uzly automatizace.
+//
+// Má VLASTNÍ smyčku s krátkým intervalem, nezávislou na kampaňovém tiku.
+// Dřív se claimovala jednou na začátku kampaňového tiku a ten trvá tak dlouho,
+// jak dlouho se odesílají dávky všech běžících kampaní. Reset hesla vložený
+// uprostřed rozesílky 10 000 zpráv tak čekal desítky minut.
+func (s *Store) ClaimNonCampaignBatch(ctx context.Context, batchSize, ttlSeconds int) ([]Message, error) {
+	rows, err := s.pool.Query(ctx, StmtClaimNonCampaignBatch, s.senderID, batchSize, ttlSeconds)
 	if err != nil {
 		return nil, err
 	}
-	return scanMessages(rows)
+	return scanMessagesWithRevision(rows)
 }

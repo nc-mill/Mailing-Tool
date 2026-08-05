@@ -1,6 +1,11 @@
 {
-  "extends": "@mlain/config/tsconfig/lib.json",
-  "compilerOptions": { "rootDir": "." },
-  "files": [],
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "extends": "@mlain/config/tsconfig/base.json",
+  "compilerOptions": {
+    "target": "ES2019",
+    "lib": ["ES2019", "DOM", "DOM.Iterable"],
+    "types": [],
+    "moduleResolution": "bundler",
+    "noEmit": true
+  },
+  "include": ["src", "test"]
 }

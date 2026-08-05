@@ -558,6 +558,9 @@ const FOREIGN_COLUMN_TYPES: Record<string, Record<string, string>> = {
     email: 'USER-DEFINED',
     fingerprint: 'bytea',
     fingerprint_key_id: 'smallint',
+    // Sender ho čte kvůli transakční poště: odhlášení z marketingu ji blokovat
+    // nesmí, tvrdý odraz a výmaz podle GDPR ano.
+    reason: 'text',
     removed_at: 'timestamp with time zone',
     created_at: 'timestamp with time zone',
   },

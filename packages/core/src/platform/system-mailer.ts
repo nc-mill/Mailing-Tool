@@ -6,6 +6,13 @@ import { createSystemContext } from '../identity/context';
 import { withUser, withWorkspace } from '../tx';
 import { rawSql } from '../campaigns/repo/raw-sql';
 import { buildSystemMailMime, renderSystemMail } from './system-mail-templates';
+import {
+  readSystemMailSettings,
+  resolveSystemMailAccount,
+  resolveSystemMailFrom,
+  type SystemMailAccount,
+  type SystemMailSettings,
+} from './system-mail-config';
 import type { SystemMail, SystemMailer } from './system-mail';
 
 /**
@@ -59,14 +66,6 @@ export class SystemMailSendError extends Error {
   }
 }
 
-type AccountRow = {
-  id: string;
-  workspace_id: string;
-  type: string;
-  config_encrypted: string;
-  domain: string | null;
-};
-
 /**
  * Který projekt zprávu odešle.
  *
@@ -108,74 +107,52 @@ async function resolveWorkspaceId(mail: SystemMail): Promise<string> {
 }
 
 /**
- * Výběr odesílacího účtu projektu.
+ * Výběr odesílacího účtu a adresy odesílatele.
  *
- * ÚČTY TYPU SMTP MAJÍ PŘEDNOST PŘED VÝCHOZÍM ÚČTEM, a není to libovůle. Systémovou
- * poštu odsud umí odeslat jen SMTP (klient SES je v senderu v Go), takže projekt,
- * který má jako výchozí SES a vedle toho SMTP účet, musí použít ten SMTP. Řazení
- * podle `is_default` jako první by v takovém projektu vrátilo SES a systémová pošta
- * by neodešla, přestože instalace má čím. Uvnitř téhož typu rozhoduje `is_default`,
- * pak stáří.
+ * ROZHODOVÁNÍ TU UŽ NENÍ. Přesunulo se do `system-mail-config.ts`, protože týž
+ * výběr musí umět i obrazovka Nastavení → Systémová pošta: ta uživateli dopředu
+ * říká, jestli pošta odejde, kterým účtem a z jaké adresy. Dva nezávisle napsané
+ * výběry by se rozešly a obrazovka by slibovala něco jiného, než odesílatel udělá.
  *
- * `status` se filtruje na účty, které nejsou zablokované ani vypnuté. Neověřený
- * účet PROJDE: hned po instalaci je každý účet `unverified` a právě tehdy chodí
- * pozvánky, kvůli kterým to celé je.
+ * Zůstává tu jen převod výsledku na výjimku, kterou volající umí zpracovat.
  */
-async function pickAccount(workspaceId: string): Promise<AccountRow> {
-  const SQL = `
-    SELECT p.id, p.workspace_id, p.type, p.config_encrypted,
-           (SELECT d.domain FROM sender_domains d
-             WHERE d.provider_id = p.id AND d.verified_at IS NOT NULL
-             ORDER BY d.created_at LIMIT 1) AS domain
-      FROM sending_providers p
-     WHERE p.workspace_id = $1
-       AND p.status NOT IN ('blocked', 'disabled')
-     ORDER BY (p.type = 'smtp') DESC, p.is_default DESC, p.created_at
-     LIMIT 1`;
-
+async function pickAccount(workspaceId: string): Promise<{
+  account: SystemMailAccount;
+  settings: SystemMailSettings;
+}> {
   const ctx = createSystemContext(workspaceId, 'platform.system_mail');
-  const rows = await withWorkspace(ctx, async (tx) => {
-    const r = await tx.execute<AccountRow>(rawSql(SQL, [workspaceId]));
-    return r.rows;
+  const { settings, resolved } = await withWorkspace(ctx, async (tx) => {
+    const settings = await readSystemMailSettings(tx, workspaceId);
+    const resolved = await resolveSystemMailAccount(tx, workspaceId, settings);
+    return { settings, resolved };
   });
 
-  const account = rows[0];
-  if (!account) {
+  if (!resolved.account) {
     throw new SystemMailNotConfiguredError(
-      'projekt nemá odesílací účet. Založ ho v Nastavení → Odesílání.',
+      resolved.reason === 'selected_account_missing'
+        ? 'účet vybraný pro systémovou poštu v projektu není, nebo je vypnutý. Vyber jiný v Nastavení → Systémová pošta.'
+        : 'projekt nemá odesílací účet. Založ ho v Nastavení → Odesílání.',
     );
   }
-  return account;
-}
 
-/**
- * Adresa odesílatele.
- *
- * Bere se ověřená doména účtu, protože jen z ní zpráva projde SPF a DKIM. Když
- * účet ověřenou doménu nemá (stav hned po instalaci), použije se host z `APP_URL`.
- * Je to horší adresa, ale doručitelná zpráva se špatnou adresou je pořád lepší než
- * žádná, a přesně v tomhle stavu chodí pozvánky.
- */
-function fromAddress(account: AccountRow): string {
-  const host = account.domain ?? new URL(cfg().APP_URL).hostname;
-  return `mlain@${host}`;
+  /**
+   * SES se odsud NEODESÍLÁ. Klient SES je v senderu v Go a v TypeScriptu žádný
+   * není; přidávat sem druhý by znamenalo mít podpis AWS na dvou místech.
+   * Hlásí se to nahlas jako nenastavená pošta, ne jako úspěch: instalace, která
+   * má jediný účet typu SES, systémovou poštu prostě zatím poslat neumí.
+   */
+  if (resolved.reason === 'provider_unsupported') {
+    throw new SystemMailNotConfiguredError(
+      `odesílací účet typu ${resolved.account.type} systémovou poštu neumí. Přidej účet typu SMTP.`,
+    );
+  }
+
+  return { account: resolved.account, settings };
 }
 
 export class DefaultSystemMailer implements SystemMailer {
   async send(mail: SystemMail): Promise<void> {
-    const account = await pickAccount(await resolveWorkspaceId(mail));
-
-    /**
-     * SES se odsud NEODESÍLÁ. Klient SES je v senderu v Go a v TypeScriptu žádný
-     * není; přidávat sem druhý by znamenalo mít podpis AWS na dvou místech.
-     * Hlásí se to nahlas jako nenastavená pošta, ne jako úspěch: instalace, která
-     * má jediný účet typu SES, systémovou poštu prostě zatím poslat neumí.
-     */
-    if (account.type !== 'smtp') {
-      throw new SystemMailNotConfiguredError(
-        `odesílací účet typu ${account.type} systémovou poštu neumí. Přidej účet typu SMTP.`,
-      );
-    }
+    const { account, settings } = await pickAccount(await resolveWorkspaceId(mail));
 
     const config = decryptProviderConfig({
       stored: account.config_encrypted,
@@ -188,7 +165,7 @@ export class DefaultSystemMailer implements SystemMailer {
     }
 
     const rendered = renderSystemMail(mail);
-    const from = fromAddress(account);
+    const from = resolveSystemMailFrom(account, settings, cfg().APP_URL).address;
     const message = buildSystemMailMime({
       from,
       to: mail.to,

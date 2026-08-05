@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { Link } from '@mlain/i18n/navigation';
 import { apiFetch } from '@/lib/api-client/fetch';
 import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
 import { ImportWizard, type Step } from '@/features/import/import-wizard';
@@ -49,18 +50,29 @@ export default async function ImportPage({ params, searchParams }: PageProps) {
     data: { id: string; name: string; opt_in: 'single' | 'double' }[];
   }>('/api/v1/lists', { workspaceId });
 
+  // Odkaz na vložení textem patří sem, ne dovnitř průvodce: kdo přišel importovat
+  // deset adres z e-mailu, nemá kvůli nim vyrábět soubor, a bez téhle cesty by
+  // se o druhé možnosti nedozvěděl. Odkaz vykresluje stránka, protože popisek je
+  // v katalogu `contacts`, kdežto celý průvodce čte katalog `import`.
+  const tContacts = await getTranslations('contacts');
+
   return (
-    <ImportWizard
-      workspaceId={workspaceId}
-      workspaceSlug={workspaceSlug}
-      locale={locale}
-      importId={importId}
-      initialStep={step as Step}
-      lists={(lists.ok ? lists.data.data : []).map((list) => ({
-        id: list.id,
-        name: list.name,
-        optIn: list.opt_in,
-      }))}
-    />
+    <>
+      <p>
+        <Link href={`/w/${workspaceSlug}/contacts/paste`}>{tContacts('paste.entry')}</Link>
+      </p>
+      <ImportWizard
+        workspaceId={workspaceId}
+        workspaceSlug={workspaceSlug}
+        locale={locale}
+        importId={importId}
+        initialStep={step as Step}
+        lists={(lists.ok ? lists.data.data : []).map((list) => ({
+          id: list.id,
+          name: list.name,
+          optIn: list.opt_in,
+        }))}
+      />
+    </>
   );
 }

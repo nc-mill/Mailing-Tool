@@ -64,6 +64,60 @@ pnpm --filter @mlain/web dev
 
 `SECRET_KEY` vygenerujete příkazem `node apps/cli/dist/main.js genkey`.
 
+### Worker a sender ve vývoji
+
+Samotný `pnpm --filter @mlain/web dev` spustí jen obrazovky a API. **Kampaň se
+tím neodešle.** Práci si mezi sebe dělí tři procesy a k odeslání e-mailu jsou
+potřeba všechny:
+
+- **web** vyrobí kampaň a zařadí úlohu do fronty,
+- **worker** tu úlohu vyzvedne a materializuje publikum do outboxu,
+- **sender** čte outbox a volá poskytovatele (SES nebo SMTP).
+
+Každý běží ve vlastním terminálu:
+
+```sh
+# worker
+pnpm --filter @mlain/worker run build && node apps/worker/dist/main.js
+
+# sender (Go)
+cd apps/sender && MODE=sender \
+  SECRET_KEY=<týž jako má web> \
+  DATABASE_URL_SENDER=postgres://mlain_sender:heslo@127.0.0.1:5432/mlain \
+  TRACKING_DOMAIN=http://localhost:3000 \
+  SENDER_HEALTH_PORT=3002 \
+  LOG_LEVEL=info \
+  go run ./cmd/sender
+```
+
+`TRACKING_DOMAIN` je pro sender **povinná** a nemá výchozí hodnotu. Bez ní
+skončí hned při startu s kódem 78 a hláškou, že chybí; staví z ní odkazy
+`/t/o/`, `/t/c/` a `/u/`, takže bez ní by odešel e-mail bez fungujícího
+odhlášení. Pozor na tvar, v každém jazyce se čte jinak: **Go chce absolutní URL
+se schématem** (`http://localhost:3000`), kdežto konfigurace v TypeScriptu si ji
+odvozuje z `APP_URL` jako holý host (`localhost:3000`). Holý host senderu
+nestačí a odmítne ho.
+
+`SECRET_KEY` musí být **doslova tentýž** jako má web. Sender jím dešifruje
+přístupové údaje odesílacího účtu a při neshodě zapíše každé zprávě
+`credentials_undecryptable`.
+
+Že sender žije, se pozná na zdravotním portu. Cesty jsou `/healthz` a `/readyz`,
+**ne** `/health`:
+
+```sh
+curl -s localhost:3002/healthz   # ok      (liveness, na databázi nezávisí)
+curl -s localhost:3002/readyz    # ready   (readiness, ptá se databáze)
+```
+
+`/metrics` se připojí jen při `METRICS_ENABLED=true` a chce token, jinak vrací
+404, respektive 401.
+
+Sender píše strukturovaný log na standardní výstup: řádek při startu, řádek
+u každé odeslané zprávy a řádek u každého odmítnutí i s vysvětlením, co kód
+znamená. Když je jeho log prázdný, proces buď neběží, nebo se jeho výstup
+někam ztrácí; není to normální stav.
+
 ## Uspořádání
 
 ```
@@ -117,6 +171,31 @@ mlain reset-password       # když se ztratí přístup k účtu
 Zálohy se musí dělat pod rolí migrátora. Pod aplikační rolí by row-level
 security vyrobila **tiše prázdné** tabulky, takže to `mlain backup` rovnou
 odmítne, místo aby vyrobil zálohu, která vypadá v pořádku a není.
+
+### Systémová pošta
+
+Systémové e-maily, tedy pozvánka do projektu, obnova zapomenutého hesla
+a ověření adresy ve zkušebním režimu, **odesílá aplikace sama, ne odesílací
+služba kampaní**. Umí to jedině účtem typu **SMTP**: klient Amazon SES existuje
+pouze v odesílací službě napsané v Go. Instalace, která má jediný odesílací účet
+typu SES, tedy systémový e-mail neodešle, i když jí kampaně chodí bez problémů.
+
+Stav je vidět v aplikaci v **Nastavení → Systémová pošta** (co chybí, z jaké
+adresy se odesílá, co kvůli tomu nejde) a hlásí ho i `mlain doctor` nálezem
+`system_mail_unavailable`. Dokud pošta nefunguje, aplikace pozvánku e-mailem
+vůbec nenabídne, místo aby ji přijala a zahodila.
+
+Náhradní cesty, dokud SMTP účet není:
+
+```sh
+mlain reset-password <e-mail>                  # vygeneruje heslo a vypíše ho
+mlain reset-password <e-mail> --password <heslo>
+```
+
+Příkaz jako jediný z osmi vystačí s `DATABASE_URL` bez migrátorské role,
+protože `users` a `sessions` jsou na whitelistu tabulek bez row-level security.
+Zruší všechny relace uživatele. Nového člena lze místo pozvánky založit rovnou
+s heslem v **Nastavení → Tým**.
 
 ## Dokumentace
 

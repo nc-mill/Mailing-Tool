@@ -46,62 +46,79 @@ export function RichTextToolbar(props: {
   ];
 
   return (
-    <div
-      role="toolbar"
-      aria-label={t('richtext.toolbar')}
-      className="flex flex-wrap gap-1 border-b border-border p-1"
-    >
-      {marks.map((mark) => (
+    /*
+     * LIŠTA JE JEDNA ŘADA A NELÁME SE.
+     *
+     * Dřív měla `flex-wrap` a ovládání se lámalo do čtyř řádků: lišta visí nad
+     * blokem a šířku jí dává blok, který může být úzký sloupec. Řádek proto má
+     * `flex-nowrap` a obal v `inline-rich-text.tsx` šířku `max-content`, aby se
+     * lišta roztáhla podle obsahu, ne podle bloku pod ní.
+     *
+     * Zadávání odkazu je vlastní řádek pod lištou, ne položka v ní: má textové
+     * pole a dvě tlačítka, takže by v jedné řadě lištu roztáhlo přes celé okno.
+     */
+    <div className="flex flex-col">
+      <div
+        role="toolbar"
+        aria-label={t('richtext.toolbar')}
+        className="flex flex-nowrap items-center gap-1 p-1"
+      >
+        {marks.map((mark) => (
+          <Button
+            key={mark.id}
+            variant="ghost"
+            size="sm"
+            className="min-h-8 px-2"
+            aria-label={t(mark.label)}
+            aria-pressed={editor.isActive(mark.id)}
+            onClick={mark.run}
+          >
+            <mark.icon aria-hidden className="size-4" />
+          </Button>
+        ))}
         <Button
-          key={mark.id}
           variant="ghost"
           size="sm"
           className="min-h-8 px-2"
-          aria-label={t(mark.label)}
-          aria-pressed={editor.isActive(mark.id)}
-          onClick={mark.run}
+          aria-label={t('richtext.link')}
+          aria-pressed={editor.isActive('link')}
+          onClick={() => setLinkDraft(String(editor.getAttributes('link').href ?? ''))}
         >
-          <mark.icon aria-hidden className="size-4" />
+          <Link2 aria-hidden className="size-4" />
         </Button>
-      ))}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="min-h-8 px-2"
-        aria-label={t('richtext.link')}
-        aria-pressed={editor.isActive('link')}
-        onClick={() => setLinkDraft(String(editor.getAttributes('link').href ?? ''))}
-      >
-        <Link2 aria-hidden className="size-4" />
-      </Button>
-      {props.allowLists ? (
-        <>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="min-h-8 px-2"
-            aria-label={t('richtext.bulletList')}
-            aria-pressed={editor.isActive('bulletList')}
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-          >
-            <List aria-hidden className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="min-h-8 px-2"
-            aria-label={t('richtext.orderedList')}
-            aria-pressed={editor.isActive('orderedList')}
-            onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          >
-            <ListOrdered aria-hidden className="size-4" />
-          </Button>
-        </>
-      ) : null}
-      <PersonalizationMenu editor={editor} fieldCatalog={props.fieldCatalog} />
+        {props.allowLists ? (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-8 px-2"
+              aria-label={t('richtext.bulletList')}
+              aria-pressed={editor.isActive('bulletList')}
+              onClick={() => editor.chain().focus().toggleBulletList().run()}
+            >
+              <List aria-hidden className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-8 px-2"
+              aria-label={t('richtext.orderedList')}
+              aria-pressed={editor.isActive('orderedList')}
+              onClick={() => editor.chain().focus().toggleOrderedList().run()}
+            >
+              <ListOrdered aria-hidden className="size-4" />
+            </Button>
+          </>
+        ) : null}
+        {/* Personalizace je jiná třída akce než tučné písmo: nemění vzhled
+            výběru, vkládá do textu údaj o příjemci. Svislá čárka to odděluje,
+            aby se mezi formátováním neztratila. */}
+        <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-border" />
+        <PersonalizationMenu editor={editor} fieldCatalog={props.fieldCatalog} />
+      </div>
       {linkDraft !== null ? (
         <form
-          className="flex w-full gap-1 p-1"
+          className="flex gap-1 border-t border-border p-1"
           onSubmit={(event) => {
             event.preventDefault();
             if (validateHref(linkDraft) !== 'ok') return;
@@ -111,7 +128,7 @@ export function RichTextToolbar(props: {
         >
           <input
             aria-label={t('richtext.linkUrl')}
-            className="h-8 flex-1 rounded border border-border px-2 text-sm"
+            className="h-8 w-56 rounded border border-border px-2 text-sm"
             value={linkDraft}
             onChange={(event) => setLinkDraft(event.target.value)}
           />

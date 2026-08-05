@@ -56,7 +56,15 @@ describe('integrita workspace', () => {
   // Výjimka je ale úzká: níž je test, který hlídá, že vstupní bod NEreexportuje
   // schéma ani nebezpečnou továrnu kontextu. Bez toho by z výjimky vznikla
   // druhá rovnocenná cesta k témuž, čemuž se rozhodnutí R37 plánu P03 vyhýbá.
-  const BARREL_EXEMPT = new Set(['@mlain/db']);
+  //
+  // @mlain/sdk-web je druhá vědomá výjimka, a to z jiného důvodu než @mlain/db:
+  // není to knihovna pro naše balíčky, ale SKRIPT DO CIZÍHO PROHLÍŽEČE. Sestavuje
+  // se esbuildem do jednoho souboru pod 5 kB gzip a `src/index.ts` není barrel
+  // s řádkem na doménu, ale JEDINÝ VSTUPNÍ BOD toho balíčku, který plán P10
+  // v kapitole 1.2 takhle přímo pojmenoval. Merge konflikt, kterému uzávěr S11
+  // předchází, tu vzniknout nemůže: do balíčku píše jeden plán a soubor s domény
+  // neroste.
+  const BARREL_EXEMPT = new Set(['@mlain/db', '@mlain/sdk-web']);
 
   it('žádný balíček mimo vyjmenovanou výjimku nemá top level barrel', () => {
     for (const name of WORKSPACE_PACKAGES) {

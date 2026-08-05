@@ -37,6 +37,17 @@ export function SetupForm({ action, locales, initialState }: SetupFormProps) {
   const fieldErrors = state.status === 'error' ? state.fieldErrors : {};
   useFormErrorFocus(fieldErrors, formRef);
 
+  /*
+   * Po chybě se pole vrací vyplněná. React 19 neřízený formulář po doběhnutí
+   * `action` sám vynuluje, takže bez `defaultValue` uživatel kvůli překlepu
+   * v hesle přišel i o jméno, e-mail, název projektu a volbu jazyka a psal
+   * celý formulář znovu. Hodnoty vrací akce v `state.values`.
+   *
+   * Heslo v nich schválně není a nikdy být nesmí: putovalo by po síti zpátky
+   * a leželo by v paměti prohlížeče.
+   */
+  const values = state.status === 'error' ? (state.values ?? {}) : {};
+
   const alreadyCompleted =
     state.status === 'error' && state.problem.code === 'setup_already_completed';
 
@@ -80,7 +91,13 @@ export function SetupForm({ action, locales, initialState }: SetupFormProps) {
 
           <div className="mb-4">
             <Label htmlFor="name">{t('shared.fullName')}</Label>
-            <Input id="name" name="name" autoComplete="name" {...fieldAria('name', fieldErrors)} />
+            <Input
+              id="name"
+              name="name"
+              autoComplete="name"
+              defaultValue={values['name'] ?? ''}
+              {...fieldAria('name', fieldErrors)}
+            />
             <FieldError name="name" errors={fieldErrors} />
           </div>
 
@@ -91,6 +108,7 @@ export function SetupForm({ action, locales, initialState }: SetupFormProps) {
               name="email"
               type="email"
               autoComplete="username"
+              defaultValue={values['email'] ?? ''}
               {...fieldAria('email', fieldErrors)}
             />
             <FieldError name="email" errors={fieldErrors} />
@@ -111,6 +129,7 @@ export function SetupForm({ action, locales, initialState }: SetupFormProps) {
             <Input
               id="workspace_name"
               name="workspace_name"
+              defaultValue={values['workspace_name'] ?? ''}
               {...fieldAria('workspace_name', fieldErrors)}
             />
             <p className="mt-1 text-sm text-text-muted">{t('setup.workspaceHint')}</p>
@@ -122,7 +141,7 @@ export function SetupForm({ action, locales, initialState }: SetupFormProps) {
               name="locale"
               label={t('setup.locale')}
               placeholder={t('shared.selectPlaceholder')}
-              defaultValue={locales[0] ?? ''}
+              defaultValue={values['locale'] ?? locales[0] ?? ''}
               options={locales.map((locale) => ({
                 value: locale,
                 label: localeLabel(locale, uiLocale),

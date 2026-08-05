@@ -16,12 +16,14 @@ const repo = vi.hoisted(() => ({
   restoreContact: vi.fn(),
   changeContactEmail: vi.fn(),
 }));
+const confirm = vi.hoisted(() => ({ confirmContactManually: vi.fn() }));
 const gdpr = vi.hoisted(() => ({ createGdprRequest: vi.fn() }));
 const permissions = vi.hoisted(() => ({ assertPermission: vi.fn() }));
 
 vi.mock('../../repo/contacts-query', () => query);
 vi.mock('../../repo/contacts-api', () => write);
 vi.mock('../../repo/contacts', () => repo);
+vi.mock('../../repo/contact-confirm', () => confirm);
 vi.mock('../../repo/gdpr', () => gdpr);
 // Částečný mock: `identity/api/schemas.ts` čte z tohohle modulu i `PERMISSIONS`,
 // takže úplná náhrada by shodila import celého route souboru.
@@ -344,5 +346,63 @@ describe('POST /contacts/{id}/change-email a /restore', () => {
     const res = await app().request(`/contacts/${CONTACT.id}/restore`, { method: 'POST' });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { data: { id: string } }).data.id).toBe(CONTACT.id);
+  });
+});
+
+/**
+ * Ruční povýšení na potvrzený. Endpoint existuje právě proto, že `PATCH` se stavem
+ * `active` by u odhlášeného kontaktu odpověděl 200 a nezměnil nic.
+ */
+describe('POST /contacts/{id}/confirm', () => {
+  function outcome(overrides: Record<string, unknown> = {}) {
+    return {
+      contactId: CONTACT.id,
+      fromStatus: 'unsubscribed',
+      changed: true,
+      listsConfirmed: 2,
+      suppressionRemoved: ['global_unsubscribe'],
+      suppressionBlocking: null,
+      ...overrides,
+    };
+  }
+
+  it('vrátí kontakt i souhrn toho, co se stalo', async () => {
+    confirm.confirmContactManually.mockResolvedValue(outcome());
+    query.getContactById.mockResolvedValue(CONTACT);
+
+    const res = await app().request(`/contacts/${CONTACT.id}/confirm`, { method: 'POST' });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { id: string };
+      confirm: Record<string, unknown>;
+    };
+    expect(body.data.id).toBe(CONTACT.id);
+    expect(body.confirm).toEqual({
+      from_status: 'unsubscribed',
+      changed: true,
+      lists_confirmed: 2,
+      suppression_removed: ['global_unsubscribe'],
+      suppression_blocking: null,
+    });
+    expect(confirm.confirmContactManually).toHaveBeenCalledWith(expect.anything(), CONTACT.id);
+  });
+
+  it('zůstávající blokaci adresy vrací v těle, ne mlčí o ní', async () => {
+    // Bez tohohle pole by klient ohlásil úspěch u kontaktu, kterému odesílací cesta
+    // stejně nic nedoručí, protože suppression je vrstva NAD stavem kontaktu.
+    confirm.confirmContactManually.mockResolvedValue(
+      outcome({
+        fromStatus: 'complained',
+        suppressionRemoved: [],
+        suppressionBlocking: 'complaint',
+      }),
+    );
+    query.getContactById.mockResolvedValue(CONTACT);
+
+    const res = await app().request(`/contacts/${CONTACT.id}/confirm`, { method: 'POST' });
+
+    const body = (await res.json()) as { confirm: { suppression_blocking: string | null } };
+    expect(body.confirm.suppression_blocking).toBe('complaint');
   });
 });

@@ -42,11 +42,15 @@ export type {
 
 export {
   CATALOG_UPDATED_AT,
+  PRICING_SOURCES,
   PRICING_UPDATED_AT,
   curatedModels,
   defaultModelFor,
+  estimateCostBreakdown,
   estimateCostUsd,
+  longContextThresholdFor,
   priceFor,
+  providerReportsCost,
 } from './catalog';
 export type { ModelEntry, ModelPrice } from './catalog';
 
@@ -61,7 +65,7 @@ export {
 export type { CredentialRow, PublicCredential } from './credential-service';
 
 export { mapProviderError } from './error-map';
-export type { MappedProviderError } from './error-map';
+export type { MappedProviderError, MappedProviderErrorCode } from './error-map';
 
 export { createMeteredFetch, REDACTED_HEADERS } from './metered-fetch';
 export { buildSystemPrompt } from './prompt';
@@ -79,7 +83,14 @@ export {
 export type { ProviderDescriptor, ProviderId } from './providers';
 
 export { buildUsageReport, recordUsage } from './usage';
-export type { UsageByModel, UsageDay, UsageReport, UsageRow, UsageUpsert } from './usage';
+export type {
+  PriceStatus,
+  UsageByModel,
+  UsageDay,
+  UsageReport,
+  UsageRow,
+  UsageUpsert,
+} from './usage';
 
 export { collectUserUrls, isUrlFromUser } from './tools/context';
 export type { ConversationTurn } from './tools/context';

@@ -2,11 +2,18 @@ import type { FieldCatalog, FieldCatalogType } from '../external/field-catalog';
 import { toCatalogPath } from '../paths';
 import type { RenderSchema } from './types';
 import type { Document, FooterBlock, VisibilityCondition } from '../document/types';
-import { richTextFieldsOf, walkBlocks, walkRichText } from '../document/walk';
+import { richTextFieldsOf, urlFieldsOf, walkBlocks, walkRichText } from '../document/walk';
 
 export type RenderSchemaOptions = {
   fields: FieldCatalog;
   skippedBlockIds: Set<string>;
+  /**
+   * Nabízí projekt centrum předvoleb? Vynechání znamená ano. Schéma se tím řídí
+   * proto, aby `systemTags` odpovídaly tomu, co v těle skutečně je: kdyby tam
+   * `preferences_url` zůstal, odesílač by pro každou zprávu skládal token
+   * pro adresu, která ve zprávě není. Podrobně v `compile/types.ts`.
+   */
+  preferenceCenterEnabled?: boolean | undefined;
 };
 
 export type RenderSchemaResult = {
@@ -23,7 +30,8 @@ const SYSTEM_TAGS = new Set([
   'preferences_url',
   'webview_url',
 ]);
-const SYSTEM_URL_TAG = /^\{\{\s*(unsubscribe_url|preferences_url|webview_url)\s*\}\}$/;
+/** Výstupní konstrukce v syrovém řetězci. Tagy `{% %}` v URL poli nedávají smysl. */
+const LIQUID_OUTPUT = /\{\{([^}]*)\}\}/g;
 
 /** Cesta z výrazu: všechno před prvním filtrem. */
 function pathOf(expr: string): string {
@@ -47,6 +55,21 @@ export function buildRenderSchema(doc: Document, options: RenderSchemaOptions): 
   const addSystem = (tag: string): void => {
     if (!systemTags.includes(tag)) systemTags.push(tag);
   };
+  /**
+   * Cesty z URL pole. Bez tohohle kroku by proměnná v odkazu do `usedPaths`
+   * nedotekla, `buildRenderData` by ji nesnapshotla a protože render běží
+   * s `strictVariables: false`, tlačítko by odešlo s `href=""` BEZ jediné chyby
+   * a bez varování v náhledu. Náhled to neodhalí, protože `sampleRenderData`
+   * dodává ukázková data nezávisle na `usedPaths`.
+   */
+  const addUrlField = (raw: string): void => {
+    for (const match of raw.matchAll(LIQUID_OUTPUT)) {
+      const path = pathOf(match[1] ?? '');
+      if (path === '') continue;
+      if (SYSTEM_TAGS.has(path)) addSystem(path);
+      else addField(path);
+    }
+  };
 
   for (const { block, pointer } of walkBlocks(doc)) {
     if (options.skippedBlockIds.has(block.id)) continue;
@@ -65,8 +88,7 @@ export function buildRenderSchema(doc: Document, options: RenderSchemaOptions): 
     for (const field of richTextFieldsOf(block)) {
       for (const { node } of walkRichText(field.rich, `${pointer}/props/${field.key}`)) {
         if (node.t === 'a') {
-          const tag = node.href.trim().match(SYSTEM_URL_TAG);
-          if (tag?.[1]) addSystem(tag[1]);
+          addUrlField(node.href);
           continue;
         }
         if (node.t !== 'var') continue;
@@ -76,12 +98,16 @@ export function buildRenderSchema(doc: Document, options: RenderSchemaOptions): 
       }
     }
 
+    for (const url of urlFieldsOf(block)) addUrlField(url.href);
+
     // Přetypování po zúžení podle `type`: v `AnyBlock` je i `UnknownBlock`
     // s indexovou signaturou, takže `block.props` by samo o sobě bylo `unknown`.
     if (block.type === 'footer') {
       const footer = block as FooterBlock;
       if (footer.props.showUnsubscribe) addSystem('unsubscribe_url');
-      if (footer.props.showPreferences) addSystem('preferences_url');
+      if (footer.props.showPreferences && options.preferenceCenterEnabled !== false) {
+        addSystem('preferences_url');
+      }
       if (footer.props.showWebview) addSystem('webview_url');
     }
   }

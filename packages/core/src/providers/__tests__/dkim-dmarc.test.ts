@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { checkDkim } from '../dns/dkim';
 import { checkDmarc } from '../dns/dmarc';
 import { checkMx } from '../dns/mx';
+import { runDomainChecks } from '../dns/check-domain';
 
 function res(map: Record<string, string[] | Error>) {
   return {
@@ -113,6 +114,48 @@ describe('DMARC', () => {
     expect(r.ok).toBe(true);
   });
 
+  /*
+   * Nas text v tabulce je DOPORUCENI, ne predpis. Kazda platna politika musi projit,
+   * at uz ma jine `rua`, jine `pct`, jina zarovnani nebo tagy navic. Presna shoda
+   * s doporucenym retezcem se nikde nevyzaduje a vyzadovat nesmi.
+   */
+  describe('jina platna politika nez nase doporuceni', () => {
+    const doporuceni = 'v=DMARC1; p=none; rua=mailto:dmarc@example.cz; pct=100; adkim=r; aspf=r';
+
+    it.each([
+      'v=DMARC1; p=reject; rua=mailto:postmaster@jinam.cz; adkim=s; aspf=s',
+      'v=DMARC1; p=quarantine; sp=none; fo=1; ri=86400; rf=afrf',
+      'v=DMARC1;p=reject;rua=mailto:a@b.cz,mailto:c@d.cz;ruf=mailto:f@b.cz',
+      'v=DMARC1; p=quarantine',
+      'v=dmarc1; p=REJECT',
+    ])('%s projde', async (record) => {
+      const r = await checkDmarc(res({ '_dmarc.example.cz': [record] }), 'example.cz');
+      expect(r.ok).toBe(true);
+      expect(r.findings.filter((f) => f.severity === 'error')).toEqual([]);
+      expect(record).not.toBe(doporuceni);
+    });
+
+    it('pct pod 100 je jen rada, zaznam zustava platny', async () => {
+      const r = await checkDmarc(
+        res({ '_dmarc.example.cz': ['v=DMARC1; p=reject; pct=20; adkim=s'] }),
+        'example.cz',
+      );
+      expect(r.ok).toBe(true);
+      expect(r.findings.every((f) => f.severity === 'warning')).toBe(true);
+    });
+
+    it('zivy zaznam brevio.cz z dig +short TXT _dmarc.brevio.cz je platny', async () => {
+      const live = 'v=DMARC1; p=none; rua=mailto:dmarc@brevio.cz; pct=100; adkim=r; aspf=r';
+      const r = await checkDmarc(res({ '_dmarc.brevio.cz': [live] }), 'brevio.cz');
+      expect(r).toMatchObject({ ok: true, policy: 'none', pct: 100 });
+      // Jediny nalez je rada k p=none a nese nalezenou hodnotu, aby ji obrazovka
+      // mohla ukazat. Neni to „zaznam ma jinou hodnotu".
+      expect(r.findings).toEqual([
+        { code: 'dmarc_policy_none', severity: 'warning', params: { actual: live } },
+      ]);
+    });
+  });
+
   it('aspf=s bez vlastni MAIL FROM hlasi alignment', async () => {
     const r = await checkDmarc(
       res({ '_dmarc.example.cz': ['v=DMARC1; p=none; aspf=s'] }),
@@ -138,5 +181,59 @@ describe('MX pro vlastni MAIL FROM', () => {
       },
     );
     expect(r.ok).toBe(true);
+  });
+
+  it('neshoda nese ocekavanou i NALEZENOU hodnotu a jmeno hostitele', async () => {
+    const r = await checkMx(res({ 'mail.example.cz': ['mail.example.cz'] }), {
+      mailFromDomain: 'mail.example.cz',
+      region: 'eu-central-1',
+    });
+    expect(r.findings[0]).toMatchObject({
+      code: 'mail_from_mx_wrong',
+      params: {
+        expected: 'feedback-smtp.eu-central-1.amazonses.com',
+        actual: 'mail.example.cz',
+        host: 'mail.example.cz',
+      },
+    });
+  });
+});
+
+/**
+ * Nalez z ostreho provozu: doména brevio.cz nemá vlastní zpáteční adresu
+ * (`mail_from_subdomain` je NULL), přesto se MX kontrolovalo proti apexu a hlásilo
+ * neshodu s `mail.brevio.cz`, tedy s poštovní schránkou majitele domény. Uživateli
+ * se tak vyžadoval záznam, který v tabulce k opsání vůbec nebyl.
+ */
+describe('MX se bez vlastni zpatecni adresy vubec nekontroluje', () => {
+  const spolecne = {
+    spf: async () => ({
+      ok: true as const,
+      record: 'v=spf1 include:amazonses.com ~all',
+      findings: [],
+    }),
+    dkim: async () => ({ ok: true as const, found: 3, expected: 3, findings: [] }),
+    dmarc: async () => ({
+      ok: true as const,
+      record: 'v=DMARC1; p=none',
+      policy: 'none' as const,
+      pct: 100,
+      findings: [],
+    }),
+    overallTimeoutMs: 1000,
+  };
+
+  it('bez MAIL FROM je mx null, tedy „neni co resit", ne false', async () => {
+    const checks = await runDomainChecks({ ...spolecne, mx: null });
+    expect(checks.mx).toBeNull();
+  });
+
+  it('s MAIL FROM se kontrola opravdu spusti', async () => {
+    const resolver = res({ 'mail.example.cz': ['feedback-smtp.eu-central-1.amazonses.com'] });
+    const checks = await runDomainChecks({
+      ...spolecne,
+      mx: () => checkMx(resolver, { mailFromDomain: 'mail.example.cz', region: 'eu-central-1' }),
+    });
+    expect(checks.mx).toMatchObject({ ok: true });
   });
 });

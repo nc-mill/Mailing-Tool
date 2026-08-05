@@ -1,17 +1,20 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useActionState, useRef, useState } from 'react';
 
 import { useTranslations } from 'next-intl';
 import { Button } from '@mlain/ui/components/button';
 import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
 import { useConfirmDialogLabels } from '@/lib/feedback/confirm-labels';
+import { IDLE, type ActionState } from '@/lib/feedback/action-result';
+import { SettingsProblem } from '@/features/settings/settings-problem';
 import type { Workspace } from '@/lib/identity/workspace-access';
-import { deleteWorkspaceFormAction } from './actions-forms';
+import { deleteWorkspaceAction } from './actions';
 
 export type DangerZoneViewProps = {
   workspace: Workspace;
-  action: (formData: FormData) => void;
+  action: (previous: ActionState, formData: FormData) => Promise<ActionState>;
+  initialState?: ActionState | undefined;
 };
 
 /**
@@ -26,11 +29,19 @@ export type DangerZoneViewProps = {
  * protože v okamžiku odeslání je to přesně to, co uživatel opsal, a server
  * si shodu ověřuje znovu. Je to zároveň požadavek na P05: rozdělit očekávanou
  * frázi a napsanou hodnotu do dvou propů.
+ *
+ * OPRAVA VADY ze stejného rodu jako u přepínání oslovení: obálka
+ * `deleteWorkspaceFormAction` výsledek akce zahazovala, takže odmítnuté
+ * smazání (nedostatečné oprávnění, neshoda názvu na serveru) skončilo bez
+ * jediného slova a tlačítko vypadalo mrtvě. Akce proto běží přes
+ * `useActionState` a chyba se vykreslí. Úspěch se nevykresluje: akce
+ * přesměrovává na `/no-workspace`.
  */
-export function DangerZoneView({ workspace, action }: DangerZoneViewProps) {
+export function DangerZoneView({ workspace, action, initialState }: DangerZoneViewProps) {
   const t = useTranslations('settings');
   const confirmLabels = useConfirmDialogLabels();
   const formRef = useRef<HTMLFormElement>(null);
+  const [state, formAction] = useActionState(action, initialState ?? IDLE);
   const [open, setOpen] = useState(false);
 
   return (
@@ -40,7 +51,13 @@ export function DangerZoneView({ workspace, action }: DangerZoneViewProps) {
       </h2>
       <p className="mt-2 text-text-muted">{t('general.danger.body')}</p>
 
-      <form ref={formRef} action={action} className="mt-4">
+      {state.status === 'error' ? (
+        <div className="mt-4">
+          <SettingsProblem problem={state.problem} />
+        </div>
+      ) : null}
+
+      <form ref={formRef} action={formAction} className="mt-4">
         <input type="hidden" name="workspace_id" value={workspace.id} readOnly />
         <input type="hidden" name="confirm_name" value={workspace.name} readOnly />
 
@@ -75,7 +92,13 @@ export function DangerZoneView({ workspace, action }: DangerZoneViewProps) {
           confirmPhraseLabel={t('general.danger.confirmLabel')}
           confirmLabel={t('general.danger.confirm', { name: workspace.name })}
           cancelLabel={t('general.danger.cancel')}
-          onConfirm={() => formRef.current?.requestSubmit()}
+          onConfirm={() => {
+            // `requestSubmit()` čte FormData synchronně, teprve pak se dialog
+            // zavírá. Bez zavření by po odmítnutí ze serveru zůstal viset nad
+            // stránkou a překryl by vysvětlení, proč se smazání neprovedlo.
+            formRef.current?.requestSubmit();
+            setOpen(false);
+          }}
           labels={confirmLabels}
         />
       </form>
@@ -83,7 +106,7 @@ export function DangerZoneView({ workspace, action }: DangerZoneViewProps) {
   );
 }
 
-/** Serverová obálka, aby stránka nemusela znát akci. */
+/** Obálka, která sekci dodá serverovou akci, aby ji stránka nemusela znát. */
 export function DangerZone({ workspace }: { workspace: Workspace }) {
-  return <DangerZoneView workspace={workspace} action={deleteWorkspaceFormAction} />;
+  return <DangerZoneView workspace={workspace} action={deleteWorkspaceAction} />;
 }

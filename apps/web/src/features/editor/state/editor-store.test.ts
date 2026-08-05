@@ -86,9 +86,40 @@ describe('editor store', () => {
   it('převzetí cizí verze při konfliktu vymaže historii', () => {
     const store = createEditorStore({ document: doc(), designHash: 'h1' });
     store.patchProps('b_h1', { level: 1 });
-    store.replaceDocument(doc(), 'h9');
+    // Verze ze serveru: uložená je, protože odtamtud přišla.
+    store.replaceDocument(doc(), 'h9', { saved: true });
     expect(store.getState().historyDepth).toBe(0);
     expect(store.getState().isDirty).toBe(false);
     expect(store.getState().designHash).toBe('h9');
+  });
+
+  /**
+   * Návrh od AI je NEULOŽENÁ změna. Dokud se značil jako uložený, automatické
+   * ukládání se po jeho vložení nespustilo a práce se po znovunačtení ztratila.
+   */
+  it('vložený návrh je neuložená změna, jinak se nikdy neuloží', () => {
+    const store = createEditorStore({ document: doc(), designHash: 'h1' });
+    store.replaceDocument(doc(), 'h1');
+    expect(store.getState().isDirty).toBe(true);
+    expect(store.getState().historyDepth).toBe(0);
+  });
+
+  it('po uložení návrhu už není co ukládat', () => {
+    const store = createEditorStore({ document: doc(), designHash: 'h1' });
+    store.replaceDocument(doc(), 'h1');
+    store.markSaved('h2', 1_760_000_000_000);
+    expect(store.getState().isDirty).toBe(false);
+  });
+
+  it('návrat k původnímu dokumentu po uložení návrhu se taky uloží', () => {
+    const original = doc();
+    const store = createEditorStore({ document: original, designHash: 'h1' });
+    // Vložení návrhu a jeho uložení.
+    store.replaceDocument(doc(), 'h1');
+    store.markSaved('h2', 1_760_000_000_000);
+    // „Zkusit jinak" vrátí původní dokument. Na serveru je ale návrh, takže
+    // původní obsah je zase neuložená změna a musí se zapsat zpátky.
+    store.replaceDocument(original, 'h2');
+    expect(store.getState().isDirty).toBe(true);
   });
 });

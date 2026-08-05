@@ -137,6 +137,85 @@ export async function listConsents(
   });
 }
 
+/**
+ * Doklad o souhlasu, o který se smí opřít potvrzení přihlášení. `null` znamená
+ * „souhlas nemáme" a volající pokračuje běžnou cestou přes potvrzovací e-mail.
+ */
+export type EffectiveConsent = {
+  /** Id řádku v append-only logu. Jde do auditu, aby šlo dohledat, o co se to opřelo. */
+  consentId: string;
+  /** null = souhlas platí pro celý projekt, jinak pro jeden konkrétní seznam. */
+  scopeListId: string | null;
+  legalBasis: string;
+  source: string;
+  occurredAt: Date;
+};
+
+/**
+ * PLATNÝ SOUHLAS PRO PŘIHLÁŠENÍ DO SEZNAMU. Jediné místo, kde se na tuhle otázku odpovídá.
+ *
+ * PROČ TO NEČTE `contact_consent_state`. Odvozená tabulka má klíč (contact_id, purpose)
+ * a rozsah souhlasu v ní NENÍ. Souhlas udělený pro jeden seznam by tedy vypadal stejně
+ * jako souhlas pro celý projekt a přihlásil by člověka i tam, kam nechtěl. Rozsah nese
+ * jen append-only log `consents`, takže se čte log.
+ *
+ * PRAVIDLO: vezme se NEJNOVĚJŠÍ řádek z těch, které na tenhle seznam vůbec dosáhnou,
+ * tedy s rozsahem „celý projekt" (`scope_list_id IS NULL`) nebo přímo tenhle seznam.
+ * Když je udělený, souhlas máme; když je to odvolání, nemáme. Jedno porovnání pokrývá
+ * obě odvolání, která existují:
+ *   - globální odvolání je novější řádek s `scope_list_id IS NULL` a stavem `withdrawn`,
+ *     takže vyhraje nad starším projektovým souhlasem,
+ *   - odvolání pro jeden seznam vyhraje nad starším projektovým souhlasem POUZE
+ *     u toho seznamu, což je přesně jeho význam.
+ * Souhlas pro CIZÍ seznam se do porovnání nedostane vůbec, ani jako doklad,
+ * ani jako odvolání.
+ *
+ * ŘAZENÍ MÁ DVĚ ÚROVNĚ. `occurred_at` může nést historické datum z importu a dva řádky
+ * můžou mít tentýž čas; `id` je uuid v7 (rostoucí v čase), takže rozhoduje pořadí zápisu.
+ * Bez druhé úrovně by se u shodného času vybral libovolný řádek a odvolání by se dalo
+ * přehlédnout, což je přesně ta chyba, kterou si nikdo nevšimne.
+ *
+ * POZOR: tohle NENÍ brána odesílání. Zablokovanou adresu, odhlášení a stav kontaktu
+ * řeší `mailable.ts` a stavový automat. Tahle funkce odpovídá na jedinou otázku:
+ * „máme doložený souhlas, nebo si o něj musíme napsat?"
+ */
+export async function findEffectiveConsent(
+  ctx: WorkspaceContext,
+  input: { contactId: string; listId: string; purpose?: ConsentPurpose },
+  tx?: Tx,
+): Promise<EffectiveConsent | null> {
+  const purpose = input.purpose ?? 'email_marketing';
+  const run = async (t: Tx): Promise<EffectiveConsent | null> => {
+    const { rows } = await t.execute<{
+      id: string;
+      scope_list_id: string | null;
+      status: 'granted' | 'withdrawn';
+      legal_basis: string;
+      source: string;
+      occurred_at: string | Date;
+    }>(sql`
+      SELECT id, scope_list_id, status, legal_basis, source, occurred_at
+        FROM consents
+       WHERE workspace_id = ${ctx.workspaceId}::uuid
+         AND contact_id = ${input.contactId}::uuid
+         AND purpose = ${purpose}
+         AND (scope_list_id IS NULL OR scope_list_id = ${input.listId}::uuid)
+       ORDER BY occurred_at DESC, id DESC
+       LIMIT 1
+    `);
+    const row = rows[0];
+    if (row === undefined || row.status !== 'granted') return null;
+    return {
+      consentId: row.id,
+      scopeListId: row.scope_list_id,
+      legalBasis: row.legal_basis,
+      source: row.source,
+      occurredAt: toDate(row.occurred_at),
+    };
+  };
+  return tx !== undefined ? run(tx) : withWorkspace(ctx, run);
+}
+
 /** Aktuální stav souhlasu pro jeden účel. Čte se z odvozené tabulky, ne z logu. */
 export async function currentConsentState(
   ctx: WorkspaceContext,

@@ -1,6 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ImportOptionsSchema } from '@mlain/core/contacts/import';
 import { renderIntl } from '../../../test/helpers/intl';
 import { ImportWizard } from './import-wizard';
 
@@ -47,7 +48,13 @@ function apiPreview(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function renderWizard(step: 'fileCheck' | 'mapping' = 'fileCheck') {
+const LIST_ID = '019fbf52-d8b9-7b0d-b67e-528e8026a384';
+const TAG_ID = '019fbf52-d8b9-7b0d-b67e-528e8026a385';
+
+function renderWizard(
+  step: 'fileCheck' | 'mapping' | 'options' = 'fileCheck',
+  lists: { id: string; name: string; optIn: 'single' | 'double' }[] = [],
+) {
   window.history.replaceState({}, '', `/?step=${step}`);
   return renderIntl(
     <ImportWizard
@@ -55,8 +62,38 @@ function renderWizard(step: 'fileCheck' | 'mapping' = 'fileCheck') {
       workspaceSlug="preflight-projekt"
       importId={IMPORT_ID}
       initialStep={step}
+      lists={lists}
     />,
   );
+}
+
+type Call = { url: string; init?: RequestInit };
+
+/**
+ * Odpovědi serveru na všechno, co krok Volby volá: založení štítku, uložení voleb
+ * a potvrzení importu.
+ */
+function stubOptionsFetch(calls: Call[]): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, ...(init === undefined ? {} : { init }) });
+      if (url.startsWith('/api/v1/tags') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ data: { id: TAG_ID, name: 'import-2026-08-01' } }), {
+          status: 201,
+        });
+      }
+      return new Response(JSON.stringify(apiPreview()), { status: 200 });
+    }),
+  );
+}
+
+async function submitOptions(calls: Call[]): Promise<Record<string, unknown>> {
+  await userEvent.click(await screen.findByRole('button', { name: /naimportovat/i }));
+  await waitFor(() => expect(calls.some((call) => call.init?.method === 'PATCH')).toBe(true));
+  const patch = calls.find((call) => call.init?.method === 'PATCH');
+  const body = JSON.parse(String(patch?.init?.body)) as { options: Record<string, unknown> };
+  return body.options;
 }
 
 beforeEach(() => {
@@ -152,5 +189,104 @@ describe('import wizard preview loading', () => {
     expect(email.value).toBe('email');
     const firstName = screen.getByLabelText('jmeno') as HTMLSelectElement;
     expect(firstName.value).toBe('first_name');
+  });
+});
+
+/**
+ * Krok Volby proti SKUTEČNÉMU schématu serveru, ne proti vymyšlenému tvaru.
+ *
+ * `ImportOptionsSchema` je tentýž objekt, kterým požadavek prochází v `patchImport()`,
+ * a je `.strict()`. Test tedy chytí obojí: klíč, který schéma nezná (posílalo se `tag`,
+ * schéma zná `tag_ids`), i hodnotu mimo výčet (`on_conflict: 'error'`). Tvrzení proti
+ * ručně opsanému tvaru odpovědi by tuhle třídu chyb minulo, protože ta chyba je právě
+ * v tom, že se opsaný tvar rozešel se schématem.
+ */
+describe('import wizard options step', () => {
+  // Po odeslání voleb jde průvodce na krok Průběh, který otevírá SSE. jsdom EventSource
+  // nemá, takže bez téhle náhrady spadne test na výjimce z komponenty, která s volbami
+  // nesouvisí.
+  beforeEach(() => {
+    vi.stubGlobal(
+      'EventSource',
+      class {
+        close(): void {}
+        addEventListener(): void {}
+        removeEventListener(): void {}
+      },
+    );
+  });
+
+  it('sends options the server schema accepts, including the list and the declaration', async () => {
+    const calls: Call[] = [];
+    stubOptionsFetch(calls);
+    renderWizard('options', [{ id: LIST_ID, name: 'Novinky', optIn: 'double' }]);
+
+    await userEvent.selectOptions(await screen.findByLabelText(/zařadit do seznamu/i), LIST_ID);
+    await userEvent.click(screen.getByLabelText(/potvrzené/i));
+    await userEvent.click(screen.getByLabelText(/potvrzuji, že tito lidé/i));
+
+    const options = await submitOptions(calls);
+
+    // Tohle je celý test: projde to schématem serveru, nebo ne?
+    expect(() => ImportOptionsSchema.parse(options)).not.toThrow();
+    expect(options).toMatchObject({
+      list_ids: [LIST_ID],
+      subscription_status: 'confirmed',
+      tag_ids: [TAG_ID],
+      consent: { purpose: 'email_marketing', declaration: true },
+    });
+    // Jméno štítku ve volbách být nesmí: schéma zná jen identifikátory.
+    expect(options).not.toHaveProperty('tag');
+  });
+
+  it('puts the duplicate choice into duplicate_in_file, not into on_conflict', async () => {
+    const calls: Call[] = [];
+    stubOptionsFetch(calls);
+    renderWizard('options');
+
+    await userEvent.click(await screen.findByLabelText(/nahlásit jako chybu/i));
+    const options = await submitOptions(calls);
+
+    expect(() => ImportOptionsSchema.parse(options)).not.toThrow();
+    expect(options).toMatchObject({ duplicate_in_file: 'error' });
+    expect(options['on_conflict']).not.toBe('error');
+  });
+
+  it('creates the tag first, so tag_ids carries an identifier and not the typed name', async () => {
+    const calls: Call[] = [];
+    stubOptionsFetch(calls);
+    renderWizard('options');
+
+    const tag = await screen.findByLabelText(/přidat štítek/i);
+    await userEvent.clear(tag);
+    await userEvent.type(tag, 'veletrh Brno');
+    const options = await submitOptions(calls);
+
+    const created = calls.find(
+      (call) => call.url.startsWith('/api/v1/tags') && call.init?.method === 'POST',
+    );
+    expect(JSON.parse(String(created?.init?.body))).toEqual({ name: 'veletrh Brno' });
+    expect(options['tag_ids']).toEqual([TAG_ID]);
+  });
+
+  it('stops on the options step when the tag cannot be created, instead of importing quietly', async () => {
+    const calls: Call[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, ...(init === undefined ? {} : { init }) });
+        if (url.startsWith('/api/v1/tags')) {
+          return new Response(JSON.stringify({ code: 'internal_error' }), { status: 500 });
+        }
+        return new Response(JSON.stringify(apiPreview()), { status: 200 });
+      }),
+    );
+    renderWizard('options');
+
+    await userEvent.click(await screen.findByRole('button', { name: /naimportovat/i }));
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(calls.some((call) => call.init?.method === 'PATCH')).toBe(false);
+    expect(calls.some((call) => call.url.includes('/confirm'))).toBe(false);
   });
 });

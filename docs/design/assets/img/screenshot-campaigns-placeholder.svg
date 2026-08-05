@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600">
+
+<defs><pattern id="ph" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="12" height="12" fill="#F2ECDB"></rect><rect width="6" height="12" fill="#EDE5CF"></rect></pattern></defs>
+<rect width="960" height="600" fill="url(#ph)"></rect>
+<text x="480" y="288" text-anchor="middle" font-family="monospace" font-size="26" fill="#6C6453">screenshot: přehled kampaní a reportů</text>
+<text x="480" y="326" text-anchor="middle" font-family="monospace" font-size="20" fill="#8B826D">nahradit reálným záznamem aplikace (960×600)</text>
+</svg>

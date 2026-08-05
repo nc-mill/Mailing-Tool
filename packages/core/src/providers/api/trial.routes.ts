@@ -35,6 +35,8 @@ const TrialStateSchema = z
     verified_count: z.number().int(),
     max_addresses: z.number().int(),
     has_verified_domain: z.boolean(),
+    /** Testovací režim u Amazonu. `null` znamená, že se stav účtu ještě nenačetl. */
+    provider_sandbox: z.boolean().nullable(),
   })
   .openapi('TrialModeState');
 

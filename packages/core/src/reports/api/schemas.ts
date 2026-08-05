@@ -49,6 +49,13 @@ export const campaignStatsSchema = z.object({
   track_opens: z.boolean(),
   track_clicks: z.boolean(),
   delivered_source: z.enum(['provider_events', 'derived_from_sent']),
+  /**
+   * Rozlišuje „nikomu nedošlo" od „nevíme, protože nám poskytovatel události
+   * neposílá". Bez něj obrazovka ukazuje nulu jako fakt, i když je to jen
+   * chybějící údaj. Nová hodnota do `delivered_source` by rozbila klienty,
+   * kteří nad ním dělají exhaustivní switch; samostatný příznak ne.
+   */
+  delivered_known: z.boolean(),
   counts: countsSchema,
   rates: ratesSchema,
   open_breakdown: z.object({
@@ -80,6 +87,7 @@ export function toStatsResponse(read: CampaignStatsRead): z.infer<typeof campaig
     track_opens: read.trackOpens,
     track_clicks: read.trackClicks,
     delivered_source: read.deliveredSource,
+    delivered_known: read.deliveredKnown,
     counts: {
       materialized: read.counts.materialized,
       sent: read.counts.sent,

@@ -3,11 +3,14 @@ import {
   addTagsToContact,
   bulkTagContacts,
   createTag,
+  getTag,
+  listTagsPage,
   mergeTags,
   removeTagFromContact,
   renameTag,
 } from '../../repo/tags';
 import { bulkTag } from '../../jobs/bulk-tag';
+import { deleteContact, restoreContact } from '../../repo/contacts';
 import {
   contactHasTag,
   countContactTags,
@@ -126,4 +129,34 @@ describe('štítky', () => {
     expect(again.tagged).toBe(0);
     expect(await countContactTags(ctx, a.id)).toBe(1);
   });
+});
+
+/*
+ * REGRESE, TÁŽ VADA JAKO U POČTU V SEZNAMU. Počet u štítku se ptal jen tabulky vazeb.
+ * Mazání kontaktu je měkké a vazba po něm schválně zůstává, aby ji obnovený kontakt
+ * dostal zpět, takže u štítku svítil počet z dob, kdy ty kontakty ještě žily. Test jde
+ * přes skutečnou databázi a přes skutečnou mazací cestu, ne nad vymyšlenými daty.
+ */
+describe('počet kontaktů u štítku', () => {
+  it('smazaný kontakt se nepočítá, vazba mu ale zůstává a obnova ji vrátí', async () => {
+    const ctx = await testContext();
+    const tag = await createTag(ctx, { name: 'Praha' });
+    const zustava = await createActiveContact(ctx, 'zustava@x.cz');
+    const mazany = await createActiveContact(ctx, 'mazany@x.cz');
+    await addTagsToContact(ctx, zustava.id, [tag.id]);
+    await addTagsToContact(ctx, mazany.id, [tag.id]);
+
+    expect((await getTag(ctx, tag.id))?.contact_count).toBe(2);
+
+    await deleteContact(ctx, mazany.id, 'soft');
+
+    expect((await getTag(ctx, tag.id))?.contact_count).toBe(1);
+    const page = await listTagsPage(ctx, { limit: 10, order: 'name.asc' });
+    expect(page.rows.find((row) => row.id === tag.id)?.contact_count).toBe(1);
+    // Vazba přežila, jinak by obnova do třiceti dnů vrátila kontakt bez štítků.
+    expect(await countContactTags(ctx, mazany.id)).toBe(1);
+
+    await restoreContact(ctx, mazany.id);
+    expect((await getTag(ctx, tag.id))?.contact_count).toBe(2);
+  }, 30_000);
 });

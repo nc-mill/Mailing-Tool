@@ -16,6 +16,7 @@ export function SegmentEditor({
   workspaceSlug,
   locale = 'cs',
   segment,
+  draft,
   totalContacts,
   fields = [],
 }: {
@@ -23,13 +24,40 @@ export function SegmentEditor({
   workspaceSlug: string;
   locale?: string;
   segment: { id: string; name: string; definition: unknown } | null;
+  /**
+   * Předvyplněný NOVÝ segment: název i podmínky přicházejí hotové, uživatel je
+   * jen zkontroluje a uloží.
+   *
+   * Je to vlastní vstup, ne `segment` bez `id`, protože se liší tím, co se
+   * stane při uložení: `segment` se opravuje přes PATCH, `draft` teprve vzniká
+   * přes POST. Kdyby to bylo jedno pole, rozhodovalo by se o metodě podle toho,
+   * jestli je v něm `id`, a první překlep by z předvyplněného návrhu udělal
+   * úpravu cizího segmentu.
+   *
+   * Odsud přicházejí odkazy „Vytvořit segment z těch, kdo klikli" v reportu
+   * kampaně. Dřív vedly na prázdný stavitel a podmínku si musel uživatel
+   * naklikat sám, přestože ji produkt uměl složit.
+   */
+  draft?:
+    | {
+        name: string;
+        definition: SegmentAst;
+        /**
+         * Věty nad staviteli. Skládá je serverová komponenta, protože závisí
+         * na tom, ODKUD návrh přišel; stavitel sám o kampaních nic neví.
+         */
+        notices: string[];
+      }
+    | undefined;
   totalContacts?: number;
   /** Katalog polí skládá serverová komponenta, viz `field-catalog.ts`. */
   fields?: FieldDefinition[];
 }) {
   const t = useTranslations('segments');
-  const [name, setName] = useState(segment?.name ?? '');
-  const [ast, setAst] = useState<SegmentAst>((segment?.definition as SegmentAst) ?? EMPTY);
+  const [name, setName] = useState(segment?.name ?? draft?.name ?? '');
+  const [ast, setAst] = useState<SegmentAst>(
+    (segment?.definition as SegmentAst) ?? draft?.definition ?? EMPTY,
+  );
   const [saving, setSaving] = useState(false);
 
   async function save() {
@@ -53,6 +81,22 @@ export function SegmentEditor({
         <Field label={t('name')}>
           <Input value={name} onChange={(event) => setName(event.target.value)} />
         </Field>
+        {/*
+         * Předvyplněný návrh se PŘIZNÁ. Bez téhle věty uživatel netuší, odkud
+         * se podmínka vzala, a u segmentu, který má rozhodovat, komu se pošle
+         * další kampaň, je to zásadní rozdíl.
+         */}
+        {segment === null && draft !== undefined
+          ? draft.notices.map((notice) => (
+              <p
+                key={notice}
+                className="text-sm text-text-muted"
+                data-testid="segment-draft-notice"
+              >
+                {notice}
+              </p>
+            ))
+          : null}
       </header>
 
       <SegmentBuilder

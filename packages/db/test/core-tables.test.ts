@@ -12,7 +12,7 @@ afterAll(async () => {
 });
 
 describe('migrace 0001, jádro schématu', () => {
-  it('vzniklo 66 nepartitionovaných tabulek', async () => {
+  it('vzniklo 67 nepartitionovaných tabulek', async () => {
     // relispartition = false je nutné: partition samotné jsou taky relkind 'r'
     // a od úkolu 17 je runner zakládá na čtyři měsíce dopředu, takže bez téhle
     // podmínky by test po přidání partitioningu začal počítat desítky navíc.
@@ -21,7 +21,8 @@ describe('migrace 0001, jádro schématu', () => {
          FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relispartition = false`,
     );
-    expect(rows[0].n).toBe(66);
+    // 66 do migrace 0012, od 0013 navíc `sender_identities`.
+    expect(rows[0].n).toBe(67);
   });
 
   it('contacts.email je citext a email_domain je generovaný sloupec', async () => {

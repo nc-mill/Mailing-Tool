@@ -7,6 +7,7 @@ export * from './references';
 export * from './repo';
 export * from './service';
 export * from './presets';
+export * from './campaign-presets';
 export * from './diagnostics';
 export * from './audience';
 export * from './audit';

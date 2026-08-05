@@ -37,11 +37,8 @@ const UNDELIVERED: Readonly<Record<string, string>> = {
   'segments.recalc_for_contact': 'obsluhu dodá P11, modul jobu zatím není',
 
   // --- P08 a P12: obsah a šablony -----------------------------------------
-  'content.process_asset': 'obsluhu dodá P08, modul jobu zatím není',
   'content.revalidate_templates': 'obsluhu dodá P08, modul jobu zatím není',
   'content.cleanup_versions': 'obsluhu dodá P08, modul jobu zatím není',
-  'content.cleanup_assets': 'obsluhu dodá P08, modul jobu zatím není',
-  'content.verify_asset_refcounts': 'obsluhu dodá P08, modul jobu zatím není',
 
   // --- P13: doména kampaní ------------------------------------------------
   //
@@ -51,7 +48,6 @@ const UNDELIVERED: Readonly<Record<string, string>> = {
   // `handlerModulePath` patřily do `src/outbox/jobs`, `src/provider/jobs`
   // a `src/domain/jobs`. Zakládat tři nové domény jen pro hlášku o chybějící
   // závislosti nemá smysl, dokud se ta závislost nedá dodat.
-  'outbox.stall_watch': 'obsluhu dodá P13, modul jobu zatím není',
   'provider.refresh_quota':
     'obsluha refreshQuotaHandler existuje, ale RefreshQuotaDeps.loadProvider musí vrátit osm ProviderSignals a repozitář má zdroj jen pro dva',
   'domain.recheck':
@@ -62,18 +58,20 @@ const UNDELIVERED: Readonly<Record<string, string>> = {
   'retention.drop_message_partitions': 'obsluhu dodá P13, modul jobu zatím není',
 
   // --- P10: tracking a identity -------------------------------------------
-  'tracking.process_engagement': 'obsluhu dodá P10, modul jobu zatím není',
-  'tracking.process_provider_events': 'obsluhu dodá P10, modul jobu zatím není',
-  'event.process': 'obsluhu dodá P10, modul jobu zatím není',
-  'tracking.refresh_campaign_progress': 'obsluhu dodá P10, modul jobu zatím není',
-  'tracking.recompute_engagement_windows': 'obsluhu dodá P10, modul jobu zatím není',
-  'tracking.cleanup_token_uses': 'obsluhu dodá P10, modul jobu zatím není',
-  'tracking.enforce_retention': 'obsluhu dodá P10, modul jobu zatím není',
-  'tracking.refresh_proxy_ranges': 'obsluhu dodá P10, modul jobu zatím není',
-  'tracking.erase_contact': 'obsluhu dodá P10, modul jobu zatím není',
-
-  // --- P09: sender --------------------------------------------------------
-  'sender.credentials_refresh': 'obsluhu dodá P09, modul jobu zatím není',
+  //
+  // Sedm front téhle domény obsluhu MÁ. Zbylé tři jsou tady i s důvodem
+  // a všechny tři mají společné to, že jim chybí ZDROJ, ne zápis.
+  //
+  // `event.process` z tohohle seznamu ZMIZELA: příjmový povrch `/e/**` už
+  // v produktu je, veřejný klíč se ověřuje, dávka se zařadí a obsluha ji
+  // zapíše do `web_events`. Ověřeno na běžící instalaci od SDK v prohlížeči
+  // až po časovou osu kontaktu.
+  'tracking.enforce_retention':
+    'retence odpojuje oddíly tabulek, což je DDL. Role mlain_app, pod kterou worker běží, nemá na public schéma práva, takže by úloha padala na permission denied; patří k migrátorovi stejně jako platform.maintain_partitions',
+  'tracking.refresh_proxy_ranges':
+    'stahování rozsahů Apple relay z internetu. TRACKING_APPLE_RELAY_RANGES je ve výchozím stavu vypnuté a ProxyRangeIndex si vestavěný rozsah nese sám, takže bez zdroje adres by úloha jen dělala prázdné kolo',
+  'tracking.erase_contact':
+    'výmaz podle článku 17 dnes obsluhuje gdpr.sever_links, která odpojí vazby ve web_events i message_engagement. Druhá cesta k témuž by znamenala dva výklady toho, co znamená vymazat kontakt',
 };
 
 const registryNames = QUEUE_REGISTRY.map((entry) => entry.name);
@@ -160,6 +158,12 @@ describe('pokrytí front obsluhami', () => {
     // se nikdy neobjevila. Test se ptá na značku `missingDependencies`, takže
     // takový návrat pozná.
     'content.brand_extract',
+    // Doména assetů. `process_asset` dnes nikdo neplní (varianty se generují
+    // synchronně při nahrání), ale obsluhu mít musí: jakmile se přidá varianta
+    // do registru, dogeneruje ji ke stávajícím assetům.
+    'content.process_asset',
+    'content.cleanup_assets',
+    'content.verify_asset_refcounts',
     // Poslední čtyři fronty domény kontaktů, které do teď neměly modul jobu.
     // recompute_greeting je z nich nejcitlivější: zařazuje ho uložení nastavení
     // projektu a musí ctít zámek ručně potvrzeného oslovení.
@@ -176,6 +180,26 @@ describe('pokrytí front obsluhami', () => {
     'campaign.materialize',
     'contacts.import',
     'contacts.export',
+    // Dvě fronty, které přímo souvisely s tím, že produkt neodeslal e-mail.
+    // `outbox.stall_watch` je jediné místo, které si napříč instalací všimne,
+    // že kampaň má co odesílat a nikdo si to nebere; přesně tenhle stav trval
+    // čtyři dny, protože sender neběžel a nikde se to neprojevilo.
+    // `sender.credentials_refresh` je cesta zpátky z pauzy
+    // `credentials_undecryptable` a do teď neměla ani obsluhu, ani producenta.
+    'outbox.stall_watch',
+    'sender.credentials_refresh',
+    // Řetěz měření kampaně. Otevření i proklik se do `message_events` zapisovaly
+    // celou dobu správně, jenže `tracking.process_engagement` neměla obsluhu,
+    // takže z těch řádků nikdo nespočítal `campaign_stats` a report ukazoval
+    // samé nuly. Vypadalo to jako rozbité měření, přitom šlo o nezapojené
+    // počítání. `tracking.refresh_campaign_progress` je druhá půlka téhož:
+    // bez ní nevznikne řádek souhrnu vůbec, takže je nula i „doručeno"
+    // a „odesláno".
+    'tracking.process_engagement',
+    'tracking.process_provider_events',
+    'tracking.refresh_campaign_progress',
+    'tracking.recompute_engagement_windows',
+    'tracking.cleanup_token_uses',
   ];
 
   it.each(MUSI_BYT_ZAPOJENE)('fronta %s má složenou obsluhu, ne jen záznam v mapě', (name) => {
@@ -212,6 +236,19 @@ describe('pokrytí front obsluhami', () => {
     'platform.backup',
     'platform.backup_verify',
     'contacts.cleanup_pending',
+    // Cronové úlohy domény assetů. Prázdná dávka by u nich spustila skutečný
+    // úklid, ne jen ověřila obal.
+    'content.cleanup_assets',
+    'content.verify_asset_refcounts',
+    // Cronový sken zaseknutých dávek. Prázdná dávka by u něj spustila skutečný
+    // dotaz napříč projekty, ne ověřila obal.
+    'outbox.stall_watch',
+    // Tři cronové úlohy trackingu. U prázdné dávky by sáhly na výčet projektů
+    // pod rolí mlain_maintenance, respektive rovnou do databáze, takže by test
+    // měřil prostředí, ne obal.
+    'tracking.refresh_campaign_progress',
+    'tracking.recompute_engagement_windows',
+    'tracking.cleanup_token_uses',
   ]);
   const OBALENE_PER_JOB: readonly string[] = MUSI_BYT_ZAPOJENE.filter(
     (name) => !OBALENE_ONCE.has(name),

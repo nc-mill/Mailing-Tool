@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContactsTable, type ContactRow } from './contacts-table';
@@ -16,11 +16,35 @@ vi.mock('./actions', () => ({
   bulkTagContactsAction: vi.fn().mockResolvedValue({ status: 'success' }),
 }));
 
+// Serverové akce se musí odstínit VŠECHNY, jinak se přes ně načte
+// `@/lib/api-client/*` s importem `server-only`, který v testu vyhodí
+// „This module cannot be imported from a Client Component module" a shodí
+// celý soubor ještě před prvním testem.
+const confirmContactsAction = vi.fn();
+vi.mock('./confirm-actions', () => ({
+  confirmContactsAction: (...args: unknown[]) => confirmContactsAction(...args),
+}));
+
+vi.mock('./list-actions', () => ({
+  addContactsToListAction: vi.fn().mockResolvedValue({
+    status: 'success',
+    summary: { confirmed: 0, pending: 0, already: 0, blocked: 0 },
+  }),
+}));
+
 const rows: ContactRow[] = [
   {
     id: 'c-1',
     email: 'jana@firma.cz',
     name: 'Jana Nováková',
+    greeting: {
+      greeting: 'Dobrý den, Jano',
+      first_name: 'Jana',
+      first_name_vocative: 'Jano',
+      vocative_confidence: 'high',
+      vocative_locked: false,
+      locale: 'cs',
+    },
     status: 'active',
     processing_restricted: false,
     snooze_until: null,
@@ -33,6 +57,14 @@ const rows: ContactRow[] = [
     id: 'c-2',
     email: 'petr@firma.cz',
     name: null,
+    greeting: {
+      greeting: 'Dobrý den',
+      first_name: null,
+      first_name_vocative: null,
+      vocative_confidence: 'none',
+      vocative_locked: false,
+      locale: 'cs',
+    },
     status: 'unconfirmed',
     processing_restricted: false,
     snooze_until: null,
@@ -60,6 +92,18 @@ function renderTable(props: Partial<React.ComponentProps<typeof ContactsTable>> 
 
 beforeEach(() => {
   push.mockClear();
+  confirmContactsAction.mockReset().mockResolvedValue({
+    status: 'success',
+    outcomes: [
+      {
+        id: 'c-2',
+        fromStatus: 'unconfirmed',
+        changed: true,
+        listsConfirmed: 0,
+        suppressionBlocking: null,
+      },
+    ],
+  });
 });
 
 describe('ContactsTable', () => {
@@ -163,5 +207,128 @@ describe('ContactsTable', () => {
     const bar = screen.getByTestId('selection-bar');
     expect(bar).toHaveTextContent('Vybráno všech 12 480 kontaktů odpovídajících filtru');
     expect(within(bar).getByRole('button', { name: 'Zrušit výběr' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * Pátý pád je hlavní odlišující vlastnost produktu a do téhle chvíle na nejčastěji
+ * otevírané obrazovce vidět nebyl. Tyhle testy hlídají, že sloupec ukazuje TVAR
+ * i jeho původ a že z obrazovky vede cesta do fronty kontroly.
+ */
+describe('ContactsTable, sloupec oslovení', () => {
+  it('ukáže tvar v 5. pádu a jeho původ, ne jen celou větu', () => {
+    renderTable();
+    const grid = screen.getByRole('grid');
+    expect(within(grid).getByText('Jano')).toBeInTheDocument();
+    expect(within(grid).getByText('Ze slovníku')).toBeInTheDocument();
+  });
+
+  it('kontakt bez jména hlásí neutrální oslovení, ne chybu', () => {
+    renderTable();
+    const grid = screen.getByRole('grid');
+    expect(within(grid).getByText('Bez jména')).toBeInTheDocument();
+    expect(within(grid).getByText('Neutrální')).toBeInTheDocument();
+  });
+
+  it('kontakt v jazyce bez 5. pádu se hlásí jako nejistý, i když má jistotu high', () => {
+    renderTable({
+      rows: [
+        {
+          ...rows[0]!,
+          greeting: {
+            greeting: 'Hello Petr',
+            first_name: 'Petr',
+            first_name_vocative: 'Petr',
+            vocative_confidence: 'high',
+            vocative_locked: false,
+            locale: 'en',
+          },
+        },
+      ],
+    });
+    expect(within(screen.getByRole('grid')).getByText('Bez 5. pádu')).toBeInTheDocument();
+  });
+
+  it('nabídne cestu do fronty Kontrola oslovení i s počtem', async () => {
+    const user = userEvent.setup();
+    renderTable({ vocativeReview: { href: '/w/eshop/contacts/vocative-review', uncertain: 7 } });
+    const link = screen.getByTestId('vocative-review-link');
+    expect(link).toHaveTextContent('Kontrola oslovení (7)');
+    await user.click(link);
+    expect(push).toHaveBeenCalledWith('/w/eshop/contacts/vocative-review');
+  });
+
+  it('bez známého počtu ukáže odkaz bez čísla, ne nulu', () => {
+    renderTable({ vocativeReview: { href: '/w/eshop/contacts/vocative-review' } });
+    expect(screen.getByTestId('vocative-review-link')).toHaveTextContent('Kontrola oslovení');
+  });
+});
+
+/**
+ * Potvrzení PŘÍMO V ŘÁDKU. Do téhle chvíle šlo kontakt potvrdit jedině z detailu nebo
+ * hromadnou akcí nad zaškrtnutým výběrem, tedy vždycky nejmíň o dvě kliknutí navíc.
+ */
+describe('ContactsTable: potvrzení v řádku', () => {
+  const unsubscribed: ContactRow = {
+    ...rows[1]!,
+    id: 'c-3',
+    email: 'odhlaseny@firma.cz',
+    status: 'unsubscribed',
+  };
+
+  it('u nepotvrzeného kontaktu je akce rovnou v řádku, bez odbočky na detail', async () => {
+    const user = userEvent.setup();
+    renderTable();
+
+    const action = screen.getByRole('button', {
+      name: 'Označit kontakt petr@firma.cz jako potvrzený',
+    });
+    await user.click(action);
+
+    await waitFor(() =>
+      expect(confirmContactsAction).toHaveBeenCalledWith({ workspaceId: 'w-1', ids: ['c-2'] }),
+    );
+    // Klik na tlačítko NESMÍ zároveň otevřít detail, jinak by uživatel skončil jinde,
+    // než čekal. `DataTable` proto cíle uvnitř `button` z aktivace řádku vyjímá.
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Nález zadavatele: u odhlášeného kontaktu tlačítko NEMÁ CO ŘÍCT. Potvrzený už byl,
+   * jinak by mu nemohlo nic dojít a neměl by se jak odhlásit. Nabízet mu „označit jako
+   * potvrzený" znamená slovem „potvrzený" zakrýt, že se přepisuje jeho rozhodnutí.
+   * Cesta zpátky je „přihlásit zpět" (`resubscribe`), samostatná a poctivě pojmenovaná.
+   */
+  it('u odhlášeného kontaktu se akce nenabízí, protože potvrzený už byl', () => {
+    renderTable({ rows: [...rows, unsubscribed] });
+
+    expect(
+      screen.queryByRole('button', { name: 'Označit kontakt odhlaseny@firma.cz jako potvrzený' }),
+    ).toBeNull();
+  });
+
+  it('u potvrzeného kontaktu se akce nenabízí', () => {
+    renderTable();
+    expect(
+      screen.queryByRole('button', { name: 'Označit kontakt jana@firma.cz jako potvrzený' }),
+    ).toBeNull();
+  });
+
+  it('nikde v seznamu nestojí, že kontakt povýšit nejde', () => {
+    renderTable({ rows: [...rows, unsubscribed] });
+    expect(screen.queryByText(/povýšit nejde/i)).toBeNull();
+    expect(screen.queryByText(/jde to jen u kontaktu/i)).toBeNull();
+    expect(screen.queryByText(/povýšit jde jen kontakt/i)).toBeNull();
+  });
+
+  it('hromadná akce nad výběrem zůstává, protože je užitečná u dávky', async () => {
+    const user = userEvent.setup();
+    renderTable();
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Vybrat kontakt' })[1]!);
+
+    expect(
+      await screen.findByRole('button', { name: 'Označit jako potvrzené' }),
+    ).toBeInTheDocument();
   });
 });

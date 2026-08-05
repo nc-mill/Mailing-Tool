@@ -39,8 +39,27 @@ const issue = (
   params?: Record<string, string | number>,
 ): Issue => ({ code, severity, pointer, path: pointerToDotted(pointer), params });
 
+/**
+ * Je odkaz v šabloně tohohle druhu vůbec sledovatelný?
+ *
+ * Transakční profil se kompiluje s `trackClicks: false` (viz `test-send.ts`
+ * a `delivery-email.ts`), takže vlastnost bloku `trackable` je v něm mrtvá:
+ * značka nevznikne a sledovat se nemá co. Vynucuje se to TÍMHLE PROFILEM,
+ * ne obejitím kontroly, takže `liquid_in_trackable_href` u kampaňové šablony
+ * platí beze změny.
+ *
+ * Důvod je věcný, ne pohodlnost: transakční odkaz bývá jednorázový a kdyby šel
+ * přes `/t/c/`, bezpečnostní skener v poštovní schránce by ho otevřel a token
+ * spotřeboval dřív než člověk.
+ */
+function tracksLinks(kind: StructureContext['templateKind']): boolean {
+  return kind !== 'transactional';
+}
+
 export function checkStructure(doc: Document, ctx: StructureContext): Issue[] {
   const issues: Issue[] = [];
+  const tracks = tracksLinks(ctx.templateKind);
+  const trackable = (declared: boolean): boolean => declared && tracks;
   const seenIds = new Set<string>();
   let blockCount = 0;
   let footerCount = 0;
@@ -102,7 +121,7 @@ export function checkStructure(doc: Document, ctx: StructureContext): Issue[] {
         checkReserved(node, inlinePointer, issues);
         if (node.t !== 'a') continue;
         linkCount += 1;
-        checkHref(node.href, node.trackable !== false, inlinePointer, issues);
+        checkHref(node.href, trackable(node.trackable !== false), inlinePointer, issues, tracks);
         const systemTag = node.href.trim().match(SYSTEM_URL_TAG);
         if (systemTag?.[1] === 'unsubscribe_url') {
           unsubscribeCarriers.push({
@@ -119,14 +138,26 @@ export function checkStructure(doc: Document, ctx: StructureContext): Issue[] {
       const image = block as ImageBlock;
       if (image.props.href) {
         linkCount += 1;
-        checkHref(image.props.href, image.props.trackable, `${pointer}/props/href`, issues);
+        checkHref(
+          image.props.href,
+          trackable(image.props.trackable),
+          `${pointer}/props/href`,
+          issues,
+          tracks,
+        );
       }
       checkReservedString(image.props.alt, `${pointer}/props/alt`, issues);
     }
     if (block.type === 'button') {
       const button = block as ButtonBlock;
       linkCount += 1;
-      checkHref(button.props.href, button.props.trackable, `${pointer}/props/href`, issues);
+      checkHref(
+        button.props.href,
+        trackable(button.props.trackable),
+        `${pointer}/props/href`,
+        issues,
+        tracks,
+      );
     }
     if (block.type === 'html') {
       checkReservedString((block as HtmlBlock).props.code, `${pointer}/props/code`, issues);
@@ -135,7 +166,13 @@ export function checkStructure(doc: Document, ctx: StructureContext): Issue[] {
       const social = block as SocialBlock;
       for (let i = 0; i < social.props.items.length; i += 1) {
         linkCount += 1;
-        checkHref(social.props.items[i]!.href, false, `${pointer}/props/items/${i}/href`, issues);
+        checkHref(
+          social.props.items[i]!.href,
+          false,
+          `${pointer}/props/items/${i}/href`,
+          issues,
+          tracks,
+        );
       }
     }
     if (block.type === 'footer' && (block as FooterBlock).props.showUnsubscribe) {
@@ -175,7 +212,13 @@ function checkReservedString(value: string, pointer: string, issues: Issue[]): v
   }
 }
 
-function checkHref(href: string, trackable: boolean, pointer: string, issues: Issue[]): void {
+function checkHref(
+  href: string,
+  trackable: boolean,
+  pointer: string,
+  issues: Issue[],
+  tracksLinks = true,
+): void {
   const trimmed = href.trim();
   if (trimmed === '' || trimmed === '#') {
     issues.push(issue('content_link_anchor_only', 'error', pointer));
@@ -184,11 +227,15 @@ function checkHref(href: string, trackable: boolean, pointer: string, issues: Is
   if (SYSTEM_URL_TAG.test(trimmed)) return;
   if (HAS_LIQUID.test(trimmed)) {
     // Kód se jmenuje liquid_in_trackable_href, takže je to chyba jen u trackovaného odkazu.
-    issues.push(
-      trackable
-        ? issue('liquid_in_trackable_href', 'error', pointer)
-        : issue('link_variable_not_tracked', 'warning', pointer),
-    );
+    if (trackable) {
+      issues.push(issue('liquid_in_trackable_href', 'error', pointer));
+      return;
+    }
+    // Varování dává smysl jen tam, kde se odkazy sledují: říká „tenhle jeden
+    // se do statistiky nedostane". V šabloně, kde se nesleduje NIC, je
+    // proměnná v odkazu normální stav, ne odchylka, a hlásit ji u každého
+    // tlačítka by z transakční šablony udělalo trvale varovnou.
+    if (tracksLinks) issues.push(issue('link_variable_not_tracked', 'warning', pointer));
     return;
   }
   let parsed: URL;

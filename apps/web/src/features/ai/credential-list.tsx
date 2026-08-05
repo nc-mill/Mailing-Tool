@@ -23,11 +23,19 @@ export type PublicCredential = {
 
 export type ProviderOption = { id: string; label: string; signupUrl: string };
 
+/**
+ * Kódy, ke kterým umíme napsat konkrétní větu. Neznámý kód se NEPŘEKLÁDÁ na
+ * výpadek poskytovatele, ale ukáže se sám, ať je co dohledat. Viz `ERROR_KEYS`
+ * v `assistant-panel.tsx`, kde byl tentýž lživý výchozí překlad.
+ */
 const ERROR_LABEL: Record<string, string> = {
   ai_invalid_credentials: 'invalidKey',
   ai_insufficient_credit: 'quota',
   ai_provider_unavailable: 'providerDown',
   ai_rate_limited: 'rateLimited',
+  ai_model_not_found: 'modelNotFound',
+  ai_unsupported_parameter: 'unsupportedParameter',
+  ai_request_failed: 'requestFailed',
 };
 
 /**
@@ -103,9 +111,10 @@ export function CredentialList({
               {credential.last_error_code !== null ? (
                 <span data-testid={`credential-error-${credential.id}`}>
                   <Badge tone="danger" icon={SlashIcon}>
-                    {t(`errors.${ERROR_LABEL[credential.last_error_code] ?? 'providerDown'}`, {
+                    {t(`errors.${ERROR_LABEL[credential.last_error_code] ?? 'unknownShort'}`, {
                       provider: credential.provider,
                       seconds: 20,
+                      code: credential.last_error_code,
                     })}
                   </Badge>
                 </span>

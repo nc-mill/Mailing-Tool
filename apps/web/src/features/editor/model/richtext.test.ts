@@ -10,7 +10,11 @@ const sample: RichText = [
     align: 'center',
     children: [
       { t: 's', v: 'Dobrý den, ' },
-      { t: 'var', expr: 'contact.first_name_vocative', fallback: 'kolego' },
+      // `| default` ve výrazu je POVINNÉ, když uzel nese náhradní hodnotu.
+      // Emitter vkládá argument záměnou za název filtru, takže bez něj se
+      // náhrada do e-mailu nedostane. Stejně to má zlatý vzorek
+      // `packages/emails/test/__fixtures__/documents/08-filter-slots.json`.
+      { t: 'var', expr: 'contact.first_name_vocative | default', fallback: 'kolego' },
       { t: 's', v: ' a ', b: true, i: true },
       { t: 'a', href: 'https://shop.cz', trackable: true, children: [{ t: 's', v: 'nabídka' }] },
       { t: 'br' },
@@ -37,7 +41,83 @@ describe('richtext', () => {
     const node = richTextToTiptap(sample).content![0]!.content![1];
     expect(node).toEqual({
       type: 'personalization',
-      attrs: { expr: 'contact.first_name_vocative', fallback: 'kolego', dateFormat: null },
+      attrs: {
+        expr: 'contact.first_name_vocative | default',
+        fallback: 'kolego',
+        dateFormat: null,
+      },
+    });
+  });
+
+  it('náhradní hodnota doplní do výrazu filtr default, jinak by se ztratila', () => {
+    // Vada z provozu: uzel měl `fallback`, ale výraz filtr neměl, takže
+    // `varOutput` v emitteru neměl co nahradit a kontakt bez jména dostal
+    // větu „Dobrý den, ," místo náhradního oslovení.
+    const back = tiptapToRichText({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          attrs: { align: null },
+          content: [
+            {
+              type: 'personalization',
+              attrs: { expr: 'contact.first_name', fallback: 'kolego', dateFormat: null },
+            },
+          ],
+        },
+      ],
+    });
+    expect((back[0] as Paragraph).children[0]).toEqual({
+      t: 'var',
+      expr: 'contact.first_name | default',
+      fallback: 'kolego',
+    });
+  });
+
+  it('vymazaná náhradní hodnota filtr z výrazu zase odebere', () => {
+    const back = tiptapToRichText({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          attrs: { align: null },
+          content: [
+            {
+              type: 'personalization',
+              attrs: { expr: 'contact.first_name | default', fallback: null, dateFormat: null },
+            },
+          ],
+        },
+      ],
+    });
+    expect((back[0] as Paragraph).children[0]).toEqual({
+      t: 'var',
+      expr: 'contact.first_name',
+    });
+  });
+
+  it('formát data doplní filtr date a pořadí filtrů je date, potom default', () => {
+    const back = tiptapToRichText({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          attrs: { align: null },
+          content: [
+            {
+              type: 'personalization',
+              attrs: { expr: 'contact.signup_date', fallback: 'nikdy', dateFormat: '%d.%m.%Y' },
+            },
+          ],
+        },
+      ],
+    });
+    expect((back[0] as Paragraph).children[0]).toEqual({
+      t: 'var',
+      expr: 'contact.signup_date | date | default',
+      fallback: 'nikdy',
+      dateFormat: '%d.%m.%Y',
     });
   });
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"regexp"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/sesv2/types"
@@ -22,7 +23,12 @@ func (d *Dispatcher) Classify(err error) provider.Verdict {
 		return provider.Verdict{Class: errcatalog.ClassRetryable, Code: errcatalog.NetworkError}
 	}
 	verdict := func(class errcatalog.ErrorClass, code string) provider.Verdict {
-		return provider.Verdict{Class: class, Code: code, ProviderCode: providerCode(err)}
+		return provider.Verdict{
+			Class:          class,
+			Code:           code,
+			ProviderCode:   providerCode(err),
+			ProviderDetail: providerDetail(err),
+		}
 	}
 
 	var tooMany *types.TooManyRequestsException
@@ -97,4 +103,50 @@ func providerCode(err error) string {
 		return apiErr.ErrorCode()
 	}
 	return "unknown"
+}
+
+// providerDetailMaxLen drží větu v rozumné délce. Amazon do ní u některých chyb
+// vypíše seznam identit a ten může být dlouhý; `pause_reason.detail` má strop
+// 2000 znaků na celý řetězec, do kterého se tohle jen vkládá.
+const providerDetailMaxLen = 400
+
+// emailPattern hledá e-mailovou adresu v textu odpovědi provideru.
+var emailPattern = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
+
+// providerDetail vrátí větu od Amazonu s ZAMASKOVANÝMI adresami.
+//
+// Věta je u SES často jediné místo, kde stojí, co se má opravit: u
+// `MessageRejected` třeba „Email address is not verified. The following
+// identities failed the check in region EU-WEST-1: ahoj@brevio.cz". Kód
+// `MessageRejected` sám o sobě neřekne ani to, jestli neprošel odesílatel,
+// nebo příjemce.
+//
+// MASKOVÁNÍ NENÍ VOLITELNÉ. Věta končí v logu a v `pause_reason`, a do obojího
+// podle kapitoly 4.4 části 4b adresa příjemce nesmí. Maskuje se ale JEN místní
+// část, doména zůstává: bez ní by údaj ztratil smysl, protože právě podle domény
+// se pozná, jestli neprošla odesílací identita, nebo adresa příjemce.
+func providerDetail(err error) string {
+	var apiErr smithy.APIError
+	if !errors.As(err, &apiErr) {
+		return ""
+	}
+	msg := strings.TrimSpace(apiErr.ErrorMessage())
+	if msg == "" {
+		return ""
+	}
+	msg = emailPattern.ReplaceAllStringFunc(msg, maskAddress)
+	msg = strings.Join(strings.Fields(msg), " ")
+	if len(msg) > providerDetailMaxLen {
+		msg = msg[:providerDetailMaxLen] + "…"
+	}
+	return msg
+}
+
+// maskAddress nahradí místní část adresy hvězdičkami a nechá doménu.
+func maskAddress(addr string) string {
+	at := strings.LastIndex(addr, "@")
+	if at <= 0 {
+		return "***"
+	}
+	return "***" + addr[at:]
 }

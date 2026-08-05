@@ -32,6 +32,7 @@ const basePayload: StatsPayload = {
   track_opens: true,
   track_clicks: true,
   delivered_source: 'provider_events',
+  delivered_known: true,
   counts: {
     sent: 1153,
     delivered: 1141,
@@ -58,15 +59,15 @@ const basePayload: StatsPayload = {
   updated_at: '2026-07-31T18:02:00.000Z',
 };
 
-function renderTiles(payload: StatsPayload) {
+function renderTiles(payload: StatsPayload, label: string = csReports.report.clicked.label) {
   render(
     <NextIntlClientProvider locale="cs" messages={messages} timeZone="Europe/Prague">
       <HeadlineTiles payload={payload} />
     </NextIntlClientProvider>,
   );
-  const heading = screen.getByText(csReports.report.clicked.label);
+  const heading = screen.getByText(label);
   const tile = heading.closest('section');
-  if (tile === null) throw new Error('Dlaždice prokliků se nevykreslila.');
+  if (tile === null) throw new Error(`Dlaždice „${label}" se nevykreslila.`);
   return tile;
 }
 
@@ -99,6 +100,41 @@ describe('HeadlineTiles je zapojená na metricDisplay', () => {
 
     expect(tile).toHaveTextContent('–');
     expect(tile).not.toHaveTextContent('%');
+  });
+
+  /**
+   * Naměřený nález zadavatele: kampaň normálně dorazila do tří schránek a report
+   * u ní hlásil „Doručeno 0". Není to špatné měření, ale ABSENCE MĚŘENÍ: doručení
+   * hlásí jedině odesílací služba, a dokud od ní nedorazí ani jedna událost, není
+   * to číslo z čeho vzít. Nula na tom místě tvrdí, že rozesílka nedošla nikomu.
+   *
+   * Kdyby tenhle test spadl: neupravuj ho. Znamená to, že se nezměřená doručenost
+   * zase vydává za naměřenou nulu, což je táž záměna, jakou o pár testů výš hlídá
+   * vypnuté měření prokliků.
+   */
+  it('u nezměřené doručenosti ukáže vysvětlení a žádné číslo, ne nulu', () => {
+    const tile = renderTiles(
+      {
+        ...basePayload,
+        delivered_known: false,
+        counts: { ...basePayload.counts, delivered: 0, delivered_effective: 0 },
+      },
+      csReports.report.delivered.label,
+    );
+
+    expect(tile).toHaveTextContent(csReports.report.states.deliveryUnknown);
+    expect(tile).toHaveTextContent(csReports.report.delivered.hintUnknown);
+    // Vysvětlivka mluví o osudu e-mailů, ne o číslech, takže v dlaždici nesmí
+    // zůstat ani jedna číslice. Kdyby tam „0" byla, celý smysl padá.
+    expect(tile.textContent ?? '').not.toMatch(/\d/);
+  });
+
+  it('u změřené doručenosti ukáže číslo i odkud se bere', () => {
+    const tile = renderTiles(basePayload, csReports.report.delivered.label);
+
+    expect(tile).toHaveTextContent('1 141');
+    expect(tile).toHaveTextContent(csReports.report.delivered.hintProvider);
+    expect(tile).not.toHaveTextContent(csReports.report.states.deliveryUnknown);
   });
 
   it('u malého vzorku připojí k procentu výhradu', () => {

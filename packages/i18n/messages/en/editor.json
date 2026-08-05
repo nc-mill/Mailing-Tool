@@ -7,18 +7,29 @@
   },
   "header": {
     "back": "Back to templates",
+    "save": "Save",
     "saved": "Saved at {time}",
     "saving": "Saving…",
     "saveFailed": "Could not save, retrying",
+    "saveInvalid": "Cannot save yet, please fix the problems above",
     "unsaved": "Unsaved changes",
     "preview": "Preview",
     "edit": "Back to editing",
     "testSend": "Send test",
-    "rename": "Template name"
+    "rename": "Template name",
+    "name": {
+      "empty": "The name cannot be empty.",
+      "tooLong": "The name can be at most {max} characters long.",
+      "conflict": "A template with this name already exists in the project. Choose another one.",
+      "failed": "The name could not be saved. Technical detail: {code}"
+    },
+    "campaignContent": "Campaign content",
+    "backToCampaign": "Save and back to the campaign"
   },
   "palette": {
     "title": "Blocks",
     "hint": "Add a block with the plus button between blocks, or by dragging.",
+    "dragHint": "Drag a block where it belongs, including inside a column. Clicking inserts it after the selected block.",
     "group": {
       "content": "Content",
       "layout": "Layout"
@@ -230,6 +241,7 @@
     "color": {
       "none": "Transparent",
       "custom": "Custom color",
+      "paletteLabel": "Theme colors",
       "brand": {
         "primary": "Primary brand color",
         "secondary": "Secondary brand color",
@@ -278,7 +290,8 @@
     "escape": "Clear the selection"
   },
   "insert": {
-    "after": "Add a block after {block}"
+    "after": "Add a block after {block}",
+    "intoEmpty": "Add a block here"
   },
   "a11y": {
     "announcements": "Editor announcements",
@@ -338,14 +351,19 @@
     },
     "longTextHint": "Line breaks will not show in the email.",
     "unknownField": "This field does not exist in this project.",
-    "suggestion": "You probably mean {suggestion}."
+    "suggestion": "You probably mean {suggestion}.",
+    "greetingHint": "A complete sentence including the vocative case, for example “Dobrý den, Petře”. For a contact without a name it shortens itself, so a dangling comma can never appear.",
+    "fragmentWarning": "This is only a name, not a greeting. If you type “Hello,” in front of it, a contact without a name gets a dangling comma and a contact in a language without the vocative case keeps the plain form. Use the Greeting field instead."
   },
   "personalization": {
     "search": "Search fields",
     "empty": "No field matches.",
     "groupSystem": "System links",
     "groupContact": "Contact details",
-    "groupCustom": "Custom fields"
+    "groupCustom": "Custom fields",
+    "groupGreeting": "Greeting with the vocative",
+    "greetingHint": "Recommended. Inserts the whole sentence including the vocative case.",
+    "fragmentHint": "Name only. Do not build a greeting out of it."
   },
   "field": {
     "unsubscribeUrl": "Unsubscribe link",
@@ -386,12 +404,22 @@
     "web": "Web",
     "email": "Email"
   },
+  "canvas": {
+    "imagePick": "Click to choose an image",
+    "imageMissing": "This image is no longer in the library. Choose another one.",
+    "assistantToggle": "Show or hide the AI assistant",
+    "emptyColumn": "Empty column",
+    "emptySection": "Empty section",
+    "assistantOpen": "AI assistant",
+    "assistantHide": "Hide the AI assistant"
+  },
   "asset": {
     "title": "Images",
     "pick": "Choose an image",
     "change": "Change the image",
     "remove": "Remove",
-    "upload": "Upload an image"
+    "upload": "Upload an image",
+    "uploadFailed": "The image could not be uploaded."
   },
   "link": {
     "schemeForbidden": "A link must start with https, http, mailto or tel.",
@@ -407,8 +435,8 @@
   "issues": {
     "title": "Template findings",
     "errorCount": "{count, plural, =0 {no errors} one {# error} other {# errors}}",
-    "warningCount": "{count, plural, =0 {no warnings} one {# warning} other {# warnings}}",
-    "goToBlock": "Go to block"
+    "goToBlock": "Go to block",
+    "stale": "Found before your latest edit, it will be recalculated after saving."
   },
   "preview": {
     "desktop": "Desktop",
@@ -423,14 +451,19 @@
     "noNameContact": "Contact without a name",
     "sampleData": "Sample data",
     "sizeKb": "Size {size} kB",
-    "failed": "The preview could not be generated."
+    "failed": "The preview could not be generated.",
+    "tokens": "Merge tags",
+    "linkOnSend": "(the link is created when the email is sent)",
+    "searchContact": "Find a contact by name",
+    "viewAsHint": "The choice applies to the canvas and to the preview. The email always carries the merge tag.",
+    "readOnlyView": "{mode}: read only, no editing here.",
+    "backToCanvas": "Back to editing"
   },
   "testSend": {
     "title": "Test email",
     "recipients": "Addresses",
     "submit": "Send test",
     "recipientsHint": "At most {max} addresses separated by commas.",
-    "prefix": "Add a TEST marker to the subject",
     "explain": "A test email does not count towards statistics and tracks neither opens nor clicks.",
     "noRecipients": "Enter at least one address.",
     "tooMany": "You can send to at most five addresses at once.",
@@ -454,7 +487,8 @@
     "notFoundBody": "Someone else may have deleted it, or the address has a typo.",
     "backToList": "Back to the template list",
     "forbiddenBody": "Opening a template needs the templates:read permission and your role does not have it.",
-    "forbiddenWhoCanHelp": "The project owner can change your role."
+    "forbiddenWhoCanHelp": "The project owner can change your role.",
+    "returnFailed": "The content could not be taken over into the campaign ({code}). Your changes stay saved in the editor."
   },
   "list": {
     "title": "Templates",
@@ -464,7 +498,46 @@
     "open": "Open",
     "loadFailed": "Templates could not be loaded.",
     "createFailed": "The template could not be created.",
-    "newName": "New template"
+    "newName": "New template",
+    "newTransactionalName": "New transactional email",
+    "category": {
+      "legend": "Category",
+      "all": "All",
+      "campaign": "Campaigns and newsletters",
+      "form": "Form emails",
+      "transactional": "Transactional emails",
+      "badgeForm": "Form email",
+      "badgeTransactional": "Transactional email",
+      "empty": "There is no template in this category yet.",
+      "emptyAction": "Show all templates"
+    },
+    "usage": {
+      "form": "Sent by the form “{name}”.",
+      "listConfirmation": "Confirms sign-ups to the list “{name}”.",
+      "listWelcome": "Welcomes new contacts in the list “{name}”.",
+      "locked": "It cannot be deleted while it is wired up like this."
+    },
+    "createTransactional": "New transactional email",
+    "createKind": {
+      "campaign": "Campaign or newsletter"
+    },
+    "delete": {
+      "action": "Delete",
+      "title": "Delete the template “{name}”?",
+      "consequenceLibrary": "The template disappears from the library everyone in the project sees.",
+      "consequenceCampaigns": "Campaigns created from it stay unchanged. They hold their own copy of the content.",
+      "consequenceVersions": "The version history and the test send records stay saved.",
+      "consequenceUndo": "We offer Undo right after the deletion.",
+      "confirm": "Delete the template",
+      "failed": "The template could not be deleted. Technical detail: {code}",
+      "starterImmutable": "This is a built-in template and cannot be deleted. You can duplicate it and edit the copy.",
+      "inUse": "A form or a list sends this template. Disconnect it there first, then it can be deleted.",
+      "done": "The template “{name}” is deleted.",
+      "undo": "Undo",
+      "undoFailed": "The template could not be brought back. Technical detail: {code}",
+      "undoConflict": "Another template has taken the name “{name}” in the meantime, so this one cannot come back. Rename the new one and try again.",
+      "restored": "The template “{name}” is back in the library."
+    }
   },
   "issue": {
     "content_asset_not_found": "This image is no longer in the library.",
@@ -486,6 +559,7 @@
     "content_reserved_marker": "The text contains a reserved marker that sending fills in.",
     "content_too_many_blocks": "A template can hold at most 300 blocks and that limit is used up.",
     "content_too_many_links": "There are too many links, click tracking would stop making sense.",
+    "link_variable_not_tracked": "A link with a merge tag will not appear in click statistics.",
     "liquid_comparison_operator_not_supported": "This operator cannot be used in a condition.",
     "liquid_contains_not_allowed": "The \"contains\" condition cannot be used here.",
     "liquid_date_format_not_allowed": "This date format is not allowed.",

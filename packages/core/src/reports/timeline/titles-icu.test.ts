@@ -27,6 +27,29 @@ describe('věty časové osy v katalogu', () => {
     );
   });
 
+  /**
+   * Proklik na systémový odkaz musí dát VĚTU BEZ DÍRY. Obecné
+   * `messageClicked` má slot `{link}`, který u systémového odkazu nikdo
+   * nenaplní (nemá řádek v `campaign_links`), takže z toho v prohlížeči
+   * vzniklo „Klikl na  v kampani Test kampaň".
+   */
+  it('u prokliku na systémový odkaz složí konkrétní větu bez prázdného slotu', () => {
+    const cs = translatorFor('cs');
+    expect(
+      composeTitle(cs, row('message_clicked_preferences', { campaign: 'Letní výprodej' }), 'male'),
+    ).toBe('Otevřel centrum předvoleb z kampaně Letní výprodej');
+    expect(
+      composeTitle(
+        cs,
+        row('message_clicked_unsubscribe_page', { campaign: 'Letní výprodej' }),
+        'female',
+      ),
+    ).toBe('Otevřela stránku odhlášení z kampaně Letní výprodej');
+    expect(
+      composeTitle(cs, row('message_clicked_webview', { campaign: 'Letní výprodej' }), 'unknown'),
+    ).toBe('Zobrazení kampaně Letní výprodej v prohlížeči');
+  });
+
   it('u neznámého rodu použije podstatné jméno, ne mužský tvar', () => {
     const cs = translatorFor('cs');
     const title = composeTitle(
@@ -45,6 +68,9 @@ describe('věty časové osy v katalogu', () => {
       'message_delivered',
       'message_opened',
       'message_clicked',
+      'message_clicked_unsubscribe_page',
+      'message_clicked_preferences',
+      'message_clicked_webview',
       'message_bounced',
       'message_complained',
       'message_unsubscribed',

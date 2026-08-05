@@ -8,6 +8,7 @@ import { registerApiKeyRoutes } from '@mlain/core/identity/api/api-keys.routes';
 import { registerWebhookEndpointRoutes } from '@mlain/core/platform/api/webhooks.routes';
 import { registerAuditRoutes, setPaginationDeps } from '@mlain/core/platform/api/audit.routes';
 import { registerJobRoutes } from '@mlain/core/platform/api/jobs.routes';
+import { registerSystemMailRoutes } from '@mlain/core/platform/api/system-mail.routes';
 import { registerContactsRoutes } from '@mlain/core/contacts/api';
 import { registerOnboardingRoutes } from '@mlain/core/onboarding/api';
 import { registerDemoDataRoutes } from '@mlain/core/demo/api';
@@ -16,8 +17,11 @@ import { registerSegmentApiRoutes } from '@mlain/core/segments/api';
 import { registerTemplateApiRoutes } from '@mlain/core/templates/api';
 import { registerAssetApiRoutes } from '@mlain/core/assets/api';
 import { registerCampaignApiRoutes } from '@mlain/core/campaigns/api';
+import { registerTransactionalApiRoutes } from '@mlain/core/transactional/api';
 import { registerProviderApiRoutes } from '@mlain/core/providers/api';
+import { registerSenderIdentityApiRoutes } from '@mlain/core/sender-identities/api';
 import { registerAiApiRoutes } from '@mlain/core/ai/api';
+import { registerBrandApiRoutes } from '@mlain/core/brand/api';
 import { registerImportApiRoutes } from '@mlain/core/contacts/import/api';
 import { registerExportApiRoutes } from '@mlain/core/contacts/export/api';
 import { registerReportsRoutes } from '@mlain/core/reports/api';
@@ -85,6 +89,9 @@ export function buildApp(): OpenAPIHono<ApiEnv> {
   registerWebhookEndpointRoutes(app);
   registerAuditRoutes(app);
   registerJobRoutes(app);
+  // Stav systémové pošty. Obrazovky se podle něj rozhodují, jestli vůbec nabízet
+  // pozvánku e-mailem: odeslat ji umí jen účet typu SMTP.
+  registerSystemMailRoutes(app);
   // Import a export kontaktů (P11) se registrují PŘED doménou kontaktů, a to
   // je podstatné, ne kosmetické.
   //
@@ -156,10 +163,39 @@ export function buildApp(): OpenAPIHono<ApiEnv> {
   // Doména kampaní a nastavení odesílání (P13). Týž tvar jako u kontaktů a segmentů:
   // definice cest leží v packages/core, mount je tady.
   registerCampaignApiRoutes(app);
+  // Transakční pošta přes API. Vlastní doména a vlastní scope `transactional:send`:
+  // `campaigns:send` gatuje i pozastavení a zrušení kampaně, takže klíč
+  // v aplikaci zákazníka, který má poslat reset hesla, by uměl zastavit rozesílku.
+  registerTransactionalApiRoutes(app);
   registerProviderApiRoutes(app);
+  // Předvolby odesílatele. Vlastní doména, ale týž tag `Sending`: v dokumentaci
+  // patří k účtům a doménám do jedné kapitoly. Pořadí vůči providerům je
+  // libovolné, cesty `/senders/**` se s `/providers/**` ani `/domains/**`
+  // nepřekrývají.
+  registerSenderIdentityApiRoutes(app);
   // Doména AI (P15). Týž tvar jako u kontaktů a segmentů: definice cest
   // i handlery leží v `packages/core/src/ai/api/index.ts`, tady jen mount.
   registerAiApiRoutes(app);
+  /*
+   * Doména značky (P15). Bez tohohle řádku vracelo `POST /api/v1/brand/extractions`
+   * čtyřistačtyřku a tlačítko „Stáhnout barvy a logo z webu" na obrazovce
+   * Značka projektu nešlo použít vůbec.
+   *
+   * Hledalo se to mizerně, protože obrazovka tu odpověď překládala na hlášku
+   * „Na adresu … jsme se nedostali. Zkontrolujte, jestli tam není překlep,
+   * a jestli web funguje.", takže to vypadalo jako vada CIZÍHO webu. Naměřeno
+   * 4. 8. 2026: `POST /api/v1/brand/extractions` skončilo 404 za dvě
+   * milisekundy s `workspace_id: null`, kdežto `GET /api/v1/assets` s toutéž
+   * hlavičkou vrátilo 401. Rozdíl mezi 401 a 404 při stejné hlavičce je právě
+   * ten důkaz: požadavek nedošel k autentizaci, protože žádná taková cesta
+   * neexistovala.
+   *
+   * Doména přitom byla hotová a otestovaná včetně obsluhy fronty
+   * (`content.brand_extract` v `apps/worker/src/handlers.generated.ts`);
+   * chyběla jen HTTP vrstva, tedy `packages/core/src/brand/api/index.ts`
+   * a tenhle mount.
+   */
+  registerBrandApiRoutes(app);
   // Doména reportů (P14). Pět čtecích cest: souhrn kampaně, průběh v čase,
   // odkazy, příjemci, živý proud a časová osa kontaktu s přehledem projektu.
   registerReportsRoutes(app);
@@ -203,6 +239,29 @@ export type OpenApiDocument = {
 };
 
 export function buildOpenApiDocument(app: OpenAPIHono<ApiEnv>): OpenApiDocument {
+  /**
+   * Definice `bearerAuth`. Bez ní je celý dokument sice plný `security:
+   * [{ bearerAuth: [...] }]`, ale `components.securitySchemes` chybí, takže
+   * schéma neexistuje a odkazuje se do prázdna.
+   *
+   * Následek není kosmetický: generátory klientů (`openapi-generator`,
+   * `openapi-typescript`) z takového dokumentu vyrobí klienta BEZ autorizace
+   * a zákazník pak zjistí až za běhu, že mu každé volání vrací 401. Stejně
+   * tak Swagger UI nenabídne tlačítko Authorize.
+   *
+   * Registruje se tady, ne v `buildApp()`: dokument se skládá jen tady
+   * a registrace při stavbě aplikace by běžela i pro každý běh testů.
+   */
+  app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
+    type: 'http',
+    scheme: 'bearer',
+    description:
+      'API klíč ve tvaru `ml_live_<prefix>_<sekret>`. Posílá se jako ' +
+      '`Authorization: Bearer <klíč>`. Rozsah oprávnění klíče se vydává při ' +
+      'jeho založení; hodnoty v `security` u jednotlivých operací říkají, ' +
+      'který scope daná operace vyžaduje.',
+  });
+
   return app.getOpenAPI31Document({
     openapi: '3.1.0',
     info: {

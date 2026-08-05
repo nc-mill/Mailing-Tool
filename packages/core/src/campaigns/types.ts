@@ -101,6 +101,12 @@ export type Campaign = {
   audience_built_at: string | null;
   provider_id: string | null;
   sender_domain_id: string | null;
+  /**
+   * Předvolba odesílatele, ze které se pět polí výš předvyplnilo. Do
+   * `IMMUTABLE_WHILE_SENDING` ZÁMĚRNĚ NEPATŘÍ: sender ji nečte, odeslaná zpráva
+   * na ní nezávisí, takže by zmrazení jen bránilo úklidu bez jakéhokoli užitku.
+   */
+  sender_identity_id: string | null;
   unsubscribe_list_id: string | null;
   track_opens: boolean;
   track_clicks: boolean;

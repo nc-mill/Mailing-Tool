@@ -14,16 +14,25 @@ import { isSupportedLocale, type Locale } from './locales';
  */
 export const NAMESPACES = [
   'ai',
+  'assets',
   'auth',
   'campaigns',
   'common',
   'contacts',
   'editor',
+  // Formuláře na web. Vlastní namespace, ne přírůstek do `contacts`: obrazovky
+  // formulářů jsou samostatná položka hlavní navigace a katalog kontaktů vlastní
+  // jiný plán, takže by dva plány psaly do jednoho souboru (uzávěr S4).
+  'forms',
   'import',
   'onboarding',
   'reports',
   'segments',
   'settings',
+  // Měření webu. Vlastní namespace, ne přírůstek do `settings`: texty patří
+  // k obrazovce měření, k reportu kampaně i k veřejné stránce neplatného
+  // odkazu, tedy do tří míst mimo nastavení.
+  'tracking',
 ] as const;
 
 export type MessageTree = Record<string, unknown>;

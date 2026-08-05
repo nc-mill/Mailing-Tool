@@ -1,0 +1,225 @@
+{
+  "source": "https://docs.aws.amazon.com/general/latest/gr/ses.html",
+  "sourceTitle": "Amazon Simple Email Service endpoints and quotas, tabulka Service API endpoints",
+  "optInSource": "https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-regions.html",
+  "verifiedAt": "2026-08-04",
+  "note": "Seznam je opsaný z tabulky endpointů SESv2 (email.<region>.amazonaws.com) a zkontrolovaný proti souboru endpoints.json z botocore. Regiony, které hlásí strojová tabulka api.regional-table.region-services.aws.a2z.com, ale v dokumentaci ani v botocore nejsou (ap-east-1, ap-east-2, ap-southeast-4, ap-southeast-6, ap-southeast-7, mx-central-1), tady schválně NEJSOU: jejich endpoint se nepřeloží. Chybí i eu-south-2, který sice odpovídá, ale v dokumentaci uvedený není. GovCloud a European Sovereign Cloud jsou jiné oddíly AWS a běžný účet se do nich nedostane.",
+  "regions": [
+    {
+      "code": "eu-central-1",
+      "awsName": "Europe (Frankfurt)",
+      "cityCs": "Frankfurt",
+      "cityEn": "Frankfurt",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "eu-west-1",
+      "awsName": "Europe (Ireland)",
+      "cityCs": "Irsko",
+      "cityEn": "Ireland",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "eu-north-1",
+      "awsName": "Europe (Stockholm)",
+      "cityCs": "Stockholm",
+      "cityEn": "Stockholm",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "eu-west-2",
+      "awsName": "Europe (London)",
+      "cityCs": "Londýn",
+      "cityEn": "London",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "eu-west-3",
+      "awsName": "Europe (Paris)",
+      "cityCs": "Paříž",
+      "cityEn": "Paris",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "eu-central-2",
+      "awsName": "Europe (Zurich)",
+      "cityCs": "Curych",
+      "cityEn": "Zurich",
+      "optIn": true,
+      "smtp": false
+    },
+    {
+      "code": "eu-south-1",
+      "awsName": "Europe (Milan)",
+      "cityCs": "Milán",
+      "cityEn": "Milan",
+      "optIn": true,
+      "smtp": false
+    },
+    {
+      "code": "us-east-1",
+      "awsName": "US East (N. Virginia)",
+      "cityCs": "Severní Virginie",
+      "cityEn": "N. Virginia",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "us-east-2",
+      "awsName": "US East (Ohio)",
+      "cityCs": "Ohio",
+      "cityEn": "Ohio",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "us-west-1",
+      "awsName": "US West (N. California)",
+      "cityCs": "Severní Kalifornie",
+      "cityEn": "N. California",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "us-west-2",
+      "awsName": "US West (Oregon)",
+      "cityCs": "Oregon",
+      "cityEn": "Oregon",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "ca-central-1",
+      "awsName": "Canada (Central)",
+      "cityCs": "Kanada, střed",
+      "cityEn": "Canada Central",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "ca-west-1",
+      "awsName": "Canada West (Calgary)",
+      "cityCs": "Calgary",
+      "cityEn": "Calgary",
+      "optIn": true,
+      "smtp": false
+    },
+    {
+      "code": "sa-east-1",
+      "awsName": "South America (São Paulo)",
+      "cityCs": "São Paulo",
+      "cityEn": "São Paulo",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "ap-northeast-1",
+      "awsName": "Asia Pacific (Tokyo)",
+      "cityCs": "Tokio",
+      "cityEn": "Tokyo",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "ap-northeast-2",
+      "awsName": "Asia Pacific (Seoul)",
+      "cityCs": "Soul",
+      "cityEn": "Seoul",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "ap-northeast-3",
+      "awsName": "Asia Pacific (Osaka)",
+      "cityCs": "Ósaka",
+      "cityEn": "Osaka",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "ap-south-1",
+      "awsName": "Asia Pacific (Mumbai)",
+      "cityCs": "Bombaj",
+      "cityEn": "Mumbai",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "ap-south-2",
+      "awsName": "Asia Pacific (Hyderabad)",
+      "cityCs": "Hajdarábád",
+      "cityEn": "Hyderabad",
+      "optIn": true,
+      "smtp": false
+    },
+    {
+      "code": "ap-southeast-1",
+      "awsName": "Asia Pacific (Singapore)",
+      "cityCs": "Singapur",
+      "cityEn": "Singapore",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "ap-southeast-2",
+      "awsName": "Asia Pacific (Sydney)",
+      "cityCs": "Sydney",
+      "cityEn": "Sydney",
+      "optIn": false,
+      "smtp": true
+    },
+    {
+      "code": "ap-southeast-3",
+      "awsName": "Asia Pacific (Jakarta)",
+      "cityCs": "Jakarta",
+      "cityEn": "Jakarta",
+      "optIn": true,
+      "smtp": false
+    },
+    {
+      "code": "ap-southeast-5",
+      "awsName": "Asia Pacific (Malaysia)",
+      "cityCs": "Malajsie",
+      "cityEn": "Malaysia",
+      "optIn": true,
+      "smtp": false
+    },
+    {
+      "code": "af-south-1",
+      "awsName": "Africa (Cape Town)",
+      "cityCs": "Kapské Město",
+      "cityEn": "Cape Town",
+      "optIn": true,
+      "smtp": false
+    },
+    {
+      "code": "il-central-1",
+      "awsName": "Israel (Tel Aviv)",
+      "cityCs": "Tel Aviv",
+      "cityEn": "Tel Aviv",
+      "optIn": true,
+      "smtp": false
+    },
+    {
+      "code": "me-central-1",
+      "awsName": "Middle East (UAE)",
+      "cityCs": "Spojené arabské emiráty",
+      "cityEn": "UAE",
+      "optIn": true,
+      "smtp": false
+    },
+    {
+      "code": "me-south-1",
+      "awsName": "Middle East (Bahrain)",
+      "cityCs": "Bahrajn",
+      "cityEn": "Bahrain",
+      "optIn": true,
+      "smtp": false
+    }
+  ]
+}

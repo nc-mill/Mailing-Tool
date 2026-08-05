@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { SYSTEM_CLICK_SUBTYPE } from '../../tracking/types';
 import type { Tx, WorkspaceContext } from '../../tx';
 import {
   HIDDEN_OPEN_SUBTYPES,
@@ -81,6 +82,26 @@ const EVENT_TYPE_MAP: Record<string, string> = {
 };
 
 /**
+ * Proklik na systémový odkaz v patičce má VLASTNÍ typ položky, ne obecné
+ * „kliknutí v kampani".
+ *
+ * VZNIKLO Z POHLEDU NA OSU. Systémový proklik nemá řádek v `campaign_links`,
+ * takže slot `{link}` zůstal prázdný a věta zněla „Klikl na  v kampani Test
+ * kampaň", tedy s dírou uprostřed. Přitom je z `metadata.system_link` přesně
+ * známo, KAM klikl, a „Otevřel centrum předvoleb" je pro odesílatele mnohem
+ * cennější informace než kliknutí na nic.
+ *
+ * Druhy jsou vyjmenované v `SYSTEM_LINK_KINDS` a odsud se jen mapují na klíče
+ * vět. Neznámý druh spadne na obecné `message_clicked`, tedy na dřívější
+ * chování, ne na chybu.
+ */
+const SYSTEM_LINK_TYPE_MAP: Record<string, string> = {
+  unsubscribe_page: 'message_clicked_unsubscribe_page',
+  preferences: 'message_clicked_preferences',
+  webview: 'message_clicked_webview',
+};
+
+/**
  * Události ke zprávě. Podmínka na received_at je povinná: řadí se podle ts,
  * ale partition prořezává jen partiční klíč.
  *
@@ -98,6 +119,10 @@ export async function messageEventBranch(
            e.ts AS occurred_at,
            e.type,
            e.subtype,
+           -- Který systémový odkaz to byl. Zapisuje ho recordSystemLinkClick
+           -- a bez něj by proklik z patičky zůstal větou s prázdnou dírou.
+           -- Zpětné apostrofy tu být nesmějí, ukončily by šablonu sql.
+           e.metadata ->> 'system_link' AS system_link,
            e.campaign_id,
            c.name AS campaign_name,
            l.url  AS link_url,
@@ -129,23 +154,39 @@ export async function messageEventBranch(
   `);
 
   return rows.map((row) => {
-    const type = EVENT_TYPE_MAP[String(row['type'])] ?? String(row['type']);
     const subtype =
       row['subtype'] === null || row['subtype'] === undefined ? null : String(row['subtype']);
+    const systemLink =
+      row['system_link'] === null || row['system_link'] === undefined
+        ? null
+        : String(row['system_link']);
+    const baseType = EVENT_TYPE_MAP[String(row['type'])] ?? String(row['type']);
+    const type =
+      baseType === 'message_clicked' && subtype === SYSTEM_CLICK_SUBTYPE && systemLink !== null
+        ? (SYSTEM_LINK_TYPE_MAP[systemLink] ?? baseType)
+        : baseType;
+    /*
+     * Spolehlivost se počítá z `baseType`, ne z `type`. Proklik na systémový
+     * odkaz je pořád proklik, tedy potvrzená lidská akce: stránku odhlášení
+     * ani předvoleb si poštovní klient sám neotevře. Kdyby se to vázalo na
+     * `type`, systémový proklik by po přejmenování tiše přišel o označení
+     * „potvrzeno" a v ose by vypadal míň jistě než obyčejné kliknutí.
+     */
     const reliability =
-      type === 'message_opened'
+      baseType === 'message_opened'
         ? subtype === 'proxy_apple'
           ? ('machine' as const)
           : ('confirmed' as const)
-        : type === 'message_clicked'
+        : baseType === 'message_clicked'
           ? ('confirmed' as const)
           : null;
     const detail =
-      subtype === null && row['link_url'] === null
+      subtype === null && row['link_url'] === null && systemLink === null
         ? null
         : {
             ...(subtype === null ? {} : { subtype }),
             ...(row['link_url'] ? { link_url: String(row['link_url']) } : {}),
+            ...(systemLink === null ? {} : { system_link: systemLink }),
           };
     return {
       id: String(row['id']),
@@ -167,7 +208,25 @@ export async function messageEventBranch(
   });
 }
 
-/** Webové události. Dvojice podmínek na occurred_at a received_at je povinná. */
+/**
+ * Webové události. Dvojice podmínek na occurred_at a received_at je povinná.
+ *
+ * UDÁLOSTI ZE ZDROJE `email` SE PŘESKAKUJÍ a je to oprava dvojité položky.
+ * `process-engagement` zapisuje otevření a proklik e-mailu i do `web_events`
+ * pod jmény `email_opened` a `email_clicked`, aby existovala jedna společná
+ * osa. Jenže osu kontaktu skládají OBĚ větve, takže tentýž fakt v ní stál
+ * dvakrát: jednou jako „Otevřel kampaň Test kampaň" z `message_events`
+ * a hned pod tím jako „Událost email_opened", protože jméno webové události
+ * je otevřený slovník a věta pro něj v katalogu není a být nemá.
+ *
+ * Druhá položka navíc LHALA O ZDROJI: větev webu razítkuje `source: 'web'`,
+ * takže otevřený e-mail se choval jako návštěva webu a vyskočil pod filtrem
+ * „Web". Naměřeno v prohlížeči na kontaktu, který na web nikdy nepřišel.
+ *
+ * Surový důkaz zůstává v `message_events` a čte ho `messageEventBranch`
+ * s pořádnou větou, jménem kampaně i rodem. Zápis do `web_events` se nemění:
+ * je to zdroj pro jiné čtenáře, ne pro tuhle osu.
+ */
 export async function webEventBranch(
   tx: Tx,
   ctx: WorkspaceContext,
@@ -179,6 +238,7 @@ export async function webEventBranch(
       FROM web_events e
      WHERE e.workspace_id = ${ctx.workspaceId}
        AND e.contact_id   = ${input.contactId}
+       AND e.source      <> 'email'
        AND e.occurred_at >= ${input.window.from}
        AND e.occurred_at  < ${input.window.to}
        AND e.received_at >= ${input.window.webReceivedFrom}

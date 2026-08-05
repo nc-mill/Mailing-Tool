@@ -22,6 +22,23 @@ export const dynamic = 'force-dynamic';
 
 type PageProps = { params: Promise<{ locale: string; workspaceSlug: string }> };
 
+/**
+ * Dlaždice přehledu tak, jak je vrací `/api/v1/dashboard`. Popsané jsou jen
+ * dvě, které tahle obrazovka čte; zbytek dokumentu se schválně netypuje, aby
+ * se přidání dlaždice nemuselo promítat sem.
+ */
+type DashboardResponse = {
+  tiles: Record<
+    string,
+    { status: 'ok'; data: Record<string, unknown> } | { status: 'error'; code: string }
+  >;
+};
+
+/** Míra z odpovědi API. `null` znamená „nemá jmenovatele", ne nulu. */
+function asRate(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 type ProviderResponse = {
   data: Array<{
     id: string;
@@ -54,16 +71,33 @@ export default async function DeliverabilityPage({ params }: PageProps) {
   if (!access.ok) notFound();
   const workspaceId = access.data.workspace.id;
 
-  const [providers, guards, campaigns] = await Promise.all([
+  const [providers, guards, dashboard] = await Promise.all([
     apiFetch<ProviderResponse>('/api/v1/providers', { workspaceId }),
     apiFetch<{ settings: GuardSettings; limits: GuardLimits }>('/api/v1/settings/deliverability', {
       workspaceId,
     }),
-    apiFetch<{
-      data: Array<{
-        counters: { sent: number; delivered: number; bounced: number; complained: number };
-      }>;
-    }>('/api/v1/campaigns', { workspaceId, searchParams: { limit: 100 } }),
+    /*
+     * Míry se BEROU HOTOVÉ z dlaždic přehledu, nepočítají se tady znovu.
+     *
+     * Dřív si je stránka skládala sama ze součtu čítačů `/api/v1/campaigns`.
+     * Tím vzniklo druhé místo s vlastní úvahou o doručenosti a rozešlo se
+     * s reportem: kampaň, od jejíž odesílací služby nedorazila ani jedna
+     * zpráva o osudu e-mailů, má odrazy i stížnosti na nule, a stránka z toho
+     * spočítala „Nedoručitelnost 0 %" a obarvila dlaždici zeleně. Nula tam
+     * přitom nebyla údaj, ale jeho absence.
+     *
+     * `/api/v1/dashboard` počítá míry výhradně z kampaní, u kterých doručenost
+     * ZNÁME (`isDeliveredKnown`), a když taková není ani jedna, hlásí dlaždice
+     * problémů stupeň `unknown`. Je to totéž pravidlo, které používá report
+     * kampaně, takže třetí výklad už nevznikne.
+     *
+     * Okno je 90 dní, ne posledních sto kampaní bez ohledu na stáří: prahy
+     * doručitelnosti se vztahují k tomu, jak odesíláme TEĎ.
+     */
+    apiFetch<DashboardResponse>('/api/v1/dashboard', {
+      workspaceId,
+      searchParams: { period: 90 },
+    }),
   ]);
 
   if (!guards.ok) notFound();
@@ -73,24 +107,26 @@ export default async function DeliverabilityPage({ params }: PageProps) {
       ? (providers.data.data.find((p) => p.is_default) ?? providers.data.data[0]!)
       : null;
 
-  const totals = (campaigns.ok ? campaigns.data.data : []).reduce(
-    (sum, c) => ({
-      sent: sum.sent + c.counters.sent,
-      delivered: sum.delivered + c.counters.delivered,
-      bounced: sum.bounced + c.counters.bounced,
-      complained: sum.complained + c.counters.complained,
-    }),
-    { sent: 0, delivered: 0, bounced: 0, complained: 0 },
-  );
+  const tiles = dashboard.ok ? dashboard.data.tiles : {};
+  const sentTile = tiles['sent'];
+  const problemsTile = tiles['problems'];
+  const sent = sentTile?.status === 'ok' ? Number(sentTile.data['value'] ?? 0) : 0;
+  const problems = problemsTile?.status === 'ok' ? problemsTile.data : null;
 
+  /*
+   * Prázdný stav zůstává, jaký byl: dokud se nic neodeslalo, není co měřit
+   * a obrazovka nabídne cestu ke kampaním. „Nevíme" je něco jiného než
+   * „ještě jste nic neposlali" a nesmí to splynout.
+   */
   const metrics =
-    totals.sent === 0
+    sent === 0 || problems === null
       ? null
       : {
-          bounce_rate: totals.bounced / totals.sent,
-          complaint_rate: totals.complained / totals.sent,
-          delivery_rate: totals.delivered / totals.sent,
-          soft_rate: 0,
+          bounce_rate: asRate(problems['bounceRate']),
+          complaint_rate: asRate(problems['complaintRate']),
+          // Stupeň `unknown` znamená, že ze VŠECH odeslaných kampaní období
+          // neznáme osud ani jedné. Pak se procenta nemají z čeho počítat.
+          delivery_known: problems['level'] !== 'unknown',
         };
 
   const limits = guards.data.limits;

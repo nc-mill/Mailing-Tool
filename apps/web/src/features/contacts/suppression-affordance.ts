@@ -39,6 +39,20 @@ const REASON_KEY: Record<SuppressionReason, string> = {
   one_click_unsubscribe: 'suppressions.reason.oneClickUnsubscribe',
 };
 
+/**
+ * Popisek důvodu blokace pro libovolnou hodnotu ze serveru.
+ *
+ * `REASON_KEY` výš je typovaný podle `SuppressionReason`, tedy podle důvodů, které umí
+ * obrazovka blokovaných adres. Ruční potvrzení kontaktu ale dostane důvod jako holý
+ * řetězec z odpovědi API a mezi nimi je i `ses_suppressed`, který se v seznamu
+ * blokovaných adres neobjeví, protože ho nejde odebrat u nás. Bez záchytné větve by
+ * `t(undefined)` spadlo za běhu právě u toho případu, který se nedá vyzkoušet klikáním.
+ */
+export function suppressionReasonKey(reason: string): string {
+  if (reason === 'ses_suppressed') return 'suppressions.reason.sesSuppressed';
+  return REASON_KEY[reason as SuppressionReason] ?? 'suppressions.reason.other';
+}
+
 /** Důvody, které smí odebrat editor a výš, a to i hromadně (poslední řádek matice 4.10.2). */
 const BULK_REMOVABLE: readonly SuppressionReason[] = [
   'soft_bounce_threshold',

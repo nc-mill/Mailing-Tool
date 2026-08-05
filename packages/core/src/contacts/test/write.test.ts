@@ -163,4 +163,51 @@ describe('shouldReleaseVocativeLock', () => {
       ),
     ).toBe(false);
   });
+
+  /**
+   * VADA „přesun kontaktů do seznamu shodí oslovení". Přihlášení do seznamu pracuje
+   * s adresou a jména nenese, ale posílá je do zápisu jako `null`, ne `undefined`
+   * (`lists/subscribe.ts` skládá `input.firstName ?? null`). Pro pravidlo to dřív
+   * znamenalo „jméno se změnilo z Jana na nic" a zámek spadl.
+   */
+  it('prázdné jméno v běžném zápisu zámek NEUVOLNÍ, jméno se totiž nepřepíše', () => {
+    expect(
+      shouldReleaseVocativeLock(
+        { firstName: 'Jana', lastName: 'Nováková' },
+        { firstName: null, lastName: null },
+      ),
+    ).toBe(false);
+    expect(
+      shouldReleaseVocativeLock(
+        { firstName: 'Jana', lastName: 'Nováková' },
+        { firstName: '', lastName: '   ' },
+      ),
+    ).toBe(false);
+  });
+
+  it('v režimu overwrite je prázdné jméno pokyn smaž ho, a tam se zámek uvolní', () => {
+    expect(
+      shouldReleaseVocativeLock(
+        { firstName: 'Jana', lastName: 'Nováková' },
+        { firstName: null, lastName: null },
+        'overwrite',
+      ),
+    ).toBe(true);
+  });
+
+  it('kontakt bez jména se prázdným vstupem neuvolní ani v overwrite', () => {
+    expect(
+      shouldReleaseVocativeLock(
+        { firstName: null, lastName: null },
+        { firstName: null },
+        'overwrite',
+      ),
+    ).toBe(false);
+  });
+
+  it('rozdíl v bílých znacích není změna jména', () => {
+    expect(
+      shouldReleaseVocativeLock({ firstName: 'Jana', lastName: null }, { firstName: ' Jana ' }),
+    ).toBe(false);
+  });
 });

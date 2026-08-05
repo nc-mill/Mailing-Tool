@@ -41,12 +41,33 @@ export const CampaignResponse = z
     from_email: z.string(),
     reply_to: z.string().nullable(),
     template_id: Uuid.nullable(),
+    /**
+     * Má kampaň vlastní dokument? Obrazovka nastavení podle toho pozná, že převzetí
+     * jiné šablony obsah PŘEPÍŠE, a stihne se na to zeptat. Sám dokument se v odpovědi
+     * neposílá. Dřív se tenhle příznak jmenoval `has_content`, což bylo zavádějící:
+     * dokument, ve kterém není nic než patička, taky „je".
+     */
+    has_design: z.boolean(),
+    /**
+     * Má kampaň co odeslat? Pravda o obsahu, ne o existenci dokumentu: `false`
+     * znamená e-mail, ve kterém není jediný obsahový blok, tedy nic než patička,
+     * rozvržení a výplň. Kontrola před odesláním takovou kampaň nepustí.
+     */
+    has_content: z.boolean(),
+    /** Kolik obsahových bloků dokument nese. Nula je totéž co `has_content: false`. */
+    content_block_count: z.number().int(),
     audience: z.unknown(),
     audience_size: z.number().int().nullable(),
     audience_breakdown: z.unknown().nullable(),
     audience_built_at: z.string().nullable(),
     provider_id: Uuid.nullable(),
     sender_domain_id: Uuid.nullable(),
+    /**
+     * Předvolba odesílatele, ze které se pět polí výš předvyplnilo. `null`
+     * znamená „vyplněno ručně". K odeslání potřeba není, obrazovka podle toho
+     * jen ví, kterou položku ukázat vybranou v rozbalovacím seznamu.
+     */
+    sender_identity_id: Uuid.nullable(),
     unsubscribe_list_id: Uuid.nullable(),
     track_opens: z.boolean(),
     track_clicks: z.boolean(),
@@ -76,6 +97,7 @@ export const CreateCampaignRequest = z
     audience: campaignAudienceSchema.optional(),
     provider_id: Uuid.nullable().optional(),
     sender_domain_id: Uuid.nullable().optional(),
+    sender_identity_id: Uuid.nullable().optional(),
     unsubscribe_list_id: Uuid.nullable().optional(),
   })
   .strict()
@@ -93,6 +115,7 @@ export const PatchCampaignRequest = z
     audience: campaignAudienceSchema.optional(),
     provider_id: Uuid.nullable().optional(),
     sender_domain_id: Uuid.nullable().optional(),
+    sender_identity_id: Uuid.nullable().optional(),
     unsubscribe_list_id: Uuid.nullable().optional(),
     track_opens: z.boolean().optional(),
     track_clicks: z.boolean().optional(),
@@ -122,6 +145,76 @@ export const ScheduleCampaignRequest = z
   })
   .strict()
   .openapi('ScheduleCampaignRequest');
+
+/**
+ * Odpověď kompilace kampaně. Vrací jen počty a příznaky, ne celé HTML: tělo se
+ * čte náhledem a v odpovědi na akci by z něj byly stovky kilobajtů, které nikdo
+ * nepoužije. `has_unsubscribe_link` je tam proto, že bez odhlašovacího odkazu
+ * kampaň neprojde předletovou kontrolou, a je to jediný nález kompilace, který
+ * uživatel může opravit v šabloně.
+ */
+/**
+ * Vstup použití šablony. `template_id` je povinné a nikdy null: „zruš šablonu"
+ * není operace, kterou by tahle cesta uměla, a `null` by jinak tiše smazal obsah.
+ */
+export const ApplyTemplateRequest = z
+  .object({ template_id: Uuid })
+  .strict()
+  .openapi('ApplyTemplateRequest');
+
+export const CompileCampaignResponse = z
+  .object({
+    id: Uuid,
+    revision: z.number().int(),
+    compiled_hash: z.string(),
+    html_bytes: z.number().int(),
+    link_count: z.number().int(),
+    click_marker_count: z.number().int(),
+    has_unsubscribe_link: z.boolean(),
+  })
+  .openapi('CampaignCompileResult');
+
+/**
+ * Odpověď použití šablony. `overwritten` říká, jestli kampaň PŘED voláním nějaký
+ * obsah měla; obrazovka podle toho hlásí „obsah nahrazen" místo „obsah doplněn".
+ *
+ * `compiled` je NULLABLE a `null` je platná úspěšná odpověď: kampaň bez předmětu
+ * se zkompilovat nedá, obsah se do ní ale zkopíroval. Dokud tu nullable nebyla,
+ * vracelo převzetí obsahu 422 `campaign_subject_missing` na operaci, která se
+ * povedla, a uživatel se z editoru vracel s dojmem, že o práci přišel.
+ *
+ * Píše se to jako sjednocení s `z.null()`, ne `.nullable()`. Generátor u odkazu
+ * na pojmenované schéma `.nullable()` zahodí a v dokumentu zůstane holý `$ref`,
+ * takže by kontrakt sliboval objekt tam, kde odpověď vrací `null`. Ověřeno
+ * spuštěním generátoru na obou tvarech.
+ */
+export const ApplyTemplateResponse = z
+  .object({
+    overwritten: z.boolean(),
+    compiled: z.union([CompileCampaignResponse, z.null()]),
+  })
+  .openapi('ApplyTemplateResult');
+
+/**
+ * Náhled ODESLANÉ podoby kampaně. Čte se z uložených sloupců, nikdy se
+ * nekompiluje znovu: kompilace by u odeslané kampaně mohla vrátit něco jiného,
+ * než co doopravdy odešlo (jiná šablona, jiný asset, jiná verze emitteru),
+ * a přesně tohle má náhled vyvrátit.
+ *
+ * `html` je nullable a je to platná odpověď se stavem 200. Kampaň, která se
+ * ještě nekompilovala, existuje, takže 404 by lhalo; obrazovka podle `null`
+ * řekne „ještě se nekompilovalo", což je pravda.
+ */
+export const CampaignSentPreviewResponse = z
+  .object({
+    html: z.string().nullable(),
+    text: z.string().nullable(),
+    compiled_at: z.string().nullable(),
+    revision: z.number().int(),
+    status: z.string(),
+    subject: z.string(),
+  })
+  .openapi('CampaignSentPreview');
 
 export const FindingSchema = z
   .object({
@@ -187,6 +280,20 @@ export const ProgressResponse = z
     stalled: z.boolean(),
     pause_reason: z.unknown().nullable(),
     undo_remaining_seconds: z.number().int(),
+    /**
+     * Dorazila od poskytovatele aspoň jedna zpráva o doručení?
+     *
+     * Bez tohohle příznaku neumí obrazovka rozlišit „nikomu nic nedošlo" od
+     * „doručenost neměříme", a obojí by ukazovala jako nulu. Ve vývoji je
+     * druhý případ trvalý: odběr u Amazonu se nepotvrdí, protože náš webhook
+     * běží na `localhost`.
+     */
+    delivery_events_seen: z.boolean(),
+    /**
+     * Skončila rozesílka? Obrazovka podle toho pozná, že se má PŘESTAT
+     * obnovovat, aniž by musela znát výčet koncových stavů.
+     */
+    finished: z.boolean(),
     updated_at: z.string(),
   })
   .openapi('CampaignProgress');

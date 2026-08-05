@@ -15,6 +15,14 @@ export {
   type DecryptProviderConfigInput,
 } from './crypto';
 export { deriveProviderStatus, canSendWith, type ProviderSignals } from './state-machine';
+export {
+  providerSignals,
+  providerBlockers,
+  providerStatusFrom,
+  providerStatusDetail,
+  type ProviderFacts,
+  type ProviderStatusDetail,
+} from './status';
 
 export { createAwsClients, type AwsClients } from './ses/client';
 export {
@@ -34,12 +42,36 @@ export {
 } from './ses/identity';
 export {
   setupEventDestination,
+  ensureConfigurationSet,
+  ensureEventDestination,
+  configurationSetNameFor,
   manualInstructions,
   MATCHING_EVENT_TYPES,
   type AwsSetupClient,
   type ManualInstructionsInput,
   type SetupEventDestinationInput,
 } from './ses/events-setup';
+export { createSetupClient, isAlreadyExists } from './ses/setup-client';
+export {
+  SES_REGIONS,
+  SES_REGIONS_SOURCE,
+  SES_REGIONS_OPT_IN_SOURCE,
+  SES_REGIONS_VERIFIED_AT,
+  SUGGESTED_SES_REGION,
+  isKnownSesRegion,
+  sesRegion,
+  sesRegionLabel,
+  type SesRegion,
+} from './ses/regions';
+export {
+  mapIdentityList,
+  verificationState,
+  verifiedIdentityNames,
+  isEmailIdentity,
+  type SesIdentityInfo,
+  type SesIdentitySummary,
+  type SesVerificationState,
+} from './ses/identities';
 
 export {
   verifySmtp,
@@ -83,10 +115,13 @@ export {
 } from './repo/provider';
 export {
   saveChecks,
+  saveIdentity,
+  hasProviderVerifiedDomain,
   listDue,
   getDomain,
   type DomainRow,
   type SaveChecksInput,
+  type SaveIdentityInput,
 } from './repo/domain';
 
 export {

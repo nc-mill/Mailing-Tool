@@ -11,7 +11,9 @@ import { handlers as h5 } from '@mlain/core/content/jobs';
 import { handlers as h6 } from '@mlain/core/ops/jobs';
 import { handlers as h7 } from '@mlain/core/platform/jobs';
 import { handlers as h8 } from '@mlain/core/segments/jobs';
-import { handlers as h9 } from '@mlain/core/tracking/jobs';
+import { handlers as h9 } from '@mlain/core/sender/jobs';
+import { handlers as h10 } from '@mlain/core/tracking/jobs';
+import { handlers as h11 } from '@mlain/core/transactional/jobs';
 
 export const HANDLERS: Record<string, QueueHandler> = {
   ...h0,
@@ -24,4 +26,6 @@ export const HANDLERS: Record<string, QueueHandler> = {
   ...h7,
   ...h8,
   ...h9,
+  ...h10,
+  ...h11,
 };

@@ -87,7 +87,66 @@ describe('mapování chyb providerů', () => {
     expect(JSON.stringify(mapped)).not.toContain('acct_tajne');
   });
 
-  it('neznámá chyba spadne na ai_provider_unavailable, ne na prasknutí', () => {
-    expect(mapProviderError(new Error('cokoliv')).code).toBe('ai_provider_unavailable');
+  /*
+   * Tahle skupina hlídá vadu, kvůli které vznikla: výpadek poskytovatele byl
+   * VÝCHOZÍ HODNOTOU mapy, takže se jako „služba má výpadek" tvářilo úplně
+   * všechno, čemu jsme nerozuměli. Uživatel s funkčním klíčem viděl hlášku
+   * o výpadku OpenAI a hledal chybu tam, kde žádná nebyla.
+   */
+  it('404 je neznámý model, ne výpadek, a neopakuje se', () => {
+    const mapped = mapProviderError(apiCallError({ statusCode: 404 }));
+    expect(mapped.code).toBe('ai_model_not_found');
+    expect(mapped.retryable).toBe(false);
+    expect(mapped.providerStatus).toBe(404);
+  });
+
+  it('400 s model_not_found je také neznámý model', () => {
+    expect(
+      mapProviderError(
+        apiCallError({ statusCode: 400, responseBody: '{"error":{"code":"model_not_found"}}' }),
+      ).code,
+    ).toBe('ai_model_not_found');
+  });
+
+  it('400 s odmítnutým parametrem je ai_unsupported_parameter, ne výpadek', () => {
+    for (const marker of ['unsupported_parameter', 'unsupported_value', 'unknown_parameter']) {
+      const mapped = mapProviderError(
+        apiCallError({ statusCode: 400, responseBody: `{"error":{"code":"${marker}"}}` }),
+      );
+      expect(mapped.code).toBe('ai_unsupported_parameter');
+      expect(mapped.retryable).toBe(false);
+    }
+  });
+
+  it('neznámá chyba bez stavového kódu NENÍ výpadek poskytovatele', () => {
+    const mapped = mapProviderError(new Error('cokoliv'));
+    expect(mapped.code).toBe('ai_request_failed');
+    expect(mapped.code).not.toBe('ai_provider_unavailable');
+    expect(mapped.retryable).toBe(false);
+  });
+
+  it('neošetřený stav 4xx NENÍ výpadek poskytovatele', () => {
+    for (const statusCode of [409, 413, 422]) {
+      expect(mapProviderError(apiCallError({ statusCode })).code).toBe('ai_request_failed');
+    }
+  });
+
+  it('selhání spojení výpadek JE, i když stavový kód chybí', () => {
+    const dns = Object.assign(new TypeError('fetch failed'), {
+      cause: Object.assign(new Error('getaddrinfo ENOTFOUND api.openai.com'), {
+        code: 'ENOTFOUND',
+      }),
+    });
+    const mapped = mapProviderError(dns);
+    expect(mapped.code).toBe('ai_provider_unavailable');
+    expect(mapped.retryable).toBe(true);
+  });
+
+  it('stavový kód poskytovatele je ve výsledku, tělo odpovědi nikdy', () => {
+    const mapped = mapProviderError(
+      apiCallError({ statusCode: 404, responseBody: '{"model":"tajny-model","org":"org_tajne"}' }),
+    );
+    expect(mapped.providerStatus).toBe(404);
+    expect(JSON.stringify(mapped)).not.toContain('org_tajne');
   });
 });

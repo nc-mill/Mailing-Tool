@@ -22,6 +22,8 @@
  * podobě posílá v každém odhlašovacím odkazu. Autorizaci nese hodnota za ním, ne projekt.
  */
 
+import { sanitizePublicRef } from '../../net/public-link';
+
 const UUID_HEX = /^[0-9a-f]{32}$/;
 
 /**
@@ -66,8 +68,14 @@ export type PublicRef = { workspaceId: string; value: string };
  * Rozebere veřejný identifikátor. Vrací null, ne výjimku: na veřejné stránce přistane
  * cokoliv, co někdo napíše do adresního řádku, a stránka na to musí odpovědět generickou
  * hláškou s kódem 200, ne pádem.
+ *
+ * Přílepek poštovního klienta (`&source=gmail&ust=…`) se uřízne dřív, než se identifikátor
+ * rozebere. Gmail ho připojuje naivním spojením i k odkazu bez query řetězce, takže by se
+ * jinak stal součástí hodnoty za projektem a potvrzení přihlášení by z Gmailu nikdy
+ * neprošlo. Viz `packages/core/src/net/public-link.ts`.
  */
-export function decodePublicRef(raw: string): PublicRef | null {
+export function decodePublicRef(input: string): PublicRef | null {
+  const raw = sanitizePublicRef(input);
   if (raw.length <= 32) return null;
   const compact = raw.slice(0, 32).toLowerCase();
   if (!UUID_HEX.test(compact)) return null;
