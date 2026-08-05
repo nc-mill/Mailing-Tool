@@ -84,6 +84,8 @@ export function registerExportRoutes(app: OpenAPIHono<ExportsEnv>): void {
         encoding: created.encoding,
         delimiter: created.delimiter,
         status: row.status,
+        // Právě založený export ještě řádky nemá: počet zapisuje job po dokončení.
+        row_count: row.row_count,
         // Token je v odpovědi PRÁVĚ JEDNOU. Uložený je jen jeho hash, takže
         // druhé zavolání GET /exports/{id} ho už nevrátí a vrátit nemůže.
         download_url: `/api/v1/contacts/exports/${created.id}/download?token=${created.downloadToken}`,
@@ -104,6 +106,7 @@ export function registerExportRoutes(app: OpenAPIHono<ExportsEnv>): void {
         encoding: row.encoding,
         delimiter: row.delimiter,
         status: row.status,
+        row_count: row.row_count,
         download_url: null,
       },
       200,
@@ -135,6 +138,18 @@ export function registerExportRoutes(app: OpenAPIHono<ExportsEnv>): void {
     c.header('content-type', zipped ? contentType : `${contentType}; charset=${row.encoding}`);
     const extension = zipped ? 'zip' : row.format;
     c.header('content-disposition', `attachment; filename="${row.kind}-${id}.${extension}"`);
+    /*
+     * SOUBOR NA DISKU JE GZIPOVANÝ, ODPOVĚĎ TO MUSÍ PŘIZNAT.
+     *
+     * Job `contacts.export` zapisuje `<id>.csv.gz`, kdežto hlavičky výš slibují
+     * `text/csv` a jméno `.csv`. Bez `content-encoding` si tedy každý stáhl gzip
+     * pojmenovaný `.csv`, který žádný tabulkový editor neotevře; naměřeno
+     * v prohlížeči na hotovém exportu. S hlavičkou obsah rozbalí prohlížeč i `fetch`.
+     *
+     * Rozhoduje přípona uloženého souboru, ne druh exportu: archiv subjektu údajů
+     * je ZIP a ten se gzipem neobaluje, takže by ho hlavička rozbila.
+     */
+    if (row.storage_key.endsWith('.gz')) c.header('content-encoding', 'gzip');
     return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream);
   });
 }

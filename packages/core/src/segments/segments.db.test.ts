@@ -29,6 +29,8 @@ import { audienceBreakdown, INERT_GATES } from './audience';
 import { diagnoseEmptyResult } from './diagnostics';
 import { handler as cleanupHandler } from './jobs/cleanup-after-reactivation';
 import { scheduleStale } from './jobs/recount';
+import { handler as markInvalidHandler } from './jobs/mark-invalid';
+import { handler as recalcHandler, resetRecalcDebounce } from './jobs/recalc-for-contact';
 import { resetSegmentEnqueueConfig } from './jobs/enqueue';
 import { segmentErrorCode } from './errors';
 
@@ -982,5 +984,166 @@ describe('scheduleStale across workspaces', () => {
       expect(outcome.n).toBeGreaterThanOrEqual(2);
       for (const id of seeded) expect(scheduled).toContain(id);
     }
+  }, 600_000);
+});
+
+// ---------------------------------------------------------------------------
+// 9. Přepočet po události a zneplatnění po smazání pole
+// ---------------------------------------------------------------------------
+
+/** Segment, který čte web_events, tedy přesně to, co mění webová událost. */
+const visitedPage: SegmentAst = {
+  version: 1,
+  root: {
+    type: 'group',
+    op: 'and',
+    children: [
+      {
+        type: 'condition',
+        field: { kind: 'event', name: 'page_view', since_days: 30 },
+        operator: 'did',
+      },
+    ],
+  },
+};
+
+describe('segments.recalc_for_contact', () => {
+  let ctx: WorkspaceContext;
+  let contactId = '';
+  let behavioralId = '';
+  let plainId = '';
+
+  /** Vrátí segmenty do stavu, ze kterého se fanout dá vůbec spustit. */
+  async function makeRipe(ids: string[], cachedAt: Date | null): Promise<void> {
+    await withWorkspace(ctx, (tx) =>
+      tx.execute(sql`
+        UPDATE segments
+           SET recompute_state = 'idle',
+               cached_at = ${cachedAt === null ? null : cachedAt.toISOString()}::timestamptz
+         WHERE workspace_id = ${ctx.workspaceId}::uuid
+           AND id = ANY(${`{${ids.join(',')}}`}::uuid[])`),
+    );
+  }
+
+  async function stateOf(id: string): Promise<{ state: string; lastError: string | null }> {
+    const rows = await withWorkspace(ctx, (tx) =>
+      tx.execute<{ recompute_state: string; last_error_code: string | null }>(sql`
+        SELECT recompute_state, last_error_code FROM segments
+         WHERE workspace_id = ${ctx.workspaceId}::uuid AND id = ${id}::uuid`),
+    );
+    const row = rows.rows[0]!;
+    return { state: row.recompute_state, lastError: row.last_error_code };
+  }
+
+  beforeAll(async () => {
+    ctx = await testContext();
+    await seedContacts(ctx, [{ email: 'aktivni@example.cz' }]);
+    contactId = await withWorkspace(ctx, async (tx) => {
+      const { rows } = await tx.execute<{ id: string }>(sql`
+        SELECT id FROM contacts WHERE workspace_id = ${ctx.workspaceId}::uuid LIMIT 1`);
+      return rows[0]!.id;
+    });
+    behavioralId = (await createSegment(ctx, { name: 'Navštívil', definition: visitedPage })).id;
+    plainId = (await createSegment(ctx, { name: 'Aktivní', definition: statusActive })).id;
+  }, 600_000);
+
+  /**
+   * DŮKAZ NAD DATY, ne nad návratovou hodnotou. Ptá se databáze, co se
+   * s oběma segmenty stalo, protože obsluha bez kontextu projektu by vrátila
+   * prázdný seznam a doběhla zeleně.
+   */
+  it('zařadí přepočet jen segmentu, který chování doopravdy čte', async () => {
+    resetRecalcDebounce();
+    await makeRipe([behavioralId, plainId], new Date(Date.now() - 3 * 60 * 60 * 1000));
+
+    const out = await recalcHandler({ data: { workspaceId: ctx.workspaceId, contactId } });
+
+    expect(out.skipped).toBeNull();
+    expect(out.queued).toEqual([behavioralId]);
+    expect((await stateOf(behavioralId)).state).toBe('queued');
+    expect((await stateOf(plainId)).state).toBe('idle');
+  });
+
+  it('opravdu zapíše úlohu do fronty segments.recount', async () => {
+    const rows = await withWorkspace(ctx, (tx) =>
+      tx.execute<{ n: number }>(sql`
+        SELECT count(*)::int AS n FROM pgboss.job
+         WHERE name = 'segments.recount'
+           AND data->>'segmentId' = ${behavioralId}
+           AND data->>'workspaceId' = ${ctx.workspaceId}`),
+    );
+    // Jedna od createSegment, jedna od fanoutu. Podstatné je, že přibyla.
+    expect(rows.rows[0]!.n).toBeGreaterThanOrEqual(2);
+  });
+
+  it('druhý běh v okně doběhu neudělá nic', async () => {
+    const out = await recalcHandler({ data: { workspaceId: ctx.workspaceId, contactId } });
+    expect(out.skipped).toBe('debounced');
+    expect(out.queued).toEqual([]);
+  });
+
+  /**
+   * I bez doběhu v paměti drží četnost databáze: segment, který na přepočet
+   * čeká, se podruhé nezařadí. Přesně tohle brání lavině, když se worker
+   * restartuje uprostřed provozu nebo když jich běží víc.
+   */
+  it('segment ve stavu queued se nezařadí znovu ani po zapomenutí doběhu', async () => {
+    resetRecalcDebounce();
+    const out = await recalcHandler({ data: { workspaceId: ctx.workspaceId, contactId } });
+    expect(out.queued).toEqual([]);
+    expect(out.skipped).toBe('cooldown');
+  });
+
+  it('čerstvě přepočítaný segment se nezařadí, i když je idle', async () => {
+    resetRecalcDebounce();
+    await makeRipe([behavioralId], new Date());
+    const out = await recalcHandler({ data: { workspaceId: ctx.workspaceId, contactId } });
+    expect(out.queued).toEqual([]);
+    expect(out.skipped).toBe('cooldown');
+    expect((await stateOf(behavioralId)).state).toBe('idle');
+  });
+
+  it('segment bez razítka přepočtu se zařadí, importem zneplatněné počty nezůstanou viset', async () => {
+    resetRecalcDebounce();
+    await makeRipe([behavioralId], null);
+    const out = await recalcHandler({ data: { workspaceId: ctx.workspaceId, contactId } });
+    expect(out.queued).toEqual([behavioralId]);
+  });
+});
+
+describe('segments.mark_invalid', () => {
+  it('označí vyjmenované segmenty za neplatné a nechá ostatní být', async () => {
+    const ctx = await testContext();
+    await seedContacts(ctx, [{ email: 'pole@example.cz' }]);
+    const dotceny = await createSegment(ctx, { name: 'S polem', definition: statusActive });
+    const netknuty = await createSegment(ctx, { name: 'Bez pole', definition: statusActive });
+
+    const out = await markInvalidHandler({
+      data: {
+        workspaceId: ctx.workspaceId,
+        segmentIds: [dotceny.id],
+        errorCode: 'segment_field_missing',
+        fieldKey: 'oblibena_barva',
+      },
+    });
+
+    expect(out.invalidated).toEqual([dotceny.id]);
+    const rows = await withWorkspace(ctx, (tx) =>
+      tx.execute<{ id: string; recompute_state: string; last_error_code: string | null }>(sql`
+        SELECT id, recompute_state, last_error_code FROM segments
+         WHERE workspace_id = ${ctx.workspaceId}::uuid ORDER BY name`),
+    );
+    const byId = new Map(rows.rows.map((r) => [r.id, r]));
+    expect(byId.get(dotceny.id)!.recompute_state).toBe('error');
+    expect(byId.get(dotceny.id)!.last_error_code).toBe('segment_field_missing');
+    expect(byId.get(netknuty.id)!.recompute_state).not.toBe('error');
+  }, 600_000);
+
+  it('prázdný seznam segmentů je běžný případ, ne chyba', async () => {
+    const ctx = await testContext();
+    const out = await markInvalidHandler({
+      data: { workspaceId: ctx.workspaceId, segmentIds: [], fieldKey: 'nepouzite' },
+    });
+    expect(out.invalidated).toEqual([]);
   }, 600_000);
 });

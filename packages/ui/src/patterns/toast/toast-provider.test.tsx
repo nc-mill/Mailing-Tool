@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider, useToast } from './toast-provider';
 
 const labels = {
@@ -32,6 +33,42 @@ function Trigger({ onUndo }: { onUndo?: () => void }) {
 }
 
 describe('ToastProvider', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * REGRESE: v prohlížeči oznámení nikdy nezmizela, přestože testy skladiště
+   * odpočet měřily správně.
+   *
+   * `next.config.ts` má `reactStrictMode: true`. React ve StrictModu po prvním
+   * připojení schválně spustí úklid efektů a hned je připojí znovu. Úklid
+   * `useEffect(() => () => store.destroy(), [store])` tím zabil tikající interval
+   * dřív, než kdokoli stačil první oznámení vyvolat, a druhé připojení už ho
+   * nemělo jak obnovit. Skladiště proto musí `destroy()` přežít: tikání se
+   * rozjíždí líně podle toho, jestli je co odpočítávat.
+   *
+   * Test montuje do `StrictMode` schválně, jinak by ta situace nikdy nenastala.
+   */
+  it('odpočet běží i ve StrictModu, kde React zavolá úklid efektu hned po připojení', () => {
+    vi.useFakeTimers();
+    render(
+      <StrictMode>
+        <ToastProvider labels={labels}>
+          <Trigger />
+        </ToastProvider>
+      </StrictMode>,
+    );
+    act(() => {
+      screen.getByRole('button', { name: 'info' }).click();
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Uloženo');
+    act(() => {
+      vi.advanceTimersByTime(6500);
+    });
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
   it('informaci oznámí přes role=status, chybu přes role=alert', async () => {
     const user = userEvent.setup();
     render(

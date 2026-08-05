@@ -34,11 +34,18 @@ export function StepPreview({
   estimate,
   onNext,
   onShowMore,
+  greetingEnabled = true,
 }: {
   preview: { rows: PreviewRow[] };
   estimate: PreviewEstimate;
   onNext: () => void;
   onShowMore?: () => void;
+  /**
+   * Řeší projekt oslovení a 5. pád? Vypnuto schová sloupec „Oslovení" i větu
+   * o nejistém 5. pádu, protože obrazovka, na kterou ta věta odkazuje, v takovém
+   * projektu neexistuje. Výchozí `true` je kvůli starším testům.
+   */
+  greetingEnabled?: boolean;
 }) {
   const t = useTranslations('import');
   const [showSplit, setShowSplit] = useState(false);
@@ -58,7 +65,7 @@ export function StepPreview({
             <th scope="col">{t('preview.columns.firstName')}</th>
             <th scope="col">{t('preview.columns.gender')}</th>
             <th scope="col">{t('preview.columns.lastName')}</th>
-            <th scope="col">{t('preview.columns.greeting')}</th>
+            {greetingEnabled ? <th scope="col">{t('preview.columns.greeting')}</th> : null}
           </tr>
         </thead>
         <tbody>
@@ -79,7 +86,7 @@ export function StepPreview({
                     : '?'}
               </td>
               <td>{row.lastName}</td>
-              <td>{row.greeting}</td>
+              {greetingEnabled ? <td>{row.greeting}</td> : null}
             </tr>
           ))}
         </tbody>
@@ -92,7 +99,7 @@ export function StepPreview({
         </button>
       ) : null}
 
-      {estimate.reviewRows > 0 ? (
+      {greetingEnabled && estimate.reviewRows > 0 ? (
         <p>{t('preview.vocativeNotice', { count: estimate.reviewRows })}</p>
       ) : null}
       {estimate.noEmailRows > 0 ? (

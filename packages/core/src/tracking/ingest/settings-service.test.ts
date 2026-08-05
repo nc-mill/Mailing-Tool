@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { originMatches } from './settings-service';
+import { originMatches } from '../domains/domain-cache';
 
 /**
  * Shoda `Origin` proti povoleným doménám. Je to bezpečnostní kontrola, ne

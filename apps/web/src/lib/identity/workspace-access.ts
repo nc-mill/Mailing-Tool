@@ -13,6 +13,15 @@ export type Workspace = {
   locale: string;
   timezone: string;
   address_form: 'formal' | 'informal';
+  /**
+   * Řeší projekt oslovení a 5. pád? Vypnuto skryje sloupec „Oslovení" v seznamu
+   * kontaktů, blok na detailu, náhled ve formuláři, obrazovku kontroly 5. pádu,
+   * pole v segmentech, nabídku v editoru i volbu vykání a tykání.
+   *
+   * Čte se odsud, ne dalším dotazem: `getWorkspaceAccess` je `cache()`ovaná,
+   * takže je to nula požadavků navíc na kterékoli obrazovce.
+   */
+  greeting_enabled: boolean;
   created_at: string;
 };
 

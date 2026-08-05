@@ -810,6 +810,32 @@ describe('import service', () => {
     );
   });
 
+  /**
+   * Druhé nahrání téhož souboru nad ROZDĚLANÝM importem končilo pětistovkou:
+   * kontrola duplicity koukala jen na stavy completed, completed_with_errors
+   * a importing, kdežto `uq_imports__workspace_idempotency` je nepodmíněný,
+   * takže INSERT spadl na 23505 a uživatel dostal „Nepodařilo se uložit soubor".
+   */
+  it('offers the unfinished import instead of failing on the unique index', async () => {
+    const own = await testContext();
+    const first = await createImport(own, { stream: csv(), filename: 'rozdelany.csv' });
+    await readyForConfirm(own, first.id);
+    expect(await codeOf(createImport(own, { stream: csv(), filename: 'rozdelany.csv' }))).toBe(
+      'import_duplicate',
+    );
+  });
+
+  /** Opakovat zrušený běh je legitimní a nikdo se na to nemá ptát. */
+  it('repeats a cancelled import without asking', async () => {
+    const own = await testContext();
+    const first = await createImport(own, { stream: csv(), filename: 'zruseny.csv' });
+    await readyForConfirm(own, first.id);
+    await cancelImport(own, first.id);
+    const second = await createImport(own, { stream: csv(), filename: 'zruseny.csv' });
+    expect(second.id).not.toBe(first.id);
+    expect(second.status).toBe('pending');
+  });
+
   it('accepts the same file with a different mapping without asking', async () => {
     const own = await testContext();
     const first = await createImport(own, { stream: csv(), filename: 'b.csv' });
@@ -992,6 +1018,38 @@ describe('import worker', () => {
       legal_basis: 'consent',
       status: 'granted',
     });
+  });
+
+  /**
+   * NAHRÁNÍ SOUBORU IMPORT NESPOUŠTÍ.
+   *
+   * Do 5. 8. 2026 to dělalo přesně tohle: `createImport()` zařazovalo úlohu
+   * s `phase: 'validate'`, obsluha na `phase` nekoukala a naimportovala celý
+   * soubor s VÝCHOZÍMI volbami, tedy bez seznamu, bez štítku a bez souhlasu,
+   * ještě než se uživatel proklikal ke krokům Mapování a Volby. Ověřeno
+   * v prohlížeči: pět kontaktů bylo v databázi dvě vteřiny po nahrání a krok
+   * Kontrola souboru pak spadl na 409 z `completed`.
+   */
+  it('writes nothing for an import that nobody confirmed', async () => {
+    const own = await testContext();
+    const created = await createImport(own, {
+      stream: Readable.from([Buffer.from(WHOLE_FILE, 'utf8')]),
+      filename: 'unconfirmed.csv',
+    });
+    await detectAndPreview(own, created.id);
+
+    const out = await runImport({
+      data: { workspaceId: own.workspaceId, importId: created.id, phase: 'run' },
+    });
+
+    expect(out.processed).toBe(0);
+    expect(await contactEmails(own)).toEqual([]);
+    const { rows } = await withWorkspace(own, (tx) =>
+      tx.execute<{ status: string }>(
+        sql`SELECT status FROM imports WHERE id = ${created.id}::uuid`,
+      ),
+    );
+    expect(rows[0]?.status).toBe('previewing');
   });
 
   it('resumes from the checkpoint byte instead of importing the first row twice', async () => {

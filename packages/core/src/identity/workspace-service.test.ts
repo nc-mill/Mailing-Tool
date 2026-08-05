@@ -68,6 +68,77 @@ describe('createWorkspace', () => {
     expect(listed.map((w) => w.id)).toContain(created.workspace.id);
   });
 
+  /**
+   * VÝCHOZÍ SEZNAM. Rozhodnutí zadavatele z 5. 8. 2026: bez něj začíná projekt
+   * bez jediného seznamu, přestože seznam je to, kam kontakt musí patřit, aby
+   * mu šlo poslat kampaň. Sloupec `is_default` i `getDefault()` do téhle chvíle
+   * existovaly bez jediného volajícího.
+   */
+  it('nový projekt dostane výchozí seznam Odběratelé s dvojím potvrzením', async () => {
+    const userId = await makeUser('vychozi-seznam');
+    const created = await createWorkspace(userId, 'zakladatel', {
+      name: `Projekt se seznamem ${Date.now()}`,
+    });
+    const ctx = await createWorkspaceContext({
+      kind: 'session',
+      userId,
+      workspaceRef: created.workspace.id,
+    });
+
+    const rows = await withWorkspace(ctx, (tx) => tx.select().from(schema.lists));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.name).toBe('Odběratelé');
+    expect(rows[0]!.isDefault).toBe(true);
+    expect(rows[0]!.optIn).toBe('double');
+  });
+
+  /**
+   * VÝCHOZÍ HODNOTA VYPÍNAČE OSLOVENÍ SE ODVOZUJE Z JAZYKA.
+   *
+   * Rozhodnutí zadavatele z 5. 8. 2026: „V angličtině se vůbec neřeší 5. pád
+   * a oslovení." Anglický projekt by jinak začínal se sloupcem „Oslovení",
+   * frontou kontroly 5. pádu a volbou vykání a tykání, ze kterých v angličtině
+   * nic nedává smysl.
+   *
+   * Je to JEN výchozí hodnota. Pozdější změna jazyka projektu s ní nehýbe,
+   * aby se cizí volba nepřepisovala potichu.
+   */
+  it('český projekt začíná se zapnutým oslovením, anglický s vypnutým', async () => {
+    const czech = await createWorkspace(await makeUser('osloveni-cs'), 'zakladatel', {
+      name: `Cesky projekt ${Date.now()}`,
+      locale: 'cs',
+    });
+    expect(czech.workspace.greeting_enabled).toBe(true);
+
+    const english = await createWorkspace(await makeUser('osloveni-en'), 'founder', {
+      name: `English project ${Date.now()}`,
+      locale: 'en',
+    });
+    expect(english.workspace.greeting_enabled).toBe(false);
+
+    const slovak = await createWorkspace(await makeUser('osloveni-sk'), 'zakladatel', {
+      name: `Slovensky projekt ${Date.now()}`,
+      locale: 'sk',
+    });
+    expect(slovak.workspace.greeting_enabled).toBe(true);
+  });
+
+  it('anglický projekt má výchozí seznam anglicky', async () => {
+    const userId = await makeUser('default-list-en');
+    const created = await createWorkspace(userId, 'founder', {
+      name: `Workspace with list ${Date.now()}`,
+      locale: 'en',
+    });
+    const ctx = await createWorkspaceContext({
+      kind: 'session',
+      userId,
+      workspaceRef: created.workspace.id,
+    });
+
+    const rows = await withWorkspace(ctx, (tx) => tx.select().from(schema.lists));
+    expect(rows[0]!.name).toBe('Subscribers');
+  });
+
   it('kolize slugu se řeší příponou, ne chybou, a to i napříč cizími projekty', async () => {
     const first = await makeUser('kolize-a');
     const second = await makeUser('kolize-b');
@@ -106,6 +177,40 @@ describe('updateWorkspace', () => {
     );
     expect(after.name).toBe('Přejmenováno');
     expect(after.address_form).toBe('informal');
+  });
+
+  /**
+   * Vypínač oslovení SÁM O SOBĚ nezařazuje přepočet. Je to podmínka toho, aby se
+   * zapnutím zpátky nic neztratilo: sloupce kontaktů se počítají pořád, skrývá se
+   * jen rozhraní. Změna jazyka projektu vypínačem naopak nehýbe.
+   */
+  it('vypínač oslovení jde přepnout oběma směry a změna jazyka s ním nehýbe', async () => {
+    const userId = await makeUser('vypinac-osloveni');
+    const created = await createWorkspace(userId, 'u', {
+      name: `Vypinac ${Date.now()}`,
+      locale: 'cs',
+    });
+    const ctx = await createWorkspaceContext({
+      kind: 'session',
+      userId,
+      workspaceRef: created.workspace.id,
+    });
+
+    const off = await withWorkspace(ctx, (tx) =>
+      updateWorkspace(tx, ctx, { greeting_enabled: false }, 'u'),
+    );
+    expect(off.greeting_enabled).toBe(false);
+
+    // Změna jazyka projektu vypínač NEPŘEPÍNÁ, ani na češtinu, ani z ní.
+    const relocalized = await withWorkspace(ctx, (tx) =>
+      updateWorkspace(tx, ctx, { locale: 'en' }, 'u'),
+    );
+    expect(relocalized.greeting_enabled).toBe(false);
+
+    const on = await withWorkspace(ctx, (tx) =>
+      updateWorkspace(tx, ctx, { greeting_enabled: true }, 'u'),
+    );
+    expect(on.greeting_enabled).toBe(true);
   });
 });
 

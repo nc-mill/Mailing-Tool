@@ -35,6 +35,22 @@ export async function register(): Promise<void> {
   logger.info({}, 'systémová pošta je zapojená');
 
   /**
+   * Kompoziční kořen e-mailů seznamu: potvrzení přihlášení, uvítání, rozloučení.
+   *
+   * Bez tohohle řádku je `emails?.sendConfirmation(...)` v `subscribe-service.ts`
+   * no-op, takže se potvrzovací e-mail NEODEŠLE a uživatel přesto vidí úspěch.
+   * Přesně to se dělo veřejnému formuláři, potvrzovací stránce, centru předvoleb
+   * i tlačítku „Poslat potvrzení znovu".
+   *
+   * Nejde přes systémovou poštu, ale přes outbox, protože ta umí jedině SMTP
+   * a projekt jen se SES by z ní nedostal nic. Podrobně v hlavičce
+   * `packages/core/src/contacts/lists/subscription-emails.ts`.
+   */
+  const { installSubscriptionEmails } = await import('@mlain/core/contacts');
+  installSubscriptionEmails();
+  logger.info({}, 'e-maily seznamu jsou zapojené');
+
+  /**
    * Vývojářský vypínač brzd přihlašování se hlásí při KAŽDÉM startu, ne až
    * u prvního přihlášení. Vypnutá ochrana, o které se mlčí, je horší než žádná.
    * Volání je idempotentní, takže druhé místo (konstrukce registru limiterů)

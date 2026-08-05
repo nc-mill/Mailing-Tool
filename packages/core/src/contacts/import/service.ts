@@ -5,6 +5,7 @@ import type { Readable } from 'node:stream';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../../identity/types';
 import { markAllStale } from '../../segments/service';
+import { pgErrorCode } from '../../tx';
 import { actorUserId, auditImport } from './audit';
 import { inWorkspaceTx } from './db';
 import { detectDialect, type Dialect } from './dialect';
@@ -110,7 +111,7 @@ export async function createImport(
   });
 
   const options = ImportOptionsSchema.parse(input.options ?? {});
-  const key = buildIdempotencyKey({
+  const baseKey = buildIdempotencyKey({
     contentSha256: stored.contentSha256,
     workspaceId: ctx.workspaceId,
     mapping: input.mapping ?? {},
@@ -119,17 +120,44 @@ export async function createImport(
   });
 
   return inWorkspaceTx(ctx, async (tx) => {
-    const { rows: clash } = await tx.execute<{ id: string; status: string }>(sql`
-      SELECT id, status FROM imports
-       WHERE workspace_id = ${ctx.workspaceId}::uuid AND idempotency_key = ${key}
-         AND status IN ('completed','completed_with_errors','importing')
-         AND created_at > now() - interval '24 hours'`);
+    /*
+     * KLÍČ SE HLEDÁ BEZ OHLEDU NA STAV A STÁŘÍ, protože přesně tak ho hlídá
+     * databáze: `uq_imports__workspace_idempotency` je nepodmíněný unikátní
+     * index nad dvojicí (workspace_id, idempotency_key).
+     *
+     * Dřív se tu hledalo jen mezi stavy completed, completed_with_errors
+     * a importing z posledních 24 hodin, takže druhé nahrání TÉHOŽ souboru
+     * ve chvíli, kdy předchozí import zůstal rozdělaný ve stavu previewing,
+     * kontrolou prošlo a spadlo až na indexu:
+     *
+     *   duplicate key value violates unique constraint
+     *   "uq_imports__workspace_idempotency"
+     *
+     * Uživatel dostal pětistovku „Nepodařilo se uložit soubor" a jedinou
+     * cestou ven bylo změnit obsah souboru. Ověřeno na dev serveru 5. 8. 2026.
+     */
+    const { rows: clash } = await tx.execute<{ id: string; status: string; created_at: Date }>(sql`
+      SELECT id, status, created_at FROM imports
+       WHERE workspace_id = ${ctx.workspaceId}::uuid AND idempotency_key = ${baseKey}`);
     const previous = clash[0];
-    if (previous !== undefined) {
-      // Stavy failed a cancelled sem schválně nepatří: tam se nový import
-      // zakládá bez ptaní, protože opakovat pokažený import je legitimní.
-      conflictImport('import_duplicate', { importId: previous.id, status: previous.status });
+    /*
+     * Pokažený nebo zrušený běh se opakuje BEZ PTANÍ, jak to popisoval původní
+     * záměr; jen se to nedá udělat mlčky pod stejným klíčem, tak dostane nonce.
+     * U ostatních stavů se ptáme: obrazovka nabídne „Otevřít původní import"
+     * a „Spustit znovu", což je odpověď, se kterou uživatel něco udělá.
+     */
+    const retryable = previous !== undefined && ['failed', 'cancelled'].includes(previous.status);
+    if (previous !== undefined && !retryable) {
+      // `createdAt` je součást odpovědi, ne ozdoba: obrazovka nahrání se ptá
+      // „tenhle soubor jste nahráli {kdy}, chcete otevřít původní import?"
+      // a bez data je z otázky prázdné místo.
+      conflictImport('import_duplicate', {
+        importId: previous.id,
+        status: previous.status,
+        createdAt: new Date(previous.created_at).toISOString(),
+      });
     }
+    const key = retryable ? `${baseKey}.${randomBytes(8).toString('hex')}` : baseKey;
 
     const { rows: inserted } = await tx.execute<{ id: string; status: string }>(sql`
       INSERT INTO imports (id, workspace_id, filename, storage_key, byte_size, content_sha256,
@@ -139,15 +167,47 @@ export async function createImport(
               ${JSON.stringify(input.mapping ?? {})}::jsonb, ${JSON.stringify(options)}::jsonb,
               ${actorUserId(ctx)}::uuid, now() + interval '30 days')
       RETURNING id, status`);
-    await enqueueImportJob(
-      tx,
-      'contacts.import',
-      { workspaceId: ctx.workspaceId, importId, phase: 'validate' },
-      { singletonKey: `${ctx.workspaceId}:validate:${importId}`, retryLimitOverride: 0 },
-    );
+    /*
+     * ŽÁDNÁ ÚLOHA DO FRONTY. Nahrání souboru import NESPOUŠTÍ.
+     *
+     * Tady se dřív zařazovala úloha `contacts.import` s `phase: 'validate'`, jenže
+     * obsluha ve `jobs/run-import.ts` na `phase` nikdy nekoukala a rovnou přečetla
+     * celý soubor a zapsala kontakty. Důsledek: celý průvodce byl na okrasu.
+     * Uživatel nahrál soubor, worker během vteřiny naimportoval všechny řádky
+     * s VÝCHOZÍMI volbami (žádný seznam, žádný štítek, žádný souhlas, stav
+     * „čeká na potvrzení") a než se uživatel proklikal ke krokům Mapování a Volby,
+     * bylo hotovo. Krok Kontrola souboru pak spadl na 409 `invalid_state_transition`
+     * z `completed`, protože import byl dávno dokončený. Ověřeno v prohlížeči
+     * 2026-08-05: soubor s pěti řádky byl v `contacts` dvě vteřiny po nahrání,
+     * `started_at` zůstalo NULL a `options.list_ids` prázdné. Přesně odtud se
+     * berou kontakty, které nikam nepatří.
+     *
+     * Detekci kódování, oddělovače a návrh mapování dělá `detectAndPreview()`
+     * z koncového bodu `/preview`, který si průvodce zavolá v kroku 2. Čte jen
+     * prvních pár set kilobajtů, takže na frontu není důvod. Do fronty se import
+     * dostane až z `confirmImport()`, tedy až člověk klikne na „Naimportovat".
+     */
     const row = inserted[0];
     if (row === undefined) throw new Error('INSERT do imports nevrátil řádek.');
     return row;
+  }).catch(async (error: unknown) => {
+    /*
+     * Poslední záchrana pro souběh: dvě nahrání téhož souboru naráz projdou
+     * kontrolou výš obě a jedno z nich skončí na indexu. Pomalejší dostane
+     * tutéž odpověď, jakou by dostal o vteřinu později, tedy nabídku otevřít
+     * původní import, ne pětistovku „Nepodařilo se uložit soubor".
+     * SQLSTATE se čte přes `pgErrorCode`: Drizzle chybu ovladače balí do
+     * `DrizzleQueryError`, kde `error.code` je `undefined`.
+     */
+    if (pgErrorCode(error) !== '23505') throw error;
+    const { rows } = await inWorkspaceTx(ctx, (tx) =>
+      tx.execute<{ id: string; status: string }>(sql`
+        SELECT id, status FROM imports
+         WHERE workspace_id = ${ctx.workspaceId}::uuid AND idempotency_key = ${baseKey}`),
+    );
+    const existing = rows[0];
+    if (existing === undefined) throw error;
+    conflictImport('import_duplicate', { importId: existing.id, status: existing.status });
   });
 }
 

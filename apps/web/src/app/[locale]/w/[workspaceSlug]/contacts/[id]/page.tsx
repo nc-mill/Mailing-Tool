@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api-client/fetch';
-import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
+import { getWorkspaceAccess, hasPermission } from '@/lib/identity/workspace-access';
 import { ContactsProblem } from '@/features/contacts/contacts-problem';
 import { ContactDetail, type ContactDetailData } from '@/features/contacts/contact-detail';
 
@@ -58,6 +58,19 @@ type ContactApiDetail = {
 type ContactFieldApi = { key: string; label: Record<string, string> };
 
 /**
+ * Podklad k větě o omezení zpracování. Vrací ho `GET /contacts/{id}` vedle kontaktu,
+ * protože v tabulce `contacts` žádný čas omezení není: skládá se z auditního záznamu
+ * `contact.processing_restricted`. Do téhle chvíle stránka posílala do rozhraní natvrdo
+ * `null`, takže se ve větě „požádal o omezení" ukazovalo `updated_at`, tedy datum
+ * poslední jakékoli změny kontaktu.
+ */
+type ContactRestrictionApi = {
+  restricted_at: string;
+  note: string | null;
+  gdpr_request_id: string | null;
+} | null;
+
+/**
  * Titulek se nedělá druhým dotazem na kontakt. Byl by to stejný požadavek navíc a
  * e-mail v titulku prohlížeče je navíc osobní údaj viditelný v historii i na projektoru.
  */
@@ -79,9 +92,10 @@ export default async function ContactDetailPage({ params }: PageProps) {
   // Katalog vlastních polí se čte souběžně s kontaktem: bez něj by se atributy
   // vypsaly jako holé klíče (city místo Město).
   const [contact, fields] = await Promise.all([
-    apiFetch<{ data: ContactApiDetail } | ContactApiDetail>(`/api/v1/contacts/${id}`, {
-      workspaceId,
-    }),
+    apiFetch<{ data: ContactApiDetail; restriction?: ContactRestrictionApi } | ContactApiDetail>(
+      `/api/v1/contacts/${id}`,
+      { workspaceId },
+    ),
     apiFetch<{ data: ContactFieldApi[] }>('/api/v1/contact-fields', { workspaceId }),
   ]);
 
@@ -92,6 +106,7 @@ export default async function ContactDetailPage({ params }: PageProps) {
 
   // Obálka odpovědi se u detailu liší podle endpointu, proto obě větve.
   const payload = 'data' in contact.data ? (contact.data.data as ContactApiDetail) : contact.data;
+  const restriction = 'restriction' in contact.data ? (contact.data.restriction ?? null) : null;
 
   const labels = new Map(
     (fields.ok ? fields.data.data : []).map((field) => [
@@ -123,7 +138,10 @@ export default async function ContactDetailPage({ params }: PageProps) {
     snooze_until: snooze.length > 0 ? snooze.toSorted().at(-1)! : null,
     anonymized_at: payload.anonymized_at ?? null,
     status_changed_at: payload.updated_at,
-    restriction_requested_at: null,
+    restriction:
+      restriction === null
+        ? null
+        : { restricted_at: restriction.restricted_at, note: restriction.note },
     lists: payload.lists.map((list) => ({
       id: list.list_id,
       name: list.name,
@@ -147,6 +165,11 @@ export default async function ContactDetailPage({ params }: PageProps) {
       workspaceId={workspaceId}
       contact={data}
       workspaceLocale={access.data.workspace.locale}
+      greetingEnabled={access.data.workspace.greeting_enabled}
+      // Omezení zpracování podle článku 18 drží `suppressions:write`, tedy admin a výš.
+      // Server to kontroluje sám; tohle jen rozhoduje, jestli se ukáže tlačítko, nebo
+      // věta o tom, koho požádat.
+      canManageRestriction={hasPermission(access.data, 'suppressions:write')}
     />
   );
 }

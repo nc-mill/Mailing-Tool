@@ -4,7 +4,7 @@ import { createLogger } from '@mlain/core/logging';
 import { createShutdownController } from '@mlain/core/shutdown';
 import { aiKeyLeakCheck, type Check } from '@mlain/core/health';
 import { installSystemMailer } from '@mlain/core/platform/system-mail-runtime';
-import { installConsentEraser } from '@mlain/core/contacts';
+import { installConsentEraser, installSubscriptionEmails } from '@mlain/core/contacts';
 import { gdprConfigured, maintenanceConfigured } from '@mlain/core/tx/index';
 import { registerQueues } from './boss';
 import { startHealthServer } from './health-server';
@@ -72,6 +72,16 @@ async function main(): Promise<void> {
   logger.info({}, 'systémová pošta je zapojená');
 
   /**
+   * Kompoziční kořen e-mailů seznamu. Ve workeru je potřeba stejně jako ve webu:
+   * přihlášení vzniká i z úloh (import, zpracování příchozí pošty), a bez zapojení
+   * by z nich potvrzovací e-mail tiše nikam neodešel. Zapojení jen ve webu by
+   * znamenalo, že část potvrzení chodí a část mizí, a to se hledá hůř než když
+   * nechodí nic.
+   */
+  installSubscriptionEmails();
+  logger.info({}, 'e-maily seznamu jsou zapojené');
+
+  /**
    * Kompoziční kořen výmazu podle článku 17.
    *
    * Souhlasy smí smazat jedině role `mlain_gdpr` a do téhle chvíle ji
@@ -131,6 +141,7 @@ async function main(): Promise<void> {
   await boss.start();
   await registerQueues(boss as never, HANDLERS, {
     concurrency: config.WORKER_CONCURRENCY,
+    schema: config.PGBOSS_SCHEMA,
     logger,
   });
 

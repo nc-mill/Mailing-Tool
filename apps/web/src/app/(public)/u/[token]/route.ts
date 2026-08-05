@@ -5,6 +5,7 @@ import {
   readVerifiedToken,
   recordSystemLinkVisit,
   unsubscribeByToken,
+  unsubscribeRedirectFor,
 } from '@mlain/core/contacts';
 import { sanitizePublicToken } from '@mlain/core/net/public-link';
 import { publicTranslator } from '@/features/public/i18n';
@@ -122,9 +123,16 @@ export async function POST(
 
   // Běžný formulář ze stránky odhlášení. Na ten se zákaz přesměrování nevztahuje,
   // protože to není one-click podle RFC.
-  await unsubscribeByToken(verified.token, {
-    reason: 'link',
-    forceGlobal: body.get('action') === 'unsubscribe_all',
-  });
-  return new Response(null, { status: 303, headers: { location: `/u/${token}?done=1` } });
+  const forceGlobal = body.get('action') === 'unsubscribe_all';
+  await unsubscribeByToken(verified.token, { reason: 'link', forceGlobal });
+
+  /*
+   * Vlastní stránka po odhlášení (`lists.unsubscribe_redirect_url`), jen
+   * u odhlášení z JEDNOHO seznamu. Kdo zvolil „nechci od vás už nic", nemá
+   * podle čeho vybrat seznam, a poslat ho na stránku jednoho z nich by
+   * s jeho rozhodnutím nesouviselo. Podrobně v `unsubscribeRedirectFor`.
+   */
+  const redirectUrl = await unsubscribeRedirectFor(verified.token, { forceGlobal });
+  const location = redirectUrl ?? `/u/${token}?done=1`;
+  return new Response(null, { status: 303, headers: { location } });
 }

@@ -29,12 +29,17 @@ import { HANDLERS } from '../src/handlers.generated';
  * hotová práce.
  */
 const UNDELIVERED: Readonly<Record<string, string>> = {
-  // --- P16 a P04: obsluha zatím neexistuje --------------------------------
-  'platform.maintain_partitions': 'obsluhu dodá P03, modul jobu zatím není',
+  // `platform.maintain_partitions` z tohohle seznamu ZMIZELA i s frontou,
+  // jako třetí a poslední z front kolem oddílů. Nebyla to nedodaná obsluha,
+  // byla to fronta, která obsluhu mít nemohla: zakládání oddílu je DDL
+  // a `mlain_app` schéma nevlastní. Zakládá i uklízí `mlain partitions`.
 
   // --- P07 a P11: hromadné operace nad kontakty ---------------------------
-  'segments.mark_invalid': 'obsluhu dodá P11, modul jobu zatím není',
-  'segments.recalc_for_contact': 'obsluhu dodá P11, modul jobu zatím není',
+  //
+  // `segments.mark_invalid` i `segments.recalc_for_contact` z tohohle seznamu
+  // ZMIZELY: obě obsluhy jsou složené a vedené v `segments/jobs/queue-handlers.ts`.
+  // Producenti obou front přitom existovali dřív než obsluhy, takže se do nich
+  // úlohy zařazovaly a nikdo si je nevyzvedl.
 
   // --- P08 a P12: obsah a šablony -----------------------------------------
   'content.revalidate_templates': 'obsluhu dodá P08, modul jobu zatím není',
@@ -55,7 +60,10 @@ const UNDELIVERED: Readonly<Record<string, string>> = {
   'provider_event.process': 'obsluhu dodá P13, modul jobu zatím není',
   'provider_event.rematch': 'obsluhu dodá P13, modul jobu zatím není',
   'deliverability.rollup': 'obsluhu dodá P13, modul jobu zatím není',
-  'retention.drop_message_partitions': 'obsluhu dodá P13, modul jobu zatím není',
+  // `retention.drop_message_partitions` z tohohle seznamu ZMIZELA i s frontou.
+  // Nebyla to nedodaná obsluha, byla to fronta, která obsluhu mít nemohla:
+  // odpojení oddílu je DDL a `mlain_app` schéma nevlastní. Úklid dělá příkaz
+  // `mlain partitions` pod migrátorskou rolí.
 
   // --- P10: tracking a identity -------------------------------------------
   //
@@ -66,8 +74,10 @@ const UNDELIVERED: Readonly<Record<string, string>> = {
   // v produktu je, veřejný klíč se ověřuje, dávka se zařadí a obsluha ji
   // zapíše do `web_events`. Ověřeno na běžící instalaci od SDK v prohlížeči
   // až po časovou osu kontaktu.
-  'tracking.enforce_retention':
-    'retence odpojuje oddíly tabulek, což je DDL. Role mlain_app, pod kterou worker běží, nemá na public schéma práva, takže by úloha padala na permission denied; patří k migrátorovi stejně jako platform.maintain_partitions',
+  // `tracking.enforce_retention` z tohohle seznamu ZMIZELA i s frontou, ze
+  // stejného důvodu. Důvod, který tu stál („patří k migrátorovi"), byl správný
+  // a přestal být výjimkou: retenci `web_events` i `message_events` dělá
+  // `mlain partitions` pod migrátorskou rolí.
   'tracking.refresh_proxy_ranges':
     'stahování rozsahů Apple relay z internetu. TRACKING_APPLE_RELAY_RANGES je ve výchozím stavu vypnuté a ProxyRangeIndex si vestavěný rozsah nese sám, takže bez zdroje adres by úloha jen dělala prázdné kolo',
   'tracking.erase_contact':
@@ -200,6 +210,13 @@ describe('pokrytí front obsluhami', () => {
     'tracking.refresh_campaign_progress',
     'tracking.recompute_engagement_windows',
     'tracking.cleanup_token_uses',
+    // Dvě fronty domény segmentů, které měly PRODUCENTA A ŽÁDNOU OBSLUHU.
+    // `segments.recalc_for_contact` plnila každá webová událost s rozpoznaným
+    // kontaktem, `segments.mark_invalid` každé smazání vlastního pole; obojí se
+    // hromadilo ve frontě a nikdo si to nevyzvedl, takže se segment po události
+    // nikdy nezneplatnil a segment nad smazaným polem se tvářil, že je v pořádku.
+    'segments.recalc_for_contact',
+    'segments.mark_invalid',
   ];
 
   it.each(MUSI_BYT_ZAPOJENE)('fronta %s má složenou obsluhu, ne jen záznam v mapě', (name) => {

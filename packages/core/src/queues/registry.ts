@@ -3,6 +3,32 @@ import type { QueueEntry } from './types';
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;
 
+/**
+ * SLUČOVÁNÍ DUPLICITNÍCH ÚLOH: `singletonKeyTemplate`, `policy` a `discardNote`.
+ *
+ * Ta tři pole patří k sobě a čtou se dohromady. Když se rozejdou, nic nespadne,
+ * jen se přestane slučovat, a to je přesně to, co se v tomhle registru jednou
+ * stalo: 47 front deklarovalo klíč, producenti ho posílali, pg-boss ho ukládal
+ * do sloupce, a nesloučila se ani jedna úloha, protože všechny fronty vznikly
+ * s politikou `standard`, pro kterou `singletonKey` nic neznamená.
+ *
+ *  - `singletonKeyTemplate` je tvar klíče, který POSÍLÁ PRODUCENT. Je to popis
+ *    skutečnosti, ne přání: když se tu píše `<workspace_id>` a producent posílá
+ *    ID importu, je vada v registru, ne v producentovi.
+ *  - `policy` slučování ZAPÍNÁ. Chybí = fronta neslučuje.
+ *  - `discardNote` říká, co se stane s úlohou, kterou politika nezařadí, nebo,
+ *    když `policy` chybí, proč se slučování nezaplo.
+ *
+ * PROČ NENÍ POLITIKA U VŠECH ČTYŘICETI SEDMI. Zapnuté slučování znamená, že se
+ * část úloh NEZAŘADÍ. U úklidu z časovače je to neškodné, protože zítřejší běh
+ * udělá i to, co dnešní nestihl. U fronty, do které producent klíč NEPOSÍLÁ,
+ * je to naopak ztráta práce: všechny úlohy skončí v jednom kbelíku
+ * `COALESCE(singleton_key, '')` a výmaz jednoho kontaktu zahodí výmaz jiného.
+ * U takových front politika schválně chybí a `discardNote` říká proč. Vazbu
+ * mezi klíčem, politikou a skutečným producentem hlídá test
+ * `packages/core/test/queues/merge-policy.test.ts`, aby se to už nemohlo
+ * potichu rozejít.
+ */
 export const QUEUE_REGISTRY: readonly QueueEntry[] = [
   // --- Platforma, část 1 ----------------------------------------------------
   {
@@ -28,25 +54,38 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 0,
     expireInSeconds: 2 * MINUTE,
     singletonKeyTemplate: 'delivery:<delivery_id>',
+    discardNote:
+      'SLUČOVÁNÍ ZÁMĚRNĚ VYPNUTÉ: fronta nemá v repozitáři producenta. Obsluha existuje ' +
+      '(platform/jobs/webhook_deliver.ts) a fan-out zapisuje řádky do webhook_deliveries, ' +
+      'ale do fronty nikdo nezařazuje, takže se nedá ověřit, že by delivery:<delivery_id> ' +
+      'doopravdy chodil. Až producent vznikne, bude to exclusive: zahodí se druhé zařazení ' +
+      'TÉHOŽ doručení, práce se neztratí, protože pravdu drží řádek ve webhook_deliveries ' +
+      'a další pokus zařadí aplikace podle next_attempt_at. Pořadí doručení na týž endpoint ' +
+      'se držet NEBUDE: šlo by to jedině přes key_strict_fifo s klíčem endpointu, jenže tam ' +
+      'by jedno trvale selhavší doručení zamklo endpoint navždy.',
     deadLetter: false,
     payloadFields: ['delivery_id', 'created_at'],
     source: 'část 1, 3.8',
   },
-  {
-    name: 'platform.maintain_partitions',
-    domain: 'platform',
-    owner: 'P03',
-    description: 'Zajistí existenci partition pro aktuální a další tři měsíce.',
-    cron: '0 2 * * *',
-    retryLimit: 3,
-    retryBackoff: true,
-    retryDelaySeconds: 60,
-    expireInSeconds: 30 * MINUTE,
-    singletonKeyTemplate: 'global',
-    deadLetter: false,
-    payloadFields: [],
-    source: 'část 1, 2.1',
-  },
+  // `platform.maintain_partitions` TADY UŽ NENÍ a nezakládejte ji znovu.
+  //
+  // Byla poslední ze tří front, které slibovaly práci s oddíly a žádnou
+  // nedělaly. Zakládání oddílu je `CREATE TABLE ... PARTITION OF`, tedy DDL,
+  // a worker běží pod rolí `mlain_app`, která schéma nevlastní. Obsluha jí
+  // proto nikdy nevznikla a vzniknout nemohla, jen v registru vypadala jako
+  // denní údržba v 02:00.
+  //
+  // Zakládání oddílů dopředu i úklid těch za lhůtou dělá `mlain partitions`
+  // pod `DATABASE_URL_MIGRATOR`, pouštěný z plánovače hostitele. Obojí je
+  // schválně v JEDNOM příkazu: bez zakládání dopředu přestane instalace po
+  // čtyřech měsících přijímat zápisy, protože výchozí oddíl se nezakládá
+  // a zápis mimo okno tvrdě selže. Viz
+  // `packages/core/src/ops/partition-retention.ts`
+  // a `docs/operations/partitions-retention.md`.
+  //
+  // Druhou pojistkou je migrační runner: `runMigrations` volá
+  // `ensureUpcomingPartitions(client, new Date(), 4)`, takže každý upgrade
+  // okno posune, i kdyby plánovač nikdo nenastavil.
   {
     name: 'platform.cleanup_sessions',
     domain: 'platform',
@@ -58,6 +97,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 15 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: maže se podle stáří, takže zítřejší běh smaže i to, co ' +
+      'zbylo. Relace navíc přežije o den déle, nic se neztratí.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 1, 3.2',
@@ -73,6 +116,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 15 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: maže se podle expirace, zítřejší běh smaže i zbytek. Klíč ' +
+      'navíc přežije o den, což znamená o den delší ochranu proti duplicitě, ne slabší.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 1, 4.4 (název odvozen P01)',
@@ -88,6 +135,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 30 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: retence je daná stářím záznamu, zítřejší běh smaže i zbytek. ' +
+      'Audit se drží DÉLE, než AUDIT_RETENTION_MONTHS káže, nikdy kratší dobu.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 1, 3.7 a 4.9 (název odvozen P01)',
@@ -103,6 +154,11 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 1 * HOUR,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: projekt po lhůtě zůstane měkce smazaný a odstraní ho ' +
+      'zítřejší běh. Odklad o den je přijatelný; nepřijatelné by bylo opačné pořadí, tedy dva ' +
+      'souběžné úklidy nad týmž projektem.',
     deadLetter: true,
     payloadFields: [],
     source: 'část 1, 3.3',
@@ -118,6 +174,12 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 0,
     expireInSeconds: 4 * HOUR,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'JEDINÉ MÍSTO, KDE JE ZAHOZENÍ CITELNÉ: zahozený tik znamená vynechanou zálohu. Přesto ' +
+      'je to lepší než druhý pg_dump puštěný přes běžící, protože oba se perou o I/O i o ' +
+      'cílový soubor. Zahodí se to jen tehdy, když předchozí záloha běží nebo čeká přes 24 ' +
+      'hodin, a to je samo o sobě porucha a je vidět v tabulce backups.',
     deadLetter: true,
     payloadFields: [],
     source: 'část 1, 3.14',
@@ -133,6 +195,11 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 0,
     expireInSeconds: 4 * HOUR,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik znamená vynechané týdenní ověření zálohy. Zahodí se jen tehdy, když ' +
+      'předchozí ověření běží déle než týden, což je porucha sama o sobě. Souběžné ověření by ' +
+      'navíc obnovovalo dvě kopie naráz a spotřebovalo dvojnásobek místa.',
     deadLetter: true,
     payloadFields: [],
     source: 'část 1, 3.14',
@@ -148,7 +215,16 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryBackoff: true,
     retryDelaySeconds: 30,
     expireInSeconds: 6 * HOUR,
-    singletonKeyTemplate: '<workspace_id>',
+    singletonKeyTemplate: '<import_id>',
+    policy: 'exclusive',
+    discardNote:
+      'OPRAVENO PODLE SKUTEČNÉHO PRODUCENTA. Registr tu měl <workspace_id>, jenže ' +
+      'import/service.ts posílá importId a fáze validace ho posílá jako ' +
+      '<workspace_id>:validate:<import_id>. Klíč projektu tu nikdy nikdo neposlal a batch.ts ' +
+      'před ním výslovně varuje: zabitý worker by projektu zamkl VŠECHNY další importy. ' +
+      'Zahodí se tedy druhé zařazení TÉHOŽ importu, což je přesně to, co dělá ' +
+      'recover-stale.ts, když se plete s běžícím během. Práce se neztrácí, pravdu drží řádek ' +
+      'v imports i s checkpointem.',
     deadLetter: true,
     payloadFields: ['import_id', 'workspace_id'],
     source: 'část 2, 4.6',
@@ -228,6 +304,14 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 4 * HOUR,
     singletonKeyTemplate: 'global',
+    policy: 'stately',
+    discardNote:
+      'Zahodí se AŽ TŘETÍ požadavek: jeden běh doplňuje otisky, jeden čeká. Schválně ne ' +
+      'exclusive: rotaci klíče pouští člověk příkazem mlain rotate-credentials a jeho druhý ' +
+      'pokus musí doběhnout, ne zmizet. Čekající běh je idempotentní, doplňuje jen tam, kde ' +
+      'otisk pod daným pokolením chybí, takže neudělá práci dvakrát. A schválně ne short: ' +
+      'ten aktivní běhy NEOMEZUJE, takže by dvě rotace pouštěné rychle za sebou přešifrovávaly ' +
+      'celou instalaci souběžně a zdvojnásobily zátěž bez užitku.',
     deadLetter: true,
     payloadFields: ['key_id', 'cursor'],
     source: 'část 2, 6',
@@ -243,6 +327,15 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 30,
     expireInSeconds: 2 * HOUR,
     singletonKeyTemplate: '<workspace_id>',
+    policy: 'stately',
+    discardNote:
+      'Zahodí se až TŘETÍ požadavek: jeden přepočet běží, jeden čeká. Schválně ne exclusive: ' +
+      'kdyby se zahodila změna nastavení, která přišla za běhu, zůstalo by v databázi staré ' +
+      'oslovení a příští kampaň by odešla špatně. Čekající běh si nastavení načte, až začne, ' +
+      'takže pokryje i tu změnu, kvůli které byl třetí požadavek zahozen. A schválně ne short, ' +
+      'ačkoli tak zněl první návrh: short omezuje POUZE stav created a aktivních běhů neomezuje, ' +
+      'takže by nad TÝMŽ projektem mohly běžet dva přepočty souběžně a přepisovat si tytéž řádky ' +
+      'kontaktů. Přesně tomu má klíč projektu bránit, viz WORKSPACE_SINGLETON_QUEUES.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'cursor', 'align_locale'],
     source: 'část 2, 4.5',
@@ -272,6 +365,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 1 * HOUR,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: běh je sken toho, co je právě po termínu, takže příští tik ' +
+      'udělá i to, co tenhle nestihl. Zahodit ho je lepší než pustit druhý sken přes běžící.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 2, 4.6 (název odvozen P01)',
@@ -287,6 +384,12 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 1 * HOUR,
     singletonKeyTemplate: '<field_id>',
+    discardNote:
+      'SLUČOVÁNÍ ZÁMĚRNĚ VYPNUTÉ, dokud producent neposílá klíč. Registr slibuje <field_id>, ' +
+      'ale jediný producent (repo/contact-fields.ts, deleteContactField) volá enqueue bez ' +
+      'options, takže do sloupce jde NULL. Zapnutá politika by všechny prověrky srazila do ' +
+      'jednoho kbelíku COALESCE(singleton_key, prázdný řetězec) a prověrka jednoho pole by ' +
+      'tiše zahodila prověrku úplně jiného pole. To je ztráta práce, ne slučování.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'field_id'],
     source: 'část 2, 4.2',
@@ -301,6 +404,15 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 30,
     expireInSeconds: 30 * MINUTE,
     singletonKeyTemplate: '<segment_id>',
+    policy: 'stately',
+    discardNote:
+      'Zahodí se až TŘETÍ požadavek: jeden přepočet běží, jeden čeká. Schválně ne exclusive: ' +
+      'změna členství, která přijde za běhu, musí vést k dalšímu přepočtu, jinak zůstane v ' +
+      'segmentu navždy zastaralý počet. Čekající běh čte aktuální data, takže je i po ' +
+      'zahození třetího požadavku výsledek správný. A schválně ne short: ten aktivní běhy ' +
+      'neomezuje, takže by nad týmž segmentem mohly běžet dva přepočty naráz a do cached_count ' +
+      'by zapsal ten, který skončí později, klidně se starším číslem. Ověřeno měřením: dva ' +
+      'INSERT se stavem active a týmž klíčem prošly OBA.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'segment_id'],
     source: 'část 2, 5.4',
@@ -315,7 +427,11 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 30,
     expireInSeconds: 15 * MINUTE,
     deadLetter: true,
-    payloadFields: ['workspace_id', 'field_key'],
+    // Opraveno podle skutečného producenta (`deleteContactField` v doméně
+    // kontaktů). Registr tu měl `field_key`, jenže seznam segmentů se musí
+    // spočítat PŘED `DELETE`, dokud pole existuje; po smazání by ho obsluha
+    // z klíče už nedohledala a job by tiše neudělal nic.
+    payloadFields: ['workspace_id', 'segment_ids', 'error_code', 'field_key'],
     source: 'část 2, 4.2',
   },
   {
@@ -341,6 +457,11 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 2 * HOUR,
     singletonKeyTemplate: '<request_id>',
+    discardNote:
+      'SLUČOVÁNÍ ZÁMĚRNĚ VYPNUTÉ. Registr slibuje <request_id>, ale producent (repo/gdpr.ts, ' +
+      'řádek 141) volá enqueue bez options, takže klíč je NULL a všechny žádosti by spadly do ' +
+      'jednoho kbelíku. Zahozená úloha by tady znamenala NEVYŘÍZENOU ŽÁDOST SUBJEKTU se ' +
+      'zákonnou lhůtou, a to je přesně ten případ, kde se slučování zapínat nesmí.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'request_id'],
     source: 'část 2, 6.4',
@@ -355,6 +476,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 1 * HOUR,
     singletonKeyTemplate: '<request_id>',
+    discardNote:
+      'SLUČOVÁNÍ ZÁMĚRNĚ VYPNUTÉ, ze stejného důvodu jako u gdpr.export_subject: producent ' +
+      'klíč neposílá a zahozený výmaz podle článku 17 by byl porušením lhůty, o kterém by se ' +
+      'nikdo nedozvěděl. Dokud producent neposílá <request_id>, zůstává standard.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'request_id', 'contact_id'],
     source: 'část 2, 6.5',
@@ -369,6 +494,11 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 2 * HOUR,
     singletonKeyTemplate: '<contact_id>',
+    discardNote:
+      'SLUČOVÁNÍ ZÁMĚRNĚ VYPNUTÉ. Registr slibuje <contact_id>, ale oba producenti ' +
+      '(gdpr/erase.ts, řádky 125 a 205) volají enqueue bez options. Se společným kbelíkem by ' +
+      'odpojení vazeb jednoho kontaktu zahodilo odpojení vazeb jiného a v messages i ve ' +
+      'web_events by zůstal odkaz na anonymizovaný kontakt.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'contact_id'],
     source: 'část 2, 6.5',
@@ -383,6 +513,12 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 15,
     expireInSeconds: 15 * MINUTE,
     singletonKeyTemplate: '<dedup_key>',
+    discardNote:
+      'SLUČOVÁNÍ ZÁMĚRNĚ VYPNUTÉ: fronta nemá v repozitáři producenta. Obsluha existuje ' +
+      '(jobs/inbound-process.ts), ale nikdo do fronty nezařazuje, takže se nedá ověřit, ' +
+      'jestli by <dedup_key> doopravdy chodil. Zapnout politiku nad frontou, jejíhož ' +
+      'producenta nikdo nenapsal, znamená hádat. Až producent vznikne, vynutí si politiku ' +
+      'brána.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'delivery_id'],
     source: 'část 2, 5.6 (název odvozen P01)',
@@ -402,6 +538,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 15 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: běh je sken toho, co je právě po termínu, takže příští tik ' +
+      'udělá i to, co tenhle nestihl. Zahodit ho je lepší než pustit druhý sken přes běžící.',
     deadLetter: true,
     payloadFields: [],
     source: 'část 2, 3.4',
@@ -417,6 +557,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 30 * MINUTE,
     singletonKeyTemplate: '<workspace_id>',
+    discardNote:
+      'SLUČOVÁNÍ ZÁMĚRNĚ VYPNUTÉ: fronta nemá v repozitáři producenta, zařazuje se jedině ' +
+      'ručně po obnově ze zálohy nebo po migraci. Bez producenta se nedá ověřit, že klíč ' +
+      'chodí.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'contact_id'],
     source: 'část 2, 3.3',
@@ -436,6 +580,13 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 0,
     expireInSeconds: 40 * MINUTE,
     singletonKeyTemplate: '<workspace_id>',
+    policy: 'exclusive',
+    discardNote:
+      'Fronta nese DVA druhy úloh a klíč je rozděluje. Tik z cronu je dispečer a má klíč ' +
+      'NULL, tedy společný kbelík: zahozený tik znamená vynechaný denní rozvrh a dožene ho ' +
+      'zítřejší. Jednotlivé běhy zakládá dispečer s klíčem workspace_id: zahodí se druhý běh ' +
+      'nad TÝMŽ projektem, což je žádoucí, protože běh je mazání podle stáří a zítřek smaže i ' +
+      'zbytek. Mezi projekty se nezahazuje nic, klíče jsou různé.',
     deadLetter: false,
     payloadFields: ['workspace_id'],
     source: 'část 2, 6.7',
@@ -452,6 +603,12 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 0,
     expireInSeconds: 5 * MINUTE,
     singletonKeyTemplate: '<extraction_id>',
+    policy: 'exclusive',
+    discardNote:
+      'Zahodí se druhé zařazení TÉHOŽ běhu analýzy. Práce se neztrácí, pravdu drží řádek v ' +
+      'brand_extractions. Je to i bezpečnostní vlastnost: fronta má schválně retryLimit 0, ' +
+      'protože opakovaný pokus o stažení cizí adresy je opakovaný pokus o SSRF, a slučování ' +
+      'brání tomu, aby se týž pokus dal spustit dvakrát rychle za sebou.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'extraction_id'],
     source: 'část 3, 4.8',
@@ -466,6 +623,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 15,
     expireInSeconds: 10 * MINUTE,
     singletonKeyTemplate: '<asset_id>',
+    discardNote:
+      'SLUČOVÁNÍ ZÁMĚRNĚ VYPNUTÉ: fronta nemá v repozitáři producenta. Obsluha ' +
+      '(assets/jobs/process-asset.ts) existuje, ale nahrání assetu ji dnes nezařazuje, takže ' +
+      'se nedá ověřit, že by <asset_id> chodil.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'asset_id'],
     source: 'část 3, 4.8',
@@ -494,6 +655,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 0,
     expireInSeconds: 1 * HOUR,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: běh je sken toho, co je právě po termínu, takže příští tik ' +
+      'udělá i to, co tenhle nestihl. Zahodit ho je lepší než pustit druhý sken přes běžící.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 3, 4.8',
@@ -509,6 +674,11 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 0,
     expireInSeconds: 1 * HOUR,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: maže se podle stáří (30 dní), zítřejší běh smaže i zbytek. ' +
+      'Soubor přežije o den déle, což je bezpečný směr chyby. Dva souběžné úklidy by naopak ' +
+      'sahaly na tytéž klíče v úložišti.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 3, 4.8',
@@ -524,6 +694,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 0,
     expireInSeconds: 1 * HOUR,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: kontrola je čtení a srovnání denormalizovaných počtů, takže ' +
+      'příští tik dá tentýž výsledek.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 3, 4.8',
@@ -539,6 +713,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 0,
     expireInSeconds: 1 * HOUR,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: maže se podle stáří (AI_CONVERSATION_RETENTION_DAYS), takže ' +
+      'zítřejší běh smaže i zbytek.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 3, 4.8',
@@ -555,6 +733,13 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 5,
     expireInSeconds: 6 * HOUR,
     singletonKeyTemplate: 'campaign.materialize:<campaign_id>',
+    policy: 'exclusive',
+    discardNote:
+      'Zahodí se druhé zařazení TÉŽE kampaně, a je to nutnost, ne opatrnost: plánovač ' +
+      '(jobs/system-deps.ts) tiká každých třicet sekund a zařazuje materializaci znovu, dokud ' +
+      'kampaň neopustí stav scheduled. Bez slučování by se za minutu sešly dvě materializace ' +
+      'nad týmž outboxem. Práce se nezahazuje, pravdu drží stav kampaně a checkpoint v ' +
+      'outboxu, takže běžící úloha pokračuje tam, kde skončila.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'campaign_id', 'revision'],
     source: 'část 4a, 4.5',
@@ -570,6 +755,12 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 5,
     expireInSeconds: 2 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: plánovač je sken kampaní, jejichž čas nastal, a příští tik ' +
+      'za třicet sekund vezme i ty, které tenhle nestihl. Zahodit ho je přímo žádoucí: sken ' +
+      'trvající déle než třicet sekund by jinak nasbíral frontu tiků, které by všechny našly ' +
+      'totéž a přetahovaly se o tytéž kampaně.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 4a, 4.5',
@@ -585,6 +776,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 5,
     expireInSeconds: 1 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: hlídač je rekoncilace stavu, příští tik za patnáct sekund ' +
+      'uvidí totéž a udělá i to, co tenhle nestihl.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 4a, 4.5',
@@ -601,6 +796,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 30,
     expireInSeconds: 5 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: obnova čte pause_reason.code z databáze, takže příští tik za ' +
+      'deset minut najde tytéž pozastavené kampaně.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 4a, 4.5',
@@ -616,6 +815,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 10,
     expireInSeconds: 1 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: hlídač zaseknutých dávek čte stáří řádků v outboxu, takže ' +
+      'příští tik za minutu uvidí zaseknutou dávku o minutu starší.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 4a, 4.5',
@@ -631,6 +834,11 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 10,
     expireInSeconds: 5 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: srovnání počtů je čistá funkce obsahu outboxu a ' +
+      'campaign_stats, takže příští tik dá tentýž výsledek. Dva souběžné běhy by naopak ' +
+      'zapisovaly do campaign_stats proti sobě.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 4a, 4.5',
@@ -645,6 +853,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 5,
     expireInSeconds: 15 * MINUTE,
     singletonKeyTemplate: 'event:<dedup_key>',
+    discardNote:
+      'SLUČOVÁNÍ ZÁMĚRNĚ VYPNUTÉ: fronta nemá v repozitáři producenta. Příjem webhooku od ' +
+      'providera dnes do téhle fronty nezařazuje, takže se nedá ověřit, že by ' +
+      'event:<dedup_key> chodil. Deduplikaci navíc drží samo dedup_key v databázi.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'receipt_id', 'dedup_key'],
     source: 'část 4a, 4.5',
@@ -660,6 +872,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 10,
     expireInSeconds: 5 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: párování je sken událostí, které při prvním průchodu nenašly ' +
+      'zprávu, a ty ve frontě zůstávají, dokud se nespárují.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 4a, 4.5',
@@ -674,7 +890,14 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryBackoff: true,
     retryDelaySeconds: 30,
     expireInSeconds: 5 * MINUTE,
-    singletonKeyTemplate: 'provider.quota:<provider_id>',
+    singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'OPRAVENO PODLE SKUTEČNÉHO PRODUCENTA. Registr tu měl provider.quota:<provider_id>, ' +
+      'jenže REFRESH_QUOTA_JOB.singletonKey nikdo v produktu nevolá: fronta se plní VÝHRADNĚ ' +
+      'tikem z cronu s klíčem NULL a obsluha si providery vyjmenuje sama. Klíč je tedy ' +
+      'fakticky globální. Zahozený tik je neškodný, kvótu si příští tik za patnáct minut ' +
+      'načte znovu.',
     deadLetter: false,
     payloadFields: ['workspace_id', 'provider_id'],
     source: 'část 4a, 4.5',
@@ -689,7 +912,14 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryBackoff: true,
     retryDelaySeconds: 30,
     expireInSeconds: 5 * MINUTE,
-    singletonKeyTemplate: 'domain.check:<domain_id>',
+    singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'OPRAVENO PODLE SKUTEČNÉHO PRODUCENTA, stejně jako u provider.refresh_quota: ' +
+      'DOMAIN_RECHECK_JOB.singletonKey nikdo nevolá, fronta se plní jen tikem z cronu a ' +
+      'obsluha si domény po termínu vybere sama (kontroly uvnitř paralelizuje p-limit). ' +
+      'Zahozený tik je neškodný: domény zůstanou po termínu a příští tik za minutu je vezme. ' +
+      'Zahodit ho je žádoucí, protože kontrola stovek domén může trvat déle než minutu.',
     deadLetter: false,
     payloadFields: ['workspace_id', 'domain_id'],
     source: 'část 4a, 4.5',
@@ -705,25 +935,26 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 30,
     expireInSeconds: 15 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: agregace je čistá funkce zdrojových dat za okno, takže ' +
+      'příští tik za patnáct minut spočítá totéž včetně toho, co tenhle nestihl.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 4a, 4.5',
   },
-  {
-    name: 'retention.drop_message_partitions',
-    domain: 'campaigns',
-    owner: 'P13',
-    description: 'Odpojí a zahodí partition messages nad MESSAGE_RETENTION_DAYS.',
-    cron: '30 3 * * *',
-    retryLimit: 1,
-    retryBackoff: false,
-    retryDelaySeconds: 0,
-    expireInSeconds: 2 * HOUR,
-    singletonKeyTemplate: 'global',
-    deadLetter: true,
-    payloadFields: [],
-    source: 'část 4a, 4.5',
-  },
+  // `retention.drop_message_partitions` TADY UŽ NENÍ a nesmí se sem vrátit.
+  //
+  // Byla v registru s cronem `30 3 * * *`, tedy vypadala jako denní úklid
+  // outboxu, a přitom neexistovala její obsluha a nikdy existovat nemohla:
+  // odpojení oddílu je DDL a worker běží pod rolí `mlain_app`, která schéma
+  // nevlastní. Úloha by skončila na „permission denied", nebo, kdyby jí někdo
+  // práva dodal, by dostal právo zahodit tabulku každý handler v aplikaci.
+  //
+  // Úklid dělá `mlain partitions` pod `DATABASE_URL_MIGRATOR`, pouštěný
+  // z plánovače hostitele stejně jako migrace. Viz
+  // `packages/core/src/ops/partition-retention.ts`
+  // a `docs/operations/partitions-retention.md`.
 
   // --- Transakční pošta přes API --------------------------------------------
   {
@@ -739,6 +970,12 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 15 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik nic neztratí, render_data se vynuluje o hodinu později. Odklad je ale ' +
+      'citelný, protože v render_data leží jednorázový token na reset hesla, takže tenhle ' +
+      'úklid nemá zaostávat. Zahodí se jedině tehdy, když předchozí běh trvá přes hodinu, a ' +
+      'to je porucha, kterou je vidět.',
     deadLetter: false,
     payloadFields: [],
     source: 'rozhodnutí zadavatele 5. 8. 2026',
@@ -796,6 +1033,11 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 10,
     expireInSeconds: 30 * MINUTE,
     singletonKeyTemplate: '<binding_id>',
+    policy: 'exclusive',
+    discardNote:
+      'Zahodí se druhé zařazení TÉHOŽ svázání. Práce se neztrácí, pravdu drží řádek vazby a ' +
+      'přepis historie je idempotentní. Souběžné navázání téhož anonymous_id na kontakt by ' +
+      'naopak přepisovalo tutéž historii dvěma běhy najednou.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'anonymous_id', 'contact_id', 'binding_id'],
     source: 'část 5, 3.8.4',
@@ -811,6 +1053,11 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 10,
     expireInSeconds: 2 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: průběh se počítá z aktuálního stavu, takže příští tik za ' +
+      'třicet sekund zobrazí novější číslo. Zahodit ho je žádoucí, protože dva souběžné ' +
+      'přepočty by do dashboardu a SSE tlačily dvě různě stará čísla.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 5, 3.9',
@@ -826,6 +1073,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 2 * HOUR,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: přepočet klouzavých oken je čistá funkce zdrojových dat, ' +
+      'takže zítřejší běh dá tentýž výsledek.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 5, 3.9.4',
@@ -841,25 +1092,20 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 15 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: maže se podle expires_at, takže příští běh za hodinu smaže i ' +
+      'to, co zbylo.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 5, 3.10.3',
   },
-  {
-    name: 'tracking.enforce_retention',
-    domain: 'tracking',
-    owner: 'P10',
-    description: 'Retence web_events a message_events odpojením partition.',
-    cron: '45 3 * * *',
-    retryLimit: 1,
-    retryBackoff: false,
-    retryDelaySeconds: 0,
-    expireInSeconds: 2 * HOUR,
-    singletonKeyTemplate: 'global',
-    deadLetter: true,
-    payloadFields: [],
-    source: 'část 5, 3.15.2',
-  },
+  // `tracking.enforce_retention` TADY UŽ NENÍ, ze stejného důvodu jako
+  // `retention.drop_message_partitions` výš: odpojení oddílu je DDL a worker
+  // na ně nemá a nesmí mít práva. `web_events` i `message_events` uklízí
+  // `mlain partitions` podle `TRACKING_RETENTION_MONTHS`, respektive
+  // `MESSAGE_EVENT_RETENTION_DAYS`. Dva úklidy dvou tabulek týmž mechanismem
+  // ze dvou míst by znamenaly dvě různá pravidla pro totéž.
   {
     name: 'tracking.refresh_proxy_ranges',
     domain: 'tracking',
@@ -871,6 +1117,11 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 300,
     expireInSeconds: 30 * MINUTE,
     singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: rozsahy Apple relay se stahují celé, takže zítřejší běh ' +
+      'přinese aktuální seznam. Do té doby platí ten včerejší, což je přesně to, co by ' +
+      'platilo i po neúspěšném stažení.',
     deadLetter: false,
     payloadFields: [],
     source: 'část 5, 3.6',
@@ -885,6 +1136,11 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 1 * HOUR,
     singletonKeyTemplate: '<contact_id>',
+    discardNote:
+      'SLUČOVÁNÍ ZÁMĚRNĚ VYPNUTÉ: fronta nemá v repozitáři producenta. Obsluha existuje, ale ' +
+      'nikdo do fronty nezařazuje, takže se nedá ověřit, že by <contact_id> chodil. Navíc je ' +
+      'to výmaz osobních údajů, tedy přesně ten druh úlohy, kde se slučování nezapíná ' +
+      'naslepo.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'contact_id'],
     source: 'část 5, 3.15',
@@ -905,6 +1161,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     expireInSeconds: 2 * HOUR,
     concurrency: 1,
     singletonKeyTemplate: '<workspace_id>',
+    discardNote:
+      'SLUČOVÁNÍ ZÁMĚRNĚ VYPNUTÉ: fronta nemá v repozitáři producenta. Příkaz mlain ' +
+      'rebuild-engagement volá dávkovač ops/rebuild-engagement.ts PŘÍMO a do fronty ' +
+      'nezařazuje nic, takže klíč <workspace_id> dnes neposílá nikdo.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'batch_size'],
     source: 'část 5, 3.9.4 a kritérium 77',
@@ -924,6 +1184,11 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 60,
     expireInSeconds: 30 * MINUTE,
     singletonKeyTemplate: '<provider_id>',
+    policy: 'exclusive',
+    discardNote:
+      'Zahodí se druhé zařazení nad TÝMŽ providerem. Práce se neztrácí: přešifrování čte ' +
+      'aktuální credentials z databáze, takže běžící úloha publikuje i tu změnu, kvůli které ' +
+      'přišel zahozený požadavek.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'provider_id'],
     source: 'část 4b, 3.13 a část 1, 3.10 (název odvozen P01)',

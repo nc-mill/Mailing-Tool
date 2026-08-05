@@ -277,6 +277,14 @@ export async function setAddressForm(
   ]);
 }
 
+/** Vypínač oslovení a 5. pádu. Sloupec vlastní identita, testy ho jen přestavují. */
+export async function setGreetingEnabled(ctx: WorkspaceContext, enabled: boolean): Promise<void> {
+  await asMigrator().query(`UPDATE workspaces SET greeting_enabled = $2 WHERE id = $1`, [
+    ctx.workspaceId,
+    enabled,
+  ]);
+}
+
 export async function changeEmailDirectly(
   ctx: WorkspaceContext,
   contactId: string,

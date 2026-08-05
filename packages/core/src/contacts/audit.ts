@@ -69,6 +69,12 @@ export const CONTACTS_AUDIT_ACTIONS = [
   // takže musí být dohledatelné jedním řádkem i po položkách: metadata nesou seznam,
   // kolik přihlášení čekalo, kolik se potvrdilo a kolik se vynechalo kvůli ochraně.
   'list.pending_confirmed',
+  // E-mail seznamu (potvrzení, uvítání, rozloučení) se nepodařilo zařadit k odeslání.
+  // Je to jediná stopa, kterou po sobě tichý neúspěch nechá: přihlášení je v tu chvíli
+  // zapsané a shodit ho kvůli e-mailu nesmíme, takže volající dostane úspěch. Kdo se
+  // ptá „proč mi nepřišlo potvrzení", musí najít důvod, ne mlčení. Metadata nesou druh
+  // e-mailu, důvod (`sending_not_configured`, `confirm_link_missing`, …) a kontakt.
+  'list.email_send_failed',
   'suppression.added',
   'suppression.reason_promoted',
   'suppression.removed',

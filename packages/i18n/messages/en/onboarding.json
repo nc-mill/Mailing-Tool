@@ -7,7 +7,9 @@
     "show": "Show",
     "done": "done",
     "finished": "Done, your first campaign is out. The report is on the campaign.",
-    "finishedDismiss": "Close"
+    "finishedDismiss": "Close",
+    "saveFailed": "The panel setting could not be saved ({code}). Please try again.",
+    "dismissFailed": "The panel could not be closed ({code}). Please try again."
   },
   "steps": {
     "sending": {
@@ -52,7 +54,7 @@
     "filterHint": "Show them in contacts by the Sample data tag",
     "remove": "Remove",
     "removed": "The sample data is gone.",
-    "removeFailed": "The sample data could not be removed. Please try again.",
+    "removeFailed": "The sample data could not be removed ({code}). Please try again.",
     "dialogTitle": "Remove the sample data?",
     "dialogContacts": "{contacts, plural, =0 {no contact} one {# contact} other {# contacts}}, {lists, plural, =0 {no list} one {# list} other {# lists}} and {tags, plural, =0 {no tag} one {# tag} other {# tags}}.",
     "dialogContent": "{segments, plural, =0 {no segment} one {# segment} other {# segments}}, {templates, plural, =0 {no template} one {# template} other {# templates}} and {campaigns, plural, =0 {no campaign} one {# campaign} other {# campaigns}} with its report.",

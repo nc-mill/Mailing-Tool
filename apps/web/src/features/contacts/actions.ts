@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { apiFetch } from '@/lib/api-client/fetch';
 import { apiMutate } from '@/lib/api-client/mutate';
+import { EXPORT_COLUMNS, type ExportAudience } from './export-audience';
 import type { ContactListFilters } from './filters';
 import type { FieldImpact } from './field-impact';
 import type { VocativeReviewCommand } from './vocative-review-types';
@@ -54,16 +55,58 @@ export async function bulkDeleteContactsAction(
   return { status: 'success' };
 }
 
-/** Export výběru. Vrací 202 a odkaz na stažení dohledá centrum úloh; dialog čeká na výsledek. */
-export async function exportContactsAction(
-  input: WithWorkspace & { scope: BulkScope },
-): Promise<BulkResult> {
-  const result = await apiMutate<{ id: string }>('/api/v1/contacts/exports', {
+export type ExportStarted =
+  { status: 'success'; id: string; downloadUrl: string } | { status: 'error'; code: string };
+
+/**
+ * Založení exportu kontaktů. JEDINÁ cesta k exportu v celé doméně kontaktů.
+ *
+ * Nahradila tři akce, ze kterých ANI JEDNA NEFUNGOVALA: `exportContactsAction`
+ * posílala `{ ids }` nebo filtry seznamu, `exportContactAction` k tomu ještě
+ * `format: 'both'`, což není platná hodnota, a obě zapomínaly povinné `columns`.
+ * Schéma `CreateExportRequest` je `.strict()`, takže každé z těch volání skončilo
+ * na 422 a uživatel nedostal soubor ani vysvětlení.
+ *
+ * Publikum sestavuje `export-audience.ts` a jeho tvar hlídá test proti schématům
+ * jádra, ne proti podvrženému serveru: právě tím se tahle vada dosud schovala.
+ *
+ * Vrací se i odkaz ke stažení, protože token je v odpovědi PRÁVĚ JEDNOU (uložený
+ * je jen jeho otisk) a druhé zavolání `GET /exports/{id}` ho už nevydá.
+ */
+export async function createContactExportAction(
+  input: WithWorkspace & { audience: ExportAudience; locale: string },
+): Promise<ExportStarted> {
+  const result = await apiMutate<{ id: string; download_url: string }>('/api/v1/contacts/exports', {
     method: 'POST',
-    body: { ...scopeToBody(input.scope), format: 'csv' },
+    body: {
+      kind: 'contacts',
+      filter: input.audience,
+      columns: [...EXPORT_COLUMNS],
+      format: 'csv',
+      locale: input.locale,
+    },
     workspaceId: input.workspaceId,
   });
-  return result.ok ? { status: 'success' } : { status: 'error', code: result.problem.code };
+  if (!result.ok) return { status: 'error', code: result.problem.code };
+  return { status: 'success', id: result.data.id, downloadUrl: result.data.download_url };
+}
+
+/**
+ * Stav rozpracovaného exportu. Soubor skládá worker, takže obrazovka po založení
+ * exportu nemá co nabídnout ke stažení, dokud se stav nepřeklopí na `completed`.
+ */
+export async function exportStatusAction(
+  input: WithWorkspace & { id: string },
+): Promise<
+  { status: 'success'; state: string; rowCount: number | null } | { status: 'error'; code: string }
+> {
+  const result = await apiFetch<{ status: string; row_count: number | null }>(
+    `/api/v1/contacts/exports/${input.id}`,
+    { workspaceId: input.workspaceId },
+  );
+  return result.ok
+    ? { status: 'success', state: result.data.status, rowCount: result.data.row_count ?? null }
+    : { status: 'error', code: result.problem.code };
 }
 
 /**
@@ -153,17 +196,20 @@ export async function unsubscribeContactAction(
   return { status: 'success' };
 }
 
-/** Export jednoho kontaktu. Je to podklad pro žádost subjektu údajů, proto JSON i CSV. */
-export async function exportContactAction(
-  input: WithWorkspace & { id: string },
-): Promise<BulkResult> {
-  const result = await apiMutate<{ id: string }>('/api/v1/contacts/exports', {
-    method: 'POST',
-    body: { ids: [input.id], format: 'both' },
-    workspaceId: input.workspaceId,
-  });
-  return result.ok ? { status: 'success' } : { status: 'error', code: result.problem.code };
-}
+/*
+ * EXPORT JEDNOHO KONTAKTU UŽ NENÍ VLASTNÍ AKCE.
+ *
+ * `exportContactAction` posílala `{ ids: [id], format: 'both' }`. Klíč `ids` schéma
+ * nezná, `both` není platný formát (enum zná `csv` a `ndjson`) a `columns` chyběly,
+ * takže tlačítka „Exportovat" a „Stáhnout data kontaktu" v detailu kontaktu končila
+ * na 422 pokaždé. Detail dnes volá `createContactExportAction` s publikem jednoho
+ * e-mailu a soubor se skutečně stáhne.
+ *
+ * ARCHIV PODLE ČLÁNKU 15 GDPR TO NENÍ a záměrně se za něj nevydává. Ten skládá job
+ * `gdpr.export_subject` ze žádosti v `gdpr_requests` a obsahuje i historii zpráv,
+ * události a přehled souhlasů. Tlačítka v detailu slibují „Exportovat", tedy CSV
+ * s kontaktem, a přesně to dělají.
+ */
 
 /**
  * Operace nad skupinou fronty oslovení. Do 5 000 kontaktů běží server synchronně,
@@ -305,6 +351,83 @@ export async function deleteTagAction(input: WithWorkspace & { id: string }): Pr
   if (!result.ok) return { status: 'error', code: result.problem.code };
   revalidatePath(TAGS_PATH, 'page');
   return { status: 'success' };
+}
+
+/**
+ * Založení štítku. Endpoint `POST /tags` existoval od začátku, jen na obrazovce
+ * štítků na něj nikdo neuměl sáhnout: tlačítko „Přidat štítek" tam bylo bez
+ * `onClick` a kliknutí nedělalo vůbec nic.
+ *
+ * Barva se zatím neposílá. Schéma ji zná (`#rrggbb`), rozhraní pro ni ale nemá
+ * volič a posílat natvrdo jednu hodnotu by znamenalo tvrdit něco, co uživatel
+ * nevybral.
+ */
+export async function createTagAction(
+  input: WithWorkspace & { name: string },
+): Promise<BulkResult> {
+  const result = await apiMutate<{ data: { id: string } }>('/api/v1/tags', {
+    method: 'POST',
+    body: { name: input.name.trim() },
+    workspaceId: input.workspaceId,
+  });
+  if (!result.ok) return { status: 'error', code: result.problem.code };
+  revalidatePath(TAGS_PATH, 'page');
+  revalidatePath(CONTACTS_PATH, 'page');
+  return { status: 'success' };
+}
+
+/** Přejmenování štítku. Kontakty si ho nechávají, mění se jen nálepka. */
+export async function renameTagAction(
+  input: WithWorkspace & { id: string; name: string },
+): Promise<BulkResult> {
+  const result = await apiMutate<{ data: { id: string } }>(`/api/v1/tags/${input.id}`, {
+    method: 'PATCH',
+    body: { name: input.name.trim() },
+    workspaceId: input.workspaceId,
+  });
+  if (!result.ok) return { status: 'error', code: result.problem.code };
+  revalidatePath(TAGS_PATH, 'page');
+  revalidatePath(CONTACTS_PATH, 'page');
+  return { status: 'success' };
+}
+
+/**
+ * Sloučení štítků do jednoho cílového.
+ *
+ * Server umí sloučit vždy JEDEN zdroj do jednoho cíle (`POST /tags/{id}/merge`),
+ * takže se nad výběrem volá tolikrát, kolik je zdrojů. Hromadný endpoint neexistuje
+ * a vyrábět ho kvůli obrazovce, kde se slučují dva až tři štítky, by bylo pálení
+ * z děla po vrabci.
+ *
+ * Cíl se ze zdrojů odfiltruje: `POST /tags/{id}/merge` se sebou samým vrací 422
+ * (schválně, jinak by štítek zanikl a kontakty zůstaly bez nálepky) a uživatel by
+ * dostal chybu za to, že cíl vybral z označených řádků, což je jediné, jak ho vybrat.
+ *
+ * Hlásí se, kolik sloučení skutečně prošlo. První chyba běh zastaví: pokračovat po ní
+ * znamená mlčky dokončit polovinu nevratné operace.
+ */
+export async function mergeTagsAction(
+  input: WithWorkspace & { sourceIds: string[]; targetId: string },
+): Promise<BulkResult & { merged?: number }> {
+  const sources = input.sourceIds.filter((id) => id !== input.targetId);
+  if (sources.length === 0) return { status: 'error', code: 'merge_needs_source' };
+
+  let merged = 0;
+  for (const sourceId of sources) {
+    const result = await apiMutate<{ moved: number }>(`/api/v1/tags/${sourceId}/merge`, {
+      method: 'POST',
+      body: { into_tag_id: input.targetId },
+      workspaceId: input.workspaceId,
+    });
+    if (!result.ok) {
+      revalidatePath(TAGS_PATH, 'page');
+      return { status: 'error', code: result.problem.code, merged };
+    }
+    merged += 1;
+  }
+  revalidatePath(TAGS_PATH, 'page');
+  revalidatePath(CONTACTS_PATH, 'page');
+  return { status: 'success', merged };
 }
 
 /**

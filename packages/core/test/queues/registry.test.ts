@@ -33,10 +33,11 @@ describe('registr front pg-boss', () => {
     expect(queue('campaign.scheduler')).toMatchObject({ cron: '*/30 * * * * *', retryLimit: 3 });
     expect(queue('campaign.watchdog')).toMatchObject({ cron: '*/15 * * * * *', retryLimit: 3 });
     expect(queue('provider_event.process')).toMatchObject({ retryLimit: 10 });
-    expect(queue('retention.drop_message_partitions')).toMatchObject({
-      cron: '30 3 * * *',
-      retryLimit: 1,
-    });
+    // `retention.drop_message_partitions` tu bývala s cronem `30 3 * * *`.
+    // Politika fronty se opsat dala, obsluha ne: odpojení oddílu je DDL
+    // a worker běží pod `mlain_app`, která schéma nevlastní. Úklid dělá
+    // `mlain partitions` z plánovače hostitele, takže tu už není co ověřovat.
+    expect(queueNames()).not.toContain('retention.drop_message_partitions');
   });
 
   it('kopíruje politiku front části 3, kapitoly 4.8', () => {
@@ -75,17 +76,31 @@ describe('registr front pg-boss', () => {
     }
   });
 
-  it('drží pořadí denních úloh: partition se zakládají před retencí', () => {
-    const minutes = (cron: string): number => {
-      const [minute, hour] = cron.trim().split(/\s+/);
-      return Number(hour) * 60 + Number(minute);
-    };
-    expect(minutes(queue('platform.maintain_partitions').cron ?? '')).toBeLessThan(
-      minutes(queue('tracking.enforce_retention').cron ?? ''),
-    );
-    expect(minutes(queue('tracking.enforce_retention').cron ?? '')).toBeLessThan(
-      minutes(queue('tracking.recompute_engagement_windows').cron ?? ''),
-    );
+  it('nemá jedinou frontu na práci s oddíly, tu dělá CLI pod migrátorem', () => {
+    // Tenhle test dřív hlídal pořadí trojice „zakládání → retence → přepočet
+    // oken" přes časy v cronu. Dvě ze tří front z registru odešly a s nimi
+    // i smysl toho hlídání.
+    //
+    // Společný důvod: práce s oddílem je DDL (`CREATE TABLE ... PARTITION OF`,
+    // `ALTER TABLE ... DETACH PARTITION`) a worker běží pod `mlain_app`, která
+    // schéma nevlastní. Obsluha proto ani jedné z nich nikdy nevznikla a vzniknout
+    // nemohla; v registru jen vypadaly jako běžící údržba.
+    //
+    // Pořadí „nejdřív založit, pak uklidit" nezmizelo, přestěhovalo se z časů
+    // v cronu do JEDNOHO příkazu, kde ho drží pořadí volání
+    // (`runPartitionMaintenance`) a hlídá test v `ops/partition-retention.test.ts`.
+    // To je silnější záruka než dva cronové časy patnáct minut od sebe, které
+    // se míjely, jakmile se první úloha protáhla.
+    //
+    // Test je obrácený schválně: brání tomu, aby tyhle fronty někdo za rok
+    // založil znovu, protože „chybí přece úklid oddílů".
+    for (const name of [
+      'platform.maintain_partitions',
+      'retention.drop_message_partitions',
+      'tracking.enforce_retention',
+    ]) {
+      expect(queueNames(), `fronta ${name} se vrátila do registru`).not.toContain(name);
+    }
   });
 
   it('pokrývá všech šest domén', () => {
@@ -124,10 +139,16 @@ describe('registr front pg-boss', () => {
     //
     // 61 → 62: přibyla `transactional.purge_render_data`. V `render_data`
     // transakční zprávy leží odkaz s jednorázovým tokenem na reset hesla
-    // a obecná retence outboxu dnes NEBĚŽÍ: `retention.drop_message_partitions`
-    // je v registru bez obsluhy, `dropPartitionsBefore()` nemá volajícího
-    // a `MESSAGE_RETENTION_DAYS` se v běhovém kódu nečte. Bez téhle fronty by
-    // token v databázi zůstal navždy. Rozhodnutí zadavatele z 5. 8. 2026.
-    expect(QUEUE_REGISTRY).toHaveLength(62);
+    // a obecná retence outboxu tehdy NEBĚŽELA. Rozhodnutí zadavatele z 5. 8. 2026.
+    //
+    // 62 → 59: odešly VŠECHNY TŘI fronty na práci s oddíly, tedy
+    // `retention.drop_message_partitions`, `tracking.enforce_retention`
+    // a `platform.maintain_partitions`. Slibovaly zakládání a úklid oddílů
+    // a ani jedna to udělat nemohla: je to DDL a worker běží pod `mlain_app`,
+    // která schéma nevlastní. Obsluha jim proto nikdy nevznikla a v registru
+    // stály jako fronty, které se tváří, že něco dělají. Práci převzal příkaz
+    // `mlain partitions` pod migrátorskou rolí, pouštěný z plánovače hostitele
+    // (`packages/core/src/ops/partition-retention.ts`).
+    expect(QUEUE_REGISTRY).toHaveLength(59);
   });
 });

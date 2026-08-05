@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { loadConfig } from '@mlain/core/config';
+import { createWorkspaceContext } from '@mlain/core/identity/context';
 import {
   TRACKING_DOMAIN_LIMIT,
   classifyTrackingDomain,
@@ -15,10 +16,12 @@ import {
 import { ForbiddenSection } from '@/features/settings/forbidden-section';
 import { SettingsPageShell } from '@/features/settings/settings-page-shell';
 import { SettingsProblem } from '@/features/settings/settings-problem';
+import { IdentifySignatureHelp } from '@/features/tracking/identify-signature-help';
 import { TrackingDomains, type TrackingDomainView } from '@/features/tracking/tracking-domains';
 import { TrackingSnippet } from '@/features/tracking/tracking-snippet';
 import { TrackingStatus } from '@/features/tracking/tracking-status';
 import { UnreachableDomainAlert } from '@/features/tracking/unreachable-domain-alert';
+import { requireUser } from '@/lib/identity/require-user';
 import { getWorkspaceAccess, hasPermission } from '@/lib/identity/workspace-access';
 
 /**
@@ -69,6 +72,9 @@ export default async function TrackingSettingsPage({
   const { workspaceSlug } = await params;
   const t = await getTranslations('tracking');
 
+  const me = await requireUser(`/w/${workspaceSlug}/settings/tracking`);
+  if (!me.ok) return <SettingsProblem problem={me.problem} />;
+
   const access = await getWorkspaceAccess(workspaceSlug);
   if (!access.ok) {
     if (access.problem.status === 404) notFound();
@@ -85,9 +91,20 @@ export default async function TrackingSettingsPage({
     );
   }
 
-  const workspaceId = access.data.workspace.id;
   const config = loadConfig();
   const trackingHost = config.TRACKING_DOMAIN;
+
+  /**
+   * Doménové funkce si samy otevírají transakci, takže rozsah musí přijít
+   * jako KONTEXT, ne jako identifikátor projektu. `createWorkspaceContext` je
+   * jediná legitimní továrna a členství ověřuje proti relaci, takže cizí
+   * projekt sem nejde podstrčit ani úpravou adresy.
+   */
+  const ctx = await createWorkspaceContext({
+    kind: 'session',
+    userId: me.data.user.id,
+    workspaceRef: workspaceSlug,
+  });
 
   /**
    * Klíč se zakládá při PRVNÍM otevření obrazovky, ne zvláštním tlačítkem.
@@ -96,13 +113,18 @@ export default async function TrackingSettingsPage({
    * druhou možnost.
    */
   const [publicKey, domainRows, status, settings] = await Promise.all([
-    // `created_by` zůstává prázdné: `WorkspaceAccess` nese jméno uživatele,
-    // ne jeho ID, a dohledávat ho zvlášť kvůli jednomu nepovinnému sloupci
-    // by znamenalo dotaz navíc na každé otevření obrazovky.
-    ensurePublicTrackingKey(workspaceId, null),
-    listTrackingDomains(workspaceId),
-    readWebTrackingStatus(workspaceId),
-    readTrackingSettings(workspaceId),
+    /**
+     * Kdo klíč založil, se předává z relace, ne z `WorkspaceAccess`: ten nese
+     * jméno uživatele, ne jeho ID, ale `me.data.user` má obojí a je načtený
+     * tak jako tak, takže to nestojí ani jeden dotaz navíc.
+     *
+     * Bez e-mailu by v auditu zůstal záznam bez čitelného aktéra. `actor_label`
+     * je zmrazený text, ne odkaz, aby dával smysl i po smazání uživatele.
+     */
+    ensurePublicTrackingKey(ctx, me.data.user.id, me.data.user.email),
+    listTrackingDomains(ctx),
+    readWebTrackingStatus(ctx),
+    readTrackingSettings(ctx),
   ]);
 
   const reach = classifyTrackingDomain(trackingHost);
@@ -123,6 +145,11 @@ export default async function TrackingSettingsPage({
         )}
 
         <TrackingSnippet publicKey={publicKey.key} host={trackingHost} size={sdkSize()} />
+
+        {/* Návod na podpis patří hned za úryvek, ne až na konec: je to druhý
+            krok téhož nasazení a bez něj server odmítne každé `identify`
+            s e-mailem, aniž by kdokoli tušil proč. */}
+        <IdentifySignatureHelp />
 
         <TrackingDomains
           workspaceSlug={workspaceSlug}

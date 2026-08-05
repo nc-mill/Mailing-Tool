@@ -22,7 +22,14 @@ export type CreateListInput = {
   confirmationMaxResends?: number;
   confirmationTemplateId?: string | null;
   welcomeTemplateId?: string | null;
+  /** Rozloučení po odhlášení. `NULL` znamená obecné znění, viz `default-emails.ts`. */
+  goodbyeTemplateId?: string | null;
   sendWelcome?: boolean;
+  /** Výchozí NE, rozhodnutí zadavatele z 5. 8. 2026. */
+  sendGoodbye?: boolean;
+  /** Kam po potvrzení a po odhlášení. `NULL` znamená „zůstane naše stránka". */
+  confirmRedirectUrl?: string | null;
+  unsubscribeRedirectUrl?: string | null;
   isDefault?: boolean;
   /** Nabízet ve veřejném centru předvoleb k přihlášení? Výchozí je NE, viz migrace 0014. */
   publicVisible?: boolean;
@@ -121,7 +128,11 @@ export async function create(ctx: WorkspaceContext, input: CreateListInput): Pro
         confirmationMaxResends: input.confirmationMaxResends ?? DEFAULT_CONFIRMATION_MAX_RESENDS,
         confirmationTemplateId: input.confirmationTemplateId ?? null,
         welcomeTemplateId: input.welcomeTemplateId ?? null,
+        goodbyeTemplateId: input.goodbyeTemplateId ?? null,
         sendWelcome: input.sendWelcome ?? false,
+        sendGoodbye: input.sendGoodbye ?? false,
+        confirmRedirectUrl: emptyToNull(input.confirmRedirectUrl) ?? null,
+        unsubscribeRedirectUrl: emptyToNull(input.unsubscribeRedirectUrl) ?? null,
         isDefault: input.isDefault ?? false,
         // Bezpečná výchozí hodnota: nový seznam se veřejně NENABÍZÍ, dokud to
         // správce nezapne. Zdůvodnění je v migraci 0014.
@@ -231,6 +242,15 @@ export async function update(
         ...(patch.publicDescription === undefined
           ? {}
           : { publicDescription: emptyToNull(patch.publicDescription) }),
+        // Prázdné pole na obrazovce znamená „žádné přesměrování", ne prázdná
+        // adresa: `ck_lists__confirm_redirect_url_len` prázdný řetězec zakazuje
+        // a uložení by skončilo pětistovkou na 23514.
+        ...(patch.confirmRedirectUrl === undefined
+          ? {}
+          : { confirmRedirectUrl: emptyToNull(patch.confirmRedirectUrl) }),
+        ...(patch.unsubscribeRedirectUrl === undefined
+          ? {}
+          : { unsubscribeRedirectUrl: emptyToNull(patch.unsubscribeRedirectUrl) }),
         updatedAt: new Date(),
       })
       .where(and(eq(lists.workspaceId, ctx.workspaceId), eq(lists.id, id)))

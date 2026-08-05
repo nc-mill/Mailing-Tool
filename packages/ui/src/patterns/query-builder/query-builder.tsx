@@ -4,6 +4,7 @@ import { Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../../components/button';
 import { cn } from '../../lib/cn';
+import { fieldRefKey } from './ref-key';
 import {
   MAX_DEPTH,
   type ConditionNode,
@@ -33,6 +34,10 @@ export type QueryBuilderLabels = {
   addValue: string;
   removeValue: (item: string) => string;
   listLimit: (max: number) => string;
+  /** Hodnota, kterou už nabídka nezná, typicky smazaný štítek nebo seznam. */
+  unknownValue: (value: string) => string;
+  /** Pole se vybírá z nabídky, jenže nabídka je prázdná. */
+  noOptions: string;
   rangeOrder: string;
   showJson: string;
   depthLimit: string;
@@ -72,20 +77,47 @@ function parseScalar(raw: string, valueType: FieldValueType): ScalarValue {
  * Žetonový vstup pro tvar `list`. Je to samostatná komponenta, protože si
  * drží rozepsanou položku, a definovat ji uvnitř `QueryBuilder` by ji při
  * každém překreslení odpojilo a smazalo rozepsaný text.
+ *
+ * DVA REŽIMY, a rozhoduje o nich `options`.
+ *
+ * Bez nabídky je to volný text (vlastní pole, e-maily). S nabídkou je to VÝBĚR
+ * a volný text by byl vyloženě škodlivý: štítek se v podmínce ukládá jako
+ * identifikátor, takže napsané „Newsletter" doputovalo až do `WHERE tag_id IN
+ * ($2)` a Postgres ho odmítl s `invalid input syntax for type uuid`. Uživatel
+ * dostal pětistovku a hlášku „Počet se nepodařilo spočítat.", ze které se nedá
+ * poznat, co udělal špatně, protože neudělal nic špatně.
+ *
+ * Ukládá se `option.value`, zobrazuje se `option.label`. Hodnota, kterou
+ * nabídka nezná (mezitím smazaný štítek), se PŘIZNÁ textem, neukazuje se
+ * syrové uuid.
  */
 function ValueList({
   values,
   labels,
   maxItems,
+  options,
   onChange,
 }: {
   values: ScalarValue[];
   labels: QueryBuilderLabels;
   maxItems: number;
+  options?: Array<{ value: string; label: string }> | undefined;
   onChange: (next: ScalarValue[]) => void;
 }) {
   const [pending, setPending] = useState('');
   const full = values.length >= maxItems;
+  const picking = options !== undefined;
+  const labelOf = (item: ScalarValue): string => {
+    const found = options?.find((option) => option.value === String(item));
+    return found === undefined
+      ? picking
+        ? labels.unknownValue(String(item))
+        : String(item)
+      : found.label;
+  };
+  const remaining = (options ?? []).filter(
+    (option) => !values.some((item) => String(item) === option.value),
+  );
 
   function commit() {
     const trimmed = pending.trim();
@@ -102,10 +134,10 @@ function ValueList({
             key={`${String(item)}-${index}`}
             className="flex items-center gap-1 rounded-[var(--radius-control)] bg-surface-muted px-2 py-1 text-sm text-text"
           >
-            {String(item)}
+            {labelOf(item)}
             <button
               type="button"
-              aria-label={labels.removeValue(String(item))}
+              aria-label={labels.removeValue(labelOf(item))}
               onClick={() => onChange(values.filter((_, position) => position !== index))}
               className="flex size-5 items-center justify-center text-text-muted"
             >
@@ -117,6 +149,30 @@ function ValueList({
 
       {full ? (
         <p className="text-sm text-text-muted">{labels.listLimit(maxItems)}</p>
+      ) : picking ? (
+        // Prázdná nabídka se NEUTAJÍ. Ovládací prvek, ze kterého nejde nic
+        // vybrat, vypadá jako porucha; věta říká, že vybírat není z čeho.
+        remaining.length === 0 ? (
+          <p className="text-sm text-text-muted">{labels.noOptions}</p>
+        ) : (
+          <select
+            data-testid="condition-value-option"
+            aria-label={labels.valueList}
+            value=""
+            onChange={(event) => {
+              if (event.target.value === '') return;
+              onChange([...values, event.target.value]);
+            }}
+            className={CONTROL}
+          >
+            <option value="">{labels.addValue}</option>
+            {remaining.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        )
       ) : (
         <>
           <input
@@ -179,9 +235,14 @@ export function QueryBuilder({
 
   const fieldGroups = [...new Set(fields.map((item) => item.group))];
 
-  /** Pole se v AST poznává podle `field`, ne podle `id`, které v AST není. */
+  /**
+   * Pole se v AST poznává podle `field`, ne podle `id`, které v AST není.
+   * Porovnává se KANONICKÝ otisk, protože z databáze se odkaz vrací
+   * s přerovnanými klíči, viz `fieldRefKey`.
+   */
   function fieldOf(condition: ConditionNode): FieldDefinition | undefined {
-    return fields.find((item) => JSON.stringify(item.ref) === JSON.stringify(condition.field));
+    const key = fieldRefKey(condition.field);
+    return fields.find((item) => fieldRefKey(item.ref) === key);
   }
 
   /**
@@ -208,6 +269,7 @@ export function QueryBuilder({
             values={values}
             labels={labels}
             maxItems={operator.maxItems ?? 1000}
+            {...(field.options === undefined ? {} : { options: field.options })}
             onChange={(next) => builder.setValue(path, { values: next })}
           />
         );

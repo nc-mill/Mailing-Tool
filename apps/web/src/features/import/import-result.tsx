@@ -3,37 +3,12 @@
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { formatCount, WARNING_CODES } from './labels';
+import type { ImportResultStatus } from './result-status';
 import { StepProgress } from './step-progress';
-
-/**
- * Stavy, ve kterých import DOBĚHL. Jen o nich smí obrazovka tvrdit, jak dopadl.
- */
-const TERMINAL_STATUSES = ['completed', 'completed_with_errors', 'cancelled', 'failed'] as const;
-
-/** Stavy, ve kterých import teprve běží, nebo ještě ani nezačal. */
-const RUNNING_STATUSES = ['pending', 'validating', 'previewing', 'importing'] as const;
-
-/**
- * Stav importu ze serveru na stav obrazovky.
- *
- * NEZNÁMÝ STAV NENÍ SELHÁNÍ a průběžný stav už vůbec ne. Dřív se sem sázelo
- * `KNOWN.includes(raw) ? raw : 'failed'`, takže běžící import (`importing`) obrazovka
- * vypsala jako „Import se nepodařilo dokončit. Do databáze se nezapsal žádný kontakt."
- * Změřeno na živých datech: import `api.csv` běžel od 13:07:35 do 13:07:38, zapsal tři
- * kontakty a skončil ve stavu `completed`; kdo si mezitím stránku otevřel nebo obnovil,
- * přečetl si, že se nezapsalo nic. Průvodce to obvykle nepotká, protože čeká na kroku
- * s průběhem, ale odkaz na výsledek nebo F5 tam dovede kohokoli.
- */
-export function resultStatusOf(raw: string): ImportResultRow['status'] {
-  if ((TERMINAL_STATUSES as readonly string[]).includes(raw)) {
-    return raw as ImportResultRow['status'];
-  }
-  return (RUNNING_STATUSES as readonly string[]).includes(raw) ? 'running' : 'unknown';
-}
 
 export type ImportResultRow = {
   id: string;
-  status: 'completed' | 'completed_with_errors' | 'cancelled' | 'failed' | 'running' | 'unknown';
+  status: ImportResultStatus;
   /** Stav tak, jak ho vrátil server. Ukazuje se u neznámého stavu, ať je co nahlásit. */
   rawStatus?: string;
   totalRows: number;
@@ -58,12 +33,19 @@ export function ImportResult({
   workspaceSlug,
   workspaceId,
   locale = 'cs',
+  greetingEnabled = true,
 }: {
   row: ImportResultRow;
   workspaceSlug: string;
   /** Bez reference na projekt nejde otevřít proud s průběhem; pak se jen nabídne obnovení. */
   workspaceId?: string;
   locale?: string;
+  /**
+   * Řeší projekt oslovení a 5. pád? Vypnuto skryje odkaz „Zkontrolovat 5. pád":
+   * obrazovka, na kterou míří, v takovém projektu vrací 404. Výchozí `true` je
+   * kvůli starším testům.
+   */
+  greetingEnabled?: boolean;
 }) {
   const t = useTranslations('import');
   const router = useRouter();
@@ -183,7 +165,7 @@ export function ImportResult({
         <button type="button">{t('result.resume', { row: n(row.checkpointRow + 1) })}</button>
       ) : null}
 
-      {row.reviewRows > 0 ? (
+      {greetingEnabled && row.reviewRows > 0 ? (
         <a href={`/w/${workspaceSlug}/contacts/vocative-review?import_id=${row.id}`}>
           {t('result.reviewVocative')}
         </a>

@@ -101,6 +101,19 @@ export const COMMANDS: readonly CommandDefinition[] = [
     owner: 'P16',
     implemented: true,
   },
+  // Údržba oddílů. Do registru přibyla proto, že retence odeslané pošty
+  // v produktu NEEXISTOVALA: `dropPartitionsBefore()` neměla volajícího,
+  // dvě retenční fronty byly bez obsluhy a `MESSAGE_RETENTION_DAYS` nikdo
+  // nečetl. Příkaz to dělá pod migrátorskou rolí, protože odpojení oddílu je
+  // DDL a worker běží pod rolí, která na schéma práva nemá.
+  {
+    name: 'partitions',
+    summary:
+      'Založí oddíly na další měsíce a zahodí ty, které přesáhly retenční lhůtu. Pouští se z plánovače denně.',
+    usage: 'mlain partitions [--dry-run] [--months <n>]',
+    owner: 'P13',
+    implemented: true,
+  },
   {
     name: 'rebuild-engagement',
     summary:

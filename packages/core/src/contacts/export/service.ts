@@ -127,12 +127,22 @@ export type ExportRow = {
   delimiter: string;
   status: string;
   storage_key: string | null;
+  /**
+   * Počet řádků hotového souboru. Zapisuje ho job po dokončení, takže
+   * u rozpracovaného exportu je `null`.
+   *
+   * Čte se kvůli rozhraní: bez něj musel dialog exportu psát jen obecné
+   * „soubor může mít méně řádků než seznam", protože skutečné číslo neměl
+   * odkud vzít, přestože ho tabulka `exports` celou dobu má.
+   */
+  row_count: number | null;
 };
 
 export async function loadExport(ctx: WorkspaceContext, exportId: string): Promise<ExportRow> {
   const { rows } = await inWorkspaceTx(ctx, (tx) =>
     tx.execute<ExportRow>(sql`
-      SELECT id, kind, filter, columns, format, encoding, delimiter, status, storage_key
+      SELECT id, kind, filter, columns, format, encoding, delimiter, status, storage_key,
+             row_count
         FROM exports
        WHERE id = ${exportId}::uuid AND workspace_id = ${ctx.workspaceId}::uuid`),
   );

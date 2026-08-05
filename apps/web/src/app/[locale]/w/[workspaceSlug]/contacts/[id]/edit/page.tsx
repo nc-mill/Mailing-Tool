@@ -69,7 +69,10 @@ export default async function EditContactPage({ params }: PageProps) {
       workspaceId,
       searchParams: { limit: 200 },
     }),
-    apiFetch<{ data: { id: string; name: string }[] }>('/api/v1/lists', { workspaceId }),
+    apiFetch<{ data: { id: string; name: string; opt_in: 'single' | 'double' }[] }>(
+      '/api/v1/lists',
+      { workspaceId },
+    ),
   ]);
 
   if (!contact.ok) {
@@ -101,6 +104,7 @@ export default async function EditContactPage({ params }: PageProps) {
       workspaceId={workspaceId}
       workspaceSlug={workspaceSlug}
       basePath={`/w/${workspaceSlug}/contacts`}
+      greetingEnabled={access.data.workspace.greeting_enabled}
       values={{
         id: payload.id,
         email: payload.email,
@@ -124,6 +128,7 @@ export default async function EditContactPage({ params }: PageProps) {
           id: list.id,
           name: list.name,
           selected: subscribed.has(list.id),
+          double_opt_in: list.opt_in === 'double',
         })),
       }}
     />

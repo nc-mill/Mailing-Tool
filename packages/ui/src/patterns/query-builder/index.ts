@@ -15,6 +15,7 @@ export {
   setValue,
   toggleNot,
 } from './paths';
+export { fieldRefKey } from './ref-key';
 export { MAX_CHILDREN, MAX_DEPTH, OPERATOR_SHAPES } from './types';
 export type {
   Combinator,

@@ -8,7 +8,6 @@ function contact(overrides: Partial<ContactStateInput> = {}): ContactStateInput 
     snooze_until: null,
     anonymized_at: null,
     status_changed_at: '2026-07-03T10:00:00.000Z',
-    restriction_requested_at: null,
     ...overrides,
   };
 }

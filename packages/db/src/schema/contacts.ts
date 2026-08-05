@@ -307,9 +307,35 @@ export const lists = pgTable(
     optIn: text().$type<'single' | 'double'>().notNull().default('double'),
     confirmationMode: text().$type<'one_step' | 'two_step'>().notNull().default('two_step'),
     confirmationTtlHours: integer().notNull().default(168),
-    confirmationTemplateId: uuid(), // FK doplní část 3 přes templates, viz poznámka níž
+    /**
+     * Šablony tří e-mailů seznamu. `NULL` NENÍ chybějící hodnota: znamená
+     * „použije se obecné znění", tedy konstanta typu `Document` v
+     * `packages/core/src/contacts/lists/default-emails.ts`. Seedovat obecné
+     * znění jako řádek u každého projektu by znamenalo jeho kopii u každého
+     * zákazníka a datovou migraci při opravě překlepu.
+     *
+     * Cizí klíče `fk_lists__*_template` s `ON DELETE SET NULL` jsou JEN
+     * v migraci 0017, ne tady, stejně jako u `forms.delivery_template_id`.
+     * Zapsat je přes `.references(() => templates.id)` by znamenalo import
+     * z `content.ts` do `contacts.ts`, a ten modul importuje kontakty zpátky.
+     */
+    confirmationTemplateId: uuid(),
     welcomeTemplateId: uuid(),
+    goodbyeTemplateId: uuid(),
     sendWelcome: boolean().notNull().default(false),
+    /**
+     * Poslat po odhlášení rozloučení? Výchozí NE, rozhodnutí zadavatele
+     * z 5. 8. 2026: část odesílatelů ho záměrně neposílá, protože e-mail
+     * po odhlášení bývá vnímaný jako drzost.
+     */
+    sendGoodbye: boolean().notNull().default(false),
+    /**
+     * Kam poslat člověka po potvrzení přihlášení a po odhlášení. `NULL`
+     * znamená „zůstane naše stránka", což je pro většinu projektů správně:
+     * vlastní stránka musí mít text o tom, co se právě stalo.
+     */
+    confirmRedirectUrl: text(),
+    unsubscribeRedirectUrl: text(),
     confirmationMaxResends: smallint().notNull().default(3),
     isDefault: boolean().notNull().default(false),
     /**
@@ -351,6 +377,14 @@ export const lists = pgTable(
     check('ck_lists__confirmation_mode', sql`${t.confirmationMode} IN ('one_step','two_step')`),
     check('ck_lists__confirmation_ttl', sql`${t.confirmationTtlHours} BETWEEN 1 AND 720`),
     check('ck_lists__confirmation_max_resends', sql`${t.confirmationMaxResends} BETWEEN 0 AND 10`),
+    check(
+      'ck_lists__confirm_redirect_url_len',
+      sql`${t.confirmRedirectUrl} IS NULL OR char_length(${t.confirmRedirectUrl}) BETWEEN 1 AND 2000`,
+    ),
+    check(
+      'ck_lists__unsubscribe_redirect_url_len',
+      sql`${t.unsubscribeRedirectUrl} IS NULL OR char_length(${t.unsubscribeRedirectUrl}) BETWEEN 1 AND 2000`,
+    ),
     uniqueIndex('uq_lists__workspace_name')
       .on(t.workspaceId, sql`lower(${t.name})`)
       .where(sql`${t.deletedAt} IS NULL`),

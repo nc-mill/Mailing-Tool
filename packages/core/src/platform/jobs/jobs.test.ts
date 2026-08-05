@@ -24,9 +24,13 @@ const JOBS_DIR = fileURLToPath(new URL('./', import.meta.url));
  * jenže registr má navíc `platform.backup` a `platform.backup_verify`
  * s vlastníkem P16. Fronta bez handleru je fronta, do které se zapisuje
  * a nikdo z ní nečte, takže vlastník musí být u každé výjimky vidět.
+ *
+ * `platform.maintain_partitions` z registru i z tohohle seznamu ODEŠLA.
+ * Byla to přesně ta „fronta, do které se zapisuje a nikdo z ní nečte", jen
+ * s tím, že číst z ní nešlo v principu: zakládání oddílu je DDL a worker běží
+ * pod rolí bez práv na schéma. Dělá to `mlain partitions` pod migrátorem.
  */
 const NOT_OWNED_BY_P04: Record<string, string> = {
-  'platform.maintain_partitions': 'P03',
   'platform.backup': 'P16',
   'platform.backup_verify': 'P16',
 };

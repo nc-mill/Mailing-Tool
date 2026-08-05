@@ -70,11 +70,25 @@ type PreviewState =
 function toApiMapping(
   header: string[],
   chosen: Record<string, string>,
-): Record<string, { target: string }> {
-  const out: Record<string, { target: string }> = {};
+): Record<string, { target: string; key?: string }> {
+  const out: Record<string, { target: string; key?: string }> = {};
   header.forEach((name, index) => {
     const target = chosen[name];
-    out[String(index)] = { target: target === undefined || target === '' ? 'ignore' : target };
+    if (target === undefined || target === '') {
+      out[String(index)] = { target: 'ignore' };
+      return;
+    }
+    /*
+     * Vlastní pole nese v obrazovce tvar `attribute:<klíč>`, protože rozbalovátko
+     * umí jen jednu textovou hodnotu. Server ale čeká objekt se dvěma poli
+     * (`{ target: 'attribute', key }`) a `ImportMappingSchema` je `.strict()`,
+     * takže samotné `attribute` bez klíče shodí celý PATCH na 422.
+     */
+    const [kind, key] = target.split(':', 2);
+    out[String(index)] =
+      kind === 'attribute' && key !== undefined && key !== ''
+        ? { target: 'attribute', key }
+        : { target };
   });
   return out;
 }
@@ -99,7 +113,9 @@ function toApiOptions(value: ImportOptionsValue, tagIds: string[]): Record<strin
   return {
     on_conflict: duplicateError ? 'update' : value.onConflict,
     duplicate_in_file: duplicateError ? 'error' : 'last',
-    list_ids: value.listId === null ? [] : [value.listId],
+    // Seznam je povinný, takže tu vždycky je právě jeden. Prázdné pole by
+    // znamenalo kontakt, kterému nemá co dojít a nemá se z čeho odhlásit.
+    list_ids: [value.listId],
     subscription_status: value.subscriptionStatus,
     tag_ids: tagIds,
     // Prohlášení není zaškrtávátko navíc, je to doklad: ukládá se do voleb importu
@@ -124,6 +140,11 @@ export type ImportWizardProps = {
   initialStep?: Step;
   lists?: ListOption[];
   pending?: { filename: string };
+  /**
+   * Řeší projekt oslovení a 5. pád? Vypnuto schová sloupec „Oslovení" v náhledu
+   * a větu o nejistém 5. pádu. Výchozí `true` je kvůli starším testům.
+   */
+  greetingEnabled?: boolean;
 };
 
 /**
@@ -145,6 +166,7 @@ export function ImportWizard({
   initialStep = 'upload',
   lists = [],
   pending,
+  greetingEnabled = true,
 }: ImportWizardProps) {
   const t = useTranslations('import');
   const router = useRouter();
@@ -287,6 +309,63 @@ export function ImportWizard({
     return hit?.id ?? null;
   }
 
+  /**
+   * Založení seznamu rovnou z kroku Volby.
+   *
+   * Zařazení do seznamu je povinné, takže musí existovat cesta pro toho, kdo
+   * ještě žádný seznam nemá. Odeslat ho zakládat jinam by znamenalo zahodit
+   * rozdělaný import, protože průvodce běží nad konkrétním nahraným souborem.
+   *
+   * DVOJÍ POTVRZENÍ, stejně jako u tlačítka „Nový seznam" v seznamech: seznam
+   * je nositelem oprávnění k rozesílce a přepnout ho na jeden krok jde jedním
+   * kliknutím v jeho nastavení, kdežto obráceně by to znamenalo rozeslat lidem,
+   * kteří o to nepožádali. `opt_in` se navíc čte z ODPOVĚDI, ne z přání: na něm
+   * stojí, jestli krok bude vyžadovat prohlášení o souhlasu.
+   */
+  async function createList(name: string): Promise<ListOption | null> {
+    const res = await fetch('/api/v1/lists', {
+      method: 'POST',
+      headers: { 'X-Workspace-Id': workspaceId, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, opt_in: 'double' }),
+    });
+    if (!res.ok) {
+      console.error(`Seznam ${name} se nepodařilo založit: HTTP ${res.status}`, await res.text());
+      return null;
+    }
+    const body = (await res.json()) as {
+      data: { id: string; name: string; opt_in: 'single' | 'double' };
+    };
+    return { id: body.data.id, name: body.data.name, optIn: body.data.opt_in };
+  }
+
+  /**
+   * Založení vlastního pole kontaktu z kroku Mapování.
+   *
+   * `label` je LOKALIZOVANÝ text a `en` v něm server vyžaduje (`LocalizedText`
+   * v `contact-fields.routes.ts`), takže se název sloupce dosadí do obou jazyků;
+   * přeložit ho za uživatele neumíme a prázdná angličtina by skončila na 422.
+   * Typ je `text`, protože hodnoty ze souboru jsou text a přísnější typ by
+   * shodil celý řádek na přetypování.
+   *
+   * Klíč, který v projektu už existuje, není chyba: 409 znamená, že pole
+   * se stejným klíčem je založené z dřívějška a dá se rovnou použít.
+   */
+  async function createField(input: { key: string; label: string }): Promise<string | null> {
+    const res = await fetch('/api/v1/contact-fields', {
+      method: 'POST',
+      headers: { 'X-Workspace-Id': workspaceId, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: input.key,
+        label: { cs: input.label, en: input.label },
+        type: 'text',
+      }),
+    });
+    if (res.ok) return ((await res.json()) as { data: { key: string } }).data.key;
+    if (res.status === 409) return input.key;
+    console.error(`Pole ${input.key} se nepodařilo založit: HTTP ${res.status}`, await res.text());
+    return null;
+  }
+
   /** Vrací, jestli se uložilo. Průvodce na neuložené změně nesmí jít dál. */
   async function patch(body: Record<string, unknown>): Promise<boolean> {
     if (importId === null) return false;
@@ -348,6 +427,7 @@ export function ImportWizard({
       {step === 'upload' ? (
         <StepUpload
           workspaceId={workspaceId}
+          workspaceSlug={workspaceSlug}
           onCreated={(id) => {
             setImportId(id);
             goToStep('fileCheck');
@@ -358,6 +438,13 @@ export function ImportWizard({
       {step === 'fileCheck' && fileCheck !== null ? (
         <StepFileCheck
           preview={fileCheck}
+          // Uloží volbu a načte náhled ZNOVU, bez posunu na další krok:
+          // odpověď na otázku „vypadá to správně?" musí být vidět tam, kde
+          // se obrazovka ptá, ne až o dva kroky dál. `patch()` si znovunačtení
+          // dělá sám.
+          onRecheck={async (result) => {
+            await patch({ encoding: result.encoding, delimiter: result.delimiter });
+          }}
           onConfirm={async (result) => {
             if (!(await patch({ encoding: result.encoding, delimiter: result.delimiter }))) return;
             goToStep('mapping');
@@ -383,6 +470,7 @@ export function ImportWizard({
       {step === 'mapping' && data !== null ? (
         <StepMapping
           preview={{ columns }}
+          onCreateField={createField}
           onNext={async (next) => {
             setMapping(next);
             if (!(await patch({ mapping: toApiMapping(data.header, next) }))) return;
@@ -406,6 +494,7 @@ export function ImportWizard({
             approximate: data.total_rows_approximate,
           }}
           onNext={() => goToStep('options')}
+          greetingEnabled={greetingEnabled}
         />
       ) : null}
 
@@ -417,6 +506,7 @@ export function ImportWizard({
             duplicates: previewRows.filter((row) => row.state === 'duplicate').length,
           }}
           lists={lists}
+          onCreateList={createList}
           onSubmit={async (value) => {
             const tagName = value.tag.trim();
             let tagIds: string[] = [];

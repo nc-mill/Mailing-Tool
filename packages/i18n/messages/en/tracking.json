@@ -48,7 +48,25 @@
       "forbidden": "You do not have permission to change tracking settings.",
       "unexpected": "The settings could not be saved. Please try again."
     },
-    "saved": "Saved."
+    "saved": "Saved.",
+    "identify": {
+      "title": "Identifying a signed-in visitor",
+      "description": "When a visitor on your site is known to you, tell tracking by calling Mlain.identify. From that moment events are tied to a specific contact, including the ones collected anonymously before.",
+      "unsigned_label": "Without a signature",
+      "unsigned_hint": "You pass only your own customer identifier and traits without personal data. The server finds an existing contact by that identifier. It never creates a new one and never changes the email.",
+      "signed_label": "With a signature",
+      "signed_hint": "Only a signed call may pass an email or phone and create a new contact. Without a signature the server rejects such a call, because anyone can read the code in the browser and could otherwise forge someone else's address.",
+      "formula_label": "What exactly is signed",
+      "key_note": "The key is the digest of the secret, not the secret itself: the server never stores the private key in readable form, only its SHA-256 digest. The secret is the fourth and last part of the key, the one after the third underscore. It contains underscores itself, so never split it on the last one. The jcs canonicalization is the JSON Canonicalization Scheme per RFC 8785, meaning sorted keys, no whitespace between tokens and accented characters written as they are.",
+      "php": "Your server, PHP",
+      "python": "Your server, Python",
+      "browser": "The page in the browser",
+      "copy_php": "Copy PHP",
+      "copy_python": "Copy Python",
+      "copy_browser": "Copy the call",
+      "ascii_note": "The examples sort keys with a plain sort, which matches RFC 8785 for ordinary names made of letters and digits. If you use trait names with accented characters, reach for a ready RFC 8785 library, otherwise the ordering may diverge.",
+      "rejected_note": "When the signature does not match, the event is stored in tracking but nothing is applied to the contact. Check that you sign the same data you send and that a single newline separates the identifier from the traits."
+    }
   },
   "report": {
     "unreachable": "The tracking domain {host} is not reachable from the internet, so email opens are not recorded and the numbers below will be incomplete. This is not a problem with the campaign."
@@ -59,18 +77,24 @@
     "home": "Go to the home page"
   },
   "errors": {
-    "tracking_event_too_large": { "detail": "The event is too large." },
+    "tracking_event_too_large": {
+      "detail": "The event is too large."
+    },
     "tracking_invalid_event_name": {
       "detail": "Event names may only contain lowercase letters, digits and underscores."
     },
-    "tracking_invalid_anonymous_id": { "detail": "The anonymous identifier has an invalid shape." },
+    "tracking_invalid_anonymous_id": {
+      "detail": "The anonymous identifier has an invalid shape."
+    },
     "tracking_payload_version_unsupported": {
       "detail": "The server does not know this version of the tracking script. Update the script on your website."
     },
     "tracking_identify_unsigned_pii": {
       "detail": "An email address cannot be set from the browser without a server signature."
     },
-    "tracking_domain_limit_reached": { "detail": "You can have at most {limit} tracking domains." },
+    "tracking_domain_limit_reached": {
+      "detail": "You can have at most {limit} tracking domains."
+    },
     "tracking_domain_invalid": {
       "detail": "Enter the domain without protocol and without a path, for example shop.example.com."
     },

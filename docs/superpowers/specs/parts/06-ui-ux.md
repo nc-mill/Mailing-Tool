@@ -228,7 +228,7 @@ Deset principů. Každý je formulovaný tak, aby se dal použít jako argument 
 
 Každá akce vyvolaná uživatelem má právě jeden **primární** kanál zpětné vazby, vybraný podle tabulky v 5.2. Nikdy nula, nikdy tři.
 
-> **Dobře.** Uživatel odebere kontakt ze seznamu. Řádek zmizí a v levém dolním rohu se objeví "Kontakt odebrán ze seznamu Zákazníci" s tlačítkem "Vrátit zpět" na deset sekund.
+> **Dobře.** Uživatel odebere kontakt ze seznamu. Řádek zmizí a v pravém dolním rohu se objeví "Kontakt odebrán ze seznamu Zákazníci" s tlačítkem "Vrátit zpět" na deset sekund.
 >
 > **Špatně.** Uživatel odebere kontakt ze seznamu. Řádek zmizí. Nic víc. Uživatel neví, jestli se to uložilo, jestli to jde vrátit, ani jestli náhodou nesmazal celý kontakt.
 >
@@ -549,12 +549,12 @@ Toto je závazná tabulka. Implementátor si nemá co vybírat.
 |---|---|---|---|---|
 | **Inline stav u prvku** | přímo u pole nebo tlačítka | A1, A3, validace formuláře | pro věc, která se týká celé stránky | zmizí při další interakci, chyba až po opravě |
 | **Inline blok v obsahu** | v obsahové oblasti | výsledek A3, prázdné stavy, chyby načtení | pro potvrzení triviální akce | zůstává |
-| **Toast** | levý dolní roh | A2, potvrzení akce bez viditelného výsledku, dokončení A4 na pozadí | pro chybu, která vyžaduje akci; pro informaci, která nikde jinde není; pro víc než jednu věc naráz | 6 s u informace, **nikdy automaticky u chyby**, vždy tlačítko zavřít |
+| **Toast** | pravý dolní roh | A2, potvrzení akce bez viditelného výsledku, dokončení A4 na pozadí | pro chybu, která vyžaduje akci; pro informaci, která nikde jinde není; pro víc než jednu věc naráz | 6 s u informace, **nikdy automaticky u chyby**, vždy tlačítko zavřít |
 | **Dialog** | přes obsah | potvrzení A5, průvodce vyžadující rozhodnutí | pro oznámení, které nevyžaduje rozhodnutí | tlačítkem, `Esc`, kliknutím mimo (jen u nedestruktivních) |
 | **Systémový pruh** | dole přes celou šířku | celoaplikační stav: zkušební režim, offline, běžící rozesílka | pro výsledek jedné akce | podle stavu, ne uživatelem |
 | **Celostránkový stav** | místo obsahu | A4 a A5 s vysokou váhou: průběh rozesílky, výsledek importu | pro cokoliv, co uživatel může chtít mít vedle jiné práce | přechodem jinam |
 
-**Toast v levém dolním rohu, ne v pravém horním.** Důvod: pravý horní roh je v této aplikaci obsazený ikonou úloh a nabídkou uživatele, a v celé řadě rozhraní je to místo, kde bydlí reklama a upozornění, takže ho lidé přeskakují (bannerová slepota). Levý dolní roh je blízko primárnímu směru čtení a nezakrývá obsah tabulek.
+**Toast v pravém dolním rohu, ne v pravém horním.** Rozhodnutí zadavatele z 5. 8. 2026, které nahradilo původní levý dolní roh. Pravý horní roh je v této aplikaci obsazený ikonou úloh a nabídkou uživatele, a v celé řadě rozhraní je to místo, kde bydlí reklama a upozornění, takže ho lidé přeskakují (bannerová slepota). Spodní hrana zůstává, protože nezakrývá obsah tabulek; pravá strana je tam, kam se po akci dívá ruka na myši.
 
 ### 5.4 Pravidla pro toast
 
@@ -4299,7 +4299,7 @@ Poslední řádek je bezpečnostní: podrobná hláška by z nástroje udělala 
 
 | Kritérium | Co znamená | Kde nás to pálí |
 |---|---|---|
-| 2.4.11 Focus Not Obscured (Minimum), AA | Fokusovaný prvek nesmí být úplně zakrytý jiným obsahem | Sticky hlavička tabulky, systémový pruh dole, toast v levém dolním rohu. Všechny tři mohou zakrýt fokusovaný řádek nebo tlačítko. |
+| 2.4.11 Focus Not Obscured (Minimum), AA | Fokusovaný prvek nesmí být úplně zakrytý jiným obsahem | Sticky hlavička tabulky, systémový pruh dole, toast v pravém dolním rohu. Všechny tři mohou zakrýt fokusovaný řádek nebo tlačítko. |
 | 2.4.12 Focus Not Obscured (Enhanced), AAA | Nesmí být zakrytý ani částečně | Necílíme, ale je to argument pro dostatečné odsazení |
 | 2.4.13 Focus Appearance, AAA | Minimální plocha a kontrast indikátoru fokusu | Necílíme, ale výchozí indikátor v design systému by měl vyhovět |
 | **2.5.7 Dragging Movements, AA** | Vše, co jde tažením, musí jít i bez tažení | **Nejrizikovější kritérium pro tenhle produkt.** Editor šablon, nahrání souboru přetažením, změna šířky sloupců. Viz U→3.1. |
@@ -4341,7 +4341,7 @@ Obecné požadavky jsou v normě. Tady jsou ty, které se týkají přesně toho
 | Každá akce dostupná myší je dostupná i z klávesnice | **Editor šablon.** Přesun bloku tažením myší musí mít protějšek v nabídce bloku. Bez toho je editor pro část uživatelů nepoužitelný. Viz U→3.1. |
 | Nikde nevzniká past na fokus (dá se dostat dovnitř i ven) | Editor, náhled v iframe, vložený formulář |
 | Pořadí fokusu odpovídá vizuálnímu pořadí | Vícesloupcové rozvržení editoru a segment builderu |
-| Fokus je vždy viditelný a není zakrytý | Sticky hlavička tabulky, systémový pruh dole, toast v levém dolním rohu |
+| Fokus je vždy viditelný a není zakrytý | Sticky hlavička tabulky, systémový pruh dole, toast v pravém dolním rohu |
 | Fokus se po zavření dialogu vrací na spouštěč | Všechny potvrzovací dialogy |
 | Fokus se po přechodu kroku průvodce přesune na nadpis kroku | Import, nastavení odesílání |
 | Fokus po odeslání formuláře s chybou skočí na první chybné pole | Všechny formuláře |

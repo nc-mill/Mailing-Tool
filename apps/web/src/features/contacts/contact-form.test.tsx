@@ -40,7 +40,7 @@ const values: ContactFormValues = {
   greeting_locked: false,
   fields: [{ key: 'city', label: 'Město', type: 'text', value: 'Brno' }],
   tags: [{ name: 'Brno', selected: true }],
-  lists: [{ id: 'l-1', name: 'Zákazníci', selected: true }],
+  lists: [{ id: 'l-1', name: 'Zákazníci', selected: true, double_opt_in: true }],
 };
 
 /** Zachytí FormData, se kterou se formulář odeslal, aby šlo tvrdit o obsahu, ne o klikání. */
@@ -197,8 +197,8 @@ describe('ContactForm', () => {
     const user = userEvent.setup();
     renderForm({
       lists: [
-        { id: 'l-1', name: 'Zákazníci', selected: true },
-        { id: 'l-2', name: 'Novinky', selected: false },
+        { id: 'l-1', name: 'Zákazníci', selected: true, double_opt_in: true },
+        { id: 'l-2', name: 'Novinky', selected: false, double_opt_in: false },
       ],
     });
 
@@ -241,7 +241,10 @@ describe('ContactForm', () => {
     renderForm(EMPTY, 'create');
 
     await user.click(screen.getByRole('radio', { name: /Nepotvrzeného/ }));
-    expect(screen.getByText(/do rozesílek se nedostane/)).toBeInTheDocument();
+    // Věta u volby musí říct, co se doopravdy stane. Od 5. 8. 2026 se na seznamu
+    // s dvojím potvrzením potvrzovací e-mail SKUTEČNĚ pošle, takže se to slibuje
+    // tady, ne až v historii kontaktu.
+    expect(screen.getByText(/pošleme potvrzovací e-mail/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Založit kontakt' }));
 
@@ -252,7 +255,10 @@ describe('ContactForm', () => {
   /** Volba mění i to, co se stane se zaškrtnutými seznamy, a musí to být vidět předem. */
   it('věta u seznamů se řídí zvolenou variantou', async () => {
     const user = userEvent.setup();
-    renderForm({ ...EMPTY, lists: [{ id: 'l-1', name: 'Novinky', selected: false }] }, 'create');
+    renderForm(
+      { ...EMPTY, lists: [{ id: 'l-1', name: 'Novinky', selected: false, double_opt_in: true }] },
+      'create',
+    );
 
     expect(screen.getByText(/rovnou přihlásíme/)).toBeInTheDocument();
 

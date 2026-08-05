@@ -33,7 +33,7 @@ let harness: PgHarness | null = null;
 let migratorPool: Pool | null = null;
 let seedUserId = '';
 
-export type SentEmail = { kind: 'confirmation' | 'welcome'; contactId: string };
+export type SentEmail = { kind: 'confirmation' | 'welcome' | 'goodbye'; contactId: string };
 export const sentEmails: SentEmail[] = [];
 
 beforeAll(async () => {
@@ -61,6 +61,9 @@ beforeAll(async () => {
     },
     async sendWelcome(input) {
       sentEmails.push({ kind: 'welcome', contactId: input.contactId });
+    },
+    async sendGoodbye(input) {
+      sentEmails.push({ kind: 'goodbye', contactId: input.contactId });
     },
     async deliverRequestedItem() {},
   });

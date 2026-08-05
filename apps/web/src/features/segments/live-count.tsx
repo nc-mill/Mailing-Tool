@@ -16,14 +16,50 @@ export type CountState = {
 
 export const DEBOUNCE_MS = 500;
 
-/** Strom je hotový, když má každá podmínka pole i operátor. */
+/**
+ * Strom je hotový, když má každá podmínka pole, operátor a dopsanou hodnotu.
+ *
+ * Rozepsaná hodnota se hlídá stejně jako rozepsané pole. Podmínka „má štítek"
+ * s prázdným výčtem je pro server chyba (`values` musí mít aspoň jednu
+ * položku), takže bez téhle kontroly svítí u čerstvě přidané podmínky červená
+ * hláška do doby, než uživatel štítek vybere. Za to ale nemůže, jen ještě
+ * nedopsal.
+ */
 function isComplete(node: unknown): boolean {
-  const typed = node as { type?: string; field?: unknown; operator?: string; children?: unknown[] };
+  const typed = node as {
+    type?: string;
+    field?: unknown;
+    operator?: string;
+    values?: unknown;
+    children?: unknown[];
+  };
   if (typed.type === 'condition') {
-    return typed.field !== undefined && typed.field !== null && (typed.operator ?? '') !== '';
+    if (typed.field === undefined || typed.field === null) return false;
+    if ((typed.operator ?? '') === '') return false;
+    if (Array.isArray(typed.values)) {
+      return typed.values.length > 0 && typed.values.every((item) => item !== null && item !== '');
+    }
+    return true;
   }
   const children = typed.children ?? [];
   return children.length > 0 && children.every((child) => isComplete(child));
+}
+
+/**
+ * Důvod z odpovědi serveru. Chybová odpověď je Problem Details a nese buď
+ * `errors[].message` u validace, nebo `detail`. Bez toho zbývala uživateli
+ * hláška „Počet se nepodařilo spočítat.", ze které se nedá poznat vůbec nic.
+ */
+async function failureDetail(res: Response): Promise<string | null> {
+  try {
+    const body = (await res.json()) as {
+      detail?: string;
+      errors?: { message?: string }[];
+    };
+    return body.errors?.[0]?.message ?? body.detail ?? null;
+  } catch {
+    return null;
+  }
 }
 /** Nad šest hodin je číslo zastaralé natolik, že se nesmí tvářit čerstvě. */
 export const STALE_HOURS = 6;
@@ -53,6 +89,7 @@ export function LiveCount({
   const [state, setState] = useState<CountState>(initial ?? { count: null });
   const [counting, setCounting] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [failedDetail, setFailedDetail] = useState<string | null>(null);
   const [ageHours, setAgeHours] = useState<number | null>(null);
   const [settled, setSettled] = useState<string>('');
   const abort = useRef<AbortController | null>(null);
@@ -86,13 +123,19 @@ export function LiveCount({
     const timer = setTimeout(() => {
       setCounting(true);
       setFailed(false);
+      setFailedDetail(null);
       void fetch('/api/v1/segments/preview', {
         method: 'POST',
         signal: controller.signal,
         headers: { 'Content-Type': 'application/json', 'X-Workspace-Id': workspaceId },
         body: JSON.stringify({ definition }),
       })
-        .then((res) => (res.ok ? res.json() : Promise.reject(new Error('preview failed'))))
+        .then(async (res) => {
+          if (res.ok) return res.json();
+          const detail = await failureDetail(res);
+          setFailedDetail(detail);
+          throw new Error('preview failed');
+        })
         .then(
           (body: {
             count: number;
@@ -188,7 +231,9 @@ export function LiveCount({
             </Button>
           }
         >
-          {t('count.failed')}
+          {failedDetail === null
+            ? t('count.failed')
+            : t('count.failedDetail', { detail: failedDetail })}
         </Alert>
       ) : null}
 

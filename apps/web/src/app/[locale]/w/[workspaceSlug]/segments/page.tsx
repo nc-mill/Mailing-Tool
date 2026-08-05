@@ -60,6 +60,7 @@ export default async function SegmentsPage({ params }: PageProps) {
     <SegmentList
       rows={rows}
       workspaceSlug={workspaceSlug}
+      workspaceId={workspaceId}
       locale={locale}
       presets={(presets.ok ? presets.data.items : []).map((preset) => ({
         key: preset.key,

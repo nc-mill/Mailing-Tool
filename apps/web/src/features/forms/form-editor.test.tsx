@@ -41,6 +41,8 @@ const FORM: FormView = {
   list_ids: ['list-1'],
   double_opt_in: true,
   consent_text: null,
+  redirect_url: null,
+  success_message: {},
   active: true,
   delivery_template_id: null,
   submission_count: 12,

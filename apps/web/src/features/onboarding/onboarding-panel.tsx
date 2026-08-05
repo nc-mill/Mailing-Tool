@@ -1,9 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { OnboardingState } from '@mlain/core/onboarding';
+import { useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { useToast } from '@mlain/ui/patterns/toast';
 import { cn } from '@mlain/ui/lib/cn';
+import { dismissOnboardingFinishedAction, setOnboardingHiddenAction } from './actions';
 import { OnboardingStepRow } from './onboarding-step-row';
 
 /**
@@ -50,57 +54,79 @@ export type OnboardingPanelProps = {
   onDismiss?: () => void;
 };
 
-async function postHidden(hidden: boolean): Promise<void> {
-  await fetch('/api/v1/onboarding/hide', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ hidden }),
-  });
-}
-
 /**
  * Trvalý panel místo prohlídky s bublinami. Prohlídku uživatel zavře a už ji
  * nikdy neuvidí; seznam zůstane, dá se k němu vrátit a je vidět, co zbývá.
  * Panel proto jde jen skrýt, ne zavřít. Nadobro se zavírá až jednorázová
  * gratulace po odeslání první kampaně.
+ *
+ * OBĚ TLAČÍTKA PŘEKRESLUJÍ PANEL SAMA, NEČEKAJÍ NA SERVER. Přehled je serverová
+ * stránka, takže odpověď akce sama o sobě na obrazovce nic nezmění; bez místního
+ * stavu by panel po kliknutí zůstal viset až do ručního obnovení. Uložený stav
+ * pak dorazí přes `router.refresh()` a místní hodnota s ním souhlasí.
+ *
+ * KDYŽ ZÁPIS SELŽE, PANEL SE VRÁTÍ A ŘEKNE SE TO. Dřív se odpověď zahazovala
+ * přes `void`, takže „Zavřít" na trvale selhávajícím požadavku vypadalo jako
+ * mrtvé tlačítko. Přesně kvůli tomu tenhle soubor vznikl znovu.
  */
 export function OnboardingPanel({ state, slug, onHide, onDismiss }: OnboardingPanelProps) {
   const t = useTranslations('onboarding.panel');
+  const router = useRouter();
+  const toast = useToast();
+  // `null` znamená „uživatel zatím nic nepřepnul", takže platí hodnota ze serveru.
+  const [hiddenOverride, setHiddenOverride] = useState<boolean | null>(null);
+  const [dismissedLocally, setDismissedLocally] = useState(false);
+  const [pending, setPending] = useState(false);
 
-  if (state.finished && state.finishedDismissed) return null;
+  const hidden = hiddenOverride ?? state.hidden;
+
+  async function toggleHidden(next: boolean): Promise<void> {
+    const previous = hidden;
+    onHide?.(next);
+    setHiddenOverride(next);
+    setPending(true);
+    const result = await setOnboardingHiddenAction({ workspaceRef: slug, hidden: next });
+    setPending(false);
+    if (result.status === 'error') {
+      setHiddenOverride(previous);
+      toast.error(t('saveFailed', { code: result.code }));
+      return;
+    }
+    router.refresh();
+  }
+
+  async function dismissFinished(): Promise<void> {
+    onDismiss?.();
+    setDismissedLocally(true);
+    setPending(true);
+    const result = await dismissOnboardingFinishedAction({ workspaceRef: slug });
+    setPending(false);
+    if (result.status === 'error') {
+      setDismissedLocally(false);
+      toast.error(t('dismissFailed', { code: result.code }));
+      return;
+    }
+    router.refresh();
+  }
+
+  if (state.finished && (state.finishedDismissed || dismissedLocally)) return null;
 
   if (state.finished) {
     return (
       <Panel tone="success" label={t('title')}>
         <p>{t('finished')}</p>
-        <Button
-          variant="ghost"
-          onClick={() => {
-            onDismiss?.();
-            void fetch('/api/v1/onboarding/hide', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ dismissFinished: true }),
-            });
-          }}
-        >
+        <Button variant="ghost" pending={pending} onClick={() => void dismissFinished()}>
           {t('finishedDismiss')}
         </Button>
       </Panel>
     );
   }
 
-  if (state.hidden) {
+  if (hidden) {
     return (
       <Panel tone="muted" label={t('title')}>
         <p>{t('collapsed', { done: state.doneCount, total: state.total })}</p>
-        <Button
-          variant="ghost"
-          onClick={() => {
-            onHide?.(false);
-            void postHidden(false);
-          }}
-        >
+        <Button variant="ghost" pending={pending} onClick={() => void toggleHidden(false)}>
           {t('show')}
         </Button>
       </Panel>
@@ -111,13 +137,7 @@ export function OnboardingPanel({ state, slug, onHide, onDismiss }: OnboardingPa
     <Panel label={t('title')}>
       <div className="flex items-center justify-between">
         <h2>{t('title')}</h2>
-        <Button
-          variant="ghost"
-          onClick={() => {
-            onHide?.(true);
-            void postHidden(true);
-          }}
-        >
+        <Button variant="ghost" pending={pending} onClick={() => void toggleHidden(true)}>
           {t('hide')}
         </Button>
       </div>

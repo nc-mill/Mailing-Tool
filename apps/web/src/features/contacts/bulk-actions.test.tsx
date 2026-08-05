@@ -11,10 +11,15 @@ vi.mock('@mlain/i18n/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh, replace: vi.fn(), back: vi.fn() }),
 }));
 
+const createContactExportAction = vi
+  .fn()
+  .mockResolvedValue({ status: 'success', id: 'e-1', downloadUrl: '/api/v1/x?token=t' });
+
 vi.mock('./actions', () => ({
   bulkDeleteContactsAction: vi.fn().mockResolvedValue({ status: 'success' }),
-  exportContactsAction: vi.fn().mockResolvedValue({ status: 'success' }),
   bulkTagContactsAction: vi.fn().mockResolvedValue({ status: 'success' }),
+  createContactExportAction: (...args: unknown[]) => createContactExportAction(...args),
+  exportStatusAction: vi.fn().mockResolvedValue({ status: 'success', state: 'completed' }),
 }));
 
 const confirmContactsAction = vi.fn();
@@ -54,6 +59,9 @@ function render(current: Selection = selection) {
       filters={{}}
       names={{ lists: {}, tags: {}, segments: {} }}
       lists={LISTS}
+      // Adresy vybraných řádků. Bez nich se export výběru vědomě neprovede, protože
+      // publikum umí vyjmenovat kontakty jen e-mailem; podrobně u `emailsToAudience`.
+      selectedEmails={['a@firma.cz', 'b@firma.cz']}
     />,
   );
 }
@@ -301,4 +309,36 @@ describe('hromadné odebrání ze seznamu', () => {
     expect(await screen.findByText(/ze seznamu nepodařilo odebrat/i)).toBeInTheDocument();
     expect(refresh).not.toHaveBeenCalled();
   });
+
+  /*
+   * Export uvnitř dialogu mazání je POJISTKA PŘED NEVRATNOU AKCÍ, a do 5. 8. 2026
+   * nefungoval: `exportContactsAction` posílala tvar, který schéma odmítá (422),
+   * takže dialog tvrdil „Soubor je stažený" a zálohu uživatel neměl.
+   */
+  it('export v dialogu mazání opravdu stáhne soubor', async () => {
+    const user = userEvent.setup();
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob(['e-mail\n'])) });
+    vi.stubGlobal('fetch', fetchSpy);
+    URL.createObjectURL = vi.fn().mockReturnValue('blob:x');
+    URL.revokeObjectURL = vi.fn();
+
+    render();
+    await user.click(screen.getByRole('button', { name: 'Smazat' }));
+    await user.click(
+      await screen.findByRole('button', { name: /Stáhnout tyhle 2 kontakty jako CSV/ }),
+    );
+
+    await waitFor(() => expect(createContactExportAction).toHaveBeenCalled());
+    // Publikum je výčet adres, ne `{ ids }`: podrobně u `emailsToAudience`.
+    const [call] = createContactExportAction.mock.calls as [[{ audience: unknown }]];
+    expect(JSON.stringify(call[0].audience)).toContain('"operator":"in"');
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled(), { timeout: 5000 });
+    expect(await screen.findByTestId('bulk-delete-export-state')).toHaveTextContent(
+      'Soubor je stažený',
+    );
+    vi.unstubAllGlobals();
+  }, 15_000);
 });

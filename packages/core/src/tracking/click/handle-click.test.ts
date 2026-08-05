@@ -18,8 +18,9 @@ const CONTACT = '0192f3a0-1c2d-7e43-8d4e-5f60718293a4';
 function makeHandler(overrides: Partial<ClickHandlerDeps> = {}) {
   const buffered: unknown[] = [];
   const domains = new TrackingDomainCache({
-    refreshMs: 60_000,
-    load: async () => [{ id: 'd1', workspaceId: WS, host: 'shop.cz', includeSubdomains: false }],
+    ttlMs: 60_000,
+    load: async (ctx) =>
+      ctx.workspaceId === WS ? [{ host: 'shop.cz', includeSubdomains: false }] : [],
   });
   const links = new LinkCache({
     capacity: 10,
@@ -51,9 +52,8 @@ function makeHandler(overrides: Partial<ClickHandlerDeps> = {}) {
 
 describe('click handler', () => {
   let ctx: ReturnType<typeof makeHandler>;
-  beforeEach(async () => {
+  beforeEach(() => {
     ctx = makeHandler();
-    await ctx.domains.refresh();
   });
 
   it('vrátí Location přesně rovný uložené adrese plus ml_token', async () => {
@@ -114,7 +114,6 @@ describe('click handler', () => {
         ],
       }),
     });
-    await other.domains.refresh();
     const out = await other.handle({
       token: CLICK,
       userAgent: 'Chrome/140',
@@ -145,7 +144,6 @@ describe('click handler', () => {
         ],
       }),
     });
-    await foreign.domains.refresh();
     const out = await foreign.handle({
       token: CLICK,
       userAgent: 'Chrome/140.0.0.0',
@@ -180,7 +178,6 @@ describe('click handler', () => {
         return CONTACT;
       },
     });
-    await slow.domains.refresh();
     const started = Date.now();
     const out = await slow.handle({
       token: CLICK,
@@ -244,7 +241,6 @@ describe('ochrana proti open redirectu', () => {
 
   it.each(attackQueries)('query %s cíl nezmění', async (query) => {
     const ctx = makeHandler();
-    await ctx.domains.refresh();
     const out = await ctx.handle({
       token: CLICK,
       userAgent: 'Mozilla/5.0 (Windows NT 10.0) Chrome/140.0.0.0',
@@ -262,7 +258,6 @@ describe('ochrana proti open redirectu', () => {
 
   it('hlavičky, kterými by šlo cíl přepsat, se ignorují', async () => {
     const ctx = makeHandler();
-    await ctx.domains.refresh();
     const out = await ctx.handle({
       token: CLICK,
       userAgent: 'Mozilla/5.0 (Windows NT 10.0) Chrome/140.0.0.0',
@@ -301,7 +296,6 @@ describe('ochrana proti open redirectu', () => {
         ],
       }),
     });
-    await foreign.domains.refresh();
     const out = await foreign.handle({
       token: CLICK,
       userAgent: 'Mozilla/5.0 (Windows NT 10.0) Chrome/140.0.0.0',
@@ -332,7 +326,6 @@ describe('ochrana proti open redirectu', () => {
         ],
       }),
     });
-    await lookalike.domains.refresh();
     const out = await lookalike.handle({
       token: CLICK,
       userAgent: 'Mozilla/5.0 (Windows NT 10.0) Chrome/140.0.0.0',
@@ -350,7 +343,6 @@ describe('ochrana proti open redirectu', () => {
     const empty = makeHandler({
       links: new LinkCache({ capacity: 10, ttlMs: 900_000, load: async () => [] }),
     });
-    await empty.domains.refresh();
     const out = await empty.handle({
       token: CLICK,
       userAgent: 'Chrome/140.0.0.0',

@@ -118,6 +118,16 @@ export const CONTACTS_FIELD_ERROR_CODES = [
   'number_format_ambiguous',
   'excel_serial_date_assumed',
   'mapping_required_missing',
+  // Šablona připojovaná jako POTVRZOVACÍ e-mail seznamu neobsahuje odkaz
+  // `{{ data.confirm_url }}`. Přihlášení by z takového e-mailu nešlo dokončit
+  // a nic by přitom nespadlo: render s `strictVariables: false` by z chybějící
+  // proměnné udělal prázdný `href`. Viz `lists/confirm-link-guard.ts`.
+  'confirmation_template_missing_confirm_link',
+  // Uvítací nebo rozloučovací e-mail seznamu obsahuje odhlašovací odkaz. Zpráva
+  // odchází jako transakční a sender u toho druhu odhlašovací odkaz nevyrábí,
+  // takže by `{{ unsubscribe_url }}` skončil jako prázdný `href`. Že to blokuje
+  // uložení a není to varování, rozhodl vedoucí týmu 5. 8. 2026.
+  'subscription_email_has_unsubscribe_link',
 ] as const;
 
 export type ContactsFieldErrorCode = (typeof CONTACTS_FIELD_ERROR_CODES)[number];

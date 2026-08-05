@@ -101,7 +101,13 @@ export const campaignsShape = {
   DELIVERABILITY_CONTENT_BOUNCE_LIMIT: envInt(1, 1000000).default(100),
   DELIVERABILITY_GUARD_MIN_SENT: envInt(1, 1000000).default(500),
   // Retence má reálně měsíční granularitu: partition se odpojují po měsících,
-  // takže 90 dní drží 90 až 120 dní (část 1, 4.9). Musí to být v dokumentaci.
+  // takže 90 dní drží 90 až 120 dní (část 1, 4.9). Je to v `.env.example`
+  // i v `docs/operations/partitions-retention.md`.
+  //
+  // Obě proměnné čte `ops/partition-retention.ts`, tedy příkaz
+  // `mlain partitions`. Do té doby to byly MRTVÉ proměnné: stály tady
+  // s výchozími hodnotami a v běhovém kódu je nikdo nečetl, takže odeslaná
+  // pošta v produktu zůstávala navždy.
   MESSAGE_RETENTION_DAYS: envInt(7, 3650).default(90),
   MESSAGE_EVENT_RETENTION_DAYS: envInt(7, 3650).default(365),
   SNS_CERT_CACHE_SECONDS: envInt(60, 604800).default(86400),

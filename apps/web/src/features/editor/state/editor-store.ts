@@ -40,6 +40,15 @@ export type EditorState = {
   designHash: string;
   savedAt: number | null;
   status: SaveStatus;
+  /**
+   * Věta ze serveru k odmítnutému uložení, nebo `null`.
+   *
+   * Doménové závory (potvrzovací e-mail bez odkazu na potvrzení, odhlašovací
+   * odkaz v e-mailu seznamu) vracejí 422 s instrukcí, co udělat. Bez tohohle
+   * pole by z ní v hlavičce zbylo obecné „Uložení se nepovedlo" a uživatel by
+   * neměl podle čeho dokument spravit.
+   */
+  saveIssue: string | null;
   issues: EditorIssue[];
   isDirty: boolean;
   historyDepth: number;
@@ -69,6 +78,7 @@ export function createEditorStore(input: {
     designHash: input.designHash,
     savedAt: null,
     status: 'idle',
+    saveIssue: null,
     issues: [],
     isDirty: false,
     historyDepth: 0,
@@ -200,15 +210,15 @@ export function createEditorStore(input: {
       set({ document: next.document, selectedId: next.selectedId });
     },
 
-    setStatus(status: SaveStatus) {
-      set({ status });
+    setStatus(status: SaveStatus, saveIssue: string | null = null) {
+      set({ status, saveIssue });
     },
     setIssues(issues: EditorIssue[]) {
       set({ issues });
     },
     markSaved(designHash: string, at: number) {
       savedDocument = state.document;
-      set({ designHash, savedAt: at, status: 'saved' });
+      set({ designHash, savedAt: at, status: 'saved', saveIssue: null });
     },
     /**
      * Převzetí přejmenování, které právě proběhlo na serveru.

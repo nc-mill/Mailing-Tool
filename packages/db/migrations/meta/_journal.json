@@ -120,6 +120,34 @@
       "when": 1785609000000,
       "tag": "0016_message_kinds",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1785610000000,
+      "tag": "0017_lists_subscription_emails",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1785611000000,
+      "tag": "0018_default_list_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1785612000000,
+      "tag": "0019_default_list_backfill_deleted",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785613000000,
+      "tag": "0020_workspaces_greeting_enabled",
+      "breakpoints": true
     }
   ]
 }

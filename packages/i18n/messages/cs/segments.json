@@ -41,7 +41,10 @@
     "removeValue": "Odebrat hodnotu {value}",
     "listLimit": "Do výčtu se vejde nejvýš {limit} položek.",
     "save": "Uložit segment",
-    "cancel": "Zrušit"
+    "cancel": "Zrušit",
+    "unknownValue": "Smazaná položka ({value})",
+    "noOptions": "Není z čeho vybírat. Nejdřív si štítek nebo seznam založte.",
+    "addValue": "Přidat hodnotu"
   },
   "fieldGroups": {
     "contact": "O člověku",
@@ -145,7 +148,8 @@
     "showAll": "Zobrazit všech {count}",
     "failed": "Počet se nepodařilo spočítat.",
     "retry": "Zkusit znovu",
-    "emptyAll": "Segment zatím nemá žádnou podmínku, obsahuje tedy všechny kontakty ({count, number})."
+    "emptyAll": "Segment zatím nemá žádnou podmínku, obsahuje tedy všechny kontakty ({count, number}).",
+    "failedDetail": "Počet se nepodařilo spočítat. Technický detail: {detail}"
   },
   "warnings": {
     "segment_count_estimated": "Číslo je odhad, přesný výpočet by trval příliš dlouho.",
@@ -206,7 +210,14 @@
     "repeatedSoftBounces": {
       "title": "Opakované měkké odrazy",
       "explanation": "Aspoň 3× se jim e-mail dočasně nedoručil."
-    }
+    },
+    "useTitle": "Použít hotový segment {preset}",
+    "useBody": "Vznikne váš vlastní segment s touhle podmínkou. Pozdější úprava hotového segmentu v aplikaci se do něj nepromítne.",
+    "useName": "Název segmentu",
+    "useConfirm": "Založit segment",
+    "useCancel": "Zrušit",
+    "useFailed": "Segment se nepodařilo založit. Technický detail: {detail}",
+    "nameMissing": "Zadejte název segmentu."
   },
   "freeze": {
     "action": "Zmrazit seznam",
@@ -254,5 +265,46 @@
     "unknownCampaign": "bez názvu",
     "prefilledNotice": "Podmínku jsme předvyplnili z reportu kampaně. Zkontrolujte ji, případně upravte, a uložte.",
     "notOpenedNotice": "Mezi neotevřevší nepočítáme ty, kdo v kampani klikli: proklik je důkaz, že zprávu viděli, a report je proto počítá mezi otevření."
+  },
+  "freshNow": "Aktualizováno právě teď.",
+  "fieldValues": {
+    "status": {
+      "active": "aktivní",
+      "unconfirmed": "nepotvrzený",
+      "unsubscribed": "odhlášený",
+      "bounced": "nedoručitelný",
+      "complained": "označil jako spam"
+    },
+    "gender": {
+      "female": "žena",
+      "male": "muž",
+      "unknown": "neznámé"
+    },
+    "source": {
+      "manual": "ručně zadaný",
+      "import": "z importu",
+      "api": "přes API",
+      "form": "z formuláře",
+      "webhook": "z webhooku",
+      "double_opt_in": "z potvrzeného přihlášení",
+      "migration": "z migrace"
+    },
+    "vocative_confidence": {
+      "high": "vysoká",
+      "low": "nízká",
+      "none": "žádná"
+    }
+  },
+  "consentPurposes": {
+    "email_marketing": "Marketingové e-maily",
+    "analytics": "Měření",
+    "personalization": "Personalizace",
+    "profiling": "Profilování",
+    "third_party": "Předání třetí straně"
+  },
+  "fieldScopes": {
+    "lastCampaigns": "({count, plural, =0 {bez kampaní} one {poslední kampaň} few {poslední # kampaně} many {posledních # kampaně} other {posledních # kampaní}})",
+    "sinceDays": "(za {days, plural, =0 {dnešek} one {# den} few {# dny} many {# dne} other {# dní}})",
+    "oneCampaign": "(v jedné kampani)"
   }
 }

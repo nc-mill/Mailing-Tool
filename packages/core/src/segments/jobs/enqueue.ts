@@ -1,6 +1,5 @@
-import { sql } from 'drizzle-orm';
 import { loadConfig } from '../../config/index';
-import { queue } from '../../queues/registry';
+import { enqueueJob, type OnMerged } from '../../queues/enqueue-sql';
 import type { Tx } from '../../tx';
 
 /**
@@ -15,14 +14,22 @@ import type { Tx } from '../../tx';
  * job by přežil rollback doménové změny a přepočítával by segment, jehož
  * založení se nakonec nepovedlo.
  *
- * `dead_letter` se ZÁMĚRNĚ nevyplňuje: sloupec má cizí klíč na `queue.name`,
- * takže hodnota `<fronta>.dlq` by zápis shodila všude, kde dead letter frontu
- * nikdo nezaložil. Přiřazení dead letter fronty patří k založení fronty.
+ * VÝCHOZÍ `onMerged` JE `drop`. Doména zařazuje jedinou slučující frontu,
+ * `segments.recount` s politikou `short`, a tam je zahození SPRÁVNÝ výsledek:
+ * `short` zahodí teprve TŘETÍ požadavek, tedy stav „jeden přepočet běží a jeden
+ * čeká". Čekající přepočet si členy segmentu spočítá z aktuálních dat, až na něj
+ * přijde řada, takže pokryje i tu změnu, kvůli které přišel zahozený požadavek.
+ * Výsledný počet je správný tak jako tak; ušetří se jen běh navíc.
+ *
+ * Na `fail` tu není nic, protože na přepočet nečeká člověk u obrazovky: segment
+ * se zobrazuje s posledním známým počtem a novým ho přepíše doběhlý přepočet.
  */
 export type EnqueueOptions = {
   /** Jeden běh nad jedním klíčem. Negarantuje právě jedno spuštění. */
   singletonKey?: string;
   startAfterSeconds?: number;
+  /** Přebití výchozího `drop`. Viz rozvaha v hlavičce souboru. */
+  onMerged?: OnMerged;
 };
 
 let cachedSchema: string | null = null;
@@ -43,18 +50,12 @@ export async function enqueueSegmentJob(
   payload: Record<string, unknown>,
   options: EnqueueOptions = {},
 ): Promise<void> {
-  const entry = queue(name);
-  await tx.execute(sql`
-    INSERT INTO ${sql.identifier(pgbossSchema())}.job
-      (name, data, singleton_key, retry_limit, retry_backoff, expire_seconds, start_after)
-    VALUES (
-      ${name},
-      ${JSON.stringify(payload)}::jsonb,
-      ${options.singletonKey ?? null},
-      ${entry.retryLimit},
-      ${entry.retryBackoff},
-      ${entry.expireInSeconds},
-      now() + make_interval(secs => ${options.startAfterSeconds ?? 0})
-    )
-  `);
+  await enqueueJob(tx, {
+    schema: pgbossSchema(),
+    name,
+    payload,
+    singletonKey: options.singletonKey,
+    startAfterSeconds: options.startAfterSeconds,
+    onMerged: options.onMerged ?? 'drop',
+  });
 }

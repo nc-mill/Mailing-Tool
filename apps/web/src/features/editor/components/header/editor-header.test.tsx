@@ -92,3 +92,44 @@ describe('ukládání v hlavičce editoru', () => {
     expect(screen.queryByRole('button', { name: 'Uložit' })).not.toBeInTheDocument();
   });
 });
+
+/**
+ * VĚTA ZE SERVERU U ODMÍTNUTÉHO ULOŽENÍ.
+ *
+ * Doménové závory seznamu (potvrzovací e-mail bez odkazu na potvrzení,
+ * odhlašovací odkaz v uvítacím a rozloučovacím e-mailu) vracejí 422 s celou
+ * instrukcí, co má autor opravit. Do téhle chvíle z ní v hlavičce zbylo obecné
+ * „dokument je neplatný", takže se člověk v editoru neměl podle čeho zařídit.
+ */
+describe('hlavička u odmítnutého uložení', () => {
+  const SERVER_SENTENCE =
+    'Tenhle e-mail je připojený jako potvrzovací, takže musí obsahovat odkaz na potvrzení.';
+
+  it('ukáže větu ze serveru místo obecné hlášky', () => {
+    const store = createEditorStore({ document: doc(), designHash: 'h' });
+    header(store);
+
+    act(() => store.setStatus('invalid', SERVER_SENTENCE));
+
+    expect(screen.getByTestId('save-status')).toHaveTextContent(SERVER_SENTENCE);
+  });
+
+  it('bez věty ze serveru zůstane obecná hláška', () => {
+    const store = createEditorStore({ document: doc(), designHash: 'h' });
+    header(store);
+
+    act(() => store.setStatus('invalid'));
+
+    expect(screen.getByTestId('save-status')).toHaveTextContent(csEditor.header.saveInvalid);
+  });
+
+  it('po úspěšném uložení věta zmizí', () => {
+    const store = createEditorStore({ document: doc(), designHash: 'h' });
+    header(store);
+
+    act(() => store.setStatus('invalid', SERVER_SENTENCE));
+    act(() => store.markSaved('h2', Date.now()));
+
+    expect(screen.getByTestId('save-status')).not.toHaveTextContent(SERVER_SENTENCE);
+  });
+});

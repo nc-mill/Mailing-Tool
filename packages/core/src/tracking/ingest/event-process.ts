@@ -1,4 +1,9 @@
+import { createSystemContext } from '../../identity/context';
+import { TtlLru } from '../click/lru';
+import { applyIdentify, type IdentifyPayload } from '../identity/apply-identify';
 import { enqueueTrackingJob } from '../jobs/enqueue';
+import { trackingLogger } from '../logging';
+import { markTrackingDomainVerified } from '../repo/tracking-domains.repo';
 import { withTrackingTx, type Tx } from '../repo/tx';
 import type { EventSource } from '../types';
 import {
@@ -42,14 +47,70 @@ export type EventProcessJobData = {
     context: Record<string, unknown>;
     /** Jen u serverové cesty a importu. */
     contactId?: string | null;
+    /** Jen u události `identify`, netknutá kopie kvůli ověření podpisu. */
+    identify?: IdentifyPayload;
   }[];
+  /** Host, ze kterého dávka přišla. Vyplněný jen u prohlížečové cesty. */
+  originHost?: string | null;
 };
 
 export type EventProcessDeps = {
   /** Zařazení navazujících úloh VE STEJNÉ transakci. Testy si sem podstrčí špióna. */
   enqueue?: (tx: Tx, queue: string, data: Record<string, unknown>) => Promise<void>;
   now?: () => Date;
+  /** Zápis ověření měřicí domény. Testy si sem podstrčí špióna. */
+  markDomainVerified?: (target: { workspaceId: string; host: string }) => Promise<number>;
 };
+
+/**
+ * Domény, u kterých už tenhle proces ověření zapsal.
+ *
+ * Bez ní by každá dávka znamenala jeden `UPDATE` navíc, i když je doména dávno
+ * ověřená. Časové omezení je tam schválně: kdyby se pamatovalo navždy, doména
+ * smazaná a znovu přidaná by se do restartu workeru už nikdy neověřila.
+ */
+const VERIFIED_DOMAIN_CACHE = { capacity: 5_000, ttlMs: 10 * 60_000 } as const;
+let verifiedDomains = new TtlLru<string, true>(VERIFIED_DOMAIN_CACHE);
+
+/**
+ * Jen pro testy: bez toho by si druhý test pamatoval doménu z prvního.
+ * Přiřazení nové instance je tentýž postup jako u `resetPublicKeyCache`.
+ */
+export function resetVerifiedDomainCache(): void {
+  verifiedDomains = new TtlLru<string, true>(VERIFIED_DOMAIN_CACHE);
+}
+
+/**
+ * Ověření měřicí domény, viz P10. Sloupec `tracking_domains.verified_at` neměl
+ * do téhle opravy žádného zapisovatele, takže v rozhraní u KAŽDÉ domény trvale
+ * svítilo „Zatím neověřeno. Ověří se samo při prvním úspěšném běhu skriptu."
+ * To byl slib, který produkt neplnil.
+ *
+ * Ověřením je PRVNÍ PŘIJATÁ DÁVKA z té domény, ne její založení. Označit doménu
+ * za ověřenou hned při přidání by byl jen jiný druh nepravdy: uživatel by dál
+ * nevěděl, jestli úryvek na webu skutečně běží.
+ *
+ * Selhání se jen zaloguje. Zpracování událostí na něm viset nesmí: neověřená
+ * doména je kosmetická vada, zahozená dávka událostí není.
+ */
+async function verifyOriginDomain(
+  workspaceId: string,
+  host: string,
+  mark: (target: { workspaceId: string; host: string }) => Promise<number>,
+): Promise<void> {
+  const key = `${workspaceId}:${host}`;
+  if (verifiedDomains.get(key) !== undefined) return;
+
+  try {
+    const marked = await mark({ workspaceId, host });
+    verifiedDomains.set(key, true);
+    if (marked > 0) {
+      trackingLogger().info({ workspaceId, host, marked }, 'tracking_domain_verified');
+    }
+  } catch (error) {
+    trackingLogger().warn({ err: error, workspaceId, host }, 'tracking_domain_verify_failed');
+  }
+}
 
 export async function handleEventProcess(
   data: EventProcessJobData,
@@ -58,6 +119,20 @@ export async function handleEventProcess(
   const enqueue = deps.enqueue ?? enqueueTrackingJob;
   const now = deps.now?.() ?? new Date();
   const isImport = data.source === 'import';
+
+  /**
+   * Ověření domény se zapisuje PŘED uložením událostí, ne po něm, a schválně.
+   * Dávka může celá vypadnout na deduplikaci, jenže i tak je to důkaz, že
+   * skript na webu běží a že doména odpovídá. Kdyby zápis visel na tom, že se
+   * něco uložilo, druhá návštěva téhož dne by doménu neověřila.
+   */
+  if (!isImport && data.originHost != null && data.originHost !== '') {
+    await verifyOriginDomain(
+      data.workspaceId,
+      data.originHost,
+      deps.markDomainVerified ?? markTrackingDomainVerified,
+    );
+  }
 
   await withTrackingTx({ workspaceId: data.workspaceId, job: EVENT_PROCESS_QUEUE }, async (tx) => {
     // 2. vyřešení identity
@@ -165,4 +240,41 @@ export async function handleEventProcess(
       });
     }
   });
+
+  /**
+   * 8. Volání `identify` se promítne na kontakt AŽ TEĎ, mimo transakci nad
+   * událostmi, a schválně. `writeContact` i `bindIdentity` si otevírají vlastní
+   * transakci a obojí je delší práce než zápis řádků; kdyby viselo uvnitř,
+   * držela by se zámky nad `web_events` po celou tu dobu.
+   *
+   * Selhání jednoho `identify` nesmí shodit celou dávku: události jsou v tu
+   * chvíli uložené a opakování jobu by je jen znovu deduplikovalo, zatímco
+   * chyba by se opakovala pořád dokola.
+   */
+  if (isImport) return;
+  for (const event of data.events) {
+    if (event.identify === undefined) continue;
+    try {
+      const result = await applyIdentify({
+        // Rozsah se vyrábí tady, z identifikátoru v payloadu jobu, a jedinou
+        // schválenou továrnou. Dál už putuje jako branded kontext, takže
+        // `identify.repo.ts` ani `writeContact` nedostanou holý řetězec.
+        ctx: createSystemContext(data.workspaceId, 'tracking.identify'),
+        anonymousId: data.anonymousId,
+        payload: event.identify,
+        now,
+      });
+      if (result.outcome !== 'applied') {
+        trackingLogger().warn(
+          { workspaceId: data.workspaceId, outcome: result.outcome },
+          'tracking_identify_not_applied',
+        );
+      }
+    } catch (error) {
+      trackingLogger().error(
+        { err: error, workspaceId: data.workspaceId },
+        'tracking_identify_failed',
+      );
+    }
+  }
 }

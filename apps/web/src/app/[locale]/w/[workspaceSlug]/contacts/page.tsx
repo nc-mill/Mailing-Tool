@@ -94,7 +94,6 @@ function toRow(contact: ContactApiRow): ContactRow {
 
 export default async function ContactsPage({ params, searchParams }: PageProps) {
   const [{ workspaceSlug }, query] = await Promise.all([params, searchParams]);
-  const filters = readContactFilters(query);
   const cursor = readCursor(query);
   const basePath = `/w/${workspaceSlug}/contacts`;
 
@@ -104,6 +103,10 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
     return <ContactsProblem problem={access.problem} />;
   }
   const workspaceId = access.data.workspace.id;
+  const greetingEnabled = access.data.workspace.greeting_enabled;
+  // Filtry se čtou AŽ ZA projektem, protože jeden z nich (nejisté oslovení)
+  // existuje jen tam, kde projekt oslovení řeší.
+  const filters = readContactFilters(query, { greetingEnabled });
 
   // Pět nezávislých požadavků najednou. Sekvenčně by se čekání sčítalo a seznam kontaktů
   // je nejčastěji otevíraná obrazovka produktu.
@@ -111,6 +114,9 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
   // Pátý je počet nejistých oslovení. Obrazovka „Kontrola oslovení" existovala,
   // ale vedl na ni jediný odkaz, a to z výsledku importu. Kdo kontakty nenaimportoval,
   // nebo se k výsledku nevrátil, se o ní nedozvěděl.
+  //
+  // Projekt, který oslovení neřeší, ten pátý požadavek NEDĚLÁ. Odkaz, který by
+  // z něj vznikl, by mířil na skrytou obrazovku.
   const [page, count, lists, tags, review] = await Promise.all([
     apiFetch<ContactPage>('/api/v1/contacts', {
       workspaceId,
@@ -125,9 +131,11 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
       workspaceId,
       searchParams: { limit: 200 },
     }),
-    apiFetch<{ groups: number; contacts: number }>('/api/v1/vocative-review/count', {
-      workspaceId,
-    }),
+    greetingEnabled
+      ? apiFetch<{ groups: number; contacts: number }>('/api/v1/vocative-review/count', {
+          workspaceId,
+        })
+      : null,
   ]);
 
   if (!page.ok) return <ContactsProblem problem={page.problem} />;
@@ -153,12 +161,18 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
       names={names}
       tags={tagList}
       lists={listOptions}
+      greetingEnabled={greetingEnabled}
       // Počet nejistých oslovení. Když se endpoint nepodaří zavolat, odkaz se ukáže
       // bez čísla: odkaz na frontu je pravdivý vždycky, číslo jen tehdy, když ho víme.
-      vocativeReview={{
-        href: `${basePath}/vocative-review`,
-        ...(review.ok ? { uncertain: review.data.contacts } : {}),
-      }}
+      // S vypnutým oslovením se prop vynechá úplně, viz `exactOptionalPropertyTypes`.
+      {...(greetingEnabled
+        ? {
+            vocativeReview: {
+              href: `${basePath}/vocative-review`,
+              ...(review?.ok ? { uncertain: review.data.contacts } : {}),
+            },
+          }
+        : {})}
     />
   );
 }

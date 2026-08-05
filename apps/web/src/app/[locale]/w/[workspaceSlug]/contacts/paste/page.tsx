@@ -34,7 +34,11 @@ export default async function PasteContactsPage({ params }: PageProps) {
   // Dva nezávislé požadavky najednou. Seznamy a štítky spolu nesouvisí a čekat
   // na ně po sobě by zdrželo obrazovku, na které jde hlavně o textové pole.
   const [lists, tags] = await Promise.all([
-    apiFetch<{ data: { id: string; name: string }[] }>('/api/v1/lists', { workspaceId }),
+    // `is_default` je potřeba: obrazovka výchozí seznam projektu předvybírá,
+    // protože zařazení do seznamu je povinné.
+    apiFetch<{
+      data: { id: string; name: string; opt_in: 'single' | 'double'; is_default: boolean }[];
+    }>('/api/v1/lists', { workspaceId }),
     apiFetch<{ data: { id: string; name: string }[] }>('/api/v1/tags', {
       workspaceId,
       searchParams: { limit: 200 },
@@ -48,7 +52,16 @@ export default async function PasteContactsPage({ params }: PageProps) {
     <PasteContacts
       workspaceId={workspaceId}
       basePath={`/w/${workspaceSlug}/contacts`}
-      lists={lists.ok ? lists.data.data : []}
+      lists={
+        lists.ok
+          ? lists.data.data.map((list) => ({
+              id: list.id,
+              name: list.name,
+              optIn: list.opt_in,
+              isDefault: list.is_default,
+            }))
+          : []
+      }
       tags={tags.ok ? tags.data.data : []}
     />
   );

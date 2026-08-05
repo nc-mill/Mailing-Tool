@@ -16,6 +16,12 @@ import {
   setListPublicVisibilityAction,
   setOptInAction,
 } from './actions';
+import {
+  saveListBasicsAction,
+  saveListRedirectsAction,
+  setDefaultListAction,
+} from './list-email-actions';
+import { ListEmails, type ListEmailState } from './list-emails';
 
 export type ListDetailData = {
   id: string;
@@ -30,16 +36,41 @@ export type ListDetailData = {
   /** Název, který uvidí příjemce. Prázdné znamená, že se ukáže pracovní název. */
   public_name: string;
   public_description: string;
+  description: string;
+  /**
+   * Jak dlouho platí potvrzovací odkaz a kolikrát se smí za 24 hodin poslat znovu.
+   * Krátká platnost je nejčastější důvod, proč lidem přihlášení „nejde"; strop
+   * je ochrana cizí schránky před opakovaným odesláním z formuláře.
+   */
+  confirmation_ttl_hours: number;
+  confirmation_max_resends: number;
+  /** Kam po potvrzení a po odhlášení. Prázdné znamená „zůstane naše stránka". */
+  confirm_redirect_url: string;
+  unsubscribe_redirect_url: string;
+  /**
+   * Výchozí seznam projektu. Řídí, co je předem zaškrtnuté při ručním přidání
+   * kontaktu a předvybrané v průvodci importem, takže je to rozhodnutí o tom,
+   * kam lidé přistávají, ne ozdoba.
+   */
+  is_default: boolean;
+  /** Tři e-maily seznamu: potvrzení, uvítání, rozloučení. */
+  emails: ListEmailState[];
 };
 
 export function ListDetail({
   basePath,
+  templatesPath,
   workspaceId,
+  language,
   list,
 }: {
   basePath: string;
+  /** Kam vede odkaz na šablonu vlastního znění, tedy `/w/{slug}/templates`. */
+  templatesPath: string;
   /** Projekt pro změnu režimu potvrzení a archivaci. Bez něj API vrátí 404. */
   workspaceId: string;
+  /** Jazyk, ve kterém se předvyplní nově založené znění e-mailu. */
+  language: 'cs' | 'en';
   list: ListDetailData;
 }) {
   const t = useTranslations('contacts');
@@ -58,6 +89,68 @@ export function ListDetail({
   const [publicName, setPublicName] = useState(list.public_name);
   const [publicDescription, setPublicDescription] = useState(list.public_description);
   const [publicSaved, setPublicSaved] = useState(false);
+  const [name, setName] = useState(list.name);
+  const [description, setDescription] = useState(list.description);
+  // Čísla se drží jako řetězec, protože prázdné pole v `<input type="number">`
+  // dává NaN a to by se do API poslalo jako `null`, tedy jako změna, kterou
+  // nikdo nechtěl.
+  const [ttl, setTtl] = useState(String(list.confirmation_ttl_hours));
+  const [maxResends, setMaxResends] = useState(String(list.confirmation_max_resends));
+  const [confirmRedirect, setConfirmRedirect] = useState(list.confirm_redirect_url);
+  const [unsubscribeRedirect, setUnsubscribeRedirect] = useState(list.unsubscribe_redirect_url);
+  const [redirectsSaved, setRedirectsSaved] = useState(false);
+  const [defaultSaved, setDefaultSaved] = useState(false);
+  const [defaultError, setDefaultError] = useState(false);
+  const [savingBasics, setSavingBasics] = useState(false);
+  const [basicsSaved, setBasicsSaved] = useState(false);
+  const [basicsError, setBasicsError] = useState(false);
+
+  async function saveBasics() {
+    setSavingBasics(true);
+    setBasicsError(false);
+    const result = await saveListBasicsAction({
+      workspaceId,
+      listId: list.id,
+      name,
+      description,
+      confirmationTtlHours: Number(ttl),
+      confirmationMaxResends: Number(maxResends),
+    });
+    setSavingBasics(false);
+    if (result.status === 'error') {
+      setBasicsError(true);
+      return;
+    }
+    setBasicsSaved(true);
+    router.refresh();
+  }
+
+  async function makeDefault() {
+    setDefaultError(false);
+    const result = await setDefaultListAction({ workspaceId, listId: list.id });
+    // Neúspěch se MUSÍ ozvat. Dřív tu byla jen větev pro úspěch, takže když
+    // akce selhala, obrazovka se nezměnila a vypadalo to, že se nic nestalo.
+    // Tichý neúspěch je přesně ta vada, kvůli které je celý tenhle plán.
+    if (result.status === 'error') {
+      setDefaultError(true);
+      return;
+    }
+    setDefaultSaved(true);
+    router.refresh();
+  }
+
+  async function saveRedirects() {
+    const result = await saveListRedirectsAction({
+      workspaceId,
+      listId: list.id,
+      confirmRedirectUrl: confirmRedirect,
+      unsubscribeRedirectUrl: unsubscribeRedirect,
+    });
+    if (result.status === 'success') {
+      setRedirectsSaved(true);
+      router.refresh();
+    }
+  }
 
   async function savePublic(next: {
     publicVisible?: boolean;
@@ -110,6 +203,69 @@ export function ListDetail({
   return (
     <section className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold text-text">{list.name}</h1>
+
+      {/* Základní údaje. Do téhle chvíle šel na seznamu nastavit jen režim potvrzení,
+          opt-in a veřejné nabízení, takže seznam nešlo ani přejmenovat. */}
+      <h2 className="font-semibold text-text">{t('lists.basicsTitle')}</h2>
+      <div className="flex flex-col gap-3">
+        <Field label={t('lists.name')}>
+          <Input
+            value={name}
+            maxLength={120}
+            data-testid="list-name"
+            onChange={(event) => setName(event.target.value)}
+          />
+        </Field>
+        <Field label={t('lists.description')} optionalLabel={t('lists.publicOptional')}>
+          <Textarea
+            value={description}
+            maxLength={2000}
+            rows={2}
+            data-testid="list-description"
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </Field>
+        <Field label={t('lists.confirmationTtl')} hint={t('lists.confirmationTtlHint')}>
+          <Input
+            type="number"
+            min={1}
+            max={720}
+            value={ttl}
+            data-testid="list-ttl"
+            onChange={(event) => setTtl(event.target.value)}
+          />
+        </Field>
+        <Field
+          label={t('lists.confirmationMaxResends')}
+          hint={t('lists.confirmationMaxResendsHint')}
+        >
+          <Input
+            type="number"
+            min={0}
+            max={10}
+            value={maxResends}
+            data-testid="list-max-resends"
+            onChange={(event) => setMaxResends(event.target.value)}
+          />
+        </Field>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="primary"
+            data-testid="list-basics-save"
+            onClick={() => {
+              if (!savingBasics) void saveBasics();
+            }}
+          >
+            {savingBasics ? t('lists.basicsSaving') : t('lists.basicsSave')}
+          </Button>
+          {basicsSaved ? <p role="status">{t('lists.basicsSaved')}</p> : null}
+          {basicsError ? (
+            <p role="alert" className="text-sm text-danger-text">
+              {t('lists.basicsFailed')}
+            </p>
+          ) : null}
+        </div>
+      </div>
 
       <p data-testid="list-counts">
         {t('lists.members', { count: list.confirmed_count })}
@@ -302,6 +458,78 @@ export function ListDetail({
         </div>
       ) : null}
       {publicSaved ? <p role="status">{t('lists.publicVisibleChanged')}</p> : null}
+
+      {/* Kam po potvrzení a po odhlášení. Prázdné pole znamená, že člověk zůstane
+          na naší stránce, a to je pro většinu projektů správně: naše stránka mu
+          řekne, co se právě stalo, a nabídne opravu, kdyby to bylo omylem. */}
+      {/* Výchozí seznam projektu. Endpoint na to existoval od začátku a neměl
+          volajícího, takže se výchozí seznam nedal přehodit odnikud. Je to
+          rozhodnutí o tom, kam lidé přistávají při ručním přidání a při importu,
+          proto se nabízí jako vědomý krok a ne jako tichá vlastnost. */}
+      <h2 className="font-semibold text-text">{t('lists.defaultTitle')}</h2>
+      <p className="text-sm text-text-muted">{t('lists.defaultHint')}</p>
+      {list.is_default ? (
+        <p data-testid="list-is-default">{t('lists.defaultOn')}</p>
+      ) : (
+        <div>
+          <Button
+            variant="secondary"
+            data-testid="list-make-default"
+            onClick={() => void makeDefault()}
+          >
+            {t('lists.defaultSet')}
+          </Button>
+        </div>
+      )}
+      {defaultSaved ? <p role="status">{t('lists.basicsSaved')}</p> : null}
+      {defaultError ? (
+        <p role="alert" className="text-sm text-danger-text" data-testid="list-default-failed">
+          {t('lists.basicsFailed')}
+        </p>
+      ) : null}
+
+      <h2 className="font-semibold text-text">{t('lists.redirectsTitle')}</h2>
+      <div className="flex flex-col gap-3">
+        <Field
+          label={t('lists.confirmRedirect')}
+          hint={t('lists.confirmRedirectHint')}
+          optionalLabel={t('lists.publicOptional')}
+        >
+          <Input
+            type="url"
+            value={confirmRedirect}
+            data-testid="list-confirm-redirect"
+            onChange={(event) => setConfirmRedirect(event.target.value)}
+            onBlur={() => void saveRedirects()}
+          />
+        </Field>
+        <Field
+          label={t('lists.unsubscribeRedirect')}
+          hint={t('lists.unsubscribeRedirectHint')}
+          optionalLabel={t('lists.publicOptional')}
+        >
+          <Input
+            type="url"
+            value={unsubscribeRedirect}
+            data-testid="list-unsubscribe-redirect"
+            onChange={(event) => setUnsubscribeRedirect(event.target.value)}
+            onBlur={() => void saveRedirects()}
+          />
+        </Field>
+        {redirectsSaved ? <p role="status">{t('lists.basicsSaved')}</p> : null}
+      </div>
+
+      {/* E-maily seznamu. Patří sem, ne do samostatné obrazovky: rozhodnutí
+          „dvojí potvrzení" o kus výš a „jak vypadá potvrzovací e-mail" jsou
+          dvě poloviny téže věci a odděleně se nastavit nedají. */}
+      <ListEmails
+        workspaceId={workspaceId}
+        listId={list.id}
+        listName={list.name}
+        language={language}
+        templatesPath={templatesPath}
+        emails={list.emails}
+      />
 
       {list.archived ? null : (
         <div>

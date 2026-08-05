@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { v4 as uuidv4 } from 'uuid';
 import { asMigrator, seedCampaign } from '../test/support/db';
-import { handleEventProcess, type EventProcessJobData } from './event-process';
+import {
+  handleEventProcess,
+  resetVerifiedDomainCache,
+  type EventProcessJobData,
+} from './event-process';
 
 /**
  * Řetěz od přijaté dávky k řádku v časové ose.
@@ -156,5 +160,70 @@ describe('event.process', () => {
       [contactId],
     );
     expect(rows[0]!.last_activity_at).not.toBeNull();
+  });
+
+  describe('ověření měřicí domény', () => {
+    const spy = () => {
+      const calls: { workspaceId: string; host: string }[] = [];
+      return {
+        calls,
+        markDomainVerified: async (target: { workspaceId: string; host: string }) => {
+          calls.push(target);
+          return 1;
+        },
+      };
+    };
+
+    it('host z dávky se pošle k ověření', async () => {
+      resetVerifiedDomainCache();
+      const mark = spy();
+      await handleEventProcess(job({ originHost: 'shop.cz' }), { ...deps(), ...mark });
+      expect(mark.calls).toEqual([{ workspaceId, host: 'shop.cz' }]);
+    });
+
+    /**
+     * Bez paměti by každá dávka znamenala `UPDATE` navíc, i když je doména
+     * dávno ověřená. Na živém webu jde o desítky dávek za minutu z jednoho
+     * prohlížeče.
+     */
+    it('druhá dávka z téže domény už do databáze nesahá', async () => {
+      resetVerifiedDomainCache();
+      const mark = spy();
+      await handleEventProcess(job({ originHost: 'shop.cz' }), { ...deps(), ...mark });
+      await handleEventProcess(job({ originHost: 'shop.cz' }), { ...deps(), ...mark });
+      expect(mark.calls).toHaveLength(1);
+    });
+
+    it('dávka bez hostu neověřuje nic', async () => {
+      resetVerifiedDomainCache();
+      const mark = spy();
+      await handleEventProcess(job({ originHost: null }), { ...deps(), ...mark });
+      expect(mark.calls).toEqual([]);
+    });
+
+    /**
+     * Neověřená doména je kosmetická vada, zahozená dávka událostí není.
+     * Selhání zápisu proto nesmí shodit zpracování.
+     */
+    it('selhání zápisu ověření nezastaví uložení událostí', async () => {
+      resetVerifiedDomainCache();
+      await handleEventProcess(job({ originHost: 'shop.cz' }), {
+        ...deps(),
+        markDomainVerified: async () => {
+          throw new Error('databáze je pryč');
+        },
+      });
+      expect(await countEvents()).toBe(1);
+    });
+
+    it('import doménu neověřuje, historická data o běhu skriptu nic neříkají', async () => {
+      resetVerifiedDomainCache();
+      const mark = spy();
+      await handleEventProcess(job({ originHost: 'shop.cz', source: 'import' }), {
+        ...deps(),
+        ...mark,
+      });
+      expect(mark.calls).toEqual([]);
+    });
   });
 });

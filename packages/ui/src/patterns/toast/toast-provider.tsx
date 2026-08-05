@@ -71,10 +71,17 @@ export function ToastProvider({
     <ToastContext.Provider value={api}>
       {children}
       {/* Kontejner je v DOM před prvním oznámením, jinak se hlášení
-          čtečce neodešle (pravidlo 5.10). Levý dolní roh, ne pravý horní. */}
+          čtečce neodešle (pravidlo 5.10).
+
+          Pravý dolní roh. `bottom-20` drží odstup od systémového pruhu, který
+          sedí přes celou šířku na `bottom-0`, takže na straně nezáleží.
+          V pravém dolním rohu jiný ukotvený prvek není (jediné dva `fixed`
+          prvky u spodní hrany jsou tenhle kontejner a systémový pruh). Na úzké
+          obrazovce se šířka srazí na `100vw - 2rem`, takže oznámení nepřeteče
+          ani nepřilepí k hraně. */}
       <div
         aria-label={labels.notifications}
-        className="pointer-events-none fixed bottom-20 left-4 z-[var(--z-toast)] flex flex-col-reverse gap-2"
+        className="pointer-events-none fixed bottom-20 right-4 z-[var(--z-toast)] flex flex-col-reverse gap-2"
       >
         {state.visible.map((toast: VisibleToast) => (
           <ToastItem

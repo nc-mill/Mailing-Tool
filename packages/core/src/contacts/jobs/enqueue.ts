@@ -1,5 +1,5 @@
-import { sql } from 'drizzle-orm';
 import { loadConfig } from '../../config/index';
+import { enqueueJob, type OnMerged } from '../../queues/enqueue-sql';
 import type { Tx } from '../../tx';
 import { CONTACTS_QUEUES, type ContactsQueue } from '../queues';
 
@@ -13,19 +13,29 @@ import { CONTACTS_QUEUES, type ContactsQueue } from '../queues';
  * job by přežil rollback doménové změny a odstranil by klíč z attributes u pole, jehož
  * smazání se nakonec nepovedlo.
  *
- * Zapisuje se proto přímo do tabulky `job` ve schématu pg-boss, což je jeho zveřejněný
- * způsob transakčního vkládání. Konfigurace fronty (retry, expirace) se bere z registru
- * téhle domény, aby se nespoléhalo na výchozí hodnoty tabulky.
+ * Vlastní SQL tady UŽ NENÍ. Sestavuje ho `queues/enqueue-sql.ts`, protože týž příkaz
+ * potřebuje sedm domén a sedm kopií se rozešlo přesně tak, jak se to čekalo: všem
+ * chyběl sloupec `policy`, takže do řádku úlohy padala NULL, slučovací index se na něj
+ * nevztahoval a `singletonKey` neslučoval NIC, ať měla fronta politiku jakoukoli.
  *
- * `dead_letter` se ZÁMĚRNĚ nevyplňuje: sloupec má cizí klíč na `queue.name`, takže
- * hodnota `<fronta>.dlq` by zápis shodila všude, kde dead letter frontu nikdo nezaložil.
- * Přiřazení dead letter fronty patří k založení fronty, tedy do workeru.
+ * VÝCHOZÍ `onMerged` JE `drop`, A JE TO ROZHODNUTÍ, NE POHODLNOST. Fronty téhle domény,
+ * které slučují, jsou `contacts.recompute_greeting` a `contacts.refingerprint` (obě
+ * `short`) a `retention.run` (`exclusive`). U všech tří platí totéž: práci drží databáze,
+ * ne úloha. Přepočet oslovení i doplnění otisků si načtou aktuální stav, až na ně přijde
+ * řada, a retenční běh maže podle stáří, takže zítřek smaže i to, co zbylo. Zahozený
+ * požadavek tedy neznamená neudělanou práci, jen ji udělá běh, který už čeká.
+ *
+ * Na `fail` tu není ani jedna fronta, protože na žádnou z nich nečeká člověk u obrazovky.
+ * Hromadné operace (`contacts.bulk_delete`, `contacts.bulk_tag`) slučování zapnuté
+ * NEMAJÍ, takže se u nich zahodit nemůže nic.
  */
 export type EnqueueOptions = {
   /** Jeden běh nad jedním klíčem. U front per projekt se předává workspaceId. */
   singletonKey?: string;
   /** Odložený start. Používá se u úklidových jobů. */
   startAfterSeconds?: number;
+  /** Přebití výchozího `drop`. Viz rozvaha v hlavičce souboru. */
+  onMerged?: OnMerged;
 };
 
 let cachedSchema: string | null = null;
@@ -48,28 +58,27 @@ export async function enqueue(
   payload: Record<string, unknown>,
   options: EnqueueOptions = {},
 ): Promise<void> {
+  // Politika opakování se dál bere Z VÝČTU TÉHLE DOMÉNY, ne ze sdíleného registru.
+  // Oba se u deseti front rozcházejí (`gdpr.erase` má tady 0 pokusů a v registru 3,
+  // `contacts.bulk_delete` totéž), takže přepnutí na registr by tiše změnilo počet
+  // pokusů u anonymizace podle článku 17. Rozchod je skutečná vada, ale patří
+  // vlastníkům obou registrů, ne do úpravy o slučování.
   const known = (
     CONTACTS_QUEUES as Record<
       string,
       { retryLimit: number; retryBackoff: boolean; expireInSeconds: number }
     >
   )[name];
-  const retryLimit = known?.retryLimit ?? 3;
-  const retryBackoff = known?.retryBackoff ?? true;
-  const expireInSeconds = known?.expireInSeconds ?? 900;
-  const startAfter = options.startAfterSeconds ?? 0;
 
-  await tx.execute(sql`
-    INSERT INTO ${sql.identifier(pgbossSchema())}.job
-      (name, data, singleton_key, retry_limit, retry_backoff, expire_seconds, start_after)
-    VALUES (
-      ${name},
-      ${JSON.stringify(payload)}::jsonb,
-      ${options.singletonKey ?? null},
-      ${retryLimit},
-      ${retryBackoff},
-      ${expireInSeconds},
-      now() + make_interval(secs => ${startAfter})
-    )
-  `);
+  await enqueueJob(tx, {
+    schema: pgbossSchema(),
+    name,
+    payload,
+    singletonKey: options.singletonKey,
+    startAfterSeconds: options.startAfterSeconds,
+    retryLimit: known?.retryLimit ?? 3,
+    retryBackoff: known?.retryBackoff ?? true,
+    expireInSeconds: known?.expireInSeconds ?? 900,
+    onMerged: options.onMerged ?? 'drop',
+  });
 }

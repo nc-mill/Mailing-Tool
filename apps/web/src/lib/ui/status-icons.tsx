@@ -79,6 +79,21 @@ export const FormIcon = (
   </Frame>
 );
 
+/**
+ * Tři tečky u nabídky dalších akcí. Kreslí se tady ze stejného důvodu jako
+ * ostatní: `lucide-react` je závislost `packages/ui`, ne `apps/web`.
+ *
+ * Tečka je krátká úsečka se zakulaceným koncem, protože `Frame` maluje obrysem
+ * (`fill="none"`) a `<circle>` by zůstal prázdné kolečko.
+ */
+export const MoreIcon = (
+  <Frame>
+    <path d="M6 12h.01" />
+    <path d="M12 12h.01" />
+    <path d="M18 12h.01" />
+  </Frame>
+);
+
 /** Odznak „transakční e-mail" v knihovně šablon: obálka. */
 export const MailIcon = (
   <Frame>

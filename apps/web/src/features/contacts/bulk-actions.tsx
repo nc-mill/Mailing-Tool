@@ -1,14 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { useFormatter, useTranslations } from 'next-intl';
+import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
 import { Select, SelectItem } from '@mlain/ui/components/select';
 // K5 z 13.1 části 6: fronta oznámení, odpočet u „Vrátit zpět", chyba se nezavírá sama.
 import { useToast } from '@mlain/ui/patterns/toast';
 import { BulkDeleteDialog } from './bulk-delete-dialog';
-import { bulkDeleteContactsAction, bulkTagContactsAction, exportContactsAction } from './actions';
+import { bulkDeleteContactsAction, bulkTagContactsAction } from './actions';
+import { ContactExportDialog, exportAndDownload, useContactExport } from './contact-export';
+import { emailsToAudience, filtersToAudience } from './export-audience';
 import { confirmContactsAction } from './confirm-actions';
 import { addContactsToListAction, removeContactsFromListAction } from './list-actions';
 import { RemoveFromListDialog } from './remove-from-list-dialog';
@@ -29,6 +31,11 @@ export type ContactsBulkActionsProps = {
   /** Štítky projektu pro rychlé přiřazení. Prázdné pole nabídku štítků skryje. */
   tags?: { id: string; name: string }[];
   /**
+   * Adresy zaškrtnutých kontaktů. Publikum exportu umí vyjmenovat kontakty jen
+   * e-mailem, id do něj nepatří; podrobně u `emailsToAudience`.
+   */
+  selectedEmails?: string[];
+  /**
    * Seznamy projektu pro hromadné přidání. Prázdné pole nabídku seznamů skryje.
    *
    * Nabídka bez tlačítka tu do téhle chvíle nebyla vůbec, ačkoliv popisky
@@ -44,9 +51,11 @@ export function ContactsBulkActions({
   names,
   tags = [],
   lists = [],
+  selectedEmails = [],
 }: ContactsBulkActionsProps) {
   const t = useTranslations('contacts');
   const format = useFormatter();
+  const locale = useLocale();
   const router = useRouter();
   const toast = useToast();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -60,6 +69,7 @@ export function ContactsBulkActions({
   const [addingToList, setAddingToList] = useState(false);
   const [removingFromList, setRemovingFromList] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
+  const contactExport = useContactExport(workspaceId);
 
   const chips = useFilterChips()(filters, names);
 
@@ -72,6 +82,16 @@ export function ContactsBulkActions({
     selection.mode === 'allMatching'
       ? { mode: 'filter', filters }
       : { mode: 'ids', ids: [...selection.ids] };
+
+  /**
+   * Publikum exportu. U výběru je to výčet adres, u „vše odpovídající filtru" tentýž
+   * filtr, jaký je v URL. Odmítnutí (hledaný výraz, přes tisíc adres) se nese dál
+   * a dialog z něj napíše, co udělat místo toho.
+   */
+  const exportOutcome =
+    selection.mode === 'allMatching'
+      ? filtersToAudience(filters)
+      : emailsToAudience(selectedEmails);
 
   async function addTag(tagId: string, tagName: string) {
     // Přidání štítku je vratné a bez vnějšího dopadu (5.6 části 6), proto se hlásí
@@ -312,6 +332,21 @@ export function ContactsBulkActions({
         </>
       ) : null}
 
+      {/* Export výběru. Do 5. 8. 2026 se dal výběr vyvézt jedině z dialogu mazání,
+          tedy jen tomu, kdo ho chtěl smazat, a i tam skončil na 422. */}
+      <Button
+        variant="secondary"
+        onClick={() =>
+          void contactExport.start({
+            title: t('bulk.exportTitle'),
+            fileName: t('list.exportFileName'),
+            outcome: exportOutcome,
+          })
+        }
+      >
+        {t('bulk.export', { count: selection.count })}
+      </Button>
+
       <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
         {t('bulk.delete')}
       </Button>
@@ -324,12 +359,28 @@ export function ContactsBulkActions({
         onConfirm={removeFromList}
       />
 
+      <ContactExportDialog
+        state={contactExport.state}
+        onDownload={(href, fileName) => void contactExport.download(href, fileName)}
+        onClose={contactExport.close}
+      />
+
       <BulkDeleteDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         selection={selection}
         filterDescription={filterDescription}
-        onExport={() => exportContactsAction({ workspaceId, scope })}
+        // Dialog o výsledku informuje sám („Soubor je stažený. Teď můžete kontakty
+        // smazat."), takže se tu nepoužívá dialog s tlačítkem: druhé okno nad dialogem
+        // mazání by jen překáželo. Slib „stažený" je od téhle chvíle pravdivý.
+        onExport={() =>
+          exportAndDownload({
+            workspaceId,
+            locale,
+            outcome: exportOutcome,
+            fileName: t('list.exportFileName'),
+          })
+        }
         onConfirm={async () => {
           const result = await bulkDeleteContactsAction({ workspaceId, scope });
           if (result.status === 'success') {

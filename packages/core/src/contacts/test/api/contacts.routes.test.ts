@@ -15,6 +15,9 @@ const repo = vi.hoisted(() => ({
   deleteContact: vi.fn(),
   restoreContact: vi.fn(),
   changeContactEmail: vi.fn(),
+  restrictProcessing: vi.fn(),
+  liftProcessingRestriction: vi.fn(),
+  getProcessingRestriction: vi.fn(),
 }));
 const confirm = vi.hoisted(() => ({ confirmContactManually: vi.fn() }));
 const gdpr = vi.hoisted(() => ({ createGdprRequest: vi.fn() }));
@@ -223,6 +226,38 @@ describe('GET /contacts/{id}', () => {
     expect(res.status).toBe(404);
   });
 
+  it('u neomezeného kontaktu nesahá do auditu a vrací restriction null', async () => {
+    query.getContactById.mockResolvedValue(CONTACT);
+    const res = await app().request(`/contacts/${CONTACT.id}`);
+    expect(res.status).toBe(200);
+    expect((await res.json()).restriction).toBeNull();
+    // Dotaz do auditu je práce navíc na každý detail kontaktu. U kontaktu bez
+    // omezení nemá co vrátit, takže se pouštět nesmí.
+    expect(repo.getProcessingRestriction).not.toHaveBeenCalled();
+  });
+
+  it('u omezeného kontaktu vrací datum a poznámku z auditu, ne updated_at', async () => {
+    query.getContactById.mockResolvedValue({ ...CONTACT, processing_restricted: true });
+    repo.getProcessingRestriction.mockResolvedValue({
+      restrictedAt: new Date('2026-07-18T08:00:00Z'),
+      note: 'Žádost z 18. 7., e-mailem',
+      gdprRequestId: null,
+    });
+    const res = await app().request(`/contacts/${CONTACT.id}`);
+    expect((await res.json()).restriction).toEqual({
+      restricted_at: '2026-07-18T08:00:00.000Z',
+      note: 'Žádost z 18. 7., e-mailem',
+      gdpr_request_id: null,
+    });
+  });
+
+  it('omezení bez auditního záznamu nevymýšlí datum', async () => {
+    query.getContactById.mockResolvedValue({ ...CONTACT, processing_restricted: true });
+    repo.getProcessingRestriction.mockResolvedValue(null);
+    const res = await app().request(`/contacts/${CONTACT.id}`);
+    expect((await res.json()).restriction).toBeNull();
+  });
+
   it('vadné UUID v cestě vrací 422 s invalid_uuid', async () => {
     const res = await app().request('/contacts/nejsem-uuid');
     expect(res.status).toBe(422);
@@ -404,5 +439,100 @@ describe('POST /contacts/{id}/confirm', () => {
 
     const body = (await res.json()) as { confirm: { suppression_blocking: string | null } };
     expect(body.confirm.suppression_blocking).toBe('complaint');
+  });
+});
+
+describe('omezení zpracování podle článku 18', () => {
+  const RESTRICTED = { ...CONTACT, processing_restricted: true };
+
+  it('POST zapne omezení a předá poznámku i číslo žádosti doméně', async () => {
+    query.getContactById.mockResolvedValue(RESTRICTED);
+    repo.getProcessingRestriction.mockResolvedValue({
+      restrictedAt: new Date('2026-08-05T09:00:00Z'),
+      note: 'Žádost přišla e-mailem 4. 8.',
+      gdprRequestId: '0198e2c1-6b3f-7c21-9a44-0f3c7a1b2d5f',
+    });
+
+    const res = await app().request(`/contacts/${CONTACT.id}/processing-restriction`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        note: 'Žádost přišla e-mailem 4. 8.',
+        gdpr_request_id: '0198e2c1-6b3f-7c21-9a44-0f3c7a1b2d5f',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(repo.restrictProcessing).toHaveBeenCalledWith(expect.anything(), CONTACT.id, {
+      note: 'Žádost přišla e-mailem 4. 8.',
+      requestId: '0198e2c1-6b3f-7c21-9a44-0f3c7a1b2d5f',
+    });
+    const body = (await res.json()) as { restriction: { restricted_at: string } };
+    expect(body.restriction.restricted_at).toBe('2026-08-05T09:00:00.000Z');
+  });
+
+  it('DELETE zruší omezení a vrátí restriction null', async () => {
+    query.getContactById.mockResolvedValue(CONTACT);
+
+    const res = await app().request(`/contacts/${CONTACT.id}/processing-restriction`, {
+      method: 'DELETE',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ note: 'Žádost vyřízena, kontakt souhlasí' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(repo.liftProcessingRestriction).toHaveBeenCalledWith(expect.anything(), CONTACT.id, {
+      note: 'Žádost vyřízena, kontakt souhlasí',
+    });
+    expect((await res.json()).restriction).toBeNull();
+  });
+
+  it('oba směry žádají scope suppressions:write, ne contacts:write', async () => {
+    query.getContactById.mockResolvedValue(RESTRICTED);
+    repo.getProcessingRestriction.mockResolvedValue(null);
+    await app().request(`/contacts/${CONTACT.id}/processing-restriction`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ note: 'x' }),
+    });
+    expect(permissions.assertPermission).toHaveBeenCalledWith(
+      expect.anything(),
+      'suppressions:write',
+    );
+
+    vi.clearAllMocks();
+    permissions.assertPermission.mockReturnValue(undefined);
+    query.getContactById.mockResolvedValue(CONTACT);
+    await app().request(`/contacts/${CONTACT.id}/processing-restriction`, {
+      method: 'DELETE',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ note: 'x' }),
+    });
+    expect(permissions.assertPermission).toHaveBeenCalledWith(
+      expect.anything(),
+      'suppressions:write',
+    );
+  });
+
+  it('bez poznámky vrací 422, protože audit bez důvodu nikomu nepomůže', async () => {
+    query.getContactById.mockResolvedValue(CONTACT);
+    const res = await app().request(`/contacts/${CONTACT.id}/processing-restriction`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(422);
+    expect(repo.restrictProcessing).not.toHaveBeenCalled();
+  });
+
+  it('neznámý kontakt vrací 404 a nic nezapisuje', async () => {
+    query.getContactById.mockResolvedValue(null);
+    const res = await app().request(`/contacts/${CONTACT.id}/processing-restriction`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ note: 'x' }),
+    });
+    expect(res.status).toBe(404);
+    expect(repo.restrictProcessing).not.toHaveBeenCalled();
   });
 });

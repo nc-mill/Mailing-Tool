@@ -78,6 +78,32 @@ export async function readVerifiedToken(
 export type UnsubscribeScope = 'list' | 'global';
 
 /**
+ * Vlastní stránka, na kterou se má člověk po odhlášení poslat, nebo `null`.
+ *
+ * JEN U ODHLÁŠENÍ Z JEDNOHO SEZNAMU. Přesměrování je nastavení seznamu
+ * (`lists.unsubscribe_redirect_url`), takže u globálního odhlášení není podle
+ * čeho vybrat, kam poslat, a vybrat „nějaký" seznam by znamenalo poslat člověka
+ * na stránku, která s jeho rozhodnutím nesouvisí.
+ *
+ * `null` znamená „zůstane naše stránka" a je to správná výchozí volba: naše
+ * stránka říká, co se právě stalo, a nabízí opravu, kdyby to bylo omylem.
+ */
+export async function unsubscribeRedirectFor(
+  token: VerifiedPublicToken,
+  options: { forceGlobal?: boolean } = {},
+): Promise<string | null> {
+  const listId = options.forceGlobal === true ? null : token.data.listId;
+  if (listId === null) return null;
+  return withWorkspace(token.scope.ctx, async (tx) => {
+    const { rows } = await tx.execute<{ url: string | null }>(sql`
+      SELECT unsubscribe_redirect_url AS url FROM lists
+       WHERE id = ${listId}::uuid AND workspace_id = ${token.scope.ctx.workspaceId}::uuid
+    `);
+    return rows[0]?.url ?? null;
+  });
+}
+
+/**
  * Odhlášení z veřejné stránky i z one-click POSTu.
  *
  * Rozsah rozhoduje VÝHRADNĚ přítomnost `listId` v tokenu, nikdy tělo požadavku, aby

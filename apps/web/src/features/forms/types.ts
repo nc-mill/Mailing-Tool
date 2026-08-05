@@ -36,6 +36,13 @@ export type FormView = {
   active: boolean;
   /** Šablona e-mailu, který přijde po vyplnění. `null` = formulář nic neposílá. */
   delivery_template_id: string | null;
+  /**
+   * Kam po odeslání a co se místo toho napíše. Obojí je v API i ve schématu od
+   * začátku, jen to do 5. 8. 2026 nebylo v editoru, takže se to nedalo nastavit.
+   * `redirect_url = null` znamená „zůstane naše stránka s poděkováním".
+   */
+  redirect_url: string | null;
+  success_message: Record<string, string>;
   submission_count: number;
   accepted_30d: number;
   created_at: string;

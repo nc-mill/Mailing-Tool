@@ -47,6 +47,17 @@ export type SubscriptionEmailPort = {
     listId: string;
     listName: string;
   }): Promise<void>;
+  /**
+   * Rozloučení po odhlášení. Volá ho `unsubscribe.ts`, ne `subscribe()`, ale
+   * bydlí v témže portu: jsou to tři e-maily téhož seznamu a dva porty by
+   * znamenaly dvě registrace, ze kterých by se jedna zapomněla.
+   */
+  sendGoodbye(input: {
+    workspaceId: string;
+    contactId: string;
+    listId: string;
+    listName: string;
+  }): Promise<void>;
   deliverRequestedItem(input: {
     workspaceId: string;
     contactId: string;
@@ -55,29 +66,50 @@ export type SubscriptionEmailPort = {
 };
 
 let emails: SubscriptionEmailPort | null = null;
+let outbox: SubscriptionEmailPort | null = null;
 
-/** Registruje P08 a P13 při startu procesu. Druhá registrace přepíše první. */
+/** Registruje vlastní odesílatel (testy, harness). Druhá registrace přepíše první. */
 export function registerSubscriptionEmails(port: SubscriptionEmailPort): void {
   emails = port;
 }
 
-/** Jen pro testy: vrátí port do výchozího stavu. */
+/** Jen pro testy: vrátí port do výchozího stavu, tedy na skutečné odesílání outboxem. */
 export function resetSubscriptionEmails(): void {
   emails = null;
 }
 
-/** Byl port zaregistrovaný? Čte to diagnostika, aby šlo poznat tiché neodeslání. */
-export function areSubscriptionEmailsAvailable(): boolean {
-  return emails !== null;
+/**
+ * Odesílatel e-mailů seznamu. VŽDYCKY nějaký je.
+ *
+ * NEVRACÍ UŽ `null` A JE TO OPRAVA VADY, ne úklid. Port se dřív musel zaregistrovat
+ * při startu procesu a dokud to nikdo neudělal, bylo `emails?.sendConfirmation(...)`
+ * no-op: token se vydal, e-mail nikam neodešel a uživatel viděl úspěch. Registrace
+ * z `instrumentation.ts` ten problém NEVYŘEŠILA. Ověřeno v běžící instalaci 5. 8. 2026:
+ * ruční přidání kontaktu vyrobilo řádek `pending` i platný token, ale v `messages`
+ * nevznikla ani jedna zpráva, protože obsluha trasy a `instrumentation.ts` běží
+ * v Next.js v ODDĚLENÝCH MODULOVÝCH GRAFECH a každý vidí vlastní kopii téhle proměnné.
+ * Přesně tenhle důvod je i v hlavičce `platform/system-mail-runtime.ts`.
+ *
+ * Výchozí odesílatel se proto sestaví LÍNĚ při prvním použití, stejně jako
+ * u systémové pošty. Import je dynamický kvůli cyklu: `subscription-emails.ts`
+ * si odsud bere typ portu i registraci.
+ */
+export async function subscriptionEmails(): Promise<SubscriptionEmailPort> {
+  if (emails !== null) return emails;
+  if (outbox === null) {
+    const module = await import('./subscription-emails');
+    outbox = module.outboxSubscriptionEmails();
+  }
+  return outbox;
 }
 
 /**
- * Zaregistrovaný port, nebo null. Čte ho `confirm-service.ts`, které posílá tytéž dva
- * e-maily z druhé strany potvrzovacího odkazu. Bez tohohle přístupu by měl vlastní
- * registraci, a to by znamenalo dva porty, ze kterých by P08 zaregistroval jeden.
+ * Byl zaregistrovaný vlastní port? Odpověď `false` NEZNAMENÁ, že se neodesílá:
+ * bez registrace se použije outbox, viz `subscriptionEmails()`. Čte to diagnostika
+ * a testy, které chtějí poznat podvržený odesílatel.
  */
-export function subscriptionEmailPort(): SubscriptionEmailPort | null {
-  return emails;
+export function areSubscriptionEmailsAvailable(): boolean {
+  return emails !== null;
 }
 
 /**
@@ -210,7 +242,9 @@ export function subscribePorts(ctx: WorkspaceContext): SubscribePorts {
     },
 
     async sendConfirmationEmail(input) {
-      await emails?.sendConfirmation({
+      await (
+        await subscriptionEmails()
+      ).sendConfirmation({
         workspaceId: ctx.workspaceId,
         contactId: input.contactId,
         listId: input.list.id,
@@ -220,7 +254,9 @@ export function subscribePorts(ctx: WorkspaceContext): SubscribePorts {
     },
 
     async sendWelcomeEmail(input) {
-      await emails?.sendWelcome({
+      await (
+        await subscriptionEmails()
+      ).sendWelcome({
         workspaceId: ctx.workspaceId,
         contactId: input.contactId,
         listId: input.list.id,
@@ -229,7 +265,9 @@ export function subscribePorts(ctx: WorkspaceContext): SubscribePorts {
     },
 
     async deliverRequestedItem(input) {
-      await emails?.deliverRequestedItem({
+      await (
+        await subscriptionEmails()
+      ).deliverRequestedItem({
         workspaceId: ctx.workspaceId,
         contactId: input.contactId,
         deliverable: input.deliverable,

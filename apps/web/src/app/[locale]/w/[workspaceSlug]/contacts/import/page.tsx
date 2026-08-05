@@ -47,7 +47,7 @@ export default async function ImportPage({ params, searchParams }: PageProps) {
   const importId = typeof query['import'] === 'string' ? query['import'] : null;
 
   const lists = await apiFetch<{
-    data: { id: string; name: string; opt_in: 'single' | 'double' }[];
+    data: { id: string; name: string; opt_in: 'single' | 'double'; is_default: boolean }[];
   }>('/api/v1/lists', { workspaceId });
 
   // Odkaz na vložení textem patří sem, ne dovnitř průvodce: kdo přišel importovat
@@ -67,10 +67,15 @@ export default async function ImportPage({ params, searchParams }: PageProps) {
         locale={locale}
         importId={importId}
         initialStep={step as Step}
+        greetingEnabled={access.data.workspace.greeting_enabled}
         lists={(lists.ok ? lists.data.data : []).map((list) => ({
           id: list.id,
           name: list.name,
           optIn: list.opt_in,
+          // Výchozí seznam projektu je v průvodci předvybraný. Import bez seznamu
+          // je legitimní, ale je to nejčastější způsob, jak si člověk nahraje
+          // tisíc kontaktů, kterým pak nejde poslat kampaň.
+          isDefault: list.is_default,
         }))}
       />
     </>

@@ -166,11 +166,19 @@ mlain restore <dir>        # obnova, odmítne neprázdnou databázi
 mlain doctor               # diagnostika instalace
 mlain upgrade              # záloha, migrace, kontrola připravenosti
 mlain reset-password       # když se ztratí přístup k účtu
+mlain partitions           # oddíly dopředu a retence odeslané pošty, denně z cronu
 ```
 
 Zálohy se musí dělat pod rolí migrátora. Pod aplikační rolí by row-level
 security vyrobila **tiše prázdné** tabulky, takže to `mlain backup` rovnou
 odmítne, místo aby vyrobil zálohu, která vypadá v pořádku a není.
+
+`mlain partitions` je jediné místo, kde se uklízí odeslaná pošta, a **musíte ho
+sami zapsat do plánovače**, jinak retence neběží. Zároveň zakládá oddíly na
+další měsíce; bez toho instalace po čtyřech měsících přestane přijímat zápisy.
+Není to úloha ve frontě schválně: odpojení oddílu je DDL a worker běží pod rolí,
+která schéma nevlastní. Postup i cron jsou v
+[docs/operations/partitions-retention.md](docs/operations/partitions-retention.md).
 
 ### Systémová pošta
 

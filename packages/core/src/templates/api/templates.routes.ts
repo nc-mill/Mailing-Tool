@@ -15,6 +15,7 @@ import type { WorkspaceContext } from '../../identity/types';
 import { pgErrorCode, withWorkspace, type Tx } from '../../tx';
 import { assetIdsInDocument, loadAssetRefs } from '../assets';
 import { compileTemplate } from '../compile';
+import { isListEmailTemplate } from '../../contacts/lists/list-email-guards';
 import { preSendCheck } from '../precheck';
 import {
   categoryOf,
@@ -951,9 +952,16 @@ export function registerTemplateRoutes(app: OpenAPIHono<TemplatesEnv>): void {
     const service = await serviceContext(ctx);
     const id = c.req.valid('param').id;
 
-    const { row, compiled } = await withWorkspace(ctx, async (tx) => {
+    const { row, compiled, listEmail } = await withWorkspace(ctx, async (tx) => {
       const found = await load(tx, ctx, id);
-      return { row: found, compiled: await compileFor(tx, ctx, found, service.fields) };
+      return {
+        row: found,
+        compiled: await compileFor(tx, ctx, found, service.fields),
+        // Je šablona připojená k seznamu jako potvrzovací, uvítací nebo
+        // rozloučovací e-mail? Rozhoduje to o jediné věci: jestli se po ní chce
+        // odhlašovací odkaz. Zdůvodnění je u té kontroly v `precheck.ts`.
+        listEmail: await isListEmailTemplate(tx, ctx, id),
+      };
     });
 
     const design = row.design as Document;
@@ -980,6 +988,7 @@ export function registerTemplateRoutes(app: OpenAPIHono<TemplatesEnv>): void {
       preheader: design.meta.previewText,
       appUrl: config().APP_URL,
       emptyFieldRatios: [],
+      unsubscribeRequired: !listEmail,
     });
 
     const findings = check.findings.map((finding) => ({

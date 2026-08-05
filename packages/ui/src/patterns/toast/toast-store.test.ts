@@ -66,6 +66,34 @@ describe('createToastStore', () => {
     expect(store.getState().visible).toHaveLength(0);
   });
 
+  it('vratná akce se nezkrátí pod okno pro vrácení, i když si o to volající řekne', () => {
+    const store = createToastStore();
+    store.pushUndoable({ message: 'Štítek přidán', onUndo: () => {}, seconds: 3 });
+    vi.advanceTimersByTime(3500);
+    // Tlačítko „Vrátit zpět" žije jen na oznámení. Kdyby zmizelo po třech
+    // sekundách, člověk by o možnost vrácení přišel dřív, než pravidlo slibuje.
+    expect(store.getState().visible).toHaveLength(1);
+    vi.advanceTimersByTime(6501);
+    expect(store.getState().visible).toHaveLength(0);
+  });
+
+  it('delší dobu si volající vyžádat smí', () => {
+    const store = createToastStore();
+    store.pushUndoable({ message: 'Kampaň zastavena', onUndo: () => {}, seconds: 30 });
+    vi.advanceTimersByTime(20_000);
+    expect(store.getState().visible[0]!.remainingSeconds).toBe(10);
+  });
+
+  it('odpočet se rozjede znovu i po destroy, jinak by StrictMode skladiště umlčel', () => {
+    const store = createToastStore();
+    // React ve StrictModu spustí úklid efektu i po připojení, které pokračuje.
+    // `ToastProvider` v tu chvíli zavolá `destroy()`, aniž by skončil.
+    store.destroy();
+    store.push({ tone: 'info', message: 'Uloženo' });
+    vi.advanceTimersByTime(6001);
+    expect(store.getState().visible).toHaveLength(0);
+  });
+
   it('vrácení akce zavolá obsluhu a toast zmizí', () => {
     const store = createToastStore();
     const onUndo = vi.fn();

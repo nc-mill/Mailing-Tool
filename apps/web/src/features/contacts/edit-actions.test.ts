@@ -127,7 +127,6 @@ describe('createContactAction', () => {
       snooze_until: null,
       anonymized_at: null,
       status_changed_at: '2026-08-03T10:00:00Z',
-      restriction_requested_at: null,
     });
     expect(view.badges[0]).toEqual({ labelKey, tone });
   });

@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PasteContacts, mappingForHeader } from './paste-contacts';
 import { renderWithProviders } from './test-utils';
 
@@ -31,6 +31,12 @@ function stubApi(statuses: string[] = ['completed']): {
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, ...(init === undefined ? {} : { init }) });
+      if (url === '/api/v1/lists' && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({ data: { id: LIST_ID, name: 'Odběratelé', opt_in: 'double' } }),
+          { status: 201 },
+        );
+      }
       if (url.endsWith('/preview')) {
         return new Response(
           JSON.stringify({ header: ['email', 'first_name', 'last_name'], rows: [] }),
@@ -62,7 +68,7 @@ function renderScreen(pollIntervalMs = 0) {
     <PasteContacts
       workspaceId={WORKSPACE_ID}
       basePath="/w/muj-projekt/contacts"
-      lists={[{ id: LIST_ID, name: 'Zákazníci' }]}
+      lists={[{ id: LIST_ID, name: 'Zákazníci', isDefault: true }]}
       tags={[{ id: TAG_ID, name: 'Brno' }]}
       pollIntervalMs={pollIntervalMs}
     />,
@@ -76,6 +82,17 @@ async function type(text: string) {
   await userEvent.click(field);
   await userEvent.paste(text);
 }
+
+/**
+ * jsdom nezná Pointer Capture ani `scrollIntoView`, na kterých Radix Select
+ * stojí. Bez těchhle náhrad se rozbalovátko v testu neotevře.
+ */
+beforeAll(() => {
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => undefined;
+  Element.prototype.releasePointerCapture = () => undefined;
+  Element.prototype.scrollIntoView = () => undefined;
+});
 
 beforeEach(() => {
   push.mockClear();
@@ -181,9 +198,11 @@ describe('obrazovka vložení kontaktů textem', () => {
       options: {
         on_conflict: 'update',
         duplicate_in_file: 'first',
-        list_ids: [],
+        list_ids: [LIST_ID],
         subscription_status: 'confirmed',
         tag_ids: [],
+        // Bez zaškrtnutého prohlášení se souhlas nezapisuje, protože není co doložit.
+        consent: null,
       },
     });
     expect(calls[3]?.url).toBe(`/api/v1/contacts/imports/${IMPORT_ID}/confirm`);
@@ -191,12 +210,105 @@ describe('obrazovka vložení kontaktů textem', () => {
     expect(push).toHaveBeenCalledWith(`/w/muj-projekt/contacts/import/${IMPORT_ID}`);
   });
 
+  /**
+   * Druhá branka k témuž problému jako v průvodci importem: kontakt bez seznamu
+   * nemá co dostat a nemá se z čeho odhlásit. Obrazovka proto bez seznamu
+   * neuloží nic a řekne proč.
+   */
+  /**
+   * Obrazovka slibovala „Potvrzené", jenže bez prohlášení o doloženém souhlasu
+   * automat přihlášení na seznamu s DVOJÍM potvrzením nepotvrdí, takže
+   * v databázi vznikalo „čeká na potvrzení". Ověřeno na dev serveru.
+   */
+  it('u seznamu s dvojím potvrzením trvá na prohlášení a pošle ho jako souhlas', async () => {
+    const { calls } = stubApi();
+    renderWithProviders(
+      <PasteContacts
+        workspaceId={WORKSPACE_ID}
+        basePath="/w/muj-projekt/contacts"
+        lists={[{ id: LIST_ID, name: 'Zákazníci', optIn: 'double', isDefault: true }]}
+        tags={[]}
+        pollIntervalMs={0}
+      />,
+    );
+    await type('jana@example.com; Jana');
+
+    await userEvent.click(screen.getByRole('button', { name: /uložit 1 kontakt/i }));
+    expect(screen.getByRole('alert')).toHaveTextContent(/prohlášení/i);
+    expect(calls).toHaveLength(0);
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /potvrzuji, že tito lidé/i }));
+    await userEvent.click(screen.getByRole('button', { name: /uložit 1 kontakt/i }));
+
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    const patch = calls.find((call) => call.init?.method === 'PATCH');
+    const body = JSON.parse(String(patch?.init?.body)) as {
+      options: { consent: { declaration: boolean; source: string } | null };
+    };
+    expect(body.options.consent).toMatchObject({ declaration: true, source: 'paste' });
+  });
+
+  it('bez seznamu dávku neuloží a řekne proč', async () => {
+    const { calls } = stubApi();
+    renderWithProviders(
+      <PasteContacts
+        workspaceId={WORKSPACE_ID}
+        basePath="/w/muj-projekt/contacts"
+        lists={[{ id: LIST_ID, name: 'Zákazníci' }]}
+        tags={[]}
+        pollIntervalMs={0}
+      />,
+    );
+    await type('jana@example.com; Jana');
+
+    await userEvent.click(screen.getByRole('button', { name: /uložit 1 kontakt/i }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/vyberte seznam/i);
+    expect(calls).toHaveLength(0);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  /** Kdo nemá ani jeden seznam, musí ho založit odsud, jinak přijde o vložený text. */
+  it('založí seznam rovnou z téhle obrazovky a dávku do něj zařadí', async () => {
+    const { calls } = stubApi();
+    renderWithProviders(
+      <PasteContacts
+        workspaceId={WORKSPACE_ID}
+        basePath="/w/muj-projekt/contacts"
+        lists={[]}
+        tags={[]}
+        pollIntervalMs={0}
+      />,
+    );
+    await type('jana@example.com; Jana');
+
+    await userEvent.type(screen.getByTestId('paste-new-list-name'), 'Odběratelé');
+    await userEvent.click(screen.getByRole('button', { name: /^založit seznam$/i }));
+
+    const created = calls.find(
+      (call) => call.url === '/api/v1/lists' && call.init?.method === 'POST',
+    );
+    expect(JSON.parse(String(created?.init?.body))).toEqual({
+      name: 'Odběratelé',
+      opt_in: 'double',
+    });
+
+    // Nový seznam vzniká s dvojím potvrzením, takže obrazovka trvá na prohlášení.
+    await userEvent.click(screen.getByRole('checkbox', { name: /potvrzuji, že tito lidé/i }));
+    await userEvent.click(screen.getByRole('button', { name: /uložit 1 kontakt/i }));
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    const patch = calls.find((call) => call.init?.method === 'PATCH');
+    const body = JSON.parse(String(patch?.init?.body)) as { options: { list_ids: string[] } };
+    expect(body.options.list_ids).toEqual([LIST_ID]);
+  });
+
   it('pošle vybraný seznam, štítek i stav přihlášení', async () => {
     const { calls } = stubApi();
     renderScreen();
     await type('jana@example.com; Jana');
 
-    await userEvent.selectOptions(screen.getByLabelText(/přidat do seznamu/i), LIST_ID);
+    await userEvent.click(screen.getByRole('combobox', { name: /zařadit do seznamu/i }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Zákazníci' }));
     await userEvent.click(screen.getByLabelText('Brno'));
     await userEvent.click(screen.getByLabelText(/čeká na potvrzení/i));
     await userEvent.click(screen.getByRole('button', { name: /uložit 1 kontakt/i }));

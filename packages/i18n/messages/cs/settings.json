@@ -142,6 +142,16 @@
     "localeHint": "Jazyk systémových e-mailů a veřejných stránek pro příjemce.",
     "timezone": "Časová zóna projektu",
     "timezoneHint": "V téhle zóně se plánují kampaně a počítají reporty.",
+    "greetingEnabled": {
+      "label": "Oslovení a 5. pád",
+      "hint": "Skloňování jmen dává smysl v češtině a slovenštině. V ostatních jazycích se 5. pád nepoužívá a celá agenda jen zabírá místo.",
+      "on": "Projekt řeší oslovení",
+      "onHint": "V kontaktech vidíte sloupec Oslovení, kontrolu 5. pádu, náhled u formuláře a v editoru značku s hotovým oslovením. Vedle toho se dá zvolit vykání, nebo tykání.",
+      "off": "Projekt oslovení neřeší",
+      "offHint": "Oslovení, 5. pád ani volba vykání a tykání se nikde nezobrazí. Nic se nemaže: uložené tvary zůstávají, po zapnutí je najdete tam, kde byly, a šablony, ve kterých už oslovení je, se posílají dál.",
+      "turnedOn": "Oslovení jsme zapnuli.",
+      "turnedOff": "Oslovení jsme vypnuli. Uložené tvary zůstávají."
+    },
     "addressForm": {
       "label": "Oslovení v e-mailech",
       "hint": "Týká se e-mailů, které posíláte kontaktům. Rozhraní nástroje vám vyká vždy.",

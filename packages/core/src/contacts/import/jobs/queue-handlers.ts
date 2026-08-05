@@ -53,6 +53,11 @@ export async function recoverStaleImportsJob(): Promise<{ recovered: number }> {
           {
             singletonKey: payload.importId,
             retryLimitOverride: 0,
+            // OBNOVA PO PÁDU, tady se `drop` chce. Sken hledá importy, které se
+            // dlouho nehnuly, a mezi ně se snadno připlete běh, který ještě žije.
+            // Zahození takového zařazení je správný výsledek: import běží dál,
+            // jen ho tenhle sken zbytečně považoval za mrtvý.
+            onMerged: 'drop',
           },
         ),
       );

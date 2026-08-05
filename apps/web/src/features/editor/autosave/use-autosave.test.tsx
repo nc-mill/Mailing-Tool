@@ -92,6 +92,37 @@ describe('useAutosave', () => {
     expect(calls).toBe(2);
   });
 
+  /**
+   * VĚTA ZE SERVERU SE MUSÍ DOSTAT AŽ NA OBRAZOVKU.
+   *
+   * Doménové závory seznamu (potvrzovací e-mail bez odkazu na potvrzení,
+   * odhlašovací odkaz v uvítacím a rozloučovacím e-mailu) vracejí 422 s celou
+   * instrukcí, co má autor opravit. Do téhle chvíle se z ní nedostalo nic:
+   * hlavička ukázala obecné „dokument je neplatný" a člověk neměl podle čeho
+   * dokument spravit.
+   */
+  it('u odmítnutého uložení si zapamatuje větu ze serveru', async () => {
+    const veta =
+      'Tenhle e-mail je připojený jako potvrzovací, takže musí obsahovat odkaz na potvrzení.';
+    const store = createEditorStore({ document: doc(), designHash: 'h1' });
+    const ports = createFakePorts({
+      save: async () => {
+        throw new PortError('validation_failed', veta, undefined, 422);
+      },
+    });
+    renderHook(() => useAutosave({ store, ports, templateId: 't1' }));
+
+    act(() => {
+      store.patchProps('b_h1', { level: 1 });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+
+    await waitFor(() => expect(store.getState().status).toBe('invalid'));
+    expect(store.getState().saveIssue).toBe(veta);
+  });
+
   it('odmítnutý dokument neposílá dokola a řekne, že jde o obsah, ne o spojení', async () => {
     /*
      * Regrese na smyčku z provozu: stačilo přidat blok obrázku (nový blok má

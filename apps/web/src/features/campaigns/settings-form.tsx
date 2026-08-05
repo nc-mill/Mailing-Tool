@@ -303,7 +303,23 @@ function UnsubscribeScopeField({
           name="unsubscribe_list_id"
           label={t('unsubscribeList')}
           placeholder={all}
-          defaultValue={selected(storedId)}
+          /*
+           * DOPORUČENÁ VOLBA VYHRÁVÁ NAD ULOŽENOU HODNOTOU, a je to rozhodnutí
+           * zadavatele, ne opomenutí. Do téhle větve se kampaň dostane teprve
+           * tehdy, když v publiku PŘIBYL segment; do té chvíle se rozsah
+           * odvozoval. Uložená hodnota tedy popisuje jiné publikum, než jaké
+           * kampaň má teď, a předvyplnit ji znamená nabídnout odhlášení
+           * z jednoho seznamu lidem, kteří na něm být nemusí. Ti by pak klikli
+           * na „odhlásit" a nestalo by se nic.
+           *
+           * Prázdná hodnota znamená odhlášení ze všech rozesílek, což je pro
+           * příjemce vždycky bezpečné. Kdo chce užší rozsah, vybere si ho
+           * vědomě.
+           *
+           * Prop `defaultValue` se NEPŘEDÁVÁ VŮBEC, nepředává se `undefined`:
+           * `exactOptionalPropertyTypes` v tomhle repozitáři rozlišuje „klíč
+           * chybí" a „klíč je undefined" a druhé neprojde typovou kontrolou.
+           */
           options={withNoneOption(lists, all)}
           hint={t('unsubscribeChoiceHint')}
           errors={fieldErrors}

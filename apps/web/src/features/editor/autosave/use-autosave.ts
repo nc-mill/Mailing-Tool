@@ -65,7 +65,9 @@ export function useAutosave(input: {
        */
       if (error instanceof PortError && error.status === 422) {
         rejected.current = state.document;
-        store.setStatus('invalid');
+        // Věta ze serveru, ne obecné „neplatný dokument": doménové závory
+        // v ní posílají celou instrukci, co má autor opravit.
+        store.setStatus('invalid', error.detail === '' ? null : error.detail);
         return;
       }
       store.setStatus('error');

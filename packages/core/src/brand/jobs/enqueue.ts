@@ -1,6 +1,5 @@
-import { sql } from 'drizzle-orm';
 import { loadConfig } from '../../config/index';
-import { queue } from '../../queues';
+import { enqueueJob, type OnMerged } from '../../queues/enqueue-sql';
 import type { Tx } from '../../tx';
 
 /**
@@ -12,36 +11,33 @@ import type { Tx } from '../../tx';
  * není. Kdyby se nezařadilo vůbec, událost by v tabulce ležela a nikdo by ji
  * nerozeslal: `fanoutEvent` volá výhradně ten job a ten se sám nezařadí.
  *
- * Zapisuje se přímo do tabulky `job` ve schématu pg-boss, což je jeho
- * zveřejněný způsob transakčního vkládání. Je to tentýž postup jako
- * `contacts/jobs/enqueue.ts`, jen se politika fronty bere ze SPOLEČNÉHO
- * registru P01, ne z výčtu jedné domény, takže se nemůže rozejít.
+ * Vlastní SQL sestavuje `queues/enqueue-sql.ts`, protože týž příkaz potřebuje sedm
+ * domén a sedm kopií se rozešlo: všem chyběl sloupec `policy`, takže `singletonKey`
+ * neslučoval nic.
  *
- * `dead_letter` se ZÁMĚRNĚ nevyplňuje: sloupec má cizí klíč na `queue.name`,
- * takže hodnota `<fronta>.dlq` by zápis shodila všude, kde dead letter frontu
- * nikdo nezaložil. Přiřazení dead letter fronty patří k založení fronty.
+ * VÝCHOZÍ `onMerged` JE `fail`. Doména zařazuje dvě fronty a rozhodující je
+ * `content.brand_extract` s politikou `exclusive`: na analýzu značky čeká uživatel
+ * u obrazovky. Kdyby se zařazení tiše zahodilo, zůstal by řádek v `brand_extractions`
+ * ve stavu `pending` a nikdo by ho nedokončil. Klíč je ID extrakce, které vzniká
+ * v téže transakci, takže při běžném běhu kolize nastat nemůže; když nastane, je to
+ * porucha a má být vidět.
+ *
+ * `platform.webhook_fanout` slučování zapnuté NEMÁ, takže se u ní zahodit nedá nic
+ * a volba `fail` na ni nedopadá.
  */
 export async function enqueueBrandJob(
   tx: Tx,
   name: string,
   payload: Record<string, unknown>,
-  options: { singletonKey?: string } = {},
+  options: { singletonKey?: string; onMerged?: OnMerged } = {},
 ): Promise<void> {
-  const entry = queue(name);
   // Konfigurace se čte uvnitř funkce. Na úrovni modulu by `loadConfig()`
   // shodila každý jednotkový test, který se souboru jen dotkne.
-  const schemaName = loadConfig().PGBOSS_SCHEMA;
-
-  await tx.execute(sql`
-    INSERT INTO ${sql.identifier(schemaName)}.job
-      (name, data, singleton_key, retry_limit, retry_backoff, expire_seconds)
-    VALUES (
-      ${name},
-      ${JSON.stringify(payload)}::jsonb,
-      ${options.singletonKey ?? null},
-      ${entry.retryLimit},
-      ${entry.retryBackoff},
-      ${entry.expireInSeconds}
-    )
-  `);
+  await enqueueJob(tx, {
+    schema: loadConfig().PGBOSS_SCHEMA,
+    name,
+    payload,
+    singletonKey: options.singletonKey,
+    onMerged: options.onMerged ?? 'fail',
+  });
 }

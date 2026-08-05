@@ -261,9 +261,16 @@ describe('preset cards', () => {
   });
 
   it('shows count, never zero, for a preset never counted', () => {
-    renderIntl(<PresetGrid presets={[sixPresets()[0]!]} />);
+    // `onRecount` se předává schválně: karta počítací tlačítko bez obsluhy
+    // vůbec nevykreslí, aby na ní nezůstal prvek, po kterém se nic nestane.
+    renderIntl(<PresetGrid presets={[sixPresets()[0]!]} onRecount={vi.fn()} />);
     expect(screen.getByRole('button', { name: /^spočítat$/i })).toBeInTheDocument();
     expect(screen.queryByText('0')).toBeNull();
+  });
+
+  it('bez obsluhy se počítací tlačítko na kartě nenabídne', () => {
+    renderIntl(<PresetGrid presets={[sixPresets()[0]!]} />);
+    expect(screen.queryByRole('button', { name: /^spočítat$/i })).toBeNull();
   });
 
   it('makes use create a copy with the preset key, not a link to a shared definition', async () => {

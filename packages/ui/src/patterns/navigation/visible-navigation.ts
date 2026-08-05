@@ -22,17 +22,34 @@ export function visibleNavigation({
   workspaceSlug = '{slug}',
   includeReserved = false,
   includeNonMvp0 = false,
+  hiddenIds = [],
 }: {
   permissions: string[];
   workspaceSlug?: string;
   includeReserved?: boolean;
   /** Až budou obrazovky hotové, přepne se tohle na `true` a příznaky zmizí. */
   includeNonMvp0?: boolean;
+  /**
+   * Položky, které tenhle projekt vypnul v nastavení.
+   *
+   * Je to úzká výjimka z pravidla „registr je celý dopředu", ne rozšíření
+   * registru: položka v něm zůstává i s cestou a oprávněním, jen se pro daný
+   * projekt nenabízí. Zavedl to vypínač oslovení a 5. pádu
+   * (`workspaces.greeting_enabled`), který skrývá obrazovku
+   * `/contacts/vocative-review`. Kdyby se skryla jen obrazovka a ne položka,
+   * zbylo by v menu mrtvé tlačítko.
+   *
+   * Rozhoduje se tady, ne příznakem v registru, protože podmínka je vlastnost
+   * PROJEKTU, kdežto registr je statický a nezná ani projekt, ani jeho nastavení.
+   */
+  hiddenIds?: readonly string[];
 }): VisibleNavigationItem[] {
   const allowed = new Set(permissions);
+  const hidden = new Set(hiddenIds);
   const base = `/w/${workspaceSlug}`;
 
   function keep(item: NavigationItem): boolean {
+    if (hidden.has(item.id)) return false;
     if (item.reservedFor !== undefined && !includeReserved) return false;
     // Cesta, kterou v MVP 0 nikdo nenaplní, se nenabízí. Prázdná stránka
     // je horší než chybějící položka.
@@ -44,6 +61,7 @@ export function visibleNavigation({
   const result: VisibleNavigationItem[] = [];
 
   for (const section of NAVIGATION) {
+    if (hidden.has(section.id)) continue;
     if (section.reservedFor !== undefined && !includeReserved) continue;
     if (!section.mvp0 && !includeNonMvp0) continue;
 

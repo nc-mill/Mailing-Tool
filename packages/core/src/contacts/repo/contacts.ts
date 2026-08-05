@@ -965,6 +965,30 @@ export async function listVisibleContacts(
 }
 
 /**
+ * Poznámka k zásahu do omezení zpracování a případné číslo žádosti subjektu.
+ *
+ * `note` NENÍ ozdoba. Je to jediné místo, kde se dá dohledat, PROČ se u konkrétního
+ * člověka zpracování zastavilo nebo zase rozjelo; „kdo a kdy" audit umí sám. Obě jména
+ * klíčů jsou vybraná tak, aby prošla redakcí metadat (`packages/core/src/audit/redact.ts`
+ * zakrývá každý klíč, jehož jméno obsahuje password, secret, token, api_key, credentials,
+ * cookie nebo authorization). Klíč pojmenovaný třeba `request_token` by se do auditu
+ * zapsal jako `[redacted]` a záznam by byl k ničemu.
+ */
+export type ProcessingRestrictionInput = {
+  /** Číslo žádosti v gdpr_requests, když zásah vznikl z evidované žádosti. */
+  requestId?: string;
+  /** Čím uživatel zásah odůvodnil. Rozhraní ho vyžaduje, doména ho jen zapíše. */
+  note?: string;
+};
+
+function restrictionMetadata(input: ProcessingRestrictionInput): Record<string, unknown> {
+  return {
+    ...(input.requestId === undefined ? {} : { gdpr_request_id: input.requestId }),
+    ...(input.note === undefined || input.note.trim() === '' ? {} : { note: input.note.trim() }),
+  };
+}
+
+/**
  * Omezení zpracování podle článku 18. Nic se nemaže, jen se nezpracovává.
  *
  * Kompilátor segmentů takový kontakt vždy vyloučí a materializace publika ho nesmí
@@ -972,13 +996,26 @@ export async function listVisibleContacts(
  * kontaktu vysvětluje samostatným blokem a rozpad publika kampaně samostatným
  * odečtovým řádkem, ne schované v "ostatní".
  *
- * Přidáno úkolem 42 plánu P07.
+ * OPRÁVNĚNÍ JE STEJNÉ JAKO U ZRUŠENÍ, tedy `suppressions:write`. Do téhle chvíle
+ * kontrola nebyla žádná, protože funkci nikdo nevolal. Jakmile ji volá tlačítko
+ * v rozhraní, nesymetrie by byla past: kdyby zapnutí zvládl editor a zrušení jen
+ * admin, editor by uměl vyrobit stav, ze kterého sám nemá cestu ven, a kontakt by
+ * mezitím vypadl ze všech kampaní. Slabší `contacts:write` je z téhož důvodu málo:
+ * tohle není oprava překlepu ve jméně, ale tvrdé zastavení rozesílky.
+ *
+ * `gdpr:erase` naopak NENÍ na místě. To je oprávnění vlastníka a míří na nevratný
+ * výmaz podle článku 17; omezení podle článku 18 je vratné a jeho smyslem je data
+ * zachovat. Kdyby ho směl jen vlastník, běžná žádost by čekala na jednoho člověka.
+ *
+ * Přidáno úkolem 42 plánu P07, zapojeno do rozhraní úkolem „omezení zpracování".
  */
 export async function restrictProcessing(
   ctx: WorkspaceContext,
   contactId: string,
-  requestId?: string,
+  input: ProcessingRestrictionInput = {},
 ): Promise<void> {
+  assertPermission(ctx, 'suppressions:write');
+
   await withWorkspace(ctx, async (tx) => {
     const result = await tx.execute<{ id: string }>(sql`
       UPDATE contacts SET processing_restricted = true, updated_at = now()
@@ -999,7 +1036,7 @@ export async function restrictProcessing(
       action: 'contact.processing_restricted',
       targetType: 'contact',
       targetId: contactId,
-      metadata: requestId === undefined ? {} : { gdpr_request_id: requestId },
+      metadata: restrictionMetadata(input),
     });
   });
 }
@@ -1016,6 +1053,7 @@ export async function restrictProcessing(
 export async function liftProcessingRestriction(
   ctx: WorkspaceContext,
   contactId: string,
+  input: ProcessingRestrictionInput = {},
 ): Promise<void> {
   assertPermission(ctx, 'suppressions:write');
 
@@ -1028,7 +1066,57 @@ export async function liftProcessingRestriction(
       action: 'contact.processing_restriction_lifted',
       targetType: 'contact',
       targetId: contactId,
-      metadata: {},
+      metadata: restrictionMetadata(input),
     });
+  });
+}
+
+/**
+ * Kdy a proč se omezení zapnulo. Čte se z auditu, ne ze sloupce v `contacts`.
+ *
+ * Tabulka `contacts` žádné `restriction_requested_at` NEMÁ (ověřeno v `\d contacts`
+ * i v `packages/db/src/schema/contacts.ts`), takže detail kontaktu do téhle chvíle
+ * posílal do rozhraní natvrdo `null` a věta „požádal o omezení {datum}" ukazovala
+ * `updated_at`, tedy datum poslední jakékoli změny kontaktu. Po každé opravě jména
+ * se tedy „datum žádosti" posunulo. To je horší než žádné datum.
+ *
+ * Zdrojem pravdy je proto auditní záznam `contact.processing_restricted`: vzniká
+ * ve stejné transakci jako zápis příznaku, nese čas i poznámku a jako jediný v produktu
+ * odpovídá na otázku „kdo to zapnul a proč". Sloupec v `contacts` by tu informaci jen
+ * zduplikoval; kdo potřebuje víc, má v auditu celou historii včetně zrušení.
+ *
+ * Dotaz se pouští JEN u omezeného kontaktu a jen na detailu jednoho kontaktu, ne
+ * v seznamu: `audit_log` je rozdělený podle `created_at` a index má na dvojici
+ * (workspace_id, created_at), takže filtr přes `target_id` čte oddíly projektu.
+ * V seznamu kontaktů by to bylo N dotazů na stránku.
+ */
+export async function getProcessingRestriction(
+  ctx: WorkspaceContext,
+  contactId: string,
+): Promise<{ restrictedAt: Date; note: string | null; gdprRequestId: string | null } | null> {
+  return withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<{
+      created_at: Date | string;
+      note: string | null;
+      gdpr_request_id: string | null;
+    }>(sql`
+      SELECT created_at,
+             metadata ->> 'note' AS note,
+             metadata ->> 'gdpr_request_id' AS gdpr_request_id
+        FROM audit_log
+       WHERE workspace_id = ${ctx.workspaceId}::uuid
+         AND target_type = 'contact'
+         AND target_id = ${contactId}::uuid
+         AND action = 'contact.processing_restricted'
+       ORDER BY created_at DESC
+       LIMIT 1
+    `);
+    const row = rows[0];
+    if (row === undefined) return null;
+    return {
+      restrictedAt: row.created_at instanceof Date ? row.created_at : new Date(row.created_at),
+      note: row.note,
+      gdprRequestId: row.gdpr_request_id,
+    };
   });
 }

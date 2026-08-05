@@ -48,7 +48,25 @@
       "forbidden": "Na změnu nastavení měření nemáte oprávnění.",
       "unexpected": "Nastavení se nepodařilo uložit. Zkuste to prosím znovu."
     },
-    "saved": "Uloženo."
+    "saved": "Uloženo.",
+    "identify": {
+      "title": "Identifikace přihlášeného návštěvníka",
+      "description": "Když návštěvník na vašem webu ví, kdo je, řekněte to měření voláním Mlain.identify. Události se od té chvíle spojí s konkrétním kontaktem, včetně těch, které nasbíral ještě anonymně.",
+      "unsigned_label": "Bez podpisu",
+      "unsigned_hint": "Předáte jen vlastní identifikátor zákazníka a údaje bez osobních dat. Server podle identifikátoru najde existující kontakt. Nový nezaloží a e-mail nezmění.",
+      "signed_label": "S podpisem",
+      "signed_hint": "Teprve podepsané volání smí předat e-mail nebo telefon a založit nový kontakt. Bez podpisu takové volání server odmítne, protože kód z prohlížeče vidí každý a šlo by tak podvrhnout cizí adresu.",
+      "formula_label": "Co přesně se podepisuje",
+      "key_note": "Klíčem je otisk sekretu, ne sekret samotný: server privátní klíč v čitelné podobě neukládá, drží jen jeho otisk SHA-256. Sekret je poslední, čtvrtá část klíče, tedy to za třetím podtržítkem. Sám podtržítka obsahuje, takže ho nikdy neoddělujte podle posledního z nich. Kanonizace jcs je JSON Canonicalization Scheme podle RFC 8785, tedy klíče seřazené, žádné mezery mezi znaky, diakritika zapsaná přímo.",
+      "php": "Váš server, PHP",
+      "python": "Váš server, Python",
+      "browser": "Stránka v prohlížeči",
+      "copy_php": "Zkopírovat PHP",
+      "copy_python": "Zkopírovat Python",
+      "copy_browser": "Zkopírovat volání",
+      "ascii_note": "Příklady řadí klíče prostým setříděním, což pro běžné názvy z písmen a číslic odpovídá RFC 8785. Pokud používáte názvy vlastností s diakritikou, sáhněte po hotové knihovně pro RFC 8785, řazení se jinak může rozejít.",
+      "rejected_note": "Když podpis nesedí, událost se uloží do měření, ale na kontakt se nepromítne nic. Zkontrolujte, že podepisujete tatáž data, která posíláte, a že mezi identifikátorem a vlastnostmi je jeden znak nového řádku."
+    }
   },
   "report": {
     "unreachable": "Měřicí doména {host} není dostupná z internetu, takže se otevření e-mailů nezaznamenají a čísla níž budou neúplná. Není to chyba kampaně."
@@ -59,18 +77,24 @@
     "home": "Přejít na úvodní stránku"
   },
   "errors": {
-    "tracking_event_too_large": { "detail": "Událost je příliš velká." },
+    "tracking_event_too_large": {
+      "detail": "Událost je příliš velká."
+    },
     "tracking_invalid_event_name": {
       "detail": "Jméno události smí obsahovat jen malá písmena, číslice a podtržítko."
     },
-    "tracking_invalid_anonymous_id": { "detail": "Anonymní identifikátor nemá platný tvar." },
+    "tracking_invalid_anonymous_id": {
+      "detail": "Anonymní identifikátor nemá platný tvar."
+    },
     "tracking_payload_version_unsupported": {
       "detail": "Tuhle verzi měřicího kódu server nezná. Aktualizujte skript na webu."
     },
     "tracking_identify_unsigned_pii": {
       "detail": "E-mail nelze nastavit z prohlížeče bez serverového podpisu."
     },
-    "tracking_domain_limit_reached": { "detail": "Můžete mít nejvýše {limit} domén pro měření." },
+    "tracking_domain_limit_reached": {
+      "detail": "Můžete mít nejvýše {limit} domén pro měření."
+    },
     "tracking_domain_invalid": {
       "detail": "Zadejte doménu bez protokolu a bez cesty, například shop.example.cz."
     },

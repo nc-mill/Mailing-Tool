@@ -73,7 +73,7 @@ function compileCondition(
 ): CompiledPredicate {
   const cls = fieldClassOf(node, opts);
   assertOperatorAllowed(cls, node.operator);
-  assertValueShape(node.operator, node);
+  assertValueShape(node.operator, node, cls);
   assertValueMatchesClass(cls, node.operator, node);
 
   switch (node.field.kind) {

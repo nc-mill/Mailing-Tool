@@ -90,6 +90,15 @@ export type ConfirmOutcome = {
   view: ConfirmView;
   listName: string | null;
   branding: PublicBranding;
+  /**
+   * Vlastní stránka, na kterou se má člověk po ÚSPĚŠNÉM potvrzení poslat, nebo
+   * `null`. Bere se z `lists.confirm_redirect_url`.
+   *
+   * Jen u výsledku `done`. U prošlého odkazu, u už použitého a u zablokované
+   * adresy se přesměrovat NESMÍ: člověk by skončil na děkovné stránce, přestože
+   * přihlášený není, a nikdy by se to nedozvěděl.
+   */
+  redirectUrl: string | null;
 };
 
 /**
@@ -103,15 +112,49 @@ export async function confirmByRef(
   input: { requestIp: string | null; userAgent: string | null },
 ): Promise<ConfirmOutcome> {
   const parsed = decodePublicRef(ref);
-  if (parsed === null) return { view: 'invalid', listName: null, branding: anonymousBranding() };
+  const invalid = {
+    view: 'invalid' as const,
+    listName: null,
+    branding: anonymousBranding(),
+    redirectUrl: null,
+  };
+  if (parsed === null) return invalid;
 
   const scope = await publicScope(parsed.workspaceId, 'contacts.public.confirm');
-  if (scope === null) return { view: 'invalid', listName: null, branding: anonymousBranding() };
+  if (scope === null) return invalid;
+
+  /*
+   * Seznam se dohledává PŘED potvrzením. Potvrzení token spotřebuje, takže
+   * potom už z něj seznam nedohledáme, a `ConfirmResult` ho nenese: veřejná
+   * stránka nesmí prozradit, komu která adresa patří.
+   */
+  const listId = await withWorkspace(scope.ctx, async (tx) => {
+    const record = await findConfirmationIn(tx, scope.ctx, parsed.value);
+    return record?.listId ?? null;
+  });
 
   const result = await confirmPublicSubscription(scope.ctx, {
     token: parsed.value,
     requestIp: input.requestIp,
     userAgent: input.userAgent,
   });
-  return { view: result.view, listName: result.listName, branding: scope.branding };
+
+  const redirectUrl =
+    result.view === 'done' && listId !== null ? await confirmRedirectUrl(scope.ctx, listId) : null;
+
+  return { view: result.view, listName: result.listName, branding: scope.branding, redirectUrl };
+}
+
+/** Vlastní stránka po potvrzení, nebo `null`, když seznam žádnou nemá. */
+async function confirmRedirectUrl(
+  ctx: Parameters<typeof confirmPublicSubscription>[0],
+  listId: string,
+): Promise<string | null> {
+  return withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<{ url: string | null }>(sql`
+      SELECT confirm_redirect_url AS url FROM lists
+       WHERE id = ${listId}::uuid AND workspace_id = ${ctx.workspaceId}::uuid
+    `);
+    return rows[0]?.url ?? null;
+  });
 }

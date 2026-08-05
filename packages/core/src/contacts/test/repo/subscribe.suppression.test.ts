@@ -24,6 +24,7 @@ beforeEach(() => {
   registerSubscriptionEmails({
     async sendConfirmation() {},
     async sendWelcome() {},
+    async sendGoodbye() {},
     async deliverRequestedItem() {},
   });
 });

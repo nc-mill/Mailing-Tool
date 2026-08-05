@@ -6,10 +6,12 @@ import { Link, useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
 // K1 z 13.1 části 6: výběr přežije přestránkování a je vidět jeho velikost, kurzorové
 // stránkování bez čísel stránek, virtualizace od 100 řádků, sticky hlavička.
-import { DataTable } from '@mlain/ui/patterns/data-table';
+import { DataTable, type DataTableColumn } from '@mlain/ui/patterns/data-table';
 import { ContactsBulkActions } from './bulk-actions';
 import { ConfirmContactButton } from './confirm-contact-button';
+import { ContactExportDialog, useContactExport } from './contact-export';
 import { ContactsEmptyState, ContactsFilteredEmptyState } from './contacts-empty-state';
+import { filtersToAudience } from './export-audience';
 import { ContactStatusBadges } from './status-badges';
 import { GreetingBadge } from './greeting-badge';
 import type { GreetingStatusInput } from './greeting-status';
@@ -70,6 +72,13 @@ export type ContactsTableProps = {
    * Vynechání celé vlastnosti odkaz skryje, což potřebují testy starších obrazovek.
    */
   vocativeReview?: { href: string; uncertain?: number | undefined };
+  /**
+   * Řeší projekt oslovení a 5. pád? Vypnuto skryje sloupec „Oslovení".
+   *
+   * Výchozí `true` je kvůli starším testům, které prop nepředávají; obrazovka
+   * ho posílá vždycky.
+   */
+  greetingEnabled?: boolean;
 };
 
 /**
@@ -98,6 +107,7 @@ export function ContactsTable({
   tags = [],
   lists = [],
   vocativeReview,
+  greetingEnabled = true,
 }: ContactsTableProps) {
   const t = useTranslations('contacts');
   const format = useFormatter();
@@ -108,6 +118,7 @@ export function ContactsTable({
   });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const describeChips = useFilterChips();
+  const contactExport = useContactExport(workspaceId);
 
   if (rows.length === 0) {
     return hasAnyFilter(filters) ? (
@@ -144,6 +155,22 @@ export function ContactsTable({
           <Button variant="secondary" onClick={() => router.push(`${basePath}/paste`)}>
             {t('paste.entry')}
           </Button>
+          {/* Export seznamu. Klíč `list.export` ležel v katalogu od začátku, tlačítko
+              k němu nikdy nevzniklo, takže se kontakty ze seznamu vyvézt nedaly vůbec:
+              jediná cesta k exportu vedla přes dialog mazání, a ten končil na 422.
+              Exportuje se to, co je vidět, tedy aktuální filtr. */}
+          <Button
+            variant="secondary"
+            onClick={() =>
+              void contactExport.start({
+                title: t('list.exportTitle'),
+                fileName: t('list.exportFileName'),
+                outcome: filtersToAudience(filters),
+              })
+            }
+          >
+            {t('list.export')}
+          </Button>
           {/* Fronta „Kontrola oslovení" byla do téhle chvíle dostupná jedině z výsledku
               importu. Právě kvůli nejistým oslovením existuje, takže musí být dosažitelná
               odtud, kde je uživatel vidí ve sloupci. */}
@@ -160,6 +187,26 @@ export function ContactsTable({
           ) : null}
         </div>
       </div>
+
+      {/*
+       * FILTR MUSÍ BÝT VIDĚT NAD SEZNAMEM, ne jen v prázdném stavu.
+       *
+       * `filterDescription` níž se v `DataTable` používá JEDINĚ uvnitř lišty výběru,
+       * takže po prokliku ze štítku viděl uživatel jeden kontakt a nikde se nedozvěděl,
+       * proč jich není víc ani jak se filtru zbaví. Filtr přitom žije v URL, takže ho
+       * ani nešlo poznat z ovládacích prvků: žádné tu nejsou.
+       */}
+      {chips.length > 0 ? (
+        <div
+          data-testid="contacts-filter-summary"
+          className="flex flex-wrap items-center gap-3 rounded-[var(--radius-surface)] bg-surface-muted px-4 py-3 text-sm text-text"
+        >
+          <span>{t('list.filteredFilter', { filter: format.list(chips) })}</span>
+          <Button variant="link" onClick={() => router.push(basePath)}>
+            {t('list.filteredClearAll')}
+          </Button>
+        </div>
+      ) : null}
 
       <DataTable
         tableId="contacts"
@@ -185,6 +232,12 @@ export function ContactsTable({
             names={names}
             tags={tags}
             lists={lists}
+            // Adresy vybraných řádků. Publikum exportu umí vyjmenovat kontakty jen
+            // e-mailem: `Audience` výčet id nezná a `CONTACT_FIELD_KEYS` v segmentech
+            // `id` nemá. Tabulka je na obrazovce stejně ukazuje, takže je má po ruce.
+            selectedEmails={rows
+              .filter((row) => selection.mode === 'ids' && selection.ids.has(row.id))
+              .map((row) => row.email)}
           />
         }
         onRowActivate={(row) => router.push(`${basePath}/${row.id}`)}
@@ -200,87 +253,99 @@ export function ContactsTable({
           onPrevious: () => router.push(contactsHref(basePath, filters, pagination.prev_cursor)),
           onNext: () => router.push(contactsHref(basePath, filters, pagination.next_cursor)),
         }}
-        columns={[
-          {
-            id: 'email',
-            header: t('columns.email'),
-            cell: (row) => (
-              <Link
-                href={`${basePath}/${row.id}`}
-                aria-label={t('list.openDetail', { email: row.email })}
-              >
-                {row.email}
-              </Link>
-            ),
-          },
-          { id: 'name', header: t('columns.name'), cell: (row) => row.name ?? '' },
-          // Oslovení hned za jménem: rozdíl mezi „Petr" a „Petře" je celý produkt
-          // a v žádném jiném sloupci ho vidět není.
-          {
-            id: 'greeting',
-            header: t('greeting.column'),
-            cell: (row) => <GreetingBadge contact={row.greeting} />,
-          },
-          {
-            id: 'status',
-            header: t('columns.status'),
-            cell: (row) => (
-              <ContactStatusBadges
-                badges={
-                  describeContactState({
-                    status: row.status,
-                    processing_restricted: row.processing_restricted,
-                    snooze_until: row.snooze_until,
-                    anonymized_at: row.anonymized_at,
-                    status_changed_at: row.created_at,
-                    restriction_requested_at: null,
-                  }).badges
+        // Typ je uvedený VÝSLOVNĚ. Bez něj TypeScript neodvodí `row` u žádného
+        // sloupce, jakmile je v poli i `null` z podmíněného sloupce oslovení.
+        columns={(
+          [
+            {
+              id: 'email',
+              header: t('columns.email'),
+              cell: (row) => (
+                <Link
+                  href={`${basePath}/${row.id}`}
+                  aria-label={t('list.openDetail', { email: row.email })}
+                >
+                  {row.email}
+                </Link>
+              ),
+            },
+            { id: 'name', header: t('columns.name'), cell: (row) => row.name ?? '' },
+            // Oslovení hned za jménem: rozdíl mezi „Petr" a „Petře" je celý produkt
+            // a v žádném jiném sloupci ho vidět není. Projekt, který oslovení neřeší,
+            // sloupec nemá; `.filter(Boolean)` pod definicí ho vystřihne.
+            greetingEnabled
+              ? {
+                  id: 'greeting',
+                  header: t('greeting.column'),
+                  cell: (row: ContactRow) => <GreetingBadge contact={row.greeting} />,
                 }
-              />
-            ),
-          },
-          /*
-           * Potvrzení PŘÍMO V ŘÁDKU, ne až na detailu a ne až po zaškrtnutí.
-           *
-           * Hromadná akce nad výběrem zůstává, protože je užitečná u dávky, ale pro jeden
-           * kontakt znamenala tři kroky (zaškrtnout, najít tlačítko nad tabulkou, kliknout)
-           * a stejně tak dlouhá byla odbočka na detail a zpátky. Tlačítko v řádku je jedno
-           * kliknutí.
-           *
-           * SLOUPEC STOJÍ HNED ZA STAVEM SCHVÁLNĚ, ne na konci. `useColumnPreferences`
-           * schová všechny sloupce za prvními šesti, dokud si uživatel nevybere jinak,
-           * takže akce na konci by se novému uživateli nezobrazila vůbec. Zároveň se kvůli
-           * ní zvedla výchozí sada na sedm sloupců, aby z ní nevypadl žádný, který v ní
-           * byl dřív.
-           *
-           * Klik na tlačítko NEOTEVŘE detail: `DataTable.onRowClick` ignoruje cíle uvnitř
-           * `button, a, input, label`, takže se aktivace řádku nespustí.
-           */
-          {
-            id: 'confirm',
-            header: t('confirmState.column'),
-            cell: (row) => (
-              <ConfirmContactButton
-                workspaceId={workspaceId}
-                contactId={row.id}
-                status={row.status}
-                email={row.email}
-                variant="row"
-              />
-            ),
-          },
-          { id: 'lists', header: t('columns.lists'), cell: (row) => format.list(row.lists) },
-          { id: 'tags', header: t('columns.tags'), cell: (row) => format.list(row.tags) },
-          {
-            id: 'createdAt',
-            header: t('columns.createdAt'),
-            cell: (row) => (
-              <time dateTime={row.created_at}>
-                {format.dateTime(new Date(row.created_at), 'short')}
-              </time>
-            ),
-          },
-        ]}
+              : null,
+            {
+              id: 'status',
+              header: t('columns.status'),
+              cell: (row) => (
+                <ContactStatusBadges
+                  badges={
+                    describeContactState({
+                      status: row.status,
+                      processing_restricted: row.processing_restricted,
+                      snooze_until: row.snooze_until,
+                      anonymized_at: row.anonymized_at,
+                      status_changed_at: row.created_at,
+                    }).badges
+                  }
+                />
+              ),
+            },
+            /*
+             * Potvrzení PŘÍMO V ŘÁDKU, ne až na detailu a ne až po zaškrtnutí.
+             *
+             * Hromadná akce nad výběrem zůstává, protože je užitečná u dávky, ale pro jeden
+             * kontakt znamenala tři kroky (zaškrtnout, najít tlačítko nad tabulkou, kliknout)
+             * a stejně tak dlouhá byla odbočka na detail a zpátky. Tlačítko v řádku je jedno
+             * kliknutí.
+             *
+             * SLOUPEC STOJÍ HNED ZA STAVEM SCHVÁLNĚ, ne na konci. `useColumnPreferences`
+             * schová všechny sloupce za prvními šesti, dokud si uživatel nevybere jinak,
+             * takže akce na konci by se novému uživateli nezobrazila vůbec. Zároveň se kvůli
+             * ní zvedla výchozí sada na sedm sloupců, aby z ní nevypadl žádný, který v ní
+             * byl dřív.
+             *
+             * Klik na tlačítko NEOTEVŘE detail: `DataTable.onRowClick` ignoruje cíle uvnitř
+             * `button, a, input, label`, takže se aktivace řádku nespustí.
+             */
+            {
+              id: 'confirm',
+              header: t('confirmState.column'),
+              cell: (row) => (
+                <ConfirmContactButton
+                  workspaceId={workspaceId}
+                  contactId={row.id}
+                  status={row.status}
+                  email={row.email}
+                  variant="row"
+                />
+              ),
+            },
+            { id: 'lists', header: t('columns.lists'), cell: (row) => format.list(row.lists) },
+            { id: 'tags', header: t('columns.tags'), cell: (row) => format.list(row.tags) },
+            {
+              id: 'createdAt',
+              header: t('columns.createdAt'),
+              cell: (row) => (
+                <time dateTime={row.created_at}>
+                  {format.dateTime(new Date(row.created_at), 'short')}
+                </time>
+              ),
+            },
+          ] satisfies (DataTableColumn<ContactRow> | null)[]
+        ).filter((column) => column !== null)}
+      />
+
+      <ContactExportDialog
+        state={contactExport.state}
+        onDownload={(href, fileName) => void contactExport.download(href, fileName)}
+        onClose={contactExport.close}
       />
     </section>
   );

@@ -797,7 +797,15 @@ export function registerCampaignRoutes(app: OpenAPIHono<CampaignsEnv>): void {
         ctx,
         MATERIALIZE_JOB.queue,
         { campaignId: campaign.id, workspaceId: ctx.workspaceId },
-        { singletonKey: MATERIALIZE_JOB.singletonKey(campaign.id) },
+        {
+          singletonKey: MATERIALIZE_JOB.singletonKey(campaign.id),
+          // `fail`, protože blok níž existuje právě pro tenhle případ. Fronta má
+          // politiku `exclusive`, takže se úloha nezařadí, když nad touž kampaní
+          // ještě visí úloha z předchozího běhu (kampaň zrušená za běhu a hned
+          // odeslaná znovu). Se `drop` by se sem chyba nedostala, kampaň by
+          // zůstala v `queueing` a uživatel by koukal na „připravuje se" navždy.
+          onMerged: 'fail',
+        },
       );
     } catch (err) {
       await transitionStatus(ctx, {
@@ -919,7 +927,14 @@ export function registerCampaignRoutes(app: OpenAPIHono<CampaignsEnv>): void {
         ctx,
         MATERIALIZE_JOB.queue,
         { campaignId: campaign.id, workspaceId: ctx.workspaceId },
-        { singletonKey: MATERIALIZE_JOB.singletonKey(campaign.id) },
+        {
+          singletonKey: MATERIALIZE_JOB.singletonKey(campaign.id),
+          // `fail` ze stejného důvodu jako u odeslání: bez nového zařazení zůstane
+          // kampaň stát s hotovým publikem a nikdo ji nerozjede. Se `drop` by se to
+          // stalo TIŠE. Chyba tady propadne jako 500 a kampaň zůstane v `queueing`,
+          // což není hezké, ale je to vidět; tichá varianta vidět není.
+          onMerged: 'fail',
+        },
       );
     }
     return c.json(present(await load(ctx, campaign.id)), 200);

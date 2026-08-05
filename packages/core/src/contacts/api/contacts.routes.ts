@@ -4,7 +4,10 @@ import { assertPermission } from '../../identity/permissions';
 import {
   bulkDeleteContacts,
   deleteContact,
+  getProcessingRestriction,
+  liftProcessingRestriction,
   restoreContact,
+  restrictProcessing,
   changeContactEmail,
 } from '../repo/contacts';
 import { confirmContactManually } from '../repo/contact-confirm';
@@ -272,6 +275,37 @@ const createContactRoute = createRoute({
   },
 });
 
+const RestrictionBody = z
+  .object({
+    note: z.string().min(1).max(1000),
+    /** Číslo evidované žádosti subjektu, když k zásahu nějaká patří. */
+    gdpr_request_id: Uuid.optional(),
+  })
+  .strict()
+  .openapi('ProcessingRestrictionRequest');
+
+const RestrictionSchema = z
+  .object({
+    /**
+     * Kdy se omezení zapnulo. Bere se z auditního záznamu, protože `contacts` sloupec
+     * s tímhle časem nemá; `updated_at` by se posunul po každé opravě jména.
+     */
+    restricted_at: IsoDateTime,
+    note: z.string().nullable(),
+    gdpr_request_id: Uuid.nullable(),
+  })
+  .nullable()
+  .openapi('ProcessingRestriction');
+
+/**
+ * Odpověď obou směrů nese kontakt i podklad k větě na obrazovce. `restriction` je
+ * `null` u kontaktu, který omezený není; po zapnutí je vždy vyplněná.
+ */
+const RestrictionResultSchema = z.object({
+  data: ContactResponseSchema,
+  restriction: RestrictionSchema,
+});
+
 const detailRoute = createRoute({
   method: 'get',
   path: '/contacts/{id}',
@@ -282,7 +316,7 @@ const detailRoute = createRoute({
   responses: {
     200: {
       description: 'Detail kontaktu',
-      content: { 'application/json': { schema: z.object({ data: ContactResponseSchema }) } },
+      content: { 'application/json': { schema: RestrictionResultSchema } },
     },
     401: problemResponse('unauthenticated'),
     403: problemResponse('forbidden', 'insufficient_scope'),
@@ -444,6 +478,92 @@ const confirmRoute = createRoute({
 });
 
 /**
+ * Omezení zpracování podle článku 18 GDPR.
+ *
+ * Vlastní podzdroj `/contacts/{id}/processing-restriction`, ne `PATCH` s příznakem.
+ * Důvody jsou tři a všechny praktické:
+ *
+ *  - je to jiná pravomoc než úprava kontaktu (`suppressions:write` místo `contacts:write`),
+ *  - zapnutí má vedlejší účinek, který se do `PATCH` nevejde: čekající zprávy v outboxu
+ *    se zruší s důvodem `processing_restricted`,
+ *  - obojí musí být v auditu jako vlastní akce s poznámkou, ne jako řádek v diffu polí.
+ *
+ * POZNÁMKA JE POVINNÁ V OBOU SMĚRECH. Bez ní by v auditu zůstalo jen „kdo a kdy",
+ * a právě „proč" je to, co se u zásahu do zpracování osobních údajů po roce dohledává.
+ * Klíč se jmenuje `note` schválně: redakce metadat auditu zakrývá hodnotu každého klíče,
+ * jehož jméno obsahuje password, secret, token, api_key, credentials, cookie nebo
+ * authorization, takže třeba `request_token` by se zapsal jako `[redacted]`.
+ */
+const restrictRoute = createRoute({
+  method: 'post',
+  path: '/contacts/{id}/processing-restriction',
+  tags: [TAG],
+  summary: 'Omezení zpracování podle článku 18 GDPR',
+  security: [{ bearerAuth: ['suppressions:write'] }],
+  request: {
+    params: IdParam,
+    headers: IdempotencyHeaderSchema,
+    body: { content: { 'application/json': { schema: RestrictionBody } } },
+  },
+  responses: {
+    200: {
+      description: 'Zpracování je omezené',
+      content: { 'application/json': { schema: RestrictionResultSchema } },
+    },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    422: problemResponse('validation_failed'),
+  },
+});
+
+const liftRestrictionRoute = createRoute({
+  method: 'delete',
+  path: '/contacts/{id}/processing-restriction',
+  tags: [TAG],
+  summary: 'Zrušení omezení zpracování',
+  security: [{ bearerAuth: ['suppressions:write'] }],
+  request: {
+    params: IdParam,
+    // Tělo u DELETE je v tomhle API zavedené (viz DELETE /lists/{id}/subscribe) a tady
+    // je nutné: bez poznámky by se v auditu nedalo dohledat, na základě čeho se kontakt
+    // vrátil do rozesílky.
+    body: { content: { 'application/json': { schema: RestrictionBody } } },
+  },
+  responses: {
+    200: {
+      description: 'Omezení zrušeno',
+      content: { 'application/json': { schema: RestrictionResultSchema } },
+    },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    422: problemResponse('validation_failed'),
+  },
+});
+
+/**
+ * Podklad k větě „omezení platí od…". Čte se JEN u omezeného kontaktu, protože jde
+ * o samostatný dotaz do auditu; u ostatních by to byl dotaz navíc na každý detail.
+ */
+async function presentRestriction(
+  ctx: Parameters<typeof getProcessingRestriction>[0],
+  contact: { id: string; processing_restricted: boolean },
+): Promise<z.infer<typeof RestrictionSchema>> {
+  if (!contact.processing_restricted) return null;
+  const found = await getProcessingRestriction(ctx, contact.id);
+  // Omezení nastavené dřív, než tahle trasa vznikla (nebo po vypršení oddílu auditu),
+  // záznam nemá. Vrací se null a obrazovka pak jen neukáže datum; vymýšlet si ho
+  // z `updated_at` je horší než ho neukázat vůbec.
+  if (found === null) return null;
+  return {
+    restricted_at: toIsoRequired(found.restrictedAt),
+    note: found.note,
+    gdpr_request_id: found.gdprRequestId,
+  };
+}
+
+/**
  * Pořadí registrace není kosmetika. Cesty se statickým posledním segmentem (count, lookup,
  * batch, bulk-delete) musí být zaregistrované dřív než /contacts/{id}, jinak by je router
  * poslal do parametru a klient by dostal invalid_uuid místo odpovědi.
@@ -537,7 +657,7 @@ export function registerContactRoutes(app: OpenAPIHono<ContactsEnv>): void {
     const row = await getContactById(ctx, c.req.valid('param').id);
     // Cizí projekt vrací 404, ne 403: 403 by potvrdilo, že to ID existuje (7.3 části 2).
     if (row === null) throw new ApiError('not_found');
-    return c.json({ data: row }, 200);
+    return c.json({ data: row, restriction: await presentRestriction(ctx, row) }, 200);
   });
 
   app.openapi(patchRoute, async (c) => {
@@ -628,5 +748,46 @@ export function registerContactRoutes(app: OpenAPIHono<ContactsEnv>): void {
     const row = await getContactById(ctx, id);
     if (row === null) throw new ApiError('not_found');
     return c.json({ data: row }, 200);
+  });
+
+  app.openapi(restrictRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    // Existenci kontaktu ověřujeme PŘED zápisem: `restrictProcessing` na neznámé id
+    // mlčí (UPDATE nic netrefí), takže bez téhle kontroly by klient dostal 200 na
+    // kontakt, který neexistuje. Oprávnění drží doménová funkce i tahle trasa.
+    assertPermission(ctx, 'suppressions:write');
+    const before = await getContactById(ctx, id);
+    if (before === null) throw new ApiError('not_found');
+
+    await restrictProcessing(ctx, id, {
+      note: body.note,
+      ...(body.gdpr_request_id === undefined ? {} : { requestId: body.gdpr_request_id }),
+    });
+
+    const row = await getContactById(ctx, id);
+    if (row === null) throw new ApiError('not_found');
+    return c.json({ data: row, restriction: await presentRestriction(ctx, row) }, 200);
+  });
+
+  app.openapi(liftRestrictionRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    assertPermission(ctx, 'suppressions:write');
+    const before = await getContactById(ctx, id);
+    if (before === null) throw new ApiError('not_found');
+
+    await liftProcessingRestriction(ctx, id, {
+      note: body.note,
+      ...(body.gdpr_request_id === undefined ? {} : { requestId: body.gdpr_request_id }),
+    });
+
+    const row = await getContactById(ctx, id);
+    if (row === null) throw new ApiError('not_found');
+    // Po zrušení je `restriction` vždy null: kontakt omezený není a věta na obrazovce
+    // nemá co ukazovat. Historii drží audit.
+    return c.json({ data: row, restriction: await presentRestriction(ctx, row) }, 200);
   });
 }

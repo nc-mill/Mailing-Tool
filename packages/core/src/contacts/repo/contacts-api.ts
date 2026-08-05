@@ -5,9 +5,11 @@ import { withWorkspace } from '../../tx';
 import type { ContactResponse } from '../api/schemas';
 import { writeAudit } from '../audit';
 import type { ConsentEvidence } from '../consents/evidence';
+import { subscribeToList } from '../lists/subscribe-service';
 import { recordConsent, type ConsentPurpose } from './consents';
 import { writeContact } from './contacts';
 import { getContactById } from './contacts-query';
+import { optInByIdsIn } from './lists';
 import { writeSubscriptionIn } from './subscriptions';
 import { addTagsToContact, ensureTags } from './tags';
 
@@ -140,8 +142,48 @@ export async function upsertContactFromApi(
   let skippedConsents = 0;
 
   if (result.allowSubscriptions && body.lists !== undefined && body.lists.length > 0) {
+    /*
+     * NEPOTVRZENÉ PŘIHLÁŠENÍ NA SEZNAM S DVOJÍM POTVRZENÍM JDE PŘES `subscribeToList`.
+     *
+     * Do téhle chvíle se všechna přihlášení zapisovala napřímo přes
+     * `writeSubscriptionIn`, tedy bez stavového automatu, a sloupec `lists.opt_in`
+     * se tu VŮBEC NEČETL. Následek: správce zvolil „nepotvrzený", vznikl řádek
+     * `pending`, ale žádný token se nevydal (`issueConfirmation` se nezavolala)
+     * a žádný potvrzovací e-mail neodešel. Člověk čekal na e-mail, který se ani
+     * neplánoval, a přihlášení viselo napořád.
+     *
+     * Deleguje se jen tenhle jeden případ, ne celý zápis:
+     *
+     * - `confirmed` zůstává přímým zápisem. Je to VÝSLOVNÉ ROZHODNUTÍ SPRÁVCE
+     *   („souhlas mám doložený", rozhodnutí zadavatele z 5. 8. 2026) a `subscribe()`
+     *   by ho bez `skipConfirmation` a prohlášení překlopilo zpátky na `pending`.
+     * - Seznam s jedním krokem se taky zapisuje přímo: potvrzovat není co, a kdyby
+     *   se tam poslal `pending`, automat by z něj stejně udělal `confirmed`, tedy
+     *   něco jiného, než správce zvolil.
+     *
+     * `subscribeToList` si kontakt zapíše ještě jednou (`writeContact` v režimu
+     * `update`), a je to neškodné: nese jen adresu a zdroj, jméno vynechává
+     * a atributy se slučují přes `jsonb_strip_nulls(… || excluded.attributes)`,
+     * takže prázdná mapa nic nepřepíše.
+     */
+    // Vlastní vazba: zúžení `body.lists` se uvnitř uzávěru ztrácí, protože pole
+    // je volitelné a překladač si nemůže být jistý, že se mezitím nezměnilo.
+    const requested = body.lists;
+    const optIn = await withWorkspace(ctx, async (tx) =>
+      optInByIdsIn(
+        tx,
+        ctx,
+        requested.map((item) => item.list_id),
+      ),
+    );
+
+    const needsConfirmation = requested.filter(
+      (item) => (item.status ?? 'pending') === 'pending' && optIn.get(item.list_id) === 'double',
+    );
+    const direct = requested.filter((item) => !needsConfirmation.includes(item));
+
     await withWorkspace(ctx, async (tx) => {
-      for (const item of body.lists ?? []) {
+      for (const item of direct) {
         await writeSubscriptionIn(tx, ctx, {
           contactId,
           listId: item.list_id,
@@ -151,6 +193,17 @@ export async function upsertContactFromApi(
         });
       }
     });
+
+    for (const item of needsConfirmation) {
+      // Zdroj se překládá stejně jako u kontaktu: `manual` je „udělal to správce",
+      // což je jiné tvrzení než „přišlo to přes API", a `consentSourceFor`
+      // v `subscribe.ts` z něj udělá `admin`.
+      await subscribeToList(ctx, {
+        listId: item.list_id,
+        email: body.email,
+        source: contactSource === 'manual' ? 'manual' : 'api',
+      });
+    }
   }
 
   for (const consent of body.consent ?? []) {

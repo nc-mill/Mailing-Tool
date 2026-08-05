@@ -32,7 +32,9 @@ export function ListsTable({ basePath, lists }: { basePath: string; lists: ListR
         variant="first"
         title={t('lists.emptyTitle')}
         explanation={t('lists.emptyBody')}
-        actions={[{ label: t('lists.emptyAction'), onClick: () => router.refresh() }]}
+        // Prázdný stav nabízel „Načíst znovu", což nic nezakládá. Prvním krokem
+        // v projektu bez seznamu je seznam založit.
+        actions={[{ label: t('lists.create'), onClick: () => router.push(`${basePath}/new`) }]}
       />
     );
   }
@@ -41,8 +43,12 @@ export function ListsTable({ basePath, lists }: { basePath: string; lists: ListR
     <section className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold text-text">{t('lists.title')}</h1>
       <p>{t('lists.lead')}</p>
+      {/* Tlačítko do 5. 8. 2026 NEMĚLO ŽÁDNOU AKCI, takže seznam nešlo z rozhraní
+          založit vůbec. Teď vede na `/lists/new`. */}
       <div>
-        <Button variant="primary">{t('lists.create')}</Button>
+        <Button variant="primary" onClick={() => router.push(`${basePath}/new`)}>
+          {t('lists.create')}
+        </Button>
       </div>
 
       <DataTable

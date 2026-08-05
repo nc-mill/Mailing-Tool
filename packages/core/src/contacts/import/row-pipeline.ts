@@ -1,6 +1,6 @@
 import { normalizeEmail } from '../email';
 import { resolveName } from '../naming/resolve';
-import type { NameOverrideLookup } from '../naming/types';
+import type { Gender, NameOverrideLookup } from '../naming/types';
 import type { ContactUpsertRow } from '../repo/contacts';
 import { coerceFieldValue, type FieldSpec } from './coerce';
 import type { ImportMapping } from './mapping';
@@ -80,6 +80,51 @@ export type ProcessedRow =
 const HARD_SUPPRESSION = new Set(['complaint', 'gdpr_erasure']);
 
 /**
+ * Hodnoty sloupce s pohlavím, kterým rozumíme.
+ *
+ * Dřív se do kontaktu propsalo jedině doslovné `male`, `female` nebo `unknown`,
+ * protože se hodnota porovnávala rovnou s typem `Gender`. Český export ale píše
+ * „muž" a „žena", zkratku „m" a „ž", případně „M"/"F", takže se sloupec, který
+ * si uživatel v kroku Mapování výslovně nastavil jako Pohlaví, ve výsledku
+ * ZAHODIL a rod se odhadoval ze jména. Ticho je tu ta nejhorší varianta: rod
+ * řídí oslovení v 5. pádě, takže se špatný odhad projeví až v odeslané kampani.
+ *
+ * Porovnává se bez diakritiky a bez ohledu na velikost písmen, proto je „ž"
+ * v tabulce zapsané jako „z". Co nepoznáme, vrací `undefined`, tedy „rozhodni
+ * podle jména", ne „neznámý rod": neznámý rod by naopak odhad ze jména vypnul.
+ */
+const GENDER_VALUES: Record<string, Gender> = {
+  m: 'male',
+  muz: 'male',
+  muzsky: 'male',
+  male: 'male',
+  man: 'male',
+  pan: 'male',
+  f: 'female',
+  z: 'female',
+  w: 'female',
+  zena: 'female',
+  zensky: 'female',
+  female: 'female',
+  woman: 'female',
+  pani: 'female',
+  unknown: 'unknown',
+  neznamy: 'unknown',
+  nezname: 'unknown',
+};
+
+export function parseGender(value: string | undefined): Gender | undefined {
+  if (value === undefined) return undefined;
+  const key = value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim();
+  if (key === '') return undefined;
+  return GENDER_VALUES[key];
+}
+
+/**
  * `normalizeEmail` vrací `invalid_email`, ale sloupec `import_errors.error_code`
  * má registrovanou hodnotu `email_invalid`. Překlad je tady, aby se do databáze
  * nedostal kód, který v registru není.
@@ -146,7 +191,7 @@ export function processRow(row: RawRow, ctx: RowContext): ProcessedRow {
   const lastName = at('last_name');
   const titlePrefix = at('title_prefix');
   const titleSuffix = at('title_suffix');
-  const gender = at('gender');
+  const gender = parseGender(at('gender'));
   const locale = at('locale') ?? ctx.settings.locale;
   const name = resolveName(
     {
@@ -155,7 +200,7 @@ export function processRow(row: RawRow, ctx: RowContext): ProcessedRow {
       ...(lastName === undefined ? {} : { lastName }),
       ...(titlePrefix === undefined ? {} : { titlePrefix }),
       ...(titleSuffix === undefined ? {} : { titleSuffix }),
-      ...(gender === 'female' || gender === 'male' || gender === 'unknown' ? { gender } : {}),
+      ...(gender === undefined ? {} : { gender }),
       nameOrder: ctx.options.name_order,
       locale,
     },

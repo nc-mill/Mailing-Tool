@@ -46,7 +46,9 @@ export {
 // Nastavení projektu vlastněná touhle doménou
 export {
   ContactsWorkspaceSettingsSchema,
+  isGreetingEnabled,
   readContactsSettings,
+  readGreetingEnabled,
   type AddressForm,
   type ContactsWorkspaceSettings,
 } from './settings';
@@ -165,6 +167,7 @@ export {
 export {
   readVerifiedToken,
   unsubscribeByToken,
+  unsubscribeRedirectFor,
   type VerifiedPublicToken,
 } from './public/unsubscribe';
 export {
@@ -179,6 +182,24 @@ export { loadWebview, type WebviewResult } from './public/webview';
 export { publicListLabel } from './public/list-label';
 export { confirmPublicSubscription } from './lists/confirm-service';
 export { isOneClickBody, oneClickRateLimit, ONE_CLICK_BODY } from './lists/one-click';
+/**
+ * Kompoziční kořen e-mailů seznamu. Volá se při startu procesu vedle
+ * `installSystemMailer()`, viz `apps/web/src/instrumentation.ts`.
+ */
+export {
+  installSubscriptionEmails,
+  outboxSubscriptionEmails,
+  sendSubscriptionEmail,
+  type SubscriptionEmailOutcome,
+} from './lists/subscription-emails';
+export { documentHasConfirmLink } from './lists/confirm-link-guard';
+export {
+  defaultSubscriptionEmail,
+  subscriptionEmailLanguage,
+  CONFIRM_URL_EXPRESSION,
+  CONFIRM_URL_PATH,
+  type SubscriptionEmailKind,
+} from './lists/default-emails';
 
 // Registry, které si vyzvedávají P01 a P04
 export { CONTACTS_ERROR_CODES, CONTACTS_FIELD_ERROR_CODES, type ContactsErrorCode } from './errors';

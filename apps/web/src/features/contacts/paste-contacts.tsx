@@ -1,10 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { Checkbox } from '@mlain/ui/components/checkbox';
 import { Field } from '@mlain/ui/components/field';
+import { Input } from '@mlain/ui/components/input';
+import { Select, SelectItem } from '@mlain/ui/components/select';
 import { Textarea } from '@mlain/ui/components/textarea';
 import {
   parsePastedContacts,
@@ -18,7 +21,7 @@ export type PasteContactsProps = {
   workspaceId: string;
   /** `/w/{slug}/contacts`. Z něj se skládá cesta na výsledek dávky. */
   basePath: string;
-  lists?: { id: string; name: string }[];
+  lists?: { id: string; name: string; optIn?: 'single' | 'double'; isDefault?: boolean }[];
   tags?: { id: string; name: string }[];
   /** Rozestup dotazů na stav dávky. Testy si ho zkracují, aby neběžely v reálném čase. */
   pollIntervalMs?: number;
@@ -76,6 +79,9 @@ const COLUMNS = ['email', 'first_name', 'last_name'] as const;
 
 /** Kolik chybných řádků se vypíše, než se zbytek shrne do jedné věty. */
 const PROBLEM_PREVIEW_LIMIT = 50;
+
+/** Hodnota, kterou v rozbalovátku nese volba „Založit nový seznam". */
+const CREATE_LIST = '__create__';
 
 /**
  * Mapování sloupců pro `PATCH /contacts/imports/{id}`.
@@ -139,14 +145,27 @@ export function PasteContacts({
   const router = useRouter();
 
   const [text, setText] = useState('');
-  const [listId, setListId] = useState<string | null>(null);
+  /** Předvybraný je výchozí seznam projektu, jinak nic; prázdno se nedá odeslat. */
+  const [available, setAvailable] = useState(lists);
+  const [listId, setListId] = useState<string | null>(
+    lists.find((list) => list.isDefault === true)?.id ?? null,
+  );
+  const [listError, setListError] = useState<string | null>(null);
+  const [showCreateList, setShowCreateList] = useState(lists.length === 0);
+  const [newListName, setNewListName] = useState('');
+  const [creatingList, setCreatingList] = useState(false);
+  const [createdListName, setCreatedListName] = useState<string | null>(null);
   // Výchozí je PŘIHLÁŠENÝ, protože o kontakty vložené ručně z vlastního seznamu
   // se nikdo nepřihlašuje formulářem a nepotvrzený stav by je vyřadil z rozesílek.
   const [subscriptionStatus, setSubscriptionStatus] = useState<'confirmed' | 'pending'>(
     'confirmed',
   );
   const [tagIds, setTagIds] = useState<string[]>([]);
+  const [declaration, setDeclaration] = useState(false);
   const [phase, setPhase] = useState<Phase>({ kind: 'editing' });
+
+  const listWrapperRef = useRef<HTMLDivElement>(null);
+  const newListRef = useRef<HTMLInputElement>(null);
 
   const parsed: PasteResult = useMemo(() => parsePastedContacts(text), [text]);
   const tooMany = parsed.rows.length > PASTE_MAX_ROWS;
@@ -154,8 +173,77 @@ export function PasteContacts({
   // Kdyby bylo součástí `canSave`, ukázal by se během ukládání důvod
   // nedostupnosti, tedy věta o prázdném textu nad textem, který prázdný není.
   const canSave = parsed.rows.length > 0 && !tooMany;
+  /**
+   * Prohlášení o doloženém souhlasu. Bez něj automat u seznamu s DVOJÍM
+   * potvrzením přihlášení nepotvrdí (`skipConfirmation` v `subscribe-service.ts`
+   * platí jen s `declaration`), takže obrazovka slibovala „potvrzené"
+   * a v databázi vznikalo „čeká na potvrzení". Ověřeno na dev serveru 5. 8. 2026.
+   */
+  const selectedList = available.find((list) => list.id === listId);
+  const declarationRequired =
+    selectedList?.optIn === 'double' && subscriptionStatus === 'confirmed';
   /** Od odeslání až po doběhnutí dávky se nesmí spustit druhé zakládání. */
   const busy = phase.kind === 'saving' || phase.kind === 'running';
+
+  /**
+   * `Select` z P05 ref nepřijímá, takže se spouštěč hledá v obalu. Tentýž
+   * postup má `SelectField` i krok Volby v průvodci importem.
+   */
+  function focusList(): void {
+    const trigger = listWrapperRef.current?.querySelector('[role="combobox"]');
+    if (trigger instanceof HTMLElement) trigger.focus();
+  }
+
+  /**
+   * Založení seznamu rovnou tady. Bez téhle cesty by člověk s prázdným projektem
+   * musel odejít jinam a vložený text by ztratil, protože ho drží jen tahle
+   * obrazovka. Dvojí potvrzení je bezpečná výchozí volba, stejná jako u tlačítka
+   * „Nový seznam" v seznamech i v průvodci importem.
+   */
+  async function createList(): Promise<void> {
+    const name = newListName.trim();
+    if (name === '') {
+      setListError(t('paste.newListNameRequired'));
+      newListRef.current?.focus();
+      return;
+    }
+    setCreatingList(true);
+    try {
+      const res = await fetch('/api/v1/lists', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ name, opt_in: 'double' }),
+      });
+      if (!res.ok) {
+        console.error(`Seznam ${name} se nepodařilo založit: HTTP ${res.status}`, await res.text());
+        setListError(t('paste.newListFailed'));
+        return;
+      }
+      /*
+       * `opt_in` se čte Z ODPOVĚDI, ne z přání. Na něm stojí, jestli obrazovka
+       * bude trvat na prohlášení o souhlasu; bez něj by se u čerstvě založeného
+       * seznamu s dvojím potvrzením prohlášení nevyžádalo a dávka by skončila
+       * jako nepotvrzená, přestože uživatel zvolil „potvrzené".
+       */
+      const created = (
+        (await res.json()) as { data: { id: string; name: string; opt_in: 'single' | 'double' } }
+      ).data;
+      setAvailable((previous) => [
+        ...previous,
+        { id: created.id, name: created.name, optIn: created.opt_in },
+      ]);
+      setListId(created.id);
+      setCreatedListName(created.name);
+      setShowCreateList(false);
+      setNewListName('');
+      setListError(null);
+    } catch (error) {
+      console.error(`Seznam ${name} se nepodařilo založit.`, error);
+      setListError(t('paste.newListFailed'));
+    } finally {
+      setCreatingList(false);
+    }
+  }
 
   function toggleTag(id: string) {
     setTagIds((previous) =>
@@ -185,6 +273,18 @@ export function PasteContacts({
    */
   async function save() {
     if (!canSave || busy) return;
+    // Bez seznamu se neukládá. Kontrola je tady, po kliknutí, ne v podobě
+    // zakázaného tlačítka: to by neřeklo proč.
+    if (listId === null) {
+      setListError(t('paste.listRequired'));
+      focusList();
+      return;
+    }
+    if (declarationRequired && !declaration) {
+      setListError(t('paste.declarationRequired'));
+      return;
+    }
+    setListError(null);
     setPhase({ kind: 'saving' });
 
     try {
@@ -225,7 +325,8 @@ export function PasteContacts({
             // se sem žádná nedostane. Volba je tu proto, aby se nespoléhalo na
             // výchozí hodnotu, kdyby se rozbor někdy změnil.
             duplicate_in_file: 'first',
-            list_ids: listId === null ? [] : [listId],
+            // Seznam je povinný, takže tu vždycky je právě jeden.
+            list_ids: [listId],
             /*
              * Stav přihlášení jde do voleb importu, protože `ImportOptionsSchema`
              * pole `subscription_status` PŘIJÍMÁ a ukládá (ověřeno proti
@@ -234,6 +335,17 @@ export function PasteContacts({
              */
             subscription_status: subscriptionStatus,
             tag_ids: tagIds,
+            // Souhlas je DOKLAD, ne zaškrtávátko navíc: ukládá se k importu
+            // i k souhlasu každého kontaktu a bez něj se přihlášení na seznamu
+            // s dvojím potvrzením nepotvrdí.
+            consent: declaration
+              ? {
+                  purpose: 'email_marketing' as const,
+                  legal_basis: 'consent' as const,
+                  source: 'paste',
+                  declaration: true,
+                }
+              : null,
           },
         }),
       });
@@ -393,24 +505,65 @@ export function PasteContacts({
       </section>
 
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="paste-list" className="font-semibold text-text">
+        {/*
+          ZAŘAZENÍ DO SEZNAMU JE POVINNÉ, stejně jako v průvodci importem.
+          Volba „do žádného seznamu" tady byla výchozí, takže tahle obrazovka
+          byla druhá branka k témuž výsledku: kontakt, kterému nemá co dojít
+          a nemá se z čeho odhlásit, protože publikum kampaně i odhlašovací
+          odkaz stojí na seznamech.
+        */}
+        <div ref={listWrapperRef} className="flex flex-col gap-1.5">
+          <span aria-hidden className="font-semibold text-text">
             {t('paste.list')}
-          </label>
-          <select
-            id="paste-list"
-            className="min-h-11 rounded-[var(--radius-control)] border border-border-strong bg-surface px-3 text-sm text-text"
-            value={listId ?? ''}
-            onChange={(event) => setListId(event.target.value === '' ? null : event.target.value)}
+          </span>
+          <Select
+            aria-label={t('paste.list')}
+            placeholder={t('paste.listPlaceholder')}
+            {...(listId === null ? {} : { value: listId })}
+            onValueChange={(next) => {
+              if (next === CREATE_LIST) {
+                setShowCreateList(true);
+                setListError(null);
+                window.setTimeout(() => newListRef.current?.focus(), 0);
+                return;
+              }
+              setShowCreateList(false);
+              setListError(null);
+              setListId(next);
+            }}
           >
-            <option value="">{t('paste.noList')}</option>
-            {lists.map((list) => (
-              <option key={list.id} value={list.id}>
+            {available.map((list) => (
+              <SelectItem key={list.id} value={list.id}>
                 {list.name}
-              </option>
+              </SelectItem>
             ))}
-          </select>
+            <SelectItem value={CREATE_LIST}>{t('paste.createList')}</SelectItem>
+          </Select>
+          <p className="text-sm text-text-muted">{t('paste.listHint')}</p>
         </div>
+
+        {createdListName === null ? null : (
+          <p role="status" className="text-sm text-text-muted">
+            {t('paste.newListCreated', { name: createdListName })}
+          </p>
+        )}
+
+        {showCreateList ? (
+          <div className="flex flex-col gap-3 rounded-[var(--radius-surface)] border border-border p-4">
+            <Field label={t('paste.newListName')} hint={t('paste.newListNameHint')}>
+              <Input
+                ref={newListRef}
+                value={newListName}
+                maxLength={120}
+                data-testid="paste-new-list-name"
+                onChange={(event) => setNewListName(event.target.value)}
+              />
+            </Field>
+            <Button variant="secondary" className="self-start" onClick={() => void createList()}>
+              {creatingList ? t('paste.newListCreating') : t('paste.newListCreate')}
+            </Button>
+          </div>
+        ) : null}
 
         {/* Tatáž volba, jakou má ruční přidání jednoho kontaktu. Výchozí je
             přihlášený, protože jinak by dávka skončila mimo rozesílky a nikdo
@@ -502,6 +655,41 @@ export function PasteContacts({
           zůstane klikatelné a řekne důvod. Zakázané tlačítko bez vysvětlení je
           na téhle obrazovce nejhorší možná odpověď, protože důvod bývá překlep
           na jednom řádku z pěti set. */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="paste-declaration"
+            checked={declaration}
+            aria-describedby="paste-declaration-evidence"
+            onCheckedChange={(next) => {
+              setDeclaration(next === true);
+              setListError(null);
+            }}
+          />
+          <label htmlFor="paste-declaration" className="text-sm text-text">
+            {t('paste.declaration')}
+          </label>
+        </div>
+        <p id="paste-declaration-evidence" className="text-sm text-text-muted">
+          {t('paste.declarationEvidence')}
+        </p>
+      </div>
+
+      {listError === null ? null : (
+        <p role="alert" className="text-sm text-danger-text">
+          {listError}
+        </p>
+      )}
+
+      {/* Cílový seznam je vidět u tlačítka, protože výchozí bývá předvybraný. */}
+      {listId === null ? null : (
+        <p className="text-sm text-text-muted">
+          {t('paste.submitTarget', {
+            list: available.find((list) => list.id === listId)?.name ?? '',
+          })}
+        </p>
+      )}
+
       <div className="flex gap-2">
         <Button
           variant="primary"

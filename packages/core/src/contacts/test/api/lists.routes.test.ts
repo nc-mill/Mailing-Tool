@@ -16,12 +16,26 @@ const unsub = vi.hoisted(() => ({
   bulkUnsubscribeFromList: vi.fn(),
 }));
 const query = vi.hoisted(() => ({ findContactByEmail: vi.fn() }));
+const templates = vi.hoisted(() => ({ findTemplateById: vi.fn() }));
+const catalog = vi.hoisted(() => ({ getFieldCatalog: vi.fn() }));
+const guard = vi.hoisted(() => ({
+  documentHasConfirmLink: vi.fn(),
+  documentUsesUnsubscribeUrl: vi.fn(),
+}));
+const tx = vi.hoisted(() => ({ withWorkspace: vi.fn() }));
 const permissions = vi.hoisted(() => ({ assertPermission: vi.fn() }));
 
 vi.mock('../../repo/lists', () => repo);
 vi.mock('../../lists/subscribe-service', () => service);
 vi.mock('../../lists/unsubscribe', () => unsub);
 vi.mock('../../repo/contacts-query', () => query);
+vi.mock('../../../templates/repository', () => templates);
+vi.mock('../../fields/catalog', () => catalog);
+vi.mock('../../lists/confirm-link-guard', () => guard);
+vi.mock('../../../tx', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ...tx,
+}));
 vi.mock('../../../identity/permissions', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   ...permissions,
@@ -32,6 +46,7 @@ const { apiHarness, JSON_HEADERS } = await import('./harness');
 
 const LIST_ID = '0198e2c1-6b3f-7c21-9a44-0f3c7a1b2d5e';
 const CONTACT_ID = '0198e2c2-0000-7c21-9a44-0f3c7a1b2d5e';
+const TEMPLATE_ID = '0198e2c3-0000-7c21-9a44-0f3c7a1b2d5e';
 
 const LIST_ROW = {
   id: LIST_ID,
@@ -43,7 +58,11 @@ const LIST_ROW = {
   confirmationTtlHours: 168,
   confirmationTemplateId: null,
   welcomeTemplateId: null,
+  goodbyeTemplateId: null,
   sendWelcome: false,
+  sendGoodbye: false,
+  confirmRedirectUrl: null,
+  unsubscribeRedirectUrl: null,
   confirmationMaxResends: 3,
   isDefault: false,
   deletedAt: null,
@@ -57,6 +76,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   permissions.assertPermission.mockReturnValue(undefined);
   repo.byId.mockResolvedValue(LIST_ROW);
+  catalog.getFieldCatalog.mockResolvedValue({ version: 'v1', fields: [] });
+  templates.findTemplateById.mockResolvedValue({ id: TEMPLATE_ID, design: {} });
+  guard.documentHasConfirmLink.mockReturnValue(true);
+  guard.documentUsesUnsubscribeUrl.mockReturnValue(false);
+  tx.withWorkspace.mockImplementation(
+    async (_ctx: unknown, run: (t: unknown) => Promise<unknown>) => run({}),
+  );
 });
 
 describe('GET /lists', () => {
@@ -293,5 +319,142 @@ describe('GET /lists/{id}/stats', () => {
     repo.byId.mockResolvedValue(null);
     const res = await app().request(`/lists/${LIST_ID}/stats`);
     expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * ZÁVORA: potvrzovací e-mail bez odkazu na potvrzení.
+ *
+ * Testuje se ZAPOJENÍ, ne pravidlo samotné: to má vlastní test
+ * v `lists/confirm-link-guard.test.ts`. Kdyby se závora z trasy vytratila,
+ * uživatel by si připojil e-mail, ze kterého přihlášení dokončit nejde,
+ * a nedozvěděl by se to.
+ */
+describe('PATCH /lists/{id} a potvrzovací šablona', () => {
+  it('šablonu bez odkazu na potvrzení odmítne 422 a seznam nezmění', async () => {
+    guard.documentHasConfirmLink.mockReturnValue(false);
+    const res = await app().request(`/lists/${LIST_ID}`, {
+      method: 'PATCH',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ confirmation_template_id: TEMPLATE_ID }),
+    });
+
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { errors?: { path: string; code: string }[] };
+    expect(body.errors?.[0]).toMatchObject({
+      path: 'confirmation_template_id',
+      code: 'confirmation_template_missing_confirm_link',
+    });
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('šablonu s odkazem připojí', async () => {
+    repo.update.mockResolvedValue({ ...LIST_ROW, confirmationTemplateId: TEMPLATE_ID });
+    const res = await app().request(`/lists/${LIST_ID}`, {
+      method: 'PATCH',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ confirmation_template_id: TEMPLATE_ID }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(repo.update).toHaveBeenCalledWith(
+      expect.anything(),
+      LIST_ID,
+      expect.objectContaining({ confirmationTemplateId: TEMPLATE_ID }),
+    );
+  });
+
+  it('odpojení šablony závorou neprochází, `null` je návrat k obecnému znění', async () => {
+    repo.update.mockResolvedValue(LIST_ROW);
+    const res = await app().request(`/lists/${LIST_ID}`, {
+      method: 'PATCH',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ confirmation_template_id: null }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(guard.documentHasConfirmLink).not.toHaveBeenCalled();
+    expect(repo.update).toHaveBeenCalledWith(
+      expect.anything(),
+      LIST_ID,
+      expect.objectContaining({ confirmationTemplateId: null }),
+    );
+  });
+
+  it('rozloučení a přesměrování se dají uložit jedním voláním', async () => {
+    repo.update.mockResolvedValue({ ...LIST_ROW, sendGoodbye: true });
+    const res = await app().request(`/lists/${LIST_ID}`, {
+      method: 'PATCH',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        send_goodbye: true,
+        confirm_redirect_url: 'https://example.cz/dekujeme',
+        unsubscribe_redirect_url: 'https://example.cz/mrzi-nas-to',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(repo.update).toHaveBeenCalledWith(
+      expect.anything(),
+      LIST_ID,
+      expect.objectContaining({
+        sendGoodbye: true,
+        confirmRedirectUrl: 'https://example.cz/dekujeme',
+        unsubscribeRedirectUrl: 'https://example.cz/mrzi-nas-to',
+      }),
+    );
+  });
+});
+
+/**
+ * ZÁVORA: odhlašovací odkaz v uvítacím a rozloučovacím e-mailu.
+ *
+ * Sender u transakční zprávy odhlašovací odkaz nevyrábí a v render datech ho
+ * bezpodmínečně přepíše prázdným řetězcem, takže by odkaz vedl do prázdna.
+ * Rozhodnutí zadavatele z 5. 8. 2026: blokuje to uložení, není to varování.
+ */
+describe('PATCH /lists/{id} a odhlašovací odkaz v e-mailu seznamu', () => {
+  it('uvítací e-mail s odhlašovacím odkazem odmítne 422 a seznam nezmění', async () => {
+    guard.documentUsesUnsubscribeUrl.mockReturnValue(true);
+    const res = await app().request(`/lists/${LIST_ID}`, {
+      method: 'PATCH',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ welcome_template_id: TEMPLATE_ID }),
+    });
+
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { errors?: { path: string; code: string }[] };
+    expect(body.errors?.[0]).toMatchObject({
+      path: 'welcome_template_id',
+      code: 'subscription_email_has_unsubscribe_link',
+    });
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('rozloučení s odhlašovacím odkazem odmítne stejně', async () => {
+    guard.documentUsesUnsubscribeUrl.mockReturnValue(true);
+    const res = await app().request(`/lists/${LIST_ID}`, {
+      method: 'PATCH',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ goodbye_template_id: TEMPLATE_ID }),
+    });
+
+    expect(res.status).toBe(422);
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('potvrzovací e-mail se na odhlašovací odkaz nekontroluje', async () => {
+    // Potvrzení odhlašovací odkaz nést nemá a nesmí, ale tuhle roli hlídá
+    // pravidlo o odkazu na potvrzení. Kdyby se kontrolovalo obojí, prošla by
+    // jen šablona, která splní obě, a to nikdo nechce po člověku vysvětlovat.
+    guard.documentUsesUnsubscribeUrl.mockReturnValue(true);
+    repo.update.mockResolvedValue({ ...LIST_ROW, confirmationTemplateId: TEMPLATE_ID });
+    const res = await app().request(`/lists/${LIST_ID}`, {
+      method: 'PATCH',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ confirmation_template_id: TEMPLATE_ID }),
+    });
+
+    expect(res.status).toBe(200);
   });
 });

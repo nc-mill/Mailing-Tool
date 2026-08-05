@@ -1,19 +1,39 @@
 'use client';
 
+import { Link } from '@mlain/i18n/navigation';
 import { FileUpload } from '@mlain/ui/patterns/file-upload';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
+import { FormatGuide } from './format-guide';
 import { uploadLabels } from './labels';
 import { formatBytes, useImportUpload } from './use-import-upload';
 
 export type StepUploadProps = {
   workspaceId: string;
+  workspaceSlug: string;
   maxBytes?: number;
   onCreated: (importId: string) => void;
-  onGuide?: () => void;
 };
 
-const ACCEPT = '.csv,.xlsx,text/csv,application/vnd.ms-excel';
+/** Stavy, ve kterých se dá v rozdělaném importu pokračovat průvodcem. */
+const UNFINISHED = ['pending', 'validating', 'previewing'];
+
+/** Datum nahrání ze serveru je ISO řetězec; člověk chce datum a čas ve svém jazyce. */
+function formatUploadedAt(value: unknown, locale: string): string {
+  if (typeof value !== 'string') return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeStyle: 'short' }).format(date);
+}
+
+/**
+ * ŽÁDNÉ `.xlsx`. Sešit z Excelu tady dřív stál, jenže přečíst ho neumíme:
+ * čtečka souboru je `csv-parse` a detekce kódování nad zipem skončí hláškou
+ * „Kódování souboru neumíme přečíst". Ověřeno v prohlížeči 2026-08-05 nahráním
+ * sešitu. Slíbit formát, který skončí chybou až po nahrání, je horší než ho
+ * nenabídnout: uživatel z hlášky usoudí, že má rozbitý soubor.
+ */
+const ACCEPT = '.csv,text/csv';
 
 /**
  * Krok 1. Nad K4, protože nahrávání s průběhem a zrušením vlastní design systém.
@@ -21,11 +41,12 @@ const ACCEPT = '.csv,.xlsx,text/csv,application/vnd.ms-excel';
  */
 export function StepUpload({
   workspaceId,
+  workspaceSlug,
   maxBytes = 209_715_200,
   onCreated,
-  onGuide,
 }: StepUploadProps) {
   const t = useTranslations('import');
+  const locale = useLocale();
   const [file, setFile] = useState<File | null>(null);
   const { state, upload, cancel, reset } = useImportUpload({
     workspaceId,
@@ -60,9 +81,11 @@ export function StepUpload({
 
       <p className="text-sm text-text-muted">{t('upload.limits')}</p>
 
-      <button type="button" className="self-start text-sm underline" onClick={onGuide}>
-        {t('upload.guide')}
-      </button>
+      {/* Nápověda k formátu. Tlačítko tu bylo od začátku, ale volalo nepovinnou
+          propu `onGuide`, kterou mu průvodce nikdy nepředal, takže kliknutí
+          nedělalo nic a o podobě souboru se uživatel nikde nedozvěděl vůbec nic.
+          Panel je součástí kroku, tím žádná propa chybět nemůže. */}
+      <FormatGuide />
 
       {state.phase === 'error' && state.code === 'file_too_large' ? (
         <div role="alert" className="flex flex-col gap-1">
@@ -84,15 +107,30 @@ export function StepUpload({
       ) : null}
 
       {/* Duplicita není chyba, je to otázka. Proto dvě rovnocenná tlačítka
-          a ne hláška, ze které uživatel neví, co má dělat dál. */}
+          a ne hláška, ze které uživatel neví, co má dělat dál.
+
+          Klíče v `meta` jsou ty, které SKUTEČNĚ chodí ze serveru, tedy
+          `importId`, `status` a `createdAt` z `params` konfliktní odpovědi.
+          Dřív se tu četlo `import_id` a `created_at`, které server nikdy
+          neposlal, takže tlačítko „Otevřít původní import" otevíralo prázdné
+          id a věta o duplicitě neměla datum. */}
       {state.phase === 'error' && state.code === 'import_duplicate' ? (
         <div role="dialog" aria-label={t('duplicateImport.title')} className="flex flex-col gap-2">
           <strong>{t('duplicateImport.title')}</strong>
-          <p>{t('duplicateImport.body', { date: String(meta['created_at'] ?? '') })}</p>
+          <p>{t('duplicateImport.body', { date: formatUploadedAt(meta['createdAt'], locale) })}</p>
           <div className="flex gap-2">
-            <button type="button" onClick={() => onCreated(String(meta['import_id'] ?? ''))}>
-              {t('duplicateImport.openOriginal')}
-            </button>
+            {/* Rozdělaný import se otevře v průvodci, dokončený na jeho
+                výsledku: krok Kontrola souboru u dokončeného importu skončí
+                na 409, protože ze stavu `completed` se nikam přejít nedá. */}
+            {UNFINISHED.includes(String(meta['status'] ?? '')) ? (
+              <button type="button" onClick={() => onCreated(String(meta['importId'] ?? ''))}>
+                {t('duplicateImport.openOriginal')}
+              </button>
+            ) : (
+              <Link href={`/w/${workspaceSlug}/contacts/import/${String(meta['importId'] ?? '')}`}>
+                {t('duplicateImport.openOriginal')}
+              </Link>
+            )}
             <button
               type="button"
               onClick={() => {

@@ -74,6 +74,8 @@ export async function updateFormAction(input: {
     consent_text: string | null;
     active: boolean;
     delivery_template_id: string | null;
+    redirect_url: string | null;
+    success_message: Record<string, string>;
   }>;
 }): Promise<FormActionResult> {
   const result = await apiMutate<{ data: FormView }>(`/api/v1/forms/${input.id}`, {

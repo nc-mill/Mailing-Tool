@@ -41,7 +41,10 @@
     "removeValue": "Remove the value {value}",
     "listLimit": "A list holds at most {limit} items.",
     "save": "Save segment",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "unknownValue": "Deleted item ({value})",
+    "noOptions": "Nothing to choose from yet. Create a tag or a list first.",
+    "addValue": "Add value"
   },
   "fieldGroups": {
     "contact": "About the person",
@@ -145,7 +148,8 @@
     "showAll": "Show all {count}",
     "failed": "The count could not be calculated.",
     "retry": "Try again",
-    "emptyAll": "The segment has no condition yet, so it holds every contact ({count, number})."
+    "emptyAll": "The segment has no condition yet, so it holds every contact ({count, number}).",
+    "failedDetail": "The count could not be calculated. Technical detail: {detail}"
   },
   "warnings": {
     "segment_count_estimated": "The number is an estimate, an exact calculation would take too long.",
@@ -206,7 +210,14 @@
     "repeatedSoftBounces": {
       "title": "Repeated soft bounces",
       "explanation": "Their email failed to arrive temporarily at least 3 times."
-    }
+    },
+    "useTitle": "Use the ready-made segment {preset}",
+    "useBody": "This creates your own segment with that condition. Later changes to the ready-made one will not affect it.",
+    "useName": "Segment name",
+    "useConfirm": "Create segment",
+    "useCancel": "Cancel",
+    "useFailed": "The segment could not be created. Technical detail: {detail}",
+    "nameMissing": "Enter a segment name."
   },
   "freeze": {
     "action": "Freeze the list",
@@ -254,5 +265,46 @@
     "unknownCampaign": "untitled",
     "prefilledNotice": "We prefilled the condition from the campaign report. Check it, adjust it if you like, and save.",
     "notOpenedNotice": "People who clicked in the campaign are not counted as non-openers: a click proves they saw the message, which is why the report counts it as an open."
+  },
+  "freshNow": "Updated just now.",
+  "fieldValues": {
+    "status": {
+      "active": "active",
+      "unconfirmed": "unconfirmed",
+      "unsubscribed": "unsubscribed",
+      "bounced": "bounced",
+      "complained": "marked as spam"
+    },
+    "gender": {
+      "female": "female",
+      "male": "male",
+      "unknown": "unknown"
+    },
+    "source": {
+      "manual": "added manually",
+      "import": "from an import",
+      "api": "via the API",
+      "form": "from a form",
+      "webhook": "from a webhook",
+      "double_opt_in": "from confirmed sign-up",
+      "migration": "from a migration"
+    },
+    "vocative_confidence": {
+      "high": "high",
+      "low": "low",
+      "none": "none"
+    }
+  },
+  "consentPurposes": {
+    "email_marketing": "Marketing emails",
+    "analytics": "Analytics",
+    "personalization": "Personalisation",
+    "profiling": "Profiling",
+    "third_party": "Sharing with third parties"
+  },
+  "fieldScopes": {
+    "lastCampaigns": "({count, plural, =0 {no campaigns} one {last campaign} other {last # campaigns}})",
+    "sinceDays": "(in the last {days, plural, =0 {day} one {# day} other {# days}})",
+    "oneCampaign": "(in one campaign)"
   }
 }

@@ -4,8 +4,15 @@ import {
   resetRevokePendingMessages,
   type RevokePendingMessagesInput,
 } from '../../campaigns-port';
+import { registerSubscriptionEmails, resetSubscriptionEmails } from '../../lists/subscribe-service';
 import { bulkUnsubscribeFromList, snooze, unsubscribe } from '../../lists/unsubscribe';
-import { createActiveContact, createList, createSubscription, testContext } from '../support/db';
+import {
+  asMigrator,
+  createActiveContact,
+  createList,
+  createSubscription,
+  testContext,
+} from '../support/db';
 import {
   auditActions,
   confirmedSubscription,
@@ -20,13 +27,26 @@ import {
 
 const revoke = vi.fn(async (_input: RevokePendingMessagesInput) => ({ revoked: 0 }));
 
+/** Rozloučení po odhlášení. Port se podvrhuje, ať se testuje rozhodnutí, ne outbox. */
+let goodbyes: { listId: string; contactId: string }[] = [];
+
 beforeEach(() => {
   revoke.mockClear();
   registerRevokePendingMessages(revoke);
+  goodbyes = [];
+  registerSubscriptionEmails({
+    async sendConfirmation() {},
+    async sendWelcome() {},
+    async sendGoodbye(input) {
+      goodbyes.push({ listId: input.listId, contactId: input.contactId });
+    },
+    async deliverRequestedItem() {},
+  });
 });
 
 afterEach(() => {
   resetRevokePendingMessages();
+  resetSubscriptionEmails();
 });
 
 describe('rozsah odhlášení', () => {
@@ -267,5 +287,39 @@ describe('hromadné odhlášení ze seznamu', () => {
       { index: 2, outcome: 'unknown_contact', contactId: null },
     ]);
     expect(await subscriptionStatus(ctx, contact.id, list.id)).toBe('unsubscribed');
+  });
+});
+
+/**
+ * ROZLOUČENÍ PO ODHLÁŠENÍ. Výchozí stav je vypnuto (rozhodnutí zadavatele
+ * z 5. 8. 2026), zapíná se na seznamu a u globálního odhlášení se neposílá
+ * vůbec, viz `sendGoodbyeEmail` v `lists/unsubscribe.ts`.
+ */
+describe('rozloučení po odhlášení', () => {
+  it('vypnuté rozloučení nic nepošle', async () => {
+    const ctx = await testContext();
+    const { contact, list } = await confirmedSubscription(ctx, 'r1@x.cz', 'Newsletter R1');
+    await unsubscribe(ctx, { contactId: contact.id, listId: list.id, reason: 'link' });
+    expect(goodbyes).toEqual([]);
+  });
+
+  it('zapnuté rozloučení pošle jeden e-mail za ten seznam', async () => {
+    const ctx = await testContext();
+    const { contact, list } = await confirmedSubscription(ctx, 'r2@x.cz', 'Newsletter R2');
+    await asMigrator().query(`UPDATE lists SET send_goodbye = true WHERE id = $1`, [list.id]);
+
+    await unsubscribe(ctx, { contactId: contact.id, listId: list.id, reason: 'link' });
+
+    expect(goodbyes).toEqual([{ listId: list.id, contactId: contact.id }]);
+  });
+
+  it('globální odhlášení rozloučení neposílá, není podle čeho vybrat text', async () => {
+    const ctx = await testContext();
+    const { contact, list } = await confirmedSubscription(ctx, 'r3@x.cz', 'Newsletter R3');
+    await asMigrator().query(`UPDATE lists SET send_goodbye = true WHERE id = $1`, [list.id]);
+
+    await unsubscribe(ctx, { contactId: contact.id, listId: null, reason: 'link' });
+
+    expect(goodbyes).toEqual([]);
   });
 });

@@ -8,6 +8,7 @@ export function SaveStatus() {
   const t = useTranslations('editor');
   const format = useFormatter();
   const status = useEditorState((state) => state.status);
+  const saveIssue = useEditorState((state) => state.saveIssue);
   const savedAt = useEditorState((state) => state.savedAt);
   const isDirty = useEditorState((state) => state.isDirty);
 
@@ -15,7 +16,10 @@ export function SaveStatus() {
     status === 'saving'
       ? t('header.saving')
       : status === 'invalid'
-        ? t('header.saveInvalid')
+        ? // Věta ze serveru má přednost před obecnou: doménová závora v ní
+          // posílá instrukci, co opravit, a obecné „dokument je neplatný"
+          // by z opravitelné chyby udělalo záhadu.
+          (saveIssue ?? t('header.saveInvalid'))
         : status === 'error'
           ? t('header.saveFailed')
           : status === 'conflict'

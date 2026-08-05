@@ -5,6 +5,10 @@ import { buildRenderSchema } from '@mlain/emails/compile/render-schema';
 import { newBlockId } from '@mlain/emails/document/ids';
 import type { Document } from '@mlain/emails/document/types';
 import type { FieldCatalog } from '../contacts/fields/catalog';
+// Závory e-mailů seznamu. Vlastní je doména kontaktů, protože jsou to jeho
+// sloupce a jeho rozhodnutí; tahle doména volá jedinou funkci a o rolích
+// `confirmation`, `welcome` a `goodbye` nic neví. Viz `saveDesign`.
+import { assertListEmailDocument } from '../contacts/lists/list-email-guards';
 import { wsEq } from '../identity/scope';
 import type { WorkspaceContext } from '../identity/types';
 import { pgErrorCode, withWorkspace, type Tx } from '../tx';
@@ -118,6 +122,25 @@ export async function saveDesign(
   return withWorkspace(ctx.ctx, async (tx) => {
     const current = await findTemplateById(tx, ctx.ctx, templateId);
     if (!current) throw new Error('not_found');
+
+    /*
+     * ZÁVORY SEZNAMU. Nesmí se odstranit jako nadbytečné.
+     *
+     * Šablona připojená k seznamu jako potvrzovací, uvítací nebo rozloučovací
+     * má dvě podmínky, které doména šablon nezná a znát nemá, protože jsou to
+     * vlastnosti VAZBY, ne šablony: potvrzovací e-mail musí nést odkaz na
+     * potvrzení a uvítací ani rozloučovací nesmí nést odhlašovací odkaz.
+     *
+     * Kontroluje se to i při připojení šablony k seznamu (`PATCH /lists/{id}`),
+     * jenže obsah se dá upravit kdykoli potom. Bez téhle závory by se autor
+     * o rozbitém potvrzovacím e-mailu dozvěděl až tím, že se lidem nedaří
+     * dokončit přihlášení, a o odhlašovacím odkazu v uvítacím e-mailu vůbec:
+     * odešel by s prázdným `href` a nic by nespadlo.
+     *
+     * Nepřipojené šablony se to netýká, funkce se pro ně vrátí bez dotazu navíc.
+     */
+    await assertListEmailDocument(tx, ctx.ctx, templateId, document, ctx.fields);
+
     const result = await updateTemplateDesign(
       tx,
       ctx.ctx,

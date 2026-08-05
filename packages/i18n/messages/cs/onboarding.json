@@ -7,7 +7,9 @@
     "show": "Zobrazit",
     "done": "hotovo",
     "finished": "Hotovo, první kampaň odeslána. Report najdete u kampaně.",
-    "finishedDismiss": "Zavřít"
+    "finishedDismiss": "Zavřít",
+    "saveFailed": "Nastavení panelu se nepodařilo uložit ({code}). Zkuste to prosím znovu.",
+    "dismissFailed": "Panel se nepodařilo zavřít ({code}). Zkuste to prosím znovu."
   },
   "steps": {
     "sending": {
@@ -52,7 +54,7 @@
     "filterHint": "Zobrazit je v kontaktech podle štítku Ukázková data",
     "remove": "Odstranit",
     "removed": "Ukázková data jsou pryč.",
-    "removeFailed": "Ukázková data se nepodařilo odstranit. Zkuste to prosím znovu.",
+    "removeFailed": "Ukázková data se nepodařilo odstranit ({code}). Zkuste to prosím znovu.",
     "dialogTitle": "Odstranit ukázková data?",
     "dialogContacts": "{contacts, plural, =0 {žádný kontakt} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}, {lists, plural, =0 {žádný seznam} one {# seznam} few {# seznamy} many {# seznamu} other {# seznamů}} a {tags, plural, =0 {žádný štítek} one {# štítek} few {# štítky} many {# štítku} other {# štítků}}.",
     "dialogContent": "{segments, plural, =0 {žádný segment} one {# segment} few {# segmenty} many {# segmentu} other {# segmentů}}, {templates, plural, =0 {žádná šablona} one {# šablona} few {# šablony} many {# šablony} other {# šablon}} a {campaigns, plural, =0 {žádná kampaň} one {# kampaň} few {# kampaně} many {# kampaně} other {# kampaní}} i s reportem.",

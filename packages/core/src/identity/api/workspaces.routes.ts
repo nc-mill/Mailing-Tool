@@ -22,6 +22,8 @@ export const WorkspaceSchema = z
     locale: z.string(),
     timezone: z.string(),
     address_form: z.enum(['formal', 'informal']),
+    /** Řeší projekt oslovení a 5. pád? Vypnuto skryje i volbu `address_form`. */
+    greeting_enabled: z.boolean(),
     created_at: z.iso.datetime(),
     deleted_at: z.iso.datetime().nullable(),
   })
@@ -44,6 +46,7 @@ export const UpdateWorkspaceInput = z
     locale: z.string().max(20).optional(),
     timezone: z.string().max(64).optional(),
     address_form: z.enum(['formal', 'informal']).optional(),
+    greeting_enabled: z.boolean().optional(),
   })
   .strict()
   .openapi('UpdateWorkspaceInput');

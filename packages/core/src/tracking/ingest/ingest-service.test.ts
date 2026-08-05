@@ -130,4 +130,130 @@ describe('ingest service', () => {
     );
     expect(enqueued[0]!.events[0]!.context['clock_skew_ms']).toBe(30_000);
   });
+
+  /**
+   * Bez hostu v payloadu nemá worker z čeho zapsat `tracking_domains.verified_at`
+   * a v rozhraní zůstane u každé domény navždy „Zatím neověřeno".
+   */
+  it('do fronty jde host z povoleného Origin, aby šlo ověřit doménu', async () => {
+    const { svc, enqueued } = service();
+    await svc.accept(batch([event()]), { origin: 'https://Shop.CZ:8443' });
+    expect(enqueued[0]!.originHost).toBe('shop.cz');
+  });
+
+  it('serverové volání bez Origin nese host null, nic se neověřuje', async () => {
+    const { svc, enqueued } = service({ allowServersidePublicKey: () => true });
+    await svc.accept(batch([event()]), { origin: undefined });
+    expect(enqueued[0]!.originHost).toBeNull();
+  });
+
+  describe('identify', () => {
+    const identify = (properties: Record<string, unknown>) =>
+      event({ name: 'identify', properties });
+
+    it('nepodepsané identify s e-mailem se odmítne, ostatní události projdou', async () => {
+      const { svc, enqueued } = service();
+      const out = await svc.accept(
+        batch([
+          identify({ external_id: 'customer_1', traits: { email: 'jan@example.cz' } }),
+          event(),
+        ]),
+        { origin: 'https://shop.cz' },
+      );
+
+      expect(out.status).toBe(202);
+      expect(out.body?.accepted).toBe(1);
+      expect(out.body?.rejected).toBe(1);
+      expect(out.body?.findings?.[0]?.code).toBe('tracking_identify_unsigned_pii');
+      expect(enqueued[0]!.events).toHaveLength(1);
+      expect(enqueued[0]!.events[0]!.name).toBe('page_view');
+    });
+
+    it('nepodepsané identify s telefonem se odmítne stejně jako s e-mailem', async () => {
+      const { svc } = service();
+      const out = await svc.accept(
+        batch([identify({ external_id: 'c1', traits: { PHONE: '+420777123456' } })]),
+        { origin: 'https://shop.cz' },
+      );
+      expect(out.body?.rejected).toBe(1);
+      expect(out.body?.findings?.[0]?.code).toBe('tracking_identify_unsigned_pii');
+    });
+
+    it('podepsané identify s e-mailem projde, podpis se ověřuje až ve workeru', async () => {
+      const { svc, enqueued } = service();
+      const out = await svc.accept(
+        batch([
+          identify({
+            external_id: 'customer_8472',
+            traits: { email: 'jan@example.cz' },
+            signature: 'GoE8G84t_u2jgjfQlWLvaKoFe3RQs91Pwjo1dMn9Ceg',
+          }),
+        ]),
+        { origin: 'https://shop.cz' },
+      );
+      expect(out.body?.accepted).toBe(1);
+      expect(enqueued[0]!.events[0]!.identify).toEqual({
+        externalId: 'customer_8472',
+        traits: { email: 'jan@example.cz' },
+        signature: 'GoE8G84t_u2jgjfQlWLvaKoFe3RQs91Pwjo1dMn9Ceg',
+      });
+    });
+
+    /**
+     * TOHLE JE JÁDRO CELÉ VĚCI. `sanitizeProperties` zkracuje dlouhé řetězce,
+     * takže traits v `properties` jsou po úklidu jiná data než ta podepsaná.
+     * Kdyby se podpis ověřoval proti nim, neprošel by nikdy a nikde by nebylo
+     * vidět proč.
+     */
+    it('netknutá kopie traits přežije zkrácení vlastností', async () => {
+      const { svc, enqueued } = service({ limits: { maxKeys: 32, maxDepth: 3, maxString: 5 } });
+      await svc.accept(
+        batch([
+          identify({
+            external_id: 'customer_8472',
+            traits: { first_name: 'Bartoloměj' },
+            signature: 'aaa',
+          }),
+        ]),
+        { origin: 'https://shop.cz' },
+      );
+      const prepared = enqueued[0]!.events[0]!;
+      expect(prepared.identify?.traits).toEqual({ first_name: 'Bartoloměj' });
+      // Uklizená verze, která jde do web_events, zkrácená být má.
+      expect(
+        String((prepared.properties['traits'] as Record<string, unknown>)['first_name']),
+      ).not.toBe('Bartoloměj');
+    });
+
+    it('identify bez external_id se odmítne, nezařadí se', async () => {
+      const { svc, enqueued } = service();
+      const out = await svc.accept(batch([identify({ traits: { first_name: 'Jan' } })]), {
+        origin: 'https://shop.cz',
+      });
+      expect(out.body?.rejected).toBe(1);
+      expect(out.body?.findings?.[0]?.code).toBe('validation_failed');
+      expect(enqueued).toHaveLength(0);
+    });
+
+    it('external_id s bajtem 0x0A se odmítne, podpis by byl nejednoznačný', async () => {
+      const { svc } = service();
+      const out = await svc.accept(batch([identify({ external_id: 'a\nb' })]), {
+        origin: 'https://shop.cz',
+      });
+      expect(out.body?.findings?.[0]?.code).toBe('validation_failed');
+    });
+
+    it('nepodepsané identify bez osobních údajů projde', async () => {
+      const { svc, enqueued } = service();
+      const out = await svc.accept(
+        batch([identify({ external_id: 'customer_1', traits: { orders: 3 } })]),
+        { origin: 'https://shop.cz' },
+      );
+      expect(out.body?.accepted).toBe(1);
+      expect(enqueued[0]!.events[0]!.identify).toEqual({
+        externalId: 'customer_1',
+        traits: { orders: 3 },
+      });
+    });
+  });
 });

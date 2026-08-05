@@ -25,16 +25,92 @@
     "field": "Contacts file",
     "dropzone": "Drop the contacts file here",
     "browse": "pick one from a folder",
-    "limits": "We accept CSV and Excel (.xlsx). Up to 200 MB.",
-    "guide": "How to get contacts out of Excel, Ecomail or Mailchimp",
+    "limits": "We accept CSV files. Up to 200 MB.",
+    "guide": "What the contacts file should look like",
     "progress": "{percent} % uploaded",
     "progressText": "{percent} percent uploaded",
     "cancel": "Cancel upload",
-    "unsupportedFormat": "We cannot read {filename}. We accept CSV and Excel (.xlsx).",
+    "unsupportedFormat": "We cannot read {filename}. We accept CSV files. Save an Excel workbook as CSV UTF-8 first.",
     "tooLarge": "The file {filename} is {actual}, we handle {limit}.",
     "selectedFile": "Selected file {name}",
-    "wrongType": "We cannot read this format. We accept CSV and Excel (.xlsx).",
+    "wrongType": "We cannot read this format. We accept CSV files.",
     "tooLargeShort": "The file is larger than {limit}."
+  },
+  "guide": {
+    "trigger": "What the contacts file should look like",
+    "lead": "We need a CSV, a text file where the first row holds the column names and every other row is one contact.",
+    "sampleDownload": "Download a sample CSV",
+    "sampleHint": "The fastest way: open the sample in Excel or Google Sheets, replace the example rows with your contacts and upload it here. We recognise the sample columns on our own.",
+    "columnsTitle": "Columns we can read",
+    "columnsIntro": "We recognise columns by the name in the first row. Case and accents do not matter. Anything we miss you set by hand in the Mapping step, and a column you do not need stays on \"Do not use\".",
+    "columnsCustom": "A column that fits none of the fields above can become a custom field right in the Mapping step: click \"Create field\" under the table. The field is created as text and the values from the file go into it. Leave what you do not need on \"Do not use\".",
+    "columnsHeaderField": "Field",
+    "columnsHeaderNames": "Names we recognise",
+    "columnsHeaderNote": "What we do with it",
+    "columns": {
+      "email": {
+        "field": "Email (required)",
+        "names": "email, e-mail, mail, email address, address",
+        "note": "The only required column. We lowercase the address and trim spaces. A row without an email ends up among the failed ones."
+      },
+      "firstName": {
+        "field": "First name",
+        "names": "first name, firstname, given name, jméno, křestní",
+        "note": "If at least half of the rows hold two words and the file has no separate surname column, we take it as a full name and split it."
+      },
+      "lastName": {
+        "field": "Last name",
+        "names": "last name, lastname, surname, family name, příjmení",
+        "note": "We derive gender and the Czech vocative from the surname."
+      },
+      "fullName": {
+        "field": "Full name",
+        "names": "full name, name, celé jméno, jméno a příjmení",
+        "note": "We split it into first and last name and separate titles. If the file also has a first or last name column, we ignore this one and tell you."
+      },
+      "titlePrefix": {
+        "field": "Title before the name",
+        "names": "title, titul, titul před",
+        "note": "For example Ing. or MUDr. We can also separate a title out of a full name."
+      },
+      "titleSuffix": {
+        "field": "Title after the name",
+        "names": "not recognised by name, set it by hand",
+        "note": "For example Ph.D. or DiS."
+      },
+      "gender": {
+        "field": "Gender",
+        "names": "gender, sex, pohlaví, rod, oslovení",
+        "note": "We understand male and female, their Czech forms and the single letter shorthands. Without the column, or when we do not understand a value, we guess from the name and send the uncertain ones to the salutation review."
+      },
+      "locale": {
+        "field": "Language",
+        "names": "language, locale, jazyk",
+        "note": "A language code such as cs or en. Without it we use the project language."
+      },
+      "tag": {
+        "field": "Tag",
+        "names": "not recognised by name, set it by hand",
+        "note": "Separate several tags in one cell with a comma or a pipe. One contact holds at most 50 tags."
+      }
+    },
+    "formatTitle": "Delimiters, encoding, quotes",
+    "formatDelimiter": "We detect the delimiter ourselves: semicolon, comma, tab and pipe. You can override it in the File check step.",
+    "formatEncoding": "We detect the encoding from the Czech letters: UTF-8, Windows-1250, ISO-8859-2, Windows-1252 and ISO-8859-1. We cannot read UTF-16 and UTF-32 files.",
+    "formatQuotes": "Put a value that contains the delimiter or a line break in quotes. Double a quote that is part of the text.",
+    "formatHeader": "We treat the first row as a header when its cells are non empty, unique and not numeric. Otherwise we name the columns ourselves and you assign them in the Mapping step.",
+    "limitsTitle": "Limits",
+    "limitsFile": "At most 200 MB per file.",
+    "limitsRows": "At most 5 million rows.",
+    "limitsColumns": "At most 200 columns.",
+    "limitsCell": "At most 8,192 characters per cell. We shorten longer ones and tell you.",
+    "sourcesTitle": "How to get the file",
+    "sourcesExcel": "Excel: File, Save as, CSV UTF-8 (comma delimited). We cannot read an .xlsx workbook yet.",
+    "sourcesSheets": "Google Sheets: File, Download, Comma separated values (.csv).",
+    "sourcesOther": "Another tool, say Ecomail or Mailchimp: look for a CSV export next to the contact list. We recognise email, first name and last name automatically, the rest you settle in the Mapping step.",
+    "missingTitle": "What we cannot do yet",
+    "missingXlsx": ".xlsx and .xls workbooks. Save them as CSV UTF-8.",
+    "missingConsentColumns": "Consent date and source from a column. The interface cannot set them yet, only the API can."
   },
   "detected": "We detected {encoding} encoding and {delimiter} as the separator.",
   "previewFailed": {
@@ -59,7 +135,9 @@
       "semicolon": "Semicolon",
       "tab": "Tab",
       "pipe": "Pipe"
-    }
+    },
+    "rechecking": "Reading the file again…",
+    "alternativesHint": "We read the file again after you pick one and redraw the sample above. If it still looks garbled, try the next one."
   },
   "mapping": {
     "title": "What is in each column?",
@@ -88,7 +166,10 @@
       "phone": "Phone",
       "list": "List",
       "tag": "Tag"
-    }
+    },
+    "customField": "Custom field \"{name}\"",
+    "creatingField": "Creating the field \"{name}\"…",
+    "createFieldFailed": "We could not create the field \"{name}\". Please try again, or leave the column on \"Do not use\"."
   },
   "preview": {
     "title": "This is how it will look",
@@ -117,14 +198,13 @@
   },
   "estimate": "{new} new, {updated} updated, {skipped} skipped, {errors} with errors.",
   "options": {
-    "title": "Two last questions",
+    "title": "Three last questions",
     "list": "Add to a list",
     "createList": "Create a new list",
-    "noList": "To no list",
     "subscriptionStatus": "Subscription state",
     "subscriptionConfirmed": "Confirmed",
     "subscriptionPending": "Waiting for confirmation",
-    "tag": "Add a tag (optional)",
+    "tag": "Add a tag",
     "tagHint": "Tip: a tag comes in handy when you want to find this group later.",
     "conflict": "What if we already have the contact?",
     "conflictSkip": "Skip",
@@ -139,7 +219,25 @@
     "declarationLink": "What this means",
     "declarationEvidence": "It is stored as evidence, including the date and my name.",
     "duplicateErrorUnavailable": "For a file this size we cannot reliably spot a second occurrence of the same address, so we do not offer this option.",
-    "submit": "Import {count, plural, =0 {no contacts} one {# contact} few {# contacts} many {# contacts} other {# contacts}}"
+    "submit": "Import {count, plural, =0 {no contacts} one {# contact} few {# contacts} many {# contacts} other {# contacts}}",
+    "listHint": "Required. A contact with no list has nothing to receive and nothing to unsubscribe from, so we always file it somewhere.",
+    "listPlaceholder": "Pick a list",
+    "listRequired": "Pick the list these contacts belong to, or create a new one right here.",
+    "newListName": "Name of the new list",
+    "newListNameHint": "Only you and your colleagues see it. We create the list with double opt-in; you can switch that in its settings.",
+    "newListCreate": "Create the list",
+    "newListCreating": "Creating the list…",
+    "newListNameRequired": "Write what the new list should be called.",
+    "newListFailed": "We could not create the list. Please try again, or pick one of the existing ones.",
+    "newListCreated": "The list {name} is ready and we will file the contacts into it.",
+    "subscriptionConfirmedHint": "These people already gave their consent, we send them no confirmation email.",
+    "subscriptionPendingHint": "We add them to the list as unconfirmed. A campaign reaches them only after they confirm.",
+    "tagOptional": "(optional)",
+    "declarationRequired": "A double opt-in list needs the declaration ticked, otherwise we cannot write the contacts down as confirmed.",
+    "declarationExplainTitle": "What you confirm with the declaration",
+    "declarationExplainBody": "That these people asked for your messages, or that you have another legal ground to write to them, a past purchase for instance. The declaration is evidence: we store it with the import and with every contact consent, together with the date and your name, so you have something to show in case of a complaint or an audit.",
+    "declarationExplainWhen": "The import runs without the declaration too, we just write the contacts into the list as unconfirmed and ask them for confirmation ourselves.",
+    "submitTarget": "We will file the contacts into the list {list}, subscription state: {status}."
   },
   "progress": {
     "title": "Importing contacts",
@@ -260,6 +358,10 @@
     "storage_unavailable": {
       "title": "We could not store the file",
       "nextStep": "Try again in a moment. If it keeps happening, check the free disk space on the server."
+    },
+    "upload_failed": {
+      "title": "We could not send the file",
+      "nextStep": "Please try again. If it keeps happening, copy the technical detail and let us know: {detail}"
     },
     "contact_limit_reached": {
       "title": "You reached the contact limit",

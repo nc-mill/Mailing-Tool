@@ -1,0 +1,14 @@
+{
+  "secret_key": "ml_live_0123456789abcdef",
+  "external_id": "customer_8472",
+  "traits": {
+    "first_name": "Jan",
+    "email": "jan@example.cz",
+    "orders": 3,
+    "ltv": 1490.5,
+    "vip": true,
+    "note": "čeština"
+  },
+  "expected_jcs": "{\"email\":\"jan@example.cz\",\"first_name\":\"Jan\",\"ltv\":1490.5,\"note\":\"čeština\",\"orders\":3,\"vip\":true}",
+  "signature": "GoE8G84t_u2jgjfQlWLvaKoFe3RQs91Pwjo1dMn9Ceg"
+}

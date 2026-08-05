@@ -37,8 +37,23 @@ const REQUIRED_QUEUES = [
   'provider.refresh_quota',
   'domain.recheck',
   'deliverability.rollup',
-  'retention.drop_message_partitions',
 ] as const;
+
+/**
+ * Fronty, které P13 kdysi na registru P01 vyžadoval, ale byly VĚDOMĚ ZRUŠENY.
+ *
+ * Test je obrácený schválně: hlídá, že se nevrátí, ne že existují. Kdyby tady
+ * jen zmizely ze seznamu výš, nic by nebránilo tomu, aby je za rok někdo založil
+ * znovu s odůvodněním „chybí přece úklid oddílů".
+ *
+ * Společný důvod zrušení: odpojení oddílu je DDL (`ALTER TABLE ... DETACH
+ * PARTITION`) a worker běží pod rolí `mlain_app`, která schéma nevlastní.
+ * Obsluha jim proto nikdy nevznikla a vzniknout nemohla; v registru jen
+ * vypadaly jako běžící údržba. Práci převzal příkaz `mlain partitions` pod
+ * migrátorskou rolí, pouštěný z plánovače hostitele. Viz
+ * `packages/core/src/ops/partition-retention.ts`.
+ */
+const REMOVED_QUEUES = ['retention.drop_message_partitions'] as const;
 
 const REQUIRED_ERROR_CODES = [
   'campaign_locked',
@@ -111,6 +126,10 @@ const REQUIRED_CONFIG_KEYS = [
 describe('predpoklady P13 o cizich registrech', () => {
   it.each(REQUIRED_QUEUES)('fronta %s je v registru P01', (name) => {
     expect(queueNames()).toContain(name);
+  });
+
+  it.each(REMOVED_QUEUES)('fronta %s se do registru P01 nevratila', (name) => {
+    expect(queueNames()).not.toContain(name);
   });
 
   it.each(REQUIRED_ERROR_CODES)('chybovy kod %s je v registru P01', (code) => {

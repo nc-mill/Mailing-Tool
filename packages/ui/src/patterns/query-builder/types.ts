@@ -17,7 +17,10 @@ export type FieldRef =
   | { kind: 'suppression' }
   | { kind: 'engagement'; metric: string; scope: Record<string, unknown> }
   | { kind: 'event'; name: string; property?: string }
-  | { kind: 'segment' };
+  // `segment_id` je POVINNÉ, stejně jako v `SegmentAstV1` v jádru. Dokud tu
+  // chybělo, uměla komponenta vyrobit odkaz na segment, který server odmítne,
+  // a katalog polí si ho musel dopisovat přetypováním.
+  | { kind: 'segment'; segment_id: string };
 
 export type ConditionNode = {
   type: 'condition';

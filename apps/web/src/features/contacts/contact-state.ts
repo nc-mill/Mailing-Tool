@@ -7,7 +7,6 @@ export type ContactStateInput = {
   anonymized_at: string | null;
   /** Kdy kontakt do současného stavu přešel. Používá se v doplňující větě. */
   status_changed_at: string;
-  restriction_requested_at: string | null;
 };
 
 /**

@@ -220,7 +220,30 @@ export function assertValueMatchesClass(
   }
 }
 
-export function assertValueShape(operator: Operator, node: ValueShape): void {
+/**
+ * Odkaz na jiný segment nese cíl v POLI (`field.segment_id`), ne v hodnotě,
+ * a `compileSegmentRefCondition` žádnou hodnotu nečte.
+ *
+ * Obecná tabulka tvarů přitom řadí `in` a `not_in` mezi seznamové, takže
+ * podmínka „je v segmentu" bez hodnot skončila na 422 `in requires values`
+ * a uložit se dala jedině s vymyšleným výčtem, který nic neznamenal. Ověřeno
+ * voláním `POST /api/v1/segments/preview`. Hodnoty se tu proto nevyžadují.
+ * Staré uložené definice, které je nesou, zůstávají platné: kompilátor je
+ * ignoroval dřív a ignoruje je dál.
+ */
+function segmentRefTakesNoValues(operator: Operator, fieldClass?: FieldClass): boolean {
+  return fieldClass === 'segment' && (operator === 'in' || operator === 'not_in');
+}
+
+export function assertValueShape(
+  operator: Operator,
+  node: ValueShape,
+  fieldClass?: FieldClass,
+): void {
+  if (segmentRefTakesNoValues(operator, fieldClass)) {
+    if (node.value !== undefined) invalid(`${operator} on a segment reference takes no value`);
+    return;
+  }
   if (NULLARY.includes(operator)) {
     if (node.value !== undefined || node.values !== undefined) {
       invalid(`${operator} takes no value`);

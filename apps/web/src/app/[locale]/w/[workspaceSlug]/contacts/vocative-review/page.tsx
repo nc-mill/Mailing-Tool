@@ -42,6 +42,14 @@ export default async function VocativeReviewPage({ params, searchParams }: PageP
     if (access.problem.status === 404) notFound();
     return <ContactsProblem problem={access.problem} />;
   }
+  // Projekt, který oslovení a 5. pád neřeší, tuhle obrazovku nemá.
+  //
+  // `notFound()`, ne přesměrování na seznam kontaktů: obrazovka pro tenhle projekt
+  // neexistuje, a tak se to má i chovat. Zavírají se tím i cesty, které nejsou
+  // vidět, tedy uložená záložka, odkaz z výsledku staršího importu a ručně zadaná
+  // adresa. Odkazy v rozhraní jsou skryté zvlášť, na svých místech.
+  if (!access.data.workspace.greeting_enabled) notFound();
+
   const workspaceId = access.data.workspace.id;
 
   const [page, counts] = await Promise.all([

@@ -91,7 +91,7 @@ const handleClick = createClickHandler({
   keyring,
   currentKeyId: keyId,
   links: new LinkCache({ capacity: 100, ttlMs: 60_000 }),
-  domains: new TrackingDomainCache({ refreshMs: 60_000 }),
+  domains: new TrackingDomainCache({ ttlMs: 60_000 }),
   push: (item) => buffered.push(item),
   lookupContactId: async (workspaceId, messageId, createdAt) => {
     const message = await lookupMessage({ workspaceId, messageId, messageCreatedAt: createdAt });

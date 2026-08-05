@@ -68,7 +68,13 @@ export {
 export { createClickHandler, EXPIRED_PATH, REDIRECT_HEADERS } from './click/handle-click';
 export type { BufferedClick, ClickRequest, ClickResponse } from './click/handle-click';
 
-export { TrackingDomainCache, normalizeHost, originHost } from './domains/domain-cache';
+export {
+  TrackingDomainCache,
+  normalizeHost,
+  originHost,
+  originMatches,
+} from './domains/domain-cache';
+export type { AllowedOrigin, TrackingDomainCacheOptions } from './domains/domain-cache';
 
 export { EventBuffer } from './writer/event-buffer';
 export type { EventBufferOptions } from './writer/event-buffer';
@@ -151,14 +157,12 @@ export {
   addTrackingDomain,
   ensurePublicTrackingKey,
   listTrackingDomains,
-  originMatches,
   readAllowedOrigins,
   readWebTrackingStatus,
   removeTrackingDomain,
 } from './ingest/settings-service';
 export type {
   AddDomainResult,
-  AllowedOrigin,
   PublicTrackingKey,
   TrackingDomainRow,
   WebTrackingStatus,

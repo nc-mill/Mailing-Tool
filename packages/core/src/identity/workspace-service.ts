@@ -10,7 +10,11 @@ import { diffForAudit } from '../audit/redact';
 // uvnitř téhož balíčku, tedy táž hrana, jakou už používají `ai/repo.ts`,
 // `segments` i `templates`. Vlastní zapisovač do `pgboss.job` by byl druhá
 // implementace téhož a nesl by konfiguraci fronty odjinud než z registru.
+import { DEFAULT_CONFIRMATION_MODE } from '../contacts/constants';
 import { enqueue as enqueueContactsJob } from '../contacts/jobs/enqueue';
+// Táž hrana přes doménu. Seznam jazyků s 5. pádem se sem NEOPISUJE: kdyby
+// existoval na dvou místech, rozešel by se a nikdo by si toho nevšiml.
+import { localeHasVocative } from '../contacts/naming/vocative';
 import { IdentityAuditActions } from './audit';
 import { slugify } from './setup';
 import { verifyPassword } from './password';
@@ -34,6 +38,14 @@ export type PublicWorkspace = {
   locale: string;
   timezone: string;
   address_form: 'formal' | 'informal';
+  /**
+   * Řeší projekt oslovení a 5. pád?
+   *
+   * Vypnuto skryje i `address_form`, protože vykání a tykání nemá v celém
+   * repozitáři jiného konzumenta než `buildGreeting`. Samostatný přepínač by
+   * byl ovládací prvek bez následku.
+   */
+  greeting_enabled: boolean;
   created_at: string;
   deleted_at: string | null;
 };
@@ -45,6 +57,7 @@ function toPublicWorkspace(row: {
   locale: string;
   timezone: string;
   addressForm: string;
+  greetingEnabled: boolean;
   createdAt: Date;
   deletedAt: Date | null;
 }): PublicWorkspace {
@@ -55,6 +68,7 @@ function toPublicWorkspace(row: {
     locale: row.locale,
     timezone: row.timezone,
     address_form: row.addressForm as 'formal' | 'informal',
+    greeting_enabled: row.greetingEnabled,
     created_at: new Date(row.createdAt).toISOString(),
     deleted_at: row.deletedAt ? new Date(row.deletedAt).toISOString() : null,
   };
@@ -114,6 +128,7 @@ export async function listWorkspaces(
         locale: schema.workspaces.locale,
         timezone: schema.workspaces.timezone,
         addressForm: schema.workspaces.addressForm,
+        greetingEnabled: schema.workspaces.greetingEnabled,
         createdAt: schema.workspaces.createdAt,
         deletedAt: schema.workspaces.deletedAt,
         role: schema.memberships.role,
@@ -172,19 +187,62 @@ export async function createWorkspace(
       // nenašel. Proto se sem žádná nová politika nežádá.
       await tx.execute(sql`SELECT set_config('mlain.workspace_id', ${workspaceId}, true)`);
 
+      // 2.3: aplikace vyplňuje vždy explicitně, DEFAULT v DDL je jen pojistka.
+      const locale = input.locale ?? cfg().DEFAULT_LOCALE;
+
       const [row] = await tx
         .insert(schema.workspaces)
         .values({
           id: workspaceId,
           name: input.name,
           slug,
-          // 2.3: aplikace vyplňuje vždy explicitně, DEFAULT v DDL je jen pojistka.
-          locale: input.locale ?? cfg().DEFAULT_LOCALE,
+          locale,
           timezone: input.timezone ?? cfg().DEFAULT_TIMEZONE,
+          // Oslovení a 5. pád se nabízí jen tam, kde 5. pád existuje. Anglický
+          // projekt by jinak začínal se sloupcem „Oslovení", frontou kontroly
+          // 5. pádu a volbou vykání a tykání, ze kterých v angličtině nic nedává
+          // smysl. Je to jen VÝCHOZÍ hodnota: přepnout jde v nastavení a pozdější
+          // změna jazyka projektu s ní záměrně nehýbe, aby se cizí volba
+          // nepřepisovala potichu.
+          greetingEnabled: localeHasVocative(locale),
           createdBy: userId,
         })
         .returning();
       await tx.insert(schema.memberships).values({ workspaceId, userId, role: 'owner' });
+
+      /*
+       * VÝCHOZÍ SEZNAM „ODBĚRATELÉ". Rozhodnutí zadavatele z 5. 8. 2026.
+       *
+       * Bez něj začíná každý projekt bez jediného seznamu, a seznam je přitom
+       * to, kam kontakt musí patřit, aby mu šlo poslat kampaň. Sloupec
+       * `lists.is_default`, `setDefault()` i `getDefault()` existovaly už dřív
+       * a NIKDO je nepoužíval: výchozí seznam nikdy nevznikl, takže se
+       * `getDefault()` nedalo na co zeptat.
+       *
+       * `opt_in = 'double'` je bezpečná výchozí volba: seznam je nositelem
+       * oprávnění k rozesílce a přepnout ho na jeden krok jde jedním kliknutím.
+       *
+       * VE STEJNÉ TRANSAKCI, ne zvlášť. Kontext `mlain.workspace_id` je nastavený
+       * o pár řádků výš, takže `ws_isolation` na `lists` zápis pustí. Samostatná
+       * transakce potom by znamenala projekt, který při chybě zůstane bez
+       * výchozího seznamu, a nikdo by to nedohledal.
+       *
+       * Jméno se řídí jazykem projektu, ne jazykem uživatele: seznam vidí celý
+       * tým a přejmenovat ho jde na jeho detailu. Bere se `locale` spočítané
+       * nahoře, u vkládání projektu, aby obojí nemohlo vyjít jinak.
+       */
+      await tx.insert(schema.lists).values({
+        workspaceId,
+        name: locale.toLowerCase().startsWith('cs') ? 'Odběratelé' : 'Subscribers',
+        optIn: 'double',
+        // Doménová výchozí hodnota, ne ta z DDL. `lists.confirmation_mode` má
+        // v DDL `two_step` jako pojistku pro zápis mimo doménu, kdežto seznam
+        // založený produktem dostává `one_step` (rozhodnutí R2 plánu). Bez
+        // tohohle řádku by se výchozí seznam choval jinak než každý další,
+        // který si uživatel založí sám, a nikdo by nevěděl proč.
+        confirmationMode: DEFAULT_CONFIRMATION_MODE,
+        isDefault: true,
+      });
 
       await writeAuditLog(tx, {
         action: IdentityAuditActions['workspace.created'],
@@ -219,6 +277,7 @@ export async function updateWorkspace(
     locale?: string | undefined;
     timezone?: string | undefined;
     address_form?: string | undefined;
+    greeting_enabled?: boolean | undefined;
   },
   actorLabel: string,
 ): Promise<PublicWorkspace> {
@@ -234,6 +293,10 @@ export async function updateWorkspace(
   if (input.locale !== undefined) patch.locale = input.locale;
   if (input.timezone !== undefined) patch.timezone = input.timezone;
   if (input.address_form !== undefined) patch.addressForm = input.address_form;
+  // Vypínač oslovení SÁM O SOBĚ nezařazuje žádný přepočet a je to podmínka toho,
+  // aby se zapnutím zpátky nic neztratilo: sloupce kontaktů se počítají pořád,
+  // skrývá se jen rozhraní. Zařadit přepočet by tu bylo jen dvojí práce.
+  if (input.greeting_enabled !== undefined) patch.greetingEnabled = input.greeting_enabled;
 
   let row: typeof schema.workspaces.$inferSelect | undefined;
   try {
@@ -408,7 +471,8 @@ export async function restoreWorkspace(
     const { rows: restored } = await tx.execute<Record<string, unknown>>(sql`
       UPDATE workspaces SET deleted_at = NULL, updated_at = now()
        WHERE id = ${workspaceId}::uuid
-       RETURNING id::text AS id, name, slug, locale, timezone, address_form, created_at, deleted_at
+       RETURNING id::text AS id, name, slug, locale, timezone, address_form,
+                 greeting_enabled, created_at, deleted_at
     `);
     if (restored.length === 0) throw new ApiError('not_found');
 
@@ -428,6 +492,7 @@ export async function restoreWorkspace(
       locale: row.locale as string,
       timezone: row.timezone as string,
       address_form: row.address_form as 'formal' | 'informal',
+      greeting_enabled: row.greeting_enabled as boolean,
       created_at: new Date(row.created_at as Date).toISOString(),
       deleted_at: null,
     };

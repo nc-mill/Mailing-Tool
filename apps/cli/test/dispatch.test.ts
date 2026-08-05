@@ -24,6 +24,10 @@ describe('mlain dispatcher', () => {
       'genkey',
       'healthcheck',
       'migrate',
+      // `partitions` je jediné místo, kde se v produktu uklízí odeslaná pošta.
+      // Dřív úklid neexistoval: dvě retenční fronty byly v registru bez
+      // obsluhy, protože odpojení oddílu je DDL a worker na ně nemá práva.
+      'partitions',
       'rebuild-engagement',
       'reset-password',
       'restore',

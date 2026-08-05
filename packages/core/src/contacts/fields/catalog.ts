@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { WorkspaceContext } from '../../identity/types';
 import { listContactFields } from '../repo/contact-fields';
+import { isGreetingEnabled } from '../settings';
 import type { FieldType } from './coerce';
 
 /** Popisek v libovolném počtu jazyků. Klíč je jazykový tag, en je povinný jako záchyt. */
@@ -124,14 +125,44 @@ const FIRST_CLASS_FIELDS: readonly Omit<FieldCatalogEntry, 'deleted'>[] = [
 ];
 
 /**
+ * Pole, která zmizí, když projekt oslovení a 5. pád neřeší
+ * (`workspaces.greeting_enabled = false`).
+ *
+ * `gender` mezi nimi ZÁMĚRNĚ NENÍ. Rod není 5. pád ani oslovení, je to údaj
+ * o člověku, dá se mapovat při importu a filtrovat v segmentech i tam, kde se
+ * nikdo neoslovuje.
+ */
+const SALUTATION_FIELD_PATHS = new Set(['first_name_vocative', 'last_name_vocative', 'greeting']);
+
+/**
  * Jediný zdroj pravdy o tom, jaká pole v projektu existují. Konzumuje ho validátor
  * merge tagů a nabídka polí v editoru šablon (část 3), a to uvnitř procesu, ne přes REST.
  */
 export async function getFieldCatalog(ctx: WorkspaceContext): Promise<FieldCatalog> {
-  const custom = await listContactFields(ctx, { includeArchived: true });
+  const [custom, greetingEnabled] = await Promise.all([
+    listContactFields(ctx, { includeArchived: true }),
+    isGreetingEnabled(ctx),
+  ]);
 
   const fields: FieldCatalogEntry[] = [
-    ...FIRST_CLASS_FIELDS.map((field) => ({ ...field, deleted: false })),
+    ...FIRST_CLASS_FIELDS.map((field) => ({
+      ...field,
+      // NEODSTRAŇUJE SE, JEN SE OZNAČÍ. Je v tom celý rozdíl mezi „editor to
+      // nenabízí" a „kampaň nejde odeslat".
+      //
+      // Katalog totiž nekrmí jenom nabídku personalizace. Přes `toLiquidRoots`
+      // (`packages/emails/src/paths.ts`) z něj vzniká seznam povolených cest pro
+      // Liquid validátor, a ten na neznámé pole hlásí `liquid_unknown_field`
+      // se závažností **error**. `compileTemplate` na chybě vrátí `ok: false`,
+      // takže by šablona, ve které `{{ contact.greeting }}` už stojí, přestala
+      // jít odeslat, a to jen proto, že někdo přepnul volbu v nastavení.
+      //
+      // `toLiquidRoots` příznak `deleted` ignoruje, kdežto `usableFields`
+      // v editoru podle něj filtruje. Přesně tenhle rozdíl je tu potřeba:
+      // nová značka se nevloží, existující dál renderuje správnou větu,
+      // protože sloupec `contacts.greeting` se počítá dál.
+      deleted: !greetingEnabled && SALUTATION_FIELD_PATHS.has(field.path),
+    })),
     ...custom.map((field) => {
       const mapped = TYPE_MAP[field.type];
       return {

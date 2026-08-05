@@ -30,8 +30,12 @@ const WORKSPACE = 'ws-1';
 const CALLS: Record<string, (module: typeof ActionsModule) => Promise<unknown>> = {
   bulkDeleteContactsAction: (m) =>
     m.bulkDeleteContactsAction({ workspaceId: WORKSPACE, scope: { mode: 'ids', ids: ['c-1'] } }),
-  exportContactsAction: (m) =>
-    m.exportContactsAction({ workspaceId: WORKSPACE, scope: { mode: 'ids', ids: ['c-1'] } }),
+  createContactExportAction: (m) =>
+    m.createContactExportAction({
+      workspaceId: WORKSPACE,
+      audience: { ast: { version: 1, root: { type: 'group', op: 'and', children: [] } } },
+      locale: 'cs',
+    }),
   bulkTagContactsAction: (m) =>
     m.bulkTagContactsAction({
       workspaceId: WORKSPACE,
@@ -41,7 +45,6 @@ const CALLS: Record<string, (module: typeof ActionsModule) => Promise<unknown>> 
   deleteContactAction: (m) => m.deleteContactAction({ workspaceId: WORKSPACE, id: 'c-1' }),
   unsubscribeContactAction: (m) =>
     m.unsubscribeContactAction({ workspaceId: WORKSPACE, email: 'a@b.cz', listIds: ['l-1'] }),
-  exportContactAction: (m) => m.exportContactAction({ workspaceId: WORKSPACE, id: 'c-1' }),
   vocativeReviewAction: (m) => m.vocativeReviewAction({ workspaceId: WORKSPACE, groups: [] }),
   vocativeNeutralAllAction: (m) => m.vocativeNeutralAllAction({ workspaceId: WORKSPACE }),
   addSuppressionAction: (m) =>
@@ -52,6 +55,11 @@ const CALLS: Record<string, (module: typeof ActionsModule) => Promise<unknown>> 
   loadFieldImpactAction: (m) => m.loadFieldImpactAction({ workspaceId: WORKSPACE, id: 'f-1' }),
   deleteFieldAction: (m) => m.deleteFieldAction({ workspaceId: WORKSPACE, id: 'f-1' }),
   deleteTagAction: (m) => m.deleteTagAction({ workspaceId: WORKSPACE, id: 't-1' }),
+  createTagAction: (m) => m.createTagAction({ workspaceId: WORKSPACE, name: 'VIP' }),
+  renameTagAction: (m) => m.renameTagAction({ workspaceId: WORKSPACE, id: 't-1', name: 'VIP' }),
+  mergeTagsAction: (m) =>
+    m.mergeTagsAction({ workspaceId: WORKSPACE, sourceIds: ['t-1'], targetId: 't-2' }),
+  exportStatusAction: (m) => m.exportStatusAction({ workspaceId: WORKSPACE, id: 'e-1' }),
   setConfirmationModeAction: (m) =>
     m.setConfirmationModeAction({ workspaceId: WORKSPACE, id: 'l-1', mode: 'two_step' }),
   setOptInAction: (m) => m.setOptInAction({ workspaceId: WORKSPACE, id: 'l-1', optIn: 'single' }),
@@ -110,6 +118,45 @@ describe('serverové akce kontaktů posílají projekt', () => {
       remove: [],
     });
     expect(options.body, 'klíč `ids` schéma neprojde, je `.strict()`').not.toHaveProperty('ids');
+  });
+
+  /**
+   * Export posílá PODMÍNKU PUBLIKA a sloupce, ne `{ ids }` ani filtry seznamu.
+   *
+   * Job `contacts.export` předává uložený `filter` rovnou do `compileAudienceToSql`,
+   * takže tvar musí být `Audience`. Starý tvar schéma odmítalo (422) a protože je
+   * `apiMutate` v testu podvržený, tvrdíme o TĚLE POŽADAVKU, ne o návratové hodnotě.
+   * Že tělo projde skutečným schématem jádra, hlídá `export-audience.test.ts`.
+   */
+  it('export posílá publikum a sloupce, ne ids ani filtry seznamu', async () => {
+    const module = await import('./actions');
+    await module.createContactExportAction({
+      workspaceId: WORKSPACE,
+      audience: { listIds: ['l-1'] },
+      locale: 'cs',
+    });
+
+    const [path, options] = mutate.mock.calls[0] as [string, { body: Record<string, unknown> }];
+    expect(path).toBe('/api/v1/contacts/exports');
+    expect(options.body).toMatchObject({ kind: 'contacts', filter: { listIds: ['l-1'] } });
+    expect(options.body, 'schéma `columns` vyžaduje a je `.strict()`').toHaveProperty('columns');
+    expect(options.body).not.toHaveProperty('ids');
+  });
+
+  /** Sloučení sama do sebe vrací 422, cíl se proto ze zdrojů odfiltruje. */
+  it('sloučení neposílá cílový štítek i jako zdroj', async () => {
+    const module = await import('./actions');
+    const result = await module.mergeTagsAction({
+      workspaceId: WORKSPACE,
+      sourceIds: ['t-1', 't-2'],
+      targetId: 't-2',
+    });
+
+    expect(mutate).toHaveBeenCalledTimes(1);
+    const [path, options] = mutate.mock.calls[0] as [string, { body: Record<string, unknown> }];
+    expect(path).toBe('/api/v1/tags/t-1/merge');
+    expect(options.body).toEqual({ into_tag_id: 't-2' });
+    expect(result).toEqual({ status: 'success', merged: 1 });
   });
 
   it('hromadné štítkování nad „vše odpovídající filtru" se neposílá na server', async () => {

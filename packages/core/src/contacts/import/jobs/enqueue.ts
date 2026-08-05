@@ -1,6 +1,5 @@
-import { sql } from 'drizzle-orm';
 import { loadConfig } from '../../../config/index';
-import { queue } from '../../../queues/registry';
+import { enqueueJob, type OnMerged } from '../../../queues/enqueue-sql';
 import type { Tx } from '../../../tx';
 
 /**
@@ -22,6 +21,21 @@ export type EnqueueOptions = {
    * s `retryLimit = 0`. Ostatní hodnoty politiky se dál čtou z registru.
    */
   retryLimitOverride?: number;
+  /**
+   * VÝCHOZÍ JE `fail`, A JE TO OPAK ZBYTKU PRODUKTU. Fronta `contacts.import` má
+   * politiku `exclusive`, takže se druhá úloha s týmž klíčem nezařadí. Na import
+   * ale čeká ČLOVĚK: kdyby se zařazení tiše zahodilo, zůstal by řádek v `imports`
+   * ve stavu, ze kterého ho nikdo nevytáhne, a uživatel by koukal na „připravuje se"
+   * navždy. Tichý drop je tu tedy ztráta práce, ne úspora.
+   *
+   * Klíč je ID importu, takže při běžném nahrání kolize nastat NEMŮŽE (řádek vzniká
+   * v téže transakci a jeho ID je nové). Když nastane, znamená to, že tentýž import
+   * už běží, a to je informace, kterou volající chce dostat.
+   *
+   * Obnova po pádu (`recover-stale.ts`) je jediná výjimka a předává `drop`: ta se
+   * s běžícím během plete schválně a zahození je přesně to, co má nastat.
+   */
+  onMerged?: OnMerged;
 };
 
 let cachedSchema: string | null = null;
@@ -42,18 +56,13 @@ export async function enqueueImportJob(
   payload: Record<string, unknown>,
   options: EnqueueOptions = {},
 ): Promise<void> {
-  const entry = queue(name);
-  await tx.execute(sql`
-    INSERT INTO ${sql.identifier(pgbossSchema())}.job
-      (name, data, singleton_key, retry_limit, retry_backoff, expire_seconds, start_after)
-    VALUES (
-      ${name},
-      ${JSON.stringify(payload)}::jsonb,
-      ${options.singletonKey ?? null},
-      ${options.retryLimitOverride ?? entry.retryLimit},
-      ${entry.retryBackoff},
-      ${entry.expireInSeconds},
-      now() + make_interval(secs => ${options.startAfterSeconds ?? 0})
-    )
-  `);
+  await enqueueJob(tx, {
+    schema: pgbossSchema(),
+    name,
+    payload,
+    singletonKey: options.singletonKey,
+    startAfterSeconds: options.startAfterSeconds,
+    retryLimit: options.retryLimitOverride,
+    onMerged: options.onMerged ?? 'fail',
+  });
 }

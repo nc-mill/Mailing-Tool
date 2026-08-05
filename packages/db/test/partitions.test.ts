@@ -9,7 +9,9 @@ import {
   dropPartitionsBefore,
   ensurePartitionsForRange,
   ensureUpcomingPartitions,
+  parseBounds,
   partitionName,
+  planPartitionsBefore,
 } from '../src/partitions';
 import { seedTwoWorkspaces } from './helpers/fixtures';
 
@@ -318,7 +320,9 @@ describe('odpojování partition', () => {
               AND status IN ('pending','claimed') LIMIT 1`,
           [from, to],
         );
-        return rows.length === 0; // true = smí se odpojit
+        // true = smí se odpojit, jinak DŮVOD. Prosté `false` tu bylo, dokud
+        // výsledek nikdo nečetl; režim nanečisto musí umět říct, proč nechal.
+        return rows.length === 0 ? true : { keep: 'leží v ní nedoručená zpráva' };
       },
     );
     expect(dropped).not.toContain('messages_y2026m09');
@@ -326,5 +330,98 @@ describe('odpojování partition', () => {
       .as('mlain_migrator')
       .query(`SELECT to_regclass('public.messages_y2026m09') AS t`);
     expect(rows[0].t).not.toBeNull();
+  });
+
+  it('plán vrátí u ponechané partition důvod, aby šlo vysvětlit prázdný úklid', async () => {
+    const ws = await seedTwoWorkspaces(h.as('mlain_migrator'));
+    await createMonthlyPartitions(
+      h.as('mlain_migrator'),
+      'messages',
+      'created_at',
+      new Date('2026-07-01T00:00:00Z'),
+      1,
+    );
+    await h.as('mlain_migrator').query(
+      `INSERT INTO messages (workspace_id, contact_id, email, status, created_at)
+       VALUES ($1, $2, 'b@example.test', 'pending', '2026-07-15T00:00:00Z')`,
+      [ws.workspaceA, ws.contactInA],
+    );
+
+    const plan = await planPartitionsBefore(
+      h.as('mlain_migrator'),
+      'messages',
+      new Date('2026-08-01T00:00:00Z'),
+      async () => ({ keep: 'zkušební důvod' }),
+    );
+    const july = plan.find((d) => d.partition === 'messages_y2026m07');
+    expect(july?.drop).toBe(false);
+    expect(july?.keepReason).toBe('zkušební důvod');
+    // Plán NESMÍ nic změnit. Kdyby režim nanečisto sahal na data, nebyl by to
+    // režim nanečisto.
+    const { rows } = await h
+      .as('mlain_migrator')
+      .query(`SELECT to_regclass('public.messages_y2026m07') AS t`);
+    expect(rows[0].t).not.toBeNull();
+  });
+
+  it('hranice se čte z katalogu, ne ze jména partition', async () => {
+    // Jméno oddílu je jen řetězec, který někdo zvolil. Oddíl pojmenovaný jako
+    // srpen 2020, ale s hranicemi v roce 2030, se NESMÍ zahodit jen proto, že
+    // jméno vypadá staře. Dřívější verze se ptala regexem jména a tenhle oddíl
+    // by smazala i s daty.
+    await h.as('mlain_migrator').query(
+      `CREATE TABLE web_events_y2020m08 PARTITION OF web_events
+         FOR VALUES FROM (TIMESTAMPTZ '2030-01-01 00:00:00+00')
+                      TO (TIMESTAMPTZ '2030-02-01 00:00:00+00')`,
+    );
+    try {
+      const dropped = await dropPartitionsBefore(
+        h.as('mlain_migrator'),
+        'web_events',
+        'received_at',
+        new Date('2026-01-01T00:00:00Z'),
+        async () => true,
+      );
+      expect(dropped).not.toContain('web_events_y2020m08');
+    } finally {
+      await h
+        .as('mlain_migrator')
+        .query(`ALTER TABLE web_events DETACH PARTITION web_events_y2020m08`);
+      await h.as('mlain_migrator').query(`DROP TABLE IF EXISTS web_events_y2020m08`);
+    }
+  });
+});
+
+describe('parseBounds', () => {
+  it('přečte obě hranice v doslovném tvaru, jaký tiskne Postgres', () => {
+    // Řetězec je zkopírovaný z `pg_get_expr(relpartbound)` na běžící databázi.
+    // Offset `+00` bez minut NENÍ platný ISO 8601 a `new Date()` na něm vrací
+    // Invalid Date. Dokud se nenormalizoval, hlásil úklid u KAŽDÉHO oddílu
+    // „hranice se nedá přečíst z katalogu" a neuklidil nikdy nic.
+    const bounds = parseBounds(
+      "FOR VALUES FROM ('2026-08-01 00:00:00+00') TO ('2026-09-01 00:00:00+00')",
+    );
+    expect(bounds?.from.toISOString()).toBe('2026-08-01T00:00:00.000Z');
+    expect(bounds?.to.toISOString()).toBe('2026-09-01T00:00:00.000Z');
+  });
+
+  it('zvládne i offset s minutami a se Z', () => {
+    expect(
+      parseBounds(
+        "FOR VALUES FROM ('2026-08-01 00:00:00+02:00') TO ('2026-09-01 00:00:00Z')",
+      )?.from.toISOString(),
+    ).toBe('2026-07-31T22:00:00.000Z');
+  });
+
+  it.each([
+    ['DEFAULT'],
+    ["FOR VALUES FROM (MINVALUE) TO ('2026-09-01 00:00:00+00')"],
+    ["FOR VALUES FROM ('2026-08-01 00:00:00+00') TO (MAXVALUE)"],
+    ["FOR VALUES IN ('a', 'b')"],
+    ['FOR VALUES WITH (modulus 4, remainder 0)'],
+  ])('u %s vrátí null, aby se oddíl nechal', (bound) => {
+    // null znamená „hranice není jistá, oddíl nech". Kdyby se to spletlo
+    // s nulou, spadl by výchozí oddíl do roku 1970 a zahodil by se první.
+    expect(parseBounds(bound)).toBeNull();
   });
 });

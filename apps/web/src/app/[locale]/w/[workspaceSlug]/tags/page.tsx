@@ -4,7 +4,7 @@ import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api-client/fetch';
 import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
 import { ContactsProblem } from '@/features/contacts/contacts-problem';
-import { TagsTable, type TagRow } from '@/features/contacts/tags-table';
+import { TagsScreen, type TagRow } from '@/features/contacts/tags-screen';
 
 /**
  * Stránka závisí na přihlášeném uživateli, takže se NEPŘEDRENDEROVÁVÁ.
@@ -37,11 +37,20 @@ export default async function TagsPage({ params }: PageProps) {
     return <ContactsProblem problem={access.problem} />;
   }
 
-  const response = await apiFetch<{ data: TagRow[] }>('/api/v1/tags', {
-    workspaceId: access.data.workspace.id,
-    searchParams: { limit: 200 },
-  });
+  const response = await apiFetch<{ data: TagRow[]; pagination: { has_more: boolean } }>(
+    '/api/v1/tags',
+    { workspaceId: access.data.workspace.id, searchParams: { limit: 200 } },
+  );
   if (!response.ok) return <ContactsProblem problem={response.problem} />;
 
-  return <TagsTable workspaceId={access.data.workspace.id} tags={response.data.data} />;
+  return (
+    <TagsScreen
+      workspaceId={access.data.workspace.id}
+      basePath={`/w/${workspaceSlug}`}
+      tags={response.data.data}
+      // Další stránka se nedočítá. Obrazovka o tom aspoň řekne, místo aby tvrdila,
+      // že projekt má přesně těch dvě stě štítků, co se vešlo do prvního požadavku.
+      hasMore={response.data.pagination?.has_more === true}
+    />
+  );
 }

@@ -145,7 +145,8 @@ describe('proklik na systémový odkaz v patičce', () => {
   });
 
   it('spočítá prokliky po druzích odkazu', async () => {
-    await expect(readSystemLinkClicks({ workspaceId, campaignId })).resolves.toEqual({
+    const ctx = createSystemContext(workspaceId, 'test.report');
+    await expect(readSystemLinkClicks(ctx, campaignId)).resolves.toEqual({
       preferences: 1,
       unsubscribe_page: 1,
       webview: 0,

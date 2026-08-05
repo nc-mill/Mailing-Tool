@@ -143,6 +143,7 @@ const WORKSPACE = {
   locale: 'cs',
   timezone: 'Europe/Prague',
   address_form: 'formal' as const,
+  greeting_enabled: true,
   created_at: '2026-01-01T00:00:00.000Z',
 };
 

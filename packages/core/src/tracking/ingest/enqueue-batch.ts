@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { withWorkspace, type WorkspaceContext } from '../../tx';
 import { enqueueTrackingJob } from '../jobs/enqueue';
 import { withTrackingTx } from '../repo/tx';
 import {
@@ -31,15 +32,18 @@ export async function enqueueEventBatch(payload: EventProcessPayload): Promise<v
 /**
  * Trackingová větev `workspaces.settings`.
  *
- * Čte se napříč projekty přes kontext daného projektu, ne přes session:
- * povrch `/e/**` žádnou session nemá. Neznámý projekt nebo poškozená větev
- * vrací výchozí hodnoty, protože vypadnout kvůli nastavení by znamenalo
- * přestat měřit.
+ * Kontext přijde od volajícího, ne ze session: povrch `/e/**` žádnou session
+ * nemá a projekt zná z ověřeného veřejného klíče, ze kterého si `event-runtime`
+ * vyrobí systémový kontext. Rozsah je proto vidět z podpisu a řetězcem se
+ * podstrčit nedá.
+ *
+ * Neznámý projekt nebo poškozená větev vrací výchozí hodnoty, protože
+ * vypadnout kvůli nastavení by znamenalo přestat měřit.
  */
-export async function readTrackingSettings(workspaceId: string): Promise<TrackingSettings> {
-  const raw = await withTrackingTx({ workspaceId, job: 'tracking.settings' }, async (tx) => {
+export async function readTrackingSettings(ctx: WorkspaceContext): Promise<TrackingSettings> {
+  const raw = await withWorkspace(ctx, async (tx) => {
     const { rows } = await tx.execute<{ tracking: unknown }>(sql`
-        SELECT settings -> 'tracking' AS tracking FROM workspaces WHERE id = ${workspaceId}
+        SELECT settings -> 'tracking' AS tracking FROM workspaces WHERE id = ${ctx.workspaceId}
       `);
     return rows[0]?.tracking ?? null;
   });

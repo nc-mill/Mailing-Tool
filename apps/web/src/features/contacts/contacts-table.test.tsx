@@ -10,10 +10,15 @@ vi.mock('@mlain/i18n/navigation', () => ({
   useRouter: () => ({ push, refresh: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }));
 
+const createContactExportAction = vi
+  .fn()
+  .mockResolvedValue({ status: 'success', id: 'e-1', downloadUrl: '/api/v1/x?token=t' });
+
 vi.mock('./actions', () => ({
   bulkDeleteContactsAction: vi.fn().mockResolvedValue({ status: 'success' }),
-  exportContactsAction: vi.fn().mockResolvedValue({ status: 'success' }),
   bulkTagContactsAction: vi.fn().mockResolvedValue({ status: 'success' }),
+  createContactExportAction: (...args: unknown[]) => createContactExportAction(...args),
+  exportStatusAction: vi.fn().mockResolvedValue({ status: 'success', state: 'completed' }),
 }));
 
 // Serverové akce se musí odstínit VŠECHNY, jinak se přes ně načte
@@ -92,6 +97,7 @@ function renderTable(props: Partial<React.ComponentProps<typeof ContactsTable>> 
 
 beforeEach(() => {
   push.mockClear();
+  createContactExportAction.mockClear();
   confirmContactsAction.mockReset().mockResolvedValue({
     status: 'success',
     outcomes: [
@@ -330,5 +336,56 @@ describe('ContactsTable: potvrzení v řádku', () => {
     expect(
       await screen.findByRole('button', { name: 'Označit jako potvrzené' }),
     ).toBeInTheDocument();
+  });
+
+  /*
+   * FILTROVANÝ SEZNAM MUSÍ ŘÍCT, ŽE JE FILTROVANÝ.
+   *
+   * Po prokliku ze štítku viděl uživatel jeden kontakt a nikde se nedozvěděl proč:
+   * filtr žije v URL a `filterDescription` se v `DataTable` používá jedině uvnitř
+   * lišty výběru, tedy až po zaškrtnutí řádku.
+   */
+  it('nad seznamem je vidět filtr a jde zrušit', async () => {
+    const user = userEvent.setup();
+    renderTable({
+      filters: { tag_id: 't-1' },
+      names: { lists: {}, tags: { 't-1': 'Brno' }, segments: {} },
+    });
+
+    const summary = screen.getByTestId('contacts-filter-summary');
+    expect(summary).toHaveTextContent('Filtr: štítek Brno');
+
+    await user.click(within(summary).getByRole('button', { name: 'Zrušit všechny filtry' }));
+    expect(push).toHaveBeenCalledWith('/w/eshop/contacts');
+  });
+
+  it('bez filtru se pruh s filtrem neukazuje', () => {
+    renderTable();
+    expect(screen.queryByTestId('contacts-filter-summary')).toBeNull();
+  });
+
+  it('seznam jde vyexportovat a posílá publikum podle filtru', async () => {
+    const user = userEvent.setup();
+    renderTable({
+      filters: { tag_id: 't-1' },
+      names: { lists: {}, tags: { 't-1': 'Brno' }, segments: {} },
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Exportovat' }));
+
+    await waitFor(() => expect(createContactExportAction).toHaveBeenCalled());
+    const [call] = createContactExportAction.mock.calls as [[{ audience: unknown }]];
+    expect(JSON.stringify(call[0].audience)).toContain('has_any');
+    expect(JSON.stringify(call[0].audience)).not.toContain('tag_id');
+  });
+
+  it('export podle hledaného výrazu se neposílá a řekne se proč', async () => {
+    const user = userEvent.setup();
+    renderTable({ filters: { q: 'novak' }, names: { lists: {}, tags: {}, segments: {} } });
+
+    await user.click(screen.getByRole('button', { name: 'Exportovat' }));
+
+    expect(await screen.findByText(/Podle hledaného výrazu exportovat neumíme/)).toBeVisible();
+    expect(createContactExportAction).not.toHaveBeenCalled();
   });
 });

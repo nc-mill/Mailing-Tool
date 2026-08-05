@@ -3,8 +3,13 @@
 import { Input } from '@mlain/ui/components/input';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
-import { type FieldCatalog, toCatalogPath } from '../../model/field-catalog';
-import { greetingGuidanceFor } from './greeting-guidance';
+import {
+  type FieldCatalog,
+  toCatalogPath,
+  toMergePath,
+  usableFields,
+} from '../../model/field-catalog';
+import { GREETING_PATH, greetingGuidanceFor } from './greeting-guidance';
 
 /**
  * Pět celých formátů z kontraktu. Zadávají se výběrem, ne psaním (část 3, 3.7.2).
@@ -39,6 +44,20 @@ export function TokenInspector(props: {
   // Která ze tří rolí to je: hotové oslovení, surovina jména, nebo běžné pole.
   const guidance = greetingGuidanceFor(props.attrs.expr);
 
+  /**
+   * Řeší projekt oslovení a 5. pád? Pozná se z KATALOGU, ne z další propy: pole
+   * `contact.greeting` je při vypnutém oslovení označené `deleted` a `usableFields`
+   * ho odfiltruje.
+   *
+   * Varování u suroviny jména na to spoléhá, protože končí větou „Na oslovení
+   * použijte pole Oslovení." Kdyby zůstalo, posílalo by uživatele za polem, které
+   * v nabídce není. Nápověda u samotného `contact.greeting` naopak zůstává vždy:
+   * vysvětluje značku, kterou uživatel PRÁVĚ MÁ v dokumentu, a ta se dál renderuje.
+   */
+  const greetingOffered = usableFields(props.fieldCatalog).some(
+    (field) => toMergePath(field.path) === GREETING_PATH,
+  );
+
   return (
     <div className="space-y-2">
       <p className="text-xs text-text-muted">{t('token.title')}</p>
@@ -50,7 +69,7 @@ export function TokenInspector(props: {
           {t('token.greetingHint')}
         </p>
       ) : null}
-      {guidance === 'nameFragment' ? (
+      {guidance === 'nameFragment' && greetingOffered ? (
         <p data-testid="token-fragment-warning" className="text-xs text-warning-text">
           {t('token.fragmentWarning')}
         </p>

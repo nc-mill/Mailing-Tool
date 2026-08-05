@@ -1,13 +1,27 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createSystemContext } from '../../identity/context';
 import { TrackingDomainCache, normalizeHost, originHost } from './domain-cache';
 
 const WS = '0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071';
 const OTHER = '0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6072';
-const rows = [
-  { id: 'd1', workspaceId: WS, host: 'shop.cz', includeSubdomains: false },
-  { id: 'd2', workspaceId: WS, host: 'blog.example.cz', includeSubdomains: true },
-  { id: 'd3', workspaceId: OTHER, host: 'jiny.cz', includeSubdomains: false },
-];
+const EMPTY = '0192f3a0-1c2d-7e40-9a1b-000000000000';
+
+/**
+ * Loader dostává KONTEXT, ne řetězec, protože přesně tak se cache ptá databáze.
+ * Rozdělení po projektech tady modeluje to, co v provozu dělá `ws_isolation`:
+ * v kontextu projektu jsou vidět jen jeho řádky.
+ */
+const byWorkspace: Record<string, Array<{ host: string; includeSubdomains: boolean }>> = {
+  [WS]: [
+    { host: 'shop.cz', includeSubdomains: false },
+    { host: 'blog.example.cz', includeSubdomains: true },
+  ],
+  [OTHER]: [{ host: 'jiny.cz', includeSubdomains: false }],
+};
+
+function ctxOf(workspaceId: string) {
+  return createSystemContext(workspaceId, 'test');
+}
 
 describe('normalizeHost', () => {
   it('sundá schéma, port, tečku na konci a převede na malá písmena', () => {
@@ -25,33 +39,60 @@ describe('originHost', () => {
 });
 
 describe('TrackingDomainCache', () => {
-  const cache = new TrackingDomainCache({ refreshMs: 60_000, load: vi.fn(async () => rows) });
+  function makeCache() {
+    const load = vi.fn(async (ctx: { workspaceId: string }) => byWorkspace[ctx.workspaceId] ?? []);
+    return { cache: new TrackingDomainCache({ ttlMs: 60_000, load }), load };
+  }
 
   it('přesná shoda hostu projde', async () => {
-    await cache.refresh();
-    expect(cache.isAllowed(WS, 'shop.cz')).toBe(true);
+    const { cache } = makeCache();
+    await expect(cache.isAllowed(ctxOf(WS), 'shop.cz')).resolves.toBe(true);
   });
 
   it('subdoména projde jen při include_subdomains', async () => {
-    await cache.refresh();
-    expect(cache.isAllowed(WS, 'www.shop.cz')).toBe(false);
-    expect(cache.isAllowed(WS, 'cokoliv.blog.example.cz')).toBe(true);
-    expect(cache.isAllowed(WS, 'blog.example.cz')).toBe(true);
+    const { cache } = makeCache();
+    await expect(cache.isAllowed(ctxOf(WS), 'www.shop.cz')).resolves.toBe(false);
+    await expect(cache.isAllowed(ctxOf(WS), 'cokoliv.blog.example.cz')).resolves.toBe(true);
+    await expect(cache.isAllowed(ctxOf(WS), 'blog.example.cz')).resolves.toBe(true);
   });
 
   it('doména cizího projektu neprojde', async () => {
-    await cache.refresh();
-    expect(cache.isAllowed(WS, 'jiny.cz')).toBe(false);
+    const { cache } = makeCache();
+    await expect(cache.isAllowed(ctxOf(WS), 'jiny.cz')).resolves.toBe(false);
+    // a naopak: v kontextu druhého projektu platí jeho vlastní pravidlo
+    await expect(cache.isAllowed(ctxOf(OTHER), 'jiny.cz')).resolves.toBe(true);
   });
 
   it('host, který jen končí stejnými znaky, neprojde', async () => {
-    await cache.refresh();
-    expect(cache.isAllowed(WS, 'zlyblog.example.cz')).toBe(false);
-    expect(cache.isAllowed(WS, 'nechceme-shop.cz')).toBe(false);
+    const { cache } = makeCache();
+    await expect(cache.isAllowed(ctxOf(WS), 'zlyblog.example.cz')).resolves.toBe(false);
+    await expect(cache.isAllowed(ctxOf(WS), 'nechceme-shop.cz')).resolves.toBe(false);
   });
 
   it('projekt bez jediné domény nemá povolený nic', async () => {
-    await cache.refresh();
-    expect(cache.isAllowed('0192f3a0-1c2d-7e40-9a1b-000000000000', 'shop.cz')).toBe(false);
+    const { cache } = makeCache();
+    await expect(cache.isAllowed(ctxOf(EMPTY), 'shop.cz')).resolves.toBe(false);
+  });
+
+  it('načítá se jednou za projekt, ne při každém dotazu', async () => {
+    const { cache, load } = makeCache();
+    await cache.isAllowed(ctxOf(WS), 'shop.cz');
+    await cache.isAllowed(ctxOf(WS), 'blog.example.cz');
+    await cache.isAllowed(ctxOf(OTHER), 'jiny.cz');
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * Selhání dotazu nesmí shodit přesměrování. Bez seznamu se identita
+   * NEPŘEDÁ, což je bezpečná strana chyby.
+   */
+  it('když načtení spadne, nepovolí nic a nevyhodí výjimku', async () => {
+    const cache = new TrackingDomainCache({
+      ttlMs: 60_000,
+      load: async () => {
+        throw new Error('databáze je pryč');
+      },
+    });
+    await expect(cache.isAllowed(ctxOf(WS), 'shop.cz')).resolves.toBe(false);
   });
 });

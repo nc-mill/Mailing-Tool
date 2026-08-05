@@ -82,10 +82,16 @@ async function emitEvent(
       occurredAt: new Date(),
       data: input.data,
     });
-    await enqueueCampaignJob(tx, 'platform.webhook_fanout', {
-      event_id: eventId,
-      workspace_id: ctx.workspaceId,
-    });
+    await enqueueCampaignJob(
+      tx,
+      'platform.webhook_fanout',
+      { event_id: eventId, workspace_id: ctx.workspaceId },
+      // Fan-out slučování zapnuté NEMÁ (nemá klíč ani politiku), takže se tu
+      // zahodit nedá nic a volba je formalita. `drop` proto, že kdyby se politika
+      // někdy doplnila, je fan-out idempotentní přes unikátní index nad
+      // `webhook_deliveries` a druhé zařazení téže události nic nepřidá.
+      { onMerged: 'drop' },
+    );
   });
 }
 
@@ -147,7 +153,16 @@ export function systemSchedulerDeps(): SchedulerDeps {
           tx,
           MATERIALIZE_JOB.queue,
           { workspaceId, campaignId },
-          { singletonKey: MATERIALIZE_JOB.singletonKey(campaignId) },
+          {
+            singletonKey: MATERIALIZE_JOB.singletonKey(campaignId),
+            // `drop`, a je to celý smysl toho klíče. Plánovač tiká každých třicet
+            // sekund a kampaň zůstává ve stavu `scheduled`, dokud materializace
+            // stav nepřepne, takže další tik ji najde znovu. Zahození opakovaného
+            // zařazení je tedy žádoucí výsledek, ne ztráta: práci drží běžící
+            // úloha i s kurzorem v outboxu. Opak platí na cestě z API, viz
+            // `enqueueCampaignJob`.
+            onMerged: 'drop',
+          },
         ),
       );
     },
@@ -342,7 +357,14 @@ export function systemWatchdogDeps(): WatchdogDeps {
           tx,
           CREDENTIALS_REFRESH_JOB.queue,
           { workspace_id: workspaceId, provider_id: providerId },
-          { singletonKey: CREDENTIALS_REFRESH_JOB.singletonKey(providerId) },
+          {
+            singletonKey: CREDENTIALS_REFRESH_JOB.singletonKey(providerId),
+            // `drop`: zařazuje to hlídač při každém průchodu, dokud kampaň visí na
+            // pauze `credentials_undecryptable`. Přešifrování čte aktuální údaje
+            // z databáze, takže běžící úloha vyřídí i ten požadavek, který se
+            // zahodil. Na tuhle úlohu navíc nikdo nečeká u obrazovky.
+            onMerged: 'drop',
+          },
         ),
       );
       return true;

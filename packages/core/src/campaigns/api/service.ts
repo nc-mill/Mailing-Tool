@@ -1,8 +1,7 @@
-import { sql } from 'drizzle-orm';
 import { CONTENT_BLOCK_TYPES } from '@mlain/emails/document/content-stats';
 import { loadConfig } from '../../config/index';
 import { ApiError } from '../../errors/api-error';
-import { queue } from '../../queues/registry';
+import { enqueueJob, type OnMerged } from '../../queues/enqueue-sql';
 import { withWorkspace, type Tx, type WorkspaceContext } from '../../tx';
 import { rawSql } from '../repo/raw-sql';
 import { withPending, type CampaignCounters } from '../types';
@@ -518,40 +517,49 @@ export function undoRemainingSeconds(row: CampaignRowFull, now: Date): number {
 
 /**
  * Zařazení jobu do fronty. Politika se ČTE z registru P01, neopisuje se: dvě kopie
- * retry a expirace by se rozešly a rozdíl by se projevil až v produkci.
+ * retry a expirace by se rozešly a rozdíl by se projevil až v produkci. Vlastní SQL
+ * sestavuje `queues/enqueue-sql.ts`, aby v repozitáři nebyl druhý, jinak se chovající
+ * způsob zařazení.
  *
- * Zapisuje se přímo do tabulky pg-boss, protože jde o zveřejněný způsob
- * transakčního vkládání. Tvar dotazu je opsaný z `segments/jobs/enqueue.ts`,
- * aby v repozitáři nevznikl druhý, jinak se chovající způsob zařazení.
+ * `onMerged` JE TU POVINNÉ A NEMÁ VÝCHOZÍ HODNOTU. Ostatní domény si výchozí hodnotu
+ * dovolit můžou, tahle ne: přes tenhle jediný zařazovač chodí `campaign.materialize`,
+ * tedy okamžik, kdy se kampaň skutečně rozjede, a jde k němu DVĚMA cestami, které
+ * chtějí opačné chování.
+ *
+ *  - Z API, kde na odeslání čeká uživatel. Tam by tiché zahození znamenalo uloženou
+ *    kampaň, která NIKDY NEODEJDE: kampaň zůstane ve stavu `queueing`, materializaci
+ *    nikdo nezařadí a žádný hlídač ji odtud nevytáhne (`campaign.watchdog` rekoncilne
+ *    a uzavírá běžící kampaně, zaseknuté `queueing` neoživuje). Volající proto žádá
+ *    `fail` a vrací přechod stavu zpátky.
+ *
+ *  - Z plánovače, který tiká každých třicet sekund a zařazuje materializaci znovu,
+ *    dokud kampaň neopustí `scheduled`. Tam je zahození celý smysl klíče: bez něj by
+ *    za minutu vznikly dvě materializace nad týmž outboxem. Volající žádá `drop`.
+ *
+ * Kdyby tu byla výchozí hodnota, jedna z těch dvou cest by ji zdědila mlčky a byla by
+ * to právě ta vada, kvůli které se tenhle soubor upravuje.
  */
 export async function enqueueCampaignJob(
   tx: Tx,
   name: string,
   payload: Record<string, unknown>,
-  options: { singletonKey?: string; startAfterSeconds?: number } = {},
+  options: { singletonKey?: string; startAfterSeconds?: number; onMerged: OnMerged },
 ): Promise<void> {
-  const entry = queue(name);
-  const schema = loadConfig().PGBOSS_SCHEMA;
-  await tx.execute(sql`
-    INSERT INTO ${sql.identifier(schema)}.job
-      (name, data, singleton_key, retry_limit, retry_backoff, expire_seconds, start_after)
-    VALUES (
-      ${name},
-      ${JSON.stringify(payload)}::jsonb,
-      ${options.singletonKey ?? null},
-      ${entry.retryLimit},
-      ${entry.retryBackoff},
-      ${entry.expireInSeconds},
-      now() + make_interval(secs => ${options.startAfterSeconds ?? 0})
-    )
-  `);
+  await enqueueJob(tx, {
+    schema: loadConfig().PGBOSS_SCHEMA,
+    name,
+    payload,
+    singletonKey: options.singletonKey,
+    startAfterSeconds: options.startAfterSeconds,
+    onMerged: options.onMerged,
+  });
 }
 
 export async function enqueueInWorkspace(
   ctx: WorkspaceContext,
   name: string,
   payload: Record<string, unknown>,
-  options: { singletonKey?: string; startAfterSeconds?: number } = {},
+  options: { singletonKey?: string; startAfterSeconds?: number; onMerged: OnMerged },
 ): Promise<void> {
   await withWorkspace(ctx, (tx) => enqueueCampaignJob(tx, name, payload, options));
 }

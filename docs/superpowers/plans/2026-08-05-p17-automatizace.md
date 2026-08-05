@@ -1230,6 +1230,30 @@ Kritérium bez úkolu je díra v plánu. Kdyby se při rozepisování (kapitola 
 
 ## 14. Otázky, které musí rozhodnout zadavatel
 
+> **ROZHODNUTO ZADAVATELEM 2026-08-05.** Čtyři blokující otázky mají odpověď,
+> takže se podle nich smí stavět. Znění otázek níž zůstává, aby bylo vidět,
+> co se rozhodovalo a proti čemu.
+>
+> - **O1 (rozšíření `messages.kind` o `automation`): ANO.** Hotové ještě před
+>   začátkem prací: hodnota se do `ck_messages__kind` přidala v migraci 0016
+>   spolu s `transactional` a ta migrace je spuštěná.
+> - **O2 (pozastavení hlavičkové kampaně ve stavu `draft`): ANO**, a podle
+>   doporučení plánu jako samostatná oprava ještě před vydáním. Zavírá tutéž
+>   díru i u doručovacích e-mailů formulářů, které dnes při zablokovaném
+>   odesílacím účtu vyčerpají pokusy místo aby se zastavily.
+> - **O8 (počítat automatizační e-maily do segmentů o zapojení): ANO**, vědomě
+>   a s testem. Zadavatel bere důsledek, že podmínka „za 90 dní nic neotevřel"
+>   změní výsledek u všech projektů a že uzel `condition` uvidí i e-mail, který
+>   mu tentýž scénář poslal o krok dřív.
+> - **O10 (retence kroků uzavřených běhů): 90 dní.** Sedí to s rozhodnutím
+>   o retenci odeslané pošty, které padlo týž den (`MESSAGE_RETENTION_DAYS`
+>   se konečně začne číst), takže osa, detail běhu i odeslané zprávy mizí
+>   ve stejné lhůtě a uživatel nemusí držet v hlavě tři různá čísla.
+>
+> Zbylých šest otázek (O3 až O7 a O9) zadavatel ponechal na výchozích
+> odpovědích plánu.
+
+
 **O1. Smí publikování měnit zmrazený kontrakt `messages.kind`?**
 Plán předpokládá ano (D6). Alternativa je `kind = 'test'` a smířit se s tím, že automatizační e-maily nebudou v ose a budou mít neomezenou přednost před kampaněmi. **Doporučení: povolit.**
 

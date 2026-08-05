@@ -1,7 +1,8 @@
 import { screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderIntl } from '../../../test/helpers/intl';
-import { ImportResult, resultStatusOf, type ImportResultRow } from './import-result';
+import { ImportResult, type ImportResultRow } from './import-result';
+import { resultStatusOf } from './result-status';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { loadConfig } from '@mlain/core/config';
+import { createSystemContext } from '@mlain/core/identity/context';
 import {
   DEFAULT_TRACKING_SETTINGS,
   TtlLru,
@@ -153,11 +154,21 @@ export function getEventRuntime(): EventRuntime {
   const resolveAndWarm = async (key: string) => {
     const owner = await resolvePublicKey(key);
     if (owner === null) return null;
-    if (settingsCache.get(owner.workspaceId) === undefined) {
-      settingsCache.set(owner.workspaceId, await readTrackingSettings(owner.workspaceId));
-    }
-    if (originsCache.get(owner.workspaceId) === undefined) {
-      originsCache.set(owner.workspaceId, await readAllowedOrigins(owner.workspaceId));
+
+    const needsSettings = settingsCache.get(owner.workspaceId) === undefined;
+    const needsOrigins = originsCache.get(owner.workspaceId) === undefined;
+    if (needsSettings || needsOrigins) {
+      /**
+       * Kontext se vyrábí AŽ TADY, po ověření veřejného klíče. Projekt
+       * pochází z řádku `api_keys`, nikdy z URL ani z těla požadavku, takže
+       * je to táž situace jako u ověřené adresy v `trial-service.ts`: vnější
+       * vstup je ověřený a teprve z něj vzniká `WorkspaceContext`. Čtecí
+       * funkce proto berou kontext, ne řetězec, a cizí projekt jim nikdo
+       * nepodstrčí.
+       */
+      const ctx = createSystemContext(owner.workspaceId, 'tracking.ingest');
+      if (needsSettings) settingsCache.set(owner.workspaceId, await readTrackingSettings(ctx));
+      if (needsOrigins) originsCache.set(owner.workspaceId, await readAllowedOrigins(ctx));
     }
     return owner;
   };

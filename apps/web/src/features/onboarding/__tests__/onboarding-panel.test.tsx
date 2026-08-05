@@ -1,15 +1,34 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OnboardingState } from '@mlain/core/onboarding';
 import { OnboardingPanel } from '../onboarding-panel';
 import { renderWithProviders } from '../test-utils';
+
+const refresh = vi.fn();
+vi.mock('@mlain/i18n/navigation', () => ({
+  Link: ({ children, ...props }: { children: React.ReactNode }) => <a {...props}>{children}</a>,
+  useRouter: () => ({ push: vi.fn(), refresh, replace: vi.fn(), back: vi.fn() }),
+}));
+
+const setOnboardingHiddenAction = vi.fn();
+const dismissOnboardingFinishedAction = vi.fn();
+vi.mock('../actions', () => ({
+  setOnboardingHiddenAction: (...args: unknown[]) => setOnboardingHiddenAction(...args),
+  dismissOnboardingFinishedAction: (...args: unknown[]) => dismissOnboardingFinishedAction(...args),
+}));
+
+beforeEach(() => {
+  refresh.mockClear();
+  setOnboardingHiddenAction.mockReset().mockResolvedValue({ status: 'success' });
+  dismissOnboardingFinishedAction.mockReset().mockResolvedValue({ status: 'success' });
+});
 
 const state: OnboardingState = {
   steps: [
     { id: 'sending', done: false, href: 'settings/sending', secondaryHref: null },
     { id: 'contacts', done: false, href: 'contacts/import', secondaryHref: 'contacts?demo=1' },
-    { id: 'template', done: false, href: 'templates/new', secondaryHref: null },
+    { id: 'template', done: false, href: 'templates', secondaryHref: null },
     { id: 'testSend', done: false, href: 'campaigns', secondaryHref: null },
     { id: 'firstCampaign', done: false, href: 'campaigns', secondaryHref: null },
   ],
@@ -36,11 +55,37 @@ describe('OnboardingPanel', () => {
 
   it('panel jde skrýt, ne zavřít, a po skrytí zůstane řádek se stavem', async () => {
     const onHide = vi.fn();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
     renderWithProviders(<OnboardingPanel state={state} slug="e-shop" onHide={onHide} />);
     await userEvent.click(screen.getByRole('button', { name: /Skrýt/ }));
     expect(onHide).toHaveBeenCalledWith(true);
-    vi.unstubAllGlobals();
+    // Skrytí se ukládá S PROJEKTEM. Bez něj autentizace požadavek odmítne
+    // se 404 a panel by se po obnovení stránky zase objevil.
+    expect(setOnboardingHiddenAction).toHaveBeenCalledWith({
+      workspaceRef: 'e-shop',
+      hidden: true,
+    });
+    // Panel se překreslí hned, ne až po ručním obnovení stránky.
+    expect(await screen.findByRole('button', { name: /Zobrazit/ })).toBeInTheDocument();
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+
+  it('skrytý panel jde zase zobrazit a uloží se to', async () => {
+    renderWithProviders(<OnboardingPanel state={{ ...state, hidden: true }} slug="e-shop" />);
+    await userEvent.click(screen.getByRole('button', { name: /Zobrazit/ }));
+    expect(setOnboardingHiddenAction).toHaveBeenCalledWith({
+      workspaceRef: 'e-shop',
+      hidden: false,
+    });
+    expect(await screen.findByRole('heading', { name: /Vaše první kampaň/ })).toBeInTheDocument();
+  });
+
+  it('když se skrytí neuloží, panel se vrátí a uživatel se to dozví', async () => {
+    setOnboardingHiddenAction.mockResolvedValue({ status: 'error', code: 'not_found' });
+    renderWithProviders(<OnboardingPanel state={state} slug="e-shop" />);
+    await userEvent.click(screen.getByRole('button', { name: /Skrýt/ }));
+    expect(await screen.findByText(/nepodařilo uložit \(not_found\)/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Skrýt/ })).toBeInTheDocument();
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it('ve skrytém stavu ukazuje počet hotových kroků a tlačítko Zobrazit', () => {
@@ -57,6 +102,39 @@ describe('OnboardingPanel', () => {
     );
     expect(screen.getByText(/Hotovo, první kampaň odeslána/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Zavřít/ })).toBeInTheDocument();
+  });
+
+  it('kliknutí na Zavřít gratulaci opravdu zavře a uloží to s projektem', async () => {
+    const onDismiss = vi.fn();
+    renderWithProviders(
+      <OnboardingPanel
+        state={{ ...state, finished: true, doneCount: 5 }}
+        slug="e-shop"
+        onDismiss={onDismiss}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^Zavřít$/ }));
+
+    expect(onDismiss).toHaveBeenCalled();
+    expect(dismissOnboardingFinishedAction).toHaveBeenCalledWith({ workspaceRef: 'e-shop' });
+    // Panel mizí HNED. Přehled je serverová stránka, takže bez místního stavu
+    // by gratulace zůstala na obrazovce až do ručního obnovení; přesně tak
+    // vypadala vada „zelený panel nejde zavřít".
+    await waitFor(() => expect(screen.queryByText(/Hotovo, první kampaň odeslána/)).toBeNull());
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+
+  it('když se zavření neuloží, gratulace se vrátí a řekne se proč', async () => {
+    dismissOnboardingFinishedAction.mockResolvedValue({ status: 'error', code: 'not_found' });
+    renderWithProviders(
+      <OnboardingPanel state={{ ...state, finished: true, doneCount: 5 }} slug="e-shop" />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^Zavřít$/ }));
+
+    // Žádné tiché selhání: kód problému je vidět, ne schovaný v konzoli.
+    expect(await screen.findByText(/nepodařilo zavřít \(not_found\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Hotovo, první kampaň odeslána/)).toBeInTheDocument();
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it('hotový krok je označený i pro čtečku obrazovky, ne jen barvou', () => {

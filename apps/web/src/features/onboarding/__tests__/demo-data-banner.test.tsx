@@ -1,18 +1,30 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DemoDataBanner } from '../demo-data-banner';
 import { renderWithProviders } from '../test-utils';
+
+const refresh = vi.fn();
+vi.mock('@mlain/i18n/navigation', () => ({
+  Link: ({ children, ...props }: { children: React.ReactNode }) => <a {...props}>{children}</a>,
+  useRouter: () => ({ push: vi.fn(), refresh, replace: vi.fn(), back: vi.fn() }),
+}));
+
+const removeDemoDataAction = vi.fn();
+vi.mock('../actions', () => ({
+  removeDemoDataAction: (...args: unknown[]) => removeDemoDataAction(...args),
+}));
+
+beforeEach(() => {
+  refresh.mockClear();
+  removeDemoDataAction.mockReset().mockResolvedValue({ status: 'success' });
+});
 
 const present = {
   present: true,
   counts: { contacts: 50, lists: 3, tags: 4, segments: 2, templates: 2, campaigns: 1 },
   tagId: '019fbf80-a544-7b74-bfb8-ad00553ac1b9',
 };
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 describe('DemoDataBanner', () => {
   it('bez ukázkových dat se nevykreslí nic', () => {
@@ -72,23 +84,32 @@ describe('DemoDataBanner', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Nechat je tu/ })).toHaveFocus());
   });
 
-  it('potvrzení zavolá DELETE na endpoint ukázkových dat', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
-    vi.stubGlobal('fetch', fetchMock);
+  it('potvrzení maže serverovou akcí, která nese projekt', async () => {
+    // Holý `fetch` z prohlížeče tuhle cestu volat NEMŮŽE: hlavička
+    // `X-Workspace-Id` by chyběla, cesta `/api/v1/demo-data` segment `/w/`
+    // nemá a autentizace požadavek odmítne se 404.
     renderWithProviders(<DemoDataBanner state={present} slug="e-shop" />);
     await userEvent.click(screen.getByRole('button', { name: /^Odstranit$/ }));
     await userEvent.click(screen.getByRole('button', { name: /Odstranit ukázková data/ }));
     await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith('/api/v1/demo-data', { method: 'DELETE' }),
+      expect(removeDemoDataAction).toHaveBeenCalledWith({ workspaceRef: 'e-shop' }),
     );
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
-  it('po smazání oznámí úspěch, po selhání chybu', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) });
-    vi.stubGlobal('fetch', fetchMock);
+  it('po smazání oznámí úspěch, po selhání chybu i s kódem problému', async () => {
+    removeDemoDataAction.mockResolvedValue({ status: 'error', code: 'not_found' });
     renderWithProviders(<DemoDataBanner state={present} slug="e-shop" />);
     await userEvent.click(screen.getByRole('button', { name: /^Odstranit$/ }));
     await userEvent.click(screen.getByRole('button', { name: /Odstranit ukázková data/ }));
-    expect(await screen.findByText(/nepodařilo odstranit/)).toBeInTheDocument();
+    expect(await screen.findByText(/nepodařilo odstranit \(not_found\)/)).toBeInTheDocument();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('po úspěšném smazání oznámí, že jsou data pryč', async () => {
+    renderWithProviders(<DemoDataBanner state={present} slug="e-shop" />);
+    await userEvent.click(screen.getByRole('button', { name: /^Odstranit$/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Odstranit ukázková data/ }));
+    expect(await screen.findByText(/Ukázková data jsou pryč/)).toBeInTheDocument();
   });
 });

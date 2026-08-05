@@ -23,6 +23,12 @@ export const ExportResponse = z
     encoding: z.string(),
     delimiter: z.string(),
     status: z.string(),
+    /**
+     * Kolik řádků soubor má. U rozpracovaného exportu `null`: číslo zapisuje job
+     * teprve po dokončení. Rozhraní z něj píše „Ve souboru je 7 kontaktů" místo
+     * obecné věty, že řádků může být míň než na obrazovce.
+     */
+    row_count: z.number().int().nonnegative().nullable(),
     download_url: z.string().nullable(),
   })
   .openapi('Export');

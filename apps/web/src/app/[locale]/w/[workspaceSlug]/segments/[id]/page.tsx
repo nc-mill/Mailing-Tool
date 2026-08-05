@@ -15,6 +15,7 @@ import type { SegmentAst } from '@mlain/ui/patterns/query-builder';
 import { apiFetch } from '@/lib/api-client/fetch';
 import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
 import { buildFieldCatalog } from '@/features/segments/field-catalog';
+import type { FieldClass } from '@/features/segments/operator-matrix';
 import { SegmentEditor } from '@/features/segments/segment-editor';
 
 /**
@@ -111,22 +112,53 @@ type ApiSegment = { id: string; name: string; definition: unknown };
  * bydlí v `@mlain/core/segments`, který s sebou nese i přístup k databázi
  * a v prohlížeči by shodil celou stránku.
  */
+type ApiContactField = {
+  key: string;
+  label: Record<string, string>;
+  type: string;
+  archived_at: string | null;
+};
+
 async function fieldCatalog(
   workspaceId: string,
+  locale: string,
+  greetingEnabled: boolean,
   selfId: string | null,
   campaign?: { id: string; name: string },
+  definition?: unknown,
 ) {
-  const [lists, segments] = await Promise.all([
+  // Štítky a vlastní pole se dotahují STEJNĚ jako seznamy.
+  //
+  // Bez štítků nemá podmínka „Má štítek" z čeho vybírat a zbývá volný text,
+  // ze kterého vznikne dotaz s neplatným uuid a pětistovka; viz komentář
+  // u `CatalogInput.tags`. Vlastní pole se sem nedotahovala vůbec, takže je
+  // ve stavitelli nešlo použít, přestože kompilátor je umí přeložit a jádro
+  // pro ně má celou třídu operátorů.
+  const [lists, segments, tags, contactFields] = await Promise.all([
     apiFetch<{ data: { id: string; name: string }[] }>('/api/v1/lists', { workspaceId }),
     apiFetch<{ data: { id: string; name: string }[] }>('/api/v1/segments', { workspaceId }),
+    apiFetch<{ data: { id: string; name: string }[] }>('/api/v1/tags?limit=200', { workspaceId }),
+    apiFetch<{ data: ApiContactField[] }>('/api/v1/contact-fields?limit=200', { workspaceId }),
   ]);
   const t = await getTranslations('segments');
   return buildFieldCatalog((key, values) => t(key, values), {
+    greetingEnabled,
     lists: lists.ok ? lists.data.data.map((list) => ({ id: list.id, name: list.name })) : [],
+    tags: tags.ok ? tags.data.data.map((tag) => ({ id: tag.id, name: tag.name })) : [],
+    attributes: (contactFields.ok ? contactFields.data.data : [])
+      // Archivované pole nové kontakty neplní, takže do nabídky nepatří.
+      // Podmínku v UŽ ULOŽENÉM segmentu to nezneplatní, tu vyhodnocuje jádro.
+      .filter((field) => field.archived_at === null)
+      .map((field) => ({
+        key: field.key,
+        label: field.label[locale] ?? field.label['cs'] ?? field.key,
+        fieldClass: field.type as FieldClass,
+      })),
     segments: (segments.ok ? segments.data.data : [])
       .filter((segment) => segment.id !== selfId)
       .map((segment) => ({ id: segment.id, name: segment.name })),
     ...(campaign === undefined ? {} : { campaign }),
+    ...(definition === undefined ? {} : { definition }),
   });
 }
 
@@ -142,7 +174,14 @@ export default async function SegmentDetailPage({ params, searchParams }: PagePr
     // Pořadí je dané: katalog musí vědět, ze které kampaně návrh přišel,
     // aby uměl pojmenovat pole předvyplněné podmínky.
     const draft = await campaignDraft(workspaceId, await searchParams);
-    const fields = await fieldCatalog(workspaceId, null, draft?.campaign);
+    const fields = await fieldCatalog(
+      workspaceId,
+      locale,
+      access.data.workspace.greeting_enabled,
+      null,
+      draft?.campaign,
+      draft?.definition,
+    );
     return (
       <SegmentEditor
         workspaceId={workspaceId}
@@ -160,7 +199,14 @@ export default async function SegmentDetailPage({ params, searchParams }: PagePr
   const found = await apiFetch<ApiSegment>(`/api/v1/segments/${id}`, { workspaceId });
   if (!found.ok) notFound();
 
-  const fields = await fieldCatalog(workspaceId, id);
+  const fields = await fieldCatalog(
+    workspaceId,
+    locale,
+    access.data.workspace.greeting_enabled,
+    id,
+    undefined,
+    found.data.definition,
+  );
 
   return (
     <SegmentEditor

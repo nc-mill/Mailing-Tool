@@ -112,6 +112,32 @@ describe('registr navigace', () => {
     expect(visible.map((section) => section.id)).not.toContain('statistics');
   });
 
+  /**
+   * Vypnuté oslovení skrývá obrazovku `/contacts/vocative-review`. Kdyby zůstala
+   * položka v menu, byl by to odkaz na obrazovku, která vrací 404, tedy mrtvé
+   * tlačítko. Podmínka je vlastnost PROJEKTU, takže se rozhoduje tady, ne
+   * příznakem v registru.
+   */
+  it('hiddenIds vyřadí položku, aniž by se sáhlo do registru', () => {
+    // Kontrola oslovení chce `contacts:write`, seznam `owner` výš má jen čtení.
+    const writer = [...owner, 'contacts:write'];
+
+    const visible = visibleNavigation({ permissions: writer });
+    const contacts = visible.find((section) => section.id === 'contacts');
+    expect(contacts?.children?.map((child) => child.id)).toContain('contacts-greeting-queue');
+
+    const hidden = visibleNavigation({
+      permissions: writer,
+      hiddenIds: ['contacts-greeting-queue'],
+    });
+    const contactsHidden = hidden.find((section) => section.id === 'contacts');
+    expect(contactsHidden?.children?.map((child) => child.id)).not.toContain(
+      'contacts-greeting-queue',
+    );
+    // Sekce nezmizí, ostatní podpoložky zůstávají.
+    expect(contactsHidden?.children?.map((child) => child.id)).toContain('contacts-all');
+  });
+
   it('cesta se skládá ze slugu projektu', () => {
     const visible = visibleNavigation({ permissions: owner, workspaceSlug: 'eshop-kolo' });
     const contacts = visible.find((section) => section.id === 'contacts');

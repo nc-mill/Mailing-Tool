@@ -1,7 +1,14 @@
 'use client';
 
+import { Button } from '@mlain/ui/components/button';
+import { Checkbox } from '@mlain/ui/components/checkbox';
+import { Collapsible } from '@mlain/ui/components/collapsible';
+import { Field } from '@mlain/ui/components/field';
+import { Input } from '@mlain/ui/components/input';
+import { RadioGroup, RadioGroupItem } from '@mlain/ui/components/radio-group';
+import { Select, SelectItem } from '@mlain/ui/components/select';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 export type OptionsEstimate = {
   totalRows: number;
@@ -9,10 +16,22 @@ export type OptionsEstimate = {
   duplicates: number;
 };
 
-export type ListOption = { id: string; name: string; optIn: 'single' | 'double' };
+export type ListOption = {
+  id: string;
+  name: string;
+  optIn: 'single' | 'double';
+  /** Výchozí seznam projektu. Průvodce ho má předvybraný, viz `useState` níž. */
+  isDefault?: boolean;
+};
 
 export type ImportOptionsValue = {
-  listId: string | null;
+  /**
+   * Seznam je POVINNÝ, proto `string` a ne `string | null`. Kontakt bez seznamu
+   * nemá co dostat a nemá se z čeho odhlásit, takže „do žádného seznamu" byla
+   * volba, která tiše vyráběla nepoužitelné kontakty: publikum kampaně se bere
+   * ze seznamů a odhlašovací odkaz taky. Zákaz je v typu, ne jen na obrazovce.
+   */
+  listId: string;
   subscriptionStatus: 'confirmed' | 'pending';
   tag: string;
   onConflict: 'skip' | 'update' | 'overwrite' | 'error';
@@ -25,148 +44,366 @@ export type ImportOptionsValue = {
  */
 const DUPLICATE_ERROR_LIMIT = 1_000_000;
 
+/** Hodnota, kterou v rozbalovátku nese volba „Založit nový seznam". */
+const CREATE_LIST = '__create__';
+
 function datedTag(today: Date): string {
   const iso = today.toISOString().slice(0, 10);
   return `import-${iso}`;
 }
 
+const CONFLICT_MODES = ['skip', 'update', 'overwrite'] as const;
+
+const SUBSCRIPTION_CHOICES = [
+  { value: 'confirmed', label: 'subscriptionConfirmed', hint: 'subscriptionConfirmedHint' },
+  { value: 'pending', label: 'subscriptionPending', hint: 'subscriptionPendingHint' },
+] as const;
+
 /**
  * Krok 5. Volby popsané DŮSLEDKEM, ne názvem: „Doplníme, co chybí" místo
  * „merge". Výchozí je doplnění, protože přepis je jediná volba, která umí
  * nenávratně smazat data, která uživatel v aplikaci má.
+ *
+ * ZAŘAZENÍ DO SEZNAMU JE POVINNÉ. Dřív tu byla volba „Do žádného seznamu"
+ * a byla dokonce výchozí, takže se běžný import odbyl kontakty, kterým pak
+ * nešlo nic poslat. Kdo ještě žádný seznam nemá, založí ho rovnou tady:
+ * odejít z rozdělaného importu do jiné části aplikace znamená začít znovu,
+ * protože průvodce běží nad konkrétním nahraným souborem.
  */
 export function StepOptions({
   estimate,
   lists,
+  onCreateList,
   onSubmit,
   today = new Date(),
 }: {
   estimate: OptionsEstimate;
   lists: ListOption[];
+  /** Založení seznamu drží průvodce, stejně jako založení štítku. Vrací `null` při selhání. */
+  onCreateList: (name: string) => Promise<ListOption | null>;
   onSubmit: (value: ImportOptionsValue) => void;
   today?: Date;
 }) {
   const t = useTranslations('import');
+  const [available, setAvailable] = useState<ListOption[]>(lists);
+  const [createdName, setCreatedName] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newListName, setNewListName] = useState('');
+  // Kdo nemá ani jeden seznam, dostane políčko pro založení rovnou otevřené.
+  // Prázdné rozbalovátko s jedinou volbou „Založit nový" je zbytečné kliknutí
+  // navíc přesně v tu chvíli, kdy uživatel nejmíň chápe, co se po něm chce.
+  const [showCreate, setShowCreate] = useState(lists.length === 0);
+  const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState<ImportOptionsValue>({
-    listId: null,
+    /*
+     * VÝCHOZÍ SEZNAM PROJEKTU JE PŘEDVYBRANÝ. Prázdný řetězec znamená
+     * „ještě nevybráno" a tlačítko „Naimportovat" se s ním nehne dál.
+     * Předvybrat NÁHODNÝ seznam by za uživatele rozhodlo, kam jeho kontakty
+     * půjdou, kdežto výchozí seznam projektu je volba, kterou už jednou udělal.
+     */
+    listId: lists.find((list) => list.isDefault === true)?.id ?? '',
     subscriptionStatus: 'pending',
     tag: datedTag(today),
     onConflict: 'update',
     declaration: false,
   });
 
+  // `Select` z P05 ref nepřijímá, takže se spouštěč hledá v obalu. Tentýž
+  // postup má `SelectField`; do `packages/ui` tahle část zapisovat nesmí.
+  const listWrapperRef = useRef<HTMLDivElement>(null);
+  const focusList = (): void => {
+    const trigger = listWrapperRef.current?.querySelector('[role="combobox"]');
+    if (trigger instanceof HTMLElement) trigger.focus();
+  };
+  const declarationRef = useRef<HTMLButtonElement>(null);
+  const newListRef = useRef<HTMLInputElement>(null);
+
   const importable = Math.max(estimate.totalRows - estimate.errorRows - estimate.duplicates, 0);
   const duplicateErrorAvailable = estimate.totalRows <= DUPLICATE_ERROR_LIMIT;
-  const selectedList = lists.find((list) => list.id === value.listId);
+  const selectedList = available.find((list) => list.id === value.listId);
   const declarationRequired =
     selectedList?.optIn === 'double' && value.subscriptionStatus === 'confirmed';
 
   const set = <K extends keyof ImportOptionsValue>(key: K, next: ImportOptionsValue[K]) =>
     setValue((previous) => ({ ...previous, [key]: next }));
 
+  async function createList(): Promise<void> {
+    const name = newListName.trim();
+    if (name === '') {
+      setError(t('options.newListNameRequired'));
+      newListRef.current?.focus();
+      return;
+    }
+    setCreating(true);
+    const created = await onCreateList(name);
+    setCreating(false);
+    if (created === null) {
+      setError(t('options.newListFailed'));
+      return;
+    }
+    setAvailable((previous) => [...previous, created]);
+    setCreatedName(created.name);
+    setShowCreate(false);
+    setNewListName('');
+    setError(null);
+    set('listId', created.id);
+  }
+
+  /**
+   * Tlačítko primární akce NIKDY nemá `disabled`: mrtvé tlačítko neřekne proč.
+   * Kontrola je tady, po kliknutí, a posadí fokus tam, kde se dá chyba opravit.
+   *
+   * Prohlášení hlídá i server (`assertOptionsConsistent` vrátí 422
+   * `declaration_required`), takže se obejít nedá. Tahle kontrola je jen ta
+   * dřívější a srozumitelnější polovina: uživatel se to dozví u zaškrtávátka,
+   * ne jako technické selhání uložení voleb.
+   */
+  function submit(): void {
+    if (value.listId === '') {
+      setError(t('options.listRequired'));
+      focusList();
+      return;
+    }
+    if (declarationRequired && !value.declaration) {
+      setError(t('options.declarationRequired'));
+      declarationRef.current?.focus();
+      return;
+    }
+    setError(null);
+    onSubmit(value);
+  }
+
   return (
-    <div className="flex flex-col gap-4">
-      <h2>{t('options.title')}</h2>
+    <div className="flex max-w-2xl flex-col gap-5">
+      <h2 className="text-lg font-semibold text-text">{t('options.title')}</h2>
 
-      <label htmlFor="import-list">{t('options.list')}</label>
-      <select
-        id="import-list"
-        value={value.listId ?? ''}
-        onChange={(event) => set('listId', event.target.value === '' ? null : event.target.value)}
-      >
-        <option value="">{t('options.noList')}</option>
-        {lists.map((list) => (
-          <option key={list.id} value={list.id}>
-            {list.name}
-          </option>
-        ))}
-      </select>
+      {/*
+        Výběr seznamu ZÁMĚRNĚ nesedí v `Field`. Ta komponenta klonuje svého
+        potomka a dosazuje mu `id`, na které pak ukazuje `htmlFor` popisku;
+        u `Select` z P05 by `id` skončilo na obalu, ne na spouštěči, a popisek
+        by neukazoval na nic. Přístupné jméno proto nese `aria-label`, stejně
+        jako to dělá `SelectField` ve zbytku aplikace, a viditelný text je
+        `<span>`, ne `<label>`, aby čtečka jméno nepředčítala dvakrát.
+      */}
+      <div ref={listWrapperRef} className="flex flex-col gap-1.5">
+        <span aria-hidden className="text-sm font-medium text-text">
+          {t('options.list')}
+        </span>
+        <Select
+          aria-label={t('options.list')}
+          placeholder={t('options.listPlaceholder')}
+          {...(value.listId === '' ? {} : { value: value.listId })}
+          onValueChange={(next) => {
+            if (next === CREATE_LIST) {
+              setShowCreate(true);
+              setError(null);
+              // Fokus do políčka s názvem, aby se dalo rovnou psát.
+              window.setTimeout(() => newListRef.current?.focus(), 0);
+              return;
+            }
+            setShowCreate(false);
+            setError(null);
+            set('listId', next);
+          }}
+        >
+          {available.map((list) => (
+            <SelectItem key={list.id} value={list.id}>
+              {list.name}
+            </SelectItem>
+          ))}
+          <SelectItem value={CREATE_LIST}>{t('options.createList')}</SelectItem>
+        </Select>
+        <p className="text-sm text-text-muted">{t('options.listHint')}</p>
+      </div>
 
-      {value.listId !== null ? (
-        <fieldset className="flex flex-col gap-1">
-          <legend>{t('options.subscriptionStatus')}</legend>
-          <label>
-            <input
-              type="radio"
-              name="subscription"
-              checked={value.subscriptionStatus === 'confirmed'}
-              onChange={() => set('subscriptionStatus', 'confirmed')}
+      {createdName === null ? null : (
+        <p role="status" className="text-sm text-text-muted">
+          {t('options.newListCreated', { name: createdName })}
+        </p>
+      )}
+
+      {showCreate ? (
+        <div className="flex flex-col gap-3 rounded-[var(--radius-surface)] border border-border p-4">
+          <Field label={t('options.newListName')} hint={t('options.newListNameHint')}>
+            <Input
+              ref={newListRef}
+              value={newListName}
+              maxLength={120}
+              data-testid="import-new-list-name"
+              onChange={(event) => setNewListName(event.target.value)}
             />
-            {t('options.subscriptionConfirmed')}
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="subscription"
-              checked={value.subscriptionStatus === 'pending'}
-              onChange={() => set('subscriptionStatus', 'pending')}
-            />
-            {t('options.subscriptionPending')}
-          </label>
-        </fieldset>
+          </Field>
+          <Button
+            type="button"
+            variant="secondary"
+            className="self-start"
+            onClick={() => void createList()}
+          >
+            {creating ? t('options.newListCreating') : t('options.newListCreate')}
+          </Button>
+        </div>
       ) : null}
 
-      <label htmlFor="import-tag">{t('options.tag')}</label>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-2 font-semibold text-text">{t('options.subscriptionStatus')}</legend>
+        <RadioGroup
+          name="import-subscription"
+          value={value.subscriptionStatus}
+          onValueChange={(next: string) => {
+            set('subscriptionStatus', next === 'confirmed' ? 'confirmed' : 'pending');
+            setError(null);
+          }}
+        >
+          {SUBSCRIPTION_CHOICES.map((option) => (
+            <div key={option.value} className="flex items-start gap-3">
+              <RadioGroupItem
+                value={option.value}
+                id={`import-subscription-${option.value}`}
+                aria-labelledby={`import-subscription-label-${option.value}`}
+              />
+              <div className="flex flex-col gap-1">
+                <span
+                  id={`import-subscription-label-${option.value}`}
+                  className="text-sm font-medium text-text"
+                >
+                  {t(`options.${option.label}`)}
+                </span>
+                <span className="text-sm text-text-muted">{t(`options.${option.hint}`)}</span>
+              </div>
+            </div>
+          ))}
+        </RadioGroup>
+      </fieldset>
+
       {/* Předvyplněný datový štítek je náhrada za „vrátit tento import"
           (rozhodnutí R5): podle něj se skupina dá kdykoli najít a hromadně
           upravit, což mrtvé tlačítko Undo neumí. */}
-      <input
-        id="import-tag"
-        value={value.tag}
-        onChange={(event) => set('tag', event.target.value)}
-      />
-      <p className="text-sm text-text-muted">{t('options.tagHint')}</p>
+      <Field
+        label={t('options.tag')}
+        optionalLabel={t('options.tagOptional')}
+        hint={t('options.tagHint')}
+      >
+        <Input
+          value={value.tag}
+          maxLength={120}
+          onChange={(event) => set('tag', event.target.value)}
+        />
+      </Field>
 
-      <fieldset className="flex flex-col gap-1">
-        <legend>{t('options.conflict')}</legend>
-        {(['skip', 'update', 'overwrite'] as const).map((mode) => (
-          <label key={mode}>
-            <input
-              type="radio"
-              name="conflict"
-              checked={value.onConflict === mode}
-              onChange={() => set('onConflict', mode)}
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-2 font-semibold text-text">{t('options.conflict')}</legend>
+        <RadioGroup
+          name="import-conflict"
+          value={value.onConflict}
+          onValueChange={(next: string) => {
+            // Zašedlá volba se nesmí dát vybrat ani klávesnicí: dávka nad
+            // milionem řádků druhý výskyt téže adresy spolehlivě nepozná.
+            if (next === 'error' && !duplicateErrorAvailable) return;
+            set('onConflict', next as ImportOptionsValue['onConflict']);
+          }}
+        >
+          {CONFLICT_MODES.map((mode) => {
+            const suffix = `${mode.charAt(0).toUpperCase()}${mode.slice(1)}`;
+            return (
+              <div key={mode} className="flex items-start gap-3">
+                <RadioGroupItem
+                  value={mode}
+                  id={`import-conflict-${mode}`}
+                  aria-labelledby={`import-conflict-label-${mode}`}
+                />
+                <div className="flex flex-col gap-1">
+                  <span
+                    id={`import-conflict-label-${mode}`}
+                    className="text-sm font-medium text-text"
+                  >
+                    {t(`options.conflict${suffix}`)}
+                  </span>
+                  <span className="text-sm text-text-muted">
+                    {t(`options.conflict${suffix}Hint`)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          <div className="flex items-start gap-3">
+            <RadioGroupItem
+              value="error"
+              id="import-conflict-error"
+              aria-labelledby="import-conflict-label-error"
+              aria-disabled={!duplicateErrorAvailable}
             />
-            {t(`options.conflict${mode.charAt(0).toUpperCase()}${mode.slice(1)}`)}
-            <span>{t(`options.conflict${mode.charAt(0).toUpperCase()}${mode.slice(1)}Hint`)}</span>
-          </label>
-        ))}
-        <label>
-          <input
-            type="radio"
-            name="conflict"
-            checked={value.onConflict === 'error'}
-            aria-disabled={!duplicateErrorAvailable}
-            onChange={() => {
-              if (duplicateErrorAvailable) set('onConflict', 'error');
-            }}
-          />
-          {t('options.conflictError')}
-          <span>{t('options.conflictErrorHint')}</span>
-        </label>
-        {duplicateErrorAvailable ? null : <p>{t('options.duplicateErrorUnavailable')}</p>}
+            <div className="flex flex-col gap-1">
+              <span id="import-conflict-label-error" className="text-sm font-medium text-text">
+                {t('options.conflictError')}
+              </span>
+              <span className="text-sm text-text-muted">{t('options.conflictErrorHint')}</span>
+            </div>
+          </div>
+        </RadioGroup>
+        {duplicateErrorAvailable ? null : (
+          <p className="text-sm text-text-muted">{t('options.duplicateErrorUnavailable')}</p>
+        )}
       </fieldset>
 
-      <label>
-        <input
-          type="checkbox"
-          required={declarationRequired}
-          checked={value.declaration}
-          onChange={(event) => set('declaration', event.target.checked)}
-        />
-        {t('options.declaration')}
-      </label>
-      <p className="text-sm text-text-muted">{t('options.declarationEvidence')}</p>
-      <button type="button" className="self-start text-sm underline">
-        {t('options.declarationLink')}
-      </button>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-start gap-3">
+          <Checkbox
+            ref={declarationRef}
+            id="import-declaration"
+            checked={value.declaration}
+            aria-describedby="import-declaration-evidence"
+            onCheckedChange={(next) => {
+              set('declaration', next === true);
+              setError(null);
+            }}
+          />
+          <label htmlFor="import-declaration" className="text-sm text-text">
+            {t('options.declaration')}
+          </label>
+        </div>
+        <p id="import-declaration-evidence" className="text-sm text-text-muted">
+          {t('options.declarationEvidence')}
+        </p>
+        {/* Tlačítko „Co to znamená" bylo mrtvé: nemělo `onClick`, takže nedělalo
+            nic. Teď rozbalí vysvětlení přímo pod prohlášením, protože kdo se ptá,
+            co potvrzuje, nechce kvůli odpovědi opustit rozdělaný import. */}
+        <Collapsible summary={t('options.declarationLink')} className="self-start">
+          <div className="flex max-w-2xl flex-col gap-2 rounded-[var(--radius-surface)] border border-border bg-surface-muted p-4 text-sm text-text">
+            <strong>{t('options.declarationExplainTitle')}</strong>
+            <p>{t('options.declarationExplainBody')}</p>
+            <p className="text-text-muted">{t('options.declarationExplainWhen')}</p>
+          </div>
+        </Collapsible>
+      </div>
+
+      {error === null ? null : (
+        <p role="alert" className="text-sm text-danger-text">
+          {error}
+        </p>
+      )}
+
+      {/* CÍLOVÝ SEZNAM JE VIDĚT U TLAČÍTKA. Výchozí seznam projektu je
+          předvybraný, takže kdo klikne bez čtení, musí poznat z obrazovky, kam
+          import půjde, ne až z výsledku. */}
+      {selectedList === undefined ? null : (
+        <p className="text-sm text-text-muted">
+          {t('options.submitTarget', {
+            list: selectedList.name,
+            status: t(
+              value.subscriptionStatus === 'confirmed'
+                ? 'options.subscriptionConfirmed'
+                : 'options.subscriptionPending',
+            ).toLowerCase(),
+          })}
+        </p>
+      )}
 
       {/* Na tlačítku je SKUTEČNÉ číslo, tedy řádky mínus chybné mínus duplicity.
           Kdyby tam byl počet řádků souboru, uživatel by po importu nechápal,
           proč se čísla neshodují. */}
-      <button type="button" onClick={() => onSubmit(value)}>
+      <Button type="button" variant="primary" className="self-start" onClick={submit}>
         {t('options.submit', { count: importable })}
-      </button>
+      </Button>
     </div>
   );
 }

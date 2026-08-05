@@ -49,10 +49,22 @@ export function createHttpPorts(options: {
     return { status: response.status, body };
   };
 
+  /**
+   * Chyba portu. `detail` nese VĚTU, KTEROU MÁ UŽIVATEL VIDĚT.
+   *
+   * U `validation_failed` je kořenový `detail` jen obecné „The request body did
+   * not pass validation." a to, co se doopravdy stalo, leží v `errors[0].message`.
+   * Doménové závory (potvrzovací e-mail bez odkazu na potvrzení, odhlašovací
+   * odkaz v e-mailu seznamu) posílají celou instrukci právě tam, takže bez
+   * tohohle řádku by editor uživateli ukázal „Uložení se nepovedlo" a člověk by
+   * neměl podle čeho to spravit.
+   */
   const fail = (body: Json, status: number): never => {
+    const issues = Array.isArray(body.errors) ? (body.errors as { message?: unknown }[]) : [];
+    const first = issues.find((issue) => typeof issue.message === 'string')?.message;
     throw new PortError(
       String(body.code ?? 'unknown_error'),
-      String(body.detail ?? ''),
+      String(first ?? body.detail ?? ''),
       body.request_id ? String(body.request_id) : undefined,
       status,
     );

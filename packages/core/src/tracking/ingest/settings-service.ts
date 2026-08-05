@@ -1,8 +1,10 @@
 import { sql } from 'drizzle-orm';
 import { PUBLIC_KEY_SCOPES, generatePublicKey } from '../../identity/api-key';
+import { withWorkspace, type WorkspaceContext } from '../../tx';
+import { recordPublicKeyCreated } from '../audit';
 import { TRACKING_DOMAIN_LIMIT } from '../config';
 import { normalizeHost } from '../domains/domain-cache';
-import { withTrackingTx } from '../repo/tx';
+import { selectAllowedOrigins, type AllowedOrigin } from '../repo/tracking-domains.repo';
 import { resetPublicKeyCache } from './public-key';
 
 /**
@@ -18,7 +20,18 @@ import { resetPublicKeyCache } from './public-key';
  * zápis do `apps/web/src/lib/api/openapi.ts` a do specifikace, tedy povrch,
  * který nikdo z venku nepotřebuje. Obrazovka je serverová komponenta a volá
  * doménu přímo, stejně jako obrazovka značky projektu.
+ *
+ * ROZSAH SE PŘEDÁVÁ KONTEXTEM, ne řetězcem. Funkce si samy otevírají transakci,
+ * takže dokud braly `workspaceId: string`, rozhodovaly o izolaci podle hodnoty,
+ * které nikdo neručil, a kdokoliv je zavolal s cizím identifikátorem dostal
+ * cizí data. `WorkspaceContext` je branded typ z jediné továrny, takže rozsah
+ * je vidět z podpisu a podstrčit ho nejde. Hlídá to `identity/scope.test.ts`.
  */
+
+export type { AllowedOrigin };
+
+/** Jméno klíče. Konstanta, protože musí sedět v INSERTu i v auditním záznamu. */
+const PUBLIC_KEY_NAME = 'Měřicí kód na web';
 
 export type PublicTrackingKey = {
   apiKeyId: string;
@@ -35,24 +48,26 @@ export type PublicTrackingKey = {
  * kdykoli znovu, což je přesně to, co obrazovka s úryvkem potřebuje.
  */
 export async function ensurePublicTrackingKey(
-  workspaceId: string,
+  ctx: WorkspaceContext,
   createdBy: string | null,
+  /**
+   * Popis aktéra do auditu. Nepovinný schválně: volající, který ho nezná
+   * (test, budoucí systémová cesta), nemá kvůli auditu shánět e-mail navíc.
+   */
+  actorLabel = 'obrazovka Měření webu',
 ): Promise<PublicTrackingKey> {
-  const existing = await withTrackingTx(
-    { workspaceId, job: 'tracking.public_key_read' },
-    async (tx) => {
-      const { rows } = await tx.execute<{ id: string; prefix: string; created_at: Date }>(sql`
+  const existing = await withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<{ id: string; prefix: string; created_at: Date }>(sql`
         SELECT id, prefix, created_at
           FROM api_keys
-         WHERE workspace_id = ${workspaceId}
+         WHERE workspace_id = ${ctx.workspaceId}
            AND kind = 'public'
            AND revoked_at IS NULL
          ORDER BY created_at
          LIMIT 1
       `);
-      return rows[0] ?? null;
-    },
-  );
+    return rows[0] ?? null;
+  });
 
   if (existing !== null) {
     return {
@@ -63,14 +78,12 @@ export async function ensurePublicTrackingKey(
   }
 
   const generated = generatePublicKey();
-  const created = await withTrackingTx(
-    { workspaceId, job: 'tracking.public_key_create' },
-    async (tx) => {
-      const { rows } = await tx.execute<{ id: string; created_at: Date }>(sql`
+  const created = await withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<{ id: string; created_at: Date }>(sql`
         INSERT INTO api_keys (workspace_id, name, kind, prefix, scopes, created_by)
         VALUES (
-          ${workspaceId},
-          'Měřicí kód na web',
+          ${ctx.workspaceId},
+          ${PUBLIC_KEY_NAME},
           'public',
           ${generated.prefix},
           ${sql.param([...PUBLIC_KEY_SCOPES])}::text[],
@@ -78,9 +91,22 @@ export async function ensurePublicTrackingKey(
         )
         RETURNING id, created_at
       `);
-      return rows[0]!;
-    },
-  );
+    const row = rows[0]!;
+
+    /**
+     * Audit VE STEJNÉ TRANSAKCI jako vznik klíče. Kdyby se zapisoval zvlášť,
+     * rollback by klíč zahodil a záznam o něm nechal, nebo naopak.
+     */
+    await recordPublicKeyCreated(tx, {
+      ctx,
+      actorLabel,
+      apiKeyId: row.id,
+      name: PUBLIC_KEY_NAME,
+      scopes: PUBLIC_KEY_SCOPES,
+    });
+
+    return row;
+  });
 
   // Bez tohohle by minutu platila nakešovaná záporná odpověď a uživatel by po
   // nasazení úryvku viděl 401, přestože klíč právě vznikl.
@@ -101,8 +127,8 @@ export type TrackingDomainRow = {
   createdAt: Date;
 };
 
-export async function listTrackingDomains(workspaceId: string): Promise<TrackingDomainRow[]> {
-  return withTrackingTx({ workspaceId, job: 'tracking.domains_read' }, async (tx) => {
+export async function listTrackingDomains(ctx: WorkspaceContext): Promise<TrackingDomainRow[]> {
+  return withWorkspace(ctx, async (tx) => {
     const { rows } = await tx.execute<{
       id: string;
       host: string;
@@ -112,7 +138,7 @@ export async function listTrackingDomains(workspaceId: string): Promise<Tracking
     }>(sql`
       SELECT id, host, include_subdomains, verified_at, created_at
         FROM tracking_domains
-       WHERE workspace_id = ${workspaceId}
+       WHERE workspace_id = ${ctx.workspaceId}
        ORDER BY host
     `);
     return rows.map((row) => ({
@@ -138,7 +164,7 @@ export type AddDomainResult =
  * vypadá to, že je nastaveno, a přitom nic nechodí.
  */
 export async function addTrackingDomain(
-  workspaceId: string,
+  ctx: WorkspaceContext,
   rawHost: string,
   includeSubdomains: boolean,
 ): Promise<AddDomainResult> {
@@ -153,9 +179,9 @@ export async function addTrackingDomain(
     return { ok: false, code: 'tracking_domain_invalid' };
   }
 
-  return withTrackingTx({ workspaceId, job: 'tracking.domains_write' }, async (tx) => {
+  return withWorkspace(ctx, async (tx) => {
     const { rows: counted } = await tx.execute<{ count: string }>(sql`
-      SELECT count(*)::text AS count FROM tracking_domains WHERE workspace_id = ${workspaceId}
+      SELECT count(*)::text AS count FROM tracking_domains WHERE workspace_id = ${ctx.workspaceId}
     `);
     if (Number(counted[0]?.count ?? '0') >= TRACKING_DOMAIN_LIMIT) {
       return { ok: false, code: 'tracking_domain_limit_reached' as const };
@@ -169,7 +195,7 @@ export async function addTrackingDomain(
       created_at: Date;
     }>(sql`
       INSERT INTO tracking_domains (workspace_id, host, include_subdomains)
-      VALUES (${workspaceId}, ${host}, ${includeSubdomains})
+      VALUES (${ctx.workspaceId}, ${host}, ${includeSubdomains})
       ON CONFLICT (workspace_id, host)
         DO UPDATE SET include_subdomains = EXCLUDED.include_subdomains
       RETURNING id, host, include_subdomains, verified_at, created_at
@@ -188,15 +214,13 @@ export async function addTrackingDomain(
   });
 }
 
-export async function removeTrackingDomain(workspaceId: string, id: string): Promise<void> {
-  await withTrackingTx({ workspaceId, job: 'tracking.domains_write' }, async (tx) => {
+export async function removeTrackingDomain(ctx: WorkspaceContext, id: string): Promise<void> {
+  await withWorkspace(ctx, async (tx) => {
     await tx.execute(sql`
-      DELETE FROM tracking_domains WHERE workspace_id = ${workspaceId} AND id = ${id}
+      DELETE FROM tracking_domains WHERE workspace_id = ${ctx.workspaceId} AND id = ${id}
     `);
   });
 }
-
-export type AllowedOrigin = { host: string; includeSubdomains: boolean };
 
 /**
  * Povolené domény JEDNOHO projektu, načtené v jeho kontextu.
@@ -204,41 +228,23 @@ export type AllowedOrigin = { host: string; includeSubdomains: boolean };
  * ODCHYLKA OD PLÁNU, A JE TO OPRAVA VADY, KTEROU JSEM NAŠEL AŽ NA DATECH.
  *
  * Plán chtěl kontrolu `Origin` proti `TrackingDomainCache`, tedy proti mapě,
- * kterou plní `selectAllTrackingDomains()`. Ta čte tabulku NAPŘÍČ PROJEKTY,
- * tedy bez `mlain.workspace_id`, jenže `tracking_domains` má jedinou politiku
- * `ws_isolation`, která bez toho nastavení porovnává `workspace_id` s NULL.
- * Dotaz proto vrací VŽDY NULA ŘÁDKŮ, nic přitom nespadne a cache vypadá
- * v pořádku. Navenek to je „doménu mám v seznamu a `/e/track` mi vrací 403".
- * Ověřeno proti běžící instalaci: doména `localhost` byla v tabulce a odpověď
- * byla `403 origin_not_allowed`.
+ * kterou plnil dotaz NAPŘÍČ PROJEKTY, tedy bez `mlain.workspace_id`. Tabulka
+ * `tracking_domains` má jedinou politiku `ws_isolation`, která bez toho
+ * nastavení porovnává `workspace_id` s NULL, takže dotaz vracel VŽDY NULA
+ * ŘÁDKŮ. Nic přitom nespadlo a cache vypadala v pořádku. Navenek to bylo
+ * „doménu mám v seznamu a `/e/track` mi vrací 403". Ověřeno proti běžící
+ * instalaci: doména `localhost` byla v tabulce a odpověď byla
+ * `403 origin_not_allowed`.
  *
  * Cross-workspace čtení tady navíc není potřeba. Veřejný klíč se ověřuje DŘÍV
  * než `Origin`, takže projekt v tu chvíli známe a stačí se zeptat na jeho
  * řádky v jeho vlastním kontextu.
  *
- * Globální `TrackingDomainCache` tím nemizí; používá ji cesta prokliku
- * `/t/c/`, kde platí totéž a opravit se to musí u ní.
+ * `TrackingDomainCache` je dnes opravená stejným způsobem a čte přes tentýž
+ * dotaz v repozitáři, takže obě cesty vidí totéž.
  */
-export async function readAllowedOrigins(workspaceId: string): Promise<AllowedOrigin[]> {
-  return withTrackingTx({ workspaceId, job: 'tracking.origins' }, async (tx) => {
-    const { rows } = await tx.execute<{ host: string; include_subdomains: boolean }>(sql`
-      SELECT host, include_subdomains FROM tracking_domains WHERE workspace_id = ${workspaceId}
-    `);
-    return rows.map((row) => ({ host: row.host, includeSubdomains: row.include_subdomains }));
-  });
-}
-
-/**
- * Shoda musí být na celý host nebo na hranici tečky. Prosté `endsWith` by
- * pustilo `zlyblog.example.cz` na pravidlo pro `blog.example.cz`, což je únik
- * identity na cizí web, tedy přesně to, čemu tahle kontrola brání.
- */
-export function originMatches(allowed: readonly AllowedOrigin[], host: string): boolean {
-  const target = normalizeHost(host);
-  return allowed.some((entry) => {
-    if (entry.host === target) return true;
-    return entry.includeSubdomains && target.endsWith(`.${entry.host}`);
-  });
+export function readAllowedOrigins(ctx: WorkspaceContext): Promise<AllowedOrigin[]> {
+  return selectAllowedOrigins(ctx);
 }
 
 export type WebTrackingStatus = {
@@ -253,8 +259,8 @@ export type WebTrackingStatus = {
  * Odpověď na jedinou otázku, kterou uživatel po nasazení úryvku má:
  * „přišlo už nám odsud něco?"
  */
-export async function readWebTrackingStatus(workspaceId: string): Promise<WebTrackingStatus> {
-  return withTrackingTx({ workspaceId, job: 'tracking.status' }, async (tx) => {
+export async function readWebTrackingStatus(ctx: WorkspaceContext): Promise<WebTrackingStatus> {
+  return withWorkspace(ctx, async (tx) => {
     const { rows } = await tx.execute<{
       events: string;
       last_at: Date | null;
@@ -264,7 +270,7 @@ export async function readWebTrackingStatus(workspaceId: string): Promise<WebTra
              max(occurred_at) AS last_at,
              count(DISTINCT coalesce(anonymous_id, contact_id))::text AS visitors
         FROM web_events
-       WHERE workspace_id = ${workspaceId}
+       WHERE workspace_id = ${ctx.workspaceId}
          AND source IN ('web', 'server')
          AND received_at >= now() - interval '30 days'
     `);

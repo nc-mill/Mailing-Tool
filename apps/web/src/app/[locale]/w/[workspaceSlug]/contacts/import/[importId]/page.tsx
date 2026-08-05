@@ -3,11 +3,11 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api-client/fetch';
 import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
-import {
-  ImportResult,
-  resultStatusOf,
-  type ImportResultRow,
-} from '@/features/import/import-result';
+import { ImportResult, type ImportResultRow } from '@/features/import/import-result';
+// Převod stavu je v samostatném modulu BEZ `'use client'`: volá ho tahle
+// serverová stránka a z klientské komponenty ho zavolat nejde, vykreslení
+// skončí výjimkou a uživatel místo výsledku importu vidí chybovou obrazovku.
+import { resultStatusOf } from '@/features/import/result-status';
 
 /**
  * Stránka závisí na přihlášeném uživateli, takže se NEPŘEDRENDEROVÁVÁ.
@@ -90,6 +90,7 @@ export default async function ImportResultPage({ params }: PageProps) {
       workspaceSlug={workspaceSlug}
       workspaceId={workspaceId}
       locale={locale}
+      greetingEnabled={access.data.workspace.greeting_enabled}
     />
   );
 }

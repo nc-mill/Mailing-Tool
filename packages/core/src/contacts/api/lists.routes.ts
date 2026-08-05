@@ -1,8 +1,14 @@
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
+import type { Document } from '@mlain/emails/document/types';
 import { ApiError, validationFailed } from '../../errors/api-error';
 import { assertPermission } from '../../identity/permissions';
+import type { WorkspaceContext } from '../../identity/types';
+import { findTemplateById } from '../../templates/repository';
+import { withWorkspace } from '../../tx';
 import { DEFAULT_CONFIRMATION_MODE, DEFAULT_CONFIRMATION_TTL_HOURS } from '../constants';
+import { getFieldCatalog } from '../fields/catalog';
 import { confirmPendingSubscriptions } from '../lists/confirm-pending';
+import { documentHasConfirmLink, documentUsesUnsubscribeUrl } from '../lists/confirm-link-guard';
 import { resendConfirmation, subscribeToList } from '../lists/subscribe-service';
 import { bulkUnsubscribeFromList, unsubscribe } from '../lists/unsubscribe';
 import { findContactByEmail } from '../repo/contacts-query';
@@ -47,6 +53,17 @@ const ListSchema = z
     confirmation_ttl_hours: z.number().int(),
     confirmation_max_resends: z.number().int(),
     send_welcome: z.boolean(),
+    send_goodbye: z.boolean(),
+    /**
+     * Šablony tří e-mailů seznamu. `null` znamená „použije se obecné znění",
+     * ne chybějící hodnotu: obecné znění je konstanta typu `Document`
+     * v `contacts/lists/default-emails.ts` a je to plnohodnotný e-mail.
+     */
+    confirmation_template_id: Uuid.nullable(),
+    welcome_template_id: Uuid.nullable(),
+    goodbye_template_id: Uuid.nullable(),
+    confirm_redirect_url: z.string().nullable(),
+    unsubscribe_redirect_url: z.string().nullable(),
     is_default: z.boolean(),
     public_visible: z.boolean(),
     public_name: z.string().nullable(),
@@ -74,6 +91,23 @@ const CreateListSchema = z
       .default(DEFAULT_CONFIRMATION_TTL_HOURS),
     confirmation_max_resends: z.number().int().min(0).max(10).optional(),
     send_welcome: z.boolean().default(false),
+    /**
+     * Rozloučení po odhlášení. Výchozí NE, rozhodnutí zadavatele z 5. 8. 2026:
+     * část odesílatelů ho záměrně neposílá, protože e-mail po odhlášení bývá
+     * vnímaný jako drzost.
+     */
+    send_goodbye: z.boolean().default(false),
+    /** `null` vrací seznam k obecnému znění, viz `default-emails.ts`. */
+    confirmation_template_id: Uuid.nullable().optional(),
+    welcome_template_id: Uuid.nullable().optional(),
+    goodbye_template_id: Uuid.nullable().optional(),
+    /**
+     * Kam po potvrzení a po odhlášení. Prázdný řetězec je „žádné přesměrování",
+     * překládá ho `emptyToNull` v repozitáři; `ck_lists__*_redirect_url_len`
+     * prázdnou hodnotu zakazuje.
+     */
+    confirm_redirect_url: z.string().max(2000).nullable().optional(),
+    unsubscribe_redirect_url: z.string().max(2000).nullable().optional(),
     is_default: z.boolean().default(false),
     /**
      * Nabízet seznam ve veřejném centru předvoleb k PŘIHLÁŠENÍ?
@@ -133,6 +167,12 @@ function present(row: ListRow): z.infer<typeof ListSchema> {
     confirmation_ttl_hours: row.confirmationTtlHours,
     confirmation_max_resends: row.confirmationMaxResends,
     send_welcome: row.sendWelcome,
+    send_goodbye: row.sendGoodbye,
+    confirmation_template_id: row.confirmationTemplateId,
+    welcome_template_id: row.welcomeTemplateId,
+    goodbye_template_id: row.goodbyeTemplateId,
+    confirm_redirect_url: row.confirmRedirectUrl,
+    unsubscribe_redirect_url: row.unsubscribeRedirectUrl,
     is_default: row.isDefault,
     public_visible: row.publicVisible,
     public_name: row.publicName,
@@ -487,6 +527,83 @@ const confirmPendingRoute = createRoute({
   },
 });
 
+/**
+ * ZÁVORY PŘI PŘIPOJENÍ ŠABLONY K SEZNAMU.
+ *
+ * Dvě pravidla, obě vlastnost VAZBY, ne šablony, takže tentýž dokument může
+ * projít v jedné roli a v druhé ne. Doména šablon o nich nic neví a vědět nemá.
+ *
+ * 1. POTVRZOVACÍ e-mail musí nést odkaz na potvrzení. Bez něj dostane člověk
+ *    zprávu, ze které přihlášení dokončit nejde, a nic přitom nespadne: render
+ *    s `strictVariables: false` udělá z chybějící proměnné prázdný `href`.
+ * 2. UVÍTACÍ a ROZLOUČOVACÍ e-mail NESMÍ nést odhlašovací odkaz. Odcházejí jako
+ *    `messages.kind = 'transactional'` a sender u toho druhu odhlašovací odkaz
+ *    nevyrábí, `worker.go` ho v render datech bezpodmínečně přepíše prázdným
+ *    řetězcem. Odkaz by tedy vedl do prázdna. Že to blokuje uložení a není to
+ *    varování, rozhodl vedoucí týmu 5. 8. 2026.
+ *
+ * Tytéž dvě závory jsou i na uložení šablony (`templates/service.ts`, funkce
+ * `saveDesign`), protože obsah jde upravit kdykoli potom, co se připojila,
+ * a u potvrzovacího e-mailu ještě potřetí na odeslání. Není to duplicita:
+ * každá chytá jiný okamžik a jen ta poslední zabrání odeslání.
+ */
+async function assertListEmailTemplate(
+  ctx: WorkspaceContext,
+  role: 'confirmation' | 'welcome' | 'goodbye',
+  field: string,
+  templateId: string | null | undefined,
+): Promise<void> {
+  if (templateId === undefined || templateId === null) return;
+
+  const fields = await getFieldCatalog(ctx);
+  const template = await withWorkspace(ctx, async (tx) => findTemplateById(tx, ctx, templateId));
+  // Neexistující šablonu neřeší tahle závora, ale cizí klíč: zápis skončí 409.
+  // Tady se mlčí, aby z odpovědi nešlo zjišťovat, které identifikátory existují.
+  if (template === undefined) return;
+  const document = template.design as Document;
+
+  if (role === 'confirmation' && !documentHasConfirmLink(document, fields)) {
+    throw validationFailed([
+      {
+        path: field,
+        code: 'confirmation_template_missing_confirm_link',
+        message:
+          'Potvrzovací e-mail musí obsahovat odkaz na potvrzení, tedy {{ data.confirm_url }} v tlačítku nebo v odkazu. Bez něj se přihlášení nedá dokončit.',
+      },
+    ]);
+  }
+
+  if (role !== 'confirmation' && documentUsesUnsubscribeUrl(document, fields)) {
+    throw validationFailed([
+      {
+        path: field,
+        code: 'subscription_email_has_unsubscribe_link',
+        message:
+          'Tenhle e-mail odchází jako transakční zpráva, takže odhlašovací odkaz v něm vede do prázdna. Vypněte odhlášení v patičce, případně odkaz na {{ unsubscribe_url }} odeberte z textu.',
+      },
+    ]);
+  }
+}
+
+/** Všechny tři vazby jednoho těla naráz. Pořadí je dané tvarem obrazovky. */
+async function assertListEmailTemplates(
+  ctx: WorkspaceContext,
+  body: {
+    confirmation_template_id?: string | null | undefined;
+    welcome_template_id?: string | null | undefined;
+    goodbye_template_id?: string | null | undefined;
+  },
+): Promise<void> {
+  await assertListEmailTemplate(
+    ctx,
+    'confirmation',
+    'confirmation_template_id',
+    body.confirmation_template_id,
+  );
+  await assertListEmailTemplate(ctx, 'welcome', 'welcome_template_id', body.welcome_template_id);
+  await assertListEmailTemplate(ctx, 'goodbye', 'goodbye_template_id', body.goodbye_template_id);
+}
+
 /** Prohlášení o doloženém souhlasu se kontroluje na jednom místě pro obě cesty zápisu. */
 function assertDeclaration(body: { skip_confirmation: boolean; declaration: boolean }): void {
   // Vynucené potvrzení jde obejít jen s výslovným prohlášením, že souhlas je doložený.
@@ -515,6 +632,7 @@ export function registerListRoutes(app: OpenAPIHono<ContactsEnv>): void {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'lists:write');
     const body = c.req.valid('json');
+    await assertListEmailTemplates(ctx, body);
     const row = await createList(ctx, {
       name: body.name,
       description: body.description ?? null,
@@ -525,6 +643,22 @@ export function registerListRoutes(app: OpenAPIHono<ContactsEnv>): void {
         ? {}
         : { confirmationMaxResends: body.confirmation_max_resends }),
       sendWelcome: body.send_welcome,
+      sendGoodbye: body.send_goodbye,
+      ...(body.confirmation_template_id === undefined
+        ? {}
+        : { confirmationTemplateId: body.confirmation_template_id }),
+      ...(body.welcome_template_id === undefined
+        ? {}
+        : { welcomeTemplateId: body.welcome_template_id }),
+      ...(body.goodbye_template_id === undefined
+        ? {}
+        : { goodbyeTemplateId: body.goodbye_template_id }),
+      ...(body.confirm_redirect_url === undefined
+        ? {}
+        : { confirmRedirectUrl: body.confirm_redirect_url }),
+      ...(body.unsubscribe_redirect_url === undefined
+        ? {}
+        : { unsubscribeRedirectUrl: body.unsubscribe_redirect_url }),
       isDefault: body.is_default,
       publicVisible: body.public_visible,
       ...(body.public_name === undefined ? {} : { publicName: body.public_name }),
@@ -548,6 +682,7 @@ export function registerListRoutes(app: OpenAPIHono<ContactsEnv>): void {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'lists:write');
     const body = c.req.valid('json');
+    await assertListEmailTemplates(ctx, body);
     const row = await updateList(ctx, c.req.valid('param').id, {
       ...(body.name === undefined ? {} : { name: body.name }),
       ...(body.description === undefined ? {} : { description: body.description }),
@@ -560,6 +695,22 @@ export function registerListRoutes(app: OpenAPIHono<ContactsEnv>): void {
         ? {}
         : { confirmationMaxResends: body.confirmation_max_resends }),
       ...(body.send_welcome === undefined ? {} : { sendWelcome: body.send_welcome }),
+      ...(body.send_goodbye === undefined ? {} : { sendGoodbye: body.send_goodbye }),
+      ...(body.confirmation_template_id === undefined
+        ? {}
+        : { confirmationTemplateId: body.confirmation_template_id }),
+      ...(body.welcome_template_id === undefined
+        ? {}
+        : { welcomeTemplateId: body.welcome_template_id }),
+      ...(body.goodbye_template_id === undefined
+        ? {}
+        : { goodbyeTemplateId: body.goodbye_template_id }),
+      ...(body.confirm_redirect_url === undefined
+        ? {}
+        : { confirmRedirectUrl: body.confirm_redirect_url }),
+      ...(body.unsubscribe_redirect_url === undefined
+        ? {}
+        : { unsubscribeRedirectUrl: body.unsubscribe_redirect_url }),
       ...(body.public_visible === undefined ? {} : { publicVisible: body.public_visible }),
       ...(body.public_name === undefined ? {} : { publicName: body.public_name }),
       ...(body.public_description === undefined

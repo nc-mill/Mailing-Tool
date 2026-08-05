@@ -1,6 +1,7 @@
 // packages/db/src/schema/identity.ts
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   index,
   integer,
@@ -119,6 +120,21 @@ export const workspaces = pgTable(
     locale: text().notNull().default('cs'),
     timezone: text().notNull().default('Europe/Prague'),
     addressForm: text().$type<'formal' | 'informal'>().notNull().default('formal'),
+    /**
+     * Řeší projekt oslovení a 5. pád vůbec?
+     *
+     * Vypnuto znamená, že se oslovení nikde nenabízí ani nezobrazuje: zmizí sloupec
+     * v seznamu kontaktů, blok na detailu, náhled ve formuláři, obrazovka kontroly
+     * 5. pádu, pole v segmentech, nabídka v editoru i volba vykání a tykání
+     * (`addressForm` totiž nemá jiného konzumenta než skládání oslovení).
+     *
+     * SLOUPCE KONTAKTŮ SE TÍM NEMAŽOU a `resolveName` běží dál při každém zápisu.
+     * Je to čistě zobrazovací přepínač: kdyby přestal počítat, znamenalo by zapnutí
+     * zpátky přepočet celé databáze a ručně potvrzené tvary by se ztratily.
+     * Šablony, které `{{ contact.greeting }}` už obsahují, proto dál renderují
+     * správnou větu, viz `contacts/fields/catalog.ts`.
+     */
+    greetingEnabled: boolean().notNull().default(true),
     settings: jsonb().notNull().default({}),
     createdBy: uuid().references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

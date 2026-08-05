@@ -39,12 +39,25 @@ vi.mock('./confirm-actions', () => ({
 
 const deleteContactAction = vi.fn().mockResolvedValue({ status: 'success' });
 const unsubscribeContactAction = vi.fn().mockResolvedValue({ status: 'success' });
-const exportContactAction = vi.fn().mockResolvedValue({ status: 'success' });
+const createContactExportAction = vi
+  .fn()
+  .mockResolvedValue({ status: 'success', id: 'e-1', downloadUrl: '/api/v1/x?token=t' });
 
 vi.mock('./actions', () => ({
   deleteContactAction: (input: unknown) => deleteContactAction(input),
   unsubscribeContactAction: (input: unknown) => unsubscribeContactAction(input),
-  exportContactAction: (input: unknown) => exportContactAction(input),
+  createContactExportAction: (input: unknown) => createContactExportAction(input),
+}));
+
+const restrictProcessingAction = vi.fn().mockResolvedValue({ status: 'success' });
+const liftProcessingRestrictionAction = vi.fn().mockResolvedValue({ status: 'success' });
+
+// Stejný důvod jako u ostatních mocků v tomhle souboru: serverová akce s sebou
+// natáhne `@/lib/api-client/mutate` a v něm `import 'server-only'`, které shodí
+// celý soubor ještě před prvním testem.
+vi.mock('./restriction-actions', () => ({
+  restrictProcessingAction: (input: unknown) => restrictProcessingAction(input),
+  liftProcessingRestrictionAction: (input: unknown) => liftProcessingRestrictionAction(input),
 }));
 
 const resendConfirmationAction = vi.fn().mockResolvedValue({ status: 'success' });
@@ -87,7 +100,7 @@ const base: ContactDetailData = {
   snooze_until: null,
   anonymized_at: null,
   status_changed_at: '2026-07-03T10:00:00.000Z',
-  restriction_requested_at: null,
+  restriction: null,
   lists: [{ id: 'l-1', name: 'Zákazníci', status: 'confirmed' }],
   tags: [{ id: 't-1', name: 'Brno' }],
   attributes: [{ key: 'city', label: 'Město', value: 'Brno' }],
@@ -104,10 +117,12 @@ beforeEach(() => {
   cancelSnoozeAction.mockClear();
   deleteContactAction.mockClear();
   unsubscribeContactAction.mockClear();
-  exportContactAction.mockClear();
+  createContactExportAction.mockClear();
+  restrictProcessingAction.mockClear();
+  liftProcessingRestrictionAction.mockClear();
 });
 
-function renderDetail(overrides: Partial<ContactDetailData> = {}) {
+function renderDetail(overrides: Partial<ContactDetailData> = {}, canManage = true) {
   return renderWithProviders(
     <ContactDetail
       basePath="/w/eshop/contacts"
@@ -115,6 +130,7 @@ function renderDetail(overrides: Partial<ContactDetailData> = {}) {
       workspaceId="w-1"
       contact={{ ...base, ...overrides }}
       workspaceLocale="cs"
+      canManageRestriction={canManage}
     />,
   );
 }
@@ -123,7 +139,7 @@ describe('ContactDetail', () => {
   it('u omezeného zpracování ukáže vysvětlující blok včetně věty o segmentech', () => {
     renderDetail({
       processing_restricted: true,
-      restriction_requested_at: '2026-07-18T08:00:00.000Z',
+      restriction: { restricted_at: '2026-07-18T08:00:00.000Z', note: null },
     });
     const block = screen.getByTestId('contact-restricted');
     expect(block).toHaveTextContent('Tenhle kontakt má omezené zpracování');
@@ -133,16 +149,18 @@ describe('ContactDetail', () => {
   /**
    * Blok o omezeném zpracování odkazoval na `settings/privacy`, což je obrazovka,
    * která v aplikaci není a nechystá se: souhlasy a GDPR jsou odložené. Odkaz proto
-   * vracel 404 a sliboval funkci, kterou produkt nemá (zrušit omezení nejde ani přes
-   * API, ani přes CLI). Místo něj je věta o tom, co s tím uživatel může udělat.
+   * vracel 404. Po něm tu byla věta „požádejte správce systému", protože zrušit
+   * omezení nešlo nikde v produktu. Teď je na tom místě tlačítko, které míří na
+   * `DELETE /contacts/{id}/processing-restriction`.
    */
-  it('u omezeného zpracování neslibuje neexistující obrazovku, ale řekne, co dělat', () => {
+  it('u omezeného zpracování neslibuje neexistující obrazovku a nabízí zrušení', () => {
     renderDetail({
       processing_restricted: true,
-      restriction_requested_at: '2026-07-18T08:00:00.000Z',
+      restriction: { restricted_at: '2026-07-18T08:00:00.000Z', note: null },
     });
     const block = screen.getByTestId('contact-restricted');
-    expect(block).toHaveTextContent('Zrušit omezení zatím v aplikaci nejde');
+    expect(screen.getByTestId('lift-restriction')).toHaveTextContent('Zrušit omezení');
+    expect(block).not.toHaveTextContent('požádejte správce systému');
     expect(screen.queryByRole('link', { name: 'Zobrazit žádost' })).toBeNull();
     expect(
       block.querySelector('a[href*="/settings/privacy"]'),
@@ -150,10 +168,65 @@ describe('ContactDetail', () => {
     ).toBeNull();
   });
 
+  it('bez oprávnění ukáže místo tlačítka větu, koho požádat', () => {
+    renderDetail(
+      {
+        processing_restricted: true,
+        restriction: { restricted_at: '2026-07-18T08:00:00.000Z', note: null },
+      },
+      false,
+    );
+    expect(screen.queryByTestId('lift-restriction')).toBeNull();
+    expect(screen.getByTestId('contact-restricted')).toHaveTextContent(
+      'Zrušit omezení smí správce projektu nebo vlastník',
+    );
+  });
+
+  /**
+   * Datum se bere z auditního záznamu o zapnutí omezení, ne z `updated_at`. Dřív
+   * stránka posílala `restriction_requested_at: null` a věta ukazovala datum poslední
+   * jakékoli změny kontaktu, takže se po opravě překlepu ve jméně „datum žádosti"
+   * posunulo. Když záznam není, věta datum neuvádí a nevymýšlí si ho.
+   */
+  it('bez záznamu v auditu neukáže žádné datum omezení', () => {
+    renderDetail({ processing_restricted: true, restriction: null });
+    const block = screen.getByTestId('contact-restricted');
+    expect(block).toHaveTextContent('má omezené zpracování údajů podle článku 18');
+    expect(block.textContent).not.toContain('3. 7. 2026');
+  });
+
+  it('poznámku z auditu ukáže, aby bylo vidět, čeho se žádost týkala', () => {
+    renderDetail({
+      processing_restricted: true,
+      restriction: { restricted_at: '2026-07-18T08:00:00.000Z', note: 'Žádost e-mailem 18. 7.' },
+    });
+    expect(screen.getByTestId('restriction-note')).toHaveTextContent('Žádost e-mailem 18. 7.');
+  });
+
+  it('u neomezeného kontaktu nabízí zapnutí omezení', () => {
+    renderDetail();
+    expect(screen.getByTestId('restrict-processing')).toHaveTextContent('Omezit zpracování');
+  });
+
+  it('u už omezeného kontaktu se zapnutí nenabízí podruhé', () => {
+    // Opačná akce je ve žlutém bloku nahoře, takže dvě tlačítka k témuž tématu
+    // nejsou na obrazovce zároveň.
+    renderDetail({
+      processing_restricted: true,
+      restriction: { restricted_at: '2026-07-18T08:00:00.000Z', note: null },
+    });
+    expect(screen.queryByTestId('restrict-processing')).toBeNull();
+  });
+
+  it('bez oprávnění se tlačítko pro zapnutí omezení nenabízí', () => {
+    renderDetail({}, false);
+    expect(screen.queryByTestId('restrict-processing')).toBeNull();
+  });
+
   it('u omezeného zpracování odkazuje do auditu na záznam o tomhle kontaktu', () => {
     renderDetail({
       processing_restricted: true,
-      restriction_requested_at: '2026-07-18T08:00:00.000Z',
+      restriction: { restricted_at: '2026-07-18T08:00:00.000Z', note: null },
     });
     expect(screen.getByRole('link', { name: 'Zobrazit záznam v auditu' })).toHaveAttribute(
       'href',
@@ -372,7 +445,10 @@ describe('ContactDetail předává projekt do serverových akcí', () => {
     const user = userEvent.setup();
     renderDetail();
     await user.click(screen.getByRole('button', { name: 'Exportovat' }));
-    expect(exportContactAction).toHaveBeenCalledWith({ workspaceId: 'w-1', id: 'c-1' });
+    // Kontakt se do publika vyjmenuje adresou: id do podmínek publika nepatří.
+    expect(createContactExportAction).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: 'w-1' }),
+    );
   });
 });
 

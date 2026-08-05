@@ -93,10 +93,16 @@ async function emitEvent(
       occurredAt: new Date(),
       data: input.data,
     });
-    await enqueueCampaignJob(tx, 'platform.webhook_fanout', {
-      event_id: eventId,
-      workspace_id: ctx.workspaceId,
-    });
+    await enqueueCampaignJob(
+      tx,
+      'platform.webhook_fanout',
+      { event_id: eventId, workspace_id: ctx.workspaceId },
+      // Fan-out slučování zapnuté NEMÁ (nemá klíč ani politiku), takže se tu
+      // zahodit nedá nic a volba je formalita. `drop` proto, že kdyby se politika
+      // někdy doplnila, je fan-out idempotentní přes unikátní index nad
+      // `webhook_deliveries` a druhé zařazení téže události nic nepřidá.
+      { onMerged: 'drop' },
+    );
   });
 }
 

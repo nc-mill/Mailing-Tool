@@ -5,12 +5,19 @@ import {
   type RevokePendingMessagesInput,
 } from '../../campaigns-port';
 import {
+  getProcessingRestriction,
   listMailableContacts,
   liftProcessingRestriction,
   restrictProcessing,
 } from '../../repo/contacts';
 import { createActiveContact, testContext } from '../support/db';
-import { auditActions, contactRow, contextWithRole, createFullContact } from '../support/phase-c';
+import {
+  auditActions,
+  contactRow,
+  contextWithRole,
+  createFullContact,
+  maybeOne,
+} from '../support/phase-c';
 
 const revoke = vi.fn(async (_input: RevokePendingMessagesInput) => ({ revoked: 0 }));
 
@@ -81,6 +88,64 @@ describe('omezení zpracování', () => {
     const actions = await auditActions(admin);
     expect(actions).toContain('contact.processing_restricted');
     expect(actions).toContain('contact.processing_restriction_lifted');
+  });
+
+  it('zapnout omezení smí jen správce, stejně jako ho zrušit', async () => {
+    // Nesymetrie by byla past: editor by uměl vyrobit stav, ze kterého sám nemá cestu
+    // ven, a kontakt by mezitím vypadl ze všech kampaní.
+    const owner = await testContext();
+    const contact = await createFullContact(owner, 'j@x.cz');
+    const editor = await contextWithRole(owner, 'editor');
+    await expect(restrictProcessing(editor, contact.id)).rejects.toMatchObject({
+      code: 'forbidden',
+    });
+  });
+
+  it('poznámka se zapíše do auditu a redakce ji nezakryje', async () => {
+    const ctx = await testContext();
+    const contact = await createFullContact(ctx, 'j@x.cz');
+    await restrictProcessing(ctx, contact.id, { note: 'Žádost e-mailem 4. 8.' });
+
+    const row = await maybeOne<{ metadata: Record<string, unknown> }>(
+      `SELECT metadata FROM audit_log
+        WHERE workspace_id = $1 AND action = 'contact.processing_restricted'`,
+      [ctx.workspaceId],
+    );
+    // Klíč se jmenuje `note` schválně: redakce metadat zakrývá hodnotu každého klíče,
+    // jehož jméno obsahuje password, secret, token, api_key, credentials, cookie nebo
+    // authorization, takže `request_token` by v auditu skončil jako [redacted].
+    expect(row?.metadata['note']).toBe('Žádost e-mailem 4. 8.');
+  });
+
+  it('datum a poznámka se dají přečíst zpátky, i když sloupec v contacts není', async () => {
+    const ctx = await testContext();
+    const contact = await createFullContact(ctx, 'j@x.cz');
+    await restrictProcessing(ctx, contact.id, { note: 'Žádost přišla poštou' });
+
+    const found = await getProcessingRestriction(ctx, contact.id);
+    expect(found?.note).toBe('Žádost přišla poštou');
+    expect(found?.restrictedAt).toBeInstanceOf(Date);
+    expect(found?.gdprRequestId).toBeNull();
+  });
+
+  it('kontakt bez omezení nemá co vrátit', async () => {
+    const ctx = await testContext();
+    const contact = await createFullContact(ctx, 'j@x.cz');
+    expect(await getProcessingRestriction(ctx, contact.id)).toBeNull();
+  });
+
+  it('zrušení zapíše vlastní poznámku, ne tu z zapnutí', async () => {
+    const owner = await testContext();
+    const contact = await createFullContact(owner, 'j@x.cz');
+    await restrictProcessing(owner, contact.id, { note: 'Žádost přijata' });
+    await liftProcessingRestriction(owner, contact.id, { note: 'Žádost vyřízena 5. 8.' });
+
+    const row = await maybeOne<{ metadata: Record<string, unknown> }>(
+      `SELECT metadata FROM audit_log
+        WHERE workspace_id = $1 AND action = 'contact.processing_restriction_lifted'`,
+      [owner.workspaceId],
+    );
+    expect(row?.metadata['note']).toBe('Žádost vyřízena 5. 8.');
   });
 
   it('opakované omezení nic nemění a nezruší zprávy podruhé', async () => {

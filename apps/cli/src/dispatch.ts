@@ -3,6 +3,7 @@ import { COMMANDS, findCommand, suggest } from './registry';
 import { runConfigCheck } from './commands/config-check';
 import { runHealthcheck } from './commands/healthcheck';
 import { runMigrateCommand } from './commands/migrate';
+import { runPartitionsCommand } from './commands/partitions';
 import { runBackupCommand } from './commands/backup';
 import { runDoctorCommand } from './commands/doctor';
 import { runGenkeyCommand } from './commands/genkey';
@@ -110,6 +111,9 @@ export async function dispatch(argv: readonly string[], streams: CliStreams): Pr
     }
     case 'rebuild-engagement': {
       return runRebuildEngagementCommand(streams, rest, env);
+    }
+    case 'partitions': {
+      return runPartitionsCommand(streams, rest, env);
     }
     default: {
       streams.stderr(

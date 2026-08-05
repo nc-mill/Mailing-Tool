@@ -272,7 +272,13 @@ export async function ensurePartitionsForRange(
   return createMonthlyPartitions(client, table, column, first, months, storageOptions);
 }
 
-/** Volá se z migračního runneru a z jobu platform.maintain_partitions. */
+/**
+ * Volá se z migračního runneru a z příkazu `mlain partitions`.
+ *
+ * Job `platform.maintain_partitions` to dřív dělat MĚL a nikdy nedělal:
+ * zakládání oddílu je DDL a worker běží pod rolí, která schéma nevlastní.
+ * Fronta je proto z registru pryč.
+ */
 export async function ensureUpcomingPartitions(
   client: Queryable,
   from: Date,
@@ -293,13 +299,78 @@ export async function ensureUpcomingPartitions(
 /**
  * Predikát vlastníka tabulky. Vrací true, když se rozsah SMÍ odpojit.
  * Bez něj funkce neudělá nic: jen vlastník ví, kdy jsou data zbytná.
+ *
+ * Když rozsah odpojit nesmí, vrátí důvod místo `false`. Prosté `false` stačilo,
+ * dokud výsledek nikdo nečetl; provozovatel, který se ptá „proč mi retence
+ * nesmazala nic", potřebuje větu, ne prázdný seznam.
  */
+export type VetoResult = true | { keep: string };
+
 export type PartitionVeto = (
   client: Queryable,
   from: Date,
   to: Date,
   partition: string,
-) => Promise<boolean>;
+) => Promise<VetoResult>;
+
+/** Rozhodnutí o jednom oddílu, ať už se provede, nebo jen vypíše. */
+export type PartitionDecision = {
+  partition: string;
+  /** Doslovný `pg_get_expr(relpartbound)`, tedy to, co o oddílu tvrdí katalog. */
+  bound: string;
+  /** Horní hranice oddílu. `null` znamená, že se ji nepodařilo přečíst. */
+  upperBound: Date | null;
+  drop: boolean;
+  /** Proč se oddíl nechává. U `drop: true` je `undefined`. */
+  keepReason?: string;
+};
+
+const RANGE_BOUND = /^FOR VALUES FROM \('([^']+)'\) TO \('([^']+)'\)$/;
+
+/**
+ * Hranice oddílu se čtou z KATALOGU, ne ze jména.
+ *
+ * Dřívější verze si `from` a `to` skládala regexem ze jména oddílu
+ * (`_y2026m08`). To je předpoklad, ne fakt: jméno je jen řetězec, který někdo
+ * zvolil, a `CREATE TABLE ... PARTITION OF` nikde nevynucuje, že se hranice
+ * a jméno shodují. Oddíl založený ručně při obnově nebo při importu historie
+ * mohl mít jméno srpnové a hranice roční, a kód by ho zahodil celý, protože by
+ * se ptal jména. Tohle je jediné místo v úklidu, kde se rozhoduje o smazání
+ * dat, takže se ptá katalogu.
+ *
+ * Vrací `null` u všeho, co není jednoduchý rozsah s jednou hodnotou na obou
+ * stranách: výchozí oddíl (`DEFAULT`), `MINVALUE`/`MAXVALUE`, hash i list
+ * partitioning a vícesloupcový klíč. Volající to bere jako „hranice není jistá,
+ * oddíl nech" (požadavek zadání), ne jako „hranice je nula".
+ */
+export function parseBounds(bound: string): { from: Date; to: Date } | null {
+  const match = bound.trim().match(RANGE_BOUND);
+  if (!match) return null;
+  const from = parseTimestamp(match[1]!);
+  const to = parseTimestamp(match[2]!);
+  if (from === null || to === null) return null;
+  return { from, to };
+}
+
+/**
+ * Časové razítko tak, jak ho tiskne Postgres, na `Date`.
+ *
+ * Obojí níž je NUTNÉ a obojí se pozná až na skutečné databázi:
+ *
+ *  - mezera místo `T`. Postgres tiskne `2026-08-01 00:00:00+00`, ISO 8601 chce
+ *    `T`.
+ *  - offset `+00` BEZ MINUT. ISO 8601 zná `Z`, `+00:00` a `+0000`, ale
+ *    dvouciferný `+00` ne, takže `new Date('2026-08-01T00:00:00+00')` vrátí
+ *    Invalid Date. Ověřeno spuštěním proti běžící databázi: bez tohohle kroku
+ *    se nepřečetla hranice ANI JEDNOHO oddílu a úklid tvrdil, že „hranice se
+ *    nedá přečíst z katalogu" úplně u všech. Padlo to na bezpečnou stranu,
+ *    tedy nesmazalo nic, ale retence by tím byla dál mrtvá.
+ */
+function parseTimestamp(text: string): Date | null {
+  const normalized = text.replace(' ', 'T').replace(/([+-]\d{2})$/, '$1:00');
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 /**
  * Odpojí a zahodí partition starší než `before`. `veto` je POVINNÉ.
@@ -319,9 +390,72 @@ export async function dropPartitionsBefore(
 ): Promise<string[]> {
   assertIdent(table, 'tabulka');
   assertIdent(column, 'sloupec');
+
+  const decisions = await planPartitionsBefore(client, table, before, veto);
+  return applyPartitionPlan(client, table, decisions);
+}
+
+/**
+ * Provede hotový plán. Oddělené od `planPartitionsBefore` proto, aby si
+ * volající mohl plán nechat vypsat a TÝŽ plán pak provést. Kdyby si provedení
+ * počítalo rozhodnutí znovu, mohlo by mezi výpisem a zásahem zahodit něco
+ * jiného, než co uživatel viděl.
+ */
+export async function applyPartitionPlan(
+  client: Queryable,
+  table: string,
+  decisions: readonly PartitionDecision[],
+): Promise<string[]> {
+  assertIdent(table, 'tabulka');
+
+  const dropped: string[] = [];
+  for (const decision of decisions) {
+    if (!decision.drop) continue;
+    const partition = assertIdent(decision.partition, 'partition');
+
+    // CONCURRENTLY je povinné: prosté DETACH bere ACCESS EXCLUSIVE zámek
+    // na CELOU partitionovanou tabulku, takže u velké instalace zastaví claim
+    // i příjem událostí na dobu odpojení. Ověřeno spuštěním na PostgreSQL 18.
+    //
+    // Cena je, že příkaz NESMÍ běžet uvnitř transakčního bloku. Volající proto
+    // předává spojení mimo transakci; retenční příkaz CLI to tak dělá.
+    //
+    // Když se předchozí pokus přerušil, zůstane oddíl ve stavu "detach pending"
+    // a další DETACH skončí chybou. FINALIZE ten stav dokončí a je bezpečné
+    // ho volat i tehdy, když nic nevisí.
+    try {
+      await client.query(`ALTER TABLE ${table} DETACH PARTITION ${partition} CONCURRENTLY`);
+    } catch (error) {
+      if ((error as { code?: string }).code !== '55006') throw error;
+      await client.query(`ALTER TABLE ${table} DETACH PARTITION ${partition} FINALIZE`);
+    }
+    // IF EXISTS je tu proto, že mezi DETACH a DROP už oddíl NENÍ součástí
+    // tabulky. Když běh spadne mezi těmito dvěma příkazy, zůstane osiřelá
+    // tabulka a další běh ji zahodí; kdyby ji mezitím smazal někdo ručně,
+    // nesmí to celý úklid položit.
+    await client.query(`DROP TABLE IF EXISTS ${partition}`);
+    dropped.push(partition);
+  }
+  return dropped;
+}
+
+/**
+ * Spočítá, co by se odpojilo, a NIC nezmění. Používá to režim nanečisto
+ * i samotné odpojování, aby se rozhodnutí nepočítalo dvakrát dvěma způsoby.
+ *
+ * Predikáty veto se pouštějí i tady. Jsou to čtecí dotazy a bez nich by režim
+ * nanečisto tvrdil, že smaže oddíl, který ostrý běh nechá.
+ */
+export async function planPartitionsBefore(
+  client: Queryable,
+  table: string,
+  before: Date,
+  veto: PartitionVeto,
+): Promise<PartitionDecision[]> {
+  assertIdent(table, 'tabulka');
   if (typeof veto !== 'function') {
     throw new Error(
-      `dropPartitionsBefore(${table}): chybí veto predikát, bez něj se neodpojuje nic`,
+      `planPartitionsBefore(${table}): chybí veto predikát, bez něj se neodpojuje nic`,
     );
   }
 
@@ -334,36 +468,48 @@ export async function dropPartitionsBefore(
     [table],
   );
 
-  const dropped: string[] = [];
+  const decisions: PartitionDecision[] = [];
   for (const row of rows) {
-    const match = row.relname.match(/_y(\d{4})m(\d{2})$/);
-    if (!match) continue;
-    const from = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1));
-    const to = addMonths(from, 1);
-    if (to > before) continue;
-
-    if (!(await veto(client, from, to, row.relname))) continue;
-
-    // CONCURRENTLY je povinné: prosté DETACH bere ACCESS EXCLUSIVE zámek
-    // na CELOU partitionovanou tabulku, takže u velké instalace zastaví claim
-    // i příjem událostí na dobu odpojení. Ověřeno spuštěním na PostgreSQL 18.
-    //
-    // Cena je, že příkaz NESMÍ běžet uvnitř transakčního bloku. Volající proto
-    // předává spojení mimo transakci; retenční job to tak dělá.
-    //
-    // Když se předchozí pokus přerušil, zůstane oddíl ve stavu "detach pending"
-    // a další DETACH skončí chybou. FINALIZE ten stav dokončí a je bezpečné
-    // ho volat i tehdy, když nic nevisí.
-    try {
-      await client.query(`ALTER TABLE ${table} DETACH PARTITION ${row.relname} CONCURRENTLY`);
-    } catch (error) {
-      if ((error as { code?: string }).code !== '55006') throw error;
-      await client.query(`ALTER TABLE ${table} DETACH PARTITION ${row.relname} FINALIZE`);
+    const bounds = parseBounds(row.bound);
+    if (bounds === null) {
+      decisions.push({
+        partition: row.relname,
+        bound: row.bound,
+        upperBound: null,
+        drop: false,
+        keepReason: 'hranice oddílu se nedá přečíst z katalogu, oddíl se nechává',
+      });
+      continue;
     }
-    await client.query(`DROP TABLE ${row.relname}`);
-    dropped.push(row.relname);
+    // Neostrá nerovnost je záměr. Horní hranice oddílu je VÝLUČNÁ, takže
+    // nejmladší možný řádek v oddílu je o mikrosekundu starší než ona.
+    // Oddíl, jehož horní hranice padne přesně na lhůtu, tedy lhůtu splňuje
+    // a žádný řádek mladší než lhůta v něm ležet nemůže.
+    if (bounds.to > before) {
+      decisions.push({
+        partition: row.relname,
+        bound: row.bound,
+        upperBound: bounds.to,
+        drop: false,
+        keepReason: 'oddíl zasahuje do retenční lhůty',
+      });
+      continue;
+    }
+
+    const verdict = await veto(client, bounds.from, bounds.to, row.relname);
+    decisions.push(
+      verdict === true
+        ? { partition: row.relname, bound: row.bound, upperBound: bounds.to, drop: true }
+        : {
+            partition: row.relname,
+            bound: row.bound,
+            upperBound: bounds.to,
+            drop: false,
+            keepReason: verdict.keep,
+          },
+    );
   }
-  return dropped;
+  return decisions;
 }
 
 /**

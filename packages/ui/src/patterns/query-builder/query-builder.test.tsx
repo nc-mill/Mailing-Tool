@@ -51,6 +51,8 @@ export const labels = {
   addValue: 'Přidat hodnotu',
   removeValue: (item: string) => `Odebrat hodnotu ${item}`,
   listLimit: (max: number) => `Do seznamu se vejde nejvýš ${max} hodnot.`,
+  unknownValue: (value: string) => `Smazaná položka (${value})`,
+  noOptions: 'Není z čeho vybírat.',
   rangeOrder: 'První hodnota musí být menší nebo rovna druhé.',
   showJson: 'Zobrazit podklad',
   depthLimit: 'Hlouběji už zanořovat nejde, stačí to na každý segment, který jsme viděli.',

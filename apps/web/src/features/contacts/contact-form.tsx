@@ -3,10 +3,12 @@
 import { useActionState, useEffect, useId, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@mlain/i18n/navigation';
+import { Badge } from '@mlain/ui/components/badge';
 import { Checkbox } from '@mlain/ui/components/checkbox';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
 import { Textarea } from '@mlain/ui/components/textarea';
+import { MailIcon } from '@/lib/ui/status-icons';
 import { SelectField } from '@/lib/forms/select-field';
 import { FieldError, fieldAria } from '@/lib/forms/field-error';
 import type { FieldErrors } from '@/lib/errors/field-errors';
@@ -49,7 +51,12 @@ export type ContactFormValues = {
   fields: ContactFormField[];
   /** Jména štítků projektu a příznak, jestli je kontakt má. */
   tags: { name: string; selected: boolean }[];
-  lists: { id: string; name: string; selected: boolean }[];
+  /**
+   * `double_opt_in` řídí, co se u zaškrtnutého seznamu doopravdy stane. Od
+   * 5. 8. 2026 se u volby „nepotvrzený" na takovém seznamu POTVRZOVACÍ E-MAIL
+   * SKUTEČNĚ POŠLE, takže to musí být vidět u zaškrtávátka, ne až v historii.
+   */
+  lists: { id: string; name: string; selected: boolean; double_opt_in: boolean }[];
 };
 
 export type ContactFormProps = {
@@ -59,6 +66,11 @@ export type ContactFormProps = {
   workspaceSlug: string;
   basePath: string;
   values: ContactFormValues;
+  /**
+   * Řeší projekt oslovení a 5. pád? Vypnuto skryje náhled „Jak ho oslovíme"
+   * i požadavky, které ho počítají. Výchozí `true` je kvůli starším testům.
+   */
+  greetingEnabled?: boolean;
 };
 
 /**
@@ -114,6 +126,7 @@ export function ContactForm({
   workspaceSlug,
   basePath,
   values,
+  greetingEnabled = true,
 }: ContactFormProps) {
   const t = useTranslations('contacts');
   const [state, formAction] = useActionState(action, IDLE);
@@ -148,6 +161,25 @@ export function ContactForm({
    * u nepotvrzeného a uživatel to musí vidět dřív, než odešle.
    */
   const [subscription, setSubscription] = useState<'confirmed' | 'pending'>('confirmed');
+  /*
+   * Zaškrtnuté seznamy se drží ve stavu, ne v `defaultChecked`. Důvod není
+   * úhlednost: bez toho se nedá poznat, že uživatel odškrtl všechno, a právě
+   * to je stav, na který se musí upozornit („kontakt nebude v žádném seznamu").
+   * U založení je zaškrtnutý VÝCHOZÍ seznam projektu, u úpravy ty, ve kterých
+   * kontakt je.
+   */
+  const [checkedLists, setCheckedLists] = useState<Set<string>>(
+    () => new Set(values.lists.filter((list) => list.selected).map((list) => list.id)),
+  );
+
+  function toggleList(id: string, checked: boolean): void {
+    setCheckedLists((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
 
   /**
    * Náhled se přepočítává se zpožděním 400 ms po posledním úhozu. Bez zpoždění by
@@ -155,6 +187,13 @@ export function ContactForm({
    * jméno jeden.
    */
   useEffect(() => {
+    // Projekt, který oslovení neřeší, náhled nevykresluje, takže se ani nepočítá.
+    // Bez téhle podmínky by formulář při každém úhozu volal server o data,
+    // která nikdo neuvidí.
+    if (!greetingEnabled) {
+      setPreview(null);
+      return;
+    }
     if (firstName.trim() === '' && lastName.trim() === '') {
       setPreview(null);
       return;
@@ -173,7 +212,7 @@ export function ContactForm({
       });
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [firstName, lastName, titlePrefix, gender, workspaceId]);
+  }, [firstName, lastName, titlePrefix, gender, workspaceId, greetingEnabled]);
 
   const formErrors = formLevelErrors(fieldErrors);
 
@@ -219,35 +258,39 @@ export function ContactForm({
           { value: 'male', label: t('detail.genderMale') },
           { value: 'unknown', label: t('detail.genderUnknown') },
         ]}
-        hint={t('form.genderHint')}
+        // Nápověda u rodu mluví o skloňování oslovení, což v projektu bez oslovení
+        // neplatí. Samotné pole zůstává: rod je údaj o člověku, ne o 5. pádu.
+        hint={greetingEnabled ? t('form.genderHint') : t('form.genderHintPlain')}
         errors={fieldErrors}
         onSelected={(next) => setGender(next as ContactFormValues['gender'])}
       />
 
-      <div
-        data-testid="greeting-preview"
-        className="rounded-[var(--radius-surface)] border border-border bg-surface-muted p-4"
-      >
-        <h3 className="text-sm font-medium text-text">{t('form.greetingPreviewTitle')}</h3>
-        {values.greeting_locked ? (
-          <p className="mt-1 text-sm text-warning-text">{t('form.greetingLocked')}</p>
-        ) : null}
-        {preview === null ? (
-          <p className="mt-1 text-sm text-text-muted">{t('form.greetingPreviewEmpty')}</p>
-        ) : (
-          <>
-            <p className="mt-1 text-base text-text">
-              {t('form.greetingPreviewValue', { greeting: preview.greeting })}
-            </p>
-            {preview.vocative_confidence === 'low' ? (
-              <p className="mt-1 text-sm text-warning-text">{t('form.greetingUncertain')}</p>
-            ) : null}
-            {preview.gender === 'unknown' ? (
-              <p className="mt-1 text-sm text-text-muted">{t('form.greetingGenderUnknown')}</p>
-            ) : null}
-          </>
-        )}
-      </div>
+      {greetingEnabled ? (
+        <div
+          data-testid="greeting-preview"
+          className="rounded-[var(--radius-surface)] border border-border bg-surface-muted p-4"
+        >
+          <h3 className="text-sm font-medium text-text">{t('form.greetingPreviewTitle')}</h3>
+          {values.greeting_locked ? (
+            <p className="mt-1 text-sm text-warning-text">{t('form.greetingLocked')}</p>
+          ) : null}
+          {preview === null ? (
+            <p className="mt-1 text-sm text-text-muted">{t('form.greetingPreviewEmpty')}</p>
+          ) : (
+            <>
+              <p className="mt-1 text-base text-text">
+                {t('form.greetingPreviewValue', { greeting: preview.greeting })}
+              </p>
+              {preview.vocative_confidence === 'low' ? (
+                <p className="mt-1 text-sm text-warning-text">{t('form.greetingUncertain')}</p>
+              ) : null}
+              {preview.gender === 'unknown' ? (
+                <p className="mt-1 text-sm text-text-muted">{t('form.greetingGenderUnknown')}</p>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
 
       {values.fields.length > 0 ? (
         <div className="flex flex-col gap-4">
@@ -420,7 +463,9 @@ export function ContactForm({
             >
               {t('form.moreDetails')}
             </button>
-            <p className="text-sm text-text-muted">{t('form.moreDetailsHint')}</p>
+            <p className="text-sm text-text-muted">
+              {greetingEnabled ? t('form.moreDetailsHint') : t('form.moreDetailsHintPlain')}
+            </p>
             <div id={advancedId} hidden={!advancedVisible} className="flex flex-col gap-4">
               {advanced}
             </div>
@@ -466,8 +511,23 @@ export function ContactForm({
               {values.lists.map((list) => (
                 <li key={list.id}>
                   <label className="flex items-center gap-2 text-sm text-text">
-                    <Checkbox name="list" value={list.id} defaultChecked={list.selected} />
+                    <Checkbox
+                      name="list"
+                      value={list.id}
+                      checked={checkedLists.has(list.id)}
+                      onCheckedChange={(next: boolean | 'indeterminate') =>
+                        toggleList(list.id, next === true)
+                      }
+                    />
                     <span>{list.name}</span>
+                    {/* Dvojí potvrzení je vlastnost SEZNAMU, ne kontaktu, a rozhoduje
+                        o tom, jestli po uložení odejde potvrzovací e-mail. Bez tohohle
+                        štítku by se to uživatel dozvěděl až z doručené pošty příjemce. */}
+                    {list.double_opt_in ? (
+                      <Badge tone="neutral" icon={MailIcon}>
+                        {t('form.listDoubleOptIn')}
+                      </Badge>
+                    ) : null}
                   </label>
                   {/* Stav při vykreslení. Bez něj by akce nepoznala rozdíl mezi
                       „uživatel seznam odškrtl" a „nikdy zaškrtnutý nebyl", a odhlašovala
@@ -479,6 +539,14 @@ export function ContactForm({
               ))}
             </ul>
           )}
+          {/* Kontakt mimo seznamy je legitimní stav, ne chyba, ale musí být vidět,
+              co z něj plyne. Bez seznamu se do publika kampaně nedostane a nikde
+              jinde se to nedozví. */}
+          {values.lists.length > 0 && checkedLists.size === 0 ? (
+            <p className="text-sm text-text-muted" data-testid="no-list-warning">
+              {t('form.listsNoneSelected')}
+            </p>
+          ) : null}
         </section>
 
         <div className="flex flex-wrap items-center gap-3">

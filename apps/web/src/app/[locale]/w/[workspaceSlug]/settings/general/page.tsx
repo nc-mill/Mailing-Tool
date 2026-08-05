@@ -5,6 +5,7 @@ import { SUPPORTED_LOCALES } from '@mlain/i18n/locales';
 import { updateWorkspaceAction } from '@/features/workspace-settings/actions';
 import { GeneralForm } from '@/features/workspace-settings/general-form';
 import { AddressFormSection } from '@/features/workspace-settings/address-form-section';
+import { GreetingEnabledSection } from '@/features/workspace-settings/greeting-enabled-section';
 import { GreetingLocaleSection } from '@/features/workspace-settings/greeting-locale-section';
 import { DangerZone } from '@/features/workspace-settings/danger-zone';
 import { SettingsPageShell } from '@/features/settings/settings-page-shell';
@@ -50,22 +51,31 @@ export default async function GeneralSettingsPage({
   const canWrite = hasPermission(access.data, 'workspace:update');
   const canDelete = hasPermission(access.data, 'workspace:delete');
 
+  // Obě sekce o oslovení řídí jeden vypínač. Když je vypnutý, nevykreslí se ani
+  // ony, ani se NEDĚLAJÍ dotazy, které je napájejí: projekt, který oslovení
+  // neřeší, nemá důvod počítat kontakty k přepočtu 5. pádu.
+  const greetingEnabled = access.data.workspace.greeting_enabled;
+
   // Počet kontaktů je jen podklad pro text dialogu o oslovení. Když selže,
   // sekce funguje dál a dialog místo počtu neuvede nic (stav S8).
-  const contactCount = await apiFetch<{ count: number }>('/api/v1/contacts/count', {
-    workspaceId: access.data.workspace.id,
-  });
+  const contactCount = greetingEnabled
+    ? await apiFetch<{ count: number }>('/api/v1/contacts/count', {
+        workspaceId: access.data.workspace.id,
+      })
+    : null;
 
   // Rozpad jazyků kontaktů. Když selže, sekce o jazyku oslovení se nevykreslí vůbec:
   // nabízet hromadný přepočet bez počtu dotčených kontaktů znamená klikat naslepo.
-  const greetingLocale = await apiFetch<{
-    data: {
-      workspace_locale: string;
-      total: number;
-      mismatched: number;
-      by_locale: { locale: string; count: number }[];
-    };
-  }>('/api/v1/greeting-locale', { workspaceId: access.data.workspace.id });
+  const greetingLocale = greetingEnabled
+    ? await apiFetch<{
+        data: {
+          workspace_locale: string;
+          total: number;
+          mismatched: number;
+          by_locale: { locale: string; count: number }[];
+        };
+      }>('/api/v1/greeting-locale', { workspaceId: access.data.workspace.id })
+    : null;
 
   return (
     <SettingsPageShell
@@ -90,12 +100,15 @@ export default async function GeneralSettingsPage({
           timezones={supportedTimezones()}
           canWrite={canWrite}
         />
-        <AddressFormSection
-          workspace={access.data.workspace}
-          canWrite={canWrite}
-          contactCount={contactCount.ok ? contactCount.data.count : 0}
-        />
-        {greetingLocale.ok ? (
+        <GreetingEnabledSection workspace={access.data.workspace} canWrite={canWrite} />
+        {greetingEnabled ? (
+          <AddressFormSection
+            workspace={access.data.workspace}
+            canWrite={canWrite}
+            contactCount={contactCount?.ok ? contactCount.data.count : 0}
+          />
+        ) : null}
+        {greetingEnabled && greetingLocale?.ok ? (
           <GreetingLocaleSection
             workspaceId={access.data.workspace.id}
             canWrite={canWrite}

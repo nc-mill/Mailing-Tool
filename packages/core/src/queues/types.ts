@@ -1,5 +1,45 @@
 import type { ErrorDomain } from '../errors/types';
 
+/**
+ * Politika slučování duplicitních úloh, tedy to, co v pg-bossu 12 skutečně
+ * zapíná `singletonKey`. Bez ní je klíč jen sloupec, do kterého se hodnota
+ * uloží a podle kterého se NIC neslučuje; přesně v tomhle stavu byl produkt.
+ *
+ * Výčet je ÚMYSLNĚ užší než `QueuePolicy` knihovny:
+ *
+ *  - `standard` tu není, protože „neslučovat" se v registru vyjadřuje
+ *    chybějícím polem. Kdyby šlo napsat `policy: 'standard'`, vypadala by
+ *    fronta zapnutě a nic by nedělala, což je vada, kterou tenhle typ odstraňuje.
+ *
+ *  - `key_strict_fifo` tu není a nemá se doplňovat bez rozmyslu. Vynucuje
+ *    `singletonKey` u KAŽDÉ úlohy tabulkovým CHECKem, takže by shodil tiky
+ *    z cronu (plánovač pg-bossu vkládá `singleton_key = NULL`), a blokuje klíč
+ *    i ve stavu `failed`, tedy jedna trvale selhavší úloha zamkne svůj klíč
+ *    navždy. Pořadí, kvůli kterému by se sahalo, dnes žádná naše fronta
+ *    nepotřebuje: klíče jsou ID jednotlivých entit, takže na jeden klíč
+ *    připadá jedna úloha a FIFO nad ní nic neřadí.
+ *
+ * Co která znamená (opsáno z chování indexů `job_common_i1` až `i6`, ne
+ * z prózy dokumentace):
+ *
+ *  - `short`     jedna úloha ve stavu `created`, AKTIVNÍCH NEOMEZENĚ.
+ *  - `singleton` jedna aktivní, čekajících neomezeně.
+ *  - `stately`   jedna na každý stav, tedy `short` a `singleton` dohromady:
+ *                jedna běží, jedna čeká, teprve třetí požadavek se zahodí.
+ *  - `exclusive` jedna úloha celkem ve stavech `created`, `retry` a `active`.
+ *                Nejpřísnější: druhý požadavek se zahodí, dokud první neskončí.
+ *
+ * POZOR NA `short`, JE TO PAST A ŠLAPLI JSME DO NÍ. Zní jako „jedna běží, jedna
+ * čeká", ale omezuje POUZE stav `created`. Jakmile úloha přejde do `active`,
+ * uvolní se místo ve frontě a další se zařadí; ta pak může přejít do `active`
+ * taky, takže nad TÝMŽ klíčem běží dvě naráz. Ověřeno měřením v `mlain_clean`:
+ * dva `INSERT` se stavem `active` a týmž klíčem prošly OBA. Tam, kde má klíč
+ * bránit souběhu nad týmž projektem nebo segmentem, je `short` k ničemu
+ * a správně je `stately`. `short` má smysl leda tam, kde souběžné běhy nevadí
+ * a jde jen o to nehromadit frontu; taková fronta u nás dnes žádná není.
+ */
+export type QueueMergePolicy = 'short' | 'singleton' | 'stately' | 'exclusive';
+
 export interface QueueEntry {
   /** Název ve tvaru <domena>.<akce>, opsaný ze specifikace doslova. */
   readonly name: string;
@@ -16,6 +56,26 @@ export interface QueueEntry {
   readonly expireInSeconds: number;
   /** Tvar singletonKey, když ho fronta používá. `global` = jeden běh v instalaci. */
   readonly singletonKeyTemplate?: string;
+  /**
+   * Politika slučování. CHYBÍ = fronta se chová jako `standard`, tedy neslučuje.
+   *
+   * Chybí schválně u front, které klíč sice deklarují, ale jejich producent ho
+   * neposílá. Zapnout slučování nad frontou, do které všichni vkládají bez
+   * klíče, znamená jediný společný kbelík `COALESCE(singleton_key, '')` a tiché
+   * zahazování NESOUVISEJÍCÍCH úloh. Důvod je u každé takové fronty napsaný
+   * v `discardNote` a hlídá ho test `merge-policy`.
+   */
+  readonly policy?: QueueMergePolicy;
+  /**
+   * CO SE STANE S ÚLOHOU, KTEROU POLITIKA NEZAŘADÍ, nebo, když `policy` chybí,
+   * PROČ SE SLUČOVÁNÍ NEZAPNULO. Povinné u každé fronty, která má
+   * `singletonKeyTemplate` nebo `policy`, a vynucené testem.
+   *
+   * Není to dokumentace pro dokumentaci. Zapnuté slučování znamená, že se část
+   * úloh NEZAŘADÍ, a jestli je to úklid, který se za hodinu opakuje, nebo
+   * žádost subjektu podle článku 17, se z názvu fronty ani z klíče nepozná.
+   */
+  readonly discardNote?: string;
   /** Fronta smí trvale selhat a má proto <name>.dlq. */
   readonly deadLetter: boolean;
   /** Souběžnost, když se liší od WORKER_CONCURRENCY. */

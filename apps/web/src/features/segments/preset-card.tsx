@@ -49,10 +49,22 @@ export function PresetCard({
       <p className="text-sm text-text-muted">{t(preset.explanationKey)}</p>
 
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
+        {/*
+         * POČÍTACÍ TLAČÍTKA JEN S OBSLUHOU.
+         *
+         * `onRecount` je nepovinné a seznam segmentů ho nepředává, protože počet
+         * presetu se z rozhraní spočítat nedá: `GET /segments/presets` vrací jen
+         * klíče popisků, ne definici, a `POST /segments/preview` chce definici
+         * nebo id uloženého segmentu. Dokud jedno z toho server nedoplní, je
+         * lepší tlačítko neukázat než nechat na kartě ovládací prvek, po kterém
+         * se nic nestane.
+         */}
         {preset.cachedCount === null ? (
-          <Button variant="secondary" size="sm" onClick={() => onRecount?.(preset.key)}>
-            {t('count.action')}
-          </Button>
+          onRecount === undefined ? null : (
+            <Button variant="secondary" size="sm" onClick={() => onRecount(preset.key)}>
+              {t('count.action')}
+            </Button>
+          )
         ) : (
           <span className="text-sm font-medium text-text">
             {formatCount(preset.cachedCount, locale)}
@@ -68,8 +80,8 @@ export function PresetCard({
           </span>
         ) : null}
 
-        {stale ? (
-          <Button variant="ghost" size="sm" onClick={() => onRecount?.(preset.key)}>
+        {stale && onRecount !== undefined ? (
+          <Button variant="ghost" size="sm" onClick={() => onRecount(preset.key)}>
             {t('recount')}
           </Button>
         ) : null}
@@ -77,14 +89,16 @@ export function PresetCard({
         {/* Použití vyrobí VLASTNÍ KOPII s klíčem presetu, ne odkaz na sdílenou
             definici: jinak by úprava presetu v kódu tiše změnila segment,
             který si uživatel pojmenoval po svém. */}
-        <Button
-          variant="primary"
-          size="sm"
-          className="ml-auto"
-          onClick={() => onUse?.({ preset_key: preset.key })}
-        >
-          {t('presets.use')}
-        </Button>
+        {onUse === undefined ? null : (
+          <Button
+            variant="primary"
+            size="sm"
+            className="ml-auto"
+            onClick={() => onUse({ preset_key: preset.key })}
+          >
+            {t('presets.use')}
+          </Button>
+        )}
       </div>
     </article>
   );

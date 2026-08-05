@@ -150,6 +150,57 @@ export async function updateAddressFormAction(
   return succeeded({ channel: 'page', messageKey: 'general.addressForm.started' });
 }
 
+const GreetingEnabledSchema = z.object({
+  workspace_id: z.string().min(1),
+  greeting_enabled: z.enum(['true', 'false']),
+});
+
+/**
+ * VYPÍNAČ OSLOVENÍ A 5. PÁDU.
+ *
+ * Nezařazuje žádný přepočet a nemaže žádná data. Sloupce `contacts.greeting`,
+ * `first_name_vocative` i `vocative_locked` se počítají dál při každém zápisu
+ * kontaktu, takže zapnutí zpátky vrátí přesně to, co tam bylo, a šablona,
+ * ve které `{{ contact.greeting }}` už stojí, posílá správnou větu i s vypnutou
+ * volbou.
+ *
+ * Překresluje se `layout`, ne `page`: přepínač řídí i položku „Kontrola oslovení"
+ * v hlavní navigaci, a ta se vykresluje v layoutu projektu. Bez toho by v menu
+ * zůstala viset cesta na obrazovku, která už nic nevrací.
+ */
+export async function updateGreetingEnabledAction(
+  _previous: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const parsed = GreetingEnabledSchema.safeParse({
+    workspace_id: formData.get('workspace_id'),
+    greeting_enabled: formData.get('greeting_enabled'),
+  });
+  if (!parsed.success) {
+    return failed(
+      'page',
+      validationProblem('/api/v1/workspaces', [
+        { path: 'greeting_enabled', code: 'invalid', message: 'Chybí hodnota přepínače.' },
+      ]),
+    );
+  }
+
+  const { workspace_id: workspaceId } = parsed.data;
+  const enabled = parsed.data.greeting_enabled === 'true';
+  const result = await apiMutate<void>(`/api/v1/workspaces/${workspaceId}`, {
+    method: 'PATCH',
+    body: { greeting_enabled: enabled },
+    workspaceId,
+  });
+  if (!result.ok) return failed('page', result.problem);
+
+  revalidatePath('/[locale]/w/[workspaceSlug]', 'layout');
+  return succeeded({
+    channel: 'page',
+    messageKey: enabled ? 'general.greetingEnabled.turnedOn' : 'general.greetingEnabled.turnedOff',
+  });
+}
+
 const GreetingLocaleSchema = z.object({ workspace_id: z.string().min(1) });
 
 /**

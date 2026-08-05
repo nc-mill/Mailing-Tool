@@ -178,3 +178,48 @@ describe('row pipeline', () => {
     expect(out.warnings).toContain('trailing_fields_padded');
   });
 });
+
+/**
+ * Sloupec s pohlavím se do 5. 8. 2026 přijímal jedině v podobě `male`, `female`
+ * a `unknown`, protože se porovnával rovnou s typem `Gender`. Český export ale
+ * píše „muž" a „žena" nebo zkratku, takže se sloupec, který uživatel v kroku
+ * Mapování výslovně nastavil, tiše zahodil a rod se odhadl ze jména. Rod řídí
+ * oslovení v 5. pádě, takže se to projevilo až v odeslané kampani.
+ */
+describe('sloupec s pohlavím', () => {
+  const withGender: RowContext = {
+    ...base,
+    mapping: {
+      '0': { target: 'email' },
+      '1': { target: 'full_name' },
+      '2': { target: 'gender' },
+    },
+    fieldCatalog: {},
+  };
+
+  it.each([
+    ['muž', 'male'],
+    ['Muž', 'male'],
+    ['m', 'male'],
+    ['male', 'male'],
+    ['žena', 'female'],
+    ['ž', 'female'],
+    ['f', 'female'],
+    ['female', 'female'],
+  ])('rozumí zápisu %s jako %s', (value, expected) => {
+    // Jméno je schválně cizí, aby rod nešel odhadnout z něj a test měřil sloupec.
+    const out = processRow(row(['x@firma.cz', 'Kim Nguyen', value]), withGender);
+    expect(out.kind).toBe('ok');
+    if (out.kind !== 'ok') return;
+    expect(out.contact.gender).toBe(expected);
+    expect(out.contact.genderSource).toBe('explicit');
+  });
+
+  it('nechá rod odhadnout ze jména, když hodnotě nerozumí', () => {
+    const out = processRow(row(['jana@firma.cz', 'Jana Nováková', 'nesmysl']), withGender);
+    expect(out.kind).toBe('ok');
+    if (out.kind !== 'ok') return;
+    expect(out.contact.gender).toBe('female');
+    expect(out.contact.genderSource).not.toBe('explicit');
+  });
+});

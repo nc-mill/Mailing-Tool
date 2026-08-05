@@ -4,7 +4,7 @@ import type { DataTableLabels } from '@mlain/ui/patterns/data-table';
 export type Translate = (key: string, values?: Record<string, string | number>) => string;
 
 /**
- * Popisky K2. Všech dvaadvacet klíčů má komponenta jako povinné, protože do
+ * Popisky K2. Všechny klíče má komponenta jako povinné, protože do
  * `packages/ui` se texty nepíšou. Katalog je `segments`, ne `common`.
  */
 export function builderLabels(t: Translate): QueryBuilderLabels {
@@ -19,9 +19,13 @@ export function builderLabels(t: Translate): QueryBuilderLabels {
     valueFrom: t('builder.valueLabel'),
     valueTo: t('builder.valueLabel'),
     valueList: t('builder.valueLabel'),
-    addValue: t('builder.addCondition'),
+    // Vlastní klíč, ne „Přidat podmínku". Ve výběru hodnoty je to úvodní
+    // položka rozbalovacího seznamu a nabízet tam „Přidat podmínku" mátlo.
+    addValue: t('builder.addValue'),
     removeValue: (item) => t('builder.removeValue', { value: item }),
     listLimit: (max) => t('builder.listLimit', { limit: max }),
+    unknownValue: (value) => t('builder.unknownValue', { value }),
+    noOptions: t('builder.noOptions'),
     rangeOrder: t('builder.valueLabel'),
     showJson: t('builder.showJson'),
     depthLimit: t('builder.noDeeper'),

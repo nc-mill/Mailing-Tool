@@ -47,7 +47,12 @@ export default async function NewContactPage({ params }: PageProps) {
       workspaceId,
       searchParams: { limit: 200 },
     }),
-    apiFetch<{ data: { id: string; name: string }[] }>('/api/v1/lists', { workspaceId }),
+    // `opt_in` se čte schválně: na seznamu s dvojím potvrzením se od 5. 8. 2026
+    // opravdu POŠLE potvrzovací e-mail, takže to musí být u zaškrtávátka vidět
+    // dřív, než uživatel formulář odešle.
+    apiFetch<{
+      data: { id: string; name: string; opt_in: 'single' | 'double'; is_default: boolean }[];
+    }>('/api/v1/lists', { workspaceId }),
   ]);
 
   return (
@@ -57,6 +62,7 @@ export default async function NewContactPage({ params }: PageProps) {
       workspaceId={workspaceId}
       workspaceSlug={workspaceSlug}
       basePath={`/w/${workspaceSlug}/contacts`}
+      greetingEnabled={access.data.workspace.greeting_enabled}
       values={{
         id: null,
         email: '',
@@ -82,7 +88,12 @@ export default async function NewContactPage({ params }: PageProps) {
         lists: (lists.ok ? lists.data.data : []).map((list) => ({
           id: list.id,
           name: list.name,
-          selected: false,
+          // Výchozí seznam projektu je předvybraný. Rozhodnutí zadavatele
+          // z 5. 8. 2026: kontakt mimo seznamy nedostane kampaň, a ruční
+          // přidání je právě ta cesta, kde na to nikdo nemyslí. Odškrtnout jde,
+          // jen se u toho řekne, co to znamená.
+          selected: list.is_default,
+          double_opt_in: list.opt_in === 'double',
         })),
       }}
     />

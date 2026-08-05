@@ -62,6 +62,7 @@ beforeEach(() => {
     async sendWelcome(input) {
       sent.push({ kind: 'welcome', contactId: input.contactId });
     },
+    async sendGoodbye() {},
     async deliverRequestedItem() {},
   });
 });

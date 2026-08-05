@@ -6,9 +6,11 @@ import { writeAudit } from '../audit';
 import { revokePendingMessages } from '../campaigns-port';
 import { recordConsent } from '../repo/consents';
 import { findContactByEmail } from '../repo/contacts-query';
+import { byId as listById } from '../repo/lists';
 import { findSubscription } from '../repo/subscriptions';
 import { addSuppression } from '../repo/suppressions';
 import { transition, type SubscriptionState } from './state-machine';
+import { subscriptionEmails } from './subscribe-service';
 
 export type UnsubscribeReason =
   'link' | 'one_click' | 'preference_center' | 'api' | 'manual' | 'global' | 'objection';
@@ -69,6 +71,51 @@ export async function unsubscribe(
   const global = input.listId === null;
   const dbReason = input.reason;
 
+  const result = await unsubscribeIn(ctx, input, global, dbReason);
+  // Rozloučení AŽ PO TRANSAKCI a nikdy uvnitř ní. Odhlášení je hotové a zapsané;
+  // neodeslaný e-mail ho nesmí vrátit zpátky, a naopak dlouhé odesílání nesmí
+  // držet zámek nad kontaktem.
+  await sendGoodbyeEmail(ctx, input);
+  return result;
+}
+
+/**
+ * Rozloučení po odhlášení.
+ *
+ * JEN U ODHLÁŠENÍ Z JEDNOHO SEZNAMU, ne u globálního, a je to věcné rozhodnutí,
+ * ne zjednodušení. Rozloučení je nastavení SEZNAMU (`lists.send_goodbye`),
+ * takže u globálního odhlášení není podle čeho vybrat, který text poslat, a poslat
+ * jich několik by z „odhlaste mě ze všeho" udělalo několik dalších e-mailů. Přesně
+ * to je ten případ, kdy je rozloučení vnímané jako drzost, kvůli kterému je celá
+ * funkce ve výchozím stavu vypnutá.
+ *
+ * NIKDY NEVYHODÍ VÝJIMKU. Odhlášení je právní povinnost a nesmí spadnout kvůli
+ * e-mailu; důvod neodeslání zapisuje `sendSubscriptionEmail` do auditu.
+ */
+async function sendGoodbyeEmail(ctx: WorkspaceContext, input: UnsubscribeInput): Promise<void> {
+  if (input.listId === null) return;
+  try {
+    const list = await listById(ctx, input.listId);
+    if (list === null || !list.sendGoodbye) return;
+    await (
+      await subscriptionEmails()
+    ).sendGoodbye({
+      workspaceId: ctx.workspaceId,
+      contactId: input.contactId,
+      listId: list.id,
+      listName: list.name,
+    });
+  } catch {
+    // Viz hlavička.
+  }
+}
+
+async function unsubscribeIn(
+  ctx: WorkspaceContext,
+  input: UnsubscribeInput,
+  global: boolean,
+  dbReason: UnsubscribeReason,
+): Promise<{ scope: 'list' | 'global' }> {
   return withWorkspace(ctx, async (tx) => {
     const contact = await tx.execute<{ id: string; email: string }>(sql`
       SELECT id, email::text AS email FROM contacts

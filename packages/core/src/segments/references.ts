@@ -5,7 +5,7 @@ import { wsEq } from '../identity/scope';
 import { withWorkspace, type Tx } from '../tx';
 import { SEGMENT_LIMITS } from './limits';
 import { customFieldClass, type FieldClass } from './operators';
-import { referenceNotFound, tooMany } from './errors';
+import { invalidAst, referenceNotFound, tooMany } from './errors';
 import type { Node, SegmentAst } from './ast';
 
 export type ResolvedReferences = {
@@ -35,6 +35,33 @@ function emptyWanted(): Wanted {
 
 /** Operátory nad vlastním polem, které se dají obsloužit indexem. */
 const INDEXABLE_OPERATORS = new Set(['eq', 'has_any', 'has_all']);
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Hodnota podmínky na štítek MUSÍ být identifikátor.
+ *
+ * `SegmentAstV1` to uhlídat nemůže: `values` je obecný seznam skalárů sdílený
+ * všemi poli. Bez téhle kontroly šel název štítku rovnou do dotazu
+ * `... WHERE tags.id IN ($2)` a Postgres ho odmítl:
+ *
+ *   DrizzleQueryError: invalid input syntax for type uuid: "Newsletter"
+ *   POST /api/v1/segments/preview → 500
+ *
+ * Uživatel z toho viděl jen „Počet se nepodařilo spočítat." Chyba je přitom
+ * ve VSTUPU, takže sem patří 422 s vysvětlením, ne pětistovka z databáze.
+ * Druhou půlku, tedy aby název nešlo do podmínky vůbec napsat, řeší výběr
+ * hodnoty ze štítků projektu ve stavitelli.
+ */
+function assertTagValuesAreIds(values: Set<string>): void {
+  for (const value of values) {
+    if (!UUID_RE.test(value)) {
+      invalidAst('value', 'segment_invalid_ast', 'tag condition expects tag ids, not tag names', {
+        got: value,
+      });
+    }
+  }
+}
 
 function collect(node: Node, out: Wanted, unindexable: Set<string>): void {
   if (node.type === 'group') {
@@ -116,6 +143,8 @@ export async function resolveReferences(
   const wanted = emptyWanted();
   const unindexable = new Set<string>();
   collect(ast.root, wanted, unindexable);
+  // PŘED prvním dotazem do databáze, ne až v něm.
+  assertTagValuesAreIds(wanted.tags);
 
   return withWorkspace(ctx, async (tx: Tx) => {
     const out: ResolvedReferences = {

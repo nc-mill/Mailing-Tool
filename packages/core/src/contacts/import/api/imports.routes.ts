@@ -9,6 +9,7 @@ import type { WorkspaceContext } from '../../../identity/types';
 import { inWorkspaceTx } from '../db';
 import { buildErrorsCsv, type ErrorCsvEncoding } from '../errors-csv';
 import { estimateFile, type EstimateContext } from '../estimate';
+import { decodeUploadFilename } from '../filename';
 import { importLimits } from '../limits';
 import { buildPreview } from '../preview';
 import { loadRunContext } from '../run-context';
@@ -108,8 +109,11 @@ async function bodyStream(
       errors: [{ path: 'file', code: 'required_field_missing', message: 'Chybí soubor.' }],
     });
   }
-  const filename = request.headers.get('x-filename') ?? 'import.csv';
-  return { stream: Readable.fromWeb(body as never), filename, buffered: false };
+  return {
+    stream: Readable.fromWeb(body as never),
+    filename: decodeUploadFilename(request.headers.get('x-filename')),
+    buffered: false,
+  };
 }
 
 function rowsToCsvStream(rows: Record<string, string>[]): Readable {
@@ -143,7 +147,17 @@ const createImportRoute = createRoute({
   tags: [TAG],
   summary: 'Nahrání souboru s kontakty',
   security: [{ bearerAuth: ['contacts:import'] }],
-  request: { headers: IdempotencyHeaderSchema },
+  request: {
+    headers: IdempotencyHeaderSchema,
+    /*
+     * `force=true` je odpověď uživatele na otázku „tenhle soubor už jste
+     * nahráli, spustit znovu?". Klient ho posílal odjakživa, jen ho tady nikdo
+     * nečetl, takže tlačítko „Spustit znovu" poslalo tentýž požadavek, dostalo
+     * tentýž konflikt a jediná cesta ven byla změnit obsah souboru. Ověřeno
+     * proti dev serveru 5. 8. 2026.
+     */
+    query: z.object({ force: z.enum(['true', 'false']).optional() }),
+  },
   responses: {
     /*
      * 202, ne 201: vrácený import je ve stavu pending a projde ještě
@@ -379,6 +393,7 @@ export function registerImportRoutes(app: OpenAPIHono<ImportsEnv>): void {
     requireIdempotencyKey(c.req.header('idempotency-key'));
 
     const contentType = c.req.header('content-type') ?? '';
+    const force = c.req.valid('query').force === 'true';
     let created: { id: string; status: string };
     if (contentType.includes('application/json')) {
       const body = JsonRowsRequest.parse(await c.req.json());
@@ -392,10 +407,11 @@ export function registerImportRoutes(app: OpenAPIHono<ImportsEnv>): void {
       created = await createImport(ctx, {
         stream: rowsToCsvStream(body.rows),
         filename: 'api.csv',
+        force,
       });
     } else {
       const { stream, filename } = await bodyStream(c.req.raw);
-      created = await createImport(ctx, { stream, filename });
+      created = await createImport(ctx, { stream, filename, force });
     }
     c.header('Location', `/api/v1/contacts/imports/${created.id}`);
     return c.json(present(await loadImport(ctx, created.id)), 202);

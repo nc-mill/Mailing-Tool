@@ -85,6 +85,16 @@ export function FormEditor({
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
+  /*
+   * Co se stane po odeslání. Obojí je v API i ve schématu od začátku a do
+   * 5. 8. 2026 to v editoru nebylo vůbec, takže se to nedalo nastavit odnikud.
+   *
+   * Zpráva se drží PRO AKTUÁLNÍ JAZYK rozhraní, protože sloupec je mapa jazyků.
+   * Ukládá se sloučením, ne přepsáním celé mapy: jinak by úprava v češtině
+   * smazala anglickou verzi, kterou nikdo neviděl.
+   */
+  const [redirectUrl, setRedirectUrl] = useState(form.redirect_url ?? '');
+  const [successMessage, setSuccessMessage] = useState(form.success_message[locale] ?? '');
 
   /**
    * Založí e-mail, naváže ho na formulář a rovnou otevře editor. Uživatel klikl
@@ -255,6 +265,40 @@ export function FormEditor({
             }}
           />
         </div>
+
+        <Field label={tf('successMessage')} hint={tf('successMessageHint')}>
+          <Textarea
+            data-testid="form-success-message"
+            rows={2}
+            value={successMessage}
+            maxLength={200}
+            disabled={!canEdit}
+            onChange={(event) => setSuccessMessage(event.target.value)}
+            onBlur={() => {
+              const next = successMessage.trim();
+              if (next === (form.success_message[locale] ?? '')) return;
+              // Sloučení, ne přepis: ostatní jazyky se tímhle polem needitují.
+              void save({ success_message: { ...form.success_message, [locale]: next } });
+            }}
+          />
+        </Field>
+
+        <Field label={tf('redirectUrl')} hint={tf('redirectUrlHint')}>
+          <Input
+            data-testid="form-redirect-url"
+            type="url"
+            value={redirectUrl}
+            disabled={!canEdit}
+            onChange={(event) => setRedirectUrl(event.target.value)}
+            onBlur={() => {
+              // Prázdné pole je „zůstane naše stránka", tedy `null`, ne prázdný
+              // řetězec: `redirect_url` je v API validované jako URL a prázdný
+              // řetězec by skončil čtyřistadvacítkou.
+              const next = redirectUrl.trim() === '' ? null : redirectUrl.trim();
+              if (next !== form.redirect_url) void save({ redirect_url: next });
+            }}
+          />
+        </Field>
 
         <Field label={tf('consent')} hint={tf('consentHint')}>
           <Textarea

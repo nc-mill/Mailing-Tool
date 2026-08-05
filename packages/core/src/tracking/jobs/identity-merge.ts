@@ -1,6 +1,5 @@
-import { sql } from 'drizzle-orm';
 import { loadConfig } from '../../config/index';
-import { queue } from '../../queues';
+import { enqueueJob } from '../../queues/enqueue-sql';
 import type { Tx } from '../repo/tx';
 import { trackingConfig } from '../config';
 import { runIdentityMerge } from '../identity/merge';
@@ -36,33 +35,30 @@ export function resetIdentityMergeEnqueueConfig(): void {
  * Zařazení úlohy VE STEJNÉ TRANSAKCI jako vazba identity.
  *
  * Volat `boss.send()` mimo transakci není náhrada: úloha by přežila rollback
- * vazby a slučovala by historii k vazbě, která nakonec nevznikla. Zapisuje se
- * proto přímo do tabulky `job` ve schématu pg-boss, tedy jeho zveřejněným
- * způsobem transakčního vkládání, stejně jako v `contacts/jobs/enqueue.ts`.
+ * vazby a slučovala by historii k vazbě, která nakonec nevznikla. Vlastní SQL
+ * sestavuje `queues/enqueue-sql.ts`; tenhle soubor byl posledním ze sedmi míst,
+ * která si vkládací příkaz psala sama, a všem sedmi chyběl sloupec `policy`,
+ * takže `singletonKey` neslučoval NIC.
  *
  * `singleton_key` je `binding_id` podle registru P01. Nezaručuje právě jedno
  * spuštění, jen to, že dvě úlohy nad touž vazbou nepoběží souběžně; zbytek
  * idempotence nese `runIdentityMerge`.
  *
- * `dead_letter` se ZÁMĚRNĚ nevyplňuje: sloupec má cizí klíč na `queue.name`,
- * takže hodnota `identity.merge.dlq` by zápis shodila všude, kde dead letter
- * frontu nikdo nezaložil. Přiřazení dead letter fronty patří do workeru.
+ * `onMerged` JE `drop`. Fronta má politiku `exclusive`, takže se druhé zařazení nad
+ * TOUŽ vazbou nezařadí, a to je správný výsledek: klíč je `binding_id`, takže se
+ * zahodí jedině požadavek na svázání, které už čeká nebo běží. Práci drží řádek
+ * vazby, přepis historie je idempotentní a na výsledek nikdo nečeká u obrazovky
+ * (identifikace se projeví při dalším průchodu). Vazby různých kontaktů mají různý
+ * klíč, takže se mezi sebou nezahazují.
  */
 export async function enqueueIdentityMerge(tx: Tx, data: IdentityMergeJobData): Promise<void> {
-  const entry = queue(IDENTITY_MERGE_QUEUE);
-  await tx.execute(sql`
-    INSERT INTO ${sql.identifier(pgbossSchema())}.job
-      (name, data, singleton_key, retry_limit, retry_backoff, expire_seconds, start_after)
-    VALUES (
-      ${IDENTITY_MERGE_QUEUE},
-      ${JSON.stringify(data)}::jsonb,
-      ${data.bindingId},
-      ${entry.retryLimit},
-      ${entry.retryBackoff},
-      ${entry.expireInSeconds},
-      now()
-    )
-  `);
+  await enqueueJob(tx, {
+    schema: pgbossSchema(),
+    name: IDENTITY_MERGE_QUEUE,
+    payload: data,
+    singletonKey: data.bindingId,
+    onMerged: 'drop',
+  });
 }
 
 /**

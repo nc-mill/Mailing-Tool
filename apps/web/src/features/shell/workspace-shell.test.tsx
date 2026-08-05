@@ -29,7 +29,10 @@ const WORKSPACES = [
   { id: '018f2b1c-0000-7000-8000-000000000002', slug: 'newsletter', name: 'Newsletter redakce' },
 ];
 
-function renderShell(permissions: readonly string[] = ROLE_PERMISSIONS.owner) {
+function renderShell(
+  permissions: readonly string[] = ROLE_PERMISSIONS.owner,
+  greetingEnabled = true,
+) {
   return render(
     <NextIntlClientProvider locale="cs" messages={{ common: csCommon }} timeZone="Europe/Prague">
       <WorkspaceShell
@@ -37,6 +40,7 @@ function renderShell(permissions: readonly string[] = ROLE_PERMISSIONS.owner) {
         currentWorkspaceId={WORKSPACES[0]!.id}
         permissions={permissions}
         user={{ name: 'Petr Novák', email: 'petr@example.com' }}
+        greetingEnabled={greetingEnabled}
         createWorkspace={vi.fn()}
       >
         <p>Obsah stránky</p>

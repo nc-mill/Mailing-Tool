@@ -32,7 +32,10 @@ describe('IngestBatchSchema', () => {
   });
 
   it('chybějící verze se chová jako neznámá, nedoplňuje se výchozí hodnota', () => {
-    const { v: _ignored, ...withoutVersion } = validBatch;
+    // `delete`, ne destrukturalizace se zahozenou proměnnou: ta v tomhle
+    // repozitáři padá na pravidle no-unused-vars.
+    const withoutVersion: Partial<typeof validBatch> = { ...validBatch };
+    delete withoutVersion.v;
     const result = parseBatch(withoutVersion);
     expect(result.ok).toBe(false);
     if (result.ok) return;

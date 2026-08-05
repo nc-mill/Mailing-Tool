@@ -25,7 +25,7 @@ import {
   type ConfirmResult,
   type ConfirmationMode,
 } from './confirm';
-import { subscriptionEmailPort } from './subscribe-service';
+import { subscriptionEmails } from './subscribe-service';
 
 /**
  * Zapojení `confirmSubscription()` na repozitář, obdoba `subscribePorts` z úkolu 26.
@@ -144,7 +144,9 @@ export function confirmPorts(ctx: WorkspaceContext): ConfirmPorts {
     },
 
     async sendWelcomeEmail(input) {
-      await subscriptionEmailPort()?.sendWelcome({
+      await (
+        await subscriptionEmails()
+      ).sendWelcome({
         workspaceId: ctx.workspaceId,
         contactId: input.contactId,
         listId: input.list.id,
@@ -162,7 +164,9 @@ export function confirmPorts(ctx: WorkspaceContext): ConfirmPorts {
     },
 
     async sendConfirmationEmail(input) {
-      await subscriptionEmailPort()?.sendConfirmation({
+      await (
+        await subscriptionEmails()
+      ).sendConfirmation({
         workspaceId: ctx.workspaceId,
         contactId: input.contactId,
         listId: input.list.id,

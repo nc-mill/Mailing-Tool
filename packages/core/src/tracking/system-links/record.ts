@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
+import { withWorkspace, type WorkspaceContext } from '../../tx';
 import { trackingLogger } from '../logging';
 import { withTrackingTx } from '../repo/tx';
 import { SYSTEM_CLICK_SUBTYPE, type SystemLinkKind } from '../types';
@@ -105,28 +106,25 @@ export async function recordSystemLinkClick(
  */
 export type SystemLinkClickCounts = Record<SystemLinkKind, number>;
 
-export async function readSystemLinkClicks(scope: {
-  workspaceId: string;
-  campaignId: string;
-}): Promise<SystemLinkClickCounts> {
+export async function readSystemLinkClicks(
+  ctx: WorkspaceContext,
+  campaignId: string,
+): Promise<SystemLinkClickCounts> {
   const counts: SystemLinkClickCounts = { unsubscribe_page: 0, preferences: 0, webview: 0 };
 
-  const rows = await withTrackingTx(
-    { workspaceId: scope.workspaceId, job: 'tracking.read_system_link_clicks' },
-    async (tx) => {
-      const { rows } = await tx.execute<{ kind: string; count: string }>(sql`
+  const rows = await withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<{ kind: string; count: string }>(sql`
         SELECT metadata ->> 'system_link'   AS "kind",
                count(DISTINCT message_id)   AS "count"
           FROM message_events
-         WHERE workspace_id = ${scope.workspaceId}::uuid
-           AND campaign_id  = ${scope.campaignId}::uuid
+         WHERE workspace_id = ${ctx.workspaceId}::uuid
+           AND campaign_id  = ${campaignId}::uuid
            AND type    = 'click'
            AND subtype = ${SYSTEM_CLICK_SUBTYPE}
          GROUP BY 1
       `);
-      return rows;
-    },
-  );
+    return rows;
+  });
 
   for (const row of rows) {
     if (row.kind !== null && row.kind in counts) {

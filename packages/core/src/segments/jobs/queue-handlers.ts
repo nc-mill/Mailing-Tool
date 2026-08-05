@@ -1,6 +1,8 @@
 import { perJob } from '../../queues';
 import { handler as recount } from './recount';
 import { handler as cleanupAfterReactivation } from './cleanup-after-reactivation';
+import { handler as recalcForContact } from './recalc-for-contact';
+import { handler as markInvalid } from './mark-invalid';
 
 /**
  * Codegen workeru globuje soubory tohohle jména. Názvy front jsou z registru P01
@@ -16,5 +18,7 @@ import { handler as cleanupAfterReactivation } from './cleanup-after-reactivatio
 // takže by se to poznalo teprve na první skutečně zpracované úloze.
 export const handlers = {
   'segments.recount': perJob(recount),
+  'segments.recalc_for_contact': perJob(recalcForContact),
+  'segments.mark_invalid': perJob(markInvalid),
   'contacts.cleanup_after_reactivation': perJob(cleanupAfterReactivation),
 } as const;

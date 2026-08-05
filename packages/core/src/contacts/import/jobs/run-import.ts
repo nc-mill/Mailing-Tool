@@ -1,6 +1,8 @@
 import { join } from 'node:path';
+import { sql } from 'drizzle-orm';
 import { createSystemContext } from '../../../identity/context';
 import { importLogger } from '../logging';
+import { inWorkspaceTx } from '../db';
 import { checkSuppression } from '../../repo/suppressions';
 import { normalizeEmail } from '../../email';
 import { writeBatch, type ErrRow } from '../batch';
@@ -12,7 +14,17 @@ import { loadRunContext } from '../run-context';
 import { processRow, type ProcessedOkRow, type ProcessedRow } from '../row-pipeline';
 import { finishImport } from '../service';
 
-export type ImportJobPayload = { workspaceId: string; importId: string; phase: 'validate' | 'run' };
+/**
+ * `phase` zůstává v payloadu kvůli úlohám, které ve frontě mohou ležet z dřívějška,
+ * ale jediná hodnota, se kterou se dnes zařazuje, je `run`, a zařazuje ji výhradně
+ * `confirmImport()`. Zápis kontaktů se navíc řídí STAVEM importu, ne payloadem;
+ * viz strážce v `handler` níž.
+ */
+export type ImportJobPayload = {
+  workspaceId: string;
+  importId: string;
+  phase?: 'validate' | 'run';
+};
 
 /**
  * Suppression se čte PO DÁVKÁCH, ne jednou pro celý projekt: projekt může mít
@@ -38,10 +50,42 @@ async function suppressionFor(
   return out;
 }
 
+/**
+ * Zapisuje se JEN import ve stavu `importing`, tedy ten, který člověk potvrdil
+ * tlačítkem „Naimportovat".
+ *
+ * Strážce je tu proto, že bez něj obsluha zapisovala kontakty pro jakoukoli úlohu,
+ * která se ve frontě octla, včetně té zařazované hned po nahrání souboru. Průvodce
+ * tím ztrácel smysl: volby ze čtvrtého a pátého kroku (seznam, štítek, souhlas,
+ * chování při konfliktu) se ukládaly do importu, který už byl dokončený, takže se
+ * na datech nikdy neprojevily a kontakt skončil bez seznamu.
+ *
+ * Stav se čte ze `imports`, ne z payloadu úlohy: payload je jen přání volajícího,
+ * kdežto stav je doklad, že přechodem `previewing → importing` prošel `confirmImport()`.
+ */
+async function isConfirmed(
+  ctx: ReturnType<typeof createSystemContext>,
+  importId: string,
+): Promise<boolean> {
+  const { rows } = await inWorkspaceTx(ctx, (tx) =>
+    tx.execute<{ status: string }>(sql`
+      SELECT status FROM imports
+       WHERE id = ${importId}::uuid AND workspace_id = ${ctx.workspaceId}::uuid`),
+  );
+  return rows[0]?.status === 'importing';
+}
+
 export const handler = async (job: {
   data: ImportJobPayload;
 }): Promise<{ processed: number; errorRows: number }> => {
   const ctx = createSystemContext(job.data.workspaceId, 'contacts.import');
+  if (!(await isConfirmed(ctx, job.data.importId))) {
+    importLogger().warn(
+      { importId: job.data.importId, phase: job.data.phase },
+      'import job skipped: import is not in state importing',
+    );
+    return { processed: 0, errorRows: 0 };
+  }
   const limits = importLimits();
   const run = await loadRunContext(ctx, job.data.importId);
   const deduper = new BatchDeduper({

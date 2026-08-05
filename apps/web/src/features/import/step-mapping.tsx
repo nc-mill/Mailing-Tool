@@ -7,6 +7,35 @@ export type MappingColumn = { name: string; sample: string; target: string };
 
 export type MappingPreview = { columns: MappingColumn[] };
 
+/**
+ * Klíč vlastního pole z názvu sloupce.
+ *
+ * Server na klíč trvá tvarem `^[a-z][a-z0-9_]{0,39}$` (`FIELD_KEY`
+ * v `contact-fields.routes.ts`), takže „Číslo smlouvy" se musí přeložit
+ * na `cislo_smlouvy`. Prázdný nebo číslicí začínající výsledek dostane
+ * předponu, jinak by ho server odmítl s `invalid_format`.
+ */
+export function fieldKeyFrom(name: string): string {
+  const base = name
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+  return /^[a-z]/.test(base) ? base : `pole_${base}`.slice(0, 40);
+}
+
+/**
+ * Cíle, které server DOOPRAVDY přijme, tedy `MAPPING_TARGETS` z
+ * `packages/core/src/contacts/import/mapping.ts`.
+ *
+ * „Telefon" a „Seznam" tady stály a byly to slepé uličky: `ImportMappingSchema`
+ * žádný cíl `phone` nezná a `list` po sobě žádá i `list_id`, které obrazovka
+ * neposílá. Uložení mapování proto skončilo na 422 a průvodce vypsal „Náhled
+ * souboru se nepodařilo načíst", tedy hlášku, ze které se příčina poznat nedá.
+ * Telefon navíc kontakt jako pole nemá; patřil by mezi vlastní pole.
+ */
 const TARGETS = [
   'email',
   'first_name',
@@ -16,8 +45,6 @@ const TARGETS = [
   'title_suffix',
   'gender',
   'locale',
-  'phone',
-  'list',
   'tag',
 ] as const;
 
@@ -27,9 +54,15 @@ const TARGETS = [
  */
 export function StepMapping({
   preview,
+  onCreateField,
   onNext,
 }: {
   preview: MappingPreview;
+  /**
+   * Založí vlastní pole a vrátí jeho klíč, nebo `null` při selhání. Volání drží
+   * průvodce, stejně jako u štítku a seznamu.
+   */
+  onCreateField: (input: { key: string; label: string }) => Promise<string | null>;
   onNext: (mapping: Record<string, string>) => void;
 }) {
   const t = useTranslations('import');
@@ -37,7 +70,33 @@ export function StepMapping({
     Object.fromEntries(preview.columns.map((column) => [column.name, column.target])),
   );
   const [showNoEmail, setShowNoEmail] = useState(false);
+  const [creating, setCreating] = useState<string | null>(null);
+  const [createFailed, setCreateFailed] = useState<string | null>(null);
+  /** Popisky založených polí podle klíče, ať je v rozbalovátku vidět jméno, ne klíč. */
+  const [createdFields, setCreatedFields] = useState<Record<string, string>>({});
   const selects = useRef(new Map<string, HTMLSelectElement>());
+
+  /**
+   * Založení vlastního pole pro sloupec, který nepatří k ničemu známému.
+   *
+   * Tlačítko tady bylo od začátku, ale nemělo `onClick`, takže nedělalo nic
+   * a sloupec navíc se dal jedině zahodit. Pole se zakládá jako TEXT: import
+   * čte hodnoty ze souboru jako text a přísnější typ by celý řádek shodil na
+   * chybě přetypování. Typ jde změnit v nastavení kontaktů, obráceně by to
+   * znamenalo přepsat hodnoty u všech kontaktů.
+   */
+  async function createField(columnName: string): Promise<void> {
+    setCreating(columnName);
+    setCreateFailed(null);
+    const key = await onCreateField({ key: fieldKeyFrom(columnName), label: columnName });
+    setCreating(null);
+    if (key === null) {
+      setCreateFailed(columnName);
+      return;
+    }
+    setCreatedFields((previous) => ({ ...previous, [key]: columnName }));
+    setMapping((previous) => ({ ...previous, [columnName]: `attribute:${key}` }));
+  }
 
   const emailColumn = Object.entries(mapping).find(([, target]) => target === 'email')?.[0];
 
@@ -92,6 +151,14 @@ export function StepMapping({
                       {t(`mapping.targets.${target}`)}
                     </option>
                   ))}
+                  {/* Založená vlastní pole. Bez téhle položky by se hodnota
+                      `attribute:<klíč>` v rozbalovátku neměla čím zobrazit
+                      a prohlížeč by spadl zpátky na první možnost. */}
+                  {Object.entries(createdFields).map(([key, label]) => (
+                    <option key={key} value={`attribute:${key}`}>
+                      {t('mapping.customField', { name: label })}
+                    </option>
+                  ))}
                 </select>
                 {mapping[column.name] === 'full_name' ? <p>{t('mapping.willSplit')}</p> : null}
               </td>
@@ -100,11 +167,25 @@ export function StepMapping({
         </tbody>
       </table>
 
+      {/* Tlačítko dřív nemělo obsluhu a nedělalo nic. Teď založí vlastní pole
+          a rovnou na něj sloupec namapuje, takže sloupec navíc nemusí skončit
+          v koši. */}
       {unmapped.map((column) => (
-        <button key={column.name} type="button">
-          {t('mapping.createField', { name: column.name })}
+        <button
+          key={column.name}
+          type="button"
+          className="self-start text-sm underline"
+          onClick={() => void createField(column.name)}
+        >
+          {creating === column.name
+            ? t('mapping.creatingField', { name: column.name })
+            : t('mapping.createField', { name: column.name })}
         </button>
       ))}
+
+      {createFailed === null ? null : (
+        <p role="alert">{t('mapping.createFieldFailed', { name: createFailed })}</p>
+      )}
 
       {duplicate ? (
         <p role="alert">

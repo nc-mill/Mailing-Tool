@@ -63,7 +63,10 @@ function first(value: string | string[] | undefined): string | undefined {
  * Čte filtry z URL. Neznámou hodnotu zahodí místo toho, aby ji poslala na API:
  * odkaz s překlepem má ukázat nefiltrovaný seznam, ne chybu 422.
  */
-export function readContactFilters(searchParams: SearchParamsInput): ContactListFilters {
+export function readContactFilters(
+  searchParams: SearchParamsInput,
+  options: { greetingEnabled?: boolean } = {},
+): ContactListFilters {
   const filters: ContactListFilters = {};
 
   const q = first(searchParams['q']);
@@ -79,8 +82,14 @@ export function readContactFilters(searchParams: SearchParamsInput): ContactList
     if (value && ID.test(value)) filters[key] = value;
   }
 
+  // Projekt, který oslovení neřeší, filtr „nejisté oslovení" zahodí i z URL.
+  // Je to táž úvaha jako u neznámé hodnoty o pár řádků výš: odkaz, který sem
+  // někdo poslal e-mailem nebo si ho uložil do záložek, má ukázat seznam
+  // kontaktů, ne odznak filtru, ke kterému v rozhraní nevede žádné ovládání.
   const vocative = first(searchParams['vocative_confidence']);
-  if (vocative === 'low') filters.vocative_confidence = 'low';
+  if (vocative === 'low' && options.greetingEnabled !== false) {
+    filters.vocative_confidence = 'low';
+  }
 
   for (const key of ['created_after', 'created_before'] as const) {
     const value = first(searchParams[key]);

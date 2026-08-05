@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { toLiquidRoots } from '@mlain/emails/paths';
 import { getFieldCatalog } from '../../fields/catalog';
 import { archiveContactField, createContactField } from '../../repo/contact-fields';
-import { testContext } from '../support/db';
+import { setGreetingEnabled, testContext } from '../support/db';
 
 describe('getFieldCatalog', () => {
   it('obsahuje i prvotřídní pole, ne jen vlastní', async () => {
@@ -19,6 +20,56 @@ describe('getFieldCatalog', () => {
     ]) {
       expect(paths).toContain(expected);
     }
+  });
+
+  /**
+   * VYPÍNAČ OSLOVENÍ NESMÍ ROZBÍT ODESÍLÁNÍ.
+   *
+   * Katalog nekrmí jenom nabídku v editoru. Přes `toLiquidRoots` z něj vzniká
+   * seznam povolených cest pro Liquid validátor, a ten na neznámé pole hlásí
+   * `liquid_unknown_field` se závažností **error**, na kterou `compileTemplate`
+   * vrátí `ok: false`. Kdyby se pole z katalogu ODSTRANILA, přestala by jít
+   * odeslat každá šablona, ve které `{{ contact.greeting }}` už stojí.
+   *
+   * Proto se jen označují `deleted`: editor je nenabídne (`usableFields`),
+   * validátor je zná dál.
+   */
+  describe('vypnuté oslovení a 5. pád', () => {
+    it('označí pole oslovení jako deleted, ale nechá je v katalogu', async () => {
+      const ctx = await testContext();
+      await setGreetingEnabled(ctx, false);
+      const catalog = await getFieldCatalog(ctx);
+
+      for (const path of ['greeting', 'first_name_vocative', 'last_name_vocative']) {
+        const field = catalog.fields.find((f) => f.path === path);
+        expect(field, `pole ${path} zmizelo z katalogu`).toBeDefined();
+        expect(field!.deleted, `pole ${path} není označené`).toBe(true);
+      }
+    });
+
+    it('validátor merge tagů pole dál zná, takže šablona zůstane platná', async () => {
+      const ctx = await testContext();
+      await setGreetingEnabled(ctx, false);
+      const roots = toLiquidRoots(await getFieldCatalog(ctx));
+      expect(roots.contactFirstClass).toContain('greeting');
+      expect(roots.contactFirstClass).toContain('first_name_vocative');
+    });
+
+    it('rod ani jméno se neskrývají, nejsou to 5. pád', async () => {
+      const ctx = await testContext();
+      await setGreetingEnabled(ctx, false);
+      const catalog = await getFieldCatalog(ctx);
+      expect(catalog.fields.find((f) => f.path === 'gender')?.deleted).toBe(false);
+      expect(catalog.fields.find((f) => f.path === 'first_name')?.deleted).toBe(false);
+    });
+
+    it('zapnutí zpátky pole zase odkryje', async () => {
+      const ctx = await testContext();
+      await setGreetingEnabled(ctx, false);
+      await setGreetingEnabled(ctx, true);
+      const catalog = await getFieldCatalog(ctx);
+      expect(catalog.fields.find((f) => f.path === 'greeting')?.deleted).toBe(false);
+    });
   });
 
   it('vlastní pole se adresují prefixem attr', async () => {

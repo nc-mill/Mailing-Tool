@@ -97,6 +97,20 @@ export async function POST(
   // 'confirm_prompt' se z POSTu vrátit nemůže: tuhle větev vrací jen GET.
   if (result.view === 'invalid' || result.view === 'confirm_prompt') return invalidPage();
 
+  /*
+   * Vlastní stránka po potvrzení (`lists.confirm_redirect_url`).
+   *
+   * JEN U ÚSPĚCHU, o kterém rozhoduje doména: `confirmByRef` vrací `redirectUrl`
+   * jedině u výsledku `done`. Přesměrovat po prošlém nebo už použitém odkazu by
+   * znamenalo poslat člověka na děkovnou stránku, přestože přihlášený není.
+   *
+   * 303, ne 302: požadavek je POST a 303 je jediný kód, který prohlížečům
+   * spolehlivě řekne, že další krok je GET.
+   */
+  if (result.redirectUrl !== null) {
+    return new Response(null, { status: 303, headers: { location: result.redirectUrl } });
+  }
+
   const t = await publicTranslator(result.branding.locale, 'contacts.public');
   return renderPublicPage(ConfirmResultPage({ t, view: result.view, listName: result.listName }), {
     branding: result.branding,

@@ -17,6 +17,14 @@ export type PreSendInput = {
   preheader: string;
   appUrl: string;
   emptyFieldRatios: Array<{ path: string; empty: number; total: number; hasDefault: boolean }>;
+  /**
+   * Musí mít e-mail odhlašovací odkaz? Výchozí ANO a u kampaně to nikdy neplatí
+   * jinak: rozesílat bez možnosti odhlásit se nesmí.
+   *
+   * `false` posílá jediný volající, a to u šablony připojené k seznamu jako
+   * potvrzovací, uvítací nebo rozloučovací e-mail. Zdůvodnění je u kontroly níž.
+   */
+  unsubscribeRequired?: boolean | undefined;
 };
 
 export type PreSendResult = { blocking: boolean; findings: PreSendFinding[] };
@@ -51,7 +59,26 @@ export function preSendCheck(input: PreSendInput): PreSendResult {
       params: { count: input.validationIssues.filter((i) => i.severity === 'error').length },
     });
   }
-  if (!input.compileMeta.hasUnsubscribeLink) {
+  /*
+   * ODHLAŠOVACÍ ODKAZ SE NEVYŽADUJE U E-MAILŮ SEZNAMU, a není to změkčení.
+   *
+   * Zprávy seznamu (potvrzení přihlášení, uvítání, rozloučení) odcházejí
+   * s `messages.kind = 'transactional'` a sender u toho druhu odhlašovací odkaz
+   * NEVYRÁBÍ: `worker.go` ho v render datech bezpodmínečně přepíše prázdným
+   * řetězcem. Odkaz by tedy vedl do prázdna, a proto ho závora při ukládání
+   * takové šablony odmítá (`subscription_email_has_unsubscribe_link`).
+   *
+   * Kdyby tahle kontrola odkaz zároveň VYŽADOVALA, dostal by se autor do
+   * neřešitelné situace: bez odkazu na něj křičí předodesílací kontrola, s ním
+   * závora na uložení. Ať by udělal cokoli, jedno z pravidel by hlásilo chybu
+   * a produkt by vypadal rozbitě. Naměřeno na potvrzovacím e-mailu v editoru
+   * 5. 8. 2026.
+   *
+   * Pro kampaň platí pravidlo beze změny: bez odhlašovacího odkazu se
+   * nerozesílá. Rozhoduje o tom volající podle toho, jestli je šablona
+   * připojená k seznamu (`isListEmailTemplate`), ne tenhle soubor.
+   */
+  if (input.unsubscribeRequired !== false && !input.compileMeta.hasUnsubscribeLink) {
     findings.push({ code: 'precheck_missing_unsubscribe', severity: 'error' });
   }
   if (input.compileMeta.htmlBytes > HTML_ERROR_BYTES) {

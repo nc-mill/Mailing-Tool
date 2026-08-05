@@ -3,9 +3,11 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { useRouter } from '@mlain/i18n/navigation';
 import { Alert } from '@mlain/ui/patterns/states';
 import { Button } from '@mlain/ui/components/button';
-import { ToastProvider, useToast } from '@mlain/ui/patterns/toast';
+import { useToast } from '@mlain/ui/patterns/toast';
+import { removeDemoDataAction } from './actions';
 import { DemoDataDialog, type DemoCounts } from './demo-data-dialog';
 
 export type DemoDataState = {
@@ -23,41 +25,16 @@ export type DemoDataState = {
  * Trvalý pruh, dokud jsou ukázková data v projektu. Vedle tlačítka
  * „Odstranit" nabízí i odkaz na hromadný výběr přes štítek, aby šlo sadu
  * smazat i po částech, tedy tak, jak to žádá rozhodnutí zadavatele Z2.
+ *
+ * Mazání jde SERVEROVOU AKCÍ, ne holým `fetch` z prohlížeče. Původní volání
+ * `fetch('/api/v1/demo-data', { method: 'DELETE' })` neslo relaci, ale ne
+ * projekt, a autentizace ho tím pádem odmítala se 404 (viz `actions.ts`).
+ * Uživatel po každém potvrzení viděl jen hlášku, že se to nepovedlo, a data
+ * v projektu zůstala.
  */
 export function DemoDataBanner({ state, slug }: { state: DemoDataState; slug: string }) {
-  const t = useTranslations('common');
-
-  // `useToast` mimo `ToastProvider` VYHODÍ VÝJIMKU a shodí celou stránku.
-  //
-  // Skořápka projektu (`w/[workspaceSlug]/layout.tsx`, vlastní ji P05) provider
-  // nemontuje, takže si ho obrazovky zapínají samy; doména kontaktů to řeší
-  // souborem `features/contacts/contacts-toasts.tsx`. Přehled je server
-  // component bez vlastního layoutu, takže si ho pruh musí obalit sám.
-  //
-  // Bez toho padal CELÝ Přehled, ne jen pruh:
-  //   ⨯ Error: useToast se smí volat jen uvnitř ToastProvider.
-  // a uživatel viděl „Aplikace se neočekávaně zastavila". Naměřeno v produkční
-  // image; jednotkové testy to nechytly, protože si provider montují samy.
-  //
-  // Až skořápka provider dostane, tenhle obal zmizí a `DemoDataBannerInner`
-  // se přejmenuje zpátky.
-  return (
-    <ToastProvider
-      labels={{
-        undo: t('actions.undo'),
-        close: t('actions.close'),
-        notifications: t('a11y.notifications'),
-        countdown: (seconds: number) => t('feedback.undoCountdown', { seconds }),
-        repeated: (message: string, count: number) => t('feedback.repeated', { message, count }),
-      }}
-    >
-      <DemoDataBannerInner state={state} slug={slug} />
-    </ToastProvider>
-  );
-}
-
-function DemoDataBannerInner({ state, slug }: { state: DemoDataState; slug: string }) {
   const t = useTranslations('onboarding.demo');
+  const router = useRouter();
   const toast = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -85,9 +62,15 @@ function DemoDataBannerInner({ state, slug }: { state: DemoDataState; slug: stri
         onCancel={() => setDialogOpen(false)}
         onConfirm={async () => {
           setDialogOpen(false);
-          const res = await fetch('/api/v1/demo-data', { method: 'DELETE' });
-          if (res.ok) toast.success(t('removed'));
-          else toast.error(t('removeFailed'));
+          const result = await removeDemoDataAction({ workspaceRef: slug });
+          if (result.status === 'error') {
+            toast.error(t('removeFailed', { code: result.code }));
+            return;
+          }
+          toast.success(t('removed'));
+          // Pruh visí na serverové stránce, takže bez tohohle by po smazání
+          // zůstal na obrazovce i s počty položek, které už neexistují.
+          router.refresh();
         }}
       />
     </Alert>

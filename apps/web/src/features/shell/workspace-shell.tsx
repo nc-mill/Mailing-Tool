@@ -20,6 +20,12 @@ export type WorkspaceShellProps = {
   /** Skutečná oprávnění role aktéra, spočítaná na serveru. Klient matici nezná. */
   permissions: readonly string[];
   user: { name: string; email: string };
+  /**
+   * Řeší projekt oslovení a 5. pád? Když ne, zmizí z menu položka „Kontrola
+   * oslovení": obrazovka, na kterou míří, je v tom případě také skrytá a odkaz
+   * na skrytou obrazovku je mrtvé tlačítko.
+   */
+  greetingEnabled: boolean;
   /** Serverová akce se předává shora, aby klientský strom nesahal na `server-only`. */
   createWorkspace: (previous: ActionState, formData: FormData) => Promise<ActionState>;
   children: ReactNode;
@@ -41,6 +47,7 @@ export function WorkspaceShell({
   currentWorkspaceId,
   permissions,
   user,
+  greetingEnabled,
   createWorkspace,
   children,
 }: WorkspaceShellProps) {
@@ -63,7 +70,11 @@ export function WorkspaceShell({
 
   const current = workspaces.find((workspace) => workspace.id === currentWorkspaceId);
   const workspaceSlug = current?.slug ?? '';
-  const items = visibleNavigation({ permissions: [...permissions], workspaceSlug });
+  const items = visibleNavigation({
+    permissions: [...permissions],
+    workspaceSlug,
+    ...(greetingEnabled ? {} : { hiddenIds: ['contacts-greeting-queue'] }),
+  });
   const accent = workspaceAccent(currentWorkspaceId);
   const systemBarStates: SystemBarState[] = offline
     ? [{ kind: 'offline', message: t('systemBar.offline') }]
@@ -81,9 +92,13 @@ export function WorkspaceShell({
    * Dokud to skořápka nedělala, obcházely to domény samy vlastními `layout.tsx`
    * (kontakty, seznamy, štítky, zablokované adresy) a nakonec i komponenty.
    * Šest míst, každé s poznámkou „až je skořápka dostane, tenhle soubor zmizí".
-   * Sedmá obrazovka by spadla stejně a spadla by celá.
+   * Sedmá obrazovka by spadla stejně a spadla by celá. Všech šest obcházek je
+   * od 5. 8. 2026 pryč, tenhle soubor je jediné místo, kde se providery montují.
    *
-   * Vnořené providery nevadí, ty obcházky můžou zmizet postupně.
+   * ZPÁTKY UŽ JE NEPŘIDÁVEJ. Druhý `ToastProvider` v podstromu se nezdvojí
+   * viditelně, ale založí si VLASTNÍ skladiště, takže strop tří viditelných
+   * oznámení a slučování opakovaných hlášek přestane platit napříč obrazovkou:
+   * uživateli se jich naskládá šest tam, kde měly být tři.
    *
    * Sedí tady, a ne v serverové části skořápky, protože `ToastProvider` bere
    * mezi popisky FUNKCE (odpočet, opakovaná hláška). Funkci ze serverové

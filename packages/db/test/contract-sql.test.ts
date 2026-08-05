@@ -123,17 +123,24 @@ describe('kontraktní SQL projde parserem i plánovačem (obdoba OB-00)', () => 
 });
 
 describe('normativní dotazy aplikační strany', () => {
-  it('materializace publika s ON CONFLICT nad všemi třemi sloupci indexu', async () => {
+  it('materializace publika s ON CONFLICT nad třemi sloupci indexu I JEHO PREDIKÁTEM', async () => {
     // Uvedení jen dvou sloupců není tichá chyba, ale tvrdý ERROR
     // "there is no unique or exclusion constraint matching the ON CONFLICT
     // specification", a materializace by neproběhla vůbec.
+    //
+    // Od migrace 0010_test_send_unblock nestačí ani všechny tři sloupce:
+    // `uq_messages__campaign_contact` je od ní ČÁSTEČNÝ (`WHERE kind =
+    // 'campaign'`) a částečný index Postgres jako arbitra neodvodí, dokud se
+    // týž predikát neuvede i v ON CONFLICT. Tenhle test tu chybu držel od
+    // migrace 0010 a padal, přestože produkční dotaz
+    // (`campaigns/repo/outbox.ts`) predikát celou dobu uvádí správně.
     await expect(
       h.as('mlain_migrator').query(
         `INSERT INTO messages (id, workspace_id, campaign_id, contact_id, email,
                              render_data, created_at)
        SELECT gen_random_uuid(), $1, $2, $3, 'x@example.test', '{}'::jsonb, $4
        WHERE false
-       ON CONFLICT (campaign_id, contact_id, created_at) DO NOTHING`,
+       ON CONFLICT (campaign_id, contact_id, created_at) WHERE kind = 'campaign' DO NOTHING`,
         [
           '01930000-0000-7000-8000-000000000003',
           '01930000-0000-7000-8000-000000000001',

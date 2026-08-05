@@ -1,6 +1,5 @@
-import { sql } from 'drizzle-orm';
 import { loadConfig } from '../../config/index';
-import { queue } from '../../queues';
+import { enqueueJob, type OnMerged } from '../../queues/enqueue-sql';
 import type { Tx } from '../repo/tx';
 
 /**
@@ -37,6 +36,8 @@ export function resetTrackingEnqueueConfig(): void {
 export type TrackingEnqueueOptions = {
   /** Jeden běh nad jedním klíčem. Nezaručuje právě jedno spuštění. */
   singletonKey?: string;
+  /** Přebití výchozího `drop`. Viz rozvaha v hlavičce souboru. */
+  onMerged?: OnMerged;
 };
 
 export async function enqueueTrackingJob(
@@ -45,18 +46,11 @@ export async function enqueueTrackingJob(
   payload: Record<string, unknown>,
   options: TrackingEnqueueOptions = {},
 ): Promise<void> {
-  const entry = queue(name);
-  await tx.execute(sql`
-    INSERT INTO ${sql.identifier(pgbossSchema())}.job
-      (name, data, singleton_key, retry_limit, retry_backoff, expire_seconds, start_after)
-    VALUES (
-      ${name},
-      ${JSON.stringify(payload)}::jsonb,
-      ${options.singletonKey ?? null},
-      ${entry.retryLimit},
-      ${entry.retryBackoff},
-      ${entry.expireInSeconds},
-      now()
-    )
-  `);
+  await enqueueJob(tx, {
+    schema: pgbossSchema(),
+    name,
+    payload,
+    singletonKey: options.singletonKey,
+    onMerged: options.onMerged ?? 'drop',
+  });
 }

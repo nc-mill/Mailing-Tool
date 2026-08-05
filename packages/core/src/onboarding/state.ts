@@ -108,7 +108,12 @@ export async function loadOnboardingState(
   const href: Record<(typeof ONBOARDING_STEP_IDS)[number], string> = {
     sending: 'settings/sending',
     contacts: 'contacts/import',
-    template: 'templates/new',
+    // Výpis šablon, NE `templates/new`. Taková obrazovka neexistuje: adresa by
+    // se chytila na `[templateId]`, aplikace by hledala šablonu s identifikátorem
+    // „new" a krok by skončil na chybové stránce. Zakládání je klientská akce
+    // tlačítkem ve výpisu (`create-template.tsx`), která šablonu založí a rovnou
+    // otevře její detail, takže vlastní adresa pro zakládání ani vzniknout nemá.
+    template: 'templates',
     testSend: 'campaigns',
     firstCampaign: 'campaigns',
   };

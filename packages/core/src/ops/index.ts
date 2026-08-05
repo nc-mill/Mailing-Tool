@@ -40,5 +40,12 @@ export { enqueueRefingerprint, rotateCredentials } from './rotate-credentials';
 export type { RotateReport } from './rotate-credentials';
 export { MIN_PASSWORD_LENGTH, resetPassword, UserNotFoundError } from './reset-password';
 export { rebuildEngagement } from './rebuild-engagement';
+export { retentionTargets, runPartitionMaintenance } from './partition-retention';
+export type {
+  RetentionReport,
+  RetentionTarget,
+  RunInput as PartitionMaintenanceInput,
+  TargetReport,
+} from './partition-retention';
 export { ProcessesStillRunningError, runUpgrade } from './upgrade';
 export { backupJob, backupVerifyJob } from './jobs/backup-jobs';

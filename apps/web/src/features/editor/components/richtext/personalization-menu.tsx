@@ -127,7 +127,15 @@ export function PersonalizationMenu({
                   >
                     <span className="flex flex-col">
                       <span>{pickLabel(field.label, locale)}</span>
-                      {greetingGuidanceFor(toMergePath(field.path)) === 'nameFragment' ? (
+                      {/* Nápověda „Jen jméno. Oslovení z něj neskládejte." dává smysl
+                          jen tam, kde je co neskládat. V projektu, který oslovení
+                          neřeší, není v nabídce žádná hotová věta, na kterou by šlo
+                          odkázat, takže by ta věta jen radila vyhnout se něčemu,
+                          co uživatel nikde nevidí. Stav se pozná z KATALOGU, ne
+                          z další propy: `greetingField` je `undefined` právě tehdy,
+                          když je oslovení vypnuté (pole je označené `deleted`). */}
+                      {greetingField !== undefined &&
+                      greetingGuidanceFor(toMergePath(field.path)) === 'nameFragment' ? (
                         <span className="text-xs text-text-muted">
                           {t('personalization.fragmentHint')}
                         </span>

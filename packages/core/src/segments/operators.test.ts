@@ -77,3 +77,26 @@ describe('operator matrix', () => {
     expectCode(() => assertValueShape('in', { values: ['a', 1] }), 'segment_invalid_ast');
   });
 });
+
+/**
+ * Odkaz na jiný segment nese cíl v POLI, ne v hodnotě, a kompilátor žádnou
+ * hodnotu nečte. Obecná tabulka tvarů přitom řadí `in` mezi seznamové, takže
+ * podmínka „je v segmentu" bez hodnot končila na 422 a uložit se dala jen
+ * s vymyšleným výčtem, který nic neznamenal.
+ */
+describe('odkaz na jiný segment', () => {
+  it('nepotřebuje hodnoty', () => {
+    expect(() => assertValueShape('in', {}, 'segment')).not.toThrow();
+    expect(() => assertValueShape('not_in', {}, 'segment')).not.toThrow();
+  });
+
+  it('staré uložené definice s výčtem zůstávají platné', () => {
+    expect(() => assertValueShape('in', { values: ['cokoliv'] }, 'segment')).not.toThrow();
+  });
+
+  it('u ostatních tříd výčet dál vyžaduje', () => {
+    expectCode(() => assertValueShape('in', {}, 'text'), 'segment_invalid_ast');
+    expectCode(() => assertValueShape('has_any', {}, 'tag'), 'segment_invalid_ast');
+  });
+});
+

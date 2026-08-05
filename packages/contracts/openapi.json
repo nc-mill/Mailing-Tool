@@ -525,6 +525,9 @@
               "informal"
             ]
           },
+          "greeting_enabled": {
+            "type": "boolean"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -544,6 +547,7 @@
           "locale",
           "timezone",
           "address_form",
+          "greeting_enabled",
           "created_at",
           "deleted_at"
         ]
@@ -602,6 +606,9 @@
               "formal",
               "informal"
             ]
+          },
+          "greeting_enabled": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -1813,6 +1820,13 @@
           "status": {
             "type": "string"
           },
+          "row_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
           "download_url": {
             "type": [
               "string",
@@ -1827,6 +1841,7 @@
           "encoding",
           "delimiter",
           "status",
+          "row_count",
           "download_url"
         ]
       },
@@ -2574,6 +2589,53 @@
           "pagination"
         ]
       },
+      "ProcessingRestriction": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "restricted_at": {
+            "$ref": "#/components/schemas/IsoDateTime"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "gdpr_request_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "restricted_at",
+          "note",
+          "gdpr_request_id"
+        ]
+      },
+      "ProcessingRestrictionRequest": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "gdpr_request_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "additionalProperties": false
+      },
       "ConsentRecord": {
         "type": "object",
         "properties": {
@@ -2859,6 +2921,42 @@
           "send_welcome": {
             "type": "boolean"
           },
+          "send_goodbye": {
+            "type": "boolean"
+          },
+          "confirmation_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "welcome_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "goodbye_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "confirm_redirect_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unsubscribe_redirect_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "is_default": {
             "type": "boolean"
           },
@@ -2903,6 +3001,12 @@
           "confirmation_ttl_hours",
           "confirmation_max_resends",
           "send_welcome",
+          "send_goodbye",
+          "confirmation_template_id",
+          "welcome_template_id",
+          "goodbye_template_id",
+          "confirm_redirect_url",
+          "unsubscribe_redirect_url",
           "is_default",
           "public_visible",
           "public_name",
@@ -2956,6 +3060,45 @@
           "send_welcome": {
             "type": "boolean",
             "default": false
+          },
+          "send_goodbye": {
+            "type": "boolean",
+            "default": false
+          },
+          "confirmation_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "welcome_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "goodbye_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "confirm_redirect_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "unsubscribe_redirect_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
           },
           "is_default": {
             "type": "boolean",
@@ -10842,6 +10985,18 @@
         "parameters": [
           {
             "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "force",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "string"
             },
             "required": false,
@@ -13511,10 +13666,14 @@
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/Contact"
+                    },
+                    "restriction": {
+                      "$ref": "#/components/schemas/ProcessingRestriction"
                     }
                   },
                   "required": [
-                    "data"
+                    "data",
+                    "restriction"
                   ]
                 }
               }
@@ -14379,6 +14538,210 @@
           },
           "409": {
             "description": "already_exists (Already exists)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/{id}/processing-restriction": {
+      "post": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Omezení zpracování podle článku 18 GDPR",
+        "security": [
+          {
+            "bearerAuth": [
+              "suppressions:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessingRestrictionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Zpracování je omezené",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Contact"
+                    },
+                    "restriction": {
+                      "$ref": "#/components/schemas/ProcessingRestriction"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "restriction"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Zrušení omezení zpracování",
+        "security": [
+          {
+            "bearerAuth": [
+              "suppressions:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessingRestrictionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Omezení zrušeno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Contact"
+                    },
+                    "restriction": {
+                      "$ref": "#/components/schemas/ProcessingRestriction"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "restriction"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -15573,6 +15936,45 @@
                   "send_welcome": {
                     "type": "boolean",
                     "default": false
+                  },
+                  "send_goodbye": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "confirmation_template_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "welcome_template_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "goodbye_template_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "confirm_redirect_url": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 2000
+                  },
+                  "unsubscribe_redirect_url": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 2000
                   },
                   "public_visible": {
                     "type": "boolean",

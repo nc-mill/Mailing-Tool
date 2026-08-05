@@ -93,9 +93,9 @@ export type TrackingRuntime = {
  * Řídí, jestli se trasa předrenderuje, ne jestli se její modul naimportuje.
  * V souboru bylo celou dobu a build padal stejně.
  *
- * Vedle konfigurace se na úrovni modulu spouštěl i časovač `domains.start()`,
- * takže si build sám pro sebe zakládal obnovovací smyčku nad databází, ke které
- * se nemá jak připojit.
+ * Vedle konfigurace se na úrovni modulu spouštěl i časovač obnovy měřicích
+ * domén, takže si build sám pro sebe zakládal smyčku nad databází, ke které se
+ * nemá jak připojit. Časovač už neexistuje vůbec, domény se čtou líně.
  */
 let cached: TrackingRuntime | undefined;
 
@@ -116,8 +116,13 @@ export function getTrackingRuntime(): TrackingRuntime {
     useAppleRelayRanges: config.TRACKING_APPLE_RELAY_RANGES,
   });
 
-  const domains = new TrackingDomainCache({ refreshMs: 60_000 });
-  domains.start();
+  /**
+   * Domény se čtou LÍNĚ, pro jeden projekt, v jeho kontextu. Dřív to byl
+   * časovač nad dotazem přes celou tabulku, jenže `tracking_domains` má
+   * `ws_isolation`, takže bezkontextový dotaz vracel vždycky nula řádků
+   * a `ml_token` se do cíle prokliku nepřipojil nikdy.
+   */
+  const domains = new TrackingDomainCache({ ttlMs: 60_000 });
 
   const links = new LinkCache({ capacity: 5_000, ttlMs: 900_000 });
 

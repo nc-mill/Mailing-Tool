@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { WorkspaceContext } from '../identity/types';
-import type { Tx } from '../tx';
+import { withWorkspace, type Tx } from '../tx';
 
 /**
  * Nastavení projektu vlastněná doménou kontaktů. Ukládá se do workspaces.settings.contacts,
@@ -99,3 +99,32 @@ export async function readContactsSettings(
 
 /** Tvar oslovení je kombinace workspaces.address_form a settings.contacts.salutation_by. */
 export type AddressForm = 'formal' | 'informal';
+
+/**
+ * ŘEŠÍ PROJEKT OSLOVENÍ A 5. PÁD VŮBEC?
+ *
+ * Sloupec, ne větev v `settings`, a je to schválně: čte ho i doména identity,
+ * která ho vydává v `GET /api/v1/workspaces/{id}`, a ta podle pravidla nahoře
+ * tohohle souboru nesmí parsovat větev `contacts`. Podrobné zdůvodnění je
+ * v migraci `0020_workspaces_greeting_enabled.sql`.
+ *
+ * VYPNUTO NEZNAMENÁ NEPOČÍTAT. `resolveName` běží dál při každém zápisu
+ * kontaktu, sloupce `greeting`, `first_name_vocative` a `vocative_locked`
+ * zůstávají naplněné. Kdyby se přestalo počítat, znamenalo by zapnutí zpátky
+ * přepočet celé databáze, ručně potvrzené tvary by se ztratily a šablona
+ * s `{{ contact.greeting }}` by mezitím posílala prázdno.
+ *
+ * Chybějící řádek projektu se čte jako `true`: raději nabídnout víc, než
+ * potichu schovat data, o kterých uživatel ví, že je má.
+ */
+export async function readGreetingEnabled(tx: Tx, ctx: WorkspaceContext): Promise<boolean> {
+  const { rows } = await tx.execute<{ greeting_enabled: boolean }>(sql`
+    SELECT greeting_enabled FROM workspaces WHERE id = ${ctx.workspaceId}::uuid
+  `);
+  return rows[0]?.greeting_enabled ?? true;
+}
+
+/** Totéž pro volající, kteří vlastní transakci nemají. */
+export async function isGreetingEnabled(ctx: WorkspaceContext): Promise<boolean> {
+  return withWorkspace(ctx, (tx) => readGreetingEnabled(tx, ctx));
+}

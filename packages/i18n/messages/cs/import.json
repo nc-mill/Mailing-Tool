@@ -25,16 +25,92 @@
     "field": "Soubor s kontakty",
     "dropzone": "Přetáhněte sem soubor s kontakty",
     "browse": "vyberte ze složky",
-    "limits": "Přijímáme CSV a Excel (.xlsx). Nejvýš 200 MB.",
-    "guide": "Jak dostat kontakty z Excelu, Ecomailu nebo Mailchimpu",
+    "limits": "Přijímáme soubory CSV. Nejvýš 200 MB.",
+    "guide": "Jak má vypadat soubor s kontakty",
     "progress": "Nahráno {percent} %",
     "progressText": "Nahráno {percent} procent",
     "cancel": "Zrušit nahrávání",
-    "unsupportedFormat": "Soubor {filename} neumíme přečíst. Přijímáme CSV a Excel (.xlsx).",
+    "unsupportedFormat": "Soubor {filename} neumíme přečíst. Přijímáme soubory CSV. Sešit z Excelu uložte přes Soubor, Uložit jako, CSV UTF-8.",
     "tooLarge": "Soubor {filename} má {actual}, zvládneme {limit}.",
     "selectedFile": "Vybraný soubor {name}",
-    "wrongType": "Tenhle formát neumíme přečíst. Přijímáme CSV a Excel (.xlsx).",
+    "wrongType": "Tenhle formát neumíme přečíst. Přijímáme soubory CSV.",
     "tooLargeShort": "Soubor je větší než {limit}."
+  },
+  "guide": {
+    "trigger": "Jak má vypadat soubor s kontakty",
+    "lead": "Potřebujeme CSV, tedy textový soubor, ve kterém první řádek nese názvy sloupců a každý další řádek je jeden kontakt.",
+    "sampleDownload": "Stáhnout vzorové CSV",
+    "sampleHint": "Nejrychlejší cesta: vzor otevřete v Excelu nebo v Tabulkách Google, přepište ukázkové řádky svými kontakty a soubor nahrajte sem. Sloupce vzoru rozpoznáme samy.",
+    "columnsTitle": "Sloupce, které umíme přečíst",
+    "columnsIntro": "Sloupce poznáme podle názvu v prvním řádku. Na velkých písmenech ani diakritice nezáleží. Co nerozpoznáme, nastavíte ručně v kroku Mapování, a sloupec, který nepotřebujete, necháte na „Nepoužívat\".",
+    "columnsCustom": "Sloupec, který nepatří k žádnému údaji výš, si můžete v kroku Mapování založit jako vlastní pole: klikněte na „Vytvořit pole\" pod tabulkou. Pole vznikne jako text a hodnoty ze souboru se do něj uloží. Co nepotřebujete, nechte na „Nepoužívat\".",
+    "columnsHeaderField": "Údaj",
+    "columnsHeaderNames": "Názvy, které rozpoznáme",
+    "columnsHeaderNote": "Co s ním uděláme",
+    "columns": {
+      "email": {
+        "field": "E-mail (povinný)",
+        "names": "e-mail, email, mail, e-mailová adresa, email address, address",
+        "note": "Jediný povinný sloupec. Adresu převedeme na malá písmena a ořežeme mezery. Řádek bez e-mailu skončí mezi chybnými."
+      },
+      "firstName": {
+        "field": "Jméno",
+        "names": "jméno, křestní, křestní jméno, first name, firstname, given name",
+        "note": "Když v tom sloupci najdeme aspoň u poloviny řádků dvě slova a soubor nemá vlastní sloupec s příjmením, vezmeme ho jako celé jméno a rozdělíme."
+      },
+      "lastName": {
+        "field": "Příjmení",
+        "names": "příjmení, last name, lastname, surname, family name",
+        "note": "Z příjmení počítáme rod a oslovení v 5. pádě."
+      },
+      "fullName": {
+        "field": "Celé jméno",
+        "names": "jméno a příjmení, celé jméno, název, name, full name",
+        "note": "Rozdělíme na jméno a příjmení a oddělíme tituly. Když má soubor zároveň sloupec Jméno nebo Příjmení, tenhle nepoužijeme a řekneme vám to."
+      },
+      "titlePrefix": {
+        "field": "Titul před jménem",
+        "names": "titul, titul před, title",
+        "note": "Například Ing. nebo MUDr. Titul umíme oddělit i z celého jména."
+      },
+      "titleSuffix": {
+        "field": "Titul za jménem",
+        "names": "podle názvu nerozpoznáme, nastavíte ručně",
+        "note": "Například Ph.D. nebo DiS."
+      },
+      "gender": {
+        "field": "Pohlaví",
+        "names": "pohlaví, rod, oslovení, gender, sex",
+        "note": "Rozumíme hodnotám muž a žena, jejich anglickým tvarům i zkratkám m a ž. Když sloupec chybí nebo hodnotě nerozumíme, rod odhadneme ze jména a nejisté případy pošleme do Kontroly oslovení."
+      },
+      "locale": {
+        "field": "Jazyk komunikace",
+        "names": "jazyk, jazyk komunikace, language, locale",
+        "note": "Kód jazyka, například cs nebo en. Bez něj použijeme jazyk projektu."
+      },
+      "tag": {
+        "field": "Štítek",
+        "names": "podle názvu nerozpoznáme, nastavíte ručně",
+        "note": "Víc štítků v jedné buňce oddělte čárkou nebo svislítkem. Jeden kontakt unese nejvýš 50 štítků."
+      }
+    },
+    "formatTitle": "Oddělovače, kódování, uvozovky",
+    "formatDelimiter": "Oddělovač poznáme sami: středník, čárku, tabulátor i svislítko. V kroku Kontrola souboru ho můžete přepsat.",
+    "formatEncoding": "Kódování poznáme podle českých znaků: UTF-8, Windows-1250, ISO-8859-2, Windows-1252 a ISO-8859-1. Soubory v UTF-16 a UTF-32 přečíst neumíme.",
+    "formatQuotes": "Hodnotu, ve které je oddělovač nebo zalomení řádku, dejte do uvozovek. Uvozovku uvnitř textu zdvojte.",
+    "formatHeader": "První řádek bereme jako hlavičku, když má neprázdné, jedinečné a nečíselné buňky. Jinak sloupce pojmenujeme sami a přiřadíte je v kroku Mapování.",
+    "limitsTitle": "Limity",
+    "limitsFile": "Soubor nejvýš 200 MB.",
+    "limitsRows": "Nejvýš 5 milionů řádků.",
+    "limitsColumns": "Nejvýš 200 sloupců.",
+    "limitsCell": "Jedna buňka nejvýš 8 192 znaků. Delší zkrátíme a napíšeme vám to.",
+    "sourcesTitle": "Jak soubor získat",
+    "sourcesExcel": "Excel: Soubor, Uložit jako, formát CSV UTF-8 (oddělený čárkami). Sešit .xlsx zatím přečíst neumíme.",
+    "sourcesSheets": "Tabulky Google: Soubor, Stáhnout, Hodnoty oddělené čárkami (.csv).",
+    "sourcesOther": "Jiný nástroj, třeba Ecomail nebo Mailchimp: hledejte u seznamu kontaktů export do CSV. Sloupce s e-mailem, jménem a příjmením rozpoznáme automaticky, na zbytku se domluvíme v kroku Mapování.",
+    "missingTitle": "Co zatím neumíme",
+    "missingXlsx": "Sešity .xlsx a .xls. Uložte je jako CSV UTF-8.",
+    "missingConsentColumns": "Datum a zdroj souhlasu ze sloupce. Přes rozhraní je zatím nenastavíte, umí to jen API."
   },
   "detected": "Rozpoznali jsme kódování {encoding} a oddělovač {delimiter}.",
   "previewFailed": {
@@ -59,7 +135,9 @@
       "semicolon": "Středník",
       "tab": "Tabulátor",
       "pipe": "Svislítko"
-    }
+    },
+    "rechecking": "Čteme soubor znovu…",
+    "alternativesHint": "Po výběru soubor přečteme znovu a ukázka nahoře se překreslí. Když bude pořád rozsypaná, zkuste další."
   },
   "mapping": {
     "title": "Co je v jednotlivých sloupcích?",
@@ -88,7 +166,10 @@
       "phone": "Telefon",
       "list": "Seznam",
       "tag": "Štítek"
-    }
+    },
+    "customField": "Vlastní pole „{name}\"",
+    "creatingField": "Zakládáme pole „{name}\"…",
+    "createFieldFailed": "Pole „{name}\" se nepodařilo založit. Zkuste to prosím znovu, nebo sloupec nechte na „Nepoužívat\"."
   },
   "preview": {
     "title": "Takhle to bude vypadat",
@@ -117,14 +198,13 @@
   },
   "estimate": "{new} nových, {updated} aktualizovaných, {skipped} přeskočených, {errors} chybných.",
   "options": {
-    "title": "Poslední dvě otázky",
+    "title": "Poslední tři otázky",
     "list": "Zařadit do seznamu",
-    "createList": "Vytvořit nový seznam",
-    "noList": "Do žádného seznamu",
+    "createList": "Založit nový seznam",
     "subscriptionStatus": "Stav přihlášení",
     "subscriptionConfirmed": "Potvrzené",
     "subscriptionPending": "Čeká na potvrzení",
-    "tag": "Přidat štítek (nepovinné)",
+    "tag": "Přidat štítek",
     "tagHint": "Tip: štítek se hodí, kdybyste chtěli tuhle skupinu později najít.",
     "conflict": "Co když už kontakt v databázi máme?",
     "conflictSkip": "Přeskočit",
@@ -139,7 +219,25 @@
     "declarationLink": "Co to znamená",
     "declarationEvidence": "Uloží se jako důkaz včetně data a mého jména.",
     "duplicateErrorUnavailable": "U souboru téhle velikosti neumíme spolehlivě poznat druhý výskyt téže adresy, takže tuhle volbu nenabízíme.",
-    "submit": "Naimportovat {count, plural, =0 {žádný kontakt} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}"
+    "submit": "Naimportovat {count, plural, =0 {žádný kontakt} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}",
+    "listHint": "Povinné. Kontakt bez seznamu nemá co dostat a nemá se z čeho odhlásit, proto ho vždycky někam zařadíme.",
+    "listPlaceholder": "Vyberte seznam",
+    "listRequired": "Vyberte seznam, do kterého kontakty patří, nebo rovnou založte nový.",
+    "newListName": "Název nového seznamu",
+    "newListNameHint": "Uvidí ho jen vy a kolegové. Seznam založíme s dvojím potvrzením, přepnout ho jde v jeho nastavení.",
+    "newListCreate": "Založit seznam",
+    "newListCreating": "Zakládáme seznam…",
+    "newListNameRequired": "Napište, jak se má nový seznam jmenovat.",
+    "newListFailed": "Seznam se nepodařilo založit. Zkuste to prosím znovu, nebo vyberte některý z existujících.",
+    "newListCreated": "Seznam {name} je založený a kontakty do něj zařadíme.",
+    "subscriptionConfirmedHint": "Lidé už souhlas dali, potvrzovací e-mail jim neposíláme.",
+    "subscriptionPendingHint": "Do seznamu je zapíšeme jako nepotvrzené. Kampaň jim odejde až potom, co potvrdí.",
+    "tagOptional": "(nepovinné)",
+    "declarationRequired": "U seznamu s dvojím potvrzením musíte prohlášení zaškrtnout, jinak kontakty nemůžeme zapsat jako potvrzené.",
+    "declarationExplainTitle": "Co prohlášením potvrzujete",
+    "declarationExplainBody": "Že tihle lidé o vaše zprávy požádali, nebo že k jejich oslovení máte jiný právní důvod, třeba dřívější nákup. Prohlášení je doklad: uložíme ho k importu i k souhlasu každého kontaktu, spolu s datem a vaším jménem, abyste ho měli čím doložit při stížnosti nebo kontrole.",
+    "declarationExplainWhen": "Bez prohlášení jde import taky, jen kontakty do seznamu zapíšeme jako nepotvrzené a potvrzení si u nich vyžádáme sami.",
+    "submitTarget": "Kontakty zařadíme do seznamu {list}, stav přihlášení: {status}."
   },
   "progress": {
     "title": "Importujeme kontakty",
@@ -260,6 +358,10 @@
     "storage_unavailable": {
       "title": "Nepodařilo se uložit soubor",
       "nextStep": "Zkuste to za chvíli znovu. Když to bude trvat, zkontrolujte místo na disku serveru."
+    },
+    "upload_failed": {
+      "title": "Soubor se nepodařilo odeslat",
+      "nextStep": "Zkuste to prosím znovu. Když potíž trvá, zkopírujte prosím technický detail a ozvěte se nám: {detail}"
     },
     "contact_limit_reached": {
       "title": "Dosáhli jste limitu počtu kontaktů",

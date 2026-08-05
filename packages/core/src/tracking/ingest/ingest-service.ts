@@ -1,3 +1,5 @@
+import { originHost } from '../domains/domain-cache';
+import { hasPiiTraits } from '../identity/signature';
 import { trackingMetrics } from '../metrics';
 import { EVENT_NAME_RE, type EventSource } from '../types';
 import { correctOccurredAt } from './clock-skew';
@@ -27,6 +29,26 @@ export type IngestResponse = {
   problem?: { code: string; params?: Record<string, unknown> };
 };
 
+/**
+ * Volání `identify` ve tvaru, ve kterém dorazilo z prohlížeče.
+ *
+ * NEODSTRAŇUJ TUHLE DUPLICITU. Vypadá jako zbytečná, není.
+ * `sanitizeProperties` zkracuje dlouhé řetězce a zahazuje klíče nad limit,
+ * takže traits po úklidu jsou JINÁ DATA než ta, která zákazník podepsal.
+ * Kdyby se podpis ověřoval proti `properties`, neseděl by nikdy, odmítalo by
+ * se každé `identify` s delším jménem nebo s víc vlastnostmi, a nikde by
+ * nebylo vidět proč: server by hlásil „podpis nesedí" a zákazník by měl
+ * na své straně podpis, který je správně.
+ *
+ * Ověřuje se proto proti téhle netknuté kopii. Do `web_events` jde dál
+ * uklizená verze, takže limity vlastností nikdo neobchází.
+ */
+export type IdentifyPayload = {
+  externalId: string;
+  traits: Record<string, unknown>;
+  signature?: string;
+};
+
 /** Tvar, ve kterém dávka odchází do fronty `event.process`. */
 export type PreparedEvent = {
   id: string;
@@ -36,13 +58,68 @@ export type PreparedEvent = {
   page?: Record<string, unknown>;
   properties: Record<string, unknown>;
   context: Record<string, unknown>;
+  /** Jen u události `identify`. */
+  identify?: IdentifyPayload;
 };
+
+/** Jméno události, kterou SDK posílá jako volání `identify`. */
+export const IDENTIFY_EVENT_NAME = 'identify';
+
+type IdentifyParse =
+  | { ok: true; payload: IdentifyPayload }
+  | { ok: false; code: 'validation_failed' | 'tracking_identify_unsigned_pii' };
+
+/**
+ * Rozbalení a kontrola volání `identify`, viz specifikace 3.6.3.
+ *
+ * Běží v odpovědi na `/e/track`, protože je to čistý výpočet bez jediného
+ * dotazu do databáze. Vlastní ověření podpisu klíče z databáze potřebuje,
+ * a proto je až ve workeru.
+ */
+function parseIdentify(properties: Record<string, unknown> | undefined): IdentifyParse {
+  const externalId = properties?.['external_id'];
+  if (typeof externalId !== 'string' || externalId === '' || externalId.includes('\n')) {
+    // Bajt 0x0A v identifikátoru dělá podepisovaný vstup nejednoznačným, takže
+    // se odmítá tady, ne aby se dole hádalo (3.6.3).
+    return { ok: false, code: 'validation_failed' };
+  }
+
+  const rawTraits = properties?.['traits'];
+  if (rawTraits !== undefined && (typeof rawTraits !== 'object' || rawTraits === null)) {
+    return { ok: false, code: 'validation_failed' };
+  }
+  const traits = (rawTraits ?? {}) as Record<string, unknown>;
+
+  const rawSignature = properties?.['signature'];
+  if (rawSignature !== undefined && typeof rawSignature !== 'string') {
+    return { ok: false, code: 'validation_failed' };
+  }
+  const signature = rawSignature === undefined || rawSignature === '' ? undefined : rawSignature;
+
+  // Kód z prohlížeče vidí každý a kdokoli ho může zavolat s libovolným
+  // e-mailem. Bez tohohle pravidla by šlo unést cizí kontakt.
+  if (signature === undefined && hasPiiTraits(traits)) {
+    return { ok: false, code: 'tracking_identify_unsigned_pii' };
+  }
+
+  return {
+    ok: true,
+    payload: { externalId, traits, ...(signature === undefined ? {} : { signature }) },
+  };
+}
 
 export type EventProcessPayload = {
   workspaceId: string;
   anonymousId: string | null;
   source: Extract<EventSource, 'web' | 'server'>;
   events: PreparedEvent[];
+  /**
+   * Host z hlavičky `Origin`, který právě prošel kontrolou povolených domén.
+   * Nese se dál PROTO, aby ověření domény zapsal worker a ne tahle cesta:
+   * odpověď `/e/track` má být v desítkách milisekund a `UPDATE` do ní nepatří.
+   * U serverového volání bez `Origin` je `null`, tam se nic neověřuje.
+   */
+  originHost: string | null;
 };
 
 export type IngestServiceDeps = {
@@ -137,12 +214,32 @@ export function createIngestService(deps: IngestServiceDeps) {
           });
           return;
         }
+        let identify: IdentifyPayload | undefined;
+        if (event.name === IDENTIFY_EVENT_NAME) {
+          const parsed = parseIdentify(event.properties);
+          if (!parsed.ok) {
+            rejected += 1;
+            findings.push({
+              code: parsed.code,
+              severity: 'warning',
+              message:
+                parsed.code === 'tracking_identify_unsigned_pii'
+                  ? 'Volání identify nesmí nést osobní údaje bez podpisu.'
+                  : 'Volání identify nemá platný external_id ani traits.',
+              params: { index },
+            });
+            return;
+          }
+          identify = parsed.payload;
+        }
+
         prepared.push(
           prepareEvent(
             event,
             index,
             { sentAt, serverNow, stripParams, limits: deps.limits },
             findings,
+            identify,
           ),
         );
       });
@@ -163,6 +260,9 @@ export function createIngestService(deps: IngestServiceDeps) {
           anonymousId: batch.anonymous_id ?? null,
           source,
           events: prepared,
+          // Origin sem doputuje jedině povolený: kdyby povolený nebyl, funkce
+          // skončila o kus výš chybou 403.
+          originHost: originHost(meta.origin),
         });
       }
 
@@ -192,6 +292,7 @@ function prepareEvent(
   index: number,
   options: PrepareOptions,
   findings: Finding[],
+  identify?: IdentifyPayload,
 ): PreparedEvent {
   const corrected = correctOccurredAt({
     occurredAt: new Date(event.occurred_at),
@@ -232,6 +333,7 @@ function prepareEvent(
       ...(campaign === undefined ? {} : { campaign }),
       clock_skew_ms: corrected.clockSkewMs,
     },
+    ...(identify === undefined ? {} : { identify }),
   };
 }
 

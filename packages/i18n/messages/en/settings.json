@@ -142,6 +142,16 @@
     "localeHint": "The language of system emails and of the public pages your recipients see.",
     "timezone": "Project time zone",
     "timezoneHint": "Campaigns are scheduled and reports are counted in this zone.",
+    "greetingEnabled": {
+      "label": "Greetings and the vocative case",
+      "hint": "Declining names makes sense in Czech and Slovak. Other languages have no vocative case, so the whole area only takes up space.",
+      "on": "This project handles greetings",
+      "onHint": "Contacts show a Greeting column, a vocative review screen and a preview in the form, and the editor offers a ready-made greeting tag. You can also choose formal or informal address.",
+      "off": "This project doesn't handle greetings",
+      "offHint": "Greetings, the vocative case and the formal or informal choice appear nowhere. Nothing is deleted: stored forms stay, turning this back on brings them back exactly as they were, and templates that already use a greeting keep sending.",
+      "turnedOn": "Greetings are on.",
+      "turnedOff": "Greetings are off. Stored forms are kept."
+    },
     "addressForm": {
       "label": "Greeting in emails",
       "hint": "Applies to the emails you send to contacts. The tool's own interface always addresses you formally.",

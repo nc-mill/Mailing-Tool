@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { createWorkspaceContext } from '@mlain/core/identity/context';
+import type { WorkspaceContext } from '@mlain/core/identity/types';
 import { addTrackingDomain, removeTrackingDomain } from '@mlain/core/tracking';
 import type { Problem } from '@/lib/api-client/problem';
 import { failed, succeeded, type ActionState } from '@/lib/feedback/action-result';
@@ -34,8 +36,14 @@ function problemOf(status: number, code: string): Problem {
   };
 }
 
-type Authorized = { ok: true; workspaceId: string } | { ok: false; problem: Problem };
+type Authorized = { ok: true; ctx: WorkspaceContext } | { ok: false; problem: Problem };
 
+/**
+ * Vrací KONTEXT, ne identifikátor projektu. Doménové funkce si samy otevírají
+ * transakci, takže dokud braly řetězec, rozhodovaly o izolaci podle hodnoty,
+ * které nikdo neručil. `createWorkspaceContext` je jediná legitimní továrna
+ * a členství ověřuje ještě jednou proti relaci, nezávisle na `getWorkspaceAccess`.
+ */
 async function authorize(slug: string): Promise<Authorized> {
   const me = await requireUser(`/w/${slug}/settings/tracking`);
   if (!me.ok) return { ok: false, problem: me.problem };
@@ -46,7 +54,13 @@ async function authorize(slug: string): Promise<Authorized> {
   if (!hasPermission(access.data, 'workspace:update')) {
     return { ok: false, problem: problemOf(403, 'forbidden') };
   }
-  return { ok: true, workspaceId: access.data.workspace.id };
+
+  const ctx = await createWorkspaceContext({
+    kind: 'session',
+    userId: me.data.user.id,
+    workspaceRef: slug,
+  });
+  return { ok: true, ctx };
 }
 
 const AddSchema = z.object({
@@ -72,7 +86,7 @@ export async function addTrackingDomainAction(
   if (!auth.ok) return failed('inlineBlock', auth.problem);
 
   const result = await addTrackingDomain(
-    auth.workspaceId,
+    auth.ctx,
     parsed.data.host,
     parsed.data.include_subdomains,
   );
@@ -100,7 +114,7 @@ export async function removeTrackingDomainAction(
   const auth = await authorize(parsed.data.workspace_slug);
   if (!auth.ok) return failed('inlineBlock', auth.problem);
 
-  await removeTrackingDomain(auth.workspaceId, parsed.data.id);
+  await removeTrackingDomain(auth.ctx, parsed.data.id);
 
   revalidatePath(TRACKING_PAGE_PATH, 'page');
   return succeeded({ channel: 'toast', messageKey: 'tracking.settings.saved' });

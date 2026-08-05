@@ -82,6 +82,10 @@ export default async function WorkspaceLayout({
       currentWorkspaceId={workspace.id}
       permissions={permissions}
       user={{ name: me.data.user.name, email: me.data.user.email }}
+      // Když čtení projektu selhalo, skořápka se skládá z členství a to vypínač
+      // nenese. Nabídnout položku navíc je v tom případě menší škoda než ji
+      // schovat projektu, který oslovení řeší.
+      greetingEnabled={access.ok ? access.data.workspace.greeting_enabled : true}
       createWorkspace={createWorkspaceAction}
     >
       {children}

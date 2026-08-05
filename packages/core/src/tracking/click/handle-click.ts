@@ -1,3 +1,4 @@
+import { createSystemContext } from '../../identity/context';
 import { recordClick, recordTokenInvalid, trackingMetrics } from '../metrics';
 import type { ClickClass } from '../types';
 import type { TrackingKeyring } from '../tokens/keyring';
@@ -118,26 +119,32 @@ export function createClickHandler(
     // 6. a 7. identita se předává jen na vlastní doménu zákazníka
     let target = link.url;
     const host = normalizeHost(link.url);
-    if (
-      clickClass === 'human' &&
-      deps.isWebTrackingEnabled(token.workspaceId) &&
-      deps.domains.isAllowed(token.workspaceId, host)
-    ) {
-      const contactId = await withTimeout(
-        deps.lookupContactId(token.workspaceId, token.messageId, token.messageCreatedAt),
-        deps.contactLookupTimeoutMs,
-      );
-      if (contactId !== null) {
-        const minted = mintIdentityToken({
-          workspaceId: token.workspaceId,
-          contactId,
-          campaignId: link.campaignId,
-          ttlSeconds: deps.identityTokenTtlSeconds,
-          keyring: deps.keyring,
-          currentKeyId: deps.currentKeyId,
-          now: request.now,
-        });
-        target = appendQueryParam(link.url, 'ml_token', minted.token);
+    if (clickClass === 'human' && deps.isWebTrackingEnabled(token.workspaceId)) {
+      /**
+       * Kontext se vyrábí AŽ TADY a AŽ Z OVĚŘENÉHO TOKENU. Seznam povolených
+       * domén se čte z `tracking_domains`, na které leží `ws_isolation`, takže
+       * bez kontextu vrací dotaz nula řádků, `isAllowed` je vždycky nepravda
+       * a `ml_token` se do cíle NIKDY nepřipojí. Přesně tak se ta vada chovala:
+       * proklik fungoval, jen se návštěva webu s kontaktem nespojila.
+       */
+      const ctx = createSystemContext(token.workspaceId, 'tracking.click');
+      if (await deps.domains.isAllowed(ctx, host)) {
+        const contactId = await withTimeout(
+          deps.lookupContactId(token.workspaceId, token.messageId, token.messageCreatedAt),
+          deps.contactLookupTimeoutMs,
+        );
+        if (contactId !== null) {
+          const minted = mintIdentityToken({
+            workspaceId: token.workspaceId,
+            contactId,
+            campaignId: link.campaignId,
+            ttlSeconds: deps.identityTokenTtlSeconds,
+            keyring: deps.keyring,
+            currentKeyId: deps.currentKeyId,
+            now: request.now,
+          });
+          target = appendQueryParam(link.url, 'ml_token', minted.token);
+        }
       }
     }
 

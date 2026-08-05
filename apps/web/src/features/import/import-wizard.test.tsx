@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ImportOptionsSchema } from '@mlain/core/contacts/import';
 import { renderIntl } from '../../../test/helpers/intl';
 import { ImportWizard } from './import-wizard';
@@ -8,6 +8,18 @@ import { ImportWizard } from './import-wizard';
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
 }));
+
+// Krok Nahrání odkazuje na výsledek už dokončeného importu přes `Link` z i18n
+// navigace. Ta si při načtení modulu staví vlastní `redirect` nad next/navigation,
+// takže bez téhle náhrady spadne celý soubor ještě před prvním testem.
+vi.mock('@mlain/i18n/navigation', async () => {
+  const react = await import('react');
+  return {
+    Link: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) =>
+      react.createElement('a', { href, ...rest }, children),
+    useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), refresh: vi.fn() }),
+  };
+});
 
 const IMPORT_ID = '9855e936-c11a-4b3d-b799-33a53178916c';
 const WORKSPACE_ID = '019fbf52-d8b9-7b0d-b67e-528e8026a383';
@@ -50,6 +62,34 @@ function apiPreview(overrides: Record<string, unknown> = {}) {
 
 const LIST_ID = '019fbf52-d8b9-7b0d-b67e-528e8026a384';
 const TAG_ID = '019fbf52-d8b9-7b0d-b67e-528e8026a385';
+
+/**
+ * Výchozí seznam projektu. Krok Volby ho má předvybraný, takže testy, které
+ * seznam neřeší, nemusí klikat do rozbalovátka; zařazení je povinné.
+ */
+const DEFAULT_LIST = {
+  id: LIST_ID,
+  name: 'Odběratelé',
+  optIn: 'single' as const,
+  isDefault: true,
+};
+
+/**
+ * jsdom nezná Pointer Capture ani `scrollIntoView`, na kterých Radix Select
+ * stojí. Bez těchhle náhrad se rozbalovátko v testu neotevře a chyba vypadá
+ * jako vada komponenty, přestože v prohlížeči funguje.
+ */
+beforeAll(() => {
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => undefined;
+  Element.prototype.releasePointerCapture = () => undefined;
+  Element.prototype.scrollIntoView = () => undefined;
+});
+
+async function chooseList(name: string): Promise<void> {
+  await userEvent.click(await screen.findByRole('combobox', { name: /zařadit do seznamu/i }));
+  await userEvent.click(await screen.findByRole('option', { name }));
+}
 
 function renderWizard(
   step: 'fileCheck' | 'mapping' | 'options' = 'fileCheck',
@@ -117,9 +157,9 @@ describe('import wizard preview loading', () => {
     expect(line.textContent).toMatch(/51/);
     expect(line.textContent).toMatch(/50/);
 
-    // Čárka, ne výchozí středník.
-    const delimiter = screen.getByLabelText(/oddělovač/i) as HTMLSelectElement;
-    expect(delimiter.value).toBe(',');
+    // Čárka, ne výchozí středník. Rozbalovátko je z design systému, takže
+    // vybranou hodnotu nese TEXT spouštěče, ne atribut `value`.
+    expect(screen.getByRole('combobox', { name: /oddělovač/i })).toHaveTextContent('Čárka');
   });
 
   it('shows the raw file cells so garbled text is visible in the sample', async () => {
@@ -178,6 +218,57 @@ describe('import wizard preview loading', () => {
     });
   });
 
+  /**
+   * Vlastní pole nese obrazovka jako `attribute:<klíč>`, server ale čeká objekt
+   * se dvěma poli. `ImportMappingSchema` je `.strict()`, takže samotné
+   * `attribute` bez klíče shodí celý PATCH na 422 a průvodce se z mapování nehne.
+   */
+  it('sends a created custom field as target attribute with its key', async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, ...(init === undefined ? {} : { init }) });
+        if (url.startsWith('/api/v1/contact-fields') && init?.method === 'POST') {
+          return new Response(JSON.stringify({ data: { key: 'mesto' } }), { status: 201 });
+        }
+        return new Response(
+          JSON.stringify(
+            apiPreview({
+              header: ['jmeno', 'email', 'Město'],
+              mapping: {
+                '0': { target: 'first_name' },
+                '1': { target: 'email' },
+                '2': { target: 'ignore' },
+              },
+            }),
+          ),
+          { status: 200 },
+        );
+      }),
+    );
+    renderWizard('mapping');
+
+    await userEvent.click(await screen.findByRole('button', { name: /vytvořit pole .Město./i }));
+    await userEvent.click(screen.getByRole('button', { name: /zobrazit náhled/i }));
+
+    await waitFor(() => expect(calls.some((call) => call.init?.method === 'PATCH')).toBe(true));
+    const created = calls.find((call) => call.url.startsWith('/api/v1/contact-fields'));
+    expect(JSON.parse(String(created?.init?.body))).toEqual({
+      key: 'mesto',
+      label: { cs: 'Město', en: 'Město' },
+      type: 'text',
+    });
+    const patch = calls.find((call) => call.init?.method === 'PATCH');
+    expect(JSON.parse(String(patch?.init?.body))).toEqual({
+      mapping: {
+        '0': { target: 'first_name' },
+        '1': { target: 'email' },
+        '2': { target: 'attribute', key: 'mesto' },
+      },
+    });
+  });
+
   it('maps columns by index, so the server suggestion survives to the mapping step', async () => {
     vi.stubGlobal(
       'fetch',
@@ -221,9 +312,9 @@ describe('import wizard options step', () => {
     stubOptionsFetch(calls);
     renderWizard('options', [{ id: LIST_ID, name: 'Novinky', optIn: 'double' }]);
 
-    await userEvent.selectOptions(await screen.findByLabelText(/zařadit do seznamu/i), LIST_ID);
-    await userEvent.click(screen.getByLabelText(/potvrzené/i));
-    await userEvent.click(screen.getByLabelText(/potvrzuji, že tito lidé/i));
+    await chooseList('Novinky');
+    await userEvent.click(screen.getByRole('radio', { name: /potvrzené/i }));
+    await userEvent.click(screen.getByRole('checkbox'));
 
     const options = await submitOptions(calls);
 
@@ -242,9 +333,9 @@ describe('import wizard options step', () => {
   it('puts the duplicate choice into duplicate_in_file, not into on_conflict', async () => {
     const calls: Call[] = [];
     stubOptionsFetch(calls);
-    renderWizard('options');
+    renderWizard('options', [DEFAULT_LIST]);
 
-    await userEvent.click(await screen.findByLabelText(/nahlásit jako chybu/i));
+    await userEvent.click(await screen.findByRole('radio', { name: /nahlásit jako chybu/i }));
     const options = await submitOptions(calls);
 
     expect(() => ImportOptionsSchema.parse(options)).not.toThrow();
@@ -255,7 +346,7 @@ describe('import wizard options step', () => {
   it('creates the tag first, so tag_ids carries an identifier and not the typed name', async () => {
     const calls: Call[] = [];
     stubOptionsFetch(calls);
-    renderWizard('options');
+    renderWizard('options', [DEFAULT_LIST]);
 
     const tag = await screen.findByLabelText(/přidat štítek/i);
     await userEvent.clear(tag);
@@ -281,12 +372,86 @@ describe('import wizard options step', () => {
         return new Response(JSON.stringify(apiPreview()), { status: 200 });
       }),
     );
-    renderWizard('options');
+    renderWizard('options', [DEFAULT_LIST]);
 
     await userEvent.click(await screen.findByRole('button', { name: /naimportovat/i }));
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(calls.some((call) => call.init?.method === 'PATCH')).toBe(false);
     expect(calls.some((call) => call.url.includes('/confirm'))).toBe(false);
+  });
+
+  /**
+   * Import bez seznamu je přesně ta vada, kvůli které kontakty končily
+   * „nepřiřazené": nemají co dostat a nemají se z čeho odhlásit. Krok proto
+   * na nevybraném seznamu STOJÍ a nic neukládá.
+   */
+  it('refuses to import without a list instead of quietly importing into none', async () => {
+    const calls: Call[] = [];
+    stubOptionsFetch(calls);
+    renderWizard('options', [{ id: LIST_ID, name: 'Novinky', optIn: 'double' }]);
+
+    await userEvent.click(await screen.findByRole('button', { name: /naimportovat/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/vyberte seznam/i);
+    expect(calls.some((call) => call.init?.method === 'PATCH')).toBe(false);
+    expect(calls.some((call) => call.url.includes('/confirm'))).toBe(false);
+  });
+
+  /**
+   * Prohlášení u seznamu s dvojím potvrzením se nesmí dát obejít. Server ho hlídá
+   * taky (422 `declaration_required`), ale to je hláška o selhání uložení voleb,
+   * ze které uživatel nepozná, co má udělat.
+   */
+  it('stops on a double opt-in list marked confirmed without the declaration', async () => {
+    const calls: Call[] = [];
+    stubOptionsFetch(calls);
+    renderWizard('options', [{ id: LIST_ID, name: 'Novinky', optIn: 'double' }]);
+
+    await chooseList('Novinky');
+    await userEvent.click(screen.getByRole('radio', { name: /potvrzené/i }));
+    await userEvent.click(screen.getByRole('button', { name: /naimportovat/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/prohlášení/i);
+    expect(calls.some((call) => call.init?.method === 'PATCH')).toBe(false);
+  });
+
+  /** Kdo ještě žádný seznam nemá, musí ho založit odsud, jinak přijde o rozdělaný import. */
+  it('creates a list from the options step and imports into it', async () => {
+    const calls: Call[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, ...(init === undefined ? {} : { init }) });
+        if (url.startsWith('/api/v1/tags') && init?.method === 'POST') {
+          return new Response(JSON.stringify({ data: { id: TAG_ID, name: 'import' } }), {
+            status: 201,
+          });
+        }
+        if (url.startsWith('/api/v1/lists') && init?.method === 'POST') {
+          return new Response(
+            JSON.stringify({ data: { id: LIST_ID, name: 'Odběratelé', opt_in: 'double' } }),
+            { status: 201 },
+          );
+        }
+        return new Response(JSON.stringify(apiPreview()), { status: 200 });
+      }),
+    );
+    renderWizard('options');
+
+    await userEvent.type(await screen.findByTestId('import-new-list-name'), 'Odběratelé');
+    await userEvent.click(screen.getByRole('button', { name: /^založit seznam$/i }));
+
+    const created = calls.find(
+      (call) => call.url.startsWith('/api/v1/lists') && call.init?.method === 'POST',
+    );
+    expect(JSON.parse(String(created?.init?.body))).toEqual({
+      name: 'Odběratelé',
+      opt_in: 'double',
+    });
+
+    const options = await submitOptions(calls);
+    expect(() => ImportOptionsSchema.parse(options)).not.toThrow();
+    expect(options).toMatchObject({ list_ids: [LIST_ID] });
   });
 });
