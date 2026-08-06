@@ -11,8 +11,10 @@ import { Link, useRouter } from '@mlain/i18n/navigation';
 import { CheckIcon, ClockIcon } from '@/lib/ui/status-icons';
 import { Badge } from '@mlain/ui/components/badge';
 import { Button } from '@mlain/ui/components/button';
+import { Card } from '@mlain/ui/components/card';
 import { Dialog, DialogBody, DialogFooter, DialogTitle } from '@mlain/ui/components/dialog';
 import { Alert, EmptyState } from '@mlain/ui/patterns/states';
+import { SettingsPageShell, SettingsStack } from '@/features/settings/settings-page-shell';
 import {
   createSenderAction,
   deleteSenderAction,
@@ -133,113 +135,125 @@ export function SendersScreen({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold">{t('title')}</h1>
-          <p className="max-w-2xl text-sm text-text-muted">{t('subtitle')}</p>
-        </div>
-        {canEdit && identities.length > 0 && (
-          <Button variant="primary" data-testid="add-sender" onClick={openCreate}>
-            {t('add')}
-          </Button>
+    // Hlavička jde přes `SettingsPageShell`, ne přes vlastní `<h1>`. Do 5. 8. 2026
+    // si ji tahle obrazovka kreslila sama v `text-xl` (20 px z výchozí škály
+    // Tailwindu), takže měla v levém menu Nastavení jiný název než sousední
+    // sekce, které mají 36 px z `--text-h1`.
+    <SettingsPageShell
+      title={t('title')}
+      lead={t('subtitle')}
+      {...(canEdit && identities.length > 0
+        ? {
+            action: (
+              <Button variant="primary" data-testid="add-sender" onClick={openCreate}>
+                {t('add')}
+              </Button>
+            ),
+          }
+        : {})}
+    >
+      <SettingsStack>
+        {failure !== null && (
+          <Alert tone="error" data-testid="senders-error">
+            {failure}
+          </Alert>
         )}
-      </div>
 
-      {failure !== null && (
-        <Alert tone="error" data-testid="senders-error">
-          {failure}
-        </Alert>
-      )}
+        {/* Bez domény není z čeho předvolbu složit. Místo prázdného formuláře se
+            ukáže cesta tam, kde doména vzniká. */}
+        {domains.length === 0 ? (
+          <Alert tone="warning" title={t('noDomainsTitle')} data-testid="senders-no-domains">
+            {t('noDomainsExplanation')}{' '}
+            <Link href={`${basePath}/settings/sending`} className="underline">
+              {t('noDomainsAction')}
+            </Link>
+          </Alert>
+        ) : identities.length === 0 ? (
+          <EmptyState
+            variant="first"
+            title={t('emptyTitle')}
+            explanation={t('emptyExplanation')}
+            actions={[{ label: t('add'), onClick: openCreate }]}
+          />
+        ) : (
+          <ul className="flex flex-col gap-[var(--spacing-gutter)]" data-testid="sender-list">
+            {identities.map((identity) => (
+              // Předvolba je karta: papír, hairline rámeček, okraj 25 px.
+              // Rytmus vnořené karty z detailu seznamu. `Card` umí `section`,
+              // `div`, `article` a `aside`, ne `li`, takže položku seznamu drží
+              // obal a karta je uvnitř.
+              <li key={identity.id} data-testid={`sender-${identity.id}`}>
+                <Card as="div" padding="md">
+                  <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
+                    <span className="text-body font-semibold text-text">{identity.name}</span>
+                    {identity.is_default && (
+                      <Badge tone="accent" icon={CheckIcon}>
+                        {t('defaultBadge')}
+                      </Badge>
+                    )}
+                    {/* Obal nese testovací značku: `Badge` cizí atributy nepředává. */}
+                    <span data-testid={`sender-domain-state-${identity.id}`}>
+                      <Badge
+                        tone={identity.domain_verified ? 'success' : 'warning'}
+                        icon={identity.domain_verified ? CheckIcon : ClockIcon}
+                      >
+                        {identity.domain_verified
+                          ? t('domainVerified', { domain: identity.domain })
+                          : t('domainPending', { domain: identity.domain })}
+                      </Badge>
+                    </span>
+                  </div>
 
-      {/* Bez domény není z čeho předvolbu složit. Místo prázdného formuláře se
-          ukáže cesta tam, kde doména vzniká. */}
-      {domains.length === 0 ? (
-        <Alert tone="warning" title={t('noDomainsTitle')} data-testid="senders-no-domains">
-          {t('noDomainsExplanation')}{' '}
-          <Link href={`${basePath}/settings/sending`} className="underline">
-            {t('noDomainsAction')}
-          </Link>
-        </Alert>
-      ) : identities.length === 0 ? (
-        <EmptyState
-          variant="first"
-          title={t('emptyTitle')}
-          explanation={t('emptyExplanation')}
-          actions={[{ label: t('add'), onClick: openCreate }]}
-        />
-      ) : (
-        <ul className="flex flex-col gap-3" data-testid="sender-list">
-          {identities.map((identity) => (
-            <li
-              key={identity.id}
-              data-testid={`sender-${identity.id}`}
-              className="flex flex-col gap-2 rounded-[var(--radius-surface)] border border-border p-4"
-            >
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="font-medium">{identity.name}</span>
-                {identity.is_default && (
-                  <Badge tone="accent" icon={CheckIcon}>
-                    {t('defaultBadge')}
-                  </Badge>
-                )}
-                {/* Obal nese testovací značku: `Badge` cizí atributy nepředává. */}
-                <span data-testid={`sender-domain-state-${identity.id}`}>
-                  <Badge
-                    tone={identity.domain_verified ? 'success' : 'warning'}
-                    icon={identity.domain_verified ? CheckIcon : ClockIcon}
-                  >
-                    {identity.domain_verified
-                      ? t('domainVerified', { domain: identity.domain })
-                      : t('domainPending', { domain: identity.domain })}
-                  </Badge>
-                </span>
-              </div>
+                  {/* Adresa se čte po znacích, takže mono. */}
+                  <p className="font-mono text-meta text-text">
+                    {identity.from_name} &lt;{identity.from_email}&gt;
+                  </p>
+                  <p className="text-meta text-text-muted">
+                    {identity.reply_to === null
+                      ? t('replyToSame')
+                      : t('replyToValue', { email: identity.reply_to })}
+                    {' · '}
+                    {t('viaProvider', { name: identity.provider_name })}
+                  </p>
 
-              <p className="text-sm text-text">
-                {identity.from_name} &lt;{identity.from_email}&gt;
-              </p>
-              <p className="text-sm text-text-muted">
-                {identity.reply_to === null
-                  ? t('replyToSame')
-                  : t('replyToValue', { email: identity.reply_to })}
-                {' · '}
-                {t('viaProvider', { name: identity.provider_name })}
-              </p>
-
-              {canEdit && (
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button
-                    variant="secondary"
-                    data-testid={`edit-sender-${identity.id}`}
-                    onClick={() => openEdit(identity)}
-                  >
-                    {t('edit')}
-                  </Button>
-                  {!identity.is_default && (
-                    <Button
-                      variant="ghost"
-                      pending={busy}
-                      pendingLabel={t('working')}
-                      data-testid={`default-sender-${identity.id}`}
-                      onClick={() => void makeDefault(identity)}
-                    >
-                      {t('makeDefault')}
-                    </Button>
+                  {canEdit && (
+                    <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        data-testid={`edit-sender-${identity.id}`}
+                        onClick={() => openEdit(identity)}
+                      >
+                        {t('edit')}
+                      </Button>
+                      {!identity.is_default && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          pending={busy}
+                          pendingLabel={t('working')}
+                          data-testid={`default-sender-${identity.id}`}
+                          onClick={() => void makeDefault(identity)}
+                        >
+                          {t('makeDefault')}
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`delete-sender-${identity.id}`}
+                        onClick={() => setRemoved(identity)}
+                      >
+                        {t('delete')}
+                      </Button>
+                    </div>
                   )}
-                  <Button
-                    variant="ghost"
-                    data-testid={`delete-sender-${identity.id}`}
-                    onClick={() => setRemoved(identity)}
-                  >
-                    {t('delete')}
-                  </Button>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+                </Card>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SettingsStack>
 
       <SenderDialog
         open={dialogOpen}
@@ -277,6 +291,6 @@ export function SendersScreen({
           }
         />
       </Dialog>
-    </div>
+    </SettingsPageShell>
   );
 }

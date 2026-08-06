@@ -34,11 +34,22 @@ export function ViewControls({ ports }: { ports?: EditorPorts | undefined }) {
   const view = useView();
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
+      {/*
+       * SPOJENÝ PŘEPÍNAČ, jak ho kreslí návrh: jeden rámeček kolem celé sady
+       * a tlačítka uvnitř oddělená svislou linkou, ne čtyři samostatné pilulky
+       * s mezerami. Vnitřní tlačítka proto rámeček nemají, dělí je `border-r`
+       * a rohy ořezává `overflow-hidden` na obalu.
+       *
+       * Skupina zůstává `radiogroup` se čtyřmi volbami. Návrh dvě z nich kreslí
+       * jako samostatná tlačítka vedle přepínače, ale pro obsluhu i pro čtečku
+       * je to jedna volba ze čtyř, a rozdělit ji kvůli vzhledu by z jedné
+       * otázky udělalo tři.
+       */}
       <div
         role="radiogroup"
         aria-label={t('preview.modes')}
-        className="flex items-center gap-0.5 rounded-[var(--radius-control)] border border-border p-0.5"
+        className="flex items-center overflow-hidden rounded-[var(--radius-control)] border border-border bg-surface"
       >
         {MODES.map(({ mode, Icon }) => (
           <button
@@ -49,20 +60,21 @@ export function ViewControls({ ports }: { ports?: EditorPorts | undefined }) {
             title={t(`preview.${mode}`)}
             data-testid={`view-mode-${mode}`}
             className={
-              'flex min-h-8 items-center gap-1 rounded-[var(--radius-control)] px-2 py-1 text-xs ' +
+              'flex min-h-[var(--size-control-sm)] items-center gap-1.5 px-3 py-1.5 text-sm ' +
+              'border-r border-border last:border-r-0 ' +
               'text-text-muted hover:bg-surface-muted aria-checked:bg-surface-muted ' +
-              'aria-checked:font-medium aria-checked:text-text ' +
-              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]'
+              'aria-checked:font-semibold aria-checked:text-text ' +
+              'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]'
             }
             onClick={() => view.setMode(mode)}
           >
-            <Icon aria-hidden className="size-4" />
+            <Icon aria-hidden className="icon-sm" />
             {t(`preview.${mode}`)}
           </button>
         ))}
       </div>
 
-      <label className="flex items-center gap-2 text-xs text-text-muted">
+      <label className="flex items-center gap-2 text-sm text-text-muted">
         <Switch aria-label={t('preview.dark')} checked={view.dark} onCheckedChange={view.setDark} />
         {t('preview.dark')}
       </label>
@@ -96,8 +108,8 @@ function AudienceMenu({ ports }: { ports?: EditorPorts | undefined }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="secondary" size="sm" className="min-h-8 gap-1 px-2 text-xs">
-          <UserRound aria-hidden className="size-4" />
+        <Button variant="secondary" size="sm" className="gap-1.5">
+          <UserRound aria-hidden className="icon-sm" />
           {t('preview.viewAs')}: {audienceLabel(view.audience, t)}
         </Button>
       </PopoverTrigger>
@@ -159,7 +171,7 @@ function AudienceMenu({ ports }: { ports?: EditorPorts | undefined }) {
           <Button variant="ghost" size="sm" onClick={() => choose({ kind: 'tokens' })}>
             {t('preview.tokens')}
           </Button>
-          <p className="text-xs text-text-muted">{t('preview.viewAsHint')}</p>
+          <p className="text-meta text-text-muted">{t('preview.viewAsHint')}</p>
         </div>
       </PopoverContent>
     </Popover>

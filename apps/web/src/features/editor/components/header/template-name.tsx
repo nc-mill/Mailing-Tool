@@ -115,7 +115,11 @@ export function TemplateName({
         className="min-h-11 w-56 rounded-[var(--radius-control)] border border-transparent bg-transparent px-2 text-sm font-medium text-text hover:border-border focus:border-border-strong aria-[invalid=true]:border-danger"
       />
       {error === null ? null : (
-        <p id={errorId} data-testid="template-name-error" className="px-2 text-xs text-danger-text">
+        <p
+          id={errorId}
+          data-testid="template-name-error"
+          className="px-2 text-meta text-danger-text"
+        >
           {error}
         </p>
       )}

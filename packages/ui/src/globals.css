@@ -9,6 +9,79 @@
   body {
     background-color: var(--color-surface);
     color: var(--color-text);
+    font-size: var(--text-body);
+    line-height: var(--leading-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Ze základní vrstvy návrhového systému. Nadpis se láme na vyrovnané
+     řádky, odstavec nenechává na posledním řádku jediné slovo. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  strong,
+  b {
+    font-weight: 600;
+  }
+
+  img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Odkaz je podtržený, ne jen barevný: barva sama rozlišovací znak není
+     (WCAG 1.4.1). Při najetí zesílí, aby bylo poznat, kde myš stojí.
+
+     NAVŠTÍVENÝ ODKAZ SE NEPŘEBARVUJE, i když ho návrhový systém přebarvuje.
+     Ten systém je pro web mlain.dev, kde je odkaz cesta ven a stojí za to
+     vědět, kam už jsem klikl. V aplikaci je odkazem každé jméno v tabulce,
+     takže by se seznam kontaktů po pár kliknutích rozpadl na dvě barvy
+     podle toho, koho jsem si už otevřel. */
+  a {
+    color: var(--color-accent-text);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+
+  a:hover {
+    text-decoration-thickness: 2px;
+  }
+
+  ::selection {
+    background: var(--color-accent-surface);
+  }
+
+  /*
+   * Výchozí barva obrysu focusu na VŠEM, ještě než se obrys vykreslí.
+   *
+   * Proč: `transition-colors` z Tailwindu zahrnuje i `outline-color`. Prvek
+   * s ním se tedy po zaostření nerozsvítí rovnou barvou z tokenu, ale
+   * PŘEBARVUJE SE do ní 120 ms z předchozí hodnoty, a tou je výchozí
+   * `currentColor`, tedy barva textu. Na tmavém tlačítku na papíře to
+   * znamená, že první okamžik po zaostření je obrys světlý a na papíře
+   * zaniká. Naměřeno na přepínači období: 0 ms `#F5EFDF`, 60 ms `#4E4A41`,
+   * 150 ms `#26221A`.
+   *
+   * Tímhle řádkem je výchozí hodnota rovnou ta správná, takže přechod nemá
+   * odkud kam jít a obrys je správný od první snímku. `outline-style` je
+   * pořád `none`, dokud prvek zaostřený není, takže se nic nekreslí.
+   *
+   * Je to `var()`, ne pevná barva, takže se to samo řídí i uvnitř `on-panel`.
+   */
+  *,
+  *::before,
+  *::after {
+    outline-color: var(--color-focus-ring);
   }
 
   /* Viditelný focus ring na každém interaktivním prvku, WCAG 2.2 AA. */
@@ -42,4 +115,96 @@
 @utility focus-ring {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
+}
+
+/*
+ * Mono verzálky. Nese je každý meta údaj: hlavička sloupce, štítek stavu,
+ * čas, počet. V návrhu je to jedna a ta samá kombinace čtyř vlastností,
+ * proto je z ní utilita a ne čtyři třídy opsané na padesáti místech.
+ */
+/*
+ * Podstrom na tmavém panelu. Přepíše barvu obrysu focusu na světlou.
+ *
+ * Běžný `--color-focus-ring` je ve světlém motivu tmavý inkoust, který má na
+ * tmavém panelu kontrast 1:1, tedy je NEVIDITELNÝ. Fokus musí být vidět všude.
+ * Řeší se to předefinováním proměnné na obalu, ne třídou na každém prvku:
+ * základní pravidlo `:focus-visible` i utilita `outline-*` čtou tutéž
+ * proměnnou, takže se oprava propíše na všechny potomky naráz.
+ *
+ * ROZHODUJE BARVA OKOLÍ, NE BARVA PRVKU. Patří na obal tmavé plochy, uvnitř
+ * které prvky leží: boční menu, vysouvací panel, pruh výběru. **Nedávej ji
+ * na tmavé tlačítko stojící na papíře.** Obrys se kreslí VNĚ prvku, takže
+ * u takového tlačítka leží na papíru a musí být tmavý; se světlým by zanikl.
+ */
+@utility on-panel {
+  --color-focus-ring: var(--color-focus-ring-panel);
+}
+
+@utility meta-caps {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+/*
+ * Hrana tlačítka. Není to stín ve smyslu vrstvení (systém stíny nemá),
+ * je to plná spodní hrana, která se stiskem zkrátí a tlačítko „dosedne".
+ */
+/*
+ * Velikost kresby ikony. Pět velikostí, které návrh používá, a nic mezi nimi.
+ * Ikona se nikdy nevelikostňuje `size-4` a podobně: 16 px je náhoda výchozí
+ * škály Tailwindu, ne rozhodnutí návrhu.
+ */
+@utility icon-2xs {
+  width: var(--size-icon-2xs);
+  height: var(--size-icon-2xs);
+  flex-shrink: 0;
+}
+
+@utility icon-xs {
+  width: var(--size-icon-xs);
+  height: var(--size-icon-xs);
+  flex-shrink: 0;
+}
+
+@utility icon-sm {
+  width: var(--size-icon-sm);
+  height: var(--size-icon-sm);
+  flex-shrink: 0;
+}
+
+@utility icon-md {
+  width: var(--size-icon-md);
+  height: var(--size-icon-md);
+  flex-shrink: 0;
+}
+
+@utility icon-lg {
+  width: var(--size-icon-lg);
+  height: var(--size-icon-lg);
+  flex-shrink: 0;
+}
+
+@utility icon-xl {
+  width: var(--size-icon-xl);
+  height: var(--size-icon-xl);
+  flex-shrink: 0;
+}
+
+/*
+ * Hrana pod prvkem. Není to stín ve smyslu vrstvení (systém stíny nemá),
+ * je to plná spodní hrana tištěného tlačítka.
+ *
+ * Utilita je pro prvky, které se nezmáčknou, například pro odkaz vypadající
+ * jako tlačítko. `Button` si hranu skládá sám z tokenů `--edge-*`, protože
+ * potřebuje i zmáčknutý stav a dvě utility ve stejné vrstvě by o pořadí
+ * spolu soupeřily.
+ */
+@utility edge {
+  box-shadow: 0 var(--edge-raised) 0 var(--color-edge);
+}
+
+@utility edge-primary {
+  box-shadow: 0 var(--edge-raised) 0 var(--color-edge-primary);
 }

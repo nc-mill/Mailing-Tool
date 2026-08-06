@@ -99,4 +99,3 @@ describe('odkaz na jiný segment', () => {
     expectCode(() => assertValueShape('has_any', {}, 'tag'), 'segment_invalid_ast');
   });
 });
-

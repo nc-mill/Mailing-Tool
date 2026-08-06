@@ -10,6 +10,7 @@
     "./lib/*": "./src/lib/*.ts",
     "./theme": "./src/theme/theme-provider.tsx",
     "./a11y": "./src/a11y/index.ts",
+    "./icons": "./src/icons/index.ts",
     "./components/*": "./src/components/*.tsx",
     "./patterns/*": "./src/patterns/*/index.ts",
     "./patterns/charts/lazy": "./src/patterns/charts/lazy.ts",

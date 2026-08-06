@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { CardTitle } from '@mlain/ui/components/card';
 import { CopyButton } from '@mlain/ui/components/copy-button';
 
 export type TrackingSnippetProps = {
@@ -47,13 +48,16 @@ export function TrackingSnippet({ publicKey, host, size }: TrackingSnippetProps)
   const snippet = buildSnippet(host, publicKey);
 
   return (
-    <section aria-labelledby="tracking-snippet">
+    <section
+      aria-labelledby="tracking-snippet"
+      className="flex flex-col gap-[var(--spacing-gutter)]"
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 id="tracking-snippet" className="text-xl font-semibold">
-            {t('settings.snippet.title')}
-          </h2>
-          <p className="mt-2 text-text-muted">{t('settings.snippet.description', { size })}</p>
+          <CardTitle>
+            <span id="tracking-snippet">{t('settings.snippet.title')}</span>
+          </CardTitle>
+          <p className="text-meta text-text-muted">{t('settings.snippet.description', { size })}</p>
         </div>
         <CopyButton
           value={snippet}
@@ -62,14 +66,18 @@ export function TrackingSnippet({ publicKey, host, size }: TrackingSnippetProps)
         />
       </div>
 
-      <pre className="mt-4 overflow-x-auto rounded-md bg-surface-muted p-4 text-sm">
+      <pre className="overflow-x-auto rounded-[var(--radius-control)] bg-surface-muted p-[var(--spacing-gutter)] font-mono text-meta">
         <code>{snippet}</code>
       </pre>
 
-      <dl className="mt-4">
-        <dt className="text-sm font-medium">{t('settings.snippet.key_label')}</dt>
-        <dd className="mt-1 flex items-center gap-2">
-          <code className="rounded bg-surface-muted px-2 py-1 text-sm">{publicKey}</code>
+      <dl className="mt-[var(--spacing-stack)]">
+        <dt className="text-sm font-semibold text-text">{t('settings.snippet.key_label')}</dt>
+        <dd className="mt-1 flex items-center gap-[var(--spacing-inline)]">
+          {/* Veřejný klíč se čte po znacích, takže mono. Rádius je token,
+              ne `rounded` z výchozí škály Tailwindu. */}
+          <code className="rounded-[var(--radius-control)] bg-surface-muted px-2 py-1 font-mono text-meta">
+            {publicKey}
+          </code>
           {/* Vlastní popisek, ne „Zkopírovat kód": dvě tlačítka se stejným
               přístupným jménem se v seznamu ovládacích prvků nedají rozlišit. */}
           <CopyButton
@@ -80,8 +88,8 @@ export function TrackingSnippet({ publicKey, host, size }: TrackingSnippetProps)
           />
         </dd>
       </dl>
-      <p className="mt-2 text-sm text-text-muted">{t('settings.snippet.key_hint')}</p>
-      <p className="mt-1 text-sm text-text-muted">{t('settings.snippet.consent_note')}</p>
+      <p className="text-meta text-text-muted">{t('settings.snippet.key_hint')}</p>
+      <p className="text-meta text-text-muted">{t('settings.snippet.consent_note')}</p>
     </section>
   );
 }

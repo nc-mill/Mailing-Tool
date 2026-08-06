@@ -81,4 +81,28 @@ describe('Wizard', () => {
     render(<Wizard {...base({ current: 'upload' })} />);
     expect(screen.queryByRole('button', { name: 'Předchozí krok' })).toBeNull();
   });
+
+  // Krok často musí něco uložit dřív, než se pokročí. Bez `onBeforeNext` si
+  // kreslil vlastní tlačítko vedle toho průvodcova a to spodní uložení
+  // přeskočilo, takže uživatel přišel o svou volbu.
+  it('před přechodem pustí obsluhu kroku a bez jejího svolení nikam nejde', async () => {
+    const user = userEvent.setup();
+    const onNavigate = vi.fn();
+    const ulozit = vi.fn().mockResolvedValue(false);
+
+    render(<Wizard {...base({ onNavigate, onBeforeNext: ulozit })} />);
+
+    await user.click(screen.getByRole('button', { name: labels.next }));
+    expect(ulozit).toHaveBeenCalledTimes(1);
+    expect(onNavigate).not.toHaveBeenCalled();
+
+    ulozit.mockResolvedValue(true);
+    await user.click(screen.getByRole('button', { name: labels.next }));
+    expect(onNavigate).toHaveBeenCalledWith('preview');
+  });
+
+  it('hideNext tlačítko průvodce vůbec nevykreslí', () => {
+    render(<Wizard {...base({ hideNext: true })} />);
+    expect(screen.queryByRole('button', { name: labels.next })).not.toBeInTheDocument();
+  });
 });

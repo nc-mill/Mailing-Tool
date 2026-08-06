@@ -4,6 +4,9 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { IconButton } from '@mlain/ui/components/icon-button';
+import { Tooltip } from '@mlain/ui/components/tooltip';
+import { ShieldCheck } from '@mlain/ui/icons';
 import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
 import { useToast } from '@mlain/ui/patterns/toast';
 import { useConfirmDialogLabels } from '@/lib/feedback/confirm-labels';
@@ -31,6 +34,7 @@ export function ProcessingRestrictionButton({
   contactId,
   name,
   mode,
+  appearance = 'button',
 }: {
   workspaceId: string;
   contactId: string;
@@ -38,6 +42,12 @@ export function ProcessingRestrictionButton({
   name: string;
   /** `restrict` zapíná omezení, `lift` ho ruší. Komponenta kreslí vždy jen jedno tlačítko. */
   mode: 'restrict' | 'lift';
+  /**
+   * `icon` je čtverec s ikonou a bublinou v řadě akcí v hlavičce obrazovky,
+   * `button` je běžné tlačítko se slovem uvnitř žlutého bloku o omezení.
+   * Liší se JEN vzhledem: okno, povinné odůvodnění i akce jsou stejné.
+   */
+  appearance?: 'button' | 'icon';
 }) {
   const t = useTranslations('contacts');
   const router = useRouter();
@@ -83,19 +93,42 @@ export function ProcessingRestrictionButton({
         t('restricted.liftConsequenceAudit'),
       ];
 
+  const label = restricting ? t('restricted.restrictAction') : t('restricted.liftAction');
+  const testId = restricting ? 'restrict-processing' : 'lift-restriction';
+
   return (
     <>
-      {/* Obě tlačítka jsou `secondary` a obě používají `pending`, ne `disabled`:
-          zašedlé tlačítko bez vysvětlení je zakázané (kritérium 18 části 6). */}
-      <Button
-        variant="secondary"
-        pending={pending}
-        onClick={() => setOpen(true)}
-        data-testid={restricting ? 'restrict-processing' : 'lift-restriction'}
-        className="w-fit"
-      >
-        {restricting ? t('restricted.restrictAction') : t('restricted.liftAction')}
-      </Button>
+      {/* Obě podoby používají `pending`, ne `disabled`: zašedlé tlačítko bez
+          vysvětlení je zakázané (kritérium 18 části 6). */}
+      {appearance === 'icon' ? (
+        <Tooltip content={label}>
+          <IconButton
+            variant="solid"
+            label={label}
+            // Bublina říká, co se stane; `title` by nad ní vykreslil druhou,
+            // prohlížečovou, takže se vypíná prázdnou hodnotou.
+            title=""
+            icon={<ShieldCheck aria-hidden className="icon-md" />}
+            aria-busy={pending ? true : undefined}
+            data-pending={pending ? '' : undefined}
+            className="data-[pending]:opacity-60"
+            data-testid={testId}
+            onClick={() => {
+              if (!pending) setOpen(true);
+            }}
+          />
+        </Tooltip>
+      ) : (
+        <Button
+          variant="secondary"
+          pending={pending}
+          onClick={() => setOpen(true)}
+          data-testid={testId}
+          className="w-fit"
+        >
+          {label}
+        </Button>
+      )}
 
       <ConfirmDialog
         open={open}

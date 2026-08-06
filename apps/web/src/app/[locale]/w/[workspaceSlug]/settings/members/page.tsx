@@ -10,7 +10,11 @@ import { InvitationsSection, type InvitationRow } from '@/features/members/invit
 import { CreateMemberSection } from '@/features/members/create-member-section';
 import { OrphanedAccounts, type OrphanedAccountRow } from '@/features/members/orphaned-accounts';
 import type { SystemMailStatus } from '@/features/system-mail/types';
-import { SettingsPageShell } from '@/features/settings/settings-page-shell';
+import {
+  SettingsPageShell,
+  SettingsSection,
+  SettingsStack,
+} from '@/features/settings/settings-page-shell';
 import { SettingsProblem } from '@/features/settings/settings-problem';
 import { ForbiddenSection } from '@/features/settings/forbidden-section';
 import { apiFetch } from '@/lib/api-client/fetch';
@@ -95,34 +99,42 @@ export default async function MembersPage({
 
   return (
     <SettingsPageShell title={t('members.title')} lead={t('members.lead')}>
-      <div className="space-y-12">
-        <MembersTable
-          members={members}
-          canManage={canManage}
-          currentUserId={me.ok ? me.data.user.id : ''}
-          changeRoleAction={changeMemberRoleFormAction}
-          removeAction={removeMemberFormAction}
-          workspaceId={workspaceId}
-          slug={workspaceSlug}
-        />
+      <SettingsStack>
+        <SettingsSection>
+          <MembersTable
+            members={members}
+            canManage={canManage}
+            currentUserId={me.ok ? me.data.user.id : ''}
+            changeRoleAction={changeMemberRoleFormAction}
+            removeAction={removeMemberFormAction}
+            workspaceId={workspaceId}
+            slug={workspaceSlug}
+          />
+        </SettingsSection>
         {canInvite ? (
           <>
-            <InvitationsSection
-              invitations={invitations}
-              workspaceId={workspaceId}
-              slug={workspaceSlug}
-              systemMailAvailable={systemMailAvailable}
-            />
+            <SettingsSection>
+              <InvitationsSection
+                invitations={invitations}
+                workspaceId={workspaceId}
+                slug={workspaceSlug}
+                systemMailAvailable={systemMailAvailable}
+              />
+            </SettingsSection>
             {/* Náhradní cesta k pozvánce. Stojí pod ní schválně: kde pošta
                 funguje, je pozvánka pořád první volbou, protože si člověk
                 nastaví heslo sám a nikdo ho nepředává ústně. */}
-            <CreateMemberSection workspaceId={workspaceId} slug={workspaceSlug} />
+            <SettingsSection>
+              <CreateMemberSection workspaceId={workspaceId} slug={workspaceSlug} />
+            </SettingsSection>
           </>
         ) : null}
         {canDeleteAccounts ? (
-          <OrphanedAccounts accounts={orphaned} workspaceId={workspaceId} slug={workspaceSlug} />
+          <SettingsSection>
+            <OrphanedAccounts accounts={orphaned} workspaceId={workspaceId} slug={workspaceSlug} />
+          </SettingsSection>
         ) : null}
-      </div>
+      </SettingsStack>
     </SettingsPageShell>
   );
 }

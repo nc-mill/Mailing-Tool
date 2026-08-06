@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, Plus } from 'lucide-react';
+import { ChevronDown, Plus } from '../../icons';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,6 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../../components/dropdown-menu';
+import { cn } from '../../lib/cn';
 import { workspaceAccent } from '../../lib/workspace-accent';
 
 export type WorkspaceSummary = { id: string; slug: string; name: string };
@@ -53,17 +54,25 @@ export function WorkspaceSwitcher({
         // Popis akce se přidává skrytým textem, ne aria-label, který by
         // viditelný název přebil.
         aria-label={current ? undefined : labels.switcher}
-        className="flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] px-3 text-sm font-medium text-text hover:bg-surface-muted"
+        className={cn(
+          'flex min-h-[var(--size-control-sm)] items-center gap-[var(--spacing-inline)]',
+          'rounded-[var(--radius-control)] border border-border px-3 font-mono text-meta text-text',
+          'hover:border-border-strong hover:bg-surface-muted',
+        )}
       >
+        {/* Barva projektu. V návrhu je to čtvereček u názvu projektu, protože
+            projekt se pozná odsud: boční menu je tmavé v každém projektu
+            stejně. Dřív byla barva proužkem na hraně menu, kde ji na tmavém
+            podkladu skoro nebylo vidět. */}
         <span
           data-testid="workspace-accent"
           aria-hidden="true"
-          className="inline-block h-4 w-1.5 rounded-full"
+          className="inline-block size-2.5 rounded-xs"
           style={{ backgroundColor: workspaceAccent(currentId) }}
         />
         {current ? labels.current(current.name) : labels.switcher}
         {current ? <span className="sr-only">{labels.switcher}</span> : null}
-        <ChevronDown aria-hidden className="size-4 text-text-muted" />
+        <ChevronDown aria-hidden className="icon-xs text-text-muted" />
       </DropdownMenuTrigger>
       <DropdownMenuContent>
         {workspaces.map((workspace) => (
@@ -80,7 +89,7 @@ export function WorkspaceSwitcher({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={onCreate}>
-              <Plus aria-hidden className="size-4" />
+              <Plus aria-hidden className="icon-sm" />
               {labels.create}
             </DropdownMenuItem>
           </>

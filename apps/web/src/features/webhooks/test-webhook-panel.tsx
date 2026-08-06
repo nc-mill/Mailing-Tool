@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import { useTranslations } from 'next-intl';
+import { CardTitle } from '@mlain/ui/components/card';
 import { SubmitButton } from '@/lib/forms/submit-button';
 import { IDLE, type ActionState } from '@/lib/feedback/action-result';
 import { SettingsProblem } from '@/features/settings/settings-problem';
@@ -24,12 +25,12 @@ export function TestWebhookPanelView(props: TestWebhookPanelViewProps) {
   const [state, formAction] = useActionState(props.action, props.initialState ?? IDLE);
 
   return (
-    <section aria-labelledby="webhook-test">
-      <h2 id="webhook-test" className="text-xl font-semibold">
-        {t('webhooks.test.button')}
-      </h2>
+    <section aria-labelledby="webhook-test" className="flex flex-col gap-[var(--spacing-gutter)]">
+      <CardTitle>
+        <span id="webhook-test">{t('webhooks.test.button')}</span>
+      </CardTitle>
 
-      <form action={formAction} className="mt-4">
+      <form action={formAction} className="flex">
         <input type="hidden" name="workspace_id" value={props.workspaceId} readOnly />
         <input type="hidden" name="slug" value={props.slug} readOnly />
         <input type="hidden" name="endpoint_id" value={props.endpointId} readOnly />
@@ -37,14 +38,17 @@ export function TestWebhookPanelView(props: TestWebhookPanelViewProps) {
       </form>
 
       {state.status === 'success' ? (
-        <div role="status" className="mt-4 rounded-md border border-success p-4">
-          <p className="font-medium">{t('webhooks.test.successTitle')}</p>
-          <p className="mt-1 text-sm text-text-muted">{t('webhooks.test.successBody')}</p>
+        <div
+          role="status"
+          className="mt-[var(--spacing-stack)] rounded-[var(--radius-surface)] border border-success p-[var(--spacing-gutter)]"
+        >
+          <p className="text-ui font-semibold text-text">{t('webhooks.test.successTitle')}</p>
+          <p className="text-meta text-text-muted">{t('webhooks.test.successBody')}</p>
         </div>
       ) : null}
 
       {state.status === 'error' ? (
-        <div className="mt-4">
+        <div>
           <SettingsProblem problem={state.problem} />
         </div>
       ) : null}

@@ -122,7 +122,7 @@ export function ColorControl({ descriptor, value, onChange, id, autoFocus }: Con
         <span
           aria-hidden="true"
           data-testid={`color-swatch-${descriptor.key}`}
-          className="inline-block size-9 shrink-0 rounded-[var(--radius-control)] border border-border-strong"
+          className="inline-block size-[var(--size-control-sm)] shrink-0 rounded-[var(--radius-control)] border border-border-strong"
           style={
             shown === null
               ? // Průhledné se kreslí šachovnicí, ne bílou: bílá je platná barva
@@ -139,7 +139,9 @@ export function ColorControl({ descriptor, value, onChange, id, autoFocus }: Con
         <select
           id={id}
           data-autofocus={autoFocus ? '' : undefined}
-          className="h-9 flex-1 rounded-[var(--radius-control)] border border-border bg-surface px-2 text-sm"
+          // Je to pole, do kterého se volí, takže má tvar pole ze systému:
+          // rámeček `border-strong`, plocha `field`, výška 44 px, text 15 px.
+          className="min-h-[var(--size-target-min)] flex-1 rounded-[var(--radius-control)] border border-border-strong bg-field px-3.5 text-ui"
           value={isHex ? '$custom' : String(value ?? '$none')}
           onChange={(event) => {
             const next = event.target.value;
@@ -162,7 +164,7 @@ export function ColorControl({ descriptor, value, onChange, id, autoFocus }: Con
             aria-label={t('value.color.custom')}
             value={String(value)}
             onChange={(event) => onChange(event.target.value.toLowerCase())}
-            className="h-9 w-12 shrink-0 p-1"
+            className="w-12 shrink-0 p-1"
           />
         ) : null}
       </div>
@@ -193,7 +195,10 @@ export function ColorControl({ descriptor, value, onChange, id, autoFocus }: Con
               title={`${t(`value.color.${role}`)} ${hex}`}
               aria-label={`${t(`value.color.${role}`)} ${hex}`}
               onClick={() => onChange(role)}
-              className={`size-6 rounded border ${active ? 'border-border-strong ring-2 ring-focus' : 'border-border'}`}
+              // Zvolený vzorek se pozná SILNĚJŠÍM RÁMEČKEM, jak ho kreslí návrh
+              // (2 px v barvě textu), ne prstencem. Barva sama nositelem stavu
+              // není: nese ho `aria-pressed` a název s hexem v přístupném jméně.
+              className={`size-6 rounded-[var(--radius-control)] ${active ? 'border-2 border-text' : 'border border-border-strong'}`}
               style={{ backgroundColor: hex }}
             />
           );
@@ -204,13 +209,13 @@ export function ColorControl({ descriptor, value, onChange, id, autoFocus }: Con
         Název a hodnota v textu. Zůstává i bez rozeznávání barev a je to jediné
         místo, kde je hex vidět bez otevírání nabídky.
       */}
-      <p className="text-xs text-text-muted">
+      <p className="font-mono text-label text-text-muted">
         {label ?? t(`value.color.${selected}`)}
         {shown === null ? '' : ` · ${shown}`}
       </p>
 
       {lowContrast ? (
-        <p role="status" className="text-xs text-warning-text">
+        <p role="status" className="text-meta text-warning-text">
           {t('issue.content_low_contrast')}
         </p>
       ) : null}

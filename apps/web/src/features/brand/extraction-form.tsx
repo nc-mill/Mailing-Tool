@@ -85,19 +85,21 @@ export function ExtractionForm({
   const t = useTranslations('ai');
 
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col gap-[var(--spacing-gutter)]">
       <div>
         {/*
           Nadpis sekce, ne stránky. Stránka se jmenuje „Značka projektu" (h1
           skládá `SettingsPageShell`) a stažení z webu je jedna z cest, jak ji
           vyplnit, ne celý její obsah.
         */}
-        <h2 className="text-xl font-semibold text-text">{t('brand.cta')}</h2>
+        <h2 className="text-h3 font-semibold tracking-[var(--tracking-heading)] text-text">
+          {t('brand.cta')}
+        </h2>
         <p className="mt-1 text-text-muted">{t('brand.intro')}</p>
       </div>
 
       <form
-        className="flex flex-wrap items-end gap-2"
+        className="flex flex-wrap items-end gap-[var(--spacing-stack)]"
         onSubmit={(event) => {
           event.preventDefault();
           const value = new FormData(event.currentTarget).get('url');

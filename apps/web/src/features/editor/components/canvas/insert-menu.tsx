@@ -56,7 +56,7 @@ export function InsertMenu({
           data-testid={testId}
           aria-label={label}
         >
-          <Plus aria-hidden className="size-3" />
+          <Plus aria-hidden className="icon-xs" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent>
@@ -65,7 +65,7 @@ export function InsertMenu({
           if (entries.length === 0) return null;
           return (
             <div key={group.label}>
-              <p className="px-3 py-2 text-xs font-medium text-text-muted">{t(group.label)}</p>
+              <p className="px-3 py-2 text-meta font-medium text-text-muted">{t(group.label)}</p>
               {entries.map((entry) => (
                 <DropdownMenuItem
                   key={entry.id}

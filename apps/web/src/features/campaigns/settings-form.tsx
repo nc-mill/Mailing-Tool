@@ -4,9 +4,12 @@ import { useActionState, useEffect, useRef, useState, useTransition } from 'reac
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Checkbox } from '@mlain/ui/components/checkbox';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
+import { PageHeader } from '@mlain/ui/components/page-header';
+import { Users } from '@mlain/ui/icons';
 import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
 import { Alert, ReadOnlyBanner, ReadOnlyValue } from '@mlain/ui/patterns/states';
 import { useConfirmDialogLabels } from '@/lib/feedback/confirm-labels';
@@ -28,6 +31,7 @@ import {
   type UnsubscribeScope,
 } from './unsubscribe-scope';
 import { DeleteCampaignSection } from './delete-campaign-section';
+import { CampaignBreadcrumbs } from './campaign-breadcrumbs';
 import { CampaignStepNav } from './campaign-steps';
 import {
   CAMPAIGN_STEPS,
@@ -156,19 +160,18 @@ function OptionGroup({
   const chosen = new Set(selected);
   return (
     <fieldset className="min-w-0 flex-1">
-      <legend className="mb-2 text-sm font-medium text-text">{legend}</legend>
+      {/* Popisek skupiny je mono verzálky, stejně jako hlavička sloupce
+          v tabulce: je to název skupiny údajů, ne věta. */}
+      <legend className="meta-caps mb-[var(--spacing-hairline)] text-text-muted">{legend}</legend>
       {options.length === 0 ? (
         <p className="text-sm text-text-muted">
-          {emptyText}{' '}
-          <Link href={emptyHref} className="underline">
-            {emptyAction}
-          </Link>
+          {emptyText} <Link href={emptyHref}>{emptyAction}</Link>
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col">
           {options.map((option) => (
             <li key={option.id}>
-              <label className="flex items-center gap-2 text-sm text-text">
+              <label className="flex min-h-[var(--size-target-min)] cursor-pointer items-center gap-[var(--spacing-inline)] text-ui text-text">
                 <Checkbox
                   name={name}
                   value={option.id}
@@ -330,31 +333,36 @@ function UnsubscribeScopeField({
 
   const listName = scope.kind === 'list' ? nameOf(lists, scope.listId, t('none')) : '';
   return (
-    <div data-testid="unsubscribe-derived">
+    <div data-testid="unsubscribe-derived" className="flex flex-col gap-[var(--spacing-stack)]">
       {/*
+        Odvozený rozsah je TLUMENÁ PLOCHA, ne pole: nedá se do něj psát, jen
+        popisuje, co odhlašovací odkaz v téhle kampani udělá.
+
         Popisek NENÍ `aria-hidden` jako u `SelectField`. Tam ho nese přístupné
         jméno spouštěče, tady žádný ovládací prvek není, takže by ho čtečka
         vynechala a věta níž by visela bez toho, čeho se týká.
       */}
-      <span className="mb-1 block text-sm font-medium text-text">{t('unsubscribeList')}</span>
-      <input
-        type="hidden"
-        name="unsubscribe_list_id"
-        value={unsubscribeFieldValue(scope)}
-        readOnly
-      />
-      <p className="text-sm text-text">
-        {scope.kind === 'list'
-          ? t('unsubscribeFromList', { name: listName })
-          : t('unsubscribeFromAll')}
-      </p>
-      <p className="mt-1 text-sm text-text-muted">
-        {scope.kind === 'list'
-          ? t('unsubscribeSingleReason')
-          : scope.reason === 'empty'
-            ? t('unsubscribeEmptyReason')
-            : t('unsubscribeManyReason')}
-      </p>
+      <div className="flex flex-col gap-[var(--spacing-hairline)] rounded-[var(--radius-control)] bg-surface-muted px-[var(--spacing-stack)] py-[var(--spacing-stack)]">
+        <span className="text-ui font-semibold text-text">{t('unsubscribeList')}</span>
+        <input
+          type="hidden"
+          name="unsubscribe_list_id"
+          value={unsubscribeFieldValue(scope)}
+          readOnly
+        />
+        <p className="text-ui text-text">
+          {scope.kind === 'list'
+            ? t('unsubscribeFromList', { name: listName })
+            : t('unsubscribeFromAll')}
+        </p>
+        <p className="text-meta text-text-muted">
+          {scope.kind === 'list'
+            ? t('unsubscribeSingleReason')
+            : scope.reason === 'empty'
+              ? t('unsubscribeEmptyReason')
+              : t('unsubscribeManyReason')}
+        </p>
+      </div>
       {/*
         Tichá změna uložené hodnoty se NEDĚLÁ. Kdo si kdysi vybral konkrétní
         seznam a od té doby přidal do publika další, dostane po uložení jiný
@@ -533,6 +541,21 @@ export function CampaignSettingsForm({
     setInclude({ lists: campaign.include_lists, segments: campaign.include_segments });
   }
 
+  /*
+   * Ozvěna předmětu a předhlavičky pro náhled schránky. Týž vzor jako u publika
+   * výš: pole zůstávají neřízená, tohle je jen kopie pro vykreslení. Uložená
+   * hodnota ji přebije, aby náhled po uložení neukazoval starý text.
+   */
+  const savedInbox = `${campaign.subject}\n${campaign.preheader}`;
+  const [inboxShown, setInboxShown] = useState(savedInbox);
+  const [subjectShown, setSubjectShown] = useState(campaign.subject);
+  const [preheaderShown, setPreheaderShown] = useState(campaign.preheader);
+  if (inboxShown !== savedInbox) {
+    setInboxShown(savedInbox);
+    setSubjectShown(campaign.subject);
+    setPreheaderShown(campaign.preheader);
+  }
+
   function toggleInclude(key: 'lists' | 'segments', id: string, checked: boolean) {
     setInclude((current) => {
       const without = current[key].filter((value) => value !== id);
@@ -583,56 +606,58 @@ export function CampaignSettingsForm({
   if (!canEdit) {
     const scheduled = campaign.status === 'scheduled';
     return (
-      <section aria-labelledby="campaign-settings-title" className="flex flex-col gap-4">
-        <h1 id="campaign-settings-title" className="text-xl font-semibold">
-          {t('title')}
-        </h1>
-        <ReadOnlyBanner reason={scheduled ? t('lockedScheduled') : t('locked')} />
-        <div className="flex flex-col gap-4">
-          <ReadOnlyValue label={t('name')} value={campaign.name} />
-          <ReadOnlyValue label={t('subject')} value={campaign.subject} />
-          <ReadOnlyValue label={t('preheader')} value={campaign.preheader} />
-          {/*
+      <section aria-labelledby="campaign-settings-title" className="flex flex-col">
+        <PageHeader
+          title={<span id="campaign-settings-title">{campaign.name}</span>}
+          eyebrow={t('title')}
+          breadcrumbs={<CampaignBreadcrumbs basePath={basePath} campaignName={campaign.name} />}
+        />
+        <div className="flex flex-col gap-[var(--spacing-gutter)]">
+          <ReadOnlyBanner reason={scheduled ? t('lockedScheduled') : t('locked')} />
+          <Card gap="gutter">
+            <ReadOnlyValue label={t('name')} value={campaign.name} />
+            <ReadOnlyValue label={t('subject')} value={campaign.subject} />
+            <ReadOnlyValue label={t('preheader')} value={campaign.preheader} />
+            {/*
             Ukazuje se, JESTLI kampaň obsah má, ne jméno šablony. Obsah je
             vlastní dokument kampaně, takže jméno knihovní šablony by tu
             u zamčené kampaně buď chybělo, nebo lhalo o tom, odkud se vzal.
             Odeslanou podobu si uživatel prohlédne v reportu kampaně.
           */}
-          {/*
+            {/*
             Tři stavy, ne dva. „Kampaň má vlastní obsah" se u dokumentu s pouhou
             patičkou četlo jako hotová práce, přestože v e-mailu nebylo nic.
           */}
-          <ReadOnlyValue
-            label={t('contentTitle')}
-            value={
-              campaign.has_content
-                ? t('content.present')
-                : campaign.has_design
-                  ? t('content.empty')
-                  : none
-            }
-          />
-          <ReadOnlyValue
-            label={t('provider')}
-            value={nameOf(options.providers, campaign.provider_id, none)}
+            <ReadOnlyValue
+              label={t('contentTitle')}
+              value={
+                campaign.has_content
+                  ? t('content.present')
+                  : campaign.has_design
+                    ? t('content.empty')
+                    : none
+              }
+            />
+            <ReadOnlyValue
+              label={t('provider')}
+              value={nameOf(options.providers, campaign.provider_id, none)}
+            />
+          </Card>
+          {scheduled ? (
+            <UnscheduleAction workspaceId={workspaceId} campaignId={campaign.id} />
+          ) : (
+            <p>
+              <Link href={`${basePath}/campaigns/${campaign.id}/progress`}>{t('toProgress')}</Link>
+            </p>
+          )}
+          {/* I u zamčené kampaně se řekne, jak je to s mazáním. Bez toho by
+            uživatel hledal mazání tam, kde není, a nedozvěděl se proč. */}
+          <DeleteCampaignSection
+            workspaceId={workspaceId}
+            campaign={{ id: campaign.id, name: campaign.name, status: campaign.status }}
+            basePath={basePath}
           />
         </div>
-        {scheduled ? (
-          <UnscheduleAction workspaceId={workspaceId} campaignId={campaign.id} />
-        ) : (
-          <p>
-            <Link href={`${basePath}/campaigns/${campaign.id}/progress`} className="underline">
-              {t('toProgress')}
-            </Link>
-          </p>
-        )}
-        {/* I u zamčené kampaně se řekne, jak je to s mazáním. Bez toho by
-            uživatel hledal mazání tam, kde není, a nedozvěděl se proč. */}
-        <DeleteCampaignSection
-          workspaceId={workspaceId}
-          campaign={{ id: campaign.id, name: campaign.name, status: campaign.status }}
-          basePath={basePath}
-        />
       </section>
     );
   }
@@ -676,9 +701,20 @@ export function CampaignSettingsForm({
    * Pole skrytého kroku se pořád ODESÍLAJÍ: `display: none` na odeslání
    * formuláře nemá vliv, a přesně to se tu chce. Jedno uložení uloží všechno.
    */
-  function panel(visible: boolean): string {
-    return visible ? 'flex flex-col gap-8' : 'hidden';
+  function panel(visible: boolean, layout: string): string {
+    return visible ? layout : 'hidden';
   }
+
+  /** Krok 2 je jeden úzký sloupec, aby se řádky předmětu četly na jeden pohled. */
+  const BASICS_LAYOUT = 'flex max-w-[820px] flex-col gap-[var(--spacing-gutter)]';
+  /**
+   * Krok 3 jsou dva sloupce. Karty jsou v nich naskládané ručně, ne mřížkou
+   * přes všechny čtyři: mřížka řadí po řádcích, takže by vysoká karta publika
+   * odsunula všechno vedle sebe a sloupce by se rozjely.
+   */
+  const SETTINGS_LAYOUT =
+    'grid grid-cols-[repeat(auto-fit,minmax(380px,1fr))] items-start gap-[var(--spacing-gutter)]';
+  const COLUMN = 'flex min-w-0 flex-col gap-[var(--spacing-gutter)]';
 
   /** Úvodní věta kroku. Každý krok má vlastní, jinak by lhala dvěma třetinám. */
   const intro = step === 'basics' ? t('steps.basicsIntro') : t('intro');
@@ -702,31 +738,46 @@ export function CampaignSettingsForm({
   }
 
   return (
-    <section aria-labelledby="campaign-settings-title" className="flex flex-col gap-6">
+    /*
+      Hlavička stojí MIMO mezerovaný sloupec, protože si spodní mezeru
+      (`--spacing-section`) píše sama. Kdyby seděla uvnitř, sečetla by se
+      s mezerou sloupce a odstup pod nadpisem by byl o 20 px větší.
+    */
+    <section aria-labelledby="campaign-settings-title" className="flex flex-col">
       {/*
         Kroky kampaně. Ohlašují se stejně jako při zakládání, protože je to
         pokračování téže práce, jen se k ní dá vrátit kdykoli.
 
         Ukazují se jen u kampaně, která se ještě dodělává. U rozjeté kampaně by
         věta o krocích lhala: nic se nezakládá, jen se prohlíží nastavení.
+
+        Číslo kroku stojí NAD nadpisem, ne pod ním: pod nadpisem je v systému
+        meta řádek s údaji o obsahu obrazovky, kdežto tohle je návěští toho,
+        kde v kampani uživatel je.
       */}
-      <div className="flex flex-col gap-3">
-        <div role="status" aria-live="polite" className="text-sm text-text-muted">
-          {tNew('stepOf', { current: stepIndex + 1, total: CAMPAIGN_STEPS.length })}
-        </div>
-        <div className="flex items-baseline justify-between gap-4">
-          <h1 id="campaign-settings-title" className="text-xl font-semibold">
-            {campaign.name}
-          </h1>
-          <p role="status" data-testid="settings-saved" className="text-sm text-text-muted">
-            {savedVisible ? t('saved') : ''}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title={<span id="campaign-settings-title">{campaign.name}</span>}
+        eyebrow={
+          <span role="status" aria-live="polite">
+            {tNew('stepOf', { current: stepIndex + 1, total: CAMPAIGN_STEPS.length })}
+          </span>
+        }
+        breadcrumbs={<CampaignBreadcrumbs basePath={basePath} campaignName={campaign.name} />}
+      />
 
-      <CampaignStepNav current={step} onSelect={selectStep} />
+      <div className="flex flex-col gap-[var(--spacing-gutter)]">
+        <CampaignStepNav current={step} onSelect={selectStep} />
 
-      {/*
+        {/*
+        Potvrzení uložení. Živá oblast je na obrazovce POŘÁD, i když je prázdná:
+        čtečka si ji tak drží od začátku a hlášku ohlásí, jakmile se objeví.
+        Kdyby vznikala až s hláškou, část čteček by ji přeslechla.
+      */}
+        <div role="status" aria-live="polite" data-testid="settings-saved">
+          {savedVisible ? <Alert tone="success">{t('saved')}</Alert> : null}
+        </div>
+
+        {/*
         STAV OBSAHU SE HLÁSÍ I TADY, přestože obsah se tvoří v kroku 1.
         Vzniklo z vady z instalace: kampaň, jejíž dokument neobsahoval nic než
         patičku, prošla celým zakládáním bez jediné poznámky a odešla na tři
@@ -736,31 +787,36 @@ export function CampaignSettingsForm({
         Tři stavy, ne dva: „obsah vůbec nevznikl", „je rozepsaný v editoru, ale
         kampaň ho ještě nepřevzala" a „je prázdný". Každý má jinou radu.
       */}
-      {campaign.template_id === null ? (
-        <Alert tone="warning" data-testid="content-missing">
-          {t('content.noContent')}
-        </Alert>
-      ) : !campaign.has_design ? (
-        <Alert tone="info" data-testid="content-not-applied">
-          {t('content.notApplied')}
-        </Alert>
-      ) : campaign.has_content ? null : (
-        <Alert tone="warning" data-testid="content-empty">
-          {t('content.empty')}
-        </Alert>
-      )}
+        {campaign.template_id === null ? (
+          <Alert tone="warning" data-testid="content-missing">
+            {t('content.noContent')}
+          </Alert>
+        ) : !campaign.has_design ? (
+          <Alert tone="info" data-testid="content-not-applied">
+            {t('content.notApplied')}
+          </Alert>
+        ) : campaign.has_content ? null : (
+          <Alert tone="warning" data-testid="content-empty">
+            {t('content.empty')}
+          </Alert>
+        )}
 
-      <p className="text-text-muted">{intro}</p>
+        <p className="max-w-[90ch] text-meta text-text-muted">{intro}</p>
 
-      {state.status === 'error' && Object.keys(fieldErrors).length === 0 ? (
-        <SettingsProblem problem={state.problem} />
-      ) : null}
+        {state.status === 'error' && Object.keys(fieldErrors).length === 0 ? (
+          <SettingsProblem problem={state.problem} />
+        ) : null}
 
-      <form ref={formRef} action={formAction} className="flex flex-col gap-8" noValidate>
-        <input type="hidden" name="workspace_id" value={workspaceId} readOnly />
-        <input type="hidden" name="campaign_id" value={campaign.id} readOnly />
+        <form
+          ref={formRef}
+          action={formAction}
+          className="flex flex-col gap-[var(--spacing-gutter)]"
+          noValidate
+        >
+          <input type="hidden" name="workspace_id" value={workspaceId} readOnly />
+          <input type="hidden" name="campaign_id" value={campaign.id} readOnly />
 
-        {/*
+          {/*
           KROK OBSAHU TADY NENÍ, a je to podstatná změna. Krok 1 je sám editor
           na vlastní adrese (`/campaigns/{id}/content`), ne panel formuláře
           s odkazem do editoru. Zůstává po něm jediná věc: skryté pole
@@ -772,146 +828,221 @@ export function CampaignSettingsForm({
           nikdy nebyla a první uložení nastavení by `template_id` vynulovalo.
           Převzít knihovní šablonu jde v kroku 1, výslovnou akcí s potvrzením.
         */}
-        <input type="hidden" name="has_design" value={String(campaign.has_design)} />
+          <input type="hidden" name="has_design" value={String(campaign.has_design)} />
 
-        {/*
+          {/*
           Krok 2: popisky hotového e-mailu. Předmět stojí AŽ ZA obsahem
           schválně. Dřív byl první a převzetí obsahu z editoru na něm viselo:
           kdo se vrátil z editoru do kampaně bez vyplněného předmětu, dostal
           `campaign_subject_missing`, přestože se obsah uložil. Předmět je
           teď povinný až k odeslání, ne k psaní.
         */}
-        <div
-          data-testid="campaign-panel-basics"
-          hidden={step !== 'basics'}
-          className={panel(step === 'basics')}
-        >
-          <section aria-labelledby="campaign-basics" className="flex flex-col gap-4">
-            <h2 id="campaign-basics" className="text-lg font-semibold">
-              {t('basicsTitle')}
-            </h2>
+          <div
+            data-testid="campaign-panel-basics"
+            hidden={step !== 'basics'}
+            className={panel(step === 'basics', BASICS_LAYOUT)}
+          >
+            <Card aria-labelledby="campaign-basics" gap="gutter">
+              <CardTitle>
+                <span id="campaign-basics">{t('basicsTitle')}</span>
+              </CardTitle>
 
-            <div>
-              <Label htmlFor="subject">{t('subject')}</Label>
-              <Input
-                id="subject"
-                name="subject"
-                defaultValue={campaign.subject}
-                {...fieldAria('subject', fieldErrors)}
-              />
-              <p className="mt-1 text-sm text-text-muted">{t('subjectHint')}</p>
-              <FieldError name="subject" errors={fieldErrors} />
-            </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="subject">{t('subject')}</Label>
+                <Input
+                  id="subject"
+                  name="subject"
+                  defaultValue={campaign.subject}
+                  onChange={(event) => setSubjectShown(event.target.value)}
+                  {...fieldAria('subject', fieldErrors)}
+                />
+                <p className="text-meta text-text-muted">{t('subjectHint')}</p>
+                <FieldError name="subject" errors={fieldErrors} />
+              </div>
 
-            <div>
-              <Label htmlFor="preheader">{t('preheader')}</Label>
-              <Input
-                id="preheader"
-                name="preheader"
-                defaultValue={campaign.preheader}
-                {...fieldAria('preheader', fieldErrors)}
-              />
-              <p className="mt-1 text-sm text-text-muted">{t('preheaderHint')}</p>
-              <FieldError name="preheader" errors={fieldErrors} />
-            </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="preheader">{t('preheader')}</Label>
+                <Input
+                  id="preheader"
+                  name="preheader"
+                  defaultValue={campaign.preheader}
+                  onChange={(event) => setPreheaderShown(event.target.value)}
+                  {...fieldAria('preheader', fieldErrors)}
+                />
+                <p className="text-meta text-text-muted">{t('preheaderHint')}</p>
+                <FieldError name="preheader" errors={fieldErrors} />
+              </div>
 
-            <div>
-              <Label htmlFor="name">{t('name')}</Label>
-              <Input
-                id="name"
-                name="name"
-                defaultValue={campaign.name}
-                {...fieldAria('name', fieldErrors)}
-              />
-              <p className="mt-1 text-sm text-text-muted">{t('nameHint')}</p>
-              <FieldError name="name" errors={fieldErrors} />
-            </div>
-          </section>
-        </div>
-
-        <div
-          data-testid="campaign-panel-settings"
-          hidden={step !== 'settings'}
-          className={panel(step === 'settings')}
-        >
-          <section aria-labelledby="campaign-audience" className="flex flex-col gap-4">
-            <h2 id="campaign-audience" className="text-lg font-semibold">
-              {t('audienceTitle')}
-            </h2>
-            <p className="text-sm text-text-muted">{t('audienceHint')}</p>
-
-            {/* Chyba publika patří k celé skupině, ne k jedinému zaškrtávátku:
-              stačí jedna položka z kterékoli strany, takže by u konkrétního
-              řádku hlásila něco, co ten řádek sám nezpůsobil. */}
-            <div data-testid="audience-include" className="flex flex-wrap gap-8">
-              <OptionGroup
-                legend={t('includeLists')}
-                name="include_list"
-                options={options.lists}
-                selected={campaign.include_lists}
-                emptyText={t('noLists')}
-                emptyHref={`${basePath}/lists`}
-                emptyAction={t('noListsAction')}
-                onToggle={(id, checked) => toggleInclude('lists', id, checked)}
-              />
-              <OptionGroup
-                legend={t('includeSegments')}
-                name="include_segment"
-                options={options.segments}
-                selected={campaign.include_segments}
-                emptyText={t('noSegments')}
-                emptyHref={`${basePath}/segments`}
-                emptyAction={t('noSegmentsAction')}
-                onToggle={(id, checked) => toggleInclude('segments', id, checked)}
-              />
-            </div>
-            <FieldError name="audience" errors={fieldErrors} />
-
-            <h3 className="text-base font-medium">{t('excludeTitle')}</h3>
-            <p className="text-sm text-text-muted">{t('excludeHint')}</p>
-            <div data-testid="audience-exclude" className="flex flex-wrap gap-8">
-              <OptionGroup
-                legend={t('excludeLists')}
-                name="exclude_list"
-                options={options.lists}
-                selected={campaign.exclude_lists}
-                emptyText={t('noLists')}
-                emptyHref={`${basePath}/lists`}
-                emptyAction={t('noListsAction')}
-                labelPrefix={t('excludePrefix')}
-              />
-              <OptionGroup
-                legend={t('excludeSegments')}
-                name="exclude_segment"
-                options={options.segments}
-                selected={campaign.exclude_segments}
-                emptyText={t('noSegments')}
-                emptyHref={`${basePath}/segments`}
-                emptyAction={t('noSegmentsAction')}
-                labelPrefix={t('excludePrefix')}
-              />
-            </div>
-          </section>
-
-          <section aria-labelledby="campaign-sender" className="flex flex-col gap-4">
-            <h2 id="campaign-sender" className="text-lg font-semibold">
-              {t('senderTitle')}
-            </h2>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="name">{t('name')}</Label>
+                <Input
+                  id="name"
+                  name="name"
+                  defaultValue={campaign.name}
+                  {...fieldAria('name', fieldErrors)}
+                />
+                <p className="text-meta text-text-muted">{t('nameHint')}</p>
+                <FieldError name="name" errors={fieldErrors} />
+              </div>
+            </Card>
 
             {/*
+            Náhled schránky. Ukazuje TOTÉŽ, co uvidí příjemce, ještě než e-mail
+            otevře: předmět, předhlavičku a odesílatele. Je to jediné místo,
+            kde se dvě pole vedle sebe čtou tak, jak se čtou ve schránce.
+
+            Pole zůstávají NEŘÍZENÁ, hodnotu dál drží DOM; stav níž je jen
+            ozvěna pro náhled, takže se odeslání formuláře nedotkne.
+          */}
+            <Card tone="muted" padding="md" gap="none" className="gap-3">
+              <span className="meta-caps text-text-muted">{t('inboxPreviewTitle')}</span>
+              <div className="flex flex-col gap-1 rounded-[var(--radius-control)] border border-border bg-field px-[var(--spacing-stack)] py-[var(--spacing-stack)]">
+                <span className="text-ui font-semibold text-text">
+                  {subjectShown === '' ? t('inboxPreviewNoSubject') : subjectShown}
+                </span>
+                <span className="text-meta text-text-muted">
+                  {preheaderShown === '' ? t('inboxPreviewNoPreheader') : preheaderShown}
+                </span>
+                <span className="font-mono text-label text-text-muted">
+                  {[campaign.from_name, campaign.from_email]
+                    .filter((part) => part !== '')
+                    .join(' · ')}
+                </span>
+              </div>
+              <p className="text-meta text-text-muted">
+                {t('inboxPreviewLength', { count: subjectShown.length })}
+              </p>
+            </Card>
+          </div>
+
+          {/*
+          Krok 3 stojí ve DVOU SLOUPCÍCH. Vlevo publikum a vynechání, tedy
+          otázka „komu", vpravo odesílatel a měření, tedy „odkud a co změříme".
+          Mřížka se skládá sama (`auto-fit`), takže na úzkém okně přejde do
+          jednoho sloupce a pořadí zůstane čitelné.
+        */}
+          <div
+            data-testid="campaign-panel-settings"
+            hidden={step !== 'settings'}
+            className={panel(step === 'settings', SETTINGS_LAYOUT)}
+          >
+            <div className={COLUMN}>
+              <Card aria-labelledby="campaign-audience" gap="gutter">
+                <div className="flex flex-col gap-[var(--spacing-hairline)]">
+                  <CardTitle>
+                    <span id="campaign-audience">{t('audienceTitle')}</span>
+                  </CardTitle>
+                  <p className="text-meta text-text-muted">{t('audienceHint')}</p>
+                </div>
+
+                {/* Chyba publika patří k celé skupině, ne k jedinému zaškrtávátku:
+              stačí jedna položka z kterékoli strany, takže by u konkrétního
+              řádku hlásila něco, co ten řádek sám nezpůsobil. */}
+                <div
+                  data-testid="audience-include"
+                  className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-[var(--spacing-gutter)]"
+                >
+                  <OptionGroup
+                    legend={t('includeLists')}
+                    name="include_list"
+                    options={options.lists}
+                    selected={campaign.include_lists}
+                    emptyText={t('noLists')}
+                    emptyHref={`${basePath}/lists`}
+                    emptyAction={t('noListsAction')}
+                    onToggle={(id, checked) => toggleInclude('lists', id, checked)}
+                  />
+                  <OptionGroup
+                    legend={t('includeSegments')}
+                    name="include_segment"
+                    options={options.segments}
+                    selected={campaign.include_segments}
+                    emptyText={t('noSegments')}
+                    emptyHref={`${basePath}/segments`}
+                    emptyAction={t('noSegmentsAction')}
+                    onToggle={(id, checked) => toggleInclude('segments', id, checked)}
+                  />
+                </div>
+                <FieldError name="audience" errors={fieldErrors} />
+
+                {/* Shrnutí publika. Nula zdrojů není prázdný stav, ale vada
+                kampaně, takže se o ní píše rovnou tady, ne až v kontrole. */}
+                <p className="flex items-center gap-3 rounded-[var(--radius-control)] bg-surface-muted px-[var(--spacing-stack)] py-3 text-ui text-text">
+                  <Users aria-hidden className="icon-md shrink-0 text-text-muted" />
+                  {t('audienceSummary', { count: include.lists.length + include.segments.length })}
+                </p>
+              </Card>
+
+              <Card aria-labelledby="campaign-exclude" gap="gutter">
+                <div className="flex flex-col gap-[var(--spacing-hairline)]">
+                  <CardTitle>
+                    <span id="campaign-exclude">{t('excludeTitle')}</span>
+                  </CardTitle>
+                  <p className="text-meta text-text-muted">{t('excludeHint')}</p>
+                </div>
+                <div
+                  data-testid="audience-exclude"
+                  className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-[var(--spacing-gutter)]"
+                >
+                  <OptionGroup
+                    legend={t('excludeLists')}
+                    name="exclude_list"
+                    options={options.lists}
+                    selected={campaign.exclude_lists}
+                    emptyText={t('noLists')}
+                    emptyHref={`${basePath}/lists`}
+                    emptyAction={t('noListsAction')}
+                    labelPrefix={t('excludePrefix')}
+                  />
+                  <OptionGroup
+                    legend={t('excludeSegments')}
+                    name="exclude_segment"
+                    options={options.segments}
+                    selected={campaign.exclude_segments}
+                    emptyText={t('noSegments')}
+                    emptyHref={`${basePath}/segments`}
+                    emptyAction={t('noSegmentsAction')}
+                    labelPrefix={t('excludePrefix')}
+                  />
+                </div>
+              </Card>
+
+              {/*
+            Mazání stojí ve sloupci pod publikem, tedy co nejdál od primárního
+            tlačítka. Uvnitř formuláře být SMÍ: `Button` má `type="button"`,
+            takže kliknutí formulář neodešle, a potvrzovací dialog se vykresluje
+            do portálu mimo něj.
+
+            Patří do posledního kroku, protože u rozepsaného e-mailu i u předmětu
+            je to cizí, nebezpečná akce.
+          */}
+              <DeleteCampaignSection
+                workspaceId={workspaceId}
+                campaign={{ id: campaign.id, name: campaign.name, status: campaign.status }}
+                basePath={basePath}
+              />
+            </div>
+
+            <div className={COLUMN}>
+              <Card aria-labelledby="campaign-sender" gap="gutter">
+                <CardTitle>
+                  <span id="campaign-sender">{t('senderTitle')}</span>
+                </CardTitle>
+
+                {/*
               Výběr uložené předvolby STOJÍ NAD POLI, ne pod nimi. Je to zkratka
               k jejich vyplnění, takže po ní uživatel sáhne dřív, než začne psát;
               pod poli by ji našel až ve chvíli, kdy je vypsal ručně.
             */}
-            <SenderIdentityPicker
-              identities={options.senderIdentities}
-              workspaceId={workspaceId}
-              campaignId={campaign.id}
-              selectedId={campaign.sender_identity_id}
-              basePath={basePath}
-            />
+                <SenderIdentityPicker
+                  identities={options.senderIdentities}
+                  workspaceId={workspaceId}
+                  campaignId={campaign.id}
+                  selectedId={campaign.sender_identity_id}
+                  basePath={basePath}
+                />
 
-            {/*
+                {/*
               Odkaz na předvolbu jede s formulářem, aby se při uložení dal
               srovnat s tím, co je v polích. Sám o sobě nic neurčuje: serverová
               akce si odkaz odvodí z HODNOT (viz `sender-fingerprint.ts`), takže
@@ -921,179 +1052,176 @@ export function CampaignSettingsForm({
               Otisky všech předvoleb jedou s tím: bez nich by akce musela do API
               pro seznam předvoleb při každém uložení nastavení.
             */}
-            <input
-              type="hidden"
-              name="sender_identity_id"
-              value={campaign.sender_identity_id ?? ''}
-              readOnly
-            />
-            <input
-              type="hidden"
-              name="sender_identity_options"
-              value={encodeSenderIdentityFingerprints(options.senderIdentities)}
-              readOnly
-            />
+                <input
+                  type="hidden"
+                  name="sender_identity_id"
+                  value={campaign.sender_identity_id ?? ''}
+                  readOnly
+                />
+                <input
+                  type="hidden"
+                  name="sender_identity_options"
+                  value={encodeSenderIdentityFingerprints(options.senderIdentities)}
+                  readOnly
+                />
 
-            <div>
-              <Label htmlFor="from_name">{t('fromName')}</Label>
-              <Input
-                key={`from-name-${senderKey}`}
-                id="from_name"
-                name="from_name"
-                defaultValue={campaign.from_name}
-                {...fieldAria('from_name', fieldErrors)}
-              />
-              <FieldError name="from_name" errors={fieldErrors} />
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="from_name">{t('fromName')}</Label>
+                  <Input
+                    key={`from-name-${senderKey}`}
+                    id="from_name"
+                    name="from_name"
+                    defaultValue={campaign.from_name}
+                    {...fieldAria('from_name', fieldErrors)}
+                  />
+                  <FieldError name="from_name" errors={fieldErrors} />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="from_email">{t('fromEmail')}</Label>
+                  <Input
+                    key={`from-email-${senderKey}`}
+                    id="from_email"
+                    name="from_email"
+                    type="email"
+                    defaultValue={campaign.from_email}
+                    {...fieldAria('from_email', fieldErrors)}
+                  />
+                  <p className="text-meta text-text-muted">{t('fromEmailHint')}</p>
+                  <FieldError name="from_email" errors={fieldErrors} />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="reply_to">{t('replyTo')}</Label>
+                  <Input
+                    key={`reply-to-${senderKey}`}
+                    id="reply_to"
+                    name="reply_to"
+                    type="email"
+                    defaultValue={campaign.reply_to ?? ''}
+                    {...fieldAria('reply_to', fieldErrors)}
+                  />
+                  <p className="text-meta text-text-muted">{t('replyToHint')}</p>
+                  <FieldError name="reply_to" errors={fieldErrors} />
+                </div>
+
+                <SelectField
+                  key={selectKey('provider', campaign.provider_id)}
+                  name="provider_id"
+                  label={t('provider')}
+                  placeholder={none}
+                  defaultValue={selected(campaign.provider_id)}
+                  options={withNoneOption(options.providers, none)}
+                  hint={t('providerHint')}
+                  errors={fieldErrors}
+                />
+
+                <SelectField
+                  key={selectKey('domain', campaign.sender_domain_id)}
+                  name="sender_domain_id"
+                  label={t('senderDomain')}
+                  placeholder={none}
+                  defaultValue={selected(campaign.sender_domain_id)}
+                  options={withNoneOption(options.domains, none)}
+                  hint={t('senderDomainHint')}
+                  errors={fieldErrors}
+                />
+
+                <p className="text-sm">
+                  <Link href={`${basePath}/settings/sending`}>
+                    {options.providers.length === 0 ? t('sendingEmptyAction') : t('sendingManage')}
+                  </Link>
+                </p>
+              </Card>
+
+              <Card aria-labelledby="campaign-tracking" gap="gutter">
+                <CardTitle>
+                  <span id="campaign-tracking">{t('trackingTitle')}</span>
+                </CardTitle>
+
+                <UnsubscribeScopeField
+                  scope={unsubscribeScopeFor(include)}
+                  lists={options.lists}
+                  storedId={campaign.unsubscribe_list_id}
+                  fieldErrors={fieldErrors}
+                />
+
+                <div className="flex flex-col gap-[var(--spacing-hairline)]">
+                  <label className="flex min-h-[var(--size-target-min)] cursor-pointer items-center gap-[var(--spacing-inline)] text-ui text-text">
+                    <Checkbox name="track_opens" value="on" defaultChecked={campaign.track_opens} />
+                    <span>{t('trackOpens')}</span>
+                  </label>
+                  <label className="flex min-h-[var(--size-target-min)] cursor-pointer items-center gap-[var(--spacing-inline)] text-ui text-text">
+                    <Checkbox
+                      name="track_clicks"
+                      value="on"
+                      defaultChecked={campaign.track_clicks}
+                    />
+                    <span>{t('trackClicks')}</span>
+                  </label>
+                </div>
+                <p className="text-meta text-text-muted">{t('trackingHint')}</p>
+              </Card>
             </div>
+          </div>
 
-            <div>
-              <Label htmlFor="from_email">{t('fromEmail')}</Label>
-              <Input
-                key={`from-email-${senderKey}`}
-                id="from_email"
-                name="from_email"
-                type="email"
-                defaultValue={campaign.from_email}
-                {...fieldAria('from_email', fieldErrors)}
-              />
-              <p className="mt-1 text-sm text-text-muted">{t('fromEmailHint')}</p>
-              <FieldError name="from_email" errors={fieldErrors} />
-            </div>
-
-            <div>
-              <Label htmlFor="reply_to">{t('replyTo')}</Label>
-              <Input
-                key={`reply-to-${senderKey}`}
-                id="reply_to"
-                name="reply_to"
-                type="email"
-                defaultValue={campaign.reply_to ?? ''}
-                {...fieldAria('reply_to', fieldErrors)}
-              />
-              <p className="mt-1 text-sm text-text-muted">{t('replyToHint')}</p>
-              <FieldError name="reply_to" errors={fieldErrors} />
-            </div>
-
-            <SelectField
-              key={selectKey('provider', campaign.provider_id)}
-              name="provider_id"
-              label={t('provider')}
-              placeholder={none}
-              defaultValue={selected(campaign.provider_id)}
-              options={withNoneOption(options.providers, none)}
-              hint={t('providerHint')}
-              errors={fieldErrors}
-            />
-
-            <SelectField
-              key={selectKey('domain', campaign.sender_domain_id)}
-              name="sender_domain_id"
-              label={t('senderDomain')}
-              placeholder={none}
-              defaultValue={selected(campaign.sender_domain_id)}
-              options={withNoneOption(options.domains, none)}
-              hint={t('senderDomainHint')}
-              errors={fieldErrors}
-            />
-
-            <p className="text-sm">
-              <Link href={`${basePath}/settings/sending`} className="underline">
-                {options.providers.length === 0 ? t('sendingEmptyAction') : t('sendingManage')}
-              </Link>
-            </p>
-          </section>
-
-          <section aria-labelledby="campaign-tracking" className="flex flex-col gap-4">
-            <h2 id="campaign-tracking" className="text-lg font-semibold">
-              {t('trackingTitle')}
-            </h2>
-
-            <UnsubscribeScopeField
-              scope={unsubscribeScopeFor(include)}
-              lists={options.lists}
-              storedId={campaign.unsubscribe_list_id}
-              fieldErrors={fieldErrors}
-            />
-
-            <label className="flex items-center gap-2 text-sm text-text">
-              <Checkbox name="track_opens" value="on" defaultChecked={campaign.track_opens} />
-              <span>{t('trackOpens')}</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm text-text">
-              <Checkbox name="track_clicks" value="on" defaultChecked={campaign.track_clicks} />
-              <span>{t('trackClicks')}</span>
-            </label>
-          </section>
-        </div>
-
-        {/* Uložení stojí MIMO panely a je vidět ve všech krocích. Formulář je
+          {/* Uložení stojí MIMO panely a je vidět ve všech krocích. Formulář je
             jeden, takže jedno kliknutí uloží obsah i nastavení; tlačítko jen
             v jednom kroku by svádělo k tomu, že se ostatní kroky neuložily. */}
-        <div className="flex flex-wrap items-center gap-4">
-          <SubmitButton label={t('save')} pendingLabel={t('saving')} />
-          {/*
+          <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
+            <SubmitButton label={t('save')} pendingLabel={t('saving')} />
+            {/*
             Cesta vpřed jedním kliknutím. Přepínač kroků nad formulářem je
             rozcestník, ne návod, kudy se pokračuje; bez tohohle tlačítka končí
             každý krok slepě u „Uložit" a uživatel musí uhodnout, že se má
             vrátit nahoru na záložku. Krok jen přepíná, NEUKLÁDÁ: `type="button"`
             drží formulář v klidu a neuložené hodnoty zůstávají v dokumentu.
           */}
-          {nextStep === undefined ? null : (
-            <Button
-              type="button"
-              variant="secondary"
-              data-testid="step-next"
-              onClick={() => setStep(nextStep)}
-            >
-              {t('nextStep', { step: t(`steps.${nextStep}`) })}
-            </Button>
-          )}
-          {/* Odkaz na kontrolní seznam, ne tlačítko „odeslat": odeslat se dá až
+            {nextStep === undefined ? null : (
+              <Button
+                type="button"
+                variant="secondary"
+                data-testid="step-next"
+                onClick={() => setStep(nextStep)}
+              >
+                {t('nextStep', { step: t(`steps.${nextStep}`) })}
+              </Button>
+            )}
+            {/* Odkaz na kontrolní seznam, ne tlačítko „odeslat": odeslat se dá až
               z obrazovky, která ukáže, komu a kolika lidem to půjde. Je vidět
               ve všech krocích, protože k odeslání se uživatel může rozhodnout
               kdykoli a kontrola před odesláním mu stejně řekne, co ještě chybí. */}
-          <Link href={sendHref} className="underline" data-testid="to-send">
-            {t('toSend')}
-          </Link>
-        </div>
-      </form>
+            <Link href={sendHref} data-testid="to-send">
+              {t('toSend')}
+            </Link>
+          </div>
+        </form>
 
-      {/* Mazání stojí AŽ ZA formulářem a mimo něj: je to jiná akce než uložení
-          a uvnitř formuláře by soutěžila s primárním tlačítkem. Patří do
-          posledního kroku, protože u rozepsaného e-mailu i u předmětu je to
-          cizí, nebezpečná akce. */}
-      {step !== 'settings' ? null : (
-        <DeleteCampaignSection
-          workspaceId={workspaceId}
-          campaign={{ id: campaign.id, name: campaign.name, status: campaign.status }}
-          basePath={basePath}
-        />
-      )}
-
-      {/*
+        {/*
         Odchod do editoru s rozepsanými hodnotami. Ptá se jen tehdy, když
         opravdu je o co přijít; potvrzení u čistého formuláře by bylo klikání
         navíc, na které si uživatel zvykne odpovídat bez čtení.
       */}
-      <ConfirmDialog
-        open={leavingTo !== null}
-        onOpenChange={(open) => {
-          if (!open) setLeavingTo(null);
-        }}
-        // N2, ne N1: N1 se podle design systému neptá vůbec a rozepsaný text
-        // se po odchodu vzít zpět nedá.
-        level="N2"
-        title={t('leaveTitle')}
-        consequences={[t('leaveConsequence')]}
-        confirmLabel={t('leaveSubmit')}
-        cancelLabel={t('leaveCancel')}
-        onConfirm={() => {
-          const href = leavingTo;
-          setLeavingTo(null);
-          if (href !== null) router.push(href);
-        }}
-        labels={confirmLabels}
-      />
+        <ConfirmDialog
+          open={leavingTo !== null}
+          onOpenChange={(open) => {
+            if (!open) setLeavingTo(null);
+          }}
+          // N2, ne N1: N1 se podle design systému neptá vůbec a rozepsaný text
+          // se po odchodu vzít zpět nedá.
+          level="N2"
+          title={t('leaveTitle')}
+          consequences={[t('leaveConsequence')]}
+          confirmLabel={t('leaveSubmit')}
+          cancelLabel={t('leaveCancel')}
+          onConfirm={() => {
+            const href = leavingTo;
+            setLeavingTo(null);
+            if (href !== null) router.push(href);
+          }}
+          labels={confirmLabels}
+        />
+      </div>
     </section>
   );
 }

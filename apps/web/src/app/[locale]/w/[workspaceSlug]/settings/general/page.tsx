@@ -8,7 +8,11 @@ import { AddressFormSection } from '@/features/workspace-settings/address-form-s
 import { GreetingEnabledSection } from '@/features/workspace-settings/greeting-enabled-section';
 import { GreetingLocaleSection } from '@/features/workspace-settings/greeting-locale-section';
 import { DangerZone } from '@/features/workspace-settings/danger-zone';
-import { SettingsPageShell } from '@/features/settings/settings-page-shell';
+import {
+  SettingsColumns,
+  SettingsPageShell,
+  SettingsStack,
+} from '@/features/settings/settings-page-shell';
 import { SettingsProblem } from '@/features/settings/settings-problem';
 import { supportedTimezones } from '@/features/settings/timezones';
 import { apiFetch } from '@/lib/api-client/fetch';
@@ -92,31 +96,44 @@ export default async function GeneralSettingsPage({
             }
       }
     >
-      <div className="space-y-12">
-        <GeneralForm
-          action={updateWorkspaceAction}
-          workspace={access.data.workspace}
-          locales={SUPPORTED_LOCALES}
-          timezones={supportedTimezones()}
-          canWrite={canWrite}
-        />
-        <GreetingEnabledSection workspace={access.data.workspace} canWrite={canWrite} />
-        {greetingEnabled ? (
-          <AddressFormSection
-            workspace={access.data.workspace}
-            canWrite={canWrite}
-            contactCount={contactCount?.ok ? contactCount.data.count : 0}
-          />
-        ) : null}
-        {greetingEnabled && greetingLocale?.ok ? (
-          <GreetingLocaleSection
-            workspaceId={access.data.workspace.id}
-            canWrite={canWrite}
-            summary={greetingLocale.data.data}
-          />
-        ) : null}
+      {/* Dva sloupce jako detail seznamu: vlevo pole, vpravo volby a přepínače.
+          Oslovení drží pohromadě v pravém sloupci, protože je to jeden celek:
+          vypínač nahoře řídí obě sekce pod sebou. */}
+      <SettingsStack>
+        <SettingsColumns>
+          <SettingsStack>
+            <GeneralForm
+              action={updateWorkspaceAction}
+              workspace={access.data.workspace}
+              locales={SUPPORTED_LOCALES}
+              timezones={supportedTimezones()}
+              canWrite={canWrite}
+            />
+          </SettingsStack>
+
+          <SettingsStack>
+            <GreetingEnabledSection workspace={access.data.workspace} canWrite={canWrite} />
+            {greetingEnabled ? (
+              <AddressFormSection
+                workspace={access.data.workspace}
+                canWrite={canWrite}
+                contactCount={contactCount?.ok ? contactCount.data.count : 0}
+              />
+            ) : null}
+            {greetingEnabled && greetingLocale?.ok ? (
+              <GreetingLocaleSection
+                workspaceId={access.data.workspace.id}
+                canWrite={canWrite}
+                summary={greetingLocale.data.data}
+              />
+            ) : null}
+          </SettingsStack>
+        </SettingsColumns>
+
+        {/* Smazání projektu stojí pod oběma sloupci, přes celou šířku: netýká
+            se ani jedné poloviny, týká se celého projektu. */}
         {canDelete ? <DangerZone workspace={access.data.workspace} /> : null}
-      </div>
+      </SettingsStack>
     </SettingsPageShell>
   );
 }

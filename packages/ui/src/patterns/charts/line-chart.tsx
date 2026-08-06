@@ -16,12 +16,14 @@ const STROKE_PATTERNS: Record<string, string> = {
   solid: '',
   dashed: '6 4',
   dotted: '2 3',
+  dashDot: '8 3 2 3',
 };
 
 const SERIES_COLORS = [
   'var(--color-primary)',
   'var(--color-success)',
   'var(--color-warning)',
+  'var(--color-chart-a)',
 ] as const;
 
 function colorFor(index: number): string {
@@ -31,11 +33,14 @@ function colorFor(index: number): string {
 /** Spojnicový graf. Načítá se líně, není součástí základního balíku (kritérium 82). */
 export function LineChart({
   title,
+  hideTitle,
   series,
   labels,
   formatValue,
 }: {
   title: string;
+  /** Skryje viditelný nadpis, přístupné jméno zůstane. Viz `ChartFrame`. */
+  hideTitle?: boolean;
   series: ChartSeries[];
   labels: ChartLabels;
   formatValue?: (value: number) => string;
@@ -49,6 +54,7 @@ export function LineChart({
   return (
     <ChartFrame
       title={title}
+      {...(hideTitle === undefined ? {} : { hideTitle })}
       series={series}
       labels={labels}
       {...(formatValue ? { formatValue } : {})}
@@ -64,7 +70,13 @@ export function LineChart({
         <RechartsLine data={data} accessibilityLayer={false}>
           <CartesianGrid stroke="var(--color-border)" />
           <XAxis dataKey="x" stroke="var(--color-text-muted)" />
-          <YAxis stroke="var(--color-text-muted)" />
+          {/* Formátovač patří i na osu, ne jen do tabulky a bubliny. U měr
+              osa jinak kreslí 0 až 1 a „1" vypadá jako jeden kus, ne jako
+              sto procent. */}
+          <YAxis
+            stroke="var(--color-text-muted)"
+            {...(formatValue ? { tickFormatter: formatValue } : {})}
+          />
           {series.map((item, index) => (
             <Line
               key={item.id}

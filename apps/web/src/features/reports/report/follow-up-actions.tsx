@@ -18,7 +18,16 @@ export function FollowUpActions({
     // jako nabídku dalšího kroku, ne jako pokračování textu nad nimi.
     <section
       aria-label={t('report.title')}
-      className="flex flex-wrap items-center gap-3 [&>a]:inline-flex [&>a]:min-h-6 [&>a]:items-center [&>a]:rounded [&>a]:border [&>a]:border-border [&>a]:bg-surface [&>a]:px-3 [&>a]:py-2 [&>a]:text-sm"
+      className={[
+        'flex flex-wrap items-center gap-[var(--spacing-inline)]',
+        // Odkazy vypadají jako tlačítka v liště: rámeček, 36 px, bez podtržení.
+        '[&>a]:inline-flex [&>a]:items-center [&>a]:no-underline',
+        '[&>a]:min-h-[var(--size-control-sm)] [&>a]:px-3 [&>a]:py-2',
+        '[&>a]:rounded-[var(--radius-control)] [&>a]:border [&>a]:border-border',
+        '[&>a]:bg-surface [&>a]:text-sm [&>a]:text-text-muted',
+        '[&>a]:transition-colors [&>a]:duration-[var(--duration-fast)]',
+        '[&>a:hover]:bg-surface-muted [&>a:hover]:text-text',
+      ].join(' ')}
     >
       {/* Segment vzniká v části 2, sem patří jen předvyplněný odkaz. */}
       <Link href={`${base}/segments/new?from_campaign=${campaignId}&preset=clicked`}>
@@ -33,7 +42,7 @@ export function FollowUpActions({
       <Link href={`${base}/campaigns/new?resend_unopened=${campaignId}`}>
         {t('report.actions.resendToUnopened')}
       </Link>
-      <p className="w-full text-xs text-text-muted">{t('report.actions.resendWarning')}</p>
+      <p className="w-full text-meta text-text-muted">{t('report.actions.resendWarning')}</p>
     </section>
   );
 }

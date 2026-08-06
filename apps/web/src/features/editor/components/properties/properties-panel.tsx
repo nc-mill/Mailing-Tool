@@ -1,5 +1,6 @@
 'use client';
 
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { useTranslations } from 'next-intl';
 import { descriptorFor } from '../../descriptors/registry';
 import type { VisibilityCondition } from '../../model/document-types';
@@ -25,15 +26,34 @@ export function PropertiesPanel(props: {
   const selectedId = useEditorState((state) => state.selectedId);
   const found = selectedId ? findBlock(document, selectedId) : undefined;
 
+  /*
+   * Panel je KARTA se stejným vnitřním okrajem jako paleta (20 px). Dřív to byl
+   * sloupec oddělený svislou linkou; návrh editor kreslí jako tři karty vedle
+   * sebe, ne jako panely přilepené k okrajům okna.
+   *
+   * LEPÍ SE POD HLAVIČKU, ze stejného důvodu jako paleta: roluje stránka, takže
+   * bez toho by vlastnosti vybraného bloku odjely pryč právě ve chvíli, kdy se
+   * uživatel dívá na blok dole v e-mailu. Když je panel vyšší než okno, roluje
+   * si sám, tedy stejně, jako to uměl původní sloupec přes celou výšku.
+   */
+  const sticky = [
+    'min-w-0',
+    'sticky top-[calc(var(--size-topbar)+var(--spacing-stack))]',
+    'max-h-[calc(100dvh-var(--size-topbar)-var(--spacing-page))] overflow-y-auto',
+  ].join(' ');
+
   if (!found) {
     return (
-      <aside
+      <Card
+        as="aside"
         id="editor-properties"
         aria-label={t('a11y.propertiesPanel')}
-        className="w-80 shrink-0 overflow-auto border-l border-border p-4"
+        padding="sm"
+        gap="none"
+        className={sticky}
       >
         <ThemePanel />
-      </aside>
+      </Card>
     );
   }
 
@@ -56,21 +76,33 @@ export function PropertiesPanel(props: {
     .filter((group) => group.props.length > 0);
 
   return (
-    <aside
+    <Card
+      as="aside"
       id="editor-properties"
       aria-label={t('a11y.propertiesPanel')}
-      className="w-80 shrink-0 space-y-4 overflow-auto border-l border-border p-4"
+      padding="sm"
+      gap="none"
+      className={`${sticky} gap-[var(--spacing-stack)]`}
     >
-      <h2 className="text-sm font-semibold">{t(descriptor.label)}</h2>
+      <CardTitle>{t(descriptor.label)}</CardTitle>
       {descriptor.groups.length === 0 ? (
-        <p className="text-sm">{t('block.lockedHint', { type: found.block.type })}</p>
+        <p className="text-sm text-text-muted">
+          {t('block.lockedHint', { type: found.block.type })}
+        </p>
       ) : null}
       {visibleGroups.map((group, groupIndex) => (
         // ODCHYLKA OD PLÁNU: skupina nemá `aria-label`, jméno nese `legend`.
         // S obojím by `getByLabelText` našel jak pole, tak celou skupinu, protože
         // se u obou shoduje text (například „Tmavý režim" v panelu motivu).
-        <fieldset key={group.label} className="space-y-3">
-          <legend className="text-xs uppercase text-text-muted">{t(group.label)}</legend>
+        //
+        // Skupiny odděluje linka nad nadpisem, přesně jak je má návrh: mono
+        // verzálky pod hairline oddělovačem. První skupina linku nemá, aby
+        // nekopírovala rámeček karty.
+        <fieldset
+          key={group.label}
+          className="flex flex-col gap-3 border-t border-border pt-[var(--spacing-stack)] first-of-type:border-t-0 first-of-type:pt-0"
+        >
+          <legend className="meta-caps text-text-muted">{t(group.label)}</legend>
           {group.props.map((descriptorProp, propIndex) => (
             <PropField
               key={descriptorProp.key}
@@ -100,6 +132,6 @@ export function PropertiesPanel(props: {
           ))}
         </fieldset>
       ))}
-    </aside>
+    </Card>
   );
 }

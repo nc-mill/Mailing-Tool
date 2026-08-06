@@ -117,15 +117,20 @@ export function BrandForm({
   }, [state]);
 
   return (
-    <section aria-labelledby="brand-definition" className="flex flex-col gap-6">
-      <div className="flex items-baseline justify-between gap-4">
+    <section aria-labelledby="brand-definition" className="flex flex-col gap-[var(--spacing-card)]">
+      <div className="flex flex-wrap items-baseline justify-between gap-[var(--spacing-stack)]">
         <div>
-          <h2 id="brand-definition" className="text-xl font-semibold text-text">
+          <h2
+            id="brand-definition"
+            className="text-h3 font-semibold tracking-[var(--tracking-heading)] text-text"
+          >
             {t('brand.definitionTitle')}
           </h2>
-          <p className="mt-1 max-w-prose text-sm text-text-muted">{t('brand.definitionIntro')}</p>
+          <p className="mt-1 max-w-[var(--container-prose)] text-ui text-text-muted">
+            {t('brand.definitionIntro')}
+          </p>
         </div>
-        <p role="status" className="text-sm text-text-muted">
+        <p role="status" className="text-meta text-success-text">
           {savedVisible ? t('brand.saved') : ''}
         </p>
       </div>
@@ -134,7 +139,12 @@ export function BrandForm({
         <SettingsProblem problem={state.problem} />
       ) : null}
 
-      <form ref={formRef} action={formAction} className="flex flex-col gap-6" noValidate>
+      <form
+        ref={formRef}
+        action={formAction}
+        className="flex flex-col gap-[var(--spacing-card)]"
+        noValidate
+      >
         <input type="hidden" name="workspace_slug" value={workspaceSlug} readOnly />
         <input type="hidden" name="logo_asset_id" value={values.logo?.id ?? ''} readOnly />
 
@@ -151,8 +161,8 @@ export function BrandForm({
           <FieldError name="name" errors={fieldErrors} />
         </div>
 
-        <fieldset className="flex flex-col gap-4">
-          <legend className="text-sm font-semibold uppercase text-text-muted">
+        <fieldset className="flex flex-col gap-[var(--spacing-gutter)]">
+          <legend className="meta-caps mb-[var(--spacing-inline)] text-text-muted">
             {t('brand.colorsLegend')}
           </legend>
           <BrandColorField
@@ -197,11 +207,13 @@ export function BrandForm({
           />
         </fieldset>
 
-        <fieldset className="flex flex-col gap-2">
-          <legend className="text-sm font-semibold uppercase text-text-muted">
+        <fieldset className="flex flex-col gap-[var(--spacing-stack)]">
+          <legend className="meta-caps mb-[var(--spacing-inline)] text-text-muted">
             {t('brand.logo')}
           </legend>
-          <p className="max-w-prose text-sm text-text-muted">{t('brand.logoHint')}</p>
+          <p className="max-w-[var(--container-prose)] text-meta text-text-muted">
+            {t('brand.logoHint')}
+          </p>
           <BrandLogoField
             workspaceId={workspaceId}
             value={values.logo}
@@ -209,11 +221,13 @@ export function BrandForm({
           />
         </fieldset>
 
-        <fieldset className="flex flex-col gap-4">
-          <legend className="text-sm font-semibold uppercase text-text-muted">
+        <fieldset className="flex flex-col gap-[var(--spacing-gutter)]">
+          <legend className="meta-caps mb-[var(--spacing-inline)] text-text-muted">
             {t('brand.typographyLegend')}
           </legend>
-          <p className="max-w-prose text-sm text-text-muted">{t('brand.fontNote')}</p>
+          <p className="max-w-[var(--container-prose)] text-meta text-text-muted">
+            {t('brand.fontNote')}
+          </p>
           <SelectField
             name="heading_stack"
             label={t('brand.headingFont')}

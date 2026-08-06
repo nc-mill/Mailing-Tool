@@ -1,7 +1,6 @@
 'use client';
 
 import { Link, usePathname, useRouter } from '@mlain/i18n/navigation';
-import { workspaceAccent } from '@mlain/ui/lib/workspace-accent';
 import { visibleNavigation } from '@mlain/ui/patterns/navigation';
 import { AppShell, Sidebar, Topbar, WorkspaceSwitcher } from '@mlain/ui/patterns/shell';
 import type { SystemBarState, WorkspaceSummary } from '@mlain/ui/patterns/shell';
@@ -12,6 +11,9 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { ActionState } from '@/lib/feedback/action-result';
 import { CreateWorkspaceDialog } from './create-workspace-dialog';
 import { UserMenu } from './user-menu';
+
+/** Klíč, pod kterým si prohlížeč pamatuje zabalené boční menu. */
+const SIDEBAR_STORAGE_KEY = 'mlain.sidebar';
 
 export type WorkspaceShellProps = {
   /** Všechny projekty přihlášeného, ne jen ten otevřený. */
@@ -56,6 +58,27 @@ export function WorkspaceShell({
   const pathname = usePathname();
   const [creating, setCreating] = useState(false);
 
+  /**
+   * Zabalení bočního menu si pamatuje prohlížeč.
+   *
+   * Server o té volbě neví, takže první vykreslení je vždycky ROZBALENÉ menu
+   * a teprve po připojení se přepne. Kdyby si stav četl už první render,
+   * server a klient by vykreslily jiné menu a React by hlásil nesoulad
+   * hydratace, který sám neopraví.
+   */
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    setCollapsed(window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'collapsed');
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((previous) => {
+      const next = !previous;
+      window.localStorage.setItem(SIDEBAR_STORAGE_KEY, next ? 'collapsed' : 'expanded');
+      return next;
+    });
+  };
+
   const [offline, setOffline] = useState(false);
   useEffect(() => {
     const update = () => setOffline(!navigator.onLine);
@@ -75,7 +98,20 @@ export function WorkspaceShell({
     workspaceSlug,
     ...(greetingEnabled ? {} : { hiddenIds: ['contacts-greeting-queue'] }),
   });
-  const accent = workspaceAccent(currentWorkspaceId);
+  /**
+   * Šířka hlavního sloupce se rozhoduje TADY, ve skořápce, ne na obrazovce.
+   *
+   * Obrazovka na to nedosáhne: `<main>` i jeho vnitřní okraj patří skořápce
+   * a stránka se vykresluje až uvnitř něj. Kdyby si strop nastavovala sama,
+   * musela by ho každá z dvanácti obrazovek nastavit znovu a jedna by se
+   * spletla.
+   *
+   * ŠIROKÁ JE VÝCHOZÍ. Šest ze sedmi návrhů má hlavní sloupec 1560 px, jen
+   * Přehled 1320. Tabulka kontaktů má deset sloupců a při 1320 px se e-maily
+   * ořezávají třemi tečkami tam, kde se v návrhu vejdou celé.
+   */
+  const isOverview = pathname === `/w/${workspaceSlug}`;
+
   const systemBarStates: SystemBarState[] = offline
     ? [{ kind: 'offline', message: t('systemBar.offline') }]
     : [];
@@ -117,6 +153,7 @@ export function WorkspaceShell({
     >
       <TooltipProvider>
         <AppShell
+          wide={!isOverview}
           topbar={
             <Topbar
               workspaceSwitcher={
@@ -149,8 +186,8 @@ export function WorkspaceShell({
             <Sidebar
               items={items}
               currentPath={pathname}
-              collapsed={false}
-              accentColor={accent}
+              collapsed={collapsed}
+              onToggleCollapse={toggleCollapsed}
               translate={(labelKey) => t(labelKey.replace(/^common\./, ''))}
               renderLink={({ href, label, active, children: linkChildren }) => (
                 <Link
@@ -162,7 +199,12 @@ export function WorkspaceShell({
                   {linkChildren}
                 </Link>
               )}
-              labels={{ mainNavigation: t('shell.mainNavigation') }}
+              labels={{
+                mainNavigation: t('shell.mainNavigation'),
+                collapse: t('shell.collapseSidebar'),
+                expand: t('shell.expandSidebar'),
+                toggleSection: (section: string) => t('shell.toggleSection', { section }),
+              }}
             />
           }
           systemBarStates={systemBarStates}

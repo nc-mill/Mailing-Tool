@@ -62,7 +62,11 @@ export default async function WorkspaceDashboardPage({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    // Panel prvních kroků a pruh ukázkových dat jsou SEKCE nad obrazovkou,
+    // proto `--spacing-section` (25 px), tedy tatáž mezera, jakou si pod sebe
+    // píše `PageHeader`. Rytmus stránky pak drží i tehdy, když je nad hlavičkou
+    // jeden pruh, oba, nebo žádný.
+    <div className="flex flex-col gap-[var(--spacing-section)]">
       {onboarding.ok && <OnboardingPanel state={onboarding.data.data} slug={workspaceSlug} />}
       {demo.ok && <DemoDataBanner state={demo.data.data} slug={workspaceSlug} />}
       <DashboardGrid workspaceSlug={workspaceSlug} />

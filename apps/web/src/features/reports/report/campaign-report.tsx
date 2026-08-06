@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useTranslations } from 'next-intl';
+import { Button } from '@mlain/ui/components/button';
+import { Card } from '@mlain/ui/components/card';
+import { PageHeader } from '@mlain/ui/components/page-header';
+import { RefreshCw } from '@mlain/ui/icons';
+import { Alert } from '@mlain/ui/patterns/states';
+import { CampaignBreadcrumbs } from '@/features/campaigns/campaign-breadcrumbs';
 import {
   campaignLinksUrl,
   campaignProgressUrl,
@@ -36,6 +42,7 @@ export function CampaignReport({
   campaignId: string;
 }) {
   const t = useTranslations('reports');
+  const format = useFormatter();
   const router = useRouter();
   const searchParams = useSearchParams();
   /*
@@ -139,34 +146,44 @@ export function CampaignReport({
 
   if (error) {
     return (
-      <div role="alert" className="rounded-lg border border-danger p-4">
-        <p>{t('report.states.error')}</p>
-        <button
-          type="button"
-          className="inline-flex min-h-6 min-w-6 items-center justify-center rounded px-2 py-1 border border-border"
-          onClick={() => router.refresh()}
-        >
-          {t('report.states.retry')}
-        </button>
-        <details>
-          <summary>{t('report.diagnostics.heading')}</summary>
-          <p className="text-xs">
+      <Card role="alert" className="border-danger" gap="stack">
+        <p className="text-ui text-text">{t('report.states.error')}</p>
+        <div>
+          <Button variant="secondary" size="sm" onClick={() => router.refresh()}>
+            <RefreshCw aria-hidden className="icon-sm" />
+            {t('report.states.retry')}
+          </Button>
+        </div>
+        <details className="border-t border-border pt-3">
+          <summary className="cursor-pointer text-ui text-accent-text">
+            {t('report.diagnostics.heading')}
+          </summary>
+          <p className="pt-[var(--spacing-inline)] font-mono text-meta text-text-muted">
             {error.code} {error.requestId}
           </p>
         </details>
-      </div>
+      </Card>
     );
   }
 
   if (!payload)
-    return <div aria-busy="true" className="h-64 animate-pulse rounded-lg bg-surface-muted" />;
+    return (
+      <div
+        aria-busy="true"
+        className="h-64 animate-pulse rounded-[var(--radius-surface)] bg-surface-muted"
+      />
+    );
 
   if (payload.status === 'draft') {
     return (
-      <div className="rounded-lg border border-border p-6">
-        <p>{t('report.states.draft')}</p>
-        <a href={`/w/${workspaceSlug}/campaigns/${campaignId}`}>{t('report.states.draftAction')}</a>
-      </div>
+      <Card>
+        <p className="text-ui text-text">{t('report.states.draft')}</p>
+        <p>
+          <a href={`/w/${workspaceSlug}/campaigns/${campaignId}`}>
+            {t('report.states.draftAction')}
+          </a>
+        </p>
+      </Card>
     );
   }
 
@@ -180,153 +197,181 @@ export function CampaignReport({
    */
   const gap = feedbackGap(payload, now);
 
+  /*
+   * Meta řádek pod nadpisem: předmět, kdy to odešlo a kolika lidem. Skládá se
+   * z toho, co v souhrnu doopravdy je; chybějící údaj se vynechá, ne aby se
+   * do řádku dostalo prázdné místo za tečkou.
+   */
+  const sentAt = payload.finished_at ?? payload.started_at;
+  const meta = [
+    `${t('report.subjectLabel')}: ${payload.subject}`,
+    sentAt === null ? null : t('report.sentAt', { at: format.dateTime(new Date(sentAt), 'short') }),
+    payload.counts.sent === undefined
+      ? null
+      : t('report.recipientCount', { count: payload.counts.sent }),
+  ]
+    .filter((part): part is string => part !== null)
+    .join(' · ');
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col">
       {/*
        * Hlavička říká, ČÍ report to je. Bez ní se ze seznamu kampaní kliklo na
        * řádek a přistálo se na stránce plné čísel bez jediného slova o tom,
        * která kampaň to je; jméno ani předmět se nikde nevykreslovaly, přestože
        * obojí v odpovědi `/stats` je.
+       *
+       * Spodní mezeru si hlavička píše sama, proto obal mezeru nemá a zbytek
+       * reportu ji má ve vlastním sloupci.
        */}
-      <header className="flex flex-col gap-1">
-        <p className="text-sm text-text-muted">{t('report.title')}</p>
-        <h1 className="text-2xl font-semibold">{payload.name}</h1>
-        <p className="text-sm text-text-muted">
-          {t('report.subjectLabel')}: {payload.subject}
-        </p>
+      <PageHeader
+        title={payload.name}
+        eyebrow={t('report.title')}
+        meta={meta}
+        breadcrumbs={
+          <CampaignBreadcrumbs basePath={`/w/${workspaceSlug}`} campaignName={payload.name} />
+        }
+        actions={
+          <>
+            {/*
+             * Cesta zpátky na průběh. Report a průběh jsou dvě strany téže
+             * kampaně a musí jít přejít OBĚMA směry: z průběhu na výsledky vede
+             * odkaz z `ProgressScreen`, odsud se dá zpátky podívat, jak
+             * rozesílka běžela.
+             */}
+            <a
+              href={`/w/${workspaceSlug}/campaigns/${campaignId}/progress`}
+              className="text-ui"
+              data-testid="report-to-progress"
+            >
+              {t('report.toProgress')}
+            </a>
+            {/*
+             * Ruční obnovení patří k číslům, ne na konec stránky za akce.
+             * V plánu viselo úplně dole a bez souvislosti vypadalo jako tlačítko
+             * k ničemu; tady je v hlavičce vedle stavu, kde dává smysl.
+             */}
+            <Button variant="secondary" size="sm" onClick={live.refresh}>
+              <RefreshCw aria-hidden className="icon-sm" />
+              {t('report.states.retry')}
+            </Button>
+          </>
+        }
+      />
+
+      <div className="flex flex-col gap-[var(--spacing-gutter)]">
         {/*
-         * Cesta zpátky na průběh. Report a průběh jsou dvě strany téže kampaně
-         * a musí jít přejít OBĚMA směry: z průběhu na výsledky vede odkaz
-         * z `ProgressScreen`, odsud se dá zpátky podívat, jak rozesílka běžela.
+         * NESPOČÍTANÝ SOUHRN SE PŘIZNÁ NAHOŘE, PŘED VŠEMI ČÍSLY. Netýká se
+         * jedné dlaždice, ale celé stránky: dokud souhrn nevznikl, je každá
+         * hodnota níž nula z prázdného řádku, ne měření. Naměřeno v prohlížeči
+         * na odeslané kampani, kde průběh hlásil tři odeslané zprávy a report
+         * samé nuly.
          */}
-        <p className="text-sm">
-          <a
-            href={`/w/${workspaceSlug}/campaigns/${campaignId}/progress`}
-            className="underline"
-            data-testid="report-to-progress"
-          >
-            {t('report.toProgress')}
-          </a>
-        </p>
-      </header>
+        {statsNotComputed(payload) ? (
+          <Alert tone="warning" role="status" data-testid="stats-not-computed">
+            {t('report.states.notComputed')}
+          </Alert>
+        ) : null}
 
-      {/*
-       * NESPOČÍTANÝ SOUHRN SE PŘIZNÁ NAHOŘE, PŘED VŠEMI ČÍSLY. Netýká se
-       * jedné dlaždice, ale celé stránky: dokud souhrn nevznikl, je každá
-       * hodnota níž nula z prázdného řádku, ne měření. Naměřeno v prohlížeči
-       * na odeslané kampani, kde průběh hlásil tři odeslané zprávy a report
-       * samé nuly.
-       */}
-      {statsNotComputed(payload) ? (
-        <p
-          role="status"
-          data-testid="stats-not-computed"
-          className="rounded-lg border border-border bg-warning-surface px-4 py-3 text-sm text-warning-text"
-        >
-          {t('report.states.notComputed')}
-        </p>
-      ) : null}
-
-      {/* Pruh je pruh, ne odstavec: podklad a barevná linka ho oddělí od čísel
+        {/* Pruh je pruh, ne odstavec: podklad a barevná linka ho oddělí od čísel
           pod ním, jinak splyne s obsahem a uživatel ho přehlédne. */}
-      {banner === null ? null : (
-        <p
-          role="status"
-          className={
-            banner.tone === 'warning'
-              ? 'rounded-lg border border-border bg-warning-surface px-4 py-3 text-sm text-warning-text'
-              : 'rounded-lg border border-border bg-accent-surface px-4 py-3 text-sm text-accent-text'
-          }
-        >
-          {t(banner.key, banner.values)}
-        </p>
-      )}
-      {live.state.degraded ? (
-        <p
-          role="status"
-          className="rounded-lg border border-border bg-surface-muted px-4 py-2 text-xs text-text-muted"
-        >
-          {t('report.banner.liveUnavailable')}
-        </p>
-      ) : null}
-      {payload.small_sample ? <p className="text-sm">{t('report.states.smallSample')}</p> : null}
+        {banner === null ? null : (
+          <Alert tone={banner.tone === 'warning' ? 'warning' : 'info'} role="status">
+            {t(banner.key, banner.values)}
+          </Alert>
+        )}
 
-      {/*
-       * Ruční obnovení patří k číslům, ne na konec stránky za akce.
-       * V plánu viselo úplně dole a bez souvislosti vypadalo jako tlačítko
-       * k ničemu; tady je vedle pruhu o stavu, kde dává smysl.
-       */}
-      <div className="flex items-center justify-end">
-        <button
-          type="button"
-          className="inline-flex min-h-6 items-center justify-center rounded border border-border bg-surface px-3 py-1 text-sm text-text"
-          onClick={live.refresh}
-        >
-          {t('report.states.retry')}
-        </button>
-      </div>
+        {/*
+         * Výhrady k číslům jedou v JEDNOM tlumeném pruhu, ne každá zvlášť:
+         * jsou to poznámky pod čarou k celé stránce a tři barevné bloky za sebou
+         * by přebily čísla, kvůli kterým se report otevírá.
+         */}
+        {live.state.degraded || payload.small_sample ? (
+          <Card
+            as="div"
+            tone="muted"
+            padding="none"
+            gap="none"
+            role="status"
+            className="flex-row flex-wrap items-center gap-x-[var(--spacing-stack)] gap-y-1 px-[var(--spacing-row-x)] py-3"
+          >
+            {live.state.degraded ? (
+              <span className="font-mono text-meta text-text-muted">
+                {t('report.banner.liveUnavailable')}
+              </span>
+            ) : null}
+            {payload.small_sample ? (
+              <span className="font-mono text-meta text-text-muted">
+                {t('report.states.smallSample')}
+              </span>
+            ) : null}
+          </Card>
+        ) : null}
 
-      {/* testid je tu kvůli testům v prohlížeči: hlavní dlaždice se hledají
+        {/* testid je tu kvůli testům v prohlížeči: hlavní dlaždice se hledají
           uvnitř tohohle bloku, ne na celé stránce, kde jsou i nadpisy skořápky. */}
-      <div data-testid="headline-tiles">
-        <HeadlineTiles payload={payload} />
+        <div data-testid="headline-tiles">
+          <HeadlineTiles payload={payload} />
+        </div>
+        <OpensPanel payload={payload} mode={mode} onModeChange={changeMode} />
+        <ProblemsPanel
+          payload={payload}
+          gap={gap}
+          onShowWho={(filter) => changeRecipientsFilter(parseFilter(filter))}
+        />
+        {/*
+         * Patička stojí VEDLE odkazů na obsah, ne pod nimi. Blízko, protože
+         * odpovídá na tutéž otázku „kam lidé klikali"; jako vlastní panel,
+         * protože se to nesmí sečíst s mírou prokliku.
+         */}
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[var(--spacing-gutter)]">
+          <LinksTable links={links} disabled={!payload.track_clicks} />
+          <SystemLinksPanel clicks={systemLinks} />
+        </div>
+        {/*
+         * Graf kreslí JEN ŘADY, KTERÉ SE DOOPRAVDY MĚŘÍ. Bez tohohle příznaku
+         * vedle sebe na jedné stránce stálo „Doručeno: Zatím nevíme" a plochá
+         * čára Doručeno na nule, tedy dvě opačná tvrzení o téže věci.
+         */}
+        <ProgressChart
+          points={progress.points}
+          compacted={progress.compacted}
+          granularity={granularity}
+          onGranularityChange={changeGranularity}
+          measured={{
+            delivered: payload.delivered_known,
+            opens: payload.track_opens,
+            clicks: payload.track_clicks,
+          }}
+        />
+        {/*
+         * DOPLNĚK PROTI PLÁNU: panel příjemců je součástí reportu.
+         * Plán ho v úkolu 32 vytvořil, ale nikam nenapojil, přestože tlačítko
+         * „Zobrazit komu" v panelu problémů nastavuje `?recipients=...`.
+         * Bez tohohle řádku by seznam příjemců existoval a nešel otevřít.
+         */}
+        <RecipientsPanel
+          campaignId={campaignId}
+          filter={recipientsFilter}
+          onFilterChange={changeRecipientsFilter}
+          tracking={{ trackOpens: payload.track_opens, trackClicks: payload.track_clicks }}
+        />
+        {/*
+         * Odeslaná podoba patří pod čísla, ne nad ně: report se otevírá kvůli
+         * výsledkům a náhled je odpověď na otázku „co přesně lidé viděli",
+         * která přichází až po nich. Je jen ke čtení, tlačítko na úpravu nemá.
+         */}
+        {/*
+         * Webová aktivita stojí ZA odkazy a před náhledem odeslané podoby.
+         * Je to odpověď na otázku „a co dělali potom", která přichází hned po
+         * „kam klikali", takže patří k sobě; má ale vlastní zdroj dat, vlastní
+         * pravidlo připsání a vlastní prázdný stav, proto je to vlastní panel.
+         */}
+        <WebActivityPanel campaignId={campaignId} workspaceSlug={workspaceSlug} />
+        <SentPreview campaignId={campaignId} />
+        <DiagnosticsPanel payload={payload} />
+        <FollowUpActions workspaceSlug={workspaceSlug} campaignId={campaignId} />
       </div>
-      <OpensPanel payload={payload} mode={mode} onModeChange={changeMode} />
-      <ProblemsPanel
-        payload={payload}
-        gap={gap}
-        onShowWho={(filter) => changeRecipientsFilter(parseFilter(filter))}
-      />
-      <LinksTable links={links} disabled={!payload.track_clicks} />
-      {/*
-       * Patička stojí HNED ZA odkazy na obsah, ale jako samostatný panel.
-       * Blízko, protože odpovídá na tutéž otázku „kam lidé klikali"; odděleně,
-       * protože se to nesmí sečíst s mírou prokliku.
-       */}
-      <SystemLinksPanel clicks={systemLinks} />
-      {/*
-       * Graf kreslí JEN ŘADY, KTERÉ SE DOOPRAVDY MĚŘÍ. Bez tohohle příznaku
-       * vedle sebe na jedné stránce stálo „Doručeno: Zatím nevíme" a plochá
-       * čára Doručeno na nule, tedy dvě opačná tvrzení o téže věci.
-       */}
-      <ProgressChart
-        points={progress.points}
-        compacted={progress.compacted}
-        granularity={granularity}
-        onGranularityChange={changeGranularity}
-        measured={{
-          delivered: payload.delivered_known,
-          opens: payload.track_opens,
-          clicks: payload.track_clicks,
-        }}
-      />
-      {/*
-       * DOPLNĚK PROTI PLÁNU: panel příjemců je součástí reportu.
-       * Plán ho v úkolu 32 vytvořil, ale nikam nenapojil, přestože tlačítko
-       * „Zobrazit komu" v panelu problémů nastavuje `?recipients=...`.
-       * Bez tohohle řádku by seznam příjemců existoval a nešel otevřít.
-       */}
-      <RecipientsPanel
-        campaignId={campaignId}
-        filter={recipientsFilter}
-        onFilterChange={changeRecipientsFilter}
-        tracking={{ trackOpens: payload.track_opens, trackClicks: payload.track_clicks }}
-      />
-      {/*
-       * Odeslaná podoba patří pod čísla, ne nad ně: report se otevírá kvůli
-       * výsledkům a náhled je odpověď na otázku „co přesně lidé viděli",
-       * která přichází až po nich. Je jen ke čtení, tlačítko na úpravu nemá.
-       */}
-      {/*
-       * Webová aktivita stojí ZA odkazy a před náhledem odeslané podoby.
-       * Je to odpověď na otázku „a co dělali potom", která přichází hned po
-       * „kam klikali", takže patří k sobě; má ale vlastní zdroj dat, vlastní
-       * pravidlo připsání a vlastní prázdný stav, proto je to vlastní panel.
-       */}
-      <WebActivityPanel campaignId={campaignId} workspaceSlug={workspaceSlug} />
-      <SentPreview campaignId={campaignId} />
-      <DiagnosticsPanel payload={payload} />
-      <FollowUpActions workspaceSlug={workspaceSlug} campaignId={campaignId} />
     </div>
   );
 }

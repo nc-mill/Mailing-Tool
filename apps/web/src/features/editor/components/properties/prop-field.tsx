@@ -84,7 +84,7 @@ export function PropField(props: Omit<ControlProps, 'id'>) {
           <TooltipProvider>
             <Tooltip content={t(hint)}>
               <span data-testid={`hint-${props.descriptor.key}`} tabIndex={0} aria-label={t(hint)}>
-                <Info aria-hidden className="size-3 text-text-muted" />
+                <Info aria-hidden className="icon-xs text-text-muted" />
               </span>
             </Tooltip>
           </TooltipProvider>

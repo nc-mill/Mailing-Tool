@@ -1,5 +1,9 @@
 'use client';
 
+import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
+import { Plus } from '@mlain/ui/icons';
+import { Alert } from '@mlain/ui/patterns/states';
 import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 
@@ -115,94 +119,123 @@ export function StepMapping({
   );
 
   return (
-    <div className="flex flex-col gap-4">
-      <h2>{t('mapping.title')}</h2>
+    <div className="flex flex-col gap-[var(--spacing-gutter)]">
+      <CardTitle>{t('mapping.title')}</CardTitle>
 
-      <table>
-        <caption className="sr-only">{t('mapping.title')}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{t('mapping.columnInFile')}</th>
-            <th scope="col">{t('mapping.sample')}</th>
-            <th scope="col">{t('mapping.saveAs')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {preview.columns.map((column) => (
-            <tr key={column.name}>
-              <th scope="row">
-                <label htmlFor={`map-${column.name}`}>{column.name}</label>
+      {/* Tabulka mapování. Rozbalovátko je NATIVNÍ `select`, ne komponenta
+          `Select`: krok si na něj drží `ref` a při chybějícím e-mailu na něj
+          posadí fokus, což přes portálovanou nabídku udělat nejde. Vzhled se
+          proto dorovnává třídami pole, ne výměnou prvku. */}
+      <Card as="div" padding="none" gap="none" className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-left">
+          <caption className="sr-only">{t('mapping.title')}</caption>
+          <thead>
+            <tr className="border-b border-border bg-surface-muted">
+              <th scope="col" className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted">
+                {t('mapping.columnInFile')}
               </th>
-              <td>{column.sample}</td>
-              <td>
-                <select
-                  id={`map-${column.name}`}
-                  ref={(node) => {
-                    if (node) selects.current.set(column.name, node);
-                  }}
-                  value={mapping[column.name] ?? 'ignore'}
-                  onChange={(event) =>
-                    setMapping((previous) => ({ ...previous, [column.name]: event.target.value }))
-                  }
-                >
-                  <option value="ignore">{t('mapping.ignore')}</option>
-                  {TARGETS.map((target) => (
-                    <option key={target} value={target}>
-                      {t(`mapping.targets.${target}`)}
-                    </option>
-                  ))}
-                  {/* Založená vlastní pole. Bez téhle položky by se hodnota
-                      `attribute:<klíč>` v rozbalovátku neměla čím zobrazit
-                      a prohlížeč by spadl zpátky na první možnost. */}
-                  {Object.entries(createdFields).map(([key, label]) => (
-                    <option key={key} value={`attribute:${key}`}>
-                      {t('mapping.customField', { name: label })}
-                    </option>
-                  ))}
-                </select>
-                {mapping[column.name] === 'full_name' ? <p>{t('mapping.willSplit')}</p> : null}
-              </td>
+              <th scope="col" className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted">
+                {t('mapping.sample')}
+              </th>
+              <th scope="col" className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted">
+                {t('mapping.saveAs')}
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {preview.columns.map((column) => (
+              <tr key={column.name} className="border-b border-border last:border-b-0">
+                <th
+                  scope="row"
+                  className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)] align-top"
+                >
+                  <label htmlFor={`map-${column.name}`} className="text-ui font-semibold text-text">
+                    {column.name}
+                  </label>
+                </th>
+                {/* Ukázka je obsah cizího souboru, čte se po znacích. */}
+                <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)] align-top font-mono text-meta text-text-muted">
+                  {column.sample}
+                </td>
+                <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)] align-top">
+                  <select
+                    id={`map-${column.name}`}
+                    ref={(node) => {
+                      if (node) selects.current.set(column.name, node);
+                    }}
+                    className="min-h-[var(--size-target-min)] w-full min-w-[180px] rounded-[var(--radius-control)] border border-border-strong bg-field px-3.5 py-2.5 text-ui text-text"
+                    value={mapping[column.name] ?? 'ignore'}
+                    onChange={(event) =>
+                      setMapping((previous) => ({ ...previous, [column.name]: event.target.value }))
+                    }
+                  >
+                    <option value="ignore">{t('mapping.ignore')}</option>
+                    {TARGETS.map((target) => (
+                      <option key={target} value={target}>
+                        {t(`mapping.targets.${target}`)}
+                      </option>
+                    ))}
+                    {/* Založená vlastní pole. Bez téhle položky by se hodnota
+                        `attribute:<klíč>` v rozbalovátku neměla čím zobrazit
+                        a prohlížeč by spadl zpátky na první možnost. */}
+                    {Object.entries(createdFields).map(([key, label]) => (
+                      <option key={key} value={`attribute:${key}`}>
+                        {t('mapping.customField', { name: label })}
+                      </option>
+                    ))}
+                  </select>
+                  {mapping[column.name] === 'full_name' ? (
+                    <p className="mt-1.5 text-meta text-text-muted">{t('mapping.willSplit')}</p>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
 
       {/* Tlačítko dřív nemělo obsluhu a nedělalo nic. Teď založí vlastní pole
           a rovnou na něj sloupec namapuje, takže sloupec navíc nemusí skončit
           v koši. */}
-      {unmapped.map((column) => (
-        <button
-          key={column.name}
-          type="button"
-          className="self-start text-sm underline"
-          onClick={() => void createField(column.name)}
-        >
-          {creating === column.name
-            ? t('mapping.creatingField', { name: column.name })
-            : t('mapping.createField', { name: column.name })}
-        </button>
-      ))}
+      {unmapped.length > 0 ? (
+        <div className="flex flex-wrap gap-[var(--spacing-inline)]">
+          {unmapped.map((column) => (
+            <Button
+              key={column.name}
+              variant="secondary"
+              size="sm"
+              pending={creating === column.name}
+              pendingLabel={t('mapping.creatingField', { name: column.name })}
+              onClick={() => void createField(column.name)}
+            >
+              <Plus aria-hidden className="icon-sm" />
+              {t('mapping.createField', { name: column.name })}
+            </Button>
+          ))}
+        </div>
+      ) : null}
 
       {createFailed === null ? null : (
-        <p role="alert">{t('mapping.createFieldFailed', { name: createFailed })}</p>
+        <Alert tone="error">{t('mapping.createFieldFailed', { name: createFailed })}</Alert>
       )}
 
       {duplicate ? (
-        <p role="alert">
+        <Alert tone="warning">
           {t('mapping.duplicateTarget', {
             field: t(`mapping.targets.${duplicate[0]}`),
             columns: duplicate[1].join(' a '),
           })}
-        </p>
+        </Alert>
       ) : null}
 
-      {showNoEmail ? <p role="alert">{t('mapping.noEmail')}</p> : null}
+      {showNoEmail ? <Alert tone="error">{t('mapping.noEmail')}</Alert> : null}
 
       {/* Tlačítko primární akce NIKDY nemá disabled. Mrtvé tlačítko neřekne
           proč; tohle po kliknutí vysvětlí důvod a posadí fokus tam, kde se
           dá chyba opravit. */}
-      <button
-        type="button"
+      <Button
+        variant="primary"
+        className="self-start"
         onClick={() => {
           if (emailColumn === undefined) {
             setShowNoEmail(true);
@@ -214,7 +247,7 @@ export function StepMapping({
         }}
       >
         {t('mapping.next')}
-      </button>
+      </Button>
     </div>
   );
 }

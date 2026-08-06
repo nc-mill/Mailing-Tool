@@ -2,8 +2,9 @@
 
 import { useFormatter, useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
-import { Button } from '@mlain/ui/components/button';
+import { IconButton } from '@mlain/ui/components/icon-button';
 import { Skeleton } from '@mlain/ui/components/skeleton';
+import { Trash2 } from '@mlain/ui/icons';
 import { DataTable, type DataTableLabels } from '@mlain/ui/patterns/data-table';
 import { EmptyState, ErrorBlock } from '@mlain/ui/patterns/states';
 import { StatusBadge } from './status-badge';
@@ -16,6 +17,12 @@ export type CampaignRow = {
   audience_size: number | null;
   counters: { total: number; sent: number; delivered: number; bounced: number };
   updated_at: string;
+  /**
+   * Kdy kampaň dojela. Seznam z toho skládá jen meta řádek pod nadpisem
+   * („naposledy odesláno …"), takže je nepovinné: starší volající, které
+   * hlavičku nevykreslují, ho posílat nemusí.
+   */
+  finished_at?: string | null;
 };
 
 export type CampaignListState = 'loading' | 'empty' | 'error' | 'data';
@@ -45,12 +52,19 @@ export function CampaignList({
   onCreate,
   onRetry,
   onDelete,
+  columnSettings,
 }: {
   rows: CampaignRow[];
   state: CampaignListState;
   basePath?: string;
   onCreate?: () => void;
   onRetry?: () => void;
+  /**
+   * Stav panelu se sloupci, když si spouštěč drží hlavička obrazovky. Návrh
+   * má ikonový čtverec vedle hlavní akce, ne nad tabulkou; bez tohohle propu
+   * si tabulka tlačítko i stav řídí sama, jako dosud.
+   */
+  columnSettings?: { open: boolean; onOpenChange: (open: boolean) => void };
   /**
    * Otevře potvrzení smazání. Dialog i akce patří obalu, protože seznam sám
    * o projektu nic neví; bez téhle funkce se sloupec s mazáním nevykreslí,
@@ -131,6 +145,9 @@ export function CampaignList({
     columnSettings: tc('table.columns'),
     columnVisible: (column) => `${tc('table.columns')}: ${column}`,
     columnWidth: (column) => `${tc('table.columns')}: ${column}`,
+    // Bez tohohle popisku by panel se sloupci neměl jak zavřít, když si
+    // spouštěč drží hlavička obrazovky.
+    closeColumnSettings: tc('actions.close'),
   };
 
   return (
@@ -142,29 +159,62 @@ export function CampaignList({
       labels={labels}
       count={{ value: rows.length, precision: 'exact' }}
       columns={[
-        { id: 'name', header: t('list.columns.name'), cell: (row: CampaignRow) => row.name },
+        {
+          id: 'name',
+          header: t('list.columns.name'),
+          /*
+           * Název je TLAČÍTKO, ne jen text. Tabulka otevírá řádek klikem
+           * kamkoli, ale návrh dává názvu podtržení při najetí, tedy slib, že
+           * se dá kliknout přímo na něj. Tlačítka uvnitř řádku si `DataTable`
+           * schválně nevšímá, takže si cíl musí spočítat samo, a to týmž
+           * `campaignHref` jako aktivace řádku.
+           */
+          cell: (row: CampaignRow) => (
+            <button
+              type="button"
+              onClick={() => {
+                if (basePath) router.push(campaignHref(basePath, row.id, row.status));
+              }}
+              className="block max-w-full truncate text-left text-ui font-semibold text-text hover:underline"
+            >
+              {row.name}
+            </button>
+          ),
+        },
         {
           id: 'status',
           header: t('list.columns.status'),
+          width: 150,
           cell: (row: CampaignRow) => <StatusBadge status={row.status} />,
         },
         {
           id: 'audience',
           header: t('list.columns.audience'),
-          cell: (row: CampaignRow) =>
-            t('audience.recipientCount', { count: row.audience_size ?? row.counters.total }),
+          cell: (row: CampaignRow) => (
+            <span className="text-sm text-text-muted">
+              {t('audience.recipientCount', { count: row.audience_size ?? row.counters.total })}
+            </span>
+          ),
         },
         {
           id: 'sent',
           header: t('list.columns.sent'),
-          cell: (row: CampaignRow) => format.number(row.counters.sent),
+          width: 110,
+          cell: (row: CampaignRow) => (
+            <span className="font-mono text-sm text-text">{format.number(row.counters.sent)}</span>
+          ),
         },
         {
           id: 'updated',
           header: t('list.columns.updated'),
+          width: 130,
           // Zóna i jazyk jsou v poskytovateli, ne v dopočtu: server i klient
           // musí složit tentýž řetězec, jinak vznikne nesoulad hydratace.
-          cell: (row: CampaignRow) => format.dateTime(new Date(row.updated_at), 'short'),
+          cell: (row: CampaignRow) => (
+            <span className="font-mono text-meta text-text-muted">
+              {format.dateTime(new Date(row.updated_at), 'short')}
+            </span>
+          ),
         },
         /*
          * Sloupec s mazáním vzniká JEN tehdy, když obal dodal `onDelete`.
@@ -179,22 +229,35 @@ export function CampaignList({
               {
                 id: 'delete',
                 header: t('delete.columnHeader'),
+                width: 110,
                 cell: (row: CampaignRow) =>
                   DELETABLE_STATUSES.has(row.status) ? (
-                    <Button
-                      variant="destructive"
-                      size="sm"
+                    /*
+                     * Vidět je čtverec 34 px podle návrhu, ale kliká se do
+                     * 44 px: plochu roztahuje `before`, aby přístupnost
+                     * nezaplatila za to, že řádek tabulky je nízký.
+                     */
+                    <IconButton
+                      variant="ghost"
+                      size="row"
+                      label={t('delete.rowLabel', { name: row.name })}
+                      icon={<Trash2 aria-hidden className="icon-sm" />}
                       data-testid={`delete-campaign-${row.id}`}
                       onClick={() => onDelete(row)}
-                    >
-                      {t('delete.open')}
-                    </Button>
+                      className={[
+                        'relative text-danger-text hover:border-danger hover:text-danger-text',
+                        "before:absolute before:left-1/2 before:top-1/2 before:content-['']",
+                        'before:size-[var(--size-target-min)]',
+                        'before:-translate-x-1/2 before:-translate-y-1/2',
+                      ].join(' ')}
+                    />
                   ) : null,
               },
             ]
           : []),
       ]}
       pagination={{ hasMore: false, canGoBack: false, onPrevious: () => {}, onNext: () => {} }}
+      {...(columnSettings ? { columnSettings } : {})}
       {...(basePath
         ? {
             /*

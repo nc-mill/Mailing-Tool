@@ -3,6 +3,7 @@
 import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { Card } from '@mlain/ui/components/card';
 import { IndeterminateProgress, Progress } from '@mlain/ui/components/progress';
 import { Alert } from '@mlain/ui/patterns/states';
 import { isFinishedCampaign } from './campaign-target';
@@ -101,9 +102,12 @@ export function ProgressScreen({
   const preparing = progress.status === 'queueing' && c.total === 0;
 
   return (
-    <section className="flex flex-col gap-6" aria-labelledby="progress-title">
-      <div className="flex items-center gap-3">
-        <h2 id="progress-title" className="text-lg font-semibold">
+    <section className="flex flex-col gap-[var(--spacing-gutter)]" aria-labelledby="progress-title">
+      <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
+        <h2
+          id="progress-title"
+          className="text-h3 font-semibold tracking-[var(--tracking-heading)] text-text"
+        >
           {t('title')}
         </h2>
         <StatusBadge status={progress.status} />
@@ -116,14 +120,12 @@ export function ProgressScreen({
         <Alert tone="success" data-testid="progress-to-report">
           <p>{t('finished')}</p>
           <p>
-            <Link href={reportHref} className="underline">
-              {t('toReport')}
-            </Link>
+            <Link href={reportHref}>{t('toReport')}</Link>
           </p>
         </Alert>
       ) : (
-        <p className="text-sm">
-          <Link href={reportHref} className="underline" data-testid="progress-to-report">
+        <p className="text-ui">
+          <Link href={reportHref} data-testid="progress-to-report">
             {t('toReport')}
           </Link>
         </p>
@@ -132,7 +134,7 @@ export function ProgressScreen({
       {preparing ? (
         <div className="flex flex-col gap-2">
           <IndeterminateProgress label={t('preparing')} />
-          <p className="text-sm text-text-muted">{t('preparing')}</p>
+          <p className="text-meta text-text-muted">{t('preparing')}</p>
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -149,7 +151,7 @@ export function ProgressScreen({
           {/* Totéž číslo i pro toho, kdo čtečku nepoužívá. Pruh u tříprvkové
               kampaně skáče po třetinách a bez popisku není poznat, jestli se
               hnul, nebo ne. */}
-          <p className="text-sm text-text-muted" data-testid="progress-caption">
+          <p className="font-mono text-meta text-text-muted" data-testid="progress-caption">
             {t('barValueText', {
               sent: format.number(c.sent),
               total: format.number(c.total),
@@ -173,38 +175,62 @@ export function ProgressScreen({
 
       {actionFailed && <Alert tone="error">{t('actionFailed')}</Alert>}
 
-      <dl className="grid gap-4 sm:grid-cols-2" data-testid="progress-tiles">
-        <div data-testid="tile-sent">
-          <dt className="font-medium">{t('sentLabel')}</dt>
-          <dd className="text-2xl">{format.number(c.sent)}</dd>
-          <p className="text-sm text-text-muted">{t('sentHint')}</p>
-        </div>
-        <div data-testid="tile-delivered">
-          <dt className="font-medium">{t('deliveredLabel')}</dt>
-          <dd className={deliveryMeasured ? 'text-2xl' : 'text-2xl text-text-muted'}>
+      {/* Dlaždice s čísly. Skládají se z karty, mono verzálek a velkého čísla,
+          stejně jako v reportu; komponenta to není schválně, každá obrazovka
+          má v dlaždici něco jiného. */}
+      <dl
+        className="grid grid-cols-[repeat(auto-fit,minmax(230px,1fr))] gap-[var(--spacing-gutter)]"
+        data-testid="progress-tiles"
+      >
+        <Card as="div" padding="md" gap="none" data-testid="tile-sent">
+          <dt className="meta-caps text-text-muted">{t('sentLabel')}</dt>
+          <dd className="mt-3 text-display font-semibold leading-[var(--leading-number)] tracking-[var(--tracking-number)] text-text">
+            {format.number(c.sent)}
+          </dd>
+          <p className="mt-[var(--spacing-stack)] text-meta text-text-muted">{t('sentHint')}</p>
+        </Card>
+        <Card as="div" padding="md" gap="none" data-testid="tile-delivered">
+          <dt className="meta-caps text-text-muted">{t('deliveredLabel')}</dt>
+          <dd
+            className={
+              deliveryMeasured
+                ? 'mt-3 text-display font-semibold leading-[var(--leading-number)] tracking-[var(--tracking-number)] text-text'
+                : 'mt-3 text-lead text-text-muted'
+            }
+          >
             {deliveryMeasured ? format.number(c.delivered) : t('notMeasured')}
           </dd>
-          <p className="text-sm text-text-muted">
+          <p className="mt-[var(--spacing-stack)] text-meta text-text-muted">
             {deliveryMeasured ? t('deliveredHint') : t('notMeasuredHint')}
           </p>
-        </div>
-        <div data-testid="tile-bounced">
-          <dt className="font-medium">{t('bouncedLabel')}</dt>
-          <dd className={deliveryMeasured ? 'text-2xl' : 'text-2xl text-text-muted'}>
+        </Card>
+        <Card as="div" padding="md" gap="none" data-testid="tile-bounced">
+          <dt className="meta-caps text-text-muted">{t('bouncedLabel')}</dt>
+          <dd
+            className={
+              deliveryMeasured
+                ? 'mt-3 text-display font-semibold leading-[var(--leading-number)] tracking-[var(--tracking-number)] text-text'
+                : 'mt-3 text-lead text-text-muted'
+            }
+          >
             {deliveryMeasured ? format.number(c.bounced) : t('notMeasured')}
           </dd>
-          <p className="text-sm text-text-muted">
+          <p className="mt-[var(--spacing-stack)] text-meta text-text-muted">
             {deliveryMeasured ? t('bouncedHint') : t('notMeasuredHint')}
           </p>
-        </div>
+        </Card>
         {progress.ambiguous_count > 0 && (
-          <div data-testid="tile-ambiguous">
+          <Card as="div" padding="md" gap="none" data-testid="tile-ambiguous">
             {/* Nejisté odeslání je u SES běžný důsledek pádu, ne anomálie.
                 Zobrazuje se jako samostatná kategorie, ne mezi selháními. */}
-            <dt className="font-medium">{t('ambiguousLabel')}</dt>
-            <dd className="text-2xl">{format.number(progress.ambiguous_count)}</dd>
-            <p className="text-sm text-text-muted">{t('ambiguousHint')}</p>
-          </div>
+            <dt className="meta-caps text-text-muted">{t('ambiguousLabel')}</dt>
+            <dd className="mt-3 text-display font-semibold leading-[var(--leading-number)] tracking-[var(--tracking-number)] text-text">
+              {format.number(progress.ambiguous_count)}
+            </dd>
+            <p className="mt-[var(--spacing-stack)] text-meta text-text-muted">
+              {t('ambiguousHint')}
+            </p>
+          </Card>
         )}
       </dl>
 
@@ -226,14 +252,14 @@ export function ProgressScreen({
       )}
 
       {(progress.status === 'sending' || progress.status === 'queueing') && (
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
           {onPause && <Button onClick={onPause}>{t('pause')}</Button>}
           {onCancel && (
             <Button variant="destructive" onClick={onCancel}>
               {t('cancel')}
             </Button>
           )}
-          <p className="text-sm text-text-muted">{t('claimedNote')}</p>
+          <p className="text-meta text-text-muted">{t('claimedNote')}</p>
         </div>
       )}
     </section>

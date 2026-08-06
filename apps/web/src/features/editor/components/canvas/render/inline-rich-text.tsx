@@ -217,8 +217,11 @@ export function InlineRichText(props: {
             textAlign: 'left',
             background: 'var(--color-surface-overlay)',
             border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-control, 6px)',
-            boxShadow: '0 6px 20px rgb(0 0 0 / 0.14)',
+            // Vysouvací panel, ne ovládací prvek: rádius 10 px a měkký stín
+            // z tokenu `--shadow-flyout`, tedy tentýž, jaký má vysouvací panel
+            // bočního menu. Je to jediný stín, který systém povoluje.
+            borderRadius: 'var(--radius-surface)',
+            boxShadow: 'var(--shadow-flyout)',
             whiteSpace: 'nowrap',
             /*
              * ŠÍŘKA PODLE OBSAHU, NE PODLE BLOKU POD LIŠTOU.
@@ -270,8 +273,11 @@ export function InlineRichText(props: {
             zIndex: 30,
             background: 'var(--color-surface-overlay)',
             border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-control, 6px)',
-            boxShadow: '0 6px 20px rgb(0 0 0 / 0.14)',
+            // Vysouvací panel, ne ovládací prvek: rádius 10 px a měkký stín
+            // z tokenu `--shadow-flyout`, tedy tentýž, jaký má vysouvací panel
+            // bočního menu. Je to jediný stín, který systém povoluje.
+            borderRadius: 'var(--radius-surface)',
+            boxShadow: 'var(--shadow-flyout)',
           }}
           onMouseDown={(event) => event.preventDefault()}
           onClick={(event) => event.stopPropagation()}

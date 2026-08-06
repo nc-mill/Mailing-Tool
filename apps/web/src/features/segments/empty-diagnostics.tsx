@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { useTranslations } from 'next-intl';
 
 export type Diagnostics = {
@@ -33,25 +35,32 @@ export function EmptyDiagnostics({
   const others = data.perCondition.filter((item) => item !== data.mostRestrictive);
 
   return (
-    <div className="flex flex-col gap-3">
-      <h2>{t('empty.title')}</h2>
+    <Card gap="gutter">
+      <CardTitle>{t('empty.title')}</CardTitle>
 
       {data.mostRestrictive ? (
-        <section>
-          <h3>{t('empty.mostRestrictive')}</h3>
-          <p>
-            {data.mostRestrictive.label} {data.mostRestrictive.count}
+        <section className="grid gap-[var(--spacing-hairline)]">
+          <h3 className="text-ui font-semibold text-text">{t('empty.mostRestrictive')}</h3>
+          <p className="flex flex-wrap items-baseline gap-[var(--spacing-inline)] text-ui text-text">
+            {data.mostRestrictive.label}
+            <span className="font-mono text-meta text-text-muted">
+              {data.mostRestrictive.count}
+            </span>
           </p>
         </section>
       ) : null}
 
       {others.length > 0 ? (
-        <section>
-          <h3>{t('empty.others')}</h3>
-          <ul>
+        <section className="grid gap-[var(--spacing-hairline)]">
+          <h3 className="text-ui font-semibold text-text">{t('empty.others')}</h3>
+          <ul className="grid gap-1.5">
             {others.map((item) => (
-              <li key={item.path.join('.')}>
-                {item.label} {item.count}
+              <li
+                key={item.path.join('.')}
+                className="flex flex-wrap items-baseline gap-[var(--spacing-inline)] text-ui text-text"
+              >
+                {item.label}
+                <span className="font-mono text-meta text-text-muted">{item.count}</span>
               </li>
             ))}
           </ul>
@@ -59,7 +68,7 @@ export function EmptyDiagnostics({
       ) : null}
 
       {data.fieldStats ? (
-        <p>
+        <p className="text-sm text-text-muted">
           {t('empty.fieldStats', {
             field: data.fieldStats.key,
             filled: data.fieldStats.filled,
@@ -72,20 +81,26 @@ export function EmptyDiagnostics({
       ) : null}
 
       {data.caseSuggestion ? (
-        <div>
-          <p>{t('empty.caseSuggestion', { value: data.caseSuggestion })}</p>
-          <button type="button" onClick={() => onUseValue?.(data.caseSuggestion ?? '')}>
+        <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
+          <p className="text-ui text-text">
+            {t('empty.caseSuggestion', { value: data.caseSuggestion })}
+          </p>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => onUseValue?.(data.caseSuggestion ?? '')}
+          >
             {t('empty.useValue')}
-          </button>
+          </Button>
         </div>
       ) : null}
 
-      <div>
-        <p>{t('empty.includeEmpty')}</p>
-        <button type="button" onClick={onIncludeEmpty}>
+      <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
+        <p className="text-ui text-text">{t('empty.includeEmpty')}</p>
+        <Button variant="secondary" size="sm" onClick={onIncludeEmpty}>
           {t('empty.include')}
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }

@@ -2,11 +2,16 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { defaultModelFor, listProviders } from '@mlain/core/ai';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { CredentialForm } from '@/features/ai/credential-form';
 import { CredentialsSection } from '@/features/ai/credentials-section';
 import { UsageChart } from '@/features/ai/usage-chart';
 import { ForbiddenSection } from '@/features/settings/forbidden-section';
-import { SettingsPageShell } from '@/features/settings/settings-page-shell';
+import {
+  SettingsPageShell,
+  SettingsSection,
+  SettingsStack,
+} from '@/features/settings/settings-page-shell';
 import { SettingsProblem } from '@/features/settings/settings-problem';
 import { aiWorkspaceContext, fetchCredentials, fetchUsage } from '@/lib/ai/queries';
 import { requireUser } from '@/lib/identity/require-user';
@@ -82,39 +87,48 @@ export default async function AiSettingsPage({
 
   return (
     <SettingsPageShell title={t('credentials.title')} lead={t('byok.explain')}>
-      <div className="flex flex-col gap-12">
-        <section aria-labelledby="ai-credentials">
-          <h2 id="ai-credentials" className="sr-only">
-            {t('credentials.title')}
-          </h2>
-          <CredentialsSection
-            credentials={credentials}
-            providers={providers.map((provider) => ({
-              id: provider.id,
-              label: provider.label,
-              signupUrl: provider.signupUrl,
-            }))}
+      <SettingsStack>
+        <SettingsSection>
+          <section aria-labelledby="ai-credentials">
+            <h2 id="ai-credentials" className="sr-only">
+              {t('credentials.title')}
+            </h2>
+            <CredentialsSection
+              credentials={credentials}
+              providers={providers.map((provider) => ({
+                id: provider.id,
+                label: provider.label,
+                signupUrl: provider.signupUrl,
+              }))}
+              workspaceId={access.data.workspace.id}
+              slug={workspaceSlug}
+            />
+          </section>
+        </SettingsSection>
+
+        <SettingsSection>
+          <CredentialForm
             workspaceId={access.data.workspace.id}
             slug={workspaceSlug}
+            providers={providers}
           />
-        </section>
+        </SettingsSection>
 
-        <CredentialForm
-          workspaceId={access.data.workspace.id}
-          slug={workspaceSlug}
-          providers={providers}
-        />
-
-        <section aria-labelledby="ai-usage">
-          <h2 id="ai-usage" className="text-xl font-semibold text-text">
-            {t('usage.title')}
-          </h2>
-          <p className="mt-2 max-w-prose text-text-muted">{t('usage.lead')}</p>
-          <div className="mt-6">
-            <UsageChart report={usage} />
+        {/* Spotřeba je karta jako každá jiná sekce nastavení: nadpis 19 px
+            přes `CardTitle`, ne `text-xl` z výchozí škály Tailwindu, a řádek
+            vysvětlení pod ním v tlumeném drobném písmu. */}
+        <Card aria-labelledby="ai-usage" gap="gutter">
+          <div className="flex flex-col gap-[var(--spacing-hairline)]">
+            <CardTitle>
+              <span id="ai-usage">{t('usage.title')}</span>
+            </CardTitle>
+            <p className="max-w-[var(--size-text-column)] text-meta text-text-muted">
+              {t('usage.lead')}
+            </p>
           </div>
-        </section>
-      </div>
+          <UsageChart report={usage} />
+        </Card>
+      </SettingsStack>
     </SettingsPageShell>
   );
 }

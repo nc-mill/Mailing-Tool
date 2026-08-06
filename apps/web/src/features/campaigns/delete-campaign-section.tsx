@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
+import { Trash2 } from '@mlain/ui/icons';
 import { deleteCampaignAction } from './actions';
 import { DeleteCampaignDialog, statusExplanationKey } from './delete-campaign-dialog';
 
@@ -35,27 +37,41 @@ export function DeleteCampaignSection({
    * řekne rovnou; a mlčení je ze všeho nejhorší, protože uživatel pak hledá
    * mazání tam, kde není.
    */
+  /*
+   * Karta mazání má DANGER RÁMEČEK, ne danger plochu: je to nebezpečná akce,
+   * ale ne chyba, takže má být poznat na první pohled a přesto nekřičet přes
+   * celou stránku.
+   */
+  const dangerCard = 'border-danger';
+
   if (!DELETABLE_STATUSES.has(campaign.status)) {
     return (
-      <section aria-labelledby="campaign-delete" className="flex flex-col gap-2">
-        <h2 id="campaign-delete" className="text-lg font-semibold">
-          {t('sectionTitle')}
-        </h2>
-        <p className="text-sm text-text-muted" data-testid="delete-campaign-blocked">
+      <Card aria-labelledby="campaign-delete" padding="md" className={dangerCard}>
+        <CardTitle className="text-danger-text">
+          <span id="campaign-delete">{t('sectionTitle')}</span>
+        </CardTitle>
+        <p className="text-meta text-text-muted" data-testid="delete-campaign-blocked">
           {t(statusExplanationKey(campaign.status))}
         </p>
-      </section>
+      </Card>
     );
   }
 
   return (
-    <section aria-labelledby="campaign-delete" className="flex flex-col gap-2">
-      <h2 id="campaign-delete" className="text-lg font-semibold">
-        {t('sectionTitle')}
-      </h2>
-      <p className="text-sm text-text-muted">{t('sectionHint')}</p>
+    <Card aria-labelledby="campaign-delete" padding="md" className={dangerCard}>
+      <CardTitle className="text-danger-text">
+        <span id="campaign-delete">{t('sectionTitle')}</span>
+      </CardTitle>
+      <p className="text-meta text-text-muted">{t('sectionHint')}</p>
       <div>
-        <Button variant="destructive" data-testid="delete-campaign" onClick={() => setOpen(true)}>
+        {/* Obrysová destruktivní, ne plná červená plocha: návrh chce, aby byla
+            akce vidět, ale aby na kartě nesvítila jako výstraha. */}
+        <Button
+          variant="destructiveOutline"
+          data-testid="delete-campaign"
+          onClick={() => setOpen(true)}
+        >
+          <Trash2 aria-hidden className="icon-sm" />
           {t('open')}
         </Button>
       </div>
@@ -74,6 +90,6 @@ export function DeleteCampaignSection({
           }}
         />
       )}
-    </section>
+    </Card>
   );
 }

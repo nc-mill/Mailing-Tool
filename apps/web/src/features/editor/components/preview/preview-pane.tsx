@@ -76,26 +76,31 @@ export function PreviewPane(props: {
   const text = result ? explainPreviewLinks(result.text, t('preview.linkOnSend')) : '';
   const html = result ? explainPreviewLinks(result.html, '#odkaz-vznikne-az-pri-odeslani') : '';
 
+  /*
+   * Náhled leží ve stejné kartě jako plátno: tlumená plocha s hairline
+   * rámečkem a rádiusem 10 px, uvnitř samotný e-mail na papíru. Bez rámečku
+   * to byl pruh přes celou šířku, který se od pozadí stránky nijak nelišil.
+   */
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="flex flex-1 justify-center overflow-auto bg-surface-muted p-4">
+    <div className="flex min-w-0 flex-col">
+      <div className="flex justify-center rounded-[var(--radius-surface)] border border-border bg-surface-muted p-[var(--spacing-card-tight)]">
         {error ? <p role="alert">{error}</p> : null}
         {result && view.mode === 'text' ? (
           <pre
             data-testid="preview-text"
-            className="w-full whitespace-pre-wrap bg-surface p-4 text-sm"
+            className="w-full whitespace-pre-wrap rounded-[var(--radius-control)] border border-border bg-surface p-[var(--spacing-gutter)] font-mono text-sm"
           >
             {text}
           </pre>
         ) : null}
         {result && view.mode === 'source' ? (
           <div className="w-full">
-            <p className="mb-1 text-xs text-text-muted">
+            <p className="mb-1 font-mono text-label text-text-muted">
               {t('preview.sizeKb', { size: Math.round(new Blob([html]).size / 1024) })}
             </p>
             <pre
               data-testid="preview-source"
-              className="overflow-x-auto bg-surface p-4 font-mono text-xs"
+              className="overflow-x-auto rounded-[var(--radius-control)] border border-border bg-surface p-[var(--spacing-gutter)] font-mono text-meta"
             >
               {html}
             </pre>

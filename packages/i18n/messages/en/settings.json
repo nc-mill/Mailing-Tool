@@ -134,6 +134,7 @@
   "general": {
     "title": "Project",
     "lead": "Name, address, and defaults for the {projectName} project.",
+    "identityTitle": "Basic details",
     "name": "Project name",
     "slug": "Project address",
     "slugHint": "Used in links: /w/{slug}. Lowercase letters, digits, and hyphens.",

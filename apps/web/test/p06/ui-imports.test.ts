@@ -27,7 +27,7 @@ const ALLOWED = [
   /^@mlain\/ui\/components\/[a-z0-9-]+$/,
   /^@mlain\/ui\/patterns\/[a-z0-9-]+$/,
   /^@mlain\/ui\/lib\/[a-z0-9-]+$/,
-  /^@mlain\/ui\/(theme|a11y|tokens\.css|globals\.css)$/,
+  /^@mlain\/ui\/(theme|a11y|icons|tokens\.css|globals\.css)$/,
   /^@mlain\/ui\/patterns\/(charts|query-builder)\/lazy$/,
 ];
 

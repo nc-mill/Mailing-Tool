@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { Card } from '@mlain/ui/components/card';
 import { Dialog, DialogBody, DialogFooter, DialogTitle } from '@mlain/ui/components/dialog';
 import {
   DropdownMenu,
@@ -12,9 +13,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@mlain/ui/components/dropdown-menu';
+import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
-import { Label } from '@mlain/ui/components/label';
+import { PageHeader } from '@mlain/ui/components/page-header';
 import { Select, SelectItem } from '@mlain/ui/components/select';
+import { Plus } from '@mlain/ui/icons';
 import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
 import { Alert, EmptyState } from '@mlain/ui/patterns/states';
 import { useToast } from '@mlain/ui/patterns/toast';
@@ -25,6 +28,15 @@ import { ContactExportDialog, useContactExport } from './contact-export';
 import { tagToAudience } from './export-audience';
 
 export type TagRow = { id: string; name: string; contact_count: number };
+
+/**
+ * Mřížka řádku: název, počet, nabídka. Stejná definice pro hlavičku i pro řádky,
+ * jinak by se sloupce rozjely. Poslední sloupec je široký jako klikací plocha
+ * nabídky, tedy 44 px, ne 34 px z návrhu: přístupnost má přednost a platí to
+ * napříč aplikací stejně.
+ */
+const COLUMNS =
+  'grid grid-cols-[minmax(0,1fr)_160px_var(--size-target-min)] items-center gap-[var(--spacing-stack)] px-[var(--spacing-row-x)]';
 
 /**
  * Obrazovka štítků.
@@ -180,16 +192,10 @@ export function TagsScreen({
     <Dialog open={createOpen} onOpenChange={setCreateOpen}>
       <DialogTitle>{t('tags.createTitle')}</DialogTitle>
       <DialogBody>
-        <p className="text-text-muted">{t('tags.createBody')}</p>
-        <div>
-          <Label htmlFor="tag-name">{t('tags.createName')}</Label>
-          <Input
-            id="tag-name"
-            value={createName}
-            onChange={(event) => setCreateName(event.target.value)}
-          />
-          <p className="mt-1 text-sm text-text-muted">{t('tags.createNameHint')}</p>
-        </div>
+        <p className="text-ui text-text-muted">{t('tags.createBody')}</p>
+        <Field label={t('tags.createName')} hint={t('tags.createNameHint')}>
+          <Input value={createName} onChange={(event) => setCreateName(event.target.value)} />
+        </Field>
         {createFailed === null ? null : <Alert tone="error" title={createFailed} />}
       </DialogBody>
       <DialogFooter
@@ -216,22 +222,25 @@ export function TagsScreen({
    * uživatele hledat rozdíl, který neexistuje.
    */
   const header = (withAction: boolean) => (
-    <header className="flex flex-wrap items-start justify-between gap-3">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-text">{t('tags.title')}</h1>
-        <p className="max-w-prose text-text-muted">{t('tags.lead')}</p>
-      </div>
-      {withAction ? (
-        <Button variant="primary" onClick={() => setCreateOpen(true)}>
-          {t('tags.create')}
-        </Button>
-      ) : null}
-    </header>
+    <PageHeader
+      title={t('tags.title')}
+      description={t('tags.lead')}
+      {...(withAction
+        ? {
+            actions: (
+              <Button variant="primary" onClick={() => setCreateOpen(true)}>
+                <Plus aria-hidden className="icon-md" />
+                {t('tags.create')}
+              </Button>
+            ),
+          }
+        : {})}
+    />
   );
 
   if (tags.length === 0) {
     return (
-      <section className="flex flex-col gap-6">
+      <>
         {header(false)}
         {/* Akce prázdného stavu dřív jen obnovila stránku, takže první štítek nešel
             založit vůbec: prázdný stav je jediné místo, kde se v té chvíli je. */}
@@ -242,93 +251,115 @@ export function TagsScreen({
           actions={[{ label: t('tags.emptyAction'), onClick: () => setCreateOpen(true) }]}
         />
         {createDialog}
-      </section>
+      </>
     );
   }
 
   return (
-    <section className="flex flex-col gap-6">
+    <>
       {header(true)}
       {createDialog}
 
-      <ul className="flex flex-col gap-2">
-        {tags.map((tag) => (
-          <li
-            key={tag.id}
-            data-testid={`tag-${tag.id}`}
-            className="flex flex-wrap items-center gap-3 rounded-[var(--radius-surface)] border border-border bg-surface p-4"
-          >
-            {/* Název je odkaz na kontakty se štítkem. Samostatná obrazovka detailu by
-                ukazovala tentýž seznam s jiným nadpisem: filtr `tag_id` na seznamu
-                kontaktů existuje a umí nad nálezem i hromadné akce. */}
-            <Link
-              href={contactsHref(tag.id)}
-              aria-label={t('tags.openContacts', { name: tag.name })}
-              className="font-medium text-accent-text underline underline-offset-4"
-            >
-              {tag.name}
-            </Link>
-
-            {/* Počet stojí hned u názvu, ne na opačném konci karty. Patří k sobě:
-                „Brno, 1 kontakt" se přečte jedním pohledem, kdežto číslo u pravého
-                okraje si na širokém monitoru musí oko přijít najít. */}
-            <span className="text-sm text-text-muted">
-              {t('tags.contacts', { count: tag.contact_count })}
-            </span>
-
-            {/* Jedna nabídka místo řady tlačítek u každého řádku. Akce jsou čtyři
-                a vedle sebe by z každé karty udělaly lištu nástrojů, ve které se
-                ztratí to podstatné, tedy název štítku a počet kontaktů. */}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                aria-label={t('tags.rowMenu', { name: tag.name })}
-                className="ml-auto flex size-11 items-center justify-center rounded-[var(--radius-control)] border border-border-strong bg-surface text-text hover:bg-surface-muted"
+      <div className="flex min-w-0 flex-col gap-[var(--spacing-gutter)]">
+        {/*
+         * Karta s hlavičkou sloupců a řádky, TÝŽ TVAR JAKO SEZNAM SEGMENTŮ.
+         *
+         * Štítek a segment jsou dvojčata: jeden se počítá sám, druhý přiřazuje
+         * člověk, ale obojí je pojmenovaná skupina lidí s číslem a s akcemi na
+         * konci řádku. Když se ty dvě obrazovky liší tvarem, vypadá to, že se liší
+         * i významem. Řada samostatných karet, která tu byla předtím, navíc nechala
+         * číslo viset bez hlavičky, takže se dalo přečíst až po slově „kontakty".
+         *
+         * Není to `DataTable`: ta má zaškrtávátka, stránkování a nastavení sloupců,
+         * a všechny tři jsou tu k ničemu. Právě kvůli tomu se obrazovka jednou
+         * z tabulky přepsala a zpátky nepůjde.
+         */}
+        <Card padding="none" gap="none">
+          <div className="overflow-x-auto rounded-t-[var(--radius-surface)]">
+            <div className="min-w-[520px]">
+              <div
+                className={`${COLUMNS} rounded-t-[var(--radius-surface)] border-b border-border bg-surface-muted py-3`}
               >
-                {MoreIcon}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => openRename(tag)}>
-                  {t('tags.rename')}
-                </DropdownMenuItem>
-                {/* Export prázdného štítku by vyrobil soubor s hlavičkou a ničím
-                    dalším, sloučit není co do čeho, když je štítek v projektu sám.
-                    Obojí se proto nenabízí, místo aby to skončilo chybou. */}
-                {tag.contact_count > 0 ? (
-                  <DropdownMenuItem onSelect={() => startExport(tag)}>
-                    {t('tags.export')}
-                  </DropdownMenuItem>
-                ) : null}
-                {tags.length > 1 ? (
-                  <DropdownMenuItem onSelect={() => openMerge(tag)}>
-                    {t('tags.merge')}
-                  </DropdownMenuItem>
-                ) : null}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem tone="danger" onSelect={() => setDeleting(tag)}>
-                  {t('tags.delete')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </li>
-        ))}
-      </ul>
+                <span className="meta-caps text-text-muted">{t('tags.columnName')}</span>
+                <span className="meta-caps text-right text-text-muted">
+                  {t('tags.columnContacts')}
+                </span>
+                <span />
+              </div>
 
-      {/* Seznam bere prvních dvě stě štítků jedním požadavkem a další stránku nedojde.
-          Mlčet o tom by znamenalo tvrdit, že projekt žádné další štítky nemá. */}
-      {hasMore ? <p className="text-sm text-text-muted">{t('tags.truncated')}</p> : null}
+              {tags.map((tag) => (
+                <div
+                  key={tag.id}
+                  data-testid={`tag-${tag.id}`}
+                  className={`${COLUMNS} items-center border-b border-border py-3 last:border-b-0 hover:bg-surface-muted`}
+                >
+                  {/* Název je odkaz na kontakty se štítkem. Samostatná obrazovka detailu by
+                      ukazovala tentýž seznam s jiným nadpisem: filtr `tag_id` na seznamu
+                      kontaktů existuje a umí nad nálezem i hromadné akce. */}
+                  <Link
+                    href={contactsHref(tag.id)}
+                    aria-label={t('tags.openContacts', { name: tag.name })}
+                    className="justify-self-start text-base font-semibold text-text no-underline hover:underline"
+                  >
+                    {tag.name}
+                  </Link>
+
+                  {/* Počet je číslo, takže mono a zarovnaný doprava: pod sebou pak
+                      čísla stojí na stejném místě a dají se porovnat pohledem. */}
+                  <span className="text-right font-mono text-ui text-text-muted">
+                    {t('tags.contacts', { count: tag.contact_count })}
+                  </span>
+
+                  {/* Jedna nabídka místo řady tlačítek u každého řádku. Akce jsou čtyři
+                      a vedle sebe by z každého řádku udělaly lištu nástrojů, ve které se
+                      ztratí to podstatné, tedy název štítku a počet kontaktů. */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      aria-label={t('tags.rowMenu', { name: tag.name })}
+                      className="flex size-[var(--size-target-min)] items-center justify-center rounded-[var(--radius-control)] border border-transparent bg-transparent text-text-muted hover:border-border-strong hover:bg-surface-raised hover:text-text"
+                    >
+                      {MoreIcon}
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onSelect={() => openRename(tag)}>
+                        {t('tags.rename')}
+                      </DropdownMenuItem>
+                      {/* Export prázdného štítku by vyrobil soubor s hlavičkou a ničím
+                          dalším, sloučit není co do čeho, když je štítek v projektu sám.
+                          Obojí se proto nenabízí, místo aby to skončilo chybou. */}
+                      {tag.contact_count > 0 ? (
+                        <DropdownMenuItem onSelect={() => startExport(tag)}>
+                          {t('tags.export')}
+                        </DropdownMenuItem>
+                      ) : null}
+                      {tags.length > 1 ? (
+                        <DropdownMenuItem onSelect={() => openMerge(tag)}>
+                          {t('tags.merge')}
+                        </DropdownMenuItem>
+                      ) : null}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem tone="danger" onSelect={() => setDeleting(tag)}>
+                        {t('tags.delete')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        {/* Seznam bere prvních dvě stě štítků jedním požadavkem a další stránku nedojde.
+            Mlčet o tom by znamenalo tvrdit, že projekt žádné další štítky nemá. */}
+        {hasMore ? <p className="text-meta text-text-muted">{t('tags.truncated')}</p> : null}
+      </div>
 
       <Dialog open={renaming !== null} onOpenChange={(open) => setRenaming(open ? renaming : null)}>
         <DialogTitle>{t('tags.renameTitle', { name: renaming?.name ?? '' })}</DialogTitle>
         <DialogBody>
-          <div>
-            <Label htmlFor="tag-rename">{t('tags.renameName')}</Label>
-            <Input
-              id="tag-rename"
-              value={renameName}
-              onChange={(event) => setRenameName(event.target.value)}
-            />
-            <p className="mt-1 text-sm text-text-muted">{t('tags.renameHint')}</p>
-          </div>
+          <Field label={t('tags.renameName')} hint={t('tags.renameHint')}>
+            <Input value={renameName} onChange={(event) => setRenameName(event.target.value)} />
+          </Field>
           {renameFailed === null ? null : <Alert tone="error" title={renameFailed} />}
         </DialogBody>
         <DialogFooter
@@ -361,13 +392,14 @@ export function TagsScreen({
       >
         <DialogTitle>{t('tags.mergeTitle', { source: mergeSource?.name ?? '' })}</DialogTitle>
         <DialogBody>
-          <p className="text-text-muted">
+          <p className="text-ui text-text-muted">
             {t('tags.mergeBody', { source: mergeSource?.name ?? '' })}
           </p>
-          <div>
-            <span className="mb-1 block text-sm font-medium text-text">
-              {t('tags.mergeTarget')}
-            </span>
+          <div className="flex flex-col gap-1.5">
+            {/* Není to `Field`: `Select` má vlastní `aria-label` a `Field` by
+                klonoval `id` do prvku, který ho na spouštěči nečeká. Popisek nad
+                nabídkou proto stojí samostatně a má stejný vzhled jako popisek pole. */}
+            <span className="text-sm font-semibold text-text">{t('tags.mergeTarget')}</span>
             <Select
               aria-label={t('tags.mergeTarget')}
               placeholder={t('tags.mergeTargetPlaceholder')}
@@ -459,6 +491,6 @@ export function TagsScreen({
         onDownload={(href, fileName) => void contactExport.download(href, fileName)}
         onClose={contactExport.close}
       />
-    </section>
+    </>
   );
 }

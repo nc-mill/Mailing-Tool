@@ -4,6 +4,7 @@ import { useActionState, useRef, useState } from 'react';
 
 import { useTranslations } from 'next-intl';
 import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
 import { useConfirmDialogLabels } from '@/lib/feedback/confirm-labels';
 import { IDLE, type ActionState } from '@/lib/feedback/action-result';
@@ -45,19 +46,18 @@ export function DangerZoneView({ workspace, action, initialState }: DangerZoneVi
   const [open, setOpen] = useState(false);
 
   return (
-    <section aria-labelledby="general-danger" className="rounded-lg border border-danger p-6">
-      <h2 id="general-danger" className="text-xl font-semibold">
-        {t('general.danger.title')}
-      </h2>
-      <p className="mt-2 text-text-muted">{t('general.danger.body')}</p>
+    // Karta jako každá jiná, jen s rámečkem v barvě nebezpečí. Ani tady žádný
+    // stín: kartu odděluje hairline rámeček, tady prostě červený. Rádius je
+    // `--radius-surface` (10 px), ne `rounded-lg` z výchozí škály Tailwindu.
+    <Card aria-labelledby="general-danger" className="border-danger">
+      <CardTitle>
+        <span id="general-danger">{t('general.danger.title')}</span>
+      </CardTitle>
+      <p className="text-meta text-text-muted">{t('general.danger.body')}</p>
 
-      {state.status === 'error' ? (
-        <div className="mt-4">
-          <SettingsProblem problem={state.problem} />
-        </div>
-      ) : null}
+      {state.status === 'error' ? <SettingsProblem problem={state.problem} /> : null}
 
-      <form ref={formRef} action={formAction} className="mt-4">
+      <form ref={formRef} action={formAction} className="flex flex-col items-start">
         <input type="hidden" name="workspace_id" value={workspace.id} readOnly />
         <input type="hidden" name="confirm_name" value={workspace.name} readOnly />
 
@@ -102,7 +102,7 @@ export function DangerZoneView({ workspace, action, initialState }: DangerZoneVi
           labels={confirmLabels}
         />
       </form>
-    </section>
+    </Card>
   );
 }
 

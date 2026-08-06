@@ -23,6 +23,12 @@ export type TimelineEntry = {
 
 export type ReportTimelineProps = {
   entries: TimelineEntry[];
+  /**
+   * Druhý řádek události, mono 12 px pod větou. Skládá ho volající z `detail`,
+   * protože jen on ví, co je v téhle sestavě podstatné. Bez něj zůstane řádek
+   * jednořádkový, tedy přesně jako dřív.
+   */
+  renderMeta?: (entry: TimelineEntry) => React.ReactNode;
   /** Rod kontaktu z pole `gender`. Neznámý rod dostane podstatné jméno. */
   gender: TimelineGender;
   /** Zóna uživatele, ne serveru. Oddělovače dnů se počítají v ní. */
@@ -47,6 +53,10 @@ export type ReportTimelineProps = {
  * protože ji podle R17 složil server.
  */
 export function ReportTimeline(props: ReportTimelineProps) {
+  // Původní položka podle id: `renderMeta` z K8 dostane událost K8, ne řádek
+  // z API, a druhý řádek se skládá právě z `detail`, které do věty nepatří.
+  const byId = new Map(props.entries.map((entry) => [entry.id, entry]));
+
   const events: TimelineEvent[] = props.entries.map((entry) => ({
     id: entry.id,
     type: entry.type,
@@ -66,6 +76,14 @@ export function ReportTimeline(props: ReportTimelineProps) {
       timeZone={props.timeZone}
       labels={props.labels}
       renderSentence={({ event }) => String(event.payload.title ?? '')}
+      {...(props.renderMeta === undefined
+        ? {}
+        : {
+            renderMeta: ({ event }: { event: TimelineEvent }) => {
+              const entry = byId.get(event.id);
+              return entry === undefined ? null : props.renderMeta?.(entry);
+            },
+          })}
       formatTime={props.formatTime}
       formatDate={props.formatDate}
       hasMore={props.hasMore}

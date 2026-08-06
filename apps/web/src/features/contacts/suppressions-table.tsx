@@ -3,10 +3,13 @@
 import { useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
+import { Badge } from '@mlain/ui/components/badge';
 import { Button } from '@mlain/ui/components/button';
 import { Dialog, DialogBody, DialogFooter, DialogTitle } from '@mlain/ui/components/dialog';
+import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
-import { Label } from '@mlain/ui/components/label';
+import { PageHeader } from '@mlain/ui/components/page-header';
+import { Plus } from '@mlain/ui/icons';
 // K1 z 13.1 části 6: kurzorové stránkování bez čísel stránek, výběr přežije přestránkování.
 import { DataTable } from '@mlain/ui/patterns/data-table';
 import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
@@ -36,6 +39,24 @@ export type SuppressionsTableProps = {
     limit: number;
   };
   filters: { reason?: string; q?: string };
+};
+
+/**
+ * Tón odznaku podle důvodu blokace.
+ *
+ * Nejde o ozdobu: „nahlásil spam" a „ruční přidání" jsou pro odesílatele dvě
+ * úplně jiné zprávy. Červená patří tomu, co se nesmí obejít (stížnost, výmaz
+ * podle GDPR), žlutá tomu, co říká něco o adrese samé (nedoručuje se, je
+ * neplatná), a klidný tón zbytku. Slovo v odznaku nese význam samo, barva ho
+ * jen odstupňuje.
+ */
+const REASON_TONE: Record<string, 'neutral' | 'warning' | 'danger'> = {
+  complaint: 'danger',
+  gdpr_erasure: 'danger',
+  hard_bounce: 'warning',
+  soft_bounce_threshold: 'warning',
+  invalid: 'warning',
+  ses_suppressed: 'warning',
 };
 
 function href(basePath: string, filters: { reason?: string; q?: string }, cursor: string | null) {
@@ -110,25 +131,19 @@ export function SuppressionsTable({
     <Dialog open={adding} onOpenChange={setAdding}>
       <DialogTitle>{t('suppressions.addTitle')}</DialogTitle>
       <DialogBody>
-        <p className="mb-4 text-text-muted">{t('suppressions.addBody')}</p>
-        <div className="mb-4">
-          <Label htmlFor="suppression-email">{t('suppressions.addEmail')}</Label>
+        <p className="text-ui text-text-muted">{t('suppressions.addBody')}</p>
+        {/* `Field` místo ručně spárovaného `Label` a `Input`: dodá vazbu popisku,
+            `aria-describedby` k nápovědě i jednotné odsazení. */}
+        <Field label={t('suppressions.addEmail')}>
           <Input
-            id="suppression-email"
             type="email"
             value={addEmail}
             onChange={(event) => setAddEmail(event.target.value)}
           />
-        </div>
-        <div className="mb-4">
-          <Label htmlFor="suppression-detail">{t('suppressions.addDetail')}</Label>
-          <Input
-            id="suppression-detail"
-            value={addDetail}
-            onChange={(event) => setAddDetail(event.target.value)}
-          />
-          <p className="mt-1 text-sm text-text-muted">{t('suppressions.addDetailHint')}</p>
-        </div>
+        </Field>
+        <Field label={t('suppressions.addDetail')} hint={t('suppressions.addDetailHint')}>
+          <Input value={addDetail} onChange={(event) => setAddDetail(event.target.value)} />
+        </Field>
         {addFailed ? <Alert tone="error" title={t('suppressions.addFailed')} /> : null}
       </DialogBody>
       <DialogFooter
@@ -182,7 +197,7 @@ export function SuppressionsTable({
     // Zámek s vysvětlením místo zašedlého tlačítka. Text je vidět i bez myši:
     // je v dokumentu, nikoliv jen v bublině.
     return (
-      <span className="block text-sm text-text-muted">
+      <span className="block text-meta text-text-muted">
         {affordance.explanationKey ? t(affordance.explanationKey, affordance.values) : null}
       </span>
     );
@@ -192,52 +207,70 @@ export function SuppressionsTable({
     const affordance = suppressionAffordance(row, role, now);
     if (affordance.kind === 'removable') {
       return (
-        <Button variant="secondary" onClick={() => openRemoval({ kind: 'single', row })}>
+        <Button variant="secondary" size="sm" onClick={() => openRemoval({ kind: 'single', row })}>
           {t('suppressions.remove')}
         </Button>
       );
     }
+    // Čekání i zámek jsou stav, ne akce, takže mono: čte se to po znacích
+    // („za 18 dní") a stojí to ve sloupci, kde jinde bývá tlačítko.
     if (affordance.kind === 'waiting') {
-      return <span>{t('suppressions.bounceWait', affordance.values)}</span>;
+      return (
+        <span className="font-mono text-meta text-text-muted">
+          {t('suppressions.bounceWait', affordance.values)}
+        </span>
+      );
     }
-    return <span aria-label={t('suppressions.locked')}>{t('suppressions.locked')}</span>;
+    return <span className="font-mono text-meta text-text-muted">{t('suppressions.locked')}</span>;
   }
 
   if (rows.length === 0) {
-    return filters.reason || filters.q ? (
-      <FilteredEmptyState
-        title={t('suppressions.filteredTitle')}
-        explanation={t('suppressions.filteredBody')}
-        filterDescription={filters.reason ?? filters.q ?? ''}
-        clearFiltersLabel={t('suppressions.filteredClear')}
-        onClearFilters={() => router.push(basePath)}
-      />
-    ) : (
+    return (
       <>
-        {/* Akce dřív volala `router.push(basePath)`, tedy navigaci na tutéž
-            stránku: kliknutí nedělalo nic, ani chybu v konzoli. Text pod
-            nadpisem přitom slibuje „Přidat si sem adresu můžete i ručně."
-            a endpoint `POST /api/v1/suppressions` existoval celou dobu. */}
-        <EmptyState
-          variant="first"
-          title={t('suppressions.emptyTitle')}
-          explanation={t('suppressions.emptyBody')}
-          actions={[{ label: t('suppressions.emptyAction'), onClick: () => setAdding(true) }]}
-        />
-        {addDialog}
+        {/* Hlavička zůstává i v prázdném stavu, aby obrazovka měla název a člověk
+            poznal, kde je. Akci „Přidat adresu" tu ale nese POUZE prázdný stav:
+            dvě stejně pojmenovaná tlačítka vedle sebe by byla matoucí a rozdvojila
+            by i hledání podle popisku. */}
+        <PageHeader title={t('suppressions.title')} description={t('suppressions.lead')} />
+        {filters.reason || filters.q ? (
+          <FilteredEmptyState
+            title={t('suppressions.filteredTitle')}
+            explanation={t('suppressions.filteredBody')}
+            filterDescription={filters.reason ?? filters.q ?? ''}
+            clearFiltersLabel={t('suppressions.filteredClear')}
+            onClearFilters={() => router.push(basePath)}
+          />
+        ) : (
+          <>
+            {/* Akce dřív volala `router.push(basePath)`, tedy navigaci na tutéž
+                stránku: kliknutí nedělalo nic, ani chybu v konzoli. Text pod
+                nadpisem přitom slibuje „Přidat si sem adresu můžete i ručně."
+                a endpoint `POST /api/v1/suppressions` existoval celou dobu. */}
+            <EmptyState
+              variant="first"
+              title={t('suppressions.emptyTitle')}
+              explanation={t('suppressions.emptyBody')}
+              actions={[{ label: t('suppressions.emptyAction'), onClick: () => setAdding(true) }]}
+            />
+            {addDialog}
+          </>
+        )}
       </>
     );
   }
 
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-text">{t('suppressions.title')}</h1>
-        <Button variant="secondary" onClick={() => setAdding(true)}>
-          {t('suppressions.emptyAction')}
-        </Button>
-      </div>
-      <p>{t('suppressions.lead')}</p>
+    <>
+      <PageHeader
+        title={t('suppressions.title')}
+        description={t('suppressions.lead')}
+        actions={
+          <Button variant="primary" onClick={() => setAdding(true)}>
+            <Plus aria-hidden className="icon-md" />
+            {t('suppressions.emptyAction')}
+          </Button>
+        }
+      />
       {addDialog}
 
       <DataTable
@@ -255,9 +288,13 @@ export function SuppressionsTable({
         // Vybrat vše na stránce musí fungovat, jinak by uživatel nikdy neviděl větu
         // „28 adres odebrat nejde", která ho o matici informuje.
         bulkActions={
-          <span data-testid="suppressions-bulk" className="flex flex-wrap items-center gap-2">
+          <span
+            data-testid="suppressions-bulk"
+            className="flex flex-wrap items-center gap-[var(--spacing-inline)]"
+          >
             <Button
               variant="destructive"
+              size="sm"
               onClick={() => {
                 // Hromadné odebrání jde jen u toho, co matice dovoluje. Zbytek se nezahrne
                 // a uživatel to ví dopředu z věty pod tlačítkem, ne z chyby po kliknutí.
@@ -272,7 +309,11 @@ export function SuppressionsTable({
               })}
             </Button>
             {summary.blocked > 0 ? (
-              <span>{t('suppressions.bulkRemoveNote', { blocked: summary.blocked })}</span>
+              // Pruh výběru je tmavý panel, takže text na něm musí být z panelové
+              // řady barev, ne z papírové.
+              <span className="text-panel-soft">
+                {t('suppressions.bulkRemoveNote', { blocked: summary.blocked })}
+              </span>
             ) : null}
           </span>
         }
@@ -291,8 +332,12 @@ export function SuppressionsTable({
               // ale volalo `POST /suppressions/{id}/reveal`, což je cesta, jaká v API
               // nikdy nebyla: končilo to na 404 a adresa se neodkryla. Odpověď výpisu
               // nese jen `masked_email`, takže odkrýt není z čeho.
-              <span data-testid={`suppression-${row.id}`} className="flex flex-col gap-1">
-                <span>{row.masked_email}</span>
+              <span
+                data-testid={`suppression-${row.id}`}
+                className="flex flex-col gap-[var(--spacing-hairline)]"
+              >
+                {/* E-mailová adresa se čte po znacích, takže mono. */}
+                <span className="font-mono text-ui text-text">{row.masked_email}</span>
                 {renderAffordance(row)}
               </span>
             ),
@@ -300,13 +345,17 @@ export function SuppressionsTable({
           {
             id: 'reason',
             header: t('columns.reason'),
-            cell: (row) => t(suppressionAffordance(row, role, now).reasonKey),
+            cell: (row) => (
+              <Badge tone={REASON_TONE[row.reason] ?? 'neutral'}>
+                {t(suppressionAffordance(row, role, now).reasonKey)}
+              </Badge>
+            ),
           },
           {
             id: 'addedAt',
             header: t('columns.addedAt'),
             cell: (row) => (
-              <time dateTime={row.created_at}>
+              <time dateTime={row.created_at} className="font-mono text-meta text-text-muted">
                 {format.dateTime(new Date(row.created_at), 'short')}
               </time>
             ),
@@ -355,6 +404,6 @@ export function SuppressionsTable({
         labels={confirmLabels}
         onConfirm={() => void submitRemoval()}
       />
-    </section>
+    </>
   );
 }

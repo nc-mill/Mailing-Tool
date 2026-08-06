@@ -48,6 +48,9 @@ export default async function SystemMailPage({
 
   return (
     <SettingsPageShell title={t('systemMail.title')} lead={t('systemMail.lead')}>
+      {/* Obrazovka si karty skládá sama, protože jich má tři: stav, vysvětlení
+          omezení a nastavení. Obal `SettingsSection` by z nich udělal kartu
+          v kartě. */}
       {status.ok ? (
         <SystemMailScreen
           status={status.data.system_mail}

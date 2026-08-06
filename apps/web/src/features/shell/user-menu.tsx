@@ -44,16 +44,34 @@ export function UserMenu({ user }: UserMenuProps) {
   // bez přístupného jména, které hlasové ovládání nenajde.
   const label = user.name === '' ? user.email : user.name;
 
+  /**
+   * Iniciály do čtverečku. Ze jména první písmena prvních dvou slov,
+   * z e-mailu první písmeno. `Array.from` a ne `[0]`, protože znak
+   * s háčkem může být v UTF-16 dvě jednotky a `Č` by se rozpadlo.
+   */
+  const initials = label
+    .split(/\s+/)
+    .filter((part) => part !== '')
+    .slice(0, 2)
+    .map((part) => Array.from(part)[0]?.toUpperCase() ?? '')
+    .join('');
+
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger
           aria-label={t('shell.userMenu')}
-          className="flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] px-3 text-sm font-medium text-text hover:bg-surface-muted"
+          className="flex min-h-11 items-center gap-[var(--spacing-inline)] rounded-[var(--radius-control)] border-l border-border pl-[var(--spacing-stack)] text-ui text-text"
         >
-          {/* Ikony jsou v tomhle produktu doma v designovém systému, ne
-              v aplikaci: `lucide-react` je závislost balíčku `@mlain/ui`
-              a apps/web ji nemá. Jméno v hlavičce si vystačí s textem. */}
+          {/* Iniciály v žlutém čtverci, jako v návrhu. Jsou `aria-hidden`,
+              protože hned vedle stojí celé jméno: čtečka by jinak přečetla
+              „PN Petr Novák". */}
+          <span
+            aria-hidden
+            className="inline-flex size-[var(--size-avatar)] items-center justify-center rounded-[var(--radius-control)] bg-accent-surface font-mono text-meta text-warning-text"
+          >
+            {initials}
+          </span>
           <span className="max-w-40 truncate">{label}</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

@@ -204,6 +204,23 @@ describe('e-maily seznamu', () => {
     );
   });
 
+  /**
+   * ZÁVORA SEZNAMU MUSÍ BÝT VIDĚT DOSLOVA. Server u potvrzovacího e-mailu bez
+   * odkazu a u uvítacího s odhlašovacím odkazem vrací větu, která rovnou říká,
+   * co s tím. Přebít ji obecným „nepodařilo se uložit" by z opravitelné chyby
+   * udělalo záhadu, proto se hlídá, že se na obrazovku dostane nezměněná.
+   */
+  it('větu ze serveru ukáže doslova, ne obecné „nepodařilo se"', async () => {
+    const user = userEvent.setup();
+    const detail = 'Uvítací e-mail nesmí obsahovat odhlašovací odkaz.';
+    createEmail.mockResolvedValueOnce({ status: 'error', code: 'unprocessable', detail });
+    renderDetail();
+
+    await user.click(screen.getByTestId('list-email-create-welcome'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(detail);
+  });
+
   it('potvrzovací e-mail bez odkazu na potvrzení hlásí nahlas', () => {
     renderDetail({
       emails: [

@@ -1,6 +1,6 @@
 'use client';
 
-import { Link2 } from 'lucide-react';
+import { Link } from '../../icons';
 import { useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import { clusterEvents } from './cluster-events';
@@ -32,6 +32,7 @@ export function Timeline({
   now,
   labels,
   renderSentence,
+  renderMeta,
   formatTime,
   formatDate,
   hasMore,
@@ -51,6 +52,12 @@ export function Timeline({
    * větou**, ne z fragmentů. Komponenta jen předá událost a rod.
    */
   renderSentence: (input: { event: TimelineEvent; gender: TimelineGender }) => React.ReactNode;
+  /**
+   * Druhý řádek události: mono 12 px pod větou. Nese podrobnost, která do
+   * věty nepatří, například kterou kampaň nebo který odkaz se to týkalo.
+   * Bez téhle funkce zůstane řádek jednořádkový a nic se nezmění.
+   */
+  renderMeta?: (input: { event: TimelineEvent }) => React.ReactNode;
   formatTime: (value: Date) => string;
   formatDate: (value: Date) => string;
   hasMore: boolean;
@@ -89,29 +96,47 @@ export function Timeline({
         key={event.id}
         id={`event-${event.id}`}
         data-testid={`timeline-item-${event.id}`}
-        className="flex items-baseline gap-3 py-2"
+        className={cn(
+          'grid items-center gap-[var(--spacing-stack)]',
+          'grid-cols-[minmax(var(--size-timeline-time),auto)_minmax(0,1fr)_var(--size-timeline-anchor)]',
+          'border-t border-border py-[var(--spacing-row-y)]',
+        )}
       >
         <time
           dateTime={event.occurredAt.toISOString()}
-          className="w-14 shrink-0 font-mono text-sm text-text-muted"
+          className="font-mono text-meta whitespace-nowrap text-text-muted"
         >
           {formatTime(event.occurredAt)}
         </time>
-        <span className="flex-1 text-sm text-text">{renderSentence({ event, gender })}</span>
-        {/* Trvalá kotva: odkaz jde poslat kolegovi a otevře se na téhle položce. */}
+        <span className="grid min-w-0 gap-0.5">
+          <span className="text-ui text-text">{renderSentence({ event, gender })}</span>
+          {renderMeta ? (
+            <span className="font-mono text-label text-text-muted">{renderMeta({ event })}</span>
+          ) : null}
+        </span>
+        {/* Trvalá kotva: odkaz jde poslat kolegovi a otevře se na téhle položce.
+            Rámeček naskočí až při najetí, aby padesát řádků pod sebou
+            nevypadalo jako sloupec tlačítek. */}
         <a
           href={`#event-${event.id}`}
           aria-label={`#event-${event.id}`}
-          className="flex size-11 items-center justify-center text-text-muted"
+          className={cn(
+            'flex size-[var(--size-control-2xs)] items-center justify-center justify-self-center',
+            'rounded-[var(--radius-control)] border border-transparent text-text-muted no-underline',
+            'hover:border-border-strong hover:text-text',
+          )}
         >
-          <Link2 aria-hidden className="size-4" />
+          <Link aria-hidden className="icon-sm" />
         </a>
       </li>
     );
   }
 
   return (
-    <div ref={containerRef} className={cn('flex flex-col gap-4 overflow-auto', className)}>
+    <div
+      ref={containerRef}
+      className={cn('flex flex-col gap-[var(--spacing-stack)] overflow-auto', className)}
+    >
       <div role="status" aria-live="polite" className="sr-only">
         {announcement}
       </div>
@@ -119,7 +144,7 @@ export function Timeline({
       {days.map((day) => (
         <section key={day.key}>
           {/* Oddělovač dne je mezinadpis, ne položka seznamu, a neposouvá se. */}
-          <h3 className="sticky top-0 z-[var(--z-sticky)] bg-surface py-1 text-sm font-medium text-text-muted">
+          <h3 className="meta-caps sticky top-0 z-[var(--z-sticky)] bg-surface py-2.5 text-text-muted">
             {day.label === 'today'
               ? labels.today
               : day.label === 'yesterday'
@@ -127,32 +152,39 @@ export function Timeline({
                 : formatDate(day.date)}
           </h3>
 
-          <ul className="divide-y divide-border">
+          <ul>
             {day.items.map((item) => {
               if (item.kind === 'single') return renderEvent(item.event);
 
               const isOpen = expanded.has(item.id);
               return (
-                <li key={item.id} className="py-2">
+                <li key={item.id} className="border-t border-border">
                   <button
                     type="button"
                     aria-expanded={isOpen}
                     onClick={() => toggleCluster(item.id)}
-                    className="flex min-h-11 w-full items-baseline gap-3 text-left"
+                    className={cn(
+                      'grid w-full grid-cols-[minmax(var(--size-timeline-time),auto)_minmax(0,1fr)] items-center text-left',
+                      'min-h-[var(--size-target-min)] gap-[var(--spacing-stack)] py-[var(--spacing-row-y)]',
+                    )}
                   >
                     {/* Skrytý z názvu tlačítka pro čtečku, jinak by k němu splynul čas. */}
                     <time
                       aria-hidden
                       dateTime={item.occurredAt.toISOString()}
-                      className="w-14 shrink-0 font-mono text-sm text-text-muted"
+                      className="font-mono text-meta whitespace-nowrap text-text-muted"
                     >
                       {formatTime(item.occurredAt)}
                     </time>
-                    <span className="flex-1 text-sm text-text">
+                    <span className="text-ui text-text">
                       {isOpen ? labels.collapseCluster : labels.expandCluster(item.events.length)}
                     </span>
                   </button>
-                  {isOpen ? <ul className="pl-14">{item.events.map(renderEvent)}</ul> : null}
+                  {isOpen ? (
+                    <ul className="pl-[calc(var(--size-timeline-time)+var(--spacing-stack))]">
+                      {item.events.map(renderEvent)}
+                    </ul>
+                  ) : null}
                 </li>
               );
             })}
@@ -168,7 +200,7 @@ export function Timeline({
               beforeLoad();
               onLoadOlder();
             }}
-            className="min-h-11 rounded-[var(--radius-control)] border border-border-strong px-4 text-sm text-text"
+            className="min-h-[var(--size-target-min)] rounded-[var(--radius-control)] border border-border-strong px-4 text-ui text-text"
           >
             {labels.loadOlder}
           </button>

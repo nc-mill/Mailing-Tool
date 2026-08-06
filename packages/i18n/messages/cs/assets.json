@@ -4,6 +4,8 @@
     "lead": "Obrázky projektu. Nahrané soubory se převedou do JPEG nebo PNG, protože jiné formáty část poštovních klientů nezobrazí.",
     "count": "{count, plural, =0 {Žádný obrázek} one {# obrázek} few {# obrázky} many {# obrázku} other {# obrázků}}",
     "countFiltered": "{count, plural, =0 {Hledání nic nenašlo} one {# nalezený obrázek} few {# nalezené obrázky} many {# nalezeného obrázku} other {# nalezených obrázků}}",
+    "countUnused": "{count, plural, =0 {všechny se používají} one {# nepoužitý} few {# nepoužité} many {# nepoužitého} other {# nepoužitých}}",
+    "upload": "Nahrát obrázky",
     "loadFailed": "Knihovnu se nepodařilo načíst.",
     "refresh": "Načíst znovu"
   },

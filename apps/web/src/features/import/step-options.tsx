@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Checkbox } from '@mlain/ui/components/checkbox';
 import { Collapsible } from '@mlain/ui/components/collapsible';
 import { Field } from '@mlain/ui/components/field';
@@ -174,8 +175,8 @@ export function StepOptions({
   }
 
   return (
-    <div className="flex max-w-2xl flex-col gap-5">
-      <h2 className="text-lg font-semibold text-text">{t('options.title')}</h2>
+    <div className="flex max-w-[var(--container-prose)] flex-col gap-[var(--spacing-gutter)]">
+      <CardTitle>{t('options.title')}</CardTitle>
 
       {/*
         Výběr seznamu ZÁMĚRNĚ nesedí v `Field`. Ta komponenta klonuje svého
@@ -186,7 +187,7 @@ export function StepOptions({
         `<span>`, ne `<label>`, aby čtečka jméno nepředčítala dvakrát.
       */}
       <div ref={listWrapperRef} className="flex flex-col gap-1.5">
-        <span aria-hidden className="text-sm font-medium text-text">
+        <span aria-hidden className="text-sm font-semibold text-text">
           {t('options.list')}
         </span>
         <Select
@@ -213,17 +214,17 @@ export function StepOptions({
           ))}
           <SelectItem value={CREATE_LIST}>{t('options.createList')}</SelectItem>
         </Select>
-        <p className="text-sm text-text-muted">{t('options.listHint')}</p>
+        <p className="text-meta text-text-muted">{t('options.listHint')}</p>
       </div>
 
       {createdName === null ? null : (
-        <p role="status" className="text-sm text-text-muted">
+        <p role="status" className="font-mono text-meta text-text-muted">
           {t('options.newListCreated', { name: createdName })}
         </p>
       )}
 
       {showCreate ? (
-        <div className="flex flex-col gap-3 rounded-[var(--radius-surface)] border border-border p-4">
+        <Card as="div" padding="sm">
           <Field label={t('options.newListName')} hint={t('options.newListNameHint')}>
             <Input
               ref={newListRef}
@@ -241,11 +242,13 @@ export function StepOptions({
           >
             {creating ? t('options.newListCreating') : t('options.newListCreate')}
           </Button>
-        </div>
+        </Card>
       ) : null}
 
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-2 font-semibold text-text">{t('options.subscriptionStatus')}</legend>
+      <fieldset className="flex flex-col gap-[var(--spacing-stack)]">
+        <legend className="mb-[var(--spacing-inline)] text-ui font-semibold text-text">
+          {t('options.subscriptionStatus')}
+        </legend>
         <RadioGroup
           name="import-subscription"
           value={value.subscriptionStatus}
@@ -264,11 +267,11 @@ export function StepOptions({
               <div className="flex flex-col gap-1">
                 <span
                   id={`import-subscription-label-${option.value}`}
-                  className="text-sm font-medium text-text"
+                  className="text-ui font-semibold text-text"
                 >
                   {t(`options.${option.label}`)}
                 </span>
-                <span className="text-sm text-text-muted">{t(`options.${option.hint}`)}</span>
+                <span className="text-meta text-text-muted">{t(`options.${option.hint}`)}</span>
               </div>
             </div>
           ))}
@@ -290,8 +293,10 @@ export function StepOptions({
         />
       </Field>
 
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-2 font-semibold text-text">{t('options.conflict')}</legend>
+      <fieldset className="flex flex-col gap-[var(--spacing-stack)]">
+        <legend className="mb-[var(--spacing-inline)] text-ui font-semibold text-text">
+          {t('options.conflict')}
+        </legend>
         <RadioGroup
           name="import-conflict"
           value={value.onConflict}
@@ -314,11 +319,11 @@ export function StepOptions({
                 <div className="flex flex-col gap-1">
                   <span
                     id={`import-conflict-label-${mode}`}
-                    className="text-sm font-medium text-text"
+                    className="text-ui font-semibold text-text"
                   >
                     {t(`options.conflict${suffix}`)}
                   </span>
-                  <span className="text-sm text-text-muted">
+                  <span className="text-meta text-text-muted">
                     {t(`options.conflict${suffix}Hint`)}
                   </span>
                 </div>
@@ -333,15 +338,15 @@ export function StepOptions({
               aria-disabled={!duplicateErrorAvailable}
             />
             <div className="flex flex-col gap-1">
-              <span id="import-conflict-label-error" className="text-sm font-medium text-text">
+              <span id="import-conflict-label-error" className="text-ui font-semibold text-text">
                 {t('options.conflictError')}
               </span>
-              <span className="text-sm text-text-muted">{t('options.conflictErrorHint')}</span>
+              <span className="text-meta text-text-muted">{t('options.conflictErrorHint')}</span>
             </div>
           </div>
         </RadioGroup>
         {duplicateErrorAvailable ? null : (
-          <p className="text-sm text-text-muted">{t('options.duplicateErrorUnavailable')}</p>
+          <p className="text-meta text-text-muted">{t('options.duplicateErrorUnavailable')}</p>
         )}
       </fieldset>
 
@@ -357,27 +362,32 @@ export function StepOptions({
               setError(null);
             }}
           />
-          <label htmlFor="import-declaration" className="text-sm text-text">
+          <label htmlFor="import-declaration" className="text-ui text-text">
             {t('options.declaration')}
           </label>
         </div>
-        <p id="import-declaration-evidence" className="text-sm text-text-muted">
+        <p id="import-declaration-evidence" className="text-meta text-text-muted">
           {t('options.declarationEvidence')}
         </p>
         {/* Tlačítko „Co to znamená" bylo mrtvé: nemělo `onClick`, takže nedělalo
             nic. Teď rozbalí vysvětlení přímo pod prohlášením, protože kdo se ptá,
             co potvrzuje, nechce kvůli odpovědi opustit rozdělaný import. */}
         <Collapsible summary={t('options.declarationLink')} className="self-start">
-          <div className="flex max-w-2xl flex-col gap-2 rounded-[var(--radius-surface)] border border-border bg-surface-muted p-4 text-sm text-text">
+          <Card
+            as="div"
+            tone="muted"
+            padding="sm"
+            className="max-w-[var(--container-prose)] text-ui text-text"
+          >
             <strong>{t('options.declarationExplainTitle')}</strong>
             <p>{t('options.declarationExplainBody')}</p>
-            <p className="text-text-muted">{t('options.declarationExplainWhen')}</p>
-          </div>
+            <p className="text-meta text-text-muted">{t('options.declarationExplainWhen')}</p>
+          </Card>
         </Collapsible>
       </div>
 
       {error === null ? null : (
-        <p role="alert" className="text-sm text-danger-text">
+        <p role="alert" className="text-meta text-danger-text">
           {error}
         </p>
       )}
@@ -386,7 +396,7 @@ export function StepOptions({
           předvybraný, takže kdo klikne bez čtení, musí poznat z obrazovky, kam
           import půjde, ne až z výsledku. */}
       {selectedList === undefined ? null : (
-        <p className="text-sm text-text-muted">
+        <p className="text-meta text-text-muted">
           {t('options.submitTarget', {
             list: selectedList.name,
             status: t(

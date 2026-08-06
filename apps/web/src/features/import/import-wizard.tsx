@@ -1,5 +1,8 @@
 'use client';
 
+import { Button } from '@mlain/ui/components/button';
+import { RefreshCw } from '@mlain/ui/icons';
+import { Alert } from '@mlain/ui/patterns/states';
 import { Wizard } from '@mlain/ui/patterns/wizard';
 import { useWizardStep } from '@mlain/ui/patterns/wizard';
 import { useTranslations } from 'next-intl';
@@ -386,6 +389,9 @@ export function ImportWizard({
 
   return (
     <Wizard
+      // Nadpisem stránky musí být to, CO se tu dělá, ne jméno kroku. Bez toho
+      // se člověk vracející se na rozdělaný import nedozví, že jde o import.
+      title={t('wizard.title')}
       steps={STEPS.map((id) => ({ id, label: t(`wizard.steps.${id}`) }))}
       current={step}
       onNavigate={(next) => goToStep(next)}
@@ -395,154 +401,169 @@ export function ImportWizard({
       // nový import.
       {...(step === 'preview' ? { destructiveBack: t('wizard.backFromPreview') } : {})}
     >
-      {pending ? <p>{t('wizard.resumeBanner', { filename: pending.filename })}</p> : null}
-      <p>{t('wizard.resumeExpiry')}</p>
+      <div className="flex flex-col gap-[var(--spacing-gutter)]">
+        {/* Rozdělaný import a jeho platnost. Je to informace o stavu, ne chyba,
+          takže tlumený tón a mono meta řádek, ne barevná hláška. */}
+        {pending ? (
+          <Alert tone="info">{t('wizard.resumeBanner', { filename: pending.filename })}</Alert>
+        ) : null}
+        <p className="font-mono text-meta text-text-muted">{t('wizard.resumeExpiry')}</p>
 
-      {/*
+        {/*
         Porucha čtení náhledu má vlastní hlášku s cestou ven. Kroky, které na
         náhledu stojí, se v tu chvíli NEVYKRESLÍ: obrazovka s výchozím
         oddělovačem a nulou kontaktů je horší než chybová hláška, protože
         vypadá jako výsledek a svede uživatele přepsat nastavení, které je
         v pořádku.
       */}
-      {/*
+        {/*
         Krok Volby je v podmínce schválně, i když na náhledu nestojí. Uložení voleb
         i založení štítku se dělá právě tady a selhání se dosud nikde neprojevilo:
         tlačítko „Naimportovat" jen nic neudělalo a jediná stopa zůstala v konzoli.
       */}
-      {preview.kind === 'failed' && (needsPreview || step === 'options') ? (
-        <div role="alert" className="flex flex-col items-start gap-2">
-          <p>{t('previewFailed.title')}</p>
-          <p>{t('previewFailed.nextStep', { detail: preview.detail })}</p>
-          <button type="button" onClick={() => void loadPreview()}>
-            {t('previewFailed.retry')}
-          </button>
-        </div>
-      ) : null}
+        {preview.kind === 'failed' && (needsPreview || step === 'options') ? (
+          <Alert
+            tone="error"
+            title={t('previewFailed.title')}
+            action={
+              <Button variant="secondary" size="sm" onClick={() => void loadPreview()}>
+                <RefreshCw aria-hidden className="icon-sm" />
+                {t('previewFailed.retry')}
+              </Button>
+            }
+          >
+            <p>{t('previewFailed.nextStep', { detail: preview.detail })}</p>
+          </Alert>
+        ) : null}
 
-      {preview.kind === 'loading' && needsPreview ? (
-        <p role="status">{t('previewFailed.loading')}</p>
-      ) : null}
+        {preview.kind === 'loading' && needsPreview ? (
+          <p role="status" className="font-mono text-meta text-text-muted">
+            {t('previewFailed.loading')}
+          </p>
+        ) : null}
 
-      {step === 'upload' ? (
-        <StepUpload
-          workspaceId={workspaceId}
-          workspaceSlug={workspaceSlug}
-          onCreated={(id) => {
-            setImportId(id);
-            goToStep('fileCheck');
-          }}
-        />
-      ) : null}
+        {step === 'upload' ? (
+          <StepUpload
+            workspaceId={workspaceId}
+            workspaceSlug={workspaceSlug}
+            onCreated={(id) => {
+              setImportId(id);
+              goToStep('fileCheck');
+            }}
+          />
+        ) : null}
 
-      {step === 'fileCheck' && fileCheck !== null ? (
-        <StepFileCheck
-          preview={fileCheck}
-          // Uloží volbu a načte náhled ZNOVU, bez posunu na další krok:
-          // odpověď na otázku „vypadá to správně?" musí být vidět tam, kde
-          // se obrazovka ptá, ne až o dva kroky dál. `patch()` si znovunačtení
-          // dělá sám.
-          onRecheck={async (result) => {
-            await patch({ encoding: result.encoding, delimiter: result.delimiter });
-          }}
-          onConfirm={async (result) => {
-            if (!(await patch({ encoding: result.encoding, delimiter: result.delimiter }))) return;
-            goToStep('mapping');
-          }}
-        />
-      ) : null}
+        {step === 'fileCheck' && fileCheck !== null ? (
+          <StepFileCheck
+            preview={fileCheck}
+            // Uloží volbu a načte náhled ZNOVU, bez posunu na další krok:
+            // odpověď na otázku „vypadá to správně?" musí být vidět tam, kde
+            // se obrazovka ptá, ne až o dva kroky dál. `patch()` si znovunačtení
+            // dělá sám.
+            onRecheck={async (result) => {
+              await patch({ encoding: result.encoding, delimiter: result.delimiter });
+            }}
+            onConfirm={async (result) => {
+              if (!(await patch({ encoding: result.encoding, delimiter: result.delimiter })))
+                return;
+              goToStep('mapping');
+            }}
+          />
+        ) : null}
 
-      {/*
+        {/*
         Varování k mapování se MUSÍ zobrazit. `full_name_ignored` znamená, že
         volba „Celé jméno" nemá žádný účinek, protože soubor má zároveň sloupec
         se jménem nebo příjmením. Bez téhle hlášky vypadá obrazovka po
         přemapování stejně jako před ním a uživatel nemá jak poznat, že se jeho
         volba zahodila.
       */}
-      {(step === 'mapping' || step === 'preview') && data !== null
-        ? data.mapping_warnings.map((warning) => (
-            <p key={warning} role="alert">
-              {t(`mapping.warnings.${warning}`)}
-            </p>
-          ))
-        : null}
+        {(step === 'mapping' || step === 'preview') && data !== null
+          ? data.mapping_warnings.map((warning) => (
+              <Alert key={warning} tone="warning">
+                {t(`mapping.warnings.${warning}`)}
+              </Alert>
+            ))
+          : null}
 
-      {step === 'mapping' && data !== null ? (
-        <StepMapping
-          preview={{ columns }}
-          onCreateField={createField}
-          onNext={async (next) => {
-            setMapping(next);
-            if (!(await patch({ mapping: toApiMapping(data.header, next) }))) return;
-            goToStep('preview');
-          }}
-        />
-      ) : null}
+        {step === 'mapping' && data !== null ? (
+          <StepMapping
+            preview={{ columns }}
+            onCreateField={createField}
+            onNext={async (next) => {
+              setMapping(next);
+              if (!(await patch({ mapping: toApiMapping(data.header, next) }))) return;
+              goToStep('preview');
+            }}
+          />
+        ) : null}
 
-      {step === 'preview' && data !== null ? (
-        <StepPreview
-          preview={{ rows: previewRows }}
-          estimate={{
-            // Celkový počet je o CELÉM souboru, `shown` o vykreslených řádcích.
-            // Dosazovat na obě místa délku náhledu znamenalo tvrdit, že soubor
-            // má dvacet řádků, ať měl kolik chtěl.
-            totalRows: data.total_rows,
-            shown: previewRows.length,
-            reviewRows: previewRows.filter((row) => row.gender === null).length,
-            noEmailRows: previewRows.filter((row) => row.email === null || row.email === '').length,
-            duplicateRows: previewRows.filter((row) => row.state === 'duplicate').length,
-            approximate: data.total_rows_approximate,
-          }}
-          onNext={() => goToStep('options')}
-          greetingEnabled={greetingEnabled}
-        />
-      ) : null}
+        {step === 'preview' && data !== null ? (
+          <StepPreview
+            preview={{ rows: previewRows }}
+            estimate={{
+              // Celkový počet je o CELÉM souboru, `shown` o vykreslených řádcích.
+              // Dosazovat na obě místa délku náhledu znamenalo tvrdit, že soubor
+              // má dvacet řádků, ať měl kolik chtěl.
+              totalRows: data.total_rows,
+              shown: previewRows.length,
+              reviewRows: previewRows.filter((row) => row.gender === null).length,
+              noEmailRows: previewRows.filter((row) => row.email === null || row.email === '')
+                .length,
+              duplicateRows: previewRows.filter((row) => row.state === 'duplicate').length,
+              approximate: data.total_rows_approximate,
+            }}
+            onNext={() => goToStep('options')}
+            greetingEnabled={greetingEnabled}
+          />
+        ) : null}
 
-      {step === 'options' ? (
-        <StepOptions
-          estimate={{
-            totalRows: data?.total_rows ?? 0,
-            errorRows: previewRows.filter((row) => row.state === 'error').length,
-            duplicates: previewRows.filter((row) => row.state === 'duplicate').length,
-          }}
-          lists={lists}
-          onCreateList={createList}
-          onSubmit={async (value) => {
-            const tagName = value.tag.trim();
-            let tagIds: string[] = [];
-            if (tagName !== '') {
-              const tagId = await ensureTagId(tagName);
-              // Krok se nedokončí. Import bez štítku by se sice spustil, ale skupinu
-              // by pak nešlo dohledat a uživatel by se to dozvěděl až za týden.
-              if (tagId === null) {
-                setPreview({ kind: 'failed', detail: 'tag' });
-                return;
+        {step === 'options' ? (
+          <StepOptions
+            estimate={{
+              totalRows: data?.total_rows ?? 0,
+              errorRows: previewRows.filter((row) => row.state === 'error').length,
+              duplicates: previewRows.filter((row) => row.state === 'duplicate').length,
+            }}
+            lists={lists}
+            onCreateList={createList}
+            onSubmit={async (value) => {
+              const tagName = value.tag.trim();
+              let tagIds: string[] = [];
+              if (tagName !== '') {
+                const tagId = await ensureTagId(tagName);
+                // Krok se nedokončí. Import bez štítku by se sice spustil, ale skupinu
+                // by pak nešlo dohledat a uživatel by se to dozvěděl až za týden.
+                if (tagId === null) {
+                  setPreview({ kind: 'failed', detail: 'tag' });
+                  return;
+                }
+                tagIds = [tagId];
               }
-              tagIds = [tagId];
-            }
-            if (!(await patch({ options: toApiOptions(value, tagIds) }))) return;
-            if (importId !== null) {
-              await fetch(`/api/v1/contacts/imports/${importId}/confirm`, {
-                method: 'POST',
-                headers: { 'X-Workspace-Id': workspaceId, 'Content-Type': 'application/json' },
-              });
-            }
-            goToStep('progress');
-          }}
-        />
-      ) : null}
+              if (!(await patch({ options: toApiOptions(value, tagIds) }))) return;
+              if (importId !== null) {
+                await fetch(`/api/v1/contacts/imports/${importId}/confirm`, {
+                  method: 'POST',
+                  headers: { 'X-Workspace-Id': workspaceId, 'Content-Type': 'application/json' },
+                });
+              }
+              goToStep('progress');
+            }}
+          />
+        ) : null}
 
-      {step === 'progress' && importId !== null ? (
-        <StepProgress
-          importId={importId}
-          workspaceId={workspaceId}
-          locale={locale}
-          onDone={() => router.push(`/w/${workspaceSlug}/contacts/import/${importId}`)}
-        />
-      ) : null}
+        {step === 'progress' && importId !== null ? (
+          <StepProgress
+            importId={importId}
+            workspaceId={workspaceId}
+            locale={locale}
+            onDone={() => router.push(`/w/${workspaceSlug}/contacts/import/${importId}`)}
+          />
+        ) : null}
 
-      {/* Mapování drží skořápka, aby se neztratilo při návratu o krok zpět. */}
-      <span hidden data-mapping={JSON.stringify(mapping)} />
+        {/* Mapování drží skořápka, aby se neztratilo při návratu o krok zpět. */}
+        <span hidden data-mapping={JSON.stringify(mapping)} />
+      </div>
     </Wizard>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { CardTitle } from '@mlain/ui/components/card';
 import { CopyButton } from '@mlain/ui/components/copy-button';
 
 /**
@@ -92,39 +93,46 @@ export function IdentifySignatureHelp() {
   const t = useTranslations('tracking');
 
   return (
-    <section aria-labelledby="tracking-identify">
-      <h2 id="tracking-identify" className="text-xl font-semibold">
-        {t('settings.identify.title')}
-      </h2>
-      <p className="mt-2 text-text-muted">{t('settings.identify.description')}</p>
+    <section
+      aria-labelledby="tracking-identify"
+      className="flex flex-col gap-[var(--spacing-gutter)]"
+    >
+      <CardTitle>
+        <span id="tracking-identify">{t('settings.identify.title')}</span>
+      </CardTitle>
+      <p className="text-meta text-text-muted">{t('settings.identify.description')}</p>
 
-      <dl className="mt-4 space-y-2 text-sm">
+      <dl className="flex flex-col gap-[var(--spacing-hairline)] text-ui">
         <div>
-          <dt className="font-medium">{t('settings.identify.unsigned_label')}</dt>
+          <dt className="text-ui font-semibold text-text">
+            {t('settings.identify.unsigned_label')}
+          </dt>
           <dd className="text-text-muted">{t('settings.identify.unsigned_hint')}</dd>
         </div>
         <div>
-          <dt className="font-medium">{t('settings.identify.signed_label')}</dt>
+          <dt className="text-ui font-semibold text-text">{t('settings.identify.signed_label')}</dt>
           <dd className="text-text-muted">{t('settings.identify.signed_hint')}</dd>
         </div>
       </dl>
 
       {/* Vzorec zvlášť a doslova. Kdo si podpis píše v Ruby nebo v Go, potřebuje
           přesně tohle, ne převyprávění příkladu v cizím jazyce. */}
-      <p className="mt-4 text-sm font-medium">{t('settings.identify.formula_label')}</p>
-      <pre className="mt-1 overflow-x-auto rounded-md bg-surface-muted p-4 text-sm">
+      <p className="mt-[var(--spacing-stack)] text-sm font-semibold text-text">
+        {t('settings.identify.formula_label')}
+      </p>
+      <pre className="overflow-x-auto rounded-[var(--radius-control)] bg-surface-muted p-[var(--spacing-gutter)] font-mono text-meta">
         <code>
           {'signature = base64url_bez_vyplne(\n' +
             '  HMAC-SHA256( sha256(sekret klíče),\n' +
             '               utf8(external_id) || 0x0A || jcs(traits) ) )'}
         </code>
       </pre>
-      <p className="mt-2 text-sm text-text-muted">{t('settings.identify.key_note')}</p>
+      <p className="text-meta text-text-muted">{t('settings.identify.key_note')}</p>
 
       {BLOCKS.map((block) => (
-        <div key={block.id} className="mt-6">
+        <div key={block.id} className="mt-[var(--spacing-gutter)]">
           <div className="flex items-start justify-between gap-4">
-            <h3 className="text-sm font-medium">{t(block.titleKey)}</h3>
+            <h3 className="text-sm font-semibold text-text">{t(block.titleKey)}</h3>
             <CopyButton
               value={block.code}
               label={t(`settings.identify.copy_${block.id}`)}
@@ -132,14 +140,14 @@ export function IdentifySignatureHelp() {
               variant="link"
             />
           </div>
-          <pre className="mt-2 overflow-x-auto rounded-md bg-surface-muted p-4 text-sm">
+          <pre className="overflow-x-auto rounded-[var(--radius-control)] bg-surface-muted p-[var(--spacing-gutter)] font-mono text-meta">
             <code>{block.code}</code>
           </pre>
         </div>
       ))}
 
-      <p className="mt-4 text-sm text-text-muted">{t('settings.identify.ascii_note')}</p>
-      <p className="mt-1 text-sm text-text-muted">{t('settings.identify.rejected_note')}</p>
+      <p className="text-meta text-text-muted">{t('settings.identify.ascii_note')}</p>
+      <p className="text-meta text-text-muted">{t('settings.identify.rejected_note')}</p>
     </section>
   );
 }

@@ -31,7 +31,7 @@ export function NumberControl({ descriptor, value, onChange, id, autoFocus }: Co
           onChange(clamp(Number(raw)));
         }}
       />
-      <span aria-hidden className="text-xs text-text-muted">
+      <span aria-hidden className="text-meta text-text-muted">
         {descriptor.unit}
       </span>
       {descriptor.nullable ? (

@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl';
 import { Badge } from '@mlain/ui/components/badge';
-import { CheckIcon, ClockIcon, RunningIcon, SlashIcon, WarningIcon } from '@/lib/ui/status-icons';
 
 type Tone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger';
 
@@ -33,32 +32,15 @@ const KEY: Record<string, string> = {
 };
 
 /**
- * Ikony kreslí `apps/web` sám (`lib/ui/status-icons`), protože `lucide-react`
- * je závislost `packages/ui`, ne aplikace, a doménový plán si do
- * `apps/web/package.json` produkční závislosti nepřidává.
- */
-const ICON: Record<string, React.ReactNode> = {
-  draft: ClockIcon,
-  scheduled: ClockIcon,
-  queueing: RunningIcon,
-  sending: RunningIcon,
-  paused: WarningIcon,
-  sent: CheckIcon,
-  partially_sent: WarningIcon,
-  cancelled: SlashIcon,
-  failed: WarningIcon,
-  schedule_missed: WarningIcon,
-};
-
-/**
  * Výčet stavů je OTEVŘENÝ: nová hodnota smí přijít v rámci v1 a klient ji musí
  * tolerovat. Žádný switch bez větve default, žádné zahození odpovědi kvůli neznámé
  * hodnotě. Neznámý stav se ukáže neutrálně, syrový.
  *
- * ODCHYLKA OD PLÁNU, VYNUCENÁ KOMPONENTOU. Plán psal `<Badge tone="blue" pulsing>`.
- * `Badge` z `packages/ui` má tóny `neutral | accent | success | warning | danger`,
- * `pulsing` nezná a `icon` naopak VYŽADUJE, protože stav se nikdy nesděluje jen
- * barvou. Animaci nese `aria-live` a text, ne blikání.
+ * ODZNAK JE BEZ IKONY. Návrh má v řádku seznamu jen mono verzálky na barevné
+ * ploše a `Badge` ikonu nevyžaduje: rozlišovacím znakem je slovo, ne obrázek.
+ * Dřív tu ikony byly, protože komponenta je kdysi měla povinné.
+ *
+ * Animaci běžícího stavu nese `aria-live` a text, ne blikání.
  */
 export function StatusBadge({ status }: { status: string }) {
   const t = useTranslations('campaigns.status');
@@ -68,9 +50,7 @@ export function StatusBadge({ status }: { status: string }) {
 
   return (
     <span aria-live={animated ? 'polite' : undefined} data-status={status}>
-      <Badge tone={TONE[status] ?? 'neutral'} icon={ICON[status] ?? ClockIcon}>
-        {label}
-      </Badge>
+      <Badge tone={TONE[status] ?? 'neutral'}>{label}</Badge>
     </span>
   );
 }

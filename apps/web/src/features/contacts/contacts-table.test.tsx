@@ -113,15 +113,17 @@ beforeEach(() => {
 });
 
 describe('ContactsTable', () => {
+  // Vlnovka stojí na dvou místech: v meta řádku pod názvem obrazovky a ve stránkování
+  // pod tabulkou. Obě musí přiznat, že je počet odhad (princip P7), proto se hledá
+  // výskyt, ne jediný prvek.
   it('ukáže počet s vlnovkou, když je odhadovaný', () => {
     renderTable();
-    expect(screen.getByText(/~/)).toBeInTheDocument();
-    expect(screen.getByText(/12\s?480/)).toBeInTheDocument();
+    expect(screen.getAllByText(/~\s?12\s?480/).length).toBeGreaterThanOrEqual(1);
   });
 
   it('u přesného počtu vlnovku nepíše', () => {
     renderTable({ total: { count: 2, precision: 'exact' } });
-    expect(screen.queryByText(/~/)).toBeNull();
+    expect(screen.queryAllByText(/~/)).toHaveLength(0);
   });
 
   it('nemá čísla stránek, jen tlačítko na další stránku se stejným filtrem', async () => {
@@ -139,10 +141,28 @@ describe('ContactsTable', () => {
     expect(screen.getByRole('button', { name: 'Další' })).toBeDisabled();
   });
 
+  // Hledá se UVNITŘ MŘÍŽKY: nad tabulkou stojí segmentový přepínač stavu, který má
+  // tatáž slova, a bez zúžení by dotaz našel dva prvky.
   it('stav nese slovo, ne jen barvu', () => {
     renderTable();
-    expect(screen.getByText('Aktivní')).toBeInTheDocument();
-    expect(screen.getByText('Nepotvrzený')).toBeInTheDocument();
+    const grid = within(screen.getByRole('grid'));
+    expect(grid.getByText('Aktivní')).toBeInTheDocument();
+    expect(grid.getByText('Nepotvrzený')).toBeInTheDocument();
+  });
+
+  it('stav jde přepnout přepínačem nad tabulkou, ne jen ručně v adrese', async () => {
+    const user = userEvent.setup();
+    renderTable();
+    const group = screen.getByRole('group', { name: 'Filtr stavu' });
+    await user.click(within(group).getByRole('button', { name: 'Nepotvrzené' }));
+    expect(push).toHaveBeenCalledWith('/w/eshop/contacts?status=unconfirmed');
+  });
+
+  it('hledání posílá výraz do adresy, aby na filtrovaný seznam šlo odkázat', async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await user.type(screen.getByRole('searchbox', { name: 'Hledat kontakt' }), 'novak{Enter}');
+    expect(push).toHaveBeenCalledWith('/w/eshop/contacts?q=novak');
   });
 
   it('odkaz na detail je pojmenovaný adresou, ať čtečka ví, kam vede', () => {
@@ -259,7 +279,9 @@ describe('ContactsTable, sloupec oslovení', () => {
     const user = userEvent.setup();
     renderTable({ vocativeReview: { href: '/w/eshop/contacts/vocative-review', uncertain: 7 } });
     const link = screen.getByTestId('vocative-review-link');
-    expect(link).toHaveTextContent('Kontrola oslovení (7)');
+    // Návrh má počet jako samostatný mono údaj vedle popisku, ne v závorce za ním.
+    expect(link).toHaveTextContent('Kontrola oslovení');
+    expect(within(link).getByText('7')).toBeInTheDocument();
     await user.click(link);
     expect(push).toHaveBeenCalledWith('/w/eshop/contacts/vocative-review');
   });

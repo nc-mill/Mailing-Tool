@@ -5,6 +5,7 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@mlain/i18n/navigation';
 import { Badge } from '@mlain/ui/components/badge';
 import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Alert, EmptyState } from '@mlain/ui/patterns/states';
 import { CheckIcon, ClockIcon, SlashIcon, WarningIcon } from '@/lib/ui/status-icons';
 import { GuardThresholds, type GuardLimits, type GuardSettings } from './guard-thresholds';
@@ -288,17 +289,24 @@ export function SendingSettings({
   }
 
   return (
-    <div className="flex flex-col gap-10">
-      <section aria-labelledby="providers-title" className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 id="providers-title" className="text-lg font-semibold">
-            {t('sending.providersTitle')}
-          </h2>
+    // Každá sekce je karta: papír, hairline rámeček, okraj 30 px, mezera 20 px.
+    // Do 5. 8. 2026 to byly holé `<section>` oddělené `gap-10` z výchozí škály
+    // Tailwindu, takže na papíru nic nestálo a obrazovka neměla rytmus.
+    <div className="flex flex-col gap-[var(--spacing-gutter)]">
+      <Card aria-labelledby="providers-title" gap="gutter">
+        <div className="flex flex-wrap items-center justify-between gap-[var(--spacing-inline)]">
+          <CardTitle>
+            <span id="providers-title">{t('sending.providersTitle')}</span>
+          </CardTitle>
           {/* Druhý účet se zakládá stejně často jako první, například záložní SMTP
               vedle SES. Dokud tlačítko viselo jen v prázdném stavu, nebylo po
               založení prvního účtu kam kliknout. */}
+          {/* Sekundární, ne žluté. Žluté tlačítko je na obrazovce jedno a tahle
+              obrazovka žádnou jedinou hlavní akci nemá: účet, doména i brzdy
+              jsou tři rovnocenné věci. Se čtyřmi žlutými tlačítky pod sebou
+              neměl pohled kam padnout. */}
           {onAddProvider && providers.length > 0 && (
-            <Button variant="primary" data-testid="add-provider" onClick={onAddProvider}>
+            <Button variant="secondary" data-testid="add-provider" onClick={onAddProvider}>
               {t('sending.addProvider')}
             </Button>
           )}
@@ -322,7 +330,9 @@ export function SendingSettings({
               return (
                 <li
                   key={p.id}
-                  className="flex flex-col gap-2 rounded-[var(--radius-surface)] border border-border p-4"
+                  // Vnořená karta uvnitř sekce: okraj 25 px, mezera 15 px,
+                  // hairline rámeček. Dřív `p-4` a `gap-2` z výchozí škály.
+                  className="flex flex-col gap-[var(--spacing-stack)] rounded-[var(--radius-surface)] border border-border p-[var(--spacing-card-tight)]"
                 >
                   <div className="flex flex-wrap items-center gap-3">
                     <span className="font-medium">{p.name}</span>
@@ -508,18 +518,18 @@ export function SendingSettings({
             {t('smtpWarning')}
           </Alert>
         )}
-      </section>
+      </Card>
 
-      <section aria-labelledby="domains-title" className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 id="domains-title" className="text-lg font-semibold">
-            {t('sending.domainsTitle')}
-          </h2>
+      <Card aria-labelledby="domains-title" gap="gutter">
+        <div className="flex flex-wrap items-center justify-between gap-[var(--spacing-inline)]">
+          <CardTitle>
+            <span id="domains-title">{t('sending.domainsTitle')}</span>
+          </CardTitle>
           {/* Tatáž vada jako u odesílacích účtů: dokud tlačítko viselo jen
               v prázdném stavu, po první doméně nebylo kam kliknout, a druhá
               doména přitom vzniká běžně (jiná značka, jiný e-shop). */}
           {onAddDomain && domains.length > 0 && (
-            <Button variant="primary" data-testid="add-domain" onClick={onAddDomain}>
+            <Button variant="secondary" data-testid="add-domain" onClick={onAddDomain}>
               {t('sending.addDomain')}
             </Button>
           )}
@@ -537,7 +547,7 @@ export function SendingSettings({
             {domains.map((d) => (
               <li
                 key={d.id}
-                className="flex flex-wrap items-center gap-3 rounded-[var(--radius-surface)] border border-border p-4"
+                className="flex flex-wrap items-center gap-[var(--spacing-inline)] rounded-[var(--radius-surface)] border border-border p-[var(--spacing-card-tight)]"
               >
                 <span className="font-mono">{d.domain}</span>
                 <Badge
@@ -596,7 +606,7 @@ export function SendingSettings({
             ))}
           </ul>
         )}
-      </section>
+      </Card>
 
       <GuardThresholds
         settings={guards}

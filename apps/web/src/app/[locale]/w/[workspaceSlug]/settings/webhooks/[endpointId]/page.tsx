@@ -11,7 +11,11 @@ import { TestWebhookPanel } from '@/features/webhooks/test-webhook-panel';
 import { WebhookForm } from '@/features/webhooks/webhook-form';
 import { MVP0_EVENT_TYPES } from '@/features/webhooks/event-types';
 import type { WebhookRow } from '@/features/webhooks/webhooks-table';
-import { SettingsPageShell } from '@/features/settings/settings-page-shell';
+import {
+  SettingsPageShell,
+  SettingsSection,
+  SettingsStack,
+} from '@/features/settings/settings-page-shell';
 import { SettingsProblem } from '@/features/settings/settings-problem';
 import { ForbiddenSection } from '@/features/settings/forbidden-section';
 import { apiFetch } from '@/lib/api-client/fetch';
@@ -101,7 +105,7 @@ export default async function WebhookDetailPage({
 
   return (
     <SettingsPageShell title={detail.url} lead={detail.description}>
-      <div className="space-y-12">
+      <SettingsStack>
         {detail.status === 'disabled' && canWrite ? (
           <form action={enableWebhookFormAction}>
             <input type="hidden" name="workspace_id" value={workspaceId} readOnly />
@@ -119,35 +123,41 @@ export default async function WebhookDetailPage({
         ) : null}
 
         {canWrite ? (
-          <TestWebhookPanel
+          <SettingsSection>
+            <TestWebhookPanel
+              workspaceId={workspaceId}
+              slug={workspaceSlug}
+              endpointId={endpointId}
+            />
+          </SettingsSection>
+        ) : null}
+
+        <SettingsSection>
+          <DeliveriesTable
+            deliveries={deliveries.result}
+            filters={filters}
+            basePath={basePath}
+            cursorDropped={deliveries.cursorDropped}
+            canWrite={canWrite}
             workspaceId={workspaceId}
             slug={workspaceSlug}
             endpointId={endpointId}
+            retryAction={retryDeliveryFormAction}
           />
-        ) : null}
-
-        <DeliveriesTable
-          deliveries={deliveries.result}
-          filters={filters}
-          basePath={basePath}
-          cursorDropped={deliveries.cursorDropped}
-          canWrite={canWrite}
-          workspaceId={workspaceId}
-          slug={workspaceSlug}
-          endpointId={endpointId}
-          retryAction={retryDeliveryFormAction}
-        />
+        </SettingsSection>
 
         {canWrite ? (
-          <WebhookForm
-            mode="edit"
-            workspaceId={workspaceId}
-            slug={workspaceSlug}
-            endpoint={detail}
-            availableEventTypes={MVP0_EVENT_TYPES}
-          />
+          <SettingsSection>
+            <WebhookForm
+              mode="edit"
+              workspaceId={workspaceId}
+              slug={workspaceSlug}
+              endpoint={detail}
+              availableEventTypes={MVP0_EVENT_TYPES}
+            />
+          </SettingsSection>
         ) : null}
-      </div>
+      </SettingsStack>
     </SettingsPageShell>
   );
 }

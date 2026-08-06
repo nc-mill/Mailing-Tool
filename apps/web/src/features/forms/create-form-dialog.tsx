@@ -88,7 +88,7 @@ export function CreateFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTitle>{t('title')}</DialogTitle>
       <DialogBody>
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-[var(--spacing-gutter)]">
           <Field
             label={t('name')}
             hint={t('nameHint')}
@@ -102,8 +102,11 @@ export function CreateFormDialog({
             />
           </Field>
 
-          <div data-testid="form-list-select">
-            <span aria-hidden className="mb-1 block text-sm font-medium text-text">
+          <div data-testid="form-list-select" className="flex flex-col gap-1.5">
+            {/* `Select` z radix-ui popisek nepřijímá, proto vlastní `span` se stejným
+                řezem, jaký dodává `Field` u ostatních polí. Vazbu na čtečku drží
+                `aria-label` na samotné nabídce, `span` je jen vidět. */}
+            <span aria-hidden className="text-sm font-semibold text-text">
               {t('list')}
             </span>
             <Select
@@ -119,7 +122,7 @@ export function CreateFormDialog({
                 </SelectItem>
               ))}
             </Select>
-            <p className="mt-1 text-sm text-text-muted">{t('listHint')}</p>
+            <p className="text-meta text-text-muted">{t('listHint')}</p>
           </div>
 
           {failure !== null && (

@@ -1,4 +1,4 @@
-import { Lock } from 'lucide-react';
+import { Lock } from '../../icons';
 import { cn } from '../../lib/cn';
 
 /**
@@ -34,7 +34,7 @@ export function ForbiddenState({
       )}
     >
       <h2 className="flex items-center gap-2 text-base font-semibold text-text">
-        <Lock aria-hidden className="size-5" />
+        <Lock aria-hidden className="icon-md" />
         {title}
       </h2>
       <p className="text-sm text-text">{body}</p>

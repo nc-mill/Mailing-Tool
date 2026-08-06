@@ -4,8 +4,10 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
-import { Alert } from '@mlain/ui/patterns/states';
+import { Badge } from '@mlain/ui/components/badge';
 import { Button } from '@mlain/ui/components/button';
+import { Card } from '@mlain/ui/components/card';
+import { cn } from '@mlain/ui/lib/cn';
 import { useToast } from '@mlain/ui/patterns/toast';
 import { removeDemoDataAction } from './actions';
 import { DemoDataDialog, type DemoCounts } from './demo-data-dialog';
@@ -25,6 +27,12 @@ export type DemoDataState = {
  * Trvalý pruh, dokud jsou ukázková data v projektu. Vedle tlačítka
  * „Odstranit" nabízí i odkaz na hromadný výběr přes štítek, aby šlo sadu
  * smazat i po částech, tedy tak, jak to žádá rozhodnutí zadavatele Z2.
+ *
+ * VZHLED PODLE NÁVRHU: tlumená plocha s hairline rámečkem, vlevo odznak
+ * a věta, vpravo obě akce. Není to `Alert`: hláška s barevnou linkou po straně
+ * patří stavu, který se stal a zase zmizí, kdežto tenhle pruh je trvalý popis
+ * projektu. V `Alert` navíc akce stojí POD textem, takže se tlačítko
+ * „Odstranit" roztahovalo přes celou šířku pruhu.
  *
  * Mazání jde SERVEROVOU AKCÍ, ne holým `fetch` z prohlížeče. Původní volání
  * `fetch('/api/v1/demo-data', { method: 'DELETE' })` neslo relaci, ale ne
@@ -46,16 +54,54 @@ export function DemoDataBanner({ state, slug }: { state: DemoDataState; slug: st
       : `/w/${slug}/contacts?tag_id=${encodeURIComponent(state.tagId)}`;
 
   return (
-    <Alert tone="info">
-      <p>
-        <strong>{t('bannerTitle')}</strong> {t('bannerDetail', { contacts: counts.contacts })}
-      </p>
-      <p>
-        <Link href={contactsHref}>{t('filterHint')}</Link>
-      </p>
-      <Button variant="secondary" onClick={() => setDialogOpen(true)}>
-        {t('remove')}
-      </Button>
+    <Card
+      as="div"
+      tone="muted"
+      padding="none"
+      gap="none"
+      className={cn(
+        'flex-row flex-wrap items-center gap-[var(--spacing-card)]',
+        'px-[var(--spacing-card-tight)] py-[var(--spacing-gutter)]',
+      )}
+    >
+      {/* `flex-1` a `min-w-0` drží akce na stejném řádku jako text: bez nich
+          se dlouhá věta roztáhne přes celou šířku pruhu a obě tlačítka spadnou
+          pod ni. Zalomit se smí až tehdy, když je okno opravdu úzké. */}
+      <div className="grid min-w-0 flex-1 gap-[var(--spacing-hairline)]">
+        <Badge tone="accent">{t('label')}</Badge>
+        <p className="text-ui text-text-muted">
+          <strong className="font-semibold text-text">{t('bannerTitle')}</strong>{' '}
+          {t('bannerDetail', { contacts: counts.contacts })} {t('filterHint')}
+        </p>
+      </div>
+
+      <div className="ml-auto flex shrink-0 flex-wrap items-center gap-[var(--spacing-inline)]">
+        {/*
+          ODKAZ, ne tlačítko s `router.push`: míří na jinou obrazovku, takže se
+          musí dát otevřít prostředním tlačítkem myši i s Cmd. Vzhled tlačítka
+          dodá `asChild`.
+        */}
+        <Button asChild size="sm">
+          <Link href={contactsHref}>{t('showInContacts')}</Link>
+        </Button>
+        {/*
+          „Odstranit" je tišší než odkaz vedle něj: nemá spodní hranu a barvu
+          nebezpečí ukáže až při najetí. Pruh nemá k mazání tlačit, jen ho
+          nabídnout, a potvrzení stejně řeší dialog.
+        */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            'border-border-strong text-text-muted',
+            'hover:border-danger hover:bg-transparent hover:text-danger-text',
+          )}
+          onClick={() => setDialogOpen(true)}
+        >
+          {t('remove')}
+        </Button>
+      </div>
+
       <DemoDataDialog
         open={dialogOpen}
         counts={counts}
@@ -73,6 +119,6 @@ export function DemoDataBanner({ state, slug }: { state: DemoDataState; slug: st
           router.refresh();
         }}
       />
-    </Alert>
+    </Card>
   );
 }

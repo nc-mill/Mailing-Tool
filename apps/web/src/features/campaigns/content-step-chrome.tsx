@@ -3,14 +3,18 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@mlain/ui/components/button';
+import { Card } from '@mlain/ui/components/card';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
+import { PageHeader } from '@mlain/ui/components/page-header';
+import { Copy, Save } from '@mlain/ui/icons';
 import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
 import { Alert } from '@mlain/ui/patterns/states';
 import { SelectField } from '@/lib/forms/select-field';
 import { useConfirmDialogLabels } from '@/lib/feedback/confirm-labels';
 import { useEditorHandoff } from '@/features/editor/state/use-handoff';
 import { saveCampaignContentAsTemplateAction, useLibraryTemplateAction } from './actions';
+import { CampaignBreadcrumbs } from './campaign-breadcrumbs';
 import { CampaignStepNav } from './campaign-steps';
 import { NO_SELECTION } from './no-selection';
 import { CAMPAIGN_STEPS, campaignStepHref, type CampaignStep } from './steps';
@@ -134,135 +138,149 @@ export function CampaignContentChrome({
   }
 
   return (
-    <div className="flex flex-col gap-2 border-b border-border px-4 py-2">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <span role="status" aria-live="polite" className="text-sm text-text-muted">
+    <div className="flex flex-col border-b border-border px-[var(--spacing-gutter)] py-[var(--spacing-stack)]">
+      {/*
+        Hlavička kampaně i v editoru: drobečky zpátky na seznam, číslo kroku
+        a jméno kampaně. Bez ní je editor obrazovka bez názvu a uživatel neví,
+        kterou kampaň zrovna píše. Spodní mezeru si píše sama, proto obal
+        mezeru nemá a zbytek pruhu ji má ve vlastním sloupci.
+      */}
+      <PageHeader
+        title={campaignName}
+        eyebrow={
+          <span role="status" aria-live="polite">
             {tNew('stepOf', { current: 1, total: CAMPAIGN_STEPS.length })}
           </span>
-          <span className="text-sm font-medium text-text">{campaignName}</span>
-        </div>
-        {readOnly ? null : (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              data-testid="save-as-template"
-              onClick={() => {
-                setSaveName(campaignName);
-                setPanel(panel === 'save' ? 'none' : 'save');
-              }}
-            >
-              {tContent('saveAsTemplate')}
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              data-testid="use-library-open"
-              onClick={() => setPanel(panel === 'library' ? 'none' : 'library')}
-            >
-              {tContent('useLibraryTitle')}
-            </Button>
-          </div>
-        )}
-      </div>
+        }
+        breadcrumbs={<CampaignBreadcrumbs basePath={basePath} campaignName={campaignName} />}
+        {...(readOnly
+          ? {}
+          : {
+              actions: (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    data-testid="save-as-template"
+                    onClick={() => {
+                      setSaveName(campaignName);
+                      setPanel(panel === 'save' ? 'none' : 'save');
+                    }}
+                  >
+                    <Save aria-hidden className="icon-sm" />
+                    {tContent('saveAsTemplate')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    data-testid="use-library-open"
+                    onClick={() => setPanel(panel === 'library' ? 'none' : 'library')}
+                  >
+                    <Copy aria-hidden className="icon-sm" />
+                    {tContent('useLibraryTitle')}
+                  </Button>
+                </>
+              ),
+            })}
+      />
 
-      {/*
+      <div className="flex flex-col gap-[var(--spacing-stack)]">
+        {/*
         Pás kroků patří i do editoru, jinak uživatel neví, kde v kampani je,
         a na další krok se dostane jen tlačítkem „Pokračovat" v hlavičce.
         Krok obsahu je tenhle, takže `onSelect` nemá co dělat; ostatní kroky
         jsou jiná adresa a odchází se na ně přes uložení a převzetí obsahu.
       */}
-      <CampaignStepNav current="content" onSelect={goToStep} disabled={handoff.busy || busy} />
+        <CampaignStepNav current="content" onSelect={goToStep} disabled={handoff.busy || busy} />
 
-      <p className="text-sm text-text-muted">{t('steps.contentIntro')}</p>
+        <p className="max-w-[90ch] text-meta text-text-muted">{t('steps.contentIntro')}</p>
 
-      {outcome !== null && (
-        <Alert tone={outcome.tone} data-testid="content-outcome">
-          {outcome.text}
-        </Alert>
-      )}
+        {outcome !== null && (
+          <Alert tone={outcome.tone} data-testid="content-outcome">
+            {outcome.text}
+          </Alert>
+        )}
 
-      {panel === 'save' && (
-        <div className="flex flex-col gap-2 rounded-md border border-border p-3">
-          <Label htmlFor="save-as-template-name">{tContent('saveAsTemplateName')}</Label>
-          <Input
-            id="save-as-template-name"
-            value={saveName}
-            onChange={(event) => setSaveName(event.target.value)}
-            maxLength={120}
-          />
-          <p className="text-sm text-text-muted">{tContent('saveAsTemplateHint')}</p>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              variant="primary"
-              data-testid="save-as-template-submit"
-              pending={busy}
-              pendingLabel={tContent('saving')}
-              onClick={saveAsTemplate}
-            >
-              {tContent('saveAsTemplateSubmit')}
-            </Button>
-            <Button variant="ghost" onClick={() => setPanel('none')}>
-              {tContent('saveAsTemplateCancel')}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {panel === 'library' && (
-        <div
-          className="flex flex-col gap-2 rounded-md border border-border p-3"
-          data-testid="use-library-template"
-        >
-          {templates.length === 0 ? (
-            <p className="text-sm text-text-muted">{tContent('libraryEmpty')}</p>
-          ) : (
-            <div className="flex flex-wrap items-end gap-3">
-              <SelectField
-                name="library_template_id"
-                label={tContent('useLibraryTitle')}
-                placeholder={tContent('useLibraryPlaceholder')}
-                options={templates.map((template) => ({
-                  value: template.id,
-                  label: template.name,
-                }))}
-                onSelected={setLibraryId}
+        {panel === 'save' && (
+          <Card tone="muted" padding="sm">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="save-as-template-name">{tContent('saveAsTemplateName')}</Label>
+              <Input
+                id="save-as-template-name"
+                value={saveName}
+                onChange={(event) => setSaveName(event.target.value)}
+                maxLength={120}
               />
+              <p className="text-meta text-text-muted">{tContent('saveAsTemplateHint')}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
               <Button
-                variant="secondary"
-                data-testid="use-library-submit"
+                variant="primary"
+                data-testid="save-as-template-submit"
                 pending={busy}
-                pendingLabel={tContent('loading')}
-                onClick={() => {
-                  if (libraryId === NO_SELECTION) return;
-                  // Ptá se `hasDesign`, ne na to, jestli v dokumentu něco je:
-                  // přepisuje se DOKUMENT a přijít se dá i o rozdělanou práci,
-                  // ve které zatím nic není.
-                  if (hasDesign) setConfirming(true);
-                  else useLibrary();
-                }}
+                pendingLabel={tContent('saving')}
+                onClick={saveAsTemplate}
               >
-                {tContent('useLibrarySubmit')}
+                {tContent('saveAsTemplateSubmit')}
+              </Button>
+              <Button variant="ghost" onClick={() => setPanel('none')}>
+                {tContent('saveAsTemplateCancel')}
               </Button>
             </div>
-          )}
-          <p className="text-sm text-text-muted">{tContent('useLibraryHint')}</p>
-        </div>
-      )}
+          </Card>
+        )}
 
-      <ConfirmDialog
-        open={confirming}
-        onOpenChange={setConfirming}
-        level="N2"
-        irreversible
-        title={tContent('confirmTitle')}
-        consequences={[tContent('confirmOverwrite'), tContent('confirmTemplateStays')]}
-        confirmLabel={tContent('confirmSubmit')}
-        cancelLabel={tContent('confirmCancel')}
-        onConfirm={useLibrary}
-        labels={labels}
-      />
+        {panel === 'library' && (
+          <Card tone="muted" padding="sm" data-testid="use-library-template">
+            {templates.length === 0 ? (
+              <p className="text-sm text-text-muted">{tContent('libraryEmpty')}</p>
+            ) : (
+              <div className="flex flex-wrap items-end gap-[var(--spacing-stack)]">
+                <SelectField
+                  name="library_template_id"
+                  label={tContent('useLibraryTitle')}
+                  placeholder={tContent('useLibraryPlaceholder')}
+                  options={templates.map((template) => ({
+                    value: template.id,
+                    label: template.name,
+                  }))}
+                  onSelected={setLibraryId}
+                />
+                <Button
+                  variant="secondary"
+                  data-testid="use-library-submit"
+                  pending={busy}
+                  pendingLabel={tContent('loading')}
+                  onClick={() => {
+                    if (libraryId === NO_SELECTION) return;
+                    // Ptá se `hasDesign`, ne na to, jestli v dokumentu něco je:
+                    // přepisuje se DOKUMENT a přijít se dá i o rozdělanou práci,
+                    // ve které zatím nic není.
+                    if (hasDesign) setConfirming(true);
+                    else useLibrary();
+                  }}
+                >
+                  {tContent('useLibrarySubmit')}
+                </Button>
+              </div>
+            )}
+            <p className="text-meta text-text-muted">{tContent('useLibraryHint')}</p>
+          </Card>
+        )}
+
+        <ConfirmDialog
+          open={confirming}
+          onOpenChange={setConfirming}
+          level="N2"
+          irreversible
+          title={tContent('confirmTitle')}
+          consequences={[tContent('confirmOverwrite'), tContent('confirmTemplateStays')]}
+          confirmLabel={tContent('confirmSubmit')}
+          cancelLabel={tContent('confirmCancel')}
+          onConfirm={useLibrary}
+          labels={labels}
+        />
+      </div>
     </div>
   );
 }

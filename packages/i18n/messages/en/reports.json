@@ -23,6 +23,8 @@
   },
   "report": {
     "title": "Campaign report",
+    "sentAt": "sent {at}",
+    "recipientCount": "{count, plural, =0 {no recipients} one {# recipient} other {# recipients}}",
     "subjectLabel": "Subject",
     "toProgress": "View sending progress",
     "clicked": {
@@ -216,7 +218,10 @@
     "empty": "No activity recorded for this contact yet.",
     "emptyHint": "Once you send an e-mail or the contact visits your site, it shows up here.",
     "emptyFiltered": "Nothing happened in this period.",
+    "emptyFilter": "Nothing in this filter yet.",
     "emptyFilteredAction": "Show the last 90 days",
+    "count": "{count, plural, =0 {no events} one {# event} other {# events}}",
+    "filterGroup": "Event filter",
     "webNotMeasured": "Web behaviour is not measured.",
     "webNotMeasuredAction": "Set up",
     "error": "History failed to load. Try a shorter period.",
@@ -279,7 +284,29 @@
     "rateUnknown": "No rate here: for {count, plural, =0 {no campaigns} one {# campaign} other {# campaigns}} we still do not know how many messages arrived.",
     "problemsUnknown": "we do not know yet",
     "problemsUnknownHint": "Bounces and complaints are reported by the sending service. Nothing has arrived from it yet, so zero here does not mean everything is fine.",
-    "webActiveAction": "What they did on the site"
+    "webActiveAction": "What they did on the site",
+    "periodLabel": "Period",
+    "rangeMeta": "last {range} · {at}",
+    "rangeWords": "over the last {range}",
+    "deltaSincePrevious": "since the previous period",
+    "importContacts": "Import contacts",
+    "newCampaign": "Create campaign",
+    "sentCampaigns": "{count, plural, =0 {no campaigns in this period} one {# campaign · last on {date}} other {# campaigns · last on {date}}}",
+    "problemsAction": "Delivery settings",
+    "clicksTrend": "Click trend",
+    "clicksTrendAction": "Breakdown by campaign",
+    "clicksTrendEmpty": "The chart shows up with your first sent campaign.",
+    "clicksTrendCaption": "Clicks of recent campaigns",
+    "clicksTrendColumn": "Campaign",
+    "clicksSeries": "Clicks",
+    "webActiveUnit": "{count, plural, =0 {contacts} one {contact} other {contacts}}",
+    "webActiveHint": "Known contacts who opened the website in the last 24 hours.",
+    "allCampaigns": "All campaigns",
+    "columnCampaign": "Campaign",
+    "columnClicks": "Clicks",
+    "columnStatus": "Status",
+    "sentMessages": "{count, plural, =0 {not sent} one {# message} other {# messages}}",
+    "recentEmpty": "No campaign was sent in this period."
   },
   "stats": {
     "campaignsHeading": "Trend over time",
@@ -293,7 +320,13 @@
     "columnSentAt": "Sent at",
     "emptyTooFew": "The trend shows up from the third sent campaign.",
     "openWithMachineNote": "The open rate is always shown together with the share of machine opens.",
-    "excludedUnknown": "The chart leaves out {count, plural, =0 {no campaigns} one {# campaign} other {# campaigns}} where we still do not know how many messages arrived. The rate would come from an estimate, not from measurement."
+    "excludedUnknown": "The chart leaves out {count, plural, =0 {no campaigns} one {# campaign} other {# campaigns}} where we still do not know how many messages arrived. The rate would come from an estimate, not from measurement.",
+    "chartHeading": "Rates over time",
+    "loading": "Loading the campaign trend",
+    "excludedLabel": "Outside measurement",
+    "excludedHint": "Campaigns where we still do not know how many messages arrived.",
+    "campaignsInPeriod": "{count, plural, =0 {no campaigns in the period} one {# campaign in the period} other {# campaigns in the period}}",
+    "chartAxisNote": "The chart axis is a ratio: 1 means 100 %."
   },
   "web": {
     "campaign": {
@@ -351,7 +384,13 @@
       "emptyNeverAction": "Set up website tracking",
       "emptyPeriod": "Nothing arrived from the site in this period. The last visit was {when}.",
       "error": "Website activity could not be loaded.",
-      "loading": "Loading website activity"
+      "loading": "Loading website activity",
+      "tileKnown": "Known people",
+      "tileAnonymous": "Not known yet",
+      "tilePages": "Page views",
+      "tileEvents": "Other actions",
+      "eventsEmpty": "Apart from page views, nothing has arrived from the website yet.",
+      "referrersEmpty": "Everyone came directly, with no referring page."
     }
   }
 }

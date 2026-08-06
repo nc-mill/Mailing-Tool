@@ -3,8 +3,9 @@
 import { Link, useRouter } from '@mlain/i18n/navigation';
 import { Badge } from '@mlain/ui/components/badge';
 import { Button } from '@mlain/ui/components/button';
+import { Card } from '@mlain/ui/components/card';
 import { Alert, FilteredEmptyState } from '@mlain/ui/patterns/states';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 import { FormIcon, MailIcon } from '@/lib/ui/status-icons';
 import { restoreTemplateAction } from './actions';
@@ -22,12 +23,26 @@ export type TemplateListItem = {
   /** Kategorii počítá server, ne tahle komponenta: je to pravidlo domény, ne vzhled. */
   category: string;
   usage: TemplateUsage;
+  /**
+   * Kdy se šablona naposledy změnila (ISO 8601 ze serveru). Knihovna je podle
+   * toho seřazená, takže sloupec vysvětluje pořadí řádků. Chodí i v úsporné
+   * podobě odpovědi, protože z něj stojí kurzor stránkování.
+   */
+  updated_at: string;
 };
 
 /** Šablona, kterou někdo živě rozesílá, se nesmí tvářit jako volná předloha. */
 function isWired(usage: TemplateUsage): boolean {
   return usage.forms.length > 0 || usage.lists.length > 0;
 }
+
+/**
+ * Sloupce výpisu. Šířky drží rytmus výpisu kampaní z návrhu: název se
+ * roztahuje, kategorie má pevný sloupec na odznak, zapojení dostane zbytek,
+ * datum je úzké a poslední sloupec je přesně na ikonové tlačítko.
+ */
+const COLUMNS =
+  'grid grid-cols-[minmax(0,1.5fr)_190px_minmax(0,1.3fr)_110px_44px] items-center gap-[var(--spacing-stack)] px-[var(--spacing-row-x)]';
 
 /**
  * Knihovna šablon. Je klientská kvůli JEDINÉ věci, kterou serverová komponenta
@@ -41,6 +56,12 @@ function isWired(usage: TemplateUsage): boolean {
  * FILTR KATEGORIÍ TU NENÍ. Vlastní ho stránka, protože stojí na adrese;
  * knihovna od něj dostane jen zvolenou hodnotu, aby uměla říct, proč je
  * seznam prázdný.
+ *
+ * VZHLED je odvozený z výpisu kampaní v návrhu, ne z mřížky karet: knihovna je
+ * seznam pojmenovaných věcí, a každý takový seznam v systému je JEDNA karta bez
+ * vnitřního okraje, uvnitř hlavička na tlumené ploše a řádky oddělené hairline
+ * linkou. Mřížka karet by na tuhle obrazovku zavedla vizuální jazyk, který
+ * jinde v aplikaci není.
  */
 export function TemplateLibrary({
   workspaceSlug,
@@ -60,10 +81,13 @@ export function TemplateLibrary({
   category?: string | undefined;
 }) {
   const t = useTranslations('editor');
+  const format = useFormatter();
   const router = useRouter();
   const [deleted, setDeleted] = useState<DeletedTemplate | null>(initialDeleted ?? null);
   const [restored, setRestored] = useState<string | null>(null);
   const [undoFailure, setUndoFailure] = useState<string | null>(null);
+  /** Důvod odmítnutého smazání. Vykresluje se nad výpisem, viz `onFailed`. */
+  const [deleteFailure, setDeleteFailure] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   function undo(template: DeletedTemplate) {
@@ -100,7 +124,7 @@ export function TemplateLibrary({
   const visible = templates.filter((template) => template.id !== deleted?.id);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-[var(--spacing-gutter)]">
       {deleted ? (
         <Alert
           tone="info"
@@ -136,6 +160,10 @@ export function TemplateLibrary({
         />
       ) : null}
 
+      {deleteFailure ? (
+        <Alert tone="error" title={deleteFailure} data-testid="template-delete-failed" />
+      ) : null}
+
       {/*
         Prázdno pod zvoleným filtrem je JINÝ stav než prázdná knihovna (S2, ne S1).
         Připomene, čím je seznam zúžený, a nabídne cestu zpátky na všechny
@@ -152,85 +180,126 @@ export function TemplateLibrary({
         />
       ) : null}
 
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {/*
-          Právě smazaná šablona ze seznamu mizí HNED, ještě než dojde obnova dat
-          ze serveru. Bez toho by nad seznamem stálo „Šablona je smazaná" a pod
-          ním by ta šablona pár set milisekund dál svítila, což vypadá jako by
-          mazání nefungovalo. Vrácení zpět ji přivede zpátky.
-        */}
-        {visible.map((template) => {
-          const lines = usageLines(template.usage);
-          return (
-            <li
-              key={template.id}
-              className="flex flex-col gap-2 rounded-md border border-border p-3"
-              data-testid="template-item"
-              data-category={template.category}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <Link
-                  href={`/w/${workspaceSlug}/templates/${template.id}`}
-                  className="font-medium underline"
-                >
-                  {template.name}
-                </Link>
-                {/*
-                  Zapojenou šablonu nejde smazat, protože formulář i seznam z ní
-                  čtou při každém odeslání; server takové mazání odmítne (409
-                  `template_in_use`). Tlačítko, které vždycky selže, je horší než
-                  žádné, takže na jeho místě stojí důvod. Volná šablona se maže
-                  dál beze změny.
-                */}
-                {canWrite && !isWired(template.usage) ? (
-                  <DeleteTemplateButton
-                    workspaceId={workspaceId}
-                    templateId={template.id}
-                    name={template.name}
-                    size="sm"
-                    onDeleted={(item) => {
-                      setRestored(null);
-                      setUndoFailure(null);
-                      setDeleted(item);
-                      router.refresh();
-                    }}
-                  />
-                ) : null}
+      {visible.length === 0 ? null : (
+        <Card padding="none" gap="none">
+          {/* Užší okno seznam nezalamuje, posouvá ho: sloupce mají smysl jen vedle sebe. */}
+          <div className="overflow-x-auto rounded-t-[var(--radius-surface)]">
+            <div className="min-w-[900px]">
+              <div
+                className={`${COLUMNS} rounded-t-[var(--radius-surface)] border-b border-border bg-surface-muted py-3`}
+              >
+                <span className="meta-caps text-text-muted">{t('list.columns.name')}</span>
+                <span className="meta-caps text-text-muted">{t('list.columns.category')}</span>
+                <span className="meta-caps text-text-muted">{t('list.columns.usage')}</span>
+                <span className="meta-caps text-text-muted">{t('list.columns.changed')}</span>
+                <span />
               </div>
 
               {/*
-                Odznak dostane jen šablona, která NENÍ obyčejná kampaň. Odznak
-                na každé položce by nesl nulovou informaci; takhle označuje
-                přesně ty, které by si uživatel spletl s volnou předlohou.
+                Právě smazaná šablona ze seznamu mizí HNED, ještě než dojde obnova dat
+                ze serveru. Bez toho by nad seznamem stálo „Šablona je smazaná" a pod
+                ním by ta šablona pár set milisekund dál svítila, což vypadá jako by
+                mazání nefungovalo. Vrácení zpět ji přivede zpátky.
               */}
-              {template.category === 'campaign' ? null : (
-                // Obal kvůli šířce: položka je `flex-col`, takže by se odznak
-                // bez něj roztáhl přes celou kartu a vypadal jako pruh.
-                <div className="flex flex-wrap gap-2">
-                  {template.category === 'form' ? (
-                    <Badge tone="accent" icon={FormIcon}>
-                      {t('list.category.badgeForm')}
-                    </Badge>
-                  ) : (
-                    <Badge tone="neutral" icon={MailIcon}>
-                      {t('list.category.badgeTransactional')}
-                    </Badge>
-                  )}
-                </div>
-              )}
+              {visible.map((template) => {
+                const lines = usageLines(template.usage);
+                return (
+                  <div
+                    key={template.id}
+                    className={`${COLUMNS} border-b border-border py-[var(--spacing-row-y)] last:border-b-0 hover:bg-surface-muted`}
+                    data-testid="template-item"
+                    data-category={template.category}
+                  >
+                    <Link
+                      href={`/w/${workspaceSlug}/templates/${template.id}`}
+                      className="justify-self-start text-base font-semibold text-text no-underline hover:underline"
+                    >
+                      {template.name}
+                    </Link>
 
-              {lines.length > 0 ? (
-                <div className="text-sm text-text-muted" data-testid="template-usage">
-                  {lines.map((line) => (
-                    <p key={line}>{line}</p>
-                  ))}
-                  {canWrite ? <p>{t('list.usage.locked')}</p> : null}
-                </div>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
+                    {/*
+                      Odznak dostane jen šablona, která NENÍ obyčejná kampaň. Odznak
+                      na každé položce by nesl nulovou informaci; takhle označuje
+                      přesně ty, které by si uživatel spletl s volnou předlohou.
+                      Prázdná buňka je tedy odpověď „nic zvláštního", ne chybějící údaj.
+                    */}
+                    <span>
+                      {template.category === 'campaign' ? null : template.category === 'form' ? (
+                        <Badge tone="accent" icon={FormIcon}>
+                          {t('list.category.badgeForm')}
+                        </Badge>
+                      ) : (
+                        <Badge tone="neutral" icon={MailIcon}>
+                          {t('list.category.badgeTransactional')}
+                        </Badge>
+                      )}
+                    </span>
+
+                    <span className="grid gap-0.5">
+                      {lines.length === 0 ? null : (
+                        <>
+                          {lines.map((line) => (
+                            <span key={line} className="text-sm text-text">
+                              {line}
+                            </span>
+                          ))}
+                          {/*
+                            Věta o zámku je meta údaj k řádku, ne další zapojení,
+                            takže je mono a tišší. Bez práva na zápis nedává smysl:
+                            tomu, kdo mazat nesmí, se nevysvětluje, proč zrovna tohle
+                            smazat nejde.
+                          */}
+                          {canWrite ? (
+                            <span className="font-mono text-label text-text-muted">
+                              {t('list.usage.locked')}
+                            </span>
+                          ) : null}
+                        </>
+                      )}
+                    </span>
+
+                    {/*
+                      Datum poslední změny. Je mono, protože se čte po číslicích,
+                      a vysvětluje pořadí řádků: knihovna je seřazená od naposledy
+                      upravené. Bez něj má obyčejná kampaňová šablona v řádku jen
+                      jméno a tři prázdné buňky.
+                    */}
+                    <span className="font-mono text-meta text-text-muted">
+                      {format.dateTime(new Date(template.updated_at), 'short')}
+                    </span>
+
+                    {/*
+                      Zapojenou šablonu nejde smazat, protože formulář i seznam z ní
+                      čtou při každém odeslání; server takové mazání odmítne (409
+                      `template_in_use`). Tlačítko, které vždycky selže, je horší než
+                      žádné, takže na jeho místě stojí důvod ve sloupci vedle.
+                      Volná šablona se maže dál beze změny.
+                    */}
+                    <span className="justify-self-center">
+                      {canWrite && !isWired(template.usage) ? (
+                        <DeleteTemplateButton
+                          workspaceId={workspaceId}
+                          templateId={template.id}
+                          name={template.name}
+                          appearance="icon"
+                          onFailed={(message) => setDeleteFailure(message)}
+                          onDeleted={(item) => {
+                            setRestored(null);
+                            setUndoFailure(null);
+                            setDeleteFailure(null);
+                            setDeleted(item);
+                            router.refresh();
+                          }}
+                        />
+                      ) : null}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

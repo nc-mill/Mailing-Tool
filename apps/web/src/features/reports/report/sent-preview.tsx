@@ -3,6 +3,7 @@
 import { EmailPreview } from '@mlain/ui/patterns/email-preview';
 import { Alert, ReadOnlyBanner } from '@mlain/ui/patterns/states';
 import { useFormatter, useTranslations } from 'next-intl';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { useEffect, useState } from 'react';
 import { campaignSentContentUrl, fetchJson } from '../api-client';
 
@@ -91,22 +92,22 @@ export function SentPreview({ campaignId }: { campaignId: string }) {
 
   if (failed) {
     return (
-      <section
-        aria-labelledby="sent-preview-heading"
-        className="rounded-lg border border-border bg-surface p-4"
-      >
-        <h2 id="sent-preview-heading" className="text-base font-semibold">
-          {t('report.sentPreview.heading')}
-        </h2>
-        <Alert tone="error" className="mt-3">
-          {t('report.sentPreview.failed')}
-        </Alert>
-      </section>
+      <Card aria-labelledby="sent-preview-heading">
+        <CardTitle>
+          <span id="sent-preview-heading">{t('report.sentPreview.heading')}</span>
+        </CardTitle>
+        <Alert tone="error">{t('report.sentPreview.failed')}</Alert>
+      </Card>
     );
   }
 
   if (!payload) {
-    return <div aria-busy="true" className="h-64 animate-pulse rounded-lg bg-surface-muted" />;
+    return (
+      <div
+        aria-busy="true"
+        className="h-64 animate-pulse rounded-[var(--radius-surface)] bg-surface-muted"
+      />
+    );
   }
 
   // Patička není obsah, takže `empty` znamená e-mail, ve kterém nebylo nic než
@@ -114,25 +115,21 @@ export function SentPreview({ campaignId }: { campaignId: string }) {
   const emptyContent = payload.html !== null && payload.content_state === 'empty';
 
   return (
-    <section
-      data-testid="sent-preview"
-      aria-labelledby="sent-preview-heading"
-      className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4"
-    >
-      <h2 id="sent-preview-heading" className="text-base font-semibold">
-        {t('report.sentPreview.heading')}
-      </h2>
+    <Card data-testid="sent-preview" aria-labelledby="sent-preview-heading">
+      <CardTitle>
+        <span id="sent-preview-heading">{t('report.sentPreview.heading')}</span>
+      </CardTitle>
 
       {/* Pruh stojí nad obsahem, ne pod ním: uživatel má vědět, že se na tohle
           dívá jen zvenčí, dřív než začne hledat, kde se to upravuje. */}
       <ReadOnlyBanner reason={t('report.sentPreview.readOnly')} />
 
-      <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
-        <dt className="text-text-muted">{t('report.sentPreview.subject')}</dt>
+      <dl className="grid gap-x-[var(--spacing-card)] gap-y-1 sm:grid-cols-[auto_1fr] [&_dd]:font-mono [&_dd]:text-sm [&_dd]:text-text">
+        <dt className="meta-caps text-text-muted">{t('report.sentPreview.subject')}</dt>
         <dd>{payload.subject}</dd>
         {payload.compiled_at === null ? null : (
           <>
-            <dt className="text-text-muted">{t('report.sentPreview.compiledAt')}</dt>
+            <dt className="meta-caps text-text-muted">{t('report.sentPreview.compiledAt')}</dt>
             <dd>
               {format.dateTime(new Date(payload.compiled_at), {
                 dateStyle: 'short',
@@ -193,21 +190,23 @@ export function SentPreview({ campaignId }: { campaignId: string }) {
            * ji znovu jen kvůli náhledu by znamenalo funkční odhlášení
            * cizího kontaktu na jedno kliknutí.
            */}
-          <p className="text-sm text-text-muted">{t('report.sentPreview.systemLinksNote')}</p>
+          <p className="text-meta text-text-muted">{t('report.sentPreview.systemLinksNote')}</p>
         </>
       )}
 
       {payload.text === null || payload.text.trim() === '' ? null : (
-        <details className="text-sm">
-          <summary>{t('report.sentPreview.textHeading')}</summary>
+        <details className="border-t border-border pt-3">
+          <summary className="cursor-pointer text-ui text-accent-text">
+            {t('report.sentPreview.textHeading')}
+          </summary>
           <pre
             data-testid="sent-preview-text"
-            className="mt-2 whitespace-pre-wrap bg-surface-muted p-3 text-xs"
+            className="mt-[var(--spacing-inline)] whitespace-pre-wrap rounded-[var(--radius-control)] bg-surface-muted p-3 font-mono text-meta text-text"
           >
             {payload.text}
           </pre>
         </details>
       )}
-    </section>
+    </Card>
   );
 }

@@ -60,7 +60,7 @@ export function UndoCountdown({
   if (releasing) {
     return (
       <div role="status" aria-live="assertive" className="flex flex-col gap-2">
-        <p className="font-medium">{t('releasing')}</p>
+        <p className="text-ui font-semibold text-text">{t('releasing')}</p>
         <IndeterminateProgress label={t('releasing')} />
       </div>
     );
@@ -76,8 +76,12 @@ export function UndoCountdown({
 
   return (
     <div className="flex flex-col gap-2" data-testid="undo-countdown">
-      <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-3">
-        <p>{t('undoCountdown', { seconds: remaining })}</p>
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex flex-wrap items-center gap-[var(--spacing-stack)]"
+      >
+        <p className="text-ui text-text">{t('undoCountdown', { seconds: remaining })}</p>
         <Button variant="primary" size="lg" onClick={onUndo}>
           {t('undo')}
         </Button>
@@ -87,7 +91,7 @@ export function UndoCountdown({
           </Button>
         )}
       </div>
-      {onSendNow && <p className="text-sm text-text-muted">{t('sendNowHint')}</p>}
+      {onSendNow && <p className="text-meta text-text-muted">{t('sendNowHint')}</p>}
     </div>
   );
 }

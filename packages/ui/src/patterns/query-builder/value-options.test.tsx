@@ -154,7 +154,10 @@ describe('párování pole s odkazem v AST', () => {
               {
                 type: 'condition',
                 // Pořadí klíčů z databáze: nejdřív kratší, pak delší.
-                field: JSON.parse('{"key":"status","kind":"contact"}') as { kind: 'contact'; key: string },
+                field: JSON.parse('{"key":"status","kind":"contact"}') as {
+                  kind: 'contact';
+                  key: string;
+                },
                 operator: 'eq',
                 value: 'active',
               },
@@ -169,9 +172,9 @@ describe('párování pole s odkazem v AST', () => {
   });
 
   it('otisk odkazu nezávisí na pořadí klíčů ani na zanoření', () => {
-    expect(fieldRefKey({ kind: 'engagement', metric: 'sent', scope: { last_n_campaigns: 5 } })).toBe(
-      fieldRefKey({ scope: { last_n_campaigns: 5 }, metric: 'sent', kind: 'engagement' }),
-    );
+    expect(
+      fieldRefKey({ kind: 'engagement', metric: 'sent', scope: { last_n_campaigns: 5 } }),
+    ).toBe(fieldRefKey({ scope: { last_n_campaigns: 5 }, metric: 'sent', kind: 'engagement' }));
     expect(fieldRefKey({ kind: 'tag' })).not.toBe(fieldRefKey({ kind: 'list', list_id: 'a' }));
   });
 });

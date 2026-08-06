@@ -304,9 +304,15 @@ function CanvasBody({ canWriteHtml, fieldCatalog }: CanvasProps) {
   };
 
   return (
-    <>
+    <div className="flex min-w-0 flex-col gap-[var(--spacing-inline)]">
+      {/*
+        Plátno je KARTA, jak ho kreslí návrh: hairline rámeček, rádius 10 px
+        a vnitřní okraj 25 px. Plochu ale NEDÁVÁ systém, dává ji dokument
+        (`surface.canvas` z motivu), protože uživatel si ji volí v panelu
+        motivu a musí ji vidět přesně tak, jak dojde příjemci.
+      */}
       <div
-        className="min-h-full w-full"
+        className="w-full rounded-[var(--radius-surface)] border border-border p-[var(--spacing-card-tight)]"
         style={{
           backgroundColor: darkOverride('surface.canvas', theme.light.roles['surface.canvas']),
         }}
@@ -340,7 +346,19 @@ function CanvasBody({ canWriteHtml, fieldCatalog }: CanvasProps) {
           {renderList(document.blocks, viewport, [])}
         </div>
       </div>
-    </>
+      {/*
+        Řádek pod plátnem říká, co je vidět a jak je to široké. Návrh ho má
+        UVNITŘ karty, ale tam by ležel na ploše, kterou si volí uživatel:
+        na inkoustovém plátně by tlumený text zmizel. Stojí proto pod kartou,
+        na papíru stránky, kde je čitelný vždycky. Je mono, protože se čte
+        po číslicích.
+      */}
+      <p className="text-center font-mono text-label text-text-muted">
+        {mobile
+          ? t('canvas.noteMobile', { width: viewport })
+          : t('canvas.noteDesktop', { width: viewport })}
+      </p>
+    </div>
   );
 }
 

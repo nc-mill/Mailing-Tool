@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { PageHeader } from '@mlain/ui/components/page-header';
 import { Alert } from '@mlain/ui/patterns/states';
 import { getTranslations } from 'next-intl/server';
 import { TemplateLibrary, type TemplateListItem } from '@/features/templates/template-library';
@@ -93,24 +94,40 @@ export default async function TemplatesPage({
    */
   const firstRun = response.ok && counts.all === 0 && deleted === undefined;
 
+  /*
+   * Vnitřní okraj stránky ani strop šířky si obrazovka nenastavuje: obojí
+   * dodává skořápka (`AppShell`, 40 px). Dřívější `p-6` se s ním sčítalo,
+   * takže knihovna začínala o 24 px jinde než ostatní obrazovky.
+   *
+   * Rytmus je stejný jako u výpisu kampaní a segmentů: hlavička s názvem,
+   * mono řádkem a akcemi, pod ní filtr, pod ním jedna karta s obsahem.
+   */
   return (
-    <div className="p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{t('list.title')}</h1>
-        {firstRun ? null : (
-          <CreateTemplateButton
-            workspaceSlug={workspaceSlug}
-            workspaceId={access.data.workspace.id}
-          />
-        )}
-      </div>
+    <>
+      <PageHeader
+        title={t('list.title')}
+        meta={t('list.countAll', { count: counts.all })}
+        actions={
+          firstRun ? null : (
+            <CreateTemplateButton
+              workspaceSlug={workspaceSlug}
+              workspaceId={access.data.workspace.id}
+            />
+          )
+        }
+      />
       {response.ok ? null : (
-        <Alert tone="error" title={t('list.loadFailed')} data-testid="templates-load-failed" />
+        <Alert
+          tone="error"
+          className="mb-[var(--spacing-gutter)]"
+          title={t('list.loadFailed')}
+          data-testid="templates-load-failed"
+        />
       )}
       {firstRun ? (
         <TemplatesEmpty workspaceSlug={workspaceSlug} workspaceId={access.data.workspace.id} />
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-[var(--spacing-gutter)]">
           <CategoryFilter basePath={basePath} active={category} counts={counts} />
           {/*
             Prázdná knihovna se nabídkou vrácení zpět NEPŘEBIJE: kdo právě smazal
@@ -127,6 +144,6 @@ export default async function TemplatesPage({
           />
         </div>
       )}
-    </div>
+    </>
   );
 }

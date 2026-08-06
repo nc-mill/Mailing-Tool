@@ -80,11 +80,11 @@ export function PersonalizationMenu({
             <Button
               variant="ghost"
               size="sm"
-              className="min-h-8 px-2"
+              className="size-[var(--size-control-xs)] min-h-[var(--size-control-xs)] px-0"
               data-testid="insert-personalization"
               aria-label={t('richtext.insertPersonalization')}
             >
-              <Braces aria-hidden className="size-4" />
+              <Braces aria-hidden className="icon-sm" />
             </Button>
           </PopoverTrigger>
         </Tooltip>
@@ -108,7 +108,7 @@ export function PersonalizationMenu({
                 >
                   <span className="flex flex-col">
                     <span>{pickLabel(greetingField.label, locale)}</span>
-                    <span className="text-xs text-text-muted">
+                    <span className="text-meta text-text-muted">
                       {t('personalization.greetingHint')}
                     </span>
                   </span>
@@ -136,7 +136,7 @@ export function PersonalizationMenu({
                           když je oslovení vypnuté (pole je označené `deleted`). */}
                       {greetingField !== undefined &&
                       greetingGuidanceFor(toMergePath(field.path)) === 'nameFragment' ? (
-                        <span className="text-xs text-text-muted">
+                        <span className="text-meta text-text-muted">
                           {t('personalization.fragmentHint')}
                         </span>
                       ) : null}

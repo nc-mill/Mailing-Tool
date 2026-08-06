@@ -3,7 +3,9 @@
 import { useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Collapsible } from '@mlain/ui/components/collapsible';
+import { Send } from '@mlain/ui/icons';
 import { Alert } from '@mlain/ui/patterns/states';
 import { SendDialog } from './send-dialog';
 
@@ -121,10 +123,21 @@ export function ReadinessChecklist({
   }
 
   return (
-    <section aria-labelledby="readiness-title" className="flex flex-col gap-6">
-      <h2 id="readiness-title" className="text-lg font-semibold">
-        {t('send.checklistTitle')}
-      </h2>
+    /*
+      Kontrola před odesláním je ZVÝRAZNĚNÁ KARTA. Je to poslední obrazovka
+      před nevratnou akcí, takže má na stránce vyhrát nad vším ostatním;
+      v návrhu je to týž žlutý panel jako v posledním kroku nastavení.
+    */
+    <Card
+      aria-labelledby="readiness-title"
+      tone="highlight"
+      padding="md"
+      gap="gutter"
+      className="max-w-[820px]"
+    >
+      <CardTitle>
+        <span id="readiness-title">{t('send.checklistTitle')}</span>
+      </CardTitle>
 
       {/*
         Riziko z 8.2.9: uživatel postaví kampaň na 20 000 lidí a teprve při odeslání
@@ -141,26 +154,24 @@ export function ReadinessChecklist({
         </Alert>
       )}
 
-      <dl className="grid gap-2" data-testid="send-summary">
-        <div className="flex gap-2">
-          <dt className="w-28 text-text-muted">{t('send.recipientsLabel')}</dt>
-          <dd data-testid="recipient-count">
-            {t('audience.recipientCount', { count: preflight.audience_estimate })}
-          </dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="w-28 text-text-muted">{t('send.fromLabel')}</dt>
-          <dd>{fromLine}</dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="w-28 text-text-muted">{t('send.subjectLabel')}</dt>
-          <dd>{subject}</dd>
-        </div>
+      {/* Shrnutí toho, co se odešle: popisek mono verzálkami, hodnota vedle. */}
+      <dl
+        className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-[var(--spacing-stack)] gap-y-1.5"
+        data-testid="send-summary"
+      >
+        <dt className="meta-caps text-text-muted">{t('send.recipientsLabel')}</dt>
+        <dd data-testid="recipient-count" className="text-ui text-text">
+          {t('audience.recipientCount', { count: preflight.audience_estimate })}
+        </dd>
+        <dt className="meta-caps text-text-muted">{t('send.fromLabel')}</dt>
+        <dd className="text-ui text-text">{fromLine}</dd>
+        <dt className="meta-caps text-text-muted">{t('send.subjectLabel')}</dt>
+        <dd className="text-ui text-text">{subject}</dd>
       </dl>
 
       {/* Součet vyloučených plus výsledek se rovná vstupnímu počtu. Věta to říká
           čísly, ne obecně, aby šlo poznat, že sedí. */}
-      <p data-testid="audience-sum-check" className="text-sm text-text-muted">
+      <p data-testid="audience-sum-check" className="text-meta text-text-muted">
         {t('audience.sumExplained', {
           selected: format.number(b.raw),
           excluded: format.number(excludedTotal),
@@ -169,11 +180,14 @@ export function ReadinessChecklist({
       </p>
 
       {errors.length > 0 && (
-        <section aria-labelledby="blocking-title">
-          <h3 id="blocking-title" className="text-base font-medium">
+        <section
+          aria-labelledby="blocking-title"
+          className="flex flex-col gap-[var(--spacing-inline)]"
+        >
+          <h3 id="blocking-title" className="meta-caps text-danger-text">
             {t('send.blockingTitle')}
           </h3>
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-[var(--spacing-inline)]">
             {errors.map((f) => (
               <li
                 key={f.code}
@@ -191,11 +205,14 @@ export function ReadinessChecklist({
       )}
 
       {warnings.length > 0 && (
-        <section aria-labelledby="warning-title">
-          <h3 id="warning-title" className="text-base font-medium">
+        <section
+          aria-labelledby="warning-title"
+          className="flex flex-col gap-[var(--spacing-inline)]"
+        >
+          <h3 id="warning-title" className="meta-caps text-warning-text">
             {t('send.warningTitle')}
           </h3>
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-[var(--spacing-inline)]">
             {warnings.map((f) => (
               <li key={f.code} data-testid={`finding-${f.code}`}>
                 <Alert tone="warning">{label(f)}</Alert>
@@ -205,11 +222,14 @@ export function ReadinessChecklist({
         </section>
       )}
 
-      <section aria-labelledby="excluded-title">
-        <h3 id="excluded-title" className="text-base font-medium">
+      <section
+        aria-labelledby="excluded-title"
+        className="flex flex-col gap-[var(--spacing-inline)]"
+      >
+        <h3 id="excluded-title" className="meta-caps text-text-muted">
           {t('audience.excludedTitle')}
         </h3>
-        <ul data-testid="excluded-list" className="text-sm">
+        <ul data-testid="excluded-list" className="text-ui text-text">
           {/* Nulové brány se v seznamu nezobrazují, zaplevelily by ho. */}
           {GATE_KEYS.filter(([key]) => b[key] > 0).map(([key, msg]) => (
             <li key={key}>{t(`audience.${msg}`, { count: b[key] })}</li>
@@ -219,7 +239,7 @@ export function ReadinessChecklist({
         {/* V rozpadu za odkazem jsou VŠECHNY brány, i nulové, aby bylo vidět,
             že se kontrolovaly. */}
         <Collapsible summary={t('audience.breakdown')}>
-          <ul data-testid="breakdown-panel" className="text-sm">
+          <ul data-testid="breakdown-panel" className="text-ui text-text">
             {GATE_KEYS.map(([key, msg]) => (
               <li key={key}>{t(`audience.${msg}`, { count: b[key] })}</li>
             ))}
@@ -231,6 +251,7 @@ export function ReadinessChecklist({
 
       <div>
         <Button variant="primary" onClick={handleSend}>
+          <Send aria-hidden className="icon-md" />
           {t('send.button', { count: preflight.audience_estimate })}
         </Button>
       </div>
@@ -246,6 +267,6 @@ export function ReadinessChecklist({
         warnings={warnings}
         onConfirm={confirmSend}
       />
-    </section>
+    </Card>
   );
 }

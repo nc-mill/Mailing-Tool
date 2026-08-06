@@ -96,7 +96,10 @@ export function AuditTable(props: AuditTableProps) {
   return (
     <>
       {props.cursorDropped ? (
-        <p role="status" className="mb-4 rounded-md bg-surface-muted p-3 text-sm">
+        <p
+          role="status"
+          className="rounded-[var(--radius-control)] bg-surface-muted p-[var(--spacing-inline)] text-meta"
+        >
           {t('shared.cursorDropped')}
         </p>
       ) : null}
@@ -108,7 +111,7 @@ export function AuditTable(props: AuditTableProps) {
         horší než přiznat stáří.
       */}
       {stale && props.staleSince ? (
-        <div className="mb-4">
+        <div className="flex flex-col gap-1.5">
           <StaleBanner
             lastUpdatedLabel={t('states.staleTitle', {
               time: format.dateTime(new Date(props.staleSince), 'short'),
@@ -124,23 +127,38 @@ export function AuditTable(props: AuditTableProps) {
 
       <StaleContentWhenStale stale={stale}>
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="w-full border-collapse text-left text-ui">
             <caption className="sr-only">{t('audit.title')}</caption>
             <thead>
-              <tr>
-                <th scope="col" className="pb-2 pr-6">
+              <tr className="bg-surface-muted">
+                <th
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
                   {t('audit.table.when')}
                 </th>
-                <th scope="col" className="pb-2 pr-6">
+                <th
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
                   {t('audit.table.actor')}
                 </th>
-                <th scope="col" className="pb-2 pr-6">
+                <th
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
                   {t('audit.table.action')}
                 </th>
-                <th scope="col" className="pb-2 pr-6">
+                <th
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
                   {t('audit.table.target')}
                 </th>
-                <th scope="col" className="pb-2 pr-6">
+                <th
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
                   {t('audit.table.requestId')}
                 </th>
               </tr>
@@ -149,34 +167,54 @@ export function AuditTable(props: AuditTableProps) {
               {rows.map((row) => {
                 const actionKey = auditActionKey(row.action);
                 return (
-                  <tr key={row.id} className="border-t border-border align-top">
-                    <td className="py-3 pr-6">
-                      <time dateTime={row.created_at} title={row.created_at}>
+                  <tr
+                    key={row.id}
+                    className="border-b border-border align-top hover:bg-surface-muted"
+                  >
+                    <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
+                      {/* Čas se čte po znacích, takže mono. */}
+                      <time
+                        dateTime={row.created_at}
+                        title={row.created_at}
+                        className="font-mono text-meta whitespace-nowrap"
+                      >
                         {format.dateTime(new Date(row.created_at), 'short')}
                       </time>
                     </td>
-                    <td className="py-3 pr-6">
-                      <p>{row.actor_label}</p>
-                      <p className="text-sm text-text-muted">
+                    <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
+                      {/* Aktér je buď jméno, nebo identifikátor klíče; obojí se
+                          čte po znacích, takže mono. */}
+                      <p className="font-mono text-meta break-all text-text">{row.actor_label}</p>
+                      <p className="text-meta text-text-muted">
                         {t(ACTOR_TYPE_KEYS[row.actor_type])}
                       </p>
                     </td>
-                    <td className="py-3 pr-6">
+                    <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                       {actionKey ? (
                         t(actionKey as 'audit.actions.user.login')
                       ) : (
-                        <code className="text-sm">{row.action}</code>
+                        <code className="font-mono text-meta">{row.action}</code>
                       )}
                     </td>
-                    <td className="py-3 pr-6 text-sm">
-                      {row.target_type === null ? '' : <code>{row.target_type}</code>}{' '}
-                      {row.target_id === null ? '' : <code>{row.target_id}</code>}
+                    <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)] text-meta">
+                      {row.target_type === null ? (
+                        ''
+                      ) : (
+                        <code className="font-mono break-all">{row.target_type}</code>
+                      )}{' '}
+                      {row.target_id === null ? (
+                        ''
+                      ) : (
+                        <code className="font-mono break-all text-text-muted">{row.target_id}</code>
+                      )}
                     </td>
-                    <td className="py-3 pr-6">
+                    <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                       {row.request_id === null ? (
                         ''
                       ) : (
-                        <code className="text-sm">{row.request_id}</code>
+                        <code className="font-mono text-meta break-all text-text-muted">
+                          {row.request_id}
+                        </code>
                       )}
                     </td>
                   </tr>
@@ -187,9 +225,12 @@ export function AuditTable(props: AuditTableProps) {
         </div>
       </StaleContentWhenStale>
 
-      <p className="mt-4 text-sm text-text-muted">{t('audit.retention')}</p>
+      <p className="text-meta text-text-muted">{t('audit.retention')}</p>
 
-      <nav aria-label={t('audit.title')} className="mt-4 flex gap-4">
+      <nav
+        aria-label={t('audit.title')}
+        className="mt-[var(--spacing-stack)] flex gap-[var(--spacing-gutter)]"
+      >
         {pagination.prev_cursor ? (
           <Link
             href={buildListHref(props.basePath, props.filters, pagination.prev_cursor)}

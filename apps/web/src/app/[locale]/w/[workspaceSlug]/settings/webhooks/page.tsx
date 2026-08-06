@@ -9,7 +9,11 @@ import {
 } from '@/features/webhooks/webhooks-table';
 import { WebhookForm } from '@/features/webhooks/webhook-form';
 import { MVP0_EVENT_TYPES } from '@/features/webhooks/event-types';
-import { SettingsPageShell } from '@/features/settings/settings-page-shell';
+import {
+  SettingsPageShell,
+  SettingsSection,
+  SettingsStack,
+} from '@/features/settings/settings-page-shell';
 import { SettingsProblem } from '@/features/settings/settings-problem';
 import { ForbiddenSection } from '@/features/settings/forbidden-section';
 import { apiFetch } from '@/lib/api-client/fetch';
@@ -70,24 +74,28 @@ export default async function WebhooksPage({
 
   return (
     <SettingsPageShell title={t('webhooks.title')} lead={t('webhooks.lead')}>
-      <div className="space-y-12">
-        <WebhooksTable
-          endpoints={endpoints}
-          canWrite={canWrite}
-          workspaceId={access.data.workspace.id}
-          slug={workspaceSlug}
-          emptied={emptied === '1'}
-          enableAction={enableWebhookFormAction}
-        />
-        {canWrite && !atLimit ? (
-          <WebhookForm
-            mode="create"
+      <SettingsStack>
+        <SettingsSection>
+          <WebhooksTable
+            endpoints={endpoints}
+            canWrite={canWrite}
             workspaceId={access.data.workspace.id}
             slug={workspaceSlug}
-            availableEventTypes={MVP0_EVENT_TYPES}
+            emptied={emptied === '1'}
+            enableAction={enableWebhookFormAction}
           />
+        </SettingsSection>
+        {canWrite && !atLimit ? (
+          <SettingsSection>
+            <WebhookForm
+              mode="create"
+              workspaceId={access.data.workspace.id}
+              slug={workspaceSlug}
+              availableEventTypes={MVP0_EVENT_TYPES}
+            />
+          </SettingsSection>
         ) : null}
-      </div>
+      </SettingsStack>
     </SettingsPageShell>
   );
 }

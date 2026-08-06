@@ -1,6 +1,13 @@
 {
   "title": "Segments",
   "new": "New segment",
+  "intro": "A segment is a condition, not a group. Whoever matches it is in it, and we recalculate that ourselves.",
+  "columns": {
+    "name": "Name",
+    "count": "Contacts",
+    "recounted": "Recounted"
+  },
+  "rowActions": "More actions",
   "name": "Segment name",
   "emptyList": "A segment is a saved question about your contacts, for example „who opened nothing in half a year\". Start from a ready made one, or build your own.",
   "stale": "Updated {time} ago.",
@@ -28,6 +35,8 @@
     },
     "addCondition": "Add a condition",
     "addGroup": "Add a group of conditions",
+    "conditionsTitle": "Conditions",
+    "newMeta": "new segment · not saved yet",
     "removeCondition": "Remove condition",
     "groupNumber": "Group {path}",
     "noDeeper": "This is as deep as the nesting goes.",
@@ -142,14 +151,19 @@
   },
   "count": {
     "action": "Count",
+    "belongLabel": "In the segment",
+    "unit": "{count, plural, =0 {contacts} one {contact} other {contacts}}",
     "counting": "Counting…",
     "exact": "The segment holds {count, plural, =0 {nobody} one {# contact} few {# contacts} many {# contacts} other {# contacts}}",
     "sampleTitle": "For example:",
+    "sampleLabel": "For example",
+    "previewNote": "The list is only a preview. The segment is recalculated again before every campaign, so the numbers can differ by then.",
     "showAll": "Show all {count}",
     "failed": "The count could not be calculated.",
     "retry": "Try again",
     "emptyAll": "The segment has no condition yet, so it holds every contact ({count, number}).",
-    "failedDetail": "The count could not be calculated. Technical detail: {detail}"
+    "failedDetail": "The count could not be calculated. Technical detail: {detail}",
+    "failedReferenceMissing": "The condition points to a {kind} that no longer exists. Remove it, or pick another value."
   },
   "warnings": {
     "segment_count_estimated": "The number is an estimate, an exact calculation would take too long.",
@@ -184,7 +198,9 @@
   },
   "presets": {
     "sectionTitle": "Start from a ready made one",
+    "editableHint": "conditions can be edited once inserted",
     "orBuild": "Or build your own",
+    "orBuildHint": "It is built from conditions about contacts, lists, consents and campaign activity.",
     "build": "Build your own segment",
     "use": "Use",
     "neverOpened": {
@@ -306,5 +322,11 @@
     "lastCampaigns": "({count, plural, =0 {no campaigns} one {last campaign} other {last # campaigns}})",
     "sinceDays": "(in the last {days, plural, =0 {day} one {# day} other {# days}})",
     "oneCampaign": "(in one campaign)"
+  },
+  "referenceKinds": {
+    "tag": "tag",
+    "list": "list",
+    "segment": "segment",
+    "contact_field": "custom field"
   }
 }

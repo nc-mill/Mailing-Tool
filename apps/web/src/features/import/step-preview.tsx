@@ -1,7 +1,14 @@
 'use client';
 
+import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
+import { cn } from '@mlain/ui/lib/cn';
+import { Alert } from '@mlain/ui/patterns/states';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
+
+/** Buňka náhledu. Stejné odsazení jako v řádku tabulky ve zbytku aplikace. */
+const CELL = 'px-[var(--spacing-row-x)] py-[var(--spacing-row-y)] text-ui text-text';
 
 export type PreviewRow = {
   rowNumber: number;
@@ -51,97 +58,143 @@ export function StepPreview({
   const [showSplit, setShowSplit] = useState(false);
 
   return (
-    <div className="flex flex-col gap-4">
-      <h2>{t('preview.title')}</h2>
+    <div className="flex flex-col gap-[var(--spacing-gutter)]">
+      <CardTitle>{t('preview.title')}</CardTitle>
 
-      {estimate.approximate ? <p>{t('preview.approximate')}</p> : null}
+      {estimate.approximate ? <Alert tone="info">{t('preview.approximate')}</Alert> : null}
 
-      <table>
-        <caption className="sr-only">{t('preview.title')}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{t('preview.columns.email')}</th>
-            <th scope="col">{t('preview.columns.titlePrefix')}</th>
-            <th scope="col">{t('preview.columns.firstName')}</th>
-            <th scope="col">{t('preview.columns.gender')}</th>
-            <th scope="col">{t('preview.columns.lastName')}</th>
-            {greetingEnabled ? <th scope="col">{t('preview.columns.greeting')}</th> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {preview.rows.map((row) => (
-            <tr key={row.rowNumber} data-state={row.state}>
-              <td>{row.email}</td>
-              <td>{row.titlePrefix}</td>
-              <td>{row.firstName}</td>
-              {/* Otazník, ne prázdno: prázdná buňka vypadá jako chybějící
-                  sloupec, otazník říká „nevíme, a víme, že nevíme".
-                  Rod se píše slovem, ne kódem: `female` v tabulce vedle
-                  českých jmen vypadá jako nedodělek, kterým taky je. */}
-              <td>
-                {row.gender === 'female'
-                  ? t('vocative.genderFemale')
-                  : row.gender === 'male'
-                    ? t('vocative.genderMale')
-                    : '?'}
-              </td>
-              <td>{row.lastName}</td>
-              {greetingEnabled ? <td>{row.greeting}</td> : null}
+      <Card as="div" padding="none" gap="none" className="overflow-x-auto">
+        <table className="w-full min-w-[720px] text-left">
+          <caption className="sr-only">{t('preview.title')}</caption>
+          <thead>
+            <tr className="border-b border-border bg-surface-muted">
+              {[
+                t('preview.columns.email'),
+                t('preview.columns.titlePrefix'),
+                t('preview.columns.firstName'),
+                t('preview.columns.gender'),
+                t('preview.columns.lastName'),
+                ...(greetingEnabled ? [t('preview.columns.greeting')] : []),
+              ].map((header) => (
+                <th
+                  key={header}
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 whitespace-nowrap text-text-muted"
+                >
+                  {header}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {preview.rows.map((row) => (
+              <tr
+                key={row.rowNumber}
+                data-state={row.state}
+                // Chybný a duplicitní řádek se pozná plochou, ne jen sloupcem
+                // se stavem: v náhledu jde právě o to, aby na nich oko utkvělo.
+                className={cn(
+                  'border-b border-border last:border-b-0',
+                  row.state === 'error'
+                    ? 'bg-danger-surface'
+                    : row.state === 'duplicate'
+                      ? 'bg-accent-surface'
+                      : undefined,
+                )}
+              >
+                <td className={cn(CELL, 'font-mono text-meta')}>{row.email}</td>
+                <td className={CELL}>{row.titlePrefix}</td>
+                <td className={CELL}>{row.firstName}</td>
+                {/* Otazník, ne prázdno: prázdná buňka vypadá jako chybějící
+                    sloupec, otazník říká „nevíme, a víme, že nevíme".
+                    Rod se píše slovem, ne kódem: `female` v tabulce vedle
+                    českých jmen vypadá jako nedodělek, kterým taky je. */}
+                <td className={CELL}>
+                  {row.gender === 'female'
+                    ? t('vocative.genderFemale')
+                    : row.gender === 'male'
+                      ? t('vocative.genderMale')
+                      : '?'}
+                </td>
+                <td className={CELL}>{row.lastName}</td>
+                {greetingEnabled ? <td className={CELL}>{row.greeting}</td> : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
 
-      <p>{t('preview.showing', { shown: estimate.shown, total: estimate.totalRows })}</p>
-      {onShowMore ? (
-        <button type="button" onClick={onShowMore}>
-          {t('preview.showMore')}
-        </button>
-      ) : null}
+      <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
+        <p className="font-mono text-meta text-text-muted">
+          {t('preview.showing', { shown: estimate.shown, total: estimate.totalRows })}
+        </p>
+        {onShowMore ? (
+          <Button variant="secondary" size="sm" onClick={onShowMore}>
+            {t('preview.showMore')}
+          </Button>
+        ) : null}
+      </div>
 
+      {/* Tři upozornění o tom, co v souboru není v pořádku. Každé stojí samo za
+          sebe, proto tři hlášky a ne jedna slepená věta. */}
       {greetingEnabled && estimate.reviewRows > 0 ? (
-        <p>{t('preview.vocativeNotice', { count: estimate.reviewRows })}</p>
+        <Alert tone="warning">{t('preview.vocativeNotice', { count: estimate.reviewRows })}</Alert>
       ) : null}
       {estimate.noEmailRows > 0 ? (
-        <p>{t('preview.noEmailRows', { count: estimate.noEmailRows })}</p>
+        <Alert tone="warning">{t('preview.noEmailRows', { count: estimate.noEmailRows })}</Alert>
       ) : null}
       {estimate.duplicateRows > 0 ? (
-        <p>{t('preview.duplicateRows', { count: estimate.duplicateRows })}</p>
+        <Alert tone="warning">
+          {t('preview.duplicateRows', { count: estimate.duplicateRows })}
+        </Alert>
       ) : null}
 
-      <button type="button" aria-expanded={showSplit} onClick={() => setShowSplit((v) => !v)}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="self-start"
+        aria-expanded={showSplit}
+        onClick={() => setShowSplit((v) => !v)}
+      >
         {t('preview.splitHelp')}
-      </button>
+      </Button>
 
       {showSplit ? (
-        <fieldset className="flex flex-col gap-1">
-          <legend>{t('preview.nameOrder')}</legend>
-          <label>
-            <input type="radio" name="name-order" defaultChecked />
-            {t('preview.nameOrderFirstLast')}
-          </label>
-          <label>
-            <input type="radio" name="name-order" />
-            {t('preview.nameOrderLastFirst')}
-          </label>
-          <label>
-            <input type="checkbox" defaultChecked />
-            {t('preview.splitTitlesPrefix')}
-          </label>
-          <label>
-            <input type="checkbox" defaultChecked />
-            {t('preview.splitTitlesSuffix')}
-          </label>
-          <label>
-            <input type="checkbox" defaultChecked />
-            {t('preview.keepDoubleSurnames')}
-          </label>
-        </fieldset>
+        <Card as="div" tone="muted" padding="sm">
+          <fieldset className="flex flex-col gap-[var(--spacing-stack)]">
+            <legend className="text-ui font-semibold text-text">{t('preview.nameOrder')}</legend>
+            <label className="flex items-center gap-[var(--spacing-inline)] text-ui text-text">
+              <input
+                type="radio"
+                name="name-order"
+                defaultChecked
+                className="accent-[var(--color-panel)]"
+              />
+              {t('preview.nameOrderFirstLast')}
+            </label>
+            <label className="flex items-center gap-[var(--spacing-inline)] text-ui text-text">
+              <input type="radio" name="name-order" className="accent-[var(--color-panel)]" />
+              {t('preview.nameOrderLastFirst')}
+            </label>
+            <label className="flex items-center gap-[var(--spacing-inline)] text-ui text-text">
+              <input type="checkbox" defaultChecked className="accent-[var(--color-panel)]" />
+              {t('preview.splitTitlesPrefix')}
+            </label>
+            <label className="flex items-center gap-[var(--spacing-inline)] text-ui text-text">
+              <input type="checkbox" defaultChecked className="accent-[var(--color-panel)]" />
+              {t('preview.splitTitlesSuffix')}
+            </label>
+            <label className="flex items-center gap-[var(--spacing-inline)] text-ui text-text">
+              <input type="checkbox" defaultChecked className="accent-[var(--color-panel)]" />
+              {t('preview.keepDoubleSurnames')}
+            </label>
+          </fieldset>
+        </Card>
       ) : null}
 
-      <button type="button" onClick={onNext}>
+      <Button variant="primary" className="self-start" onClick={onNext}>
         {t('preview.next')}
-      </button>
+      </Button>
     </div>
   );
 }

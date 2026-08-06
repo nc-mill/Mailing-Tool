@@ -2,7 +2,9 @@
 
 import { useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { Plus } from '@mlain/ui/icons';
 import { Alert, EmptyState } from '@mlain/ui/patterns/states';
+import { useToast } from '@mlain/ui/patterns/toast';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 
@@ -26,7 +28,16 @@ export type CreatableKind = 'campaign' | 'transactional';
  * `kind: 'campaign'`, takže transakční e-mail by se z knihovny nedal založit
  * vůbec a filtr kategorií by měl jednu použitelnou hodnotu.
  */
-function useCreateTemplate(workspaceSlug: string, workspaceId: string) {
+function useCreateTemplate(
+  workspaceSlug: string,
+  workspaceId: string,
+  /**
+   * Kam patří zpráva o nezdaru. Bez ní si ji volající vezme ze `failed`
+   * a vykreslí ji sám. Volá se z akce, NE při vykreslení: hláška puštěná
+   * v těle komponenty by naskočila znovu při každém překreslení.
+   */
+  onFailure?: () => void,
+) {
   const locale = useLocale();
   const router = useRouter();
   const t = useTranslations('editor');
@@ -43,6 +54,7 @@ function useCreateTemplate(workspaceSlug: string, workspaceId: string) {
       const created = await createTemplateAction({ workspaceId, name, kind, language: locale });
       if (created.status === 'error') {
         setFailed(true);
+        onFailure?.();
         return;
       }
       router.push(`/w/${workspaceSlug}/templates/${created.id}`);
@@ -73,11 +85,22 @@ export function CreateTemplateButton({
   workspaceSlug: string;
   workspaceId: string;
 }) {
-  const { create, pending, failed, t } = useCreateTemplate(workspaceSlug, workspaceId);
+  const t = useTranslations('editor');
+  const toast = useToast();
+  /*
+   * NEZDAR HLÁSÍ HLÁŠKA V ROHU, ne pruh mezi tlačítky.
+   *
+   * Obě tlačítka stojí v hlavičce obrazovky, kde je řádek vyhrazený akcím;
+   * `Alert` vsunutý vedle nich rozhazoval zarovnání názvu a tlačítek na jednu
+   * linku. Chybová hláška se podle systému nezavírá sama, takže se informace
+   * neztratí.
+   */
+  const { create, pending } = useCreateTemplate(workspaceSlug, workspaceId, () =>
+    toast.error(t('list.createFailed')),
+  );
 
   return (
-    <div className="flex items-center gap-2">
-      {failed ? <Alert tone="error" title={t('list.createFailed')} /> : null}
+    <div className="flex items-center gap-[var(--spacing-inline)]">
       <Button
         variant="secondary"
         pending={pending}
@@ -94,6 +117,7 @@ export function CreateTemplateButton({
         pendingLabel={t('header.saving')}
         onClick={() => create('campaign')}
       >
+        <Plus aria-hidden className="icon-md" />
         {t('list.create')}
       </Button>
     </div>

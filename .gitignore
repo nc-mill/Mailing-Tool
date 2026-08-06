@@ -65,3 +65,4 @@ apps/web/.env.local
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/playwright-report-golden/
+.dev-design-src/

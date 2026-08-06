@@ -1,11 +1,11 @@
 'use client';
 
+import { Alert } from '@mlain/ui/patterns/states';
 import { useTranslations } from 'next-intl';
 import type { EditorIssue } from '../../model/document-types';
 import { findBlock } from '../../model/tree';
 import { ISSUE_CODES } from '../../model/issue-codes';
 import { useEditorState, useEditorStore } from '../../state/use-editor';
-import { XCircle } from '../icons';
 
 const KNOWN: ReadonlySet<string> = new Set(ISSUE_CODES);
 
@@ -73,24 +73,43 @@ export function IssueBar() {
    */
   if (issues.length === 0) return null;
 
+  /*
+   * VZHLED BERE `Alert`, ne vlastní pruh.
+   *
+   * Návrh kreslí chybu nad plátnem přesně tak, jak ji `Alert` už umí: hairline
+   * rámeček, silná 3px linka vlevo v barvě nebezpečí, rádius 10 px, plocha
+   * `danger-surface` a ikona. Dřív tu stál vlastní `<section>` s pozadím
+   * `bg-danger-surface/40`, tedy plocha s průhledností, kterou systém nezná
+   * a která na tmavém motivu vycházela jinak než všude jinde.
+   *
+   * Počet chyb je mono verzálky, jak ho má návrh („1 CHYBA"), a věty pod ním
+   * jsou 15px text. Zůstává, že se dá na nález kliknout a skočit na blok.
+   */
   return (
-    <section
-      aria-label={t('issues.title')}
-      className="border-b border-border bg-danger-surface/40 px-4 py-2"
-    >
-      <p className="text-sm font-medium">{t('issues.errorCount', { count: issues.length })}</p>
-      <ul className="mt-1 space-y-1">
+    <Alert tone="error" aria-label={t('issues.title')} data-testid="issue-bar">
+      <p className="meta-caps text-danger-text">
+        {t('issues.errorCount', { count: issues.length })}
+      </p>
+      <ul className="flex flex-col gap-1.5">
         {issues.map((issue, index) => (
           <li key={`${issue.code}-${issue.pointer ?? index}`}>
             <button
               type="button"
-              className="flex items-center gap-2 text-left text-xs underline"
+              className={[
+                'flex items-start gap-[var(--spacing-inline)] text-left text-ui text-text',
+                'underline underline-offset-[var(--underline-offset)]',
+                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]',
+              ].join(' ')}
               onClick={() => {
                 if (issue.blockId) store.select(issue.blockId);
               }}
             >
-              {/* Jedna ikona stačí: v pruhu jsou od téhle chvíle jen chyby. */}
-              <XCircle aria-hidden className="size-3 text-danger-text" />
+              {/*
+                Ikona je JEDNA, a to ta na celém pruhu. Původní znění mělo ještě
+                jednu u každého řádku, což s ikonou hlášky dávalo dvě vedle sebe
+                a nic to nesdělovalo: v pruhu jsou od téhle chvíle jen chyby,
+                takže se řádky mezi sebou ikonou nerozlišují.
+              */}
               <span>{textOf(issue)}</span>
               {/*
                 Nález ze serveru, který platí o starší verzi dokumentu. Neschovává
@@ -99,17 +118,19 @@ export function IssueBar() {
                 zmizí, nebo zmizí celý nález.
               */}
               {issue.stale ? (
-                <span data-testid="issue-stale" className="text-text-muted">
+                <span data-testid="issue-stale" className="font-mono text-label text-text-muted">
                   {t('issues.stale')}
                 </span>
               ) : null}
               {issue.blockId ? (
-                <span className="text-text-muted">{t('issues.goToBlock')}</span>
+                <span className="font-mono text-label text-text-muted">
+                  {t('issues.goToBlock')}
+                </span>
               ) : null}
             </button>
           </li>
         ))}
       </ul>
-    </section>
+    </Alert>
   );
 }

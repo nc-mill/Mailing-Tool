@@ -115,7 +115,11 @@ describe('SuppressionsTable', () => {
   it('nikde nemá zašedlé tlačítko, kromě stránkování na konci seznamu', () => {
     renderTable();
     for (const button of screen.getAllByRole('button')) {
-      if (button.textContent === 'Další' || button.textContent === 'Předchozí') continue;
+      // Stránkování je od nového designu IKONOVÉ tlačítko bez textu, popisek nese
+      // `aria-label`. Původní výjimka porovnávala `textContent`, takže po té změně
+      // přestala sedět a test padal na správně zašedlé šipce.
+      const label = button.getAttribute('aria-label') ?? button.textContent ?? '';
+      if (label === 'Další' || label === 'Předchozí') continue;
       expect(button).not.toBeDisabled();
     }
   });

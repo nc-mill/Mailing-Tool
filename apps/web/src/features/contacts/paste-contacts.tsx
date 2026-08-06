@@ -2,13 +2,18 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { useRouter } from '@mlain/i18n/navigation';
+import { Link, useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Checkbox } from '@mlain/ui/components/checkbox';
 import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
+import { PageHeader } from '@mlain/ui/components/page-header';
+import { RadioGroup, RadioGroupItem } from '@mlain/ui/components/radio-group';
 import { Select, SelectItem } from '@mlain/ui/components/select';
 import { Textarea } from '@mlain/ui/components/textarea';
+import { ChevronRight } from '@mlain/ui/icons';
+import { Alert } from '@mlain/ui/patterns/states';
 import {
   parsePastedContacts,
   PASTE_MAX_ROWS,
@@ -142,6 +147,7 @@ export function PasteContacts({
   pollIntervalMs = 1500,
 }: PasteContactsProps) {
   const t = useTranslations('contacts');
+  const tCommon = useTranslations('common');
   const router = useRouter();
 
   const [text, setText] = useState('');
@@ -415,295 +421,347 @@ export function PasteContacts({
   const shownDuplicates = parsed.duplicates.slice(0, PROBLEM_PREVIEW_LIMIT);
 
   return (
-    <section className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-text">{t('paste.title')}</h1>
-        <p className="text-sm text-text-muted">{t('paste.intro')}</p>
-      </div>
+    <>
+      <PageHeader
+        title={t('paste.title')}
+        description={t('paste.intro')}
+        breadcrumbs={
+          <nav aria-label={tCommon('a11y.breadcrumbs')} className="flex items-center gap-2">
+            <Link href={basePath} className="text-sm">
+              {t('detail.back')}
+            </Link>
+            <ChevronRight aria-hidden className="icon-xs text-border-strong" />
+            <span className="font-mono text-meta text-text-muted">{t('paste.breadcrumb')}</span>
+          </nav>
+        }
+      />
 
-      <Field label={t('paste.fieldLabel')} hint={t('paste.fieldHint')}>
-        <Textarea
-          rows={14}
-          className="font-mono"
-          spellCheck={false}
-          placeholder={t('paste.example')}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-        />
-      </Field>
+      <div className="flex flex-col gap-[var(--spacing-gutter)]">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] items-start gap-[var(--spacing-gutter)]">
+          <div className="grid gap-[var(--spacing-gutter)]">
+            <Card gap="gutter">
+              <Field label={t('paste.fieldLabel')} hint={t('paste.fieldHint')}>
+                <Textarea
+                  rows={14}
+                  className="font-mono"
+                  spellCheck={false}
+                  placeholder={t('paste.example')}
+                  value={text}
+                  onChange={(event) => setText(event.target.value)}
+                />
+              </Field>
+            </Card>
 
-      {/* Souhrn se počítá při psaní, ne až po odeslání. Uživatel tím uvidí
-          překlep hned, ne až po minutě čekání na import. */}
-      <section className="flex flex-col gap-2" aria-labelledby="paste-summary-title">
-        <h2 id="paste-summary-title" className="font-semibold text-text">
-          {t('paste.summaryTitle')}
-        </h2>
-        <p role="status">
-          {text.trim() === ''
-            ? t('paste.summaryEmpty')
-            : [
-                t('paste.summaryOk', { count: parsed.rows.length }),
-                t('paste.summaryInvalid', { count: parsed.problems.length }),
-                t('paste.summaryDuplicates', { count: parsed.duplicates.length }),
-              ].join(' ')}
-        </p>
+            {/* Souhrn se počítá při psaní, ne až po odeslání. Uživatel tím uvidí
+                překlep hned, ne až po minutě čekání na import. */}
+            <Card aria-labelledby="paste-summary-title">
+              <CardTitle>
+                <span id="paste-summary-title">{t('paste.summaryTitle')}</span>
+              </CardTitle>
+              <p role="status" className="text-ui text-text">
+                {text.trim() === ''
+                  ? t('paste.summaryEmpty')
+                  : [
+                      t('paste.summaryOk', { count: parsed.rows.length }),
+                      t('paste.summaryInvalid', { count: parsed.problems.length }),
+                      t('paste.summaryDuplicates', { count: parsed.duplicates.length }),
+                    ].join(' ')}
+              </p>
 
-        {tooMany ? <p role="alert">{t('paste.tooMany', { limit: PASTE_MAX_ROWS })}</p> : null}
+              {tooMany ? (
+                <Alert tone="warning">{t('paste.tooMany', { limit: PASTE_MAX_ROWS })}</Alert>
+              ) : null}
 
-        {/* Chybné řádky s ČÍSLEM I OBSAHEM. Samotný počet by uživateli řekl,
-            že má něco opravit, ale ne co, a v tisícovce řádků by to nenašel. */}
-        {parsed.problems.length > 0 ? (
-          <div className="flex flex-col gap-1">
-            <h3 className="font-semibold text-text">{t('paste.problemsTitle')}</h3>
-            <p className="text-sm text-text-muted">{t('paste.problemsHint')}</p>
-            <ul className="flex flex-col gap-1">
-              {shownProblems.map((problem) => (
-                <li key={problem.lineNumber} className="text-sm">
-                  {t('paste.problemLine', {
-                    // Číslo řádku jako řetězec: jako číslo by ho formátovač
-                    // rozdělil po tisících a „řádek 1 024" se v textovém poli
-                    // nehledá.
-                    line: String(problem.lineNumber),
-                    content: problem.raw,
-                    reason: t(`paste.problemReason.${problem.code}`),
-                  })}
-                </li>
-              ))}
-            </ul>
-            {parsed.problems.length > shownProblems.length ? (
-              <p className="text-sm text-text-muted">
-                {t('paste.problemsMore', { count: parsed.problems.length - shownProblems.length })}
+              {/* Chybné řádky s ČÍSLEM I OBSAHEM. Samotný počet by uživateli řekl,
+                  že má něco opravit, ale ne co, a v tisícovce řádků by to nenašel. */}
+              {parsed.problems.length > 0 ? (
+                <div className="flex flex-col gap-[var(--spacing-hairline)]">
+                  <h3 className="text-ui font-semibold text-text">{t('paste.problemsTitle')}</h3>
+                  <p className="text-sm text-text-muted">{t('paste.problemsHint')}</p>
+                  <ul className="flex flex-col gap-[var(--spacing-hairline)]">
+                    {shownProblems.map((problem) => (
+                      <li key={problem.lineNumber} className="font-mono text-meta text-text">
+                        {t('paste.problemLine', {
+                          // Číslo řádku jako řetězec: jako číslo by ho formátovač
+                          // rozdělil po tisících a „řádek 1 024" se v textovém poli
+                          // nehledá.
+                          line: String(problem.lineNumber),
+                          content: problem.raw,
+                          reason: t(`paste.problemReason.${problem.code}`),
+                        })}
+                      </li>
+                    ))}
+                  </ul>
+                  {parsed.problems.length > shownProblems.length ? (
+                    <p className="text-sm text-text-muted">
+                      {t('paste.problemsMore', {
+                        count: parsed.problems.length - shownProblems.length,
+                      })}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {parsed.duplicates.length > 0 ? (
+                <div className="flex flex-col gap-[var(--spacing-hairline)]">
+                  <h3 className="text-ui font-semibold text-text">{t('paste.duplicatesTitle')}</h3>
+                  <p className="text-sm text-text-muted">{t('paste.duplicatesHint')}</p>
+                  <ul className="flex flex-col gap-[var(--spacing-hairline)]">
+                    {shownDuplicates.map((duplicate) => (
+                      <li key={duplicate.lineNumber} className="font-mono text-meta text-text">
+                        {t('paste.duplicateLine', {
+                          line: String(duplicate.lineNumber),
+                          content: duplicate.raw,
+                          firstLine: String(duplicate.firstSeenLine),
+                        })}
+                      </li>
+                    ))}
+                  </ul>
+                  {parsed.duplicates.length > shownDuplicates.length ? (
+                    <p className="text-sm text-text-muted">
+                      {t('paste.problemsMore', {
+                        count: parsed.duplicates.length - shownDuplicates.length,
+                      })}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </Card>
+          </div>
+
+          <div className="grid gap-[var(--spacing-gutter)]">
+            <Card gap="gutter">
+              <CardTitle>{t('paste.list')}</CardTitle>
+              {/*
+                ZAŘAZENÍ DO SEZNAMU JE POVINNÉ, stejně jako v průvodci importem.
+                Volba „do žádného seznamu" tady byla výchozí, takže tahle obrazovka
+                byla druhá branka k témuž výsledku: kontakt, kterému nemá co dojít
+                a nemá se z čeho odhlásit, protože publikum kampaně i odhlašovací
+                odkaz stojí na seznamech.
+              */}
+              <div ref={listWrapperRef} className="flex flex-col gap-1.5">
+                <Select
+                  aria-label={t('paste.list')}
+                  placeholder={t('paste.listPlaceholder')}
+                  {...(listId === null ? {} : { value: listId })}
+                  onValueChange={(next) => {
+                    if (next === CREATE_LIST) {
+                      setShowCreateList(true);
+                      setListError(null);
+                      window.setTimeout(() => newListRef.current?.focus(), 0);
+                      return;
+                    }
+                    setShowCreateList(false);
+                    setListError(null);
+                    setListId(next);
+                  }}
+                >
+                  {available.map((list) => (
+                    <SelectItem key={list.id} value={list.id}>
+                      {list.name}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={CREATE_LIST}>{t('paste.createList')}</SelectItem>
+                </Select>
+                <p className="text-meta text-text-muted">{t('paste.listHint')}</p>
+              </div>
+
+              {createdListName === null ? null : (
+                <p role="status" className="text-sm text-success-text">
+                  {t('paste.newListCreated', { name: createdListName })}
+                </p>
+              )}
+
+              {showCreateList ? (
+                <Card tone="muted" padding="sm">
+                  <Field label={t('paste.newListName')} hint={t('paste.newListNameHint')}>
+                    <Input
+                      ref={newListRef}
+                      value={newListName}
+                      maxLength={120}
+                      data-testid="paste-new-list-name"
+                      onChange={(event) => setNewListName(event.target.value)}
+                    />
+                  </Field>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="self-start"
+                    onClick={() => void createList()}
+                  >
+                    {creatingList ? t('paste.newListCreating') : t('paste.newListCreate')}
+                  </Button>
+                </Card>
+              ) : null}
+
+              {/* Tatáž volba, jakou má ruční přidání jednoho kontaktu. Výchozí je
+                  přihlášený, protože jinak by dávka skončila mimo rozesílky a nikdo
+                  by nevěděl proč. */}
+              <fieldset className="flex flex-col gap-[var(--spacing-inline)]">
+                <legend className="mb-[var(--spacing-inline)] text-ui font-semibold text-text">
+                  {t('paste.status')}
+                </legend>
+                <RadioGroup
+                  name="paste-subscription"
+                  value={subscriptionStatus}
+                  className="gap-[var(--spacing-stack)]"
+                  onValueChange={(next: string) =>
+                    setSubscriptionStatus(next as 'confirmed' | 'pending')
+                  }
+                >
+                  {(['confirmed', 'pending'] as const).map((option) => (
+                    <div key={option} className="flex items-start gap-3">
+                      <RadioGroupItem
+                        value={option}
+                        id={`paste-subscription-${option}`}
+                        className="mt-1"
+                      />
+                      <div className="flex flex-col gap-1.5">
+                        <label
+                          htmlFor={`paste-subscription-${option}`}
+                          className="text-ui text-text"
+                        >
+                          {option === 'confirmed'
+                            ? t('paste.statusConfirmed')
+                            : t('paste.statusPending')}
+                        </label>
+                        <span className="text-meta text-text-muted">
+                          {option === 'confirmed'
+                            ? t('paste.statusConfirmedHint')
+                            : t('paste.statusPendingHint')}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </RadioGroup>
+              </fieldset>
+            </Card>
+
+            <Card>
+              <CardTitle>{t('paste.tags')}</CardTitle>
+              {tags.length === 0 ? (
+                <p className="text-sm text-text-muted">{t('paste.noTags')}</p>
+              ) : (
+                <>
+                  <p className="text-sm text-text-muted">{t('paste.tagsHint')}</p>
+                  <ul className="grid gap-1">
+                    {tags.map((tag) => (
+                      <li key={tag.id}>
+                        <label
+                          htmlFor={`paste-tag-${tag.id}`}
+                          className="flex min-h-[var(--size-target-min)] cursor-pointer items-center gap-[var(--spacing-inline)] text-ui text-text"
+                        >
+                          <Checkbox
+                            id={`paste-tag-${tag.id}`}
+                            checked={tagIds.includes(tag.id)}
+                            onCheckedChange={() => toggleTag(tag.id)}
+                          />
+                          {tag.name}
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </Card>
+          </div>
+        </div>
+
+        {/* Běžící zpracování je PRŮBĚH, ne chyba. Tenhle blok je ta oprava: mezi
+            „confirm" a koncovým stavem dávky stála dřív navigace na výsledek,
+            který v tu chvíli hlásil neúspěch. */}
+        {phase.kind === 'running' ? (
+          <Alert tone="info" title={t('paste.runningTitle')} role="status" aria-live="polite">
+            <p>{t('paste.runningBody')}</p>
+            {phase.total !== null && phase.total > 0 ? (
+              <p className="font-mono text-meta text-text-muted">
+                {t('paste.runningCounter', { processed: phase.processed, total: phase.total })}
               </p>
             ) : null}
-          </div>
+          </Alert>
         ) : null}
 
-        {parsed.duplicates.length > 0 ? (
-          <div className="flex flex-col gap-1">
-            <h3 className="font-semibold text-text">{t('paste.duplicatesTitle')}</h3>
-            <p className="text-sm text-text-muted">{t('paste.duplicatesHint')}</p>
-            <ul className="flex flex-col gap-1">
-              {shownDuplicates.map((duplicate) => (
-                <li key={duplicate.lineNumber} className="text-sm">
-                  {t('paste.duplicateLine', {
-                    line: String(duplicate.lineNumber),
-                    content: duplicate.raw,
-                    firstLine: String(duplicate.firstSeenLine),
-                  })}
-                </li>
-              ))}
-            </ul>
-            {parsed.duplicates.length > shownDuplicates.length ? (
+        {/* Dávka je na serveru, jen se na ni obrazovka nedoptala. Ani tady se
+            nesmí tvrdit, že se nic nezaložilo. */}
+        {phase.kind === 'slow' ? (
+          <Alert
+            tone="info"
+            title={t('paste.slowTitle')}
+            role="status"
+            action={
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => router.push(`${basePath}/import/${phase.importId}`)}
+              >
+                {t('paste.slowLink')}
+              </Button>
+            }
+          >
+            <p>{t('paste.slowBody')}</p>
+          </Alert>
+        ) : null}
+
+        {phase.kind === 'failed' ? (
+          <Alert tone="error" title={t('paste.failedTitle')}>
+            <p>{t('paste.failedBody', { detail: phase.detail })}</p>
+          </Alert>
+        ) : null}
+
+        {/* Primární tlačítko se NEZAKAZUJE (princip P5): když akci nejde provést,
+            zůstane klikatelné a řekne důvod. Zakázané tlačítko bez vysvětlení je
+            na téhle obrazovce nejhorší možná odpověď, protože důvod bývá překlep
+            na jednom řádku z pěti set. */}
+        <Card tone="muted" padding="sm" gap="gutter">
+          <div className="flex flex-col gap-[var(--spacing-hairline)]">
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id="paste-declaration"
+                checked={declaration}
+                aria-describedby="paste-declaration-evidence"
+                className="mt-0.5"
+                onCheckedChange={(next) => {
+                  setDeclaration(next === true);
+                  setListError(null);
+                }}
+              />
+              <label htmlFor="paste-declaration" className="text-ui text-text">
+                {t('paste.declaration')}
+              </label>
+            </div>
+            <p id="paste-declaration-evidence" className="text-meta text-text-muted">
+              {t('paste.declarationEvidence')}
+            </p>
+          </div>
+
+          {listError === null ? null : <Alert tone="error">{listError}</Alert>}
+
+          <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
+            <Button
+              variant="primary"
+              pending={busy}
+              pendingLabel={
+                phase.kind === 'running' ? t('paste.runningTitle') : t('paste.submitting')
+              }
+              {...(canSave ? {} : { unavailableReason: t('paste.unavailable') })}
+              onClick={() => void save()}
+            >
+              {t('paste.submit', { count: parsed.rows.length })}
+            </Button>
+            <Button variant="secondary" onClick={() => router.push(basePath)}>
+              {t('paste.cancel')}
+            </Button>
+            {/* Cílový seznam je vidět u tlačítka, protože výchozí bývá předvybraný. */}
+            {listId === null ? null : (
               <p className="text-sm text-text-muted">
-                {t('paste.problemsMore', {
-                  count: parsed.duplicates.length - shownDuplicates.length,
+                {t('paste.submitTarget', {
+                  list: available.find((list) => list.id === listId)?.name ?? '',
                 })}
               </p>
-            ) : null}
+            )}
           </div>
-        ) : null}
-      </section>
-
-      <div className="flex flex-col gap-4">
-        {/*
-          ZAŘAZENÍ DO SEZNAMU JE POVINNÉ, stejně jako v průvodci importem.
-          Volba „do žádného seznamu" tady byla výchozí, takže tahle obrazovka
-          byla druhá branka k témuž výsledku: kontakt, kterému nemá co dojít
-          a nemá se z čeho odhlásit, protože publikum kampaně i odhlašovací
-          odkaz stojí na seznamech.
-        */}
-        <div ref={listWrapperRef} className="flex flex-col gap-1.5">
-          <span aria-hidden className="font-semibold text-text">
-            {t('paste.list')}
-          </span>
-          <Select
-            aria-label={t('paste.list')}
-            placeholder={t('paste.listPlaceholder')}
-            {...(listId === null ? {} : { value: listId })}
-            onValueChange={(next) => {
-              if (next === CREATE_LIST) {
-                setShowCreateList(true);
-                setListError(null);
-                window.setTimeout(() => newListRef.current?.focus(), 0);
-                return;
-              }
-              setShowCreateList(false);
-              setListError(null);
-              setListId(next);
-            }}
-          >
-            {available.map((list) => (
-              <SelectItem key={list.id} value={list.id}>
-                {list.name}
-              </SelectItem>
-            ))}
-            <SelectItem value={CREATE_LIST}>{t('paste.createList')}</SelectItem>
-          </Select>
-          <p className="text-sm text-text-muted">{t('paste.listHint')}</p>
-        </div>
-
-        {createdListName === null ? null : (
-          <p role="status" className="text-sm text-text-muted">
-            {t('paste.newListCreated', { name: createdListName })}
-          </p>
-        )}
-
-        {showCreateList ? (
-          <div className="flex flex-col gap-3 rounded-[var(--radius-surface)] border border-border p-4">
-            <Field label={t('paste.newListName')} hint={t('paste.newListNameHint')}>
-              <Input
-                ref={newListRef}
-                value={newListName}
-                maxLength={120}
-                data-testid="paste-new-list-name"
-                onChange={(event) => setNewListName(event.target.value)}
-              />
-            </Field>
-            <Button variant="secondary" className="self-start" onClick={() => void createList()}>
-              {creatingList ? t('paste.newListCreating') : t('paste.newListCreate')}
-            </Button>
-          </div>
-        ) : null}
-
-        {/* Tatáž volba, jakou má ruční přidání jednoho kontaktu. Výchozí je
-            přihlášený, protože jinak by dávka skončila mimo rozesílky a nikdo
-            by nevěděl proč. */}
-        <fieldset className="flex flex-col gap-1">
-          <legend className="font-semibold text-text">{t('paste.status')}</legend>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="paste-subscription"
-              value="confirmed"
-              checked={subscriptionStatus === 'confirmed'}
-              onChange={() => setSubscriptionStatus('confirmed')}
-            />
-            {t('paste.statusConfirmed')}
-          </label>
-          <p className="text-sm text-text-muted">{t('paste.statusConfirmedHint')}</p>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="paste-subscription"
-              value="pending"
-              checked={subscriptionStatus === 'pending'}
-              onChange={() => setSubscriptionStatus('pending')}
-            />
-            {t('paste.statusPending')}
-          </label>
-          <p className="text-sm text-text-muted">{t('paste.statusPendingHint')}</p>
-        </fieldset>
-
-        <fieldset className="flex flex-col gap-1">
-          <legend className="font-semibold text-text">{t('paste.tags')}</legend>
-          {tags.length === 0 ? (
-            <p className="text-sm text-text-muted">{t('paste.noTags')}</p>
-          ) : (
-            <>
-              <p className="text-sm text-text-muted">{t('paste.tagsHint')}</p>
-              {tags.map((tag) => (
-                <label key={tag.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={tagIds.includes(tag.id)}
-                    onChange={() => toggleTag(tag.id)}
-                  />
-                  {tag.name}
-                </label>
-              ))}
-            </>
-          )}
-        </fieldset>
+        </Card>
       </div>
-
-      {/* Běžící zpracování je PRŮBĚH, ne chyba. Tenhle blok je ta oprava: mezi
-          „confirm" a koncovým stavem dávky stála dřív navigace na výsledek,
-          který v tu chvíli hlásil neúspěch. */}
-      {phase.kind === 'running' ? (
-        <div className="flex flex-col gap-1" role="status" aria-live="polite">
-          <strong>{t('paste.runningTitle')}</strong>
-          <p>{t('paste.runningBody')}</p>
-          {phase.total !== null && phase.total > 0 ? (
-            <p>{t('paste.runningCounter', { processed: phase.processed, total: phase.total })}</p>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* Dávka je na serveru, jen se na ni obrazovka nedoptala. Ani tady se
-          nesmí tvrdit, že se nic nezaložilo. */}
-      {phase.kind === 'slow' ? (
-        <div className="flex flex-col items-start gap-1" role="status">
-          <strong>{t('paste.slowTitle')}</strong>
-          <p>{t('paste.slowBody')}</p>
-          <Button
-            variant="secondary"
-            onClick={() => router.push(`${basePath}/import/${phase.importId}`)}
-          >
-            {t('paste.slowLink')}
-          </Button>
-        </div>
-      ) : null}
-
-      {phase.kind === 'failed' ? (
-        <div role="alert" className="flex flex-col items-start gap-1">
-          <strong>{t('paste.failedTitle')}</strong>
-          <p>{t('paste.failedBody', { detail: phase.detail })}</p>
-        </div>
-      ) : null}
-
-      {/* Primární tlačítko se NEZAKAZUJE (princip P5): když akci nejde provést,
-          zůstane klikatelné a řekne důvod. Zakázané tlačítko bez vysvětlení je
-          na téhle obrazovce nejhorší možná odpověď, protože důvod bývá překlep
-          na jednom řádku z pěti set. */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-start gap-3">
-          <Checkbox
-            id="paste-declaration"
-            checked={declaration}
-            aria-describedby="paste-declaration-evidence"
-            onCheckedChange={(next) => {
-              setDeclaration(next === true);
-              setListError(null);
-            }}
-          />
-          <label htmlFor="paste-declaration" className="text-sm text-text">
-            {t('paste.declaration')}
-          </label>
-        </div>
-        <p id="paste-declaration-evidence" className="text-sm text-text-muted">
-          {t('paste.declarationEvidence')}
-        </p>
-      </div>
-
-      {listError === null ? null : (
-        <p role="alert" className="text-sm text-danger-text">
-          {listError}
-        </p>
-      )}
-
-      {/* Cílový seznam je vidět u tlačítka, protože výchozí bývá předvybraný. */}
-      {listId === null ? null : (
-        <p className="text-sm text-text-muted">
-          {t('paste.submitTarget', {
-            list: available.find((list) => list.id === listId)?.name ?? '',
-          })}
-        </p>
-      )}
-
-      <div className="flex gap-2">
-        <Button
-          variant="primary"
-          pending={busy}
-          pendingLabel={phase.kind === 'running' ? t('paste.runningTitle') : t('paste.submitting')}
-          {...(canSave ? {} : { unavailableReason: t('paste.unavailable') })}
-          onClick={() => void save()}
-        >
-          {t('paste.submit', { count: parsed.rows.length })}
-        </Button>
-        <Button variant="secondary" onClick={() => router.push(basePath)}>
-          {t('paste.cancel')}
-        </Button>
-      </div>
-    </section>
+    </>
   );
 }

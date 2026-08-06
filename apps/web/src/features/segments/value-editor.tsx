@@ -7,6 +7,17 @@ import { useState } from 'react';
 export const LIST_LIMIT = 1000;
 
 /**
+ * POZOR: TAHLE KOMPONENTA NENÍ NIKDE ZAPOJENÁ.
+ *
+ * Hodnotu podmínky na obrazovce segmentu vykresluje `QueryBuilder`
+ * z `@mlain/ui/patterns/query-builder`, konkrétně jeho `ValueList`. Tenhle
+ * soubor je zbytek dřívějšího návrhu a schválně tu zůstává jen kvůli logice
+ * ořezu dlouhého vloženého seznamu, kterou stavitel zatím nemá.
+ *
+ * Napsáno sem proto, že vada „štítek se ukládá jako název místo
+ * identifikátoru" se kvůli názvu souboru opakovaně hledala TADY, kde ji
+ * opravit nejde, protože se tenhle kód nikdy nespustí.
+ *
  * Vstup hodnoty podle tvaru operátoru. Vložení delšího seznamu se NEODMÍTNE
  * tiše: vezme se prvních tisíc a řekne se, kolik jich spadlo pod stůl. Tichý
  * ořez by znamenal segment, který vypadá správně a chybí mu čtvrtina hodnot.

@@ -9,6 +9,7 @@ import { loadConfig } from '@mlain/core/config';
 import { listBackups } from '@mlain/core/ops/backup';
 import { readManifest } from '@mlain/core/ops/backup-manifest';
 import { BackupList, type BackupListEntry } from '@/features/backups/backup-list';
+import { SettingsPageShell, SettingsSection } from '@/features/settings/settings-page-shell';
 
 /**
  * Obrazovka `/w/{slug}/settings/backups` je v mapě aplikace (část 6, 4.1)
@@ -49,10 +50,19 @@ export default async function BackupsPage() {
     }),
   );
 
+  /*
+   * Hlavičku dodává `SettingsPageShell`, stejně jako všem ostatním sekcím
+   * nastavení. Dřív tu stál holý `<main>` s `<h1>` bez jediné třídy: nadpis
+   * měl velikost z prohlížeče, ne z návrhu, a `<main>` byl DRUHÝ na stránce,
+   * protože jeden montuje skořápka projektu kolem každé obrazovky. Dva
+   * landmarky `main` jsou vada přístupnosti, čtečka pak nabízí dva „hlavní
+   * obsahy" a ani jeden z nich není celý.
+   */
   return (
-    <main>
-      <h1>{t('title')}</h1>
-      <BackupList entries={data} />
-    </main>
+    <SettingsPageShell title={t('title')}>
+      <SettingsSection>
+        <BackupList entries={data} />
+      </SettingsSection>
+    </SettingsPageShell>
   );
 }

@@ -47,6 +47,9 @@ vi.mock('./actions', () => ({
   deleteContactAction: (input: unknown) => deleteContactAction(input),
   unsubscribeContactAction: (input: unknown) => unsubscribeContactAction(input),
   createContactExportAction: (input: unknown) => createContactExportAction(input),
+  // `contact-export.tsx` si sahá i pro stav exportu, aby po dokončení nabídlo
+  // stažení. Bez téhle položky spadne celý soubor na chybějícím exportu v mocku.
+  exportStatusAction: vi.fn().mockResolvedValue({ status: 'success', data: null }),
 }));
 
 const restrictProcessingAction = vi.fn().mockResolvedValue({ status: 'success' });
@@ -205,7 +208,10 @@ describe('ContactDetail', () => {
 
   it('u neomezeného kontaktu nabízí zapnutí omezení', () => {
     renderDetail();
-    expect(screen.getByTestId('restrict-processing')).toHaveTextContent('Omezit zpracování');
+    // V hlavičce je to ikonový čtverec, takže význam nese přístupné jméno,
+    // ne text uvnitř. Kontroluje se proto jméno, ne obsah prvku: kdyby zmizel
+    // `aria-label`, ikona by zůstala nesrozumitelná a test by to zachytil.
+    expect(screen.getByTestId('restrict-processing')).toHaveAccessibleName('Omezit zpracování');
   });
 
   it('u už omezeného kontaktu se zapnutí nenabízí podruhé', () => {
@@ -237,6 +243,24 @@ describe('ContactDetail', () => {
   it('bez omezeného zpracování žádný takový blok není', () => {
     renderDetail();
     expect(screen.queryByTestId('contact-restricted')).toBeNull();
+  });
+
+  it('u aktivního kontaktu bez příznaků žádný žlutý blok nahoře není', () => {
+    // Blok se stavem se ukazuje jen tam, kde je co vysvětlit. U aktivního
+    // kontaktu by z něj byl prázdný pruh na první obrazovce.
+    renderDetail();
+    expect(screen.queryByTestId('contact-status-notice')).toBeNull();
+  });
+
+  it('u nepotvrzeného kontaktu vysvětlí stav a hned u něj nabídne ruční potvrzení', () => {
+    renderDetail({ status: 'unconfirmed' });
+    const notice = screen.getByTestId('contact-status-notice');
+    expect(notice).toHaveTextContent('nepotvrdil odkaz v e-mailu');
+    // Vysvětlení, kdy se to smí použít, stojí v bloku vedle tlačítka, ne pod ním.
+    expect(notice).toHaveTextContent('Potvrdíme je i v jejich seznamech');
+    expect(
+      screen.getByRole('button', { name: 'Označit kontakt jana@firma.cz jako potvrzený' }),
+    ).toBeInTheDocument();
   });
 
   it('nenabízí tlačítko, které nemá co zavolat', () => {

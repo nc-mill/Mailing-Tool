@@ -65,7 +65,10 @@ export function BrandHistory({ runs }: { runs: readonly BrandExtractionView[] })
 
   return (
     <section aria-labelledby="brand-history">
-      <h2 id="brand-history" className="text-xl font-semibold text-text">
+      <h2
+        id="brand-history"
+        className="text-h3 font-semibold tracking-[var(--tracking-heading)] text-text"
+      >
         {t('brand.historyTitle')}
       </h2>
       <p className="mt-1 text-text-muted">{t('brand.historyIntro')}</p>
@@ -77,12 +80,16 @@ export function BrandHistory({ runs }: { runs: readonly BrandExtractionView[] })
           {runs.map((run, index) => {
             const status = STATUS[run.status];
             return (
-              <li key={run.id} data-testid="brand-history-row" className="flex flex-col gap-2 py-3">
-                <div className="flex flex-wrap items-center gap-3">
+              <li
+                key={run.id}
+                data-testid="brand-history-row"
+                className="flex flex-col gap-[var(--spacing-inline)] py-[var(--spacing-stack)]"
+              >
+                <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
                   <Badge tone={status.tone} icon={status.icon}>
                     {t(`brandHistory.${status.key}`)}
                   </Badge>
-                  <span className="font-medium text-text">{run.url}</span>
+                  <span className="font-mono text-ui text-text">{run.url}</span>
                   {/*
                     Formát s hodinou a minutou, ne `short`. Běhy bývají pár
                     minut od sebe (uživatel zkouší adresu znovu), takže samotné
@@ -112,7 +119,7 @@ export function BrandHistory({ runs }: { runs: readonly BrandExtractionView[] })
                   místo nich je vidět to varování o řádek níž.
                 */}
                 {run.palette === null || run.warnings.includes('colors_not_found') ? null : (
-                  <p className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
+                  <p className="flex flex-wrap items-center gap-[var(--spacing-inline)] text-meta text-text-muted">
                     <span>{t('brand.historyColors')}</span>
                     {ROLES.filter((role) => run.palette?.[role] !== undefined).map((role) => (
                       <span key={role} className="inline-flex items-center gap-1">
@@ -139,7 +146,7 @@ export function BrandHistory({ runs }: { runs: readonly BrandExtractionView[] })
 
                 {run.status === 'succeeded' &&
                 MISSING.some(([code]) => run.warnings.includes(code)) ? (
-                  <p className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
+                  <p className="flex flex-wrap items-center gap-[var(--spacing-inline)] text-meta text-text-muted">
                     <span>{t('brandHistory.notFound')}</span>
                     {MISSING.filter(([code]) => run.warnings.includes(code)).map(([code, key]) => (
                       <span key={code} className="rounded bg-surface-muted px-2 py-0.5">

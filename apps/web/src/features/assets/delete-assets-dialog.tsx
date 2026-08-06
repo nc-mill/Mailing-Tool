@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@mlain/ui/components/button';
+import { Card } from '@mlain/ui/components/card';
 import { Checkbox } from '@mlain/ui/components/checkbox';
 import { Dialog, DialogBody, DialogFooter, DialogTitle } from '@mlain/ui/components/dialog';
 import { useTranslations } from 'next-intl';
@@ -99,17 +100,22 @@ export function DeleteAssetsDialog({
     <Dialog open={open} onOpenChange={(next) => (next ? undefined : onCancel())} destructive>
       <DialogTitle>{t('delete.title', { count: assets.length })}</DialogTitle>
       <DialogBody>
-        {reports === null ? <p className="text-sm text-text-muted">{t('usage.loading')}</p> : null}
+        {reports === null ? <p className="text-ui text-text-muted">{t('usage.loading')}</p> : null}
 
-        <p>{needsAcknowledgement ? t('delete.usedLead') : t('delete.safeLead')}</p>
+        <p className="text-ui text-text">
+          {needsAcknowledgement ? t('delete.usedLead') : t('delete.safeLead')}
+        </p>
 
         {used.length > 0 ? (
-          <section data-testid="delete-used">
-            <h3 className="text-sm font-semibold text-text">{t('delete.usedHeading')}</h3>
-            <ul className="mt-1 space-y-1 text-sm text-text-muted">
+          <section
+            data-testid="delete-used"
+            className="flex flex-col gap-[var(--spacing-hairline)]"
+          >
+            <h3 className="text-ui font-semibold text-text">{t('delete.usedHeading')}</h3>
+            <ul className="flex flex-col gap-[var(--spacing-hairline)] text-sm text-text-muted">
               {used.map((report) => (
                 <li key={report.asset.id}>
-                  <span className="font-medium text-text">{report.asset.originalFilename}</span>
+                  <span className="font-semibold text-text">{report.asset.originalFilename}</span>
                   {report.usedBy.length > 0 ? (
                     <span> · {report.usedBy.map(describe).join(', ')}</span>
                   ) : (
@@ -121,20 +127,33 @@ export function DeleteAssetsDialog({
           </section>
         ) : null}
 
+        {/* Zablokované se od zbytku odlišují plochou, ne jen nadpisem: je to jediná
+            hromádka, se kterou uživatel nic neudělá, a musí to poznat dřív, než
+            bude hledat, proč se počet smazaných nesešel. */}
         {blocked.length > 0 ? (
-          <section data-testid="delete-blocked">
-            <h3 className="text-sm font-semibold text-text">{t('delete.blockedHeading')}</h3>
+          <Card
+            as="section"
+            tone="muted"
+            padding="sm"
+            gap="none"
+            data-testid="delete-blocked"
+            className="gap-[var(--spacing-hairline)]"
+          >
+            <h3 className="text-ui font-semibold text-text">{t('delete.blockedHeading')}</h3>
             <p className="text-sm text-text-muted">{t('delete.blockedLead')}</p>
-            <ul className="mt-1 space-y-1 text-sm text-text-muted">
+            <ul className="flex flex-col gap-[var(--spacing-hairline)] font-mono text-meta text-text-muted">
               {blocked.map((report) => (
                 <li key={report.asset.id}>{report.asset.originalFilename}</li>
               ))}
             </ul>
-          </section>
+          </Card>
         ) : null}
 
         {needsAcknowledgement ? (
-          <label className="flex items-center gap-2 text-sm text-text" htmlFor={acknowledgeId}>
+          <label
+            className="flex items-center gap-[var(--spacing-inline)] text-ui text-text"
+            htmlFor={acknowledgeId}
+          >
             <Checkbox
               id={acknowledgeId}
               checked={acknowledged}

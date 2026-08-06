@@ -3,8 +3,11 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@mlain/i18n/navigation';
+import { Badge } from '@mlain/ui/components/badge';
 import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Switch } from '@mlain/ui/components/switch';
+import { Alert } from '@mlain/ui/patterns/states';
 import {
   createListEmailTemplateAction,
   detachListEmailTemplateAction,
@@ -115,29 +118,39 @@ export function ListEmails({
   }
 
   return (
-    <section className="flex flex-col gap-6" data-testid="list-emails">
-      <div className="flex flex-col gap-1">
-        <h2 className="font-semibold text-text">{t('lists.emailsTitle')}</h2>
-        <p className="text-sm text-text-muted">{t('lists.emailsLead')}</p>
-      </div>
+    <Card data-testid="list-emails">
+      <CardTitle>{t('lists.emailsTitle')}</CardTitle>
+      <p className="text-meta text-text-muted">{t('lists.emailsLead')}</p>
 
-      {error === null ? null : (
-        <p role="alert" className="text-sm text-danger-text">
-          {error}
-        </p>
-      )}
+      {/* Věta ze serveru, ne obecné „nepodařilo se". Obě závory seznamu
+          (potvrzovací e-mail bez odkazu, odhlašovací odkaz v uvítacím) říkají
+          rovnou, co s tím, a musí být vidět. */}
+      {error === null ? null : <Alert tone="error">{error}</Alert>}
 
       {emails.map((email) => (
-        <div
+        <Card
           key={email.kind}
-          className="flex flex-col gap-2 rounded-md border border-border p-3"
+          as="div"
+          tone="muted"
+          padding="sm"
+          gap="none"
+          className="gap-3"
           data-testid={`list-email-${email.kind}`}
         >
-          <h3 className="font-medium text-text">{t(`lists.email_${email.kind}`)}</h3>
-          <p className="text-sm text-text-muted">{t(`lists.email_${email.kind}_hint`)}</p>
+          <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
+            <h3 className="text-base font-semibold text-text">{t(`lists.email_${email.kind}`)}</h3>
+            {/* Potvrzovací e-mail vypínač nemá a mít nesmí. Odznak to říká na
+                první pohled, aby se vypínač nehledal. */}
+            {email.kind === 'confirmation' ? (
+              <Badge tone="success" className="ml-auto">
+                {t('lists.emailCannotDisable')}
+              </Badge>
+            ) : null}
+          </div>
+          <p className="text-meta text-text-muted">{t(`lists.email_${email.kind}_hint`)}</p>
 
           {email.kind === 'confirmation' ? null : (
-            <div className="flex items-start gap-3">
+            <div className="flex items-center gap-3">
               <Switch
                 id={`list-email-enabled-${email.kind}`}
                 checked={email.enabled}
@@ -148,7 +161,7 @@ export function ListEmails({
               />
               <label
                 htmlFor={`list-email-enabled-${email.kind}`}
-                className="text-sm font-medium text-text"
+                className="text-ui font-semibold text-text"
               >
                 {email.enabled ? t('lists.emailEnabledOn') : t('lists.emailEnabledOff')}
               </label>
@@ -156,31 +169,39 @@ export function ListEmails({
           )}
 
           {email.templateId === null ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-sm text-text">{t('lists.emailDefaultWording')}</span>
+            <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
+              <span className="text-ui text-text">{t('lists.emailDefaultWording')}</span>
               <Button
                 variant="secondary"
+                size="sm"
+                className="ml-auto"
                 data-testid={`list-email-create-${email.kind}`}
+                pending={working === email.kind}
+                pendingLabel={t('lists.emailWorking')}
                 onClick={() => {
                   if (working === null) void createCustom(email.kind);
                 }}
               >
-                {working === email.kind ? t('lists.emailWorking') : t('lists.emailWriteCustom')}
+                {t('lists.emailWriteCustom')}
               </Button>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-3">
-              <Link href={`${templatesPath}/${email.templateId}`}>
+            <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
+              <Link href={`${templatesPath}/${email.templateId}`} className="text-ui">
                 {email.templateName ?? t('lists.emailCustomWording')}
               </Link>
               <Button
                 variant="secondary"
+                size="sm"
+                className="ml-auto"
                 data-testid={`list-email-detach-${email.kind}`}
+                pending={working === email.kind}
+                pendingLabel={t('lists.emailWorking')}
                 onClick={() => {
                   if (working === null) void detach(email.kind);
                 }}
               >
-                {working === email.kind ? t('lists.emailWorking') : t('lists.emailUseDefault')}
+                {t('lists.emailUseDefault')}
               </Button>
             </div>
           )}
@@ -190,12 +211,12 @@ export function ListEmails({
               dřív, než se lidem přestane dařit potvrdit přihlášení. Odeslání
               takového e-mailu se stejně zastaví. */}
           {email.kind === 'confirmation' && email.templateId !== null && !email.hasConfirmLink ? (
-            <p role="alert" className="text-sm text-danger-text" data-testid="list-email-no-link">
+            <Alert tone="error" data-testid="list-email-no-link">
               {t('lists.emailMissingConfirmLink')}
-            </p>
+            </Alert>
           ) : null}
-        </div>
+        </Card>
       ))}
-    </section>
+    </Card>
   );
 }

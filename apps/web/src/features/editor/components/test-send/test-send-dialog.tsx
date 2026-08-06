@@ -76,7 +76,7 @@ export function TestSendDialog(props: {
             onChange={(event) => setRaw(event.target.value)}
           />
         </label>
-        <p className="text-xs text-text-muted">
+        <p className="text-meta text-text-muted">
           {t('testSend.recipientsHint', { max: MAX_RECIPIENTS })}
         </p>
         {/*
@@ -86,7 +86,7 @@ export function TestSendDialog(props: {
           (`.strict()`), takže ho rozhraní posílalo do 422 a uživatel viděl jen
           „Test se nepodařilo odeslat".
         */}
-        <p className="text-xs text-text-muted">{t('testSend.explain')}</p>
+        <p className="text-meta text-text-muted">{t('testSend.explain')}</p>
         {problem ? (
           <p role="alert" className="text-sm text-danger-text">
             {problem}

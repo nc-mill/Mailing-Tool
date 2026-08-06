@@ -1,8 +1,20 @@
 'use client';
 
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Collapsible } from '@mlain/ui/components/collapsible';
 import { useLocale, useTranslations } from 'next-intl';
 import { sampleCsv, sampleCsvHref } from './sample-csv';
+
+/** Odrážkový seznam nápovědy. Čtyřikrát totéž, tak ať to není čtyřikrát opsané. */
+function GuideList({ items }: { items: string[] }) {
+  return (
+    <ul className="flex list-disc flex-col gap-1 pl-5 text-meta text-text-muted">
+      {items.map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+    </ul>
+  );
+}
 
 /**
  * Nápověda k formátu souboru.
@@ -39,81 +51,93 @@ export function FormatGuide() {
 
   return (
     <Collapsible summary={t('guide.trigger')} className="self-start">
-      <div className="flex max-w-3xl flex-col gap-4 rounded-[var(--radius-surface)] border border-border bg-surface-muted p-4 text-sm text-text">
+      <Card
+        as="div"
+        tone="muted"
+        padding="md"
+        gap="gutter"
+        className="max-w-[var(--container-prose)] text-ui text-text"
+      >
         <p>{t('guide.lead')}</p>
 
         {/* Vzor je první, ne poslední: kdo si ho stáhne a přepíše, nemusí číst nic dál. */}
         <p>
-          <a
-            className="font-medium underline"
-            href={sampleCsvHref(sample)}
-            download={sample.filename}
-          >
+          <a href={sampleCsvHref(sample)} download={sample.filename} className="font-semibold">
             {t('guide.sampleDownload')}
           </a>
         </p>
-        <p className="text-text-muted">{t('guide.sampleHint')}</p>
+        <p className="text-meta text-text-muted">{t('guide.sampleHint')}</p>
 
-        <h3 className="font-semibold">{t('guide.columnsTitle')}</h3>
-        <p className="text-text-muted">{t('guide.columnsIntro')}</p>
-        <p className="text-text-muted">{t('guide.columnsCustom')}</p>
-        <table className="w-full text-left">
-          <caption className="sr-only">{t('guide.columnsTitle')}</caption>
-          <thead>
-            <tr>
-              <th scope="col" className="pr-3 pb-1 font-medium">
-                {t('guide.columnsHeaderField')}
-              </th>
-              <th scope="col" className="pr-3 pb-1 font-medium">
-                {t('guide.columnsHeaderNames')}
-              </th>
-              <th scope="col" className="pb-1 font-medium">
-                {t('guide.columnsHeaderNote')}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {columns.map((column) => (
-              <tr key={column} className="align-top">
-                <th scope="row" className="pr-3 pb-2 font-normal">
-                  {t(`guide.columns.${column}.field`)}
+        <CardTitle as="h3">{t('guide.columnsTitle')}</CardTitle>
+        <p className="text-meta text-text-muted">{t('guide.columnsIntro')}</p>
+        <p className="text-meta text-text-muted">{t('guide.columnsCustom')}</p>
+
+        {/* Tabulka je široká, takže se posouvá uvnitř vlastního rámu. Stránka
+            se vodorovně posouvat nesmí. */}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[520px] text-left">
+            <caption className="sr-only">{t('guide.columnsTitle')}</caption>
+            <thead>
+              <tr>
+                <th scope="col" className="meta-caps pr-3 pb-1.5 text-text-muted">
+                  {t('guide.columnsHeaderField')}
                 </th>
-                <td className="pr-3 pb-2 text-text-muted">{t(`guide.columns.${column}.names`)}</td>
-                <td className="pb-2 text-text-muted">{t(`guide.columns.${column}.note`)}</td>
+                <th scope="col" className="meta-caps pr-3 pb-1.5 text-text-muted">
+                  {t('guide.columnsHeaderNames')}
+                </th>
+                <th scope="col" className="meta-caps pb-1.5 text-text-muted">
+                  {t('guide.columnsHeaderNote')}
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {columns.map((column) => (
+                <tr key={column} className="align-top">
+                  <th scope="row" className="pr-3 pb-2 text-ui font-semibold">
+                    {t(`guide.columns.${column}.field`)}
+                  </th>
+                  {/* Přijímané názvy sloupců se opisují do souboru znak po znaku,
+                      takže mono. */}
+                  <td className="pr-3 pb-2 font-mono text-meta text-text-muted">
+                    {t(`guide.columns.${column}.names`)}
+                  </td>
+                  <td className="pb-2 text-meta text-text-muted">
+                    {t(`guide.columns.${column}.note`)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-        <h3 className="font-semibold">{t('guide.formatTitle')}</h3>
-        <ul className="flex list-disc flex-col gap-1 pl-5 text-text-muted">
-          <li>{t('guide.formatDelimiter')}</li>
-          <li>{t('guide.formatEncoding')}</li>
-          <li>{t('guide.formatQuotes')}</li>
-          <li>{t('guide.formatHeader')}</li>
-        </ul>
+        <CardTitle as="h3">{t('guide.formatTitle')}</CardTitle>
+        <GuideList
+          items={[
+            t('guide.formatDelimiter'),
+            t('guide.formatEncoding'),
+            t('guide.formatQuotes'),
+            t('guide.formatHeader'),
+          ]}
+        />
 
-        <h3 className="font-semibold">{t('guide.limitsTitle')}</h3>
-        <ul className="flex list-disc flex-col gap-1 pl-5 text-text-muted">
-          <li>{t('guide.limitsFile')}</li>
-          <li>{t('guide.limitsRows')}</li>
-          <li>{t('guide.limitsColumns')}</li>
-          <li>{t('guide.limitsCell')}</li>
-        </ul>
+        <CardTitle as="h3">{t('guide.limitsTitle')}</CardTitle>
+        <GuideList
+          items={[
+            t('guide.limitsFile'),
+            t('guide.limitsRows'),
+            t('guide.limitsColumns'),
+            t('guide.limitsCell'),
+          ]}
+        />
 
-        <h3 className="font-semibold">{t('guide.sourcesTitle')}</h3>
-        <ul className="flex list-disc flex-col gap-1 pl-5 text-text-muted">
-          <li>{t('guide.sourcesExcel')}</li>
-          <li>{t('guide.sourcesSheets')}</li>
-          <li>{t('guide.sourcesOther')}</li>
-        </ul>
+        <CardTitle as="h3">{t('guide.sourcesTitle')}</CardTitle>
+        <GuideList
+          items={[t('guide.sourcesExcel'), t('guide.sourcesSheets'), t('guide.sourcesOther')]}
+        />
 
-        <h3 className="font-semibold">{t('guide.missingTitle')}</h3>
-        <ul className="flex list-disc flex-col gap-1 pl-5 text-text-muted">
-          <li>{t('guide.missingXlsx')}</li>
-          <li>{t('guide.missingConsentColumns')}</li>
-        </ul>
-      </div>
+        <CardTitle as="h3">{t('guide.missingTitle')}</CardTitle>
+        <GuideList items={[t('guide.missingXlsx'), t('guide.missingConsentColumns')]} />
+      </Card>
     </Collapsible>
   );
 }

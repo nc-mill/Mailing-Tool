@@ -4,8 +4,10 @@ import { useState, useTransition } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { PageHeader } from '@mlain/ui/components/page-header';
 import { Alert } from '@mlain/ui/patterns/states';
 import { createCampaignContentAction } from './actions';
+import { CampaignBreadcrumbs } from './campaign-breadcrumbs';
 import { CampaignStepNav } from './campaign-steps';
 import { CAMPAIGN_STEPS, campaignStepHref, type CampaignStep } from './steps';
 
@@ -48,51 +50,58 @@ export function CreateCampaignContent({
   }
 
   return (
-    <section className="flex flex-col gap-4">
-      <div role="status" aria-live="polite" className="text-sm text-text-muted">
-        {tNew('stepOf', { current: 1, total: CAMPAIGN_STEPS.length })}
-      </div>
-      <h1 className="text-xl font-semibold">{campaignName}</h1>
+    <section className="flex flex-col">
+      <PageHeader
+        title={campaignName}
+        eyebrow={
+          <span role="status" aria-live="polite">
+            {tNew('stepOf', { current: 1, total: CAMPAIGN_STEPS.length })}
+          </span>
+        }
+        breadcrumbs={<CampaignBreadcrumbs basePath={basePath} campaignName={campaignName} />}
+      />
 
-      <CampaignStepNav current="content" onSelect={goToStep} />
+      <div className="flex flex-col gap-[var(--spacing-gutter)]">
+        <CampaignStepNav current="content" onSelect={goToStep} />
 
-      {failed && (
-        <Alert tone="error" data-testid="content-outcome">
-          {tContent('createFailed')}
-        </Alert>
-      )}
+        {failed && (
+          <Alert tone="error" data-testid="content-outcome">
+            {tContent('createFailed')}
+          </Alert>
+        )}
 
-      <p className="text-text-muted">{t('steps.contentIntro')}</p>
+        <p className="max-w-[90ch] text-meta text-text-muted">{t('steps.contentIntro')}</p>
 
-      <div className="flex flex-wrap items-center gap-4">
-        <p className="text-sm text-text-muted">{tContent('noContent')}</p>
-        {canEdit ? (
-          <Button
-            variant="primary"
-            data-testid="create-content"
-            pending={pending}
-            pendingLabel={tContent('creating')}
-            onClick={() =>
-              startTransition(async () => {
-                const result = await createCampaignContentAction({
-                  workspaceId,
-                  campaignId,
-                  campaignName,
-                  locale,
-                });
-                if (result.status === 'error') {
-                  setFailed(true);
-                  return;
-                }
-                // Táž adresa, jen s obsahem: stránka se překreslí a otevře editor.
-                setFailed(false);
-                router.refresh();
-              })
-            }
-          >
-            {tContent('createContent')}
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
+          <p className="text-ui text-text-muted">{tContent('noContent')}</p>
+          {canEdit ? (
+            <Button
+              variant="primary"
+              data-testid="create-content"
+              pending={pending}
+              pendingLabel={tContent('creating')}
+              onClick={() =>
+                startTransition(async () => {
+                  const result = await createCampaignContentAction({
+                    workspaceId,
+                    campaignId,
+                    campaignName,
+                    locale,
+                  });
+                  if (result.status === 'error') {
+                    setFailed(true);
+                    return;
+                  }
+                  // Táž adresa, jen s obsahem: stránka se překreslí a otevře editor.
+                  setFailed(false);
+                  router.refresh();
+                })
+              }
+            >
+              {tContent('createContent')}
+            </Button>
+          ) : null}
+        </div>
       </div>
     </section>
   );

@@ -49,9 +49,11 @@
     }
   },
   "demo": {
+    "label": "Ukázková data",
     "bannerTitle": "V projektu jsou ukázková data.",
     "bannerDetail": "{contacts, plural, =0 {Žádný ukázkový kontakt} one {# ukázkový kontakt} few {# ukázkové kontakty} many {# ukázkových kontaktů} other {# ukázkových kontaktů}} na adresách example.com, na které se nikdy nic neodešle.",
-    "filterHint": "Zobrazit je v kontaktech podle štítku Ukázková data",
+    "filterHint": "V kontaktech je najdete pod štítkem Ukázková data.",
+    "showInContacts": "Zobrazit v kontaktech",
     "remove": "Odstranit",
     "removed": "Ukázková data jsou pryč.",
     "removeFailed": "Ukázková data se nepodařilo odstranit ({code}). Zkuste to prosím znovu.",
@@ -74,6 +76,7 @@
     "neverVerified": "Zatím neověřeno.",
     "columnCreated": "Vytvořeno",
     "columnSize": "Velikost",
+    "sizeMegabytes": "{size} MB",
     "columnRows": "Kontaktů v záloze",
     "columnVerified": "Ověření",
     "keyWarning": "Šifrovací klíč v záloze není. Uložte si zvlášť celý keyring, tedy SECRET_KEY i všechna předchozí pokolení ze SECRET_KEY_PREVIOUS. Bez starých pokolení přestanou platit otisky smazaných adres a smazaní lidé se vrátí prvním dalším importem."

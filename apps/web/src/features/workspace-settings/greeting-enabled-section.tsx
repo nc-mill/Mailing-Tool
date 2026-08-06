@@ -2,7 +2,9 @@
 
 import { useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Switch } from '@mlain/ui/components/switch';
+import { Alert } from '@mlain/ui/patterns/states';
 import { IDLE, type ActionState } from '@/lib/feedback/action-result';
 import { SettingsProblem } from '@/features/settings/settings-problem';
 import type { Workspace } from '@/lib/identity/workspace-access';
@@ -64,24 +66,24 @@ export function GreetingEnabledSectionView({
   }
 
   return (
-    <section aria-labelledby="general-greeting-enabled">
-      <h2 id="general-greeting-enabled" className="text-xl font-semibold">
-        {t('general.greetingEnabled.label')}
-      </h2>
-      <p className="mt-2 text-text-muted">{t('general.greetingEnabled.hint')}</p>
+    <Card aria-labelledby="general-greeting-enabled">
+      <CardTitle>
+        <span id="general-greeting-enabled">{t('general.greetingEnabled.label')}</span>
+      </CardTitle>
+      <p className="text-meta text-text-muted">{t('general.greetingEnabled.hint')}</p>
 
       {state.status === 'success' ? (
-        <p role="status" className="mt-4 text-text-muted">
+        <Alert tone="success" role="status">
           {t(state.messageKey)}
-        </p>
+        </Alert>
       ) : null}
-      {state.status === 'error' ? (
-        <div className="mt-4">
-          <SettingsProblem problem={state.problem} />
-        </div>
-      ) : null}
+      {state.status === 'error' ? <SettingsProblem problem={state.problem} /> : null}
 
-      <div className="mt-4 flex items-start gap-3">
+      {/* Řádek s přepínačem má rozvržení z návrhu (sekce „Nabízet příjemcům"
+          na detailu seznamu): přepínač v prvním sloupci, nad ním stav slovem,
+          pod ním vysvětlení, co ta poloha znamená. Šířka sloupce je `auto`,
+          aby seděla na skutečnou šířku přepínače z `packages/ui`. */}
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5">
         <Switch
           id="greeting-enabled"
           checked={enabled}
@@ -89,16 +91,15 @@ export function GreetingEnabledSectionView({
           data-testid="greeting-enabled-switch"
           onCheckedChange={(next: boolean) => submit(next)}
         />
-        <div className="flex flex-col gap-1">
-          <label htmlFor="greeting-enabled" className="text-sm font-medium text-text">
-            {enabled ? t('general.greetingEnabled.on') : t('general.greetingEnabled.off')}
-          </label>
-          <span className="text-sm text-text-muted">
-            {enabled ? t('general.greetingEnabled.onHint') : t('general.greetingEnabled.offHint')}
-          </span>
-        </div>
+        <label htmlFor="greeting-enabled" className="text-ui font-semibold text-text">
+          {enabled ? t('general.greetingEnabled.on') : t('general.greetingEnabled.off')}
+        </label>
+        <span />
+        <span className="text-meta text-text-muted">
+          {enabled ? t('general.greetingEnabled.onHint') : t('general.greetingEnabled.offHint')}
+        </span>
       </div>
-    </section>
+    </Card>
   );
 }
 

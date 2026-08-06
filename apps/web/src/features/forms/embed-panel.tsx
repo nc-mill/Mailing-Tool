@@ -4,9 +4,12 @@ import { useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@mlain/i18n/navigation';
 import { Badge } from '@mlain/ui/components/badge';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Collapsible } from '@mlain/ui/components/collapsible';
 import { CopyButton } from '@mlain/ui/components/copy-button';
+import { PageHeader } from '@mlain/ui/components/page-header';
 import { RadioGroup, RadioGroupItem } from '@mlain/ui/components/radio-group';
+import { ChevronRight, ExternalLink } from '@mlain/ui/icons';
 import { CheckIcon } from '@/lib/ui/status-icons';
 import { EMBED_CLASSES } from '@/features/public/embed-script';
 import type { FormEmbedView } from './types';
@@ -35,12 +38,17 @@ const SAMPLE_CSS = `.ml-form { display: grid; gap: 1rem; max-width: 28rem; }
 .ml-form[data-ml-state="sending"] .ml-button { opacity: 0.6; }
 .ml-success { font-weight: 600; }`;
 
+/**
+ * Kus kódu ke zkopírování. Popisek nad ním jsou mono verzálky, protože je to
+ * nálepka, ne nadpis; samotný kód sedí na tlumené ploše se čtyřkovým rádiusem,
+ * tedy tam, kde v návrhu bydlí všechny „technické" údaje.
+ */
 function CodeBlock({ code, label }: { code: string; label: string }) {
   const t = useTranslations('common.actions');
   return (
-    <figure className="flex flex-col gap-2">
-      <figcaption className="text-sm font-medium text-text">{label}</figcaption>
-      <pre className="overflow-x-auto rounded-[var(--radius-control)] bg-surface-muted p-3 text-xs">
+    <figure className="flex flex-col gap-[var(--spacing-inline)]">
+      <figcaption className="meta-caps text-text-muted">{label}</figcaption>
+      <pre className="overflow-x-auto rounded-[var(--radius-control)] border border-border bg-surface-muted p-[var(--spacing-stack)] font-mono text-meta text-text">
         <code>{code}</code>
       </pre>
       <div>
@@ -51,7 +59,47 @@ function CodeBlock({ code, label }: { code: string; label: string }) {
 }
 
 /**
+ * Jedna volba „kdo formulář vloží".
+ *
+ * Popisek i vysvětlení jsou UVNITŘ `<label>`, takže je čtečka přečte jako
+ * přístupný název přepínače. Není to jen vzhled: test na to přímo dohlíží,
+ * protože u delegování musí zaznít, že e-mail za uživatele neodešleme.
+ */
+function StrategyChoice({
+  value,
+  id,
+  label,
+  hint,
+  badge,
+}: {
+  value: Strategy;
+  id: string;
+  label: string;
+  hint?: string;
+  badge?: React.ReactNode;
+}) {
+  return (
+    <label htmlFor={id} className="flex cursor-pointer items-start gap-3">
+      <RadioGroupItem value={value} id={id} className="mt-1" />
+      <span className="flex flex-col gap-1.5">
+        <span className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
+          <span className="text-ui font-semibold text-text">{label}</span>
+          {badge}
+        </span>
+        {hint === undefined ? null : <span className="text-meta text-text-muted">{hint}</span>}
+      </span>
+    </label>
+  );
+}
+
+/**
  * Obrazovka s kódem k vložení.
+ *
+ * VZHLED JE ODVOZENÝ Z DETAILU SEZNAMU (`Mlain Mailer - Seznamy.dc.html`):
+ * hlavička s drobečky, karty po tématech a přepínače s povinným vysvětlením
+ * u každé volby, přesně jako u „Potvrzení přihlášení". Široký sloupec s kódem
+ * a užší postranní panel jsou mřížka `12 / 8 + 4` z rozcestníku; kód potřebuje
+ * šířku, „Zkouška" je krátká a patří stranou, ne pod kód.
  *
  * Je to JEDINÉ MÍSTO V PRODUKTU, kde netechnický uživatel narazí na kód, a řídí se
  * proto stejnou strategií jako DNS záznamy: delegovat. Předvybraná volba je „Pošlu
@@ -63,7 +111,7 @@ function CodeBlock({ code, label }: { code: string; label: string }) {
  * Delegování proto zatím připraví celý text návodu i s kódem do schránky a uživatel ho
  * pošle svou poštou. Volba zůstává doporučená, mění se jen poslední krok.
  *
- * Blok „Zkouška" dole je stejně důležitý jako kód sám: bez něj uživatel neví, jestli
+ * Blok „Zkouška" je stejně důležitý jako kód sám: bez něj uživatel neví, jestli
  * vložení fungovalo, dokud se někdo nepřihlásí.
  */
 export function EmbedPanel({
@@ -80,6 +128,8 @@ export function EmbedPanel({
 }) {
   const t = useTranslations('contacts.embed');
   const tf = useTranslations('forms');
+  const tcs = useTranslations('contacts');
+  const ta = useTranslations('common.a11y');
   const format = useFormatter();
   const [strategy, setStrategy] = useState<Strategy>('delegate');
 
@@ -92,140 +142,175 @@ export function EmbedPanel({
   ].join('\n');
 
   return (
-    <section className="flex max-w-3xl flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <Link href={`${basePath}/${formId}`} className="text-sm text-text-muted underline">
-          {tf('editor.back')}
-        </Link>
-        <h1 className="text-xl font-semibold text-text">{t('title')}</h1>
-        <p className="text-sm text-text-muted">{formName}</p>
-      </div>
-
-      <fieldset className="flex flex-col gap-3">
-        <legend className="mb-2 text-sm font-medium text-text">{t('who')}</legend>
-        <RadioGroup
-          value={strategy}
-          onValueChange={(next: string) => setStrategy(next as Strategy)}
-          aria-label={t('who')}
-        >
-          <label className="flex items-start gap-3 text-sm text-text">
-            <RadioGroupItem value="delegate" id="embed-delegate" />
-            <span>
-              {t('whoDelegate')}{' '}
-              <Badge tone="success" icon={CheckIcon}>
-                {t('whoDelegateBadge')}
-              </Badge>
-              {/* Vlastní věta místo `contacts.embed.whoDelegateHint`. Ta slibuje
-                  „připravíme e-mail, vy jen doplníte adresu", což je do doby, než
-                  bude endpoint na odeslání, nepravda. Popisek volby musí říkat,
-                  co obrazovka doopravdy udělá. */}
-              <span className="block text-text-muted">{tf('embed.delegateNote')}</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-3 text-sm text-text">
-            <RadioGroupItem value="self" id="embed-self" />
-            <span>{t('whoSelf')}</span>
-          </label>
-          <label className="flex items-start gap-3 text-sm text-text">
-            <RadioGroupItem value="hosted" id="embed-hosted" />
-            <span>
-              {t('whoHosted')}
-              <span className="block text-text-muted">{t('whoHostedHint')}</span>
-            </span>
-          </label>
-        </RadioGroup>
-      </fieldset>
-
-      {strategy === 'delegate' && (
-        <div className="flex flex-col gap-3" data-testid="embed-delegate">
-          <div>
-            <CopyButton
-              value={instructions}
-              label={tf('embed.delegateCopy')}
-              copiedLabel={tf('embed.delegateCopy')}
-            />
-          </div>
-        </div>
-      )}
-
-      {strategy === 'self' && (
-        <div className="flex flex-col gap-4" data-testid="embed-self">
-          <h2 className="text-lg font-medium text-text">{t('howTo')}</h2>
-          <CodeBlock code={embed.script} label={t('variantScript')} />
-          <p className="text-sm text-text-muted">{t('variantScriptHint')}</p>
-
-          {/*
-           * Formulář nenese ani jeden styl, takže bez tohohle bloku by na webu
-           * vypadal jako neostylovaný a nikdo by nevěděl, na co cílit. Ukázkové
-           * CSS je ke zkopírování, ne k opisování z obrázku.
-           */}
-          <div className="flex flex-col gap-2" data-testid="embed-styling">
-            <h3 className="text-sm font-medium text-text">{tf('embed.stylingTitle')}</h3>
-            <p className="text-sm text-text-muted">{tf('embed.stylingBody')}</p>
-            <ul className="flex flex-wrap gap-2 text-xs">
-              {EMBED_HOOKS.map((hook) => (
-                <li
-                  key={hook}
-                  className="rounded-[var(--radius-control)] bg-surface-muted px-2 py-1"
+    <>
+      <PageHeader
+        title={t('title')}
+        // Meta řádek nese jméno formuláře. Je to údaj, který se čte po znacích
+        // a odlišuje jednu instanci téhle obrazovky od druhé, proto mono.
+        meta={formName}
+        breadcrumbs={
+          <nav aria-label={ta('breadcrumbs')} className="flex flex-wrap items-center gap-2">
+            <Link href={basePath} className="text-sm underline-offset-[3px]">
+              {tcs('forms.title')}
+            </Link>
+            <ChevronRight aria-hidden className="icon-xs shrink-0 text-border-strong" />
+            {/* Jméno formuláře se nemusí podařit načíst (detail je zvlášť), pak se
+                z drobečků vynechá, místo aby tam zel prázdný odkaz. */}
+            {formName === '' ? null : (
+              <>
+                <Link
+                  href={`${basePath}/${formId}`}
+                  className="min-w-0 truncate text-sm underline-offset-[3px]"
                 >
-                  .{hook}
-                </li>
-              ))}
-            </ul>
-            <p className="text-sm text-text-muted">{tf('embed.stylingStates')}</p>
-            <CodeBlock code={SAMPLE_CSS} label={tf('embed.stylingSample')} />
-            <p className="text-sm text-text-muted">{tf('embed.stylingHosted')}</p>
-          </div>
+                  {formName}
+                </Link>
+                <ChevronRight aria-hidden className="icon-xs shrink-0 text-border-strong" />
+              </>
+            )}
+            <span className="min-w-0 truncate font-mono text-meta text-text-muted">
+              {t('title')}
+            </span>
+          </nav>
+        }
+      />
 
-          {/*
-            Varianty jsou DVĚ, ne tři. Třetí, „čistě HTML formulář", zmizela:
-            statický kód na cizím webu nemá jak získat nonce, takže odeslání
-            tiše zahazovala a návštěvník přitom viděl děkovací stránku. Kdo chce
-            plnou kontrolu nad vzhledem, má ji u skriptové varianty; kdo nemůže
-            použít JavaScript, má rámeček.
-          */}
-          <Collapsible summary={t('otherVariants')}>
-            <div className="flex flex-col gap-4 pt-2">
-              <CodeBlock code={embed.iframe} label={t('variantIframe')} />
-              <p className="text-sm text-text-muted">{t('variantIframeHint')}</p>
-              <p className="text-sm text-text-muted">{tf('embed.variantIframeNoJs')}</p>
-            </div>
-          </Collapsible>
+      <div className="grid grid-cols-12 gap-[var(--spacing-gutter)]">
+        <div className="col-span-12 flex flex-col gap-[var(--spacing-gutter)] lg:col-span-8">
+          <Card gap="gutter">
+            <CardTitle as="h2">{t('who')}</CardTitle>
+            <RadioGroup
+              value={strategy}
+              onValueChange={(next: string) => setStrategy(next as Strategy)}
+              aria-label={t('who')}
+              className="gap-[var(--spacing-stack)]"
+            >
+              <StrategyChoice
+                value="delegate"
+                id="embed-delegate"
+                label={t('whoDelegate')}
+                // Vlastní věta místo `contacts.embed.whoDelegateHint`. Ta slibuje
+                // „připravíme e-mail, vy jen doplníte adresu", což je do doby, než
+                // bude endpoint na odeslání, nepravda. Popisek volby musí říkat,
+                // co obrazovka doopravdy udělá.
+                hint={tf('embed.delegateNote')}
+                badge={
+                  <Badge tone="success" icon={CheckIcon}>
+                    {t('whoDelegateBadge')}
+                  </Badge>
+                }
+              />
+              <StrategyChoice value="self" id="embed-self" label={t('whoSelf')} />
+              <StrategyChoice
+                value="hosted"
+                id="embed-hosted"
+                label={t('whoHosted')}
+                hint={t('whoHostedHint')}
+              />
+            </RadioGroup>
+          </Card>
+
+          {strategy === 'delegate' && (
+            <Card gap="gutter" data-testid="embed-delegate">
+              <CardTitle as="h2">{t('howTo')}</CardTitle>
+              {/* Co se zkopíruje, stojí u volby výš; tady už zbývá jen samotný krok. */}
+              <div>
+                <CopyButton
+                  value={instructions}
+                  label={tf('embed.delegateCopy')}
+                  copiedLabel={tf('embed.delegateCopy')}
+                />
+              </div>
+            </Card>
+          )}
+
+          {strategy === 'self' && (
+            <Card gap="gutter" data-testid="embed-self">
+              <CardTitle as="h2">{t('howTo')}</CardTitle>
+              <CodeBlock code={embed.script} label={t('variantScript')} />
+              <p className="text-meta text-text-muted">{t('variantScriptHint')}</p>
+
+              {/*
+               * Formulář nenese ani jeden styl, takže bez tohohle bloku by na webu
+               * vypadal jako neostylovaný a nikdo by nevěděl, na co cílit. Ukázkové
+               * CSS je ke zkopírování, ne k opisování z obrázku.
+               */}
+              <Card as="div" tone="muted" padding="sm" gap="stack" data-testid="embed-styling">
+                <h3 className="text-base font-semibold text-text">{tf('embed.stylingTitle')}</h3>
+                <p className="text-meta text-text-muted">{tf('embed.stylingBody')}</p>
+                {/* Názvy tříd jsou kód, proto mono na tlumené ploše se čtyřkovým
+                    rádiusem: stejný tvar jako odznak, jen bez významu stavu. */}
+                <ul className="flex flex-wrap gap-[var(--spacing-inline)]">
+                  {EMBED_HOOKS.map((hook) => (
+                    <li
+                      key={hook}
+                      className="rounded-[var(--radius-control)] border border-border bg-surface px-2 py-1 font-mono text-micro text-text"
+                    >
+                      .{hook}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-meta text-text-muted">{tf('embed.stylingStates')}</p>
+                <CodeBlock code={SAMPLE_CSS} label={tf('embed.stylingSample')} />
+                <p className="text-meta text-text-muted">{tf('embed.stylingHosted')}</p>
+              </Card>
+
+              {/*
+                Varianty jsou DVĚ, ne tři. Třetí, „čistě HTML formulář", zmizela:
+                statický kód na cizím webu nemá jak získat nonce, takže odeslání
+                tiše zahazovala a návštěvník přitom viděl děkovací stránku. Kdo chce
+                plnou kontrolu nad vzhledem, má ji u skriptové varianty; kdo nemůže
+                použít JavaScript, má rámeček.
+              */}
+              <Collapsible summary={t('otherVariants')}>
+                <div className="flex flex-col gap-[var(--spacing-gutter)] pt-2">
+                  <CodeBlock code={embed.iframe} label={t('variantIframe')} />
+                  <p className="text-meta text-text-muted">{t('variantIframeHint')}</p>
+                  <p className="text-meta text-text-muted">{tf('embed.variantIframeNoJs')}</p>
+                </div>
+              </Collapsible>
+            </Card>
+          )}
+
+          {strategy === 'hosted' && (
+            <Card gap="gutter" data-testid="embed-hosted">
+              <CardTitle as="h2">{t('hostedUrl')}</CardTitle>
+              {/* Adresa se čte po znacích, proto mono na tlumené ploše. */}
+              <p className="rounded-[var(--radius-control)] border border-border bg-surface-muted px-[var(--spacing-stack)] py-[var(--spacing-inline)] font-mono text-meta break-all text-text">
+                {embed.hosted_url}
+              </p>
+              <div>
+                <CopyButton value={embed.hosted_url} label={t('copy')} copiedLabel={t('copied')} />
+              </div>
+            </Card>
+          )}
         </div>
-      )}
 
-      {strategy === 'hosted' && (
-        <div className="flex flex-col gap-3" data-testid="embed-hosted">
-          <h2 className="text-lg font-medium text-text">{t('hostedUrl')}</h2>
-          <p className="break-all text-sm text-text">{embed.hosted_url}</p>
-          <div>
-            <CopyButton value={embed.hosted_url} label={t('copy')} copiedLabel={t('copied')} />
-          </div>
-        </div>
-      )}
-
-      <section
-        className="flex flex-col gap-2 rounded-[var(--radius-surface)] border border-border p-5"
-        data-testid="embed-test"
-      >
-        <h2 className="text-lg font-medium text-text">{t('testTitle')}</h2>
-        <p className="text-sm text-text-muted">
-          {embed.first_submission_at === null
-            ? t('testEmpty')
-            : t('testDone', {
-                date: format.dateTime(new Date(embed.first_submission_at), 'short'),
-              })}
-        </p>
-        <a
-          href={embed.hosted_url}
-          target="_blank"
-          rel="noreferrer"
-          className="text-sm underline"
-          data-testid="embed-preview-link"
+        <Card
+          as="aside"
+          gap="gutter"
+          data-testid="embed-test"
+          className="col-span-12 self-start lg:col-span-4"
         >
-          {t('testPreview')}
-        </a>
-      </section>
-    </section>
+          <CardTitle as="h2">{t('testTitle')}</CardTitle>
+          <p className="text-meta text-text-muted">
+            {embed.first_submission_at === null
+              ? t('testEmpty')
+              : t('testDone', {
+                  date: format.dateTime(new Date(embed.first_submission_at), 'short'),
+                })}
+          </p>
+          <a
+            href={embed.hosted_url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-[var(--spacing-inline)] text-ui"
+            data-testid="embed-preview-link"
+          >
+            <ExternalLink aria-hidden className="icon-sm shrink-0" />
+            {t('testPreview')}
+          </a>
+        </Card>
+      </div>
+    </>
   );
 }

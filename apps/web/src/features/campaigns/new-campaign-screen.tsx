@@ -4,8 +4,10 @@ import { useState, useTransition } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Link, useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { Card } from '@mlain/ui/components/card';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
+import { PageHeader } from '@mlain/ui/components/page-header';
 import { RadioGroup, RadioGroupItem } from '@mlain/ui/components/radio-group';
 import { Alert } from '@mlain/ui/patterns/states';
 import { startCampaignFromBlankAction, startCampaignFromTemplateAction } from './actions';
@@ -42,6 +44,8 @@ export function NewCampaignScreen({
   templates: TemplateOption[];
 }) {
   const t = useTranslations('campaigns.new');
+  const tList = useTranslations('campaigns.list');
+  const tc = useTranslations('common');
   const locale = useLocale();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -103,127 +107,138 @@ export function NewCampaignScreen({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Počet kroků se BERE ZE ZDROJE, ne z ruky. Zakládání je vstup do
-          prvního kroku kampaně a hlášení „Krok 1 z 2" by po přeskládání kroků
-          slibovalo o krok míň, než kolik jich kampaň má. */}
-      <div role="status" aria-live="polite" className="text-sm text-text-muted">
-        {t('stepOf', { current: 1, total: CAMPAIGN_STEPS.length })}
-      </div>
+    <div className="flex max-w-[820px] flex-col">
+      <PageHeader
+        title={t('contentTitle')}
+        description={t('intro')}
+        /* Počet kroků se BERE ZE ZDROJE, ne z ruky. Zakládání je vstup do
+           prvního kroku kampaně a hlášení „Krok 1 z 2" by po přeskládání
+           kroků slibovalo o krok míň, než kolik jich kampaň má. */
+        eyebrow={
+          <span role="status" aria-live="polite">
+            {t('stepOf', { current: 1, total: CAMPAIGN_STEPS.length })}
+          </span>
+        }
+        breadcrumbs={
+          <nav aria-label={tc('a11y.breadcrumbs')}>
+            <Link href={`${basePath}/campaigns`} className="text-sm">
+              {tList('title')}
+            </Link>
+          </nav>
+        }
+      />
 
-      <div className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold text-text">{t('contentTitle')}</h1>
-        <p className="text-text-muted">{t('intro')}</p>
-      </div>
+      <div className="flex flex-col gap-[var(--spacing-gutter)]">
+        {error !== null && (
+          <Alert tone="error" data-testid="new-campaign-error">
+            {error}
+          </Alert>
+        )}
 
-      {error !== null && (
-        <Alert tone="error" data-testid="new-campaign-error">
-          {error}
-        </Alert>
-      )}
+        <Card gap="gutter">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="campaign-name">{t('name')}</Label>
+            <Input
+              id="campaign-name"
+              name="name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+            <p className="text-meta text-text-muted">{t('nameHint')}</p>
+          </div>
 
-      <div>
-        <Label htmlFor="campaign-name">{t('name')}</Label>
-        <Input
-          id="campaign-name"
-          name="name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
-        <p className="mt-1 text-sm text-text-muted">{t('nameHint')}</p>
-      </div>
-
-      <fieldset className="flex flex-col gap-3">
-        <legend className="mb-2 text-sm font-medium text-text">{t('choiceLegend')}</legend>
-        <RadioGroup
-          value={source}
-          onValueChange={(next) => {
-            setSource(next as 'blank' | 'template');
-            setError(null);
-          }}
-          aria-label={t('choiceLegend')}
-          className="gap-3"
-        >
-          {(['blank', 'template'] as const).map((kind) => (
-            <div key={kind} className="flex items-start gap-3">
-              <RadioGroupItem
-                value={kind}
-                id={`campaign-source-${kind}`}
-                data-testid={`campaign-source-${kind}`}
-                // Přístupné jméno nese `aria-label`, protože `RadioGroupItem`
-                // je Radix tlačítko bez vlastního textu. Zní doslova stejně
-                // jako viditelný popisek vedle něj.
-                aria-label={t(kind === 'blank' ? 'blank' : 'fromTemplate')}
-                className="mt-1 shrink-0"
-              />
-              <label htmlFor={`campaign-source-${kind}`} className="cursor-pointer">
-                <span className="block text-sm font-medium text-text">
-                  {t(kind === 'blank' ? 'blank' : 'fromTemplate')}
-                </span>
-                <span className="block text-sm text-text-muted">
-                  {t(kind === 'blank' ? 'blankHint' : 'fromTemplateHint')}
-                </span>
-              </label>
-            </div>
-          ))}
-        </RadioGroup>
-      </fieldset>
-
-      {source === 'template' && (
-        <fieldset className="flex flex-col gap-3" data-testid="template-choice">
-          <legend className="mb-2 text-sm font-medium text-text">{t('templateLegend')}</legend>
-          {templates.length === 0 ? (
-            /* Prázdná nabídka se nevynechává, ale vysvětlí a nabídne cestu ven. */
-            <p className="text-sm text-text-muted">
-              {t('noTemplates')}{' '}
-              <Link href={`${basePath}/templates`} className="underline">
-                {t('toTemplates')}
-              </Link>
-            </p>
-          ) : (
+          <fieldset className="flex flex-col gap-3">
+            <legend className="meta-caps mb-[var(--spacing-inline)] text-text-muted">
+              {t('choiceLegend')}
+            </legend>
             <RadioGroup
-              value={templateId ?? ''}
+              value={source}
               onValueChange={(next) => {
-                setTemplateId(next);
+                setSource(next as 'blank' | 'template');
                 setError(null);
               }}
-              aria-label={t('templateLegend')}
-              className="gap-2"
+              aria-label={t('choiceLegend')}
+              className="gap-3"
             >
-              {templates.map((template) => (
-                <div key={template.id} className="flex items-center gap-3">
+              {(['blank', 'template'] as const).map((kind) => (
+                <div key={kind} className="flex items-start gap-3">
                   <RadioGroupItem
-                    value={template.id}
-                    id={`campaign-template-${template.id}`}
-                    aria-label={template.name}
-                    className="shrink-0"
+                    value={kind}
+                    id={`campaign-source-${kind}`}
+                    data-testid={`campaign-source-${kind}`}
+                    // Přístupné jméno nese `aria-label`, protože `RadioGroupItem`
+                    // je Radix tlačítko bez vlastního textu. Zní doslova stejně
+                    // jako viditelný popisek vedle něj.
+                    aria-label={t(kind === 'blank' ? 'blank' : 'fromTemplate')}
+                    className="mt-1 shrink-0"
                   />
-                  <label
-                    htmlFor={`campaign-template-${template.id}`}
-                    className="cursor-pointer text-sm text-text"
-                  >
-                    {template.name}
+                  <label htmlFor={`campaign-source-${kind}`} className="cursor-pointer">
+                    <span className="block text-ui font-semibold text-text">
+                      {t(kind === 'blank' ? 'blank' : 'fromTemplate')}
+                    </span>
+                    <span className="block text-meta text-text-muted">
+                      {t(kind === 'blank' ? 'blankHint' : 'fromTemplateHint')}
+                    </span>
                   </label>
                 </div>
               ))}
             </RadioGroup>
-          )}
-        </fieldset>
-      )}
+          </fieldset>
 
-      <div className="flex flex-wrap items-center gap-4">
-        <Button
-          variant="primary"
-          data-testid="new-campaign-continue"
-          pending={pending}
-          pendingLabel={t('creating')}
-          onClick={submit}
-        >
-          {t('next')}
-        </Button>
-        <Link href={`${basePath}/campaigns`} className="underline">
-          {t('cancel')}
-        </Link>
+          {source === 'template' && (
+            <fieldset className="flex flex-col gap-3" data-testid="template-choice">
+              <legend className="meta-caps mb-[var(--spacing-inline)] text-text-muted">
+                {t('templateLegend')}
+              </legend>
+              {templates.length === 0 ? (
+                /* Prázdná nabídka se nevynechává, ale vysvětlí a nabídne cestu ven. */
+                <p className="text-sm text-text-muted">
+                  {t('noTemplates')} <Link href={`${basePath}/templates`}>{t('toTemplates')}</Link>
+                </p>
+              ) : (
+                <RadioGroup
+                  value={templateId ?? ''}
+                  onValueChange={(next) => {
+                    setTemplateId(next);
+                    setError(null);
+                  }}
+                  aria-label={t('templateLegend')}
+                  className="gap-2"
+                >
+                  {templates.map((template) => (
+                    <div key={template.id} className="flex items-center gap-3">
+                      <RadioGroupItem
+                        value={template.id}
+                        id={`campaign-template-${template.id}`}
+                        aria-label={template.name}
+                        className="shrink-0"
+                      />
+                      <label
+                        htmlFor={`campaign-template-${template.id}`}
+                        className="cursor-pointer text-ui text-text"
+                      >
+                        {template.name}
+                      </label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              )}
+            </fieldset>
+          )}
+
+          <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
+            <Button
+              variant="primary"
+              data-testid="new-campaign-continue"
+              pending={pending}
+              pendingLabel={t('creating')}
+              onClick={submit}
+            >
+              {t('next')}
+            </Button>
+            <Link href={`${basePath}/campaigns`}>{t('cancel')}</Link>
+          </div>
+        </Card>
       </div>
     </div>
   );

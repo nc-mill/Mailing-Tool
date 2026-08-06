@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { CardTitle } from '@mlain/ui/components/card';
 import { Checkbox } from '@mlain/ui/components/checkbox';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
@@ -51,48 +52,60 @@ export function CreateKeyPanel({
   }
 
   return (
-    <section aria-labelledby="api-keys-create">
-      <h2 id="api-keys-create" className="text-xl font-semibold">
-        {t('apiKeys.create.title')}
-      </h2>
-      <p className="mt-2 text-text-muted">{t('apiKeys.create.lead')}</p>
+    <section
+      aria-labelledby="api-keys-create"
+      className="flex flex-col gap-[var(--spacing-gutter)]"
+    >
+      <div className="flex flex-col gap-[var(--spacing-hairline)]">
+        <CardTitle>
+          <span id="api-keys-create">{t('apiKeys.create.title')}</span>
+        </CardTitle>
+        <p className="text-meta text-text-muted">{t('apiKeys.create.lead')}</p>
+      </div>
 
       {state.status === 'error' && Object.keys(fieldErrors).length === 0 ? (
-        <div className="mt-4">
-          <SettingsProblem problem={state.problem} />
-        </div>
+        <SettingsProblem problem={state.problem} />
       ) : null}
 
-      <form action={formAction} className="mt-4" noValidate>
+      <form action={formAction} className="flex flex-col gap-[var(--spacing-gutter)]" noValidate>
         <IdempotencyField />
         <input type="hidden" name="workspace_id" value={workspaceId} readOnly />
         <input type="hidden" name="slug" value={slug} readOnly />
 
-        <div className="mb-4">
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="key-name">{t('apiKeys.create.name')}</Label>
           <Input id="key-name" name="name" {...fieldAria('name', fieldErrors)} />
-          <p className="mt-1 text-sm text-text-muted">{t('apiKeys.create.nameHint')}</p>
+          <p className="text-meta text-text-muted">{t('apiKeys.create.nameHint')}</p>
           <FieldError name="name" errors={fieldErrors} />
         </div>
 
-        <fieldset className="mb-6">
-          <legend className="font-medium">{t('apiKeys.create.scopes')}</legend>
-          <p className="mt-1 text-sm text-text-muted">{t('apiKeys.create.scopesHint')}</p>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <fieldset className="flex flex-col gap-[var(--spacing-hairline)]">
+          <legend className="text-sm font-semibold text-text">{t('apiKeys.create.scopes')}</legend>
+          <p className="text-meta text-text-muted">{t('apiKeys.create.scopesHint')}</p>
+          {/* Oprávnění je přes čtyřicet. Mřížka se řídí šířkou karty, ne pevným
+              počtem sloupců: `sm:grid-cols-2` dělalo dva dlouhé sloupce i tam,
+              kde se vešly čtyři. Řádek má 44 px, protože je to klikací plocha. */}
+          <div className="mt-[var(--spacing-hairline)] grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-x-[var(--spacing-gutter)]">
             {availableScopes.map((scope) => (
-              <label key={scope} className="flex items-center gap-2">
+              <label
+                key={scope}
+                className="flex min-h-[var(--size-target-min)] cursor-pointer items-center gap-[var(--spacing-inline)]"
+              >
                 <Checkbox name="scopes" value={scope} />
-                <code className="text-sm">{scope}</code>
+                {/* Jméno oprávnění se čte po znacích, takže mono. */}
+                <span className="font-mono text-meta text-text">{scope}</span>
               </label>
             ))}
           </div>
           <FieldError name="scopes" errors={fieldErrors} />
         </fieldset>
 
-        <SubmitButton
-          label={t('apiKeys.create.submit')}
-          pendingLabel={t('apiKeys.create.submitting')}
-        />
+        <div className="flex">
+          <SubmitButton
+            label={t('apiKeys.create.submit')}
+            pendingLabel={t('apiKeys.create.submitting')}
+          />
+        </div>
       </form>
     </section>
   );

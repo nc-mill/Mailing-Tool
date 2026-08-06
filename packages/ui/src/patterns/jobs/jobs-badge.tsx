@@ -1,6 +1,6 @@
 'use client';
 
-import { Settings } from 'lucide-react';
+import { Settings } from '../../icons';
 import { RUNNING_STATUSES, type JobSummary, type JobsLabels } from './types';
 
 /**
@@ -26,7 +26,7 @@ export function JobsBadge({
       aria-label={running > 0 ? labels.runningCount(running) : labels.title}
       className="relative flex size-11 items-center justify-center rounded-[var(--radius-control)] text-text-muted hover:bg-surface-muted"
     >
-      <Settings aria-hidden className="size-5" />
+      <Settings aria-hidden className="icon-md" />
       {running > 0 ? (
         <span
           data-testid="jobs-badge-count"

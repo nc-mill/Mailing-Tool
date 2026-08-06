@@ -112,7 +112,10 @@ export function BlockChrome(props: {
       >
         {item.block.visibleWhen ? (
           <p
-            className="absolute left-2 top-1 z-20 rounded bg-surface-overlay px-2 py-0.5 text-xs text-text-muted shadow-sm"
+            // Štítek podmíněného zobrazení. Systém stíny nemá, takže se od
+            // obsahu odděluje hairline rámečkem, a je to meta údaj, takže mono
+            // verzálky, ne 12px bezpatkové.
+            className="absolute left-2 top-1 z-20 rounded-[var(--radius-control)] border border-border bg-surface-overlay px-2 py-0.5 meta-caps text-text-muted"
             contentEditable={false}
           >
             {t('visibility.badge', {

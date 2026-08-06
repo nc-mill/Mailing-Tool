@@ -22,12 +22,12 @@ export const RadioGroupItem = forwardRef<
       {...props}
       ref={ref}
       className={cn(
-        'size-5 rounded-full border border-border-strong bg-surface',
-        'data-[state=checked]:border-primary data-[state=checked]:bg-primary',
+        'grid size-[var(--size-choice)] shrink-0 place-items-center rounded-full border border-border-strong bg-field',
+        'data-[state=checked]:border-edge data-[state=checked]:bg-panel',
         className,
       )}
     >
-      <RadixRadioGroup.Indicator className="block size-2 rounded-full bg-primary-foreground" />
+      <RadixRadioGroup.Indicator className="block size-1.5 rounded-full bg-panel-foreground" />
     </RadixRadioGroup.Item>
   );
 });

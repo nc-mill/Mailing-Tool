@@ -411,7 +411,9 @@
     "emptyColumn": "Empty column",
     "emptySection": "Empty section",
     "assistantOpen": "AI assistant",
-    "assistantHide": "Hide the AI assistant"
+    "assistantHide": "Hide the AI assistant",
+    "noteDesktop": "Desktop preview · {width} px wide",
+    "noteMobile": "Mobile preview · {width} px wide"
   },
   "asset": {
     "title": "Images",
@@ -500,6 +502,13 @@
     "createFailed": "The template could not be created.",
     "newName": "New template",
     "newTransactionalName": "New transactional email",
+    "countAll": "{count, plural, =0 {no templates} one {# template} other {# templates}}",
+    "columns": {
+      "name": "Name",
+      "category": "Category",
+      "usage": "Wired up",
+      "changed": "Changed"
+    },
     "category": {
       "legend": "Category",
       "all": "All",

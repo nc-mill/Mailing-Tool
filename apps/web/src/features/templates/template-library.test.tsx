@@ -34,6 +34,7 @@ const free = (id: string, name: string): TemplateListItem => ({
   name,
   category: 'campaign',
   usage: { forms: [], lists: [] },
+  updated_at: '2026-08-04T09:30:00.000Z',
 });
 
 const templates = [free('t1', 'Newsletter'), free('t2', 'Pozvánka')];
@@ -147,12 +148,14 @@ describe('kategorie a zapojení', () => {
     name: 'E-mail z formuláře Patička webu',
     category: 'form',
     usage: { forms: [{ id: 'f1', name: 'Patička webu' }], lists: [] },
+    updated_at: '2026-08-04T09:30:00.000Z',
   };
   const listTemplate: TemplateListItem = {
     id: 't4',
     name: 'Potvrzení',
     category: 'transactional',
     usage: { forms: [], lists: [{ id: 'l1', name: 'Novinky', role: 'confirmation' }] },
+    updated_at: '2026-08-04T09:30:00.000Z',
   };
 
   it('e-mail z formuláře se neplete s volnou šablonou: má odznak i jméno formuláře', () => {

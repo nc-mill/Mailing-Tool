@@ -225,7 +225,16 @@ describe('readDashboard', () => {
       cache: new TileCache(),
     });
     const web = result.tiles.web_active;
-    if (web.status === 'ok') expect(web.data.contacts).toBe(1);
+    expect(web.status).toBe('ok');
+    if (web.status === 'ok') {
+      expect(web.data.contacts).toBe(1);
+      // Dvě události jednoho člověka jsou JEDEN řádek seznamu, ne dva:
+      // dlaždice mluví o lidech, ne o návštěvách.
+      expect(web.data.people).toHaveLength(1);
+      expect(web.data.people[0]?.contactId).toBe(contact);
+      expect(web.data.people[0]?.name).toBe('Jana Nováková');
+      expect(web.data.people[0]?.email).toContain('@');
+    }
   });
 
   it('kampaň bez řádku agregace z přehledu nevypadne (líné zakládání rollupu)', async () => {

@@ -36,18 +36,18 @@ export function DisabledBanner(props: DisabledBannerProps) {
 
       {props.withDetail ? (
         <>
-          <p className="mt-2 text-sm text-text-muted">
+          <p className="text-meta text-text-muted">
             {t('webhooks.disabled.detail', {
               url: props.url,
               lastStatus: props.lastStatus ?? 0,
               since: props.since === null ? '' : format.dateTime(new Date(props.since), 'short'),
             })}
           </p>
-          <p className="mt-2 text-sm text-text-muted">{t('webhooks.disabled.replayNote')}</p>
+          <p className="text-meta text-text-muted">{t('webhooks.disabled.replayNote')}</p>
         </>
       ) : null}
 
-      <div className="mt-3 flex gap-2">
+      <div className="mt-[var(--spacing-inline)] flex gap-[var(--spacing-inline)]">
         <Link href={`${props.endpointHref}?status=failed`} className="underline">
           {t('webhooks.disabled.showErrors')}
         </Link>

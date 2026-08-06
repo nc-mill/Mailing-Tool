@@ -3,7 +3,9 @@
 import { useState, useTransition } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
+import { Alert } from '@mlain/ui/patterns/states';
 import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { useConfirmDialogLabels } from '@/lib/feedback/confirm-labels';
 import { IDLE, type ActionState } from '@/lib/feedback/action-result';
 import { SettingsProblem } from '@/features/settings/settings-problem';
@@ -71,40 +73,40 @@ export function GreetingLocaleSectionView({
   }
 
   return (
-    <section aria-labelledby="general-greeting-locale">
-      <h2 id="general-greeting-locale" className="text-xl font-semibold">
-        {t('general.greetingLocale.label')}
-      </h2>
-      <p className="mt-2 text-text-muted">{t('general.greetingLocale.hint', { target })}</p>
+    <Card aria-labelledby="general-greeting-locale">
+      <CardTitle>
+        <span id="general-greeting-locale">{t('general.greetingLocale.label')}</span>
+      </CardTitle>
+      <p className="text-meta text-text-muted">{t('general.greetingLocale.hint', { target })}</p>
 
       {state.status === 'success' ? (
-        <p role="status" className="mt-4 text-text-muted">
+        <Alert tone="success" role="status">
           {t(state.messageKey)}
-        </p>
+        </Alert>
       ) : null}
-      {state.status === 'error' ? (
-        <div className="mt-4">
-          <SettingsProblem problem={state.problem} />
-        </div>
-      ) : null}
+      {state.status === 'error' ? <SettingsProblem problem={state.problem} /> : null}
 
       {summary.mismatched === 0 ? (
-        <p className="mt-4 text-text-muted" data-testid="greeting-locale-aligned">
+        <p className="text-ui text-text-muted" data-testid="greeting-locale-aligned">
           {t('general.greetingLocale.allAligned', { target, count: summary.total })}
         </p>
       ) : (
-        <div className="mt-4 flex flex-col gap-3">
-          <p className="text-warning-text" data-testid="greeting-locale-mismatched">
+        <div className="flex flex-col gap-[var(--spacing-stack)]">
+          {/* Nesoulad je upozornění, ne chyba: nic není rozbité, jen se část
+              kontaktů osloví jiným jazykem, než projekt čeká. */}
+          <Alert tone="warning" data-testid="greeting-locale-mismatched">
             {t('general.greetingLocale.mismatched', {
               count: summary.mismatched,
               total: summary.total,
               target,
             })}
-          </p>
+          </Alert>
           {/* Rozpad podle jazyků. Bez něj by uživatel klikal naslepo: „jiný jazyk"
               může být angličtina zděděná z průvodce i slovenština, kterou si někdo
-              zvolil sám, a to jsou dvě různá rozhodnutí. */}
-          <ul className="text-sm text-text-muted">
+              zvolil sám, a to jsou dvě různá rozhodnutí.
+
+              Počty jsou čísla, takže mono: čtou se po znacích. */}
+          <ul className="flex flex-col gap-[var(--spacing-hairline)] font-mono text-meta text-text-muted">
             {others.map((row) => (
               <li key={row.locale}>
                 {t('general.greetingLocale.perLocale', {
@@ -115,7 +117,7 @@ export function GreetingLocaleSectionView({
             ))}
           </ul>
           {canWrite ? (
-            <div>
+            <div className="flex">
               <Button variant="secondary" onClick={() => setOpen(true)}>
                 {t('general.greetingLocale.action', { target })}
               </Button>
@@ -141,7 +143,7 @@ export function GreetingLocaleSectionView({
         onConfirm={submit}
         labels={confirmLabels}
       />
-    </section>
+    </Card>
   );
 }
 

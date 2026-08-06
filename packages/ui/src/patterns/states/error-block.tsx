@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertTriangle } from 'lucide-react';
+import { TriangleAlert } from '../../icons';
 import { Button } from '../../components/button';
 import { Collapsible } from '../../components/collapsible';
 import { CopyButton } from '../../components/copy-button';
@@ -62,7 +62,7 @@ export function ErrorBlock({
       )}
     >
       <h2 className="flex items-center gap-2 text-base font-semibold text-danger-text">
-        <AlertTriangle aria-hidden className="size-5" />
+        <TriangleAlert aria-hidden className="icon-md" />
         {title}
       </h2>
       <p className="text-sm text-text">{reason}</p>

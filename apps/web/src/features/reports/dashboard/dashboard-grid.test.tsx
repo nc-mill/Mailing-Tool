@@ -7,6 +7,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import csReports from '../../../../../../packages/i18n/messages/cs/reports.json';
 import { DashboardGrid } from './dashboard-grid';
 
+/**
+ * Hlavička obrazovky vede na import kontaktů a na založení kampaně přes router,
+ * takže ho test musí mít. Bez mocku vyhodí `useRouter` v jsdom „invariant
+ * expected app router to be mounted" a spadne celý přehled, ne jen ta dvě
+ * tlačítka.
+ */
+const push = vi.fn();
+vi.mock('@mlain/i18n/navigation', () => ({
+  Link: ({ children, ...props }: { children: React.ReactNode }) => <a {...props}>{children}</a>,
+  useRouter: () => ({ push, refresh: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+}));
+
 const messages = { reports: csReports };
 
 function renderGrid(workspaceSlug = 'ws-1') {
@@ -182,6 +194,105 @@ describe('DashboardGrid', () => {
     expect(screen.getByTestId('clicks-absolute')).toHaveTextContent('3 prokliky');
     expect(screen.getByTestId('problems-unknown')).toHaveTextContent('zatím nevíme');
     // Žádné procento z odhadnutého jmenovatele.
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * Změna proti minulému období je na dlaždici napsaná ZNAMÉNKEM, ne jen
+   * barvou: kdo barvy nerozliší, musí pořád poznat, jestli číslo stouplo.
+   * Když server porovnávat nemá s čím (`delta: null`), řádek se nevykreslí,
+   * protože „0 %" by tvrdilo, že se nic nezměnilo.
+   */
+  it('ukáže změnu proti minulému období se znaménkem, a jen když ji server pošle', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              period_days: 30,
+              computed_at: '2026-08-01T00:00:00.000Z',
+              tiles: {
+                ...EMPTY_TILES,
+                sent: {
+                  status: 'ok',
+                  data: { value: 128, delta: 0.081 },
+                  computed_at: '2026-08-01T00:00:00.000Z',
+                  stale: false,
+                },
+                click_rate: {
+                  status: 'ok',
+                  data: { rate: 0.038, delta: -0.0525, clicks: 19 },
+                  computed_at: '2026-08-01T00:00:00.000Z',
+                  stale: false,
+                },
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        ),
+      ),
+    );
+
+    renderGrid('ws-1');
+
+    await waitFor(() => {
+      expect(screen.getByText(/\+8,1/)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/-5,3/)).toBeInTheDocument();
+    // Otevření mají `rate: null`, tedy žádnou deltu: věta o období smí být
+    // v dokumentu právě dvakrát, jednou u odeslaných a jednou u prokliků.
+    expect(screen.getAllByText('od minulého období')).toHaveLength(2);
+  });
+
+  it('poslední kampaně mají odkaz na report, počet zpráv a stav', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              period_days: 30,
+              computed_at: '2026-08-01T00:00:00.000Z',
+              tiles: {
+                ...EMPTY_TILES,
+                recent_campaigns: {
+                  status: 'ok',
+                  data: {
+                    items: [
+                      {
+                        campaignId: 'c1',
+                        name: 'Sloučeny krok 1',
+                        startedAt: '2026-07-30T09:00:00.000Z',
+                        clickRate: null,
+                        deliveredKnown: false,
+                        clicks: 3,
+                        sent: 8,
+                      },
+                    ],
+                  },
+                  computed_at: '2026-08-01T00:00:00.000Z',
+                  stale: false,
+                },
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        ),
+      ),
+    );
+
+    renderGrid('ws-1');
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Sloučeny krok 1' })).toHaveAttribute(
+        'href',
+        '/w/ws-1/campaigns/c1/report',
+      );
+    });
+    expect(screen.getByText('8 zpráv')).toBeInTheDocument();
+    // U kampaně bez známé doručenosti nese stav POČET prokliků, ne procento.
+    expect(screen.getByText('3 prokliky')).toBeInTheDocument();
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 

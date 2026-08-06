@@ -1,6 +1,7 @@
 'use client';
 
 import { useFormatter, useTranslations } from 'next-intl';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 
 export type SystemLinkClicks = {
   unsubscribe_page: number;
@@ -40,25 +41,24 @@ export function SystemLinksPanel({ clicks }: { clicks: SystemLinkClicks | null }
   const total = clicks.unsubscribe_page + clicks.preferences + clicks.webview;
 
   return (
-    <section
-      data-testid="system-links-panel"
-      aria-labelledby="system-links-heading"
-      className="rounded-lg border border-border bg-surface p-4"
-    >
-      <h2 id="system-links-heading" className="text-base font-semibold">
-        {t('report.systemLinks.heading')}
-      </h2>
+    <Card data-testid="system-links-panel" aria-labelledby="system-links-heading">
+      <CardTitle>
+        <span id="system-links-heading">{t('report.systemLinks.heading')}</span>
+      </CardTitle>
 
       {total === 0 ? (
         // Pravdivá nula, ne chybějící údaj: měření systémových odkazů běží vždy,
         // takže „nikdo neklikl" je tady měření, a smí se to napsat jako fakt.
-        <p className="mt-2 text-sm text-text-muted">{t('report.systemLinks.none')}</p>
+        <p className="text-ui text-text-muted">{t('report.systemLinks.none')}</p>
       ) : (
-        <dl className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[1fr_auto]">
+        <dl className="grid gap-x-[var(--spacing-card)] gap-y-1 sm:grid-cols-[1fr_auto]">
           {ROWS.map((row) => (
             <div key={row.key} className="contents">
-              <dt>{t(row.labelKey)}</dt>
-              <dd data-testid={`system-links-${row.key}`} className="tabular-nums">
+              <dt className="text-ui text-text">{t(row.labelKey)}</dt>
+              <dd
+                data-testid={`system-links-${row.key}`}
+                className="text-right font-mono text-sm tabular-nums text-text"
+              >
                 {format.number(clicks[row.key])}
               </dd>
             </div>
@@ -66,7 +66,7 @@ export function SystemLinksPanel({ clicks }: { clicks: SystemLinkClicks | null }
         </dl>
       )}
 
-      <p className="mt-2 text-xs text-text-muted">{t('report.systemLinks.notInClickRate')}</p>
-    </section>
+      <p className="text-meta text-text-muted">{t('report.systemLinks.notInClickRate')}</p>
+    </Card>
   );
 }

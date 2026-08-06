@@ -1,103 +1,60 @@
-import type { ReactNode } from 'react';
+import {
+  Ban,
+  CircleCheck,
+  CircleX,
+  Clock,
+  Ellipsis,
+  FileText,
+  LoaderCircle,
+  Mail,
+  Monitor,
+  TriangleAlert,
+} from '@mlain/ui/icons';
 
 /**
- * Ikony stavů pro `Badge`. Všechny jsou `aria-hidden`: význam nese slovo
- * vedle nich, ikona je druhý rozlišovací znak vedle barvy, ne náhrada textu.
+ * Ikony stavů pro `Badge`, připravené jako hotové prvky.
  *
- * `Badge` z P05 má prop `icon` povinný a je to tak schválně: stav se nikdy
- * nesděluje jen barvou (pravidlo 11.3 části 6). Ikony v `packages/ui` kreslí
- * `lucide-react`, jenže ta je závislostí `packages/ui`, ne `apps/web`, a P06
- * si do `apps/web/package.json` nesmí přidávat produkční závislosti
- * (kapitola 0.3). Šest ikon proto P06 kreslí sám.
- */
-function Frame({ children }: { children: ReactNode }) {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="size-4"
-    >
-      {children}
-    </svg>
-  );
-}
-
-export const CheckIcon = (
-  <Frame>
-    <circle cx="12" cy="12" r="9" />
-    <path d="m8.5 12 2.5 2.5 4.5-5" />
-  </Frame>
-);
-
-export const SlashIcon = (
-  <Frame>
-    <circle cx="12" cy="12" r="9" />
-    <path d="m6 6 12 12" />
-  </Frame>
-);
-
-export const ClockIcon = (
-  <Frame>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 7v5l3 2" />
-  </Frame>
-);
-
-export const WarningIcon = (
-  <Frame>
-    <path d="M12 4 2.5 20h19L12 4Z" />
-    <path d="M12 10v4" />
-    <path d="M12 17.5h.01" />
-  </Frame>
-);
-
-export const RunningIcon = (
-  <Frame>
-    <path d="M12 3a9 9 0 1 0 9 9" />
-  </Frame>
-);
-
-export const DeviceIcon = (
-  <Frame>
-    <rect x="3" y="4" width="18" height="12" rx="2" />
-    <path d="M8 20h8" />
-  </Frame>
-);
-
-/** Odznak „e-mail z formuláře" v knihovně šablon: list papíru s řádky. */
-export const FormIcon = (
-  <Frame>
-    <rect x="4" y="3" width="16" height="18" rx="2" />
-    <path d="M8 8h8" />
-    <path d="M8 12h8" />
-    <path d="M8 16h4" />
-  </Frame>
-);
-
-/**
- * Tři tečky u nabídky dalších akcí. Kreslí se tady ze stejného důvodu jako
- * ostatní: `lucide-react` je závislost `packages/ui`, ne `apps/web`.
+ * Všechny jsou `aria-hidden`: význam nese slovo vedle nich, ikona je druhý
+ * rozlišovací znak vedle barvy, ne náhrada textu. `Badge` proto má prop `icon`
+ * povinný, stav se nikdy nesděluje jen barvou (pravidlo 11.3 části 6).
  *
- * Tečka je krátká úsečka se zakulaceným koncem, protože `Frame` maluje obrysem
- * (`fill="none"`) a `<circle>` by zůstal prázdné kolečko.
+ * DŘÍV SE TYHLE IKONY KRESLILY TADY RUČNĚ. Důvod byl, že `lucide-react` je
+ * závislost `packages/ui` a `apps/web` si ji do `package.json` přidat nesmí.
+ * Ruční kresba ale znamenala třetí sadu ikon vedle dvou existujících, a ty
+ * se lišily tvarem i tloušťkou od návrhu. Od 5. 8. 2026 je sada jedna:
+ * `@mlain/ui/icons`. `apps/web` bere ikony odtamtud, `lucide-react` v jeho
+ * `package.json` pořád není a být nemá.
+ *
+ * Když potřebuješ další ikonu, dopiš ji do `packages/ui/src/icons/index.ts`
+ * a naimportuj sem. Nekresli ji.
  */
-export const MoreIcon = (
-  <Frame>
-    <path d="M6 12h.01" />
-    <path d="M12 12h.01" />
-    <path d="M18 12h.01" />
-  </Frame>
-);
 
-/** Odznak „transakční e-mail" v knihovně šablon: obálka. */
-export const MailIcon = (
-  <Frame>
-    <rect x="3" y="5" width="18" height="14" rx="2" />
-    <path d="m3.5 7 8.5 6 8.5-6" />
-  </Frame>
-);
+/** Potvrzeno, hotovo, v pořádku. */
+export const CheckIcon = <CircleCheck aria-hidden className="icon-sm" />;
+
+/** Zrušeno, zamítnuto, neplatí. */
+export const SlashIcon = <CircleX aria-hidden className="icon-sm" />;
+
+/** Čeká, je naplánováno. */
+export const ClockIcon = <Clock aria-hidden className="icon-sm" />;
+
+/** Něco je špatně, ale nezastavilo to běh. */
+export const WarningIcon = <TriangleAlert aria-hidden className="icon-sm" />;
+
+/** Právě běží. */
+export const RunningIcon = <LoaderCircle aria-hidden className="icon-sm" />;
+
+/** Zařízení, ze kterého se e-mail otevřel. */
+export const DeviceIcon = <Monitor aria-hidden className="icon-sm" />;
+
+/** Odznak „e-mail z formuláře" v knihovně šablon. */
+export const FormIcon = <FileText aria-hidden className="icon-sm" />;
+
+/** Nabídka dalších akcí. */
+export const MoreIcon = <Ellipsis aria-hidden className="icon-sm" />;
+
+/** Odznak „transakční e-mail" v knihovně šablon. */
+export const MailIcon = <Mail aria-hidden className="icon-sm" />;
+
+/** Zablokovaná adresa, na kterou se neodesílá. */
+export const BlockedIcon = <Ban aria-hidden className="icon-sm" />;

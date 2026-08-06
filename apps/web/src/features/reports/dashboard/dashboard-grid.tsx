@@ -3,8 +3,17 @@
 import { useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import Link from 'next/link';
+import { Button } from '@mlain/ui/components/button';
+import { Card } from '@mlain/ui/components/card';
+import { PageHeader } from '@mlain/ui/components/page-header';
+import { ArrowRight, MailOpen, MousePointerClick, Send, TriangleAlert } from '@mlain/ui/icons';
 import { dashboardUrl, fetchJson } from '../api-client';
-import { isStale, parsePeriod, type DashboardPeriod, type DashboardSlots } from './dashboard-slots';
+import { ClicksTrendCard } from './clicks-trend-card';
+import { RecentCampaignsCard, type RecentCampaignRow } from './recent-campaigns-card';
+import { RangeSwitch } from './range-switch';
+import { StatDelta, StatTile, StatValue } from './stat-tile';
+import { WebActiveCard, type WebActivePerson } from './web-active-card';
+import { parsePeriod, type DashboardPeriod, type DashboardSlots } from './dashboard-slots';
 
 type Tile =
   | { status: 'ok'; data: Record<string, unknown>; computed_at: string; stale: boolean }
@@ -15,6 +24,8 @@ type DashboardPayload = {
   computed_at: string;
   tiles: Record<string, Tile>;
 };
+
+const PERIODS = [7, 30, 90] as const;
 
 export function DashboardGrid({
   workspaceSlug,
@@ -52,7 +63,12 @@ export function DashboardGrid({
   }, [period]);
 
   if (!payload)
-    return <div aria-busy="true" className="h-64 animate-pulse rounded-lg bg-surface-muted" />;
+    return (
+      <div
+        aria-busy="true"
+        className="h-64 animate-pulse rounded-[var(--radius-surface)] bg-surface-muted"
+      />
+    );
 
   /**
    * Kolik kampaní stojí mimo míry, protože u nich neznáme doručenost.
@@ -67,6 +83,11 @@ export function DashboardGrid({
     tile?.status === 'ok' ? tile.data : null;
   const unknownOf = (tile: Tile | undefined): number =>
     Number((dataOf(tile)?.unknown as { campaigns?: number } | undefined)?.campaigns ?? 0);
+  /** Změna proti minulému období. `null` znamená „není s čím porovnat". */
+  const deltaOf = (tile: Tile | undefined): number | null => {
+    const value = dataOf(tile)?.delta;
+    return typeof value === 'number' ? value : null;
+  };
 
   const running = payload.tiles.running;
   const clicks = payload.tiles.click_rate;
@@ -76,193 +97,267 @@ export function DashboardGrid({
   const web = payload.tiles.web_active;
   const recent = payload.tiles.recent_campaigns;
 
-  return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">{t('dashboard.heading')}</h1>
+  const basePath = `/w/${workspaceSlug}`;
+  const rangeLabel = t(`dashboard.period${period}`);
+  const percent = (value: number) =>
+    format.number(value, { style: 'percent', maximumFractionDigits: 1 });
+  const deltaLabel = t('dashboard.deltaSincePrevious');
 
-      <div role="group" aria-label={t('dashboard.heading')} className="flex gap-2">
-        {([7, 30, 90] as const).map((value) => (
-          <button
-            key={value}
-            type="button"
-            className="inline-flex min-h-6 min-w-6 items-center justify-center rounded px-2 py-1 border border-border"
-            aria-pressed={period === value}
-            onClick={() => setPeriod(value)}
-          >
-            {t(`dashboard.period${value}`)}
-          </button>
-        ))}
-      </div>
+  const recentItems = (dataOf(recent)?.items ?? []) as Array<
+    RecentCampaignRow & { startedAt?: string | null }
+  >;
+  /** Poslední odeslaná kampaň období. Seznam chodí seřazený od nejnovější. */
+  const lastStartedAt = recentItems.find((item) => Boolean(item.startedAt))?.startedAt ?? null;
+
+  return (
+    <>
+      <PageHeader
+        title={t('dashboard.heading')}
+        meta={t('dashboard.rangeMeta', {
+          range: rangeLabel,
+          at: format.dateTime(new Date(payload.computed_at), {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          }),
+        })}
+        actions={
+          // Obě akce jsou ODKAZY, ne tlačítka s `router.push`: vedou na jinou
+          // obrazovku, takže se musí dát otevřít prostředním tlačítkem myši
+          // i s Cmd. Vzhled tlačítka dodá `asChild`.
+          <>
+            <Button asChild>
+              <Link href={`${basePath}/contacts/import`}>{t('dashboard.importContacts')}</Link>
+            </Button>
+            <Button asChild variant="primary">
+              <Link href={`${basePath}/campaigns/new`}>
+                {t('dashboard.newCampaign')}
+                <ArrowRight aria-hidden className="icon-sm" />
+              </Link>
+            </Button>
+          </>
+        }
+      >
+        <RangeSwitch
+          label={t('dashboard.periodLabel')}
+          value={period}
+          onChange={setPeriod}
+          options={PERIODS.map((value) => ({
+            value,
+            label: t(`dashboard.period${value}`),
+          }))}
+        />
+      </PageHeader>
 
       {running?.status === 'ok' && running.data.campaign ? (
-        <p role="status">
-          {t('dashboard.running', running.data.campaign as Record<string, string | number>)}{' '}
+        <Card
+          as="div"
+          tone="muted"
+          padding="sm"
+          gap="none"
+          role="status"
+          className="mb-[var(--spacing-gutter)] flex-row flex-wrap items-center gap-[var(--spacing-inline)]"
+        >
+          <span className="text-ui text-text">
+            {t('dashboard.running', running.data.campaign as Record<string, string | number>)}
+          </span>
           <Link
-            href={`/w/${workspaceSlug}/campaigns/${(running.data.campaign as { campaignId: string }).campaignId}/report`}
+            className="text-ui"
+            href={`${basePath}/campaigns/${(running.data.campaign as { campaignId: string }).campaignId}/report`}
           >
             {t('dashboard.runningAction')}
           </Link>
-        </p>
+        </Card>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-4">
-        {/* Kliklo je vizuálně největší dlaždice. */}
-        <section
-          aria-labelledby="tile-clicks"
-          className="rounded-lg border border-border p-6 sm:col-span-2"
+      <div className="mb-[var(--spacing-gutter)] grid grid-cols-[repeat(auto-fit,minmax(230px,1fr))] gap-[var(--spacing-gutter)]">
+        <StatTile
+          label={t('dashboard.sent')}
+          icon={<Send aria-hidden className="icon-md" />}
+          iconTone="bg-accent-surface text-warning-text"
+          footer={
+            <span className="font-mono text-meta text-text-muted">
+              {t('dashboard.sentCampaigns', {
+                count: recentItems.length,
+                date: lastStartedAt
+                  ? format.dateTime(new Date(lastStartedAt), { day: 'numeric', month: 'numeric' })
+                  : '',
+              })}
+            </span>
+          }
         >
-          <h2 id="tile-clicks">{t('dashboard.clicked')}</h2>
-          {clicks?.status === 'error' ? (
-            <p role="alert">{t('dashboard.tileError')}</p>
-          ) : clicks?.status === 'ok' && typeof clicks.data.rate === 'number' ? (
-            <p className="text-5xl font-semibold">
-              {format.number(clicks.data.rate, { style: 'percent', maximumFractionDigits: 1 })}
-            </p>
-          ) : unknownOf(clicks) > 0 ? (
-            <>
-              <p className="text-5xl font-semibold" data-testid="clicks-absolute">
-                {t('dashboard.clickedAbsolute', { count: Number(dataOf(clicks)?.clicks ?? 0) })}
-              </p>
-              <p className="text-xs text-text-muted">
-                {t('dashboard.rateUnknown', { count: unknownOf(clicks) })}
-              </p>
-            </>
-          ) : (
-            <p>{t('dashboard.emptyNoCampaigns')}</p>
-          )}
-          <p className="text-xs text-text-muted">{t('dashboard.clickedHint')}</p>
-        </section>
-
-        <section aria-labelledby="tile-sent" className="rounded-lg border border-border p-4">
-          <h2 id="tile-sent">{t('dashboard.sent')}</h2>
           {sent?.status === 'ok' ? (
-            <p className="text-3xl">{format.number(Number(sent.data.value))}</p>
+            <StatValue>{format.number(Number(sent.data.value))}</StatValue>
           ) : (
-            <p role="alert">{t('dashboard.tileError')}</p>
+            <p role="alert" className="text-ui text-text-muted">
+              {t('dashboard.tileError')}
+            </p>
           )}
-        </section>
+          {deltaOf(sent) !== null ? (
+            <StatDelta
+              value={deltaOf(sent) ?? 0}
+              label={deltaLabel}
+              format={percent}
+              muted="text-text-muted"
+            />
+          ) : null}
+        </StatTile>
 
-        <section aria-labelledby="tile-opens" className="rounded-lg border border-border p-4">
-          <h2 id="tile-opens">{t('dashboard.opened')}</h2>
+        <StatTile
+          label={t('dashboard.opened')}
+          icon={<MailOpen aria-hidden className="icon-md" />}
+          iconTone="bg-success-surface text-success-text"
+          {...(typeof dataOf(opens)?.machineShare === 'number'
+            ? {
+                footer: (
+                  <span className="font-mono text-meta text-text-muted">
+                    {t('dashboard.openedMachine', {
+                      share: format.number(Number(dataOf(opens)?.machineShare ?? 0), {
+                        style: 'percent',
+                        maximumFractionDigits: 0,
+                      }),
+                    })}
+                  </span>
+                ),
+              }
+            : {})}
+        >
           {opens?.status === 'ok' && typeof opens.data.rate === 'number' ? (
             <>
-              <p className="text-3xl">
+              <StatValue>
                 {format.number(opens.data.rate, { style: 'percent', maximumFractionDigits: 1 })}
-              </p>
-              <p className="text-xs text-text-muted">
-                {t('dashboard.openedMachine', {
-                  share: format.number(Number(opens.data.machineShare ?? 0), {
-                    style: 'percent',
-                    maximumFractionDigits: 0,
-                  }),
-                })}
-              </p>
+              </StatValue>
+              {deltaOf(opens) !== null ? (
+                <StatDelta
+                  value={deltaOf(opens) ?? 0}
+                  label={deltaLabel}
+                  format={percent}
+                  muted="text-text-muted"
+                />
+              ) : null}
             </>
           ) : unknownOf(opens) > 0 ? (
             <>
-              <p className="text-3xl" data-testid="opens-absolute">
-                {t('dashboard.openedAbsolute', { count: Number(dataOf(opens)?.opens ?? 0) })}
-              </p>
-              <p className="text-xs text-text-muted">
+              <StatValue>
+                <span data-testid="opens-absolute">
+                  {t('dashboard.openedAbsolute', { count: Number(dataOf(opens)?.opens ?? 0) })}
+                </span>
+              </StatValue>
+              <p className="text-meta text-text-muted">
                 {t('dashboard.rateUnknown', { count: unknownOf(opens) })}
               </p>
             </>
           ) : (
-            <p>{t('dashboard.emptyNoCampaigns')}</p>
+            <p className="text-ui text-text-muted">{t('dashboard.emptyNoCampaigns')}</p>
           )}
-        </section>
+        </StatTile>
 
-        <section aria-labelledby="tile-problems" className="rounded-lg border border-border p-4">
-          <h2 id="tile-problems">{t('dashboard.problems')}</h2>
+        {/* Proklik je hlavní číslo obrazovky, proto jediná zvýrazněná dlaždice. */}
+        <StatTile
+          label={t('dashboard.clicked')}
+          tone="highlight"
+          icon={<MousePointerClick aria-hidden className="icon-md" />}
+          iconTone="bg-panel text-primary"
+          footer={<span className="text-meta text-warning-text">{t('dashboard.clickedHint')}</span>}
+        >
+          {clicks?.status === 'error' ? (
+            <p role="alert" className="text-ui text-warning-text">
+              {t('dashboard.tileError')}
+            </p>
+          ) : clicks?.status === 'ok' && typeof clicks.data.rate === 'number' ? (
+            <>
+              <StatValue>
+                {format.number(clicks.data.rate, { style: 'percent', maximumFractionDigits: 1 })}
+              </StatValue>
+              {deltaOf(clicks) !== null ? (
+                <StatDelta
+                  value={deltaOf(clicks) ?? 0}
+                  label={deltaLabel}
+                  format={percent}
+                  muted="text-warning-text"
+                />
+              ) : null}
+            </>
+          ) : unknownOf(clicks) > 0 ? (
+            <>
+              <StatValue>
+                <span data-testid="clicks-absolute">
+                  {t('dashboard.clickedAbsolute', { count: Number(dataOf(clicks)?.clicks ?? 0) })}
+                </span>
+              </StatValue>
+              <p className="text-meta text-warning-text">
+                {t('dashboard.rateUnknown', { count: unknownOf(clicks) })}
+              </p>
+            </>
+          ) : (
+            <p className="text-ui text-warning-text">{t('dashboard.emptyNoCampaigns')}</p>
+          )}
+        </StatTile>
+
+        <StatTile
+          label={t('dashboard.problems')}
+          icon={<TriangleAlert aria-hidden className="icon-md" />}
+          iconTone="bg-surface-muted text-danger-text"
+          footer={
+            <Link href={`${basePath}/settings/sending`} className="text-meta">
+              {t('dashboard.problemsAction')}
+            </Link>
+          }
+        >
           {problems?.status === 'ok' ? (
             problems.data.level === 'unknown' ? (
               <>
-                <p data-testid="problems-unknown">{t('dashboard.problemsUnknown')}</p>
-                <p className="text-xs text-text-muted">{t('dashboard.problemsUnknownHint')}</p>
+                <p
+                  data-testid="problems-unknown"
+                  className="text-callout leading-[var(--leading-heading)] tracking-[var(--tracking-heading)] font-semibold text-text-muted"
+                >
+                  {t('dashboard.problemsUnknown')}
+                </p>
+                <p className="text-meta text-text-muted">{t('dashboard.problemsUnknownHint')}</p>
               </>
             ) : (
-              <p>
+              <p className="text-callout leading-[var(--leading-heading)] tracking-[var(--tracking-heading)] font-semibold text-text">
                 {problems.data.level === 'ok'
                   ? t('dashboard.problemsOk')
                   : t('dashboard.problemsBad')}
               </p>
             )
           ) : (
-            <p role="alert">{t('dashboard.tileError')}</p>
+            <p role="alert" className="text-ui text-text-muted">
+              {t('dashboard.tileError')}
+            </p>
           )}
-        </section>
-
-        <section aria-labelledby="tile-web" className="rounded-lg border border-border p-4">
-          <h2 id="tile-web">{t('dashboard.webActive')}</h2>
-          {web?.status === 'ok' ? (
-            <>
-              <p>{t('dashboard.webActiveValue', { count: Number(web.data.contacts) })}</p>
-              {/*
-               * Dlaždice musí někam vést. Do teď to bylo jediné číslo na
-               * přehledu, ze kterého se nedalo nikam kliknout, a „3 kontakty
-               * za 24 h" samo o sobě neodpovídá na nic: uživatel chce vědět,
-               * kdo to byl a co si prohlédl.
-               */}
-              <p className="mt-1 text-sm">
-                <Link href={`/w/${workspaceSlug}/stats/web`} data-testid="web-active-link">
-                  {t('dashboard.webActiveAction')}
-                </Link>
-              </p>
-              {isStale(web.computed_at, 300_000, new Date()) ? (
-                <p className="text-xs text-text-muted">
-                  {t('dashboard.computedAt', {
-                    time: format.dateTime(new Date(web.computed_at), { timeStyle: 'short' }),
-                  })}
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <p role="alert">{t('dashboard.tileError')}</p>
-          )}
-        </section>
-
-        <section
-          aria-labelledby="tile-recent"
-          className="rounded-lg border border-border p-4 sm:col-span-2"
-        >
-          <h2 id="tile-recent">{t('dashboard.recentCampaigns')}</h2>
-          {recent?.status === 'ok' ? (
-            <ul>
-              {(
-                recent.data.items as Array<{
-                  campaignId: string;
-                  name: string;
-                  clickRate: number | null;
-                  deliveredKnown?: boolean;
-                  clicks?: number;
-                }>
-              ).map((item) => (
-                <li key={item.campaignId}>
-                  <Link href={`/w/${workspaceSlug}/campaigns/${item.campaignId}/report`}>
-                    {item.name}
-                  </Link>{' '}
-                  {/*
-                   * U kampaně s neznámou doručeností se ukáže POČET prokliků,
-                   * ne procento. Dřív tu u čerstvě odeslané kampaně stálo
-                   * „100 %", protože jmenovatel byl dopočtený z odeslaných.
-                   */}
-                  {item.clickRate !== null
-                    ? format.number(item.clickRate, { style: 'percent', maximumFractionDigits: 1 })
-                    : item.deliveredKnown === false
-                      ? t('dashboard.clickedAbsolute', { count: Number(item.clicks ?? 0) })
-                      : '–'}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p role="alert">{t('dashboard.tileError')}</p>
-          )}
-        </section>
+        </StatTile>
       </div>
+
+      <div className="mb-[var(--spacing-gutter)] grid grid-cols-12 gap-[var(--spacing-gutter)]">
+        <ClicksTrendCard
+          points={recentItems.map((item) => ({
+            campaignId: item.campaignId,
+            startedAt: item.startedAt ?? null,
+            clicks: Number(item.clicks ?? 0),
+          }))}
+          rangeLabel={t('dashboard.rangeWords', { range: rangeLabel })}
+          statsHref={`${basePath}/stats/campaigns`}
+        />
+
+        <WebActiveCard
+          contacts={Number(dataOf(web)?.contacts ?? 0)}
+          people={(dataOf(web)?.people ?? []) as WebActivePerson[]}
+          computedAt={web?.status === 'ok' ? web.computed_at : payload.computed_at}
+          webHref={`${basePath}/stats/web`}
+          {...(web?.status === 'ok' ? {} : { error: true })}
+        />
+      </div>
+
+      <RecentCampaignsCard
+        items={recentItems}
+        basePath={basePath}
+        {...(recent?.status === 'ok' ? {} : { error: true })}
+      />
 
       {slots.providerQuota}
       {slots.deliverabilityWarning}
       {slots.onboardingSteps}
-    </div>
+    </>
   );
 }

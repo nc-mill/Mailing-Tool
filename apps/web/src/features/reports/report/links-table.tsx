@@ -1,6 +1,8 @@
 'use client';
 
 import { useFormatter, useTranslations } from 'next-intl';
+import { Card, CardTitle } from '@mlain/ui/components/card';
+import { Tag } from '@mlain/ui/components/tag';
 
 export type LinkRow = {
   link_id: string;
@@ -19,68 +21,60 @@ export function LinksTable({ links, disabled }: { links: LinkRow[]; disabled: bo
 
   if (disabled) {
     return (
-      <section
-        aria-labelledby="links-heading"
-        className="rounded-lg border border-border bg-surface p-4"
-      >
-        <h2 id="links-heading" className="text-base font-semibold">
-          {t('report.links.heading')}
-        </h2>
-        <p>{t('report.states.trackingOffClicks')}</p>
-      </section>
+      <Card aria-labelledby="links-heading">
+        <CardTitle>
+          <span id="links-heading">{t('report.links.heading')}</span>
+        </CardTitle>
+        <p className="text-ui text-text-muted">{t('report.states.trackingOffClicks')}</p>
+      </Card>
     );
   }
 
   return (
-    <section
-      aria-labelledby="links-heading"
-      className="rounded-lg border border-border bg-surface p-4"
-    >
-      <h2 id="links-heading" className="text-base font-semibold">
-        {t('report.links.heading')}
-      </h2>
+    <Card aria-labelledby="links-heading">
+      <CardTitle>
+        <span id="links-heading">{t('report.links.heading')}</span>
+      </CardTitle>
       {links.length === 0 ? (
-        <p>{t('report.links.empty')}</p>
+        <p className="text-ui text-text-muted">{t('report.links.empty')}</p>
       ) : (
-        <table className="mt-3 w-full text-sm">
+        <table className="w-full">
           <caption className="sr-only">{t('report.links.heading')}</caption>
           <thead>
-            <tr className="border-b border-border text-xs text-text-muted">
-              <th scope="col" className="pb-2 text-left font-normal">
+            <tr>
+              <th scope="col" className="meta-caps pb-2 text-left text-text-muted">
                 {t('report.links.columnLink')}
               </th>
               {/* Záhlaví je popisek sloupce, ne skloňovaná věta. Původní znění
                   z plánu sem dosazovalo tvar pro nulu, takže v hlavičce stálo
                   „žádné kliknutí“ a „nikdo“. */}
-              <th scope="col" className="pb-2 text-right font-normal">
+              <th scope="col" className="meta-caps pb-2 text-right text-text-muted">
                 {t('report.links.columnClicks')}
               </th>
-              <th scope="col" className="pb-2 text-right font-normal">
+              <th scope="col" className="meta-caps pb-2 text-right text-text-muted">
                 {t('report.links.columnPeople')}
               </th>
-              <th scope="col" className="pb-2 text-right font-normal">
+              <th scope="col" className="meta-caps pb-2 text-right text-text-muted">
                 {t('report.links.share')}
               </th>
             </tr>
           </thead>
           <tbody>
             {links.map((link) => (
-              <tr key={link.link_id} className="border-t border-border first:border-t-0">
-                <th scope="row" className="py-2 text-left font-normal">
-                  {link.label ?? link.url}
-                  {link.duplicate_url ? (
-                    <span className="ml-1 text-xs text-text-muted">
-                      {t('report.links.duplicate')}
-                    </span>
-                  ) : null}
+              <tr key={link.link_id} className="border-t border-border">
+                <th scope="row" className="py-3 text-left text-ui font-semibold text-text">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="min-w-0 truncate">{link.label ?? link.url}</span>
+                    {link.duplicate_url ? <Tag>{t('report.links.duplicate')}</Tag> : null}
+                  </span>
                 </th>
-                <td className="py-2 text-right tabular-nums">
+                <td className="py-3 text-right font-mono text-sm tabular-nums text-text">
                   {t('report.links.clicks', { count: link.clicks_human })}
                 </td>
-                <td className="py-2 text-right tabular-nums">
+                <td className="py-3 text-right font-mono text-sm tabular-nums text-text">
                   {t('report.links.people', { count: link.clicks_unique })}
                 </td>
-                <td className="py-2 text-right tabular-nums">
+                <td className="py-3 text-right font-mono text-sm tabular-nums text-text">
                   {format.number(link.share, { style: 'percent', maximumFractionDigits: 1 })}
                 </td>
               </tr>
@@ -88,6 +82,6 @@ export function LinksTable({ links, disabled }: { links: LinkRow[]; disabled: bo
           </tbody>
         </table>
       )}
-    </section>
+    </Card>
   );
 }

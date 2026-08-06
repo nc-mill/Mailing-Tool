@@ -113,7 +113,9 @@ describe('ContactForm', () => {
   it('u úpravy nedovolí přepsat adresu v hlavním formuláři a nabídne vlastní cestu', () => {
     renderForm();
     expect(screen.queryByRole('textbox', { name: 'E-mail' })).toBeNull();
-    expect(screen.getByText('jana@firma.cz')).toBeInTheDocument();
+    // Adresa je na obrazovce dvakrát: v meta řádku pod nadpisem a jako hodnota
+    // v kartě „Kdo to je". Obojí má návrh.
+    expect(screen.getAllByText('jana@firma.cz').length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: 'Změnit adresu' })).toHaveAttribute(
       'href',
       '/w/eshop/contacts/c-1/email',
@@ -182,7 +184,9 @@ describe('ContactForm', () => {
     const user = userEvent.setup();
     renderForm({ fields: [{ key: 'points', label: 'Body', type: 'number', value: '10' }] });
 
-    await user.click(screen.getByRole('button', { name: 'Uložit změny' }));
+    // Tlačítko je na obrazovce dvakrát, v hlavičce i pod formulářem, tak jak to
+    // má návrh. Klikáme na to v hlavičce.
+    await user.click(screen.getAllByRole('button', { name: 'Uložit změny' })[0]!);
 
     await waitFor(() => expect(submitted).not.toBeNull());
     expect(submitted!.get('attr:points')).toBe('10');
@@ -202,7 +206,9 @@ describe('ContactForm', () => {
       ],
     });
 
-    await user.click(screen.getByRole('button', { name: 'Uložit změny' }));
+    // Tlačítko je na obrazovce dvakrát, v hlavičce i pod formulářem, tak jak to
+    // má návrh. Klikáme na to v hlavičce.
+    await user.click(screen.getAllByRole('button', { name: 'Uložit změny' })[0]!);
 
     await waitFor(() => expect(submitted).not.toBeNull());
     expect(submitted!.getAll('list_before')).toEqual(['l-1']);
@@ -230,7 +236,7 @@ describe('ContactForm', () => {
     // U volby musí být věta o tom, co to znamená pro odesílání.
     expect(screen.getByText(/rovnou v rozesílkách/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Založit kontakt' }));
+    await user.click(screen.getAllByRole('button', { name: 'Založit kontakt' })[0]!);
 
     await waitFor(() => expect(submitted).not.toBeNull());
     expect(submitted!.get('subscription')).toBe('confirmed');
@@ -246,7 +252,7 @@ describe('ContactForm', () => {
     // tady, ne až v historii kontaktu.
     expect(screen.getByText(/pošleme potvrzovací e-mail/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Založit kontakt' }));
+    await user.click(screen.getAllByRole('button', { name: 'Založit kontakt' })[0]!);
 
     await waitFor(() => expect(submitted).not.toBeNull());
     expect(submitted!.get('subscription')).toBe('pending');
@@ -291,7 +297,7 @@ describe('ContactForm', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
     // Zavřená část je pořád v DOM, takže se hodnota neztratí.
-    await user.click(screen.getByRole('button', { name: 'Založit kontakt' }));
+    await user.click(screen.getAllByRole('button', { name: 'Založit kontakt' })[0]!);
     await waitFor(() => expect(submitted).not.toBeNull());
     expect(submitted!.get('title_prefix')).toBe('Ing.');
   });
@@ -311,7 +317,7 @@ describe('ContactForm', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
     nextState = validationFailure('attributes.city', 'Město neznáme.');
-    await user.click(screen.getByRole('button', { name: 'Založit kontakt' }));
+    await user.click(screen.getAllByRole('button', { name: 'Založit kontakt' })[0]!);
 
     await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'));
     expect(screen.getByText('Město neznáme.')).toBeInTheDocument();
@@ -322,7 +328,7 @@ describe('ContactForm', () => {
     renderForm(EMPTY, 'create');
 
     nextState = validationFailure('title_prefix', 'Titul je moc dlouhý.');
-    await user.click(screen.getByRole('button', { name: 'Založit kontakt' }));
+    await user.click(screen.getAllByRole('button', { name: 'Založit kontakt' })[0]!);
 
     const toggle = screen.getByRole('button', { name: 'Další údaje' });
     await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'));

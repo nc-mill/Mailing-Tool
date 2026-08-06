@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
 import { Alert } from '@mlain/ui/patterns/states';
@@ -76,6 +77,11 @@ export function GuardThresholds({
     guard_min_sent: String(settings.guard_min_sent ?? limits.DELIVERABILITY_GUARD_MIN_SENT),
   }));
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /**
+   * Kvůli zaostření prvního chybného pole. Ref sedí na mřížce polí, ne na
+   * `Card`: ta ref nepřeposílá a `packages/ui` vlastní agent základu.
+   */
+  const fieldsRef = useRef<HTMLDivElement>(null);
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
 
@@ -110,7 +116,19 @@ export function GuardThresholds({
   }
 
   async function save() {
-    if (hasError) return;
+    if (hasError) {
+      /*
+       * Tlačítko je `secondary`, takže nemá `unavailableReason`, kterým
+       * `primary` vysvětluje, proč akce nejde. Mrtvé tlačítko z toho ale být
+       * nesmí: dřív se tady jenom `return`ovalo a kliknutí nedělalo NIC.
+       * Fokus proto skočí na první chybné pole, u kterého už důvod stojí
+       * napsaný. Je to zároveň to, co pravidlo o klávesnici žádá po každém
+       * odmítnutém odeslání formuláře.
+       */
+      const invalid = fieldsRef.current?.querySelector('[aria-invalid="true"]');
+      if (invalid instanceof HTMLElement) invalid.focus();
+      return;
+    }
     setPending(true);
     try {
       const result = await onSave?.(collect());
@@ -126,15 +144,19 @@ export function GuardThresholds({
   }
 
   return (
-    <section className="flex flex-col gap-4" aria-labelledby="guards-title">
-      <div>
-        <h3 id="guards-title" className="text-base font-medium">
-          {t('title')}
-        </h3>
-        <p className="text-sm text-text-muted">{t('explanation')}</p>
+    <Card aria-labelledby="guards-title" gap="gutter">
+      <div className="flex flex-col gap-[var(--spacing-hairline)]">
+        <CardTitle>
+          <span id="guards-title">{t('title')}</span>
+        </CardTitle>
+        <p className="text-meta text-text-muted">{t('explanation')}</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* Dvojice polí vedle sebe, mřížka z návrhu pro formulář ve dvou sloupcích. */}
+      <div
+        ref={fieldsRef}
+        className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-[var(--spacing-gutter)]"
+      >
         {RATE_FIELDS.map(([key, limitKey, labelKey]) => {
           const max = limits[limitKey];
           return (
@@ -199,18 +221,14 @@ export function GuardThresholds({
       )}
       {saved && <Alert tone="success">{t('saved')}</Alert>}
 
-      <div>
-        <Button
-          variant="primary"
-          onClick={save}
-          pending={pending}
-          {...(hasError
-            ? { unavailableReason: Object.values(errors)[0]!, onUnavailable: () => {} }
-            : {})}
-        >
+      <div className="flex">
+        {/* Sekundární, ne žluté. Žluté tlačítko je na obrazovce jedno a na
+            Odesílání ho má „Zapnout zkušební režim": ten mění stav celého
+            projektu, kdežto tohle je běžné uložení formuláře. */}
+        <Button variant="secondary" onClick={save} pending={pending}>
           {t('save')}
         </Button>
       </div>
-    </section>
+    </Card>
   );
 }

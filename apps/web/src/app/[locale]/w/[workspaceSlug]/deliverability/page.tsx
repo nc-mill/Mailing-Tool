@@ -146,7 +146,12 @@ export default async function DeliverabilityPage({ params }: PageProps) {
             }
           : null
       }
-      unmatchedEvents={0}
+      /*
+       * Nespárované události zatím nikdo nepočítá: v aplikaci pro ně není
+       * zdroj. Nula předávaná natvrdo z nich na obrazovce dělala měření,
+       * takže se posílá `null` a dlaždice řekne, že to nevíme.
+       */
+      unmatchedEvents={null}
       campaignsHref={`/w/${workspaceSlug}/campaigns`}
       thresholds={{
         bounce_warn_rate: settings.bounce_warn_rate ?? limits.DELIVERABILITY_BOUNCE_WARN_RATE,

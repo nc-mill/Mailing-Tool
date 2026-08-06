@@ -15,6 +15,13 @@ export type GroupSentenceProps = {
  * sáhlo do kódu. Zřetězení tří řetězců by tuhle vlastnost zabilo a čeština
  * má rody a pády, takže by věta byla v půlce kombinací negramatická.
  */
+/**
+ * Obě rozbalovátka věty jsou menší než formulářové pole: sedí uvnitř věty,
+ * ne v formuláři. Výška 36 px a 14 px textu je z návrhu.
+ */
+const SENTENCE_SELECT =
+  'min-h-[var(--size-control-sm)] rounded-[var(--radius-control)] border border-border-strong bg-field px-2.5 py-1 text-sm text-text';
+
 export function GroupSentence({ op, not, onChange }: GroupSentenceProps) {
   const t = useTranslations('segments');
 
@@ -24,6 +31,7 @@ export function GroupSentence({ op, not, onChange }: GroupSentenceProps) {
       aria-label={t('builder.polarityLabel')}
       value={not ? 'notMatch' : 'match'}
       onChange={(event) => onChange({ op, not: event.target.value === 'notMatch' })}
+      className={SENTENCE_SELECT}
     >
       <option value="match">{t('builder.polarity.match')}</option>
       <option value="notMatch">{t('builder.polarity.notMatch')}</option>
@@ -36,6 +44,7 @@ export function GroupSentence({ op, not, onChange }: GroupSentenceProps) {
       aria-label={t('builder.quantifierLabel')}
       value={op === 'and' ? 'all' : 'any'}
       onChange={(event) => onChange({ op: event.target.value === 'all' ? 'and' : 'or', not })}
+      className={SENTENCE_SELECT}
     >
       <option value="all">{t('builder.quantifier.all')}</option>
       <option value="any">{t('builder.quantifier.any')}</option>
@@ -44,7 +53,10 @@ export function GroupSentence({ op, not, onChange }: GroupSentenceProps) {
 
   return (
     <>
-      <p data-testid="group-sentence">
+      <p
+        data-testid="group-sentence"
+        className="flex flex-wrap items-center gap-3 text-meta text-text"
+      >
         {/* Sloty jsou PROSTÉ argumenty zprávy, ne značky. `t.rich` proto
             dostane rovnou uzly; kdyby dostal funkce, next-intl by je předal
             Reactu jako potomka a React funkci jako dítě nevykreslí. */}
@@ -62,7 +74,7 @@ export function GroupSentence({ op, not, onChange }: GroupSentenceProps) {
           „Nesplňují všechny" si část lidí přečte jako „nesplňují žádnou",
           a angličtina má tutéž past, jen jinak položenou. */}
       {not ? (
-        <p role="note">
+        <p role="note" className="text-sm text-text-muted">
           {t(op === 'and' ? 'builder.negationHint.andNot' : 'builder.negationHint.orNot')}
         </p>
       ) : null}

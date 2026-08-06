@@ -1,27 +1,32 @@
-import { AlertTriangle, CheckCircle2, Info, XCircle } from 'lucide-react';
+import { TriangleAlert, CircleCheck, Info, CircleX } from '../../icons';
 import { cn } from '../../lib/cn';
 
 export type AlertTone = 'info' | 'warning' | 'error' | 'success';
 
 const TONE = {
-  info: { border: 'border-border', surface: 'bg-surface-muted', text: 'text-text', Icon: Info },
+  info: {
+    border: 'border-l-border-strong',
+    surface: 'bg-surface-muted',
+    text: 'text-text',
+    Icon: Info,
+  },
   warning: {
-    border: 'border-warning',
+    border: 'border-l-warning',
     surface: 'bg-warning-surface',
     text: 'text-warning-text',
-    Icon: AlertTriangle,
+    Icon: TriangleAlert,
   },
   error: {
-    border: 'border-danger',
+    border: 'border-l-danger',
     surface: 'bg-danger-surface',
     text: 'text-danger-text',
-    Icon: XCircle,
+    Icon: CircleX,
   },
   success: {
-    border: 'border-success',
+    border: 'border-l-success',
     surface: 'bg-success-surface',
     text: 'text-success-text',
-    Icon: CheckCircle2,
+    Icon: CircleCheck,
   },
 } as const;
 
@@ -53,8 +58,18 @@ export function Alert({
       // Chybu a varování musí čtečka ohlásit, informaci a úspěch ne.
       role={tone === 'error' || tone === 'warning' ? 'alert' : undefined}
       data-tone={tone}
+      // Hláška má vlevo SILNOU LINKU 3 px v barvě tónu a zbytek rámečku
+      // hairline. V návrhu je to jediný prvek, který takhle vypadá, a je to
+      // schválně: hláška se objeví nad obsahem a musí být poznat na první
+      // pohled, ale nesmí kvůli tomu být barevná celá.
       className={cn(
-        'flex items-start gap-3 rounded-[var(--radius-control)] border px-4 py-3 text-sm',
+        'flex items-start gap-[var(--spacing-stack)]',
+        // `length:` je POVINNÉ. Bez něj je hranatá hodnota pro `tailwind-merge`
+        // nejednoznačná, zařadí ji mezi BARVY levého rámečku a barva z tónu ji
+        // o řádek níž tiše přebije. Linka pak vyšla 1 px místo tří na každé
+        // hlášce v aplikaci. Táž past jako u velikostí písma, viz DESIGN-ZAKLAD.
+        'rounded-[var(--radius-surface)] border border-border border-l-[length:var(--border-accent)]',
+        'px-[var(--spacing-gutter)] py-[var(--spacing-gutter)] text-ui',
         border,
         surface,
         text,
@@ -62,11 +77,17 @@ export function Alert({
       )}
       {...rest}
     >
-      <Icon aria-hidden className="mt-0.5 size-4 shrink-0" />
-      <div className="flex flex-col gap-1">
-        {title ? <p className="font-medium">{title}</p> : null}
+      <Icon aria-hidden className="mt-0.5 icon-md shrink-0" />
+      <div className="flex min-w-0 flex-col items-start gap-[var(--spacing-hairline)]">
+        {title ? <p className="font-semibold">{title}</p> : null}
         {children}
-        {action}
+        {/* `items-start` na obalu, ne šířka na akci: tlačítko uvnitř svislého
+            flexu se jinak roztáhne na celou šířku hlášky a „Vrátit zpět"
+            vypadá jako pruh přes půl obrazovky. Vlastní obal navíc drží
+            odsazení od textu i tehdy, když je akcí víc. */}
+        {action ? (
+          <div className="mt-1 flex flex-wrap gap-[var(--spacing-inline)]">{action}</div>
+        ) : null}
       </div>
     </div>
   );

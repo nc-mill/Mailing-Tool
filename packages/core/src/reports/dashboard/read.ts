@@ -29,7 +29,13 @@ export type DashboardResponse = {
   periodDays: DashboardPeriod;
   computedAt: string;
   tiles: {
-    sent: Tile<{ value: number }>;
+    /**
+     * `delta` je RELATIVNÍ změna počtu odeslaných zpráv proti minulému období
+     * (0.1 znamená o desetinu víc), kdežto u měr je to rozdíl dvou podílů.
+     * Jsou to dvě různé veličiny se stejným názvem schválně: dlaždice o nich
+     * mluví stejnou větou („od minulého období") a obě se ukazují v procentech.
+     */
+    sent: Tile<{ value: number; delta: number | null }>;
     click_rate: Tile<{
       rate: number | null;
       delta: number | null;
@@ -38,6 +44,7 @@ export type DashboardResponse = {
     }>;
     open_rate: Tile<{
       rate: number | null;
+      delta: number | null;
       machineShare: number | null;
       opens: number;
       unknown: UnknownDelivery;
@@ -48,7 +55,7 @@ export type DashboardResponse = {
       level: 'ok' | 'warn' | 'bad' | 'unknown';
       unknown: UnknownDelivery;
     }>;
-    web_active: Tile<{ contacts: number }>;
+    web_active: Tile<{ contacts: number; people: WebActivePerson[] }>;
     recent_campaigns: Tile<{ items: RecentCampaign[] }>;
     running: Tile<{ campaign: RunningCampaign | null }>;
   };
@@ -151,9 +158,7 @@ export async function readDashboard(
   ]);
 
   const [webActive, recent, running] = await Promise.all([
-    input.cache.resolve(key('web_active'), WEB_TTL_MS, async () => ({
-      contacts: await readWebActive(tx, ctx),
-    })),
+    input.cache.resolve(key('web_active'), WEB_TTL_MS, () => readWebActive(tx, ctx)),
     input.cache.resolve(key('recent'), STATS_TTL_MS, async () => ({
       items: await readRecentCampaigns(tx, ctx, from, now),
     })),
@@ -166,15 +171,22 @@ export async function readDashboard(
     periodDays: input.periodDays,
     computedAt: now.toISOString(),
     tiles: {
-      sent: mapTile(current, (t) => ({ value: t.sent })),
+      sent: mapTile(current, (t) => ({ value: t.sent, delta: countDelta(current, previous) })),
       click_rate: mapTile(current, (t) => ({
         rate: ratio(t.known.clicksHuman, t.known.deliveredEffective),
-        delta: deltaOf(current, previous),
+        delta: rateDelta(current, previous, (totals) => [
+          totals.known.clicksHuman,
+          totals.known.deliveredEffective,
+        ]),
         clicks: t.clicksHuman,
         unknown: t.unknown,
       })),
       open_rate: mapTile(current, (t) => ({
         rate: ratio(t.known.opensUnique, t.known.deliveredEffective),
+        delta: rateDelta(current, previous, (totals) => [
+          totals.known.opensUnique,
+          totals.known.deliveredEffective,
+        ]),
         // Podíl automatických otevření má jmenovatel z TÉHOŽ měření jako
         // čitatel, takže na doručenosti nestojí a počítá se přes vše.
         machineShare: ratio(t.opensApple, t.opensUnique),
@@ -311,19 +323,64 @@ async function readTotals(tx: Tx, ctx: WorkspaceContext, from: Date, to: Date): 
  * smazal. Podmínka je až za `contact_id IS NOT NULL`, aby se z indexu
  * `idx_web_events__contact_occurred` četlo dál a existence se ověřovala jen
  * u nalezených id.
+ *
+ * VEDLE POČTU VRACÍ I PÁR JMEN. Samotné číslo „6 kontaktů za 24 h" neodpovídá
+ * na otázku, kterou si u té dlaždice člověk klade, totiž kdo to byl. Jména se
+ * berou ze stejného průchodu událostmi (`GROUP BY contact_id` nad týmž indexem),
+ * ne druhým dotazem: podmínky jsou doslova tytéž, takže se počet a seznam
+ * nemůžou rozejít.
  */
-async function readWebActive(tx: Tx, ctx: WorkspaceContext): Promise<number> {
+const WEB_ACTIVE_PEOPLE_LIMIT = 5;
+
+/** Kontakt, který byl za posledních 24 hodin na webu. */
+export type WebActivePerson = {
+  contactId: string;
+  /** Celé jméno, pokud ho kontakt má. Jinak `null` a rozhodne e-mail. */
+  name: string | null;
+  email: string;
+  lastSeenAt: string;
+};
+
+async function readWebActive(
+  tx: Tx,
+  ctx: WorkspaceContext,
+): Promise<{ contacts: number; people: WebActivePerson[] }> {
   const { rows } = await tx.execute<Record<string, unknown>>(sql`
-    SELECT count(DISTINCT we.contact_id) AS contacts
-      FROM web_events we
-     WHERE we.workspace_id = ${ctx.workspaceId}
-       AND we.contact_id IS NOT NULL
-       AND we.occurred_at >= now() - interval '24 hours'
-       AND we.received_at >= now() - interval '24 hours' - interval '60 seconds'
-       AND we.received_at <  now() + interval '7 days'
-       AND ${sql.raw(contactExistsForJoinSql('we'))}
+    WITH seen AS (
+      SELECT we.contact_id, max(we.occurred_at) AS last_seen
+        FROM web_events we
+       WHERE we.workspace_id = ${ctx.workspaceId}
+         AND we.contact_id IS NOT NULL
+         AND we.occurred_at >= now() - interval '24 hours'
+         AND we.received_at >= now() - interval '24 hours' - interval '60 seconds'
+         AND we.received_at <  now() + interval '7 days'
+         AND ${sql.raw(contactExistsForJoinSql('we'))}
+       GROUP BY we.contact_id
+    ),
+    people AS (
+      SELECT s.contact_id,
+             nullif(trim(concat_ws(' ', c.first_name, c.last_name)), '') AS name,
+             c.email::text AS email,
+             s.last_seen
+        FROM seen s
+        JOIN contacts c ON c.id = s.contact_id AND c.workspace_id = ${ctx.workspaceId}
+       ORDER BY s.last_seen DESC
+       LIMIT ${WEB_ACTIVE_PEOPLE_LIMIT}
+    )
+    SELECT (SELECT count(*)::int FROM seen) AS contacts,
+           (SELECT coalesce(json_agg(people), '[]'::json) FROM people) AS people
   `);
-  return Number(rows[0]?.['contacts'] ?? 0);
+  const row = rows[0] ?? {};
+  const people = Array.isArray(row['people']) ? (row['people'] as Record<string, unknown>[]) : [];
+  return {
+    contacts: Number(row['contacts'] ?? 0),
+    people: people.map((item) => ({
+      contactId: String(item['contact_id']),
+      name: item['name'] === null || item['name'] === undefined ? null : String(item['name']),
+      email: String(item['email'] ?? ''),
+      lastSeenAt: new Date(item['last_seen'] as string).toISOString(),
+    })),
+  };
 }
 
 /** Kolik kampaní se vejde do dlaždice a zároveň stačí grafu vývoje (úkol 35). */
@@ -418,12 +475,37 @@ function mapTile<T, U>(tile: Tile<T>, project: (value: T) => U): Tile<U> {
   return { status: 'ok', data: project(tile.data), computedAt: tile.computedAt, stale: tile.stale };
 }
 
-function deltaOf(current: Tile<Totals>, previous: Tile<Totals>): number | null {
+/**
+ * Rozdíl dvou měr: kolik procentních bodů přibylo od minulého období.
+ *
+ * `null` znamená „nemáme s čím porovnat", ne nulu. Když v jednom z období není
+ * jediná kampaň se známou doručeností, jmenovatel neexistuje a dlaždice o změně
+ * mlčí. Nula by tvrdila, že se nic nezměnilo, což je jiné sdělení.
+ */
+function rateDelta(
+  current: Tile<Totals>,
+  previous: Tile<Totals>,
+  pick: (totals: Totals) => [number, number],
+): number | null {
   if (current.status !== 'ok' || previous.status !== 'ok') return null;
-  const now = ratio(current.data.known.clicksHuman, current.data.known.deliveredEffective);
-  const before = ratio(previous.data.known.clicksHuman, previous.data.known.deliveredEffective);
+  const now = ratio(...pick(current.data));
+  const before = ratio(...pick(previous.data));
   if (now === null || before === null) return null;
   return now - before;
+}
+
+/**
+ * Relativní změna počtu: o kolik se odeslané zprávy liší od minulého období.
+ *
+ * Míry se odečítají, počty se dělí. „O 3 zprávy víc" nic neříká, dokud není
+ * vidět z kolika; „o polovinu víc" ano. Prázdné minulé období vrací `null`,
+ * protože dělit nulou nejde a růst z nuly není procento.
+ */
+function countDelta(current: Tile<Totals>, previous: Tile<Totals>): number | null {
+  if (current.status !== 'ok' || previous.status !== 'ok') return null;
+  const before = previous.data.sent;
+  if (before <= 0) return null;
+  return (current.data.sent - before) / before;
 }
 
 /**

@@ -2,9 +2,19 @@
 
 import { Link, useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { Card } from '@mlain/ui/components/card';
 import { Dialog, DialogBody, DialogFooter, DialogTitle } from '@mlain/ui/components/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@mlain/ui/components/dropdown-menu';
+import { IconButton } from '@mlain/ui/components/icon-button';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
+import { PageHeader } from '@mlain/ui/components/page-header';
+import { Ellipsis, Plus, RefreshCw } from '@mlain/ui/icons';
 import { Alert, EmptyState } from '@mlain/ui/patterns/states';
 import { useToast } from '@mlain/ui/patterns/toast';
 import { useTranslations } from 'next-intl';
@@ -23,6 +33,14 @@ export type SegmentListRow = {
 
 /** Nad šest hodin se počet nesmí tvářit čerstvě. */
 const STALE_HOURS = 6;
+
+/**
+ * Sloupce tabulky segmentů. Šířky jsou z návrhu: název se roztahuje, počet je
+ * úzký a zarovnaný doprava, čas přepočtu má pevných 190 px a poslední sloupec
+ * je přesně na ikonové tlačítko.
+ */
+const COLUMNS =
+  'grid grid-cols-[minmax(0,1fr)_70px_190px_44px] items-center gap-[var(--spacing-stack)] px-[var(--spacing-row-x)]';
 
 /** Seznam segmentů a karty presetů. Stáří počtu se počítá až na klientu. */
 export function SegmentList({
@@ -59,9 +77,9 @@ export function SegmentList({
   useEffect(() => setNow(new Date()), []);
 
   /**
-   * Přepočet čísla na kartě. Tentýž kód obsluhuje „Spočítat" u segmentu, který
+   * Přepočet čísla v řádku. Tentýž kód obsluhuje „Spočítat" u segmentu, který
    * spočítaný nikdy nebyl, i „Přepočítat" u zastaralého: rozdíl je jen v tom,
-   * co se na kartě zrovna ukazuje.
+   * co se v řádku zrovna ukazuje.
    */
   async function recount(id: string) {
     setCounting(id);
@@ -75,7 +93,7 @@ export function SegmentList({
      * Referenční čas se posune spolu s daty.
      *
      * `now` se do téhle chvíle nastavoval JEDNOU při připojení komponenty, takže
-     * čerstvě přepočtený segment měl razítko novější než `now` a karta hlásila
+     * čerstvě přepočtený segment měl razítko novější než `now` a řádek hlásil
      * „Aktualizováno před -1 h". Naměřeno v prohlížeči hned po prvním kliknutí.
      */
     setNow(new Date());
@@ -111,116 +129,167 @@ export function SegmentList({
   }
 
   return (
-    <section className="flex flex-col gap-8">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-text">{t('title')}</h1>
-        <Button variant="primary" onClick={() => router.push(`/w/${workspaceSlug}/segments/new`)}>
-          {t('new')}
-        </Button>
-      </header>
-
-      {rows.length === 0 ? (
-        <EmptyState
-          variant="first"
-          title={t('emptyTitle')}
-          explanation={t('emptyList')}
-          actions={[
-            {
-              label: t('presets.build'),
-              onClick: () => router.push(`/w/${workspaceSlug}/segments/new`),
-            },
-          ]}
-        />
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {rows.map((row) => {
-            const age = now && row.cachedAt ? hoursSince(row.cachedAt, now) : null;
-            /*
-             * Přepočet se nabízí i u čísla BEZ ČASU, nejen u starého.
-             *
-             * V databázi takové řádky jsou (`cached_count` vyplněný, `cached_at`
-             * prázdný, například u ukázkových dat) a karta u nich ukazovala číslo,
-             * ke kterému se nedalo zjistit stáří ani ho obnovit: „Spočítat" se
-             * schová za nenulovým počtem a „Přepočítat" se bez času neukázalo.
-             * Číslo bez data přitom vypadá stejně jako spočítané před vteřinou.
-             */
-            const stale = age === null ? row.cachedCount !== null : age >= STALE_HOURS;
-            return (
-              <li
-                key={row.id}
-                className="flex flex-wrap items-center gap-3 rounded-[var(--radius-surface)] border border-border bg-surface p-4"
-              >
-                <Link
-                  href={`/w/${workspaceSlug}/segments/${row.id}`}
-                  className="font-medium text-accent-text underline underline-offset-4"
-                >
-                  {row.name}
-                </Link>
-                {row.kind === 'static' ? (
-                  <span className="rounded-[var(--radius-control)] bg-surface-muted px-2 py-1 text-xs text-text-muted">
-                    {t('freeze.action')}
-                  </span>
-                ) : null}
-
-                <span className="ml-auto flex flex-wrap items-center gap-3">
-                  {row.cachedCount === null ? (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      pending={counting === row.id}
-                      pendingLabel={t('count.counting')}
-                      onClick={() => void recount(row.id)}
-                    >
-                      {t('count.action')}
-                    </Button>
-                  ) : (
-                    <span className="text-sm font-medium text-text">
-                      {formatCount(row.cachedCount, locale)}
-                    </span>
-                  )}
-
-                  {age !== null ? (
-                    <span
-                      data-stale={stale ? 'true' : 'false'}
-                      className={cn('text-sm text-text-muted', stale ? 'opacity-70' : undefined)}
-                    >
-                      {/* Pod hodinu se stáří neuvádí v hodinách. „Před 0 h" nikdo
-                          neřekne a záporná hodnota vznikne pokaždé, když je razítko
-                          ze serveru novější než referenční čas v prohlížeči. */}
-                      {age < 1 ? t('freshNow') : t('stale', { time: `${age} h` })}
-                    </span>
-                  ) : null}
-
-                  {stale ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      pending={counting === row.id}
-                      pendingLabel={t('count.counting')}
-                      onClick={() => void recount(row.id)}
-                    >
-                      {t('recount')}
-                    </Button>
-                  ) : null}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {/* `onRecount` se schválně NEPŘEDÁVÁ, viz poznámka u `PresetGrid`: počet
-          presetu bez uloženého segmentu se z rozhraní spočítat nedá. */}
-      <PresetGrid
-        presets={presets}
-        locale={locale}
-        onUse={({ preset_key }) => {
-          const preset = presets.find((candidate) => candidate.key === preset_key);
-          setPresetFailed(null);
-          setPresetName(preset ? t(preset.labelKey) : preset_key);
-          setUsingPreset({ key: preset_key, name: preset ? t(preset.labelKey) : preset_key });
-        }}
+    <>
+      <PageHeader
+        title={t('title')}
+        // Věta pod nadpisem říká, co segment JE. Bez ní si ho lidé pletou se
+        // seznamem, do kterého se kontakty přidávají ručně.
+        description={t('intro')}
+        actions={
+          <Button variant="primary" onClick={() => router.push(`/w/${workspaceSlug}/segments/new`)}>
+            <Plus aria-hidden className="icon-md" />
+            {t('new')}
+          </Button>
+        }
       />
+
+      <div className="flex min-w-0 flex-col gap-[var(--spacing-section)]">
+        {rows.length === 0 ? (
+          <EmptyState
+            variant="first"
+            title={t('emptyTitle')}
+            explanation={t('emptyList')}
+            actions={[
+              {
+                label: t('presets.build'),
+                onClick: () => router.push(`/w/${workspaceSlug}/segments/new`),
+              },
+            ]}
+          />
+        ) : (
+          <Card padding="none" gap="none">
+            <div className="overflow-x-auto rounded-t-[var(--radius-surface)]">
+              <div className="min-w-[720px]">
+                <div
+                  className={`${COLUMNS} rounded-t-[var(--radius-surface)] border-b border-border bg-surface-muted py-3`}
+                >
+                  <span className="meta-caps text-text-muted">{t('columns.name')}</span>
+                  <span className="meta-caps text-right text-text-muted">{t('columns.count')}</span>
+                  <span className="meta-caps text-text-muted">{t('columns.recounted')}</span>
+                  <span />
+                </div>
+
+                {rows.map((row) => {
+                  const age = now && row.cachedAt ? hoursSince(row.cachedAt, now) : null;
+                  /*
+                   * Přepočet se nabízí i u čísla BEZ ČASU, nejen u starého.
+                   *
+                   * V databázi takové řádky jsou (`cached_count` vyplněný, `cached_at`
+                   * prázdný, například u ukázkových dat) a řádek u nich ukazoval číslo,
+                   * ke kterému se nedalo zjistit stáří ani ho obnovit. Číslo bez data
+                   * přitom vypadá stejně jako spočítané před vteřinou.
+                   */
+                  const stale = age === null ? row.cachedCount !== null : age >= STALE_HOURS;
+                  return (
+                    <div
+                      key={row.id}
+                      className={`${COLUMNS} border-b border-border py-4 last:border-b-0 hover:bg-surface-muted`}
+                    >
+                      <Link
+                        href={`/w/${workspaceSlug}/segments/${row.id}`}
+                        className="justify-self-start text-base font-semibold text-text no-underline hover:underline"
+                      >
+                        {row.name}
+                      </Link>
+
+                      {row.cachedCount === null ? (
+                        // Nikdy nepočítaný segment ukazuje „Spočítat", nikdy nulu.
+                        // Nula je odpověď, kterou jsme nedali.
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="justify-self-end"
+                          pending={counting === row.id}
+                          pendingLabel={t('count.counting')}
+                          onClick={() => void recount(row.id)}
+                        >
+                          {t('count.action')}
+                        </Button>
+                      ) : (
+                        <span className="text-right font-mono text-ui text-text">
+                          {formatCount(row.cachedCount, locale)}
+                        </span>
+                      )}
+
+                      <span
+                        data-stale={stale ? 'true' : 'false'}
+                        className={cn(
+                          'font-mono text-label text-text-muted',
+                          stale ? 'opacity-70' : undefined,
+                        )}
+                      >
+                        {/* Pod hodinu se stáří neuvádí v hodinách. „Před 0 h" nikdo
+                            neřekne a záporná hodnota vznikne pokaždé, když je razítko
+                            ze serveru novější než referenční čas v prohlížeči. */}
+                        {age === null
+                          ? ''
+                          : age < 1
+                            ? t('freshNow')
+                            : t('stale', { time: `${age} h` })}
+                      </span>
+
+                      {/*
+                       * Přepočet bydlí v nabídce „Další akce", jak ji kreslí návrh.
+                       * Není to ozdoba: bez něj se u zastaralého čísla nedá udělat
+                       * nic, a to je přesně chvíle, kdy ho člověk potřebuje nejvíc.
+                       */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <IconButton
+                            variant="ghost"
+                            size="row"
+                            label={t('rowActions')}
+                            icon={<Ellipsis aria-hidden className="icon-md" />}
+                          />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onSelect={() => void recount(row.id)}>
+                            <RefreshCw aria-hidden className="icon-sm" />
+                            {row.cachedCount === null ? t('count.action') : t('recount')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* `onRecount` se schválně NEPŘEDÁVÁ, viz poznámka u `PresetGrid`: počet
+            presetu bez uloženého segmentu se z rozhraní spočítat nedá. */}
+        <PresetGrid
+          presets={presets}
+          locale={locale}
+          onUse={({ preset_key }) => {
+            const preset = presets.find((candidate) => candidate.key === preset_key);
+            setPresetFailed(null);
+            setPresetName(preset ? t(preset.labelKey) : preset_key);
+            setUsingPreset({ key: preset_key, name: preset ? t(preset.labelKey) : preset_key });
+          }}
+        />
+
+        <Card
+          as="div"
+          tone="muted"
+          padding="none"
+          gap="none"
+          className="flex-row flex-wrap items-center gap-[var(--spacing-gutter)] px-[var(--spacing-card)] py-[var(--spacing-card-tight)]"
+        >
+          <div className="grid gap-1">
+            <p className="text-base font-semibold text-text">{t('presets.orBuild')}</p>
+            <p className="text-meta text-text-muted">{t('presets.orBuildHint')}</p>
+          </div>
+          <Button
+            variant="secondary"
+            className="ml-auto"
+            onClick={() => router.push(`/w/${workspaceSlug}/segments/new`)}
+          >
+            {t('presets.build')}
+          </Button>
+        </Card>
+      </div>
 
       <Dialog
         open={usingPreset !== null}
@@ -253,18 +322,7 @@ export function SegmentList({
           }
         />
       </Dialog>
-
-      <section className="flex flex-wrap items-center gap-3 rounded-[var(--radius-surface)] border border-border bg-surface-muted p-4">
-        <h2 className="text-sm font-medium text-text">{t('presets.orBuild')}</h2>
-        <Button
-          variant="secondary"
-          className="ml-auto"
-          onClick={() => router.push(`/w/${workspaceSlug}/segments/new`)}
-        >
-          {t('presets.build')}
-        </Button>
-      </section>
-    </section>
+    </>
   );
 }
 

@@ -108,7 +108,7 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
   // existuje jen tam, kde projekt oslovení řeší.
   const filters = readContactFilters(query, { greetingEnabled });
 
-  // Pět nezávislých požadavků najednou. Sekvenčně by se čekání sčítalo a seznam kontaktů
+  // Šest nezávislých požadavků najednou. Sekvenčně by se čekání sčítalo a seznam kontaktů
   // je nejčastěji otevíraná obrazovka produktu.
   //
   // Pátý je počet nejistých oslovení. Obrazovka „Kontrola oslovení" existovala,
@@ -117,7 +117,11 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
   //
   // Projekt, který oslovení neřeší, ten pátý požadavek NEDĚLÁ. Odkaz, který by
   // z něj vznikl, by mířil na skrytou obrazovku.
-  const [page, count, lists, tags, review] = await Promise.all([
+  //
+  // Šestý je počet nepotvrzených kontaktů do meta řádku pod názvem obrazovky. Je
+  // ZÁMĚRNĚ MIMO AKTUÁLNÍ FILTR: má říct, kolik jich v projektu čeká celkem, tedy
+  // i tehdy, když je zrovna vidět jeden seznam. Filtrovaný počet už stojí vedle něj.
+  const [page, count, lists, tags, review, unconfirmed] = await Promise.all([
     apiFetch<ContactPage>('/api/v1/contacts', {
       workspaceId,
       searchParams: filtersToQuery(filters, { cursor, limit: 50 }),
@@ -136,6 +140,10 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
           workspaceId,
         })
       : null,
+    apiFetch<{ count: number; precision: 'exact' | 'estimated' }>('/api/v1/contacts/count', {
+      workspaceId,
+      searchParams: { status: 'unconfirmed' },
+    }),
   ]);
 
   if (!page.ok) return <ContactsProblem problem={page.problem} />;
@@ -157,6 +165,9 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
       rows={page.data.data.map(toRow)}
       pagination={page.data.pagination}
       total={count.ok ? { count: count.data.count, precision: count.data.precision } : null}
+      // Když se počet nepodaří zjistit, prop se vynechá a meta řádek o nepotvrzených
+      // mlčí. Nula by tvrdila, že žádný nečeká, což o neznámém čísle nevíme.
+      {...(unconfirmed.ok ? { unconfirmed: unconfirmed.data.count } : {})}
       filters={filters}
       names={names}
       tags={tagList}

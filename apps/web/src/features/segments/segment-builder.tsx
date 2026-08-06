@@ -2,6 +2,7 @@
 
 import { QueryBuilder, MAX_CHILDREN, MAX_DEPTH } from '@mlain/ui/patterns/query-builder';
 import type { FieldDefinition, SegmentAst } from '@mlain/ui/patterns/query-builder';
+import { Button } from '@mlain/ui/components/button';
 import { Alert } from '@mlain/ui/patterns/states';
 import { useTranslations } from 'next-intl';
 import { GroupSentence } from './group-sentence';
@@ -123,7 +124,9 @@ export function SegmentBuilder({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-[var(--radius-surface)] border border-border bg-surface p-4">
+    // Rámeček ani plocha tady nejsou: stavitel bydlí v kartě obrazovky,
+    // a dvě karty v sobě by nakreslily dvojitou linku.
+    <div className="flex min-w-0 flex-col gap-[var(--spacing-stack)]">
       {stats.conditions === 0 && totalContacts !== undefined ? (
         // Prázdný segment NENÍ chyba: obsahuje všechny kontakty. Kdyby to
         // svítilo červeně, uživatel by hledal, co udělal špatně.
@@ -141,12 +144,9 @@ export function SegmentBuilder({
           <p className="text-sm text-text-muted">
             {t('builder.groupNumber', { path: stats.depth })}
           </p>
-          <button
-            type="button"
-            className="self-start text-sm text-accent-text underline underline-offset-4"
-          >
+          <Button variant="link" className="self-start text-sm">
             {t('builder.splitSuggestion')}
-          </button>
+          </Button>
         </>
       ) : null}
 

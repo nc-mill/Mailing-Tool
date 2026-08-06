@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Button } from '@mlain/ui/components/button';
+import { CardTitle } from '@mlain/ui/components/card';
 import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
 import { useToast } from '@mlain/ui/patterns/toast';
 import { useConfirmDialogLabels } from '@/lib/feedback/confirm-labels';
@@ -53,69 +54,84 @@ export function OrphanedAccounts(props: OrphanedAccountsProps) {
   const rows = props.accounts.ok ? props.accounts.data.data : [];
 
   return (
-    <section aria-labelledby="members-orphaned">
-      <h2 id="members-orphaned" className="text-xl font-semibold">
-        {t('members.orphaned.title')}
-      </h2>
-      <p className="mt-1 text-sm text-text-muted">{t('members.orphaned.lead')}</p>
+    <section
+      aria-labelledby="members-orphaned"
+      className="flex flex-col gap-[var(--spacing-gutter)]"
+    >
+      <CardTitle>
+        <span id="members-orphaned">{t('members.orphaned.title')}</span>
+      </CardTitle>
+      <p className="text-meta text-text-muted">{t('members.orphaned.lead')}</p>
 
       {!props.accounts.ok ? (
-        <div className="mt-4">
+        <div>
           <SettingsProblem problem={props.accounts.problem} />
         </div>
       ) : null}
 
       {state.status === 'error' ? (
-        <div className="mt-4">
+        <div>
           <SettingsProblem problem={state.problem} />
         </div>
       ) : null}
 
       {state.status === 'success' ? (
-        <p role="status" className="mt-4 text-sm">
+        <p role="status" className="text-meta">
           {t('members.orphaned.done', { email: String(state.values?.email ?? '') })}
         </p>
       ) : null}
 
       {props.accounts.ok && rows.length === 0 ? (
-        <p className="mt-4 text-text-muted">{t('members.orphaned.empty')}</p>
+        <p className="text-ui text-text-muted">{t('members.orphaned.empty')}</p>
       ) : null}
 
       {rows.length > 0 ? (
         <div className="overflow-x-auto">
-          <table className="mt-4 w-full text-left">
+          <table className="w-full border-collapse text-left text-ui">
             <caption className="sr-only">{t('members.orphaned.title')}</caption>
             <thead>
-              <tr>
-                <th scope="col" className="pb-2 pr-6">
+              <tr className="bg-surface-muted">
+                <th
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
                   {t('members.orphaned.email')}
                 </th>
-                <th scope="col" className="pb-2 pr-6">
+                <th
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
                   {t('members.orphaned.createdAt')}
                 </th>
-                <th scope="col" className="pb-2 pr-6">
+                <th
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
                   {t('members.orphaned.lastLoginAt')}
                 </th>
-                <th scope="col" className="pb-2 pr-6">
+                <th
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
                   {t('members.table.actions')}
                 </th>
               </tr>
             </thead>
             <tbody>
               {rows.map((account) => (
-                <tr key={account.user_id} className="border-t border-border">
-                  <td className="py-3 pr-6">
+                <tr key={account.user_id} className="border-b border-border hover:bg-surface-muted">
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                     <p>{account.email}</p>
                     {account.name ? (
-                      <p className="text-sm text-text-muted">{account.name}</p>
+                      <p className="text-meta text-text-muted">{account.name}</p>
                     ) : null}
                   </td>
-                  <td className="py-3 pr-6">
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                     <time dateTime={account.created_at} title={account.created_at}>
                       {format.dateTime(new Date(account.created_at), 'short')}
                     </time>
                   </td>
-                  <td className="py-3 pr-6">
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                     {account.last_login_at ? (
                       <time dateTime={account.last_login_at} title={account.last_login_at}>
                         {format.dateTime(new Date(account.last_login_at), 'short')}
@@ -124,7 +140,7 @@ export function OrphanedAccounts(props: OrphanedAccountsProps) {
                       t('members.orphaned.never')
                     )}
                   </td>
-                  <td className="py-3 pr-6">
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                     <Button type="button" variant="secondary" onClick={() => setPending(account)}>
                       {t('members.orphaned.delete')}
                     </Button>

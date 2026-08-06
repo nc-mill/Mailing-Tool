@@ -317,8 +317,7 @@ function scopedEngagementFields(
       return;
     }
     const ref = typed.field as
-      | { kind?: string; metric?: string; scope?: EngagementScope }
-      | undefined;
+      { kind?: string; metric?: string; scope?: EngagementScope } | undefined;
     if (ref?.kind !== 'engagement' || ref.metric === undefined) return;
     const key = fieldRefKey(ref);
     if (known.has(key)) return;
@@ -329,7 +328,7 @@ function scopedEngagementFields(
       id: `engagement.${ref.metric}.scope.${added.length}`,
       label: `${t(`fields.engagement.${ref.metric}`)} ${suffix}`,
       group: t('fieldGroups.engagement'),
-      ref: { kind: 'engagement', metric: ref.metric, scope: { ...(ref.scope ?? {}) } },
+      ref: { kind: 'engagement', metric: ref.metric, scope: { ...ref.scope } },
       valueType: 'number',
       operators: operatorsFor('engagement', t),
     });

@@ -99,7 +99,12 @@ export function RichTextField(props: {
   }, [editor, props.value]);
 
   if (!editor)
-    return <div className="h-24 rounded border border-border bg-surface-muted" aria-hidden />;
+    return (
+      <div
+        className="h-24 rounded-[var(--radius-control)] border border-border bg-surface-muted"
+        aria-hidden
+      />
+    );
 
   return (
     <div className="rounded-[var(--radius-control)] border border-border">

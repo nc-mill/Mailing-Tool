@@ -17,10 +17,10 @@ export function CodeControl({
   if (!canWriteHtml) {
     return (
       <div data-readonly="true" className="space-y-1">
-        <pre className="overflow-x-auto rounded bg-surface-muted p-2 text-xs">
+        <pre className="overflow-x-auto rounded-[var(--radius-control)] bg-surface-muted p-2 text-meta">
           {String(value ?? '')}
         </pre>
-        <p className="text-xs text-text-muted">{t('block.htmlForbidden')}</p>
+        <p className="text-meta text-text-muted">{t('block.htmlForbidden')}</p>
       </div>
     );
   }
@@ -32,11 +32,11 @@ export function CodeControl({
         data-autofocus={autoFocus ? '' : undefined}
         maxLength={descriptor.maxLength}
         rows={8}
-        className="w-full rounded-[var(--radius-control)] border border-border bg-surface p-2 font-mono text-xs"
+        className="w-full rounded-[var(--radius-control)] border border-border bg-surface p-2 font-mono text-meta"
         value={String(value ?? '')}
         onChange={(event) => onChange(event.target.value)}
       />
-      <p className="text-xs text-text-muted">{t('block.htmlConditionHint')}</p>
+      <p className="text-meta text-text-muted">{t('block.htmlConditionHint')}</p>
     </div>
   );
 }

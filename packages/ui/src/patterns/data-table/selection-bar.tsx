@@ -32,27 +32,39 @@ export function SelectionBar({
 }) {
   if (count === 0) return null;
 
+  // Tmavý pruh. V návrhu se hromadný výběr odlišuje od zbytku stránky plochou,
+  // ne rámečkem: papír zůstává papírem a výběr je na něm cizí těleso, dokud ho
+  // uživatel nezruší. Režim „vybráno vše, co odpovídá filtru" navíc přebarví
+  // text do identitní žluté, aby bylo poznat, že jde o víc než jednu stránku.
   return (
     <div
       data-testid="selection-bar"
       className={cn(
-        'flex flex-wrap items-center gap-3 rounded-[var(--radius-control)] px-4 py-3 text-sm',
-        mode === 'allMatchingFilter'
-          ? 'border border-accent-text bg-accent-surface text-accent-text'
-          : 'bg-surface-muted text-text',
+        'on-panel flex flex-wrap items-center gap-[var(--spacing-inline)]',
+        'rounded-[var(--radius-surface)] bg-panel px-[var(--spacing-row-x)] py-3',
+        'font-mono text-meta',
+        mode === 'allMatchingFilter' ? 'text-primary' : 'text-panel-foreground',
       )}
     >
       {mode === 'allMatchingFilter' ? (
         <>
           <span>{labels.selectedAllMatching(count)}</span>
-          <Button variant="link" onClick={onClear}>
+          <Button
+            variant="link"
+            onClick={onClear}
+            className="text-panel-soft hover:text-panel-foreground"
+          >
             {labels.clearSelection}
           </Button>
         </>
       ) : (
         <>
           <span>{labels.selectedOnPage(count)}</span>
-          <Button variant="link" onClick={onSelectAllMatching}>
+          <Button
+            variant="link"
+            onClick={onSelectAllMatching}
+            className="text-panel-soft hover:text-panel-foreground"
+          >
             {labels.selectAllMatching(total)}
           </Button>
         </>

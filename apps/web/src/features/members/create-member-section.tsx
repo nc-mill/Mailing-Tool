@@ -3,6 +3,8 @@
 import { useActionState, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Input } from '@mlain/ui/components/input';
+import { CardTitle } from '@mlain/ui/components/card';
+import { Alert } from '@mlain/ui/patterns/states';
 import { Label } from '@mlain/ui/components/label';
 import { RadioGroup, RadioGroupItem } from '@mlain/ui/components/radio-group';
 import { SelectField } from '@/lib/forms/select-field';
@@ -70,31 +72,35 @@ export function CreateMemberSection({
   }
 
   return (
-    <section aria-labelledby="members-create">
-      <h2 id="members-create" className="text-xl font-semibold">
-        {t('members.create.title')}
-      </h2>
-      <p className="mt-1 text-sm text-text-muted">{t('members.create.lead')}</p>
+    <section aria-labelledby="members-create" className="flex flex-col gap-[var(--spacing-gutter)]">
+      <div className="flex flex-col gap-[var(--spacing-hairline)]">
+        <CardTitle>
+          <span id="members-create">{t('members.create.title')}</span>
+        </CardTitle>
+        <p className="text-meta text-text-muted">{t('members.create.lead')}</p>
+      </div>
 
       {state.status === 'error' && Object.keys(fieldErrors).length === 0 ? (
-        <div className="mt-4">
-          <SettingsProblem problem={state.problem} />
-        </div>
+        <SettingsProblem problem={state.problem} />
       ) : null}
 
       {created ? (
-        <p role="status" className="mt-4 text-sm">
+        <Alert tone="success" role="status">
           {created.password_set
             ? t('members.create.done', { email: created.email })
             : t('members.create.existing', { email: created.email })}
-        </p>
+        </Alert>
       ) : null}
 
-      <form action={formAction} className="mt-4 max-w-xl space-y-4" noValidate>
+      <form
+        action={formAction}
+        className="flex max-w-[var(--size-text-column)] flex-col gap-[var(--spacing-gutter)]"
+        noValidate
+      >
         <input type="hidden" name="workspace_id" value={workspaceId} readOnly />
         <input type="hidden" name="slug" value={slug} readOnly />
 
-        <div>
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="create-member-email">{t('members.create.email')}</Label>
           <Input
             id="create-member-email"
@@ -115,8 +121,8 @@ export function CreateMemberSection({
           errors={fieldErrors}
         />
 
-        <fieldset>
-          <legend className="mb-1 text-sm font-medium text-text">
+        <fieldset className="flex flex-col gap-[var(--spacing-hairline)]">
+          <legend className="text-sm font-semibold text-text">
             {t('members.create.passwordMode')}
           </legend>
           {/* Hodnota jde do formuláře skrytým polem: RadioGroup stojí na Radixu
@@ -127,19 +133,20 @@ export function CreateMemberSection({
             onValueChange={(next: string) => setMode(next === 'manual' ? 'manual' : 'generated')}
             aria-label={t('members.create.passwordMode')}
           >
-            <label className="flex items-center gap-2">
+            {/* 44 px je nejmenší klikací plocha, i u volby v seznamu. */}
+            <label className="flex min-h-[var(--size-target-min)] cursor-pointer items-center gap-[var(--spacing-inline)]">
               <RadioGroupItem value="generated" />
-              <span>{t('members.create.passwordGenerated')}</span>
+              <span className="text-ui text-text">{t('members.create.passwordGenerated')}</span>
             </label>
-            <label className="flex items-center gap-2">
+            <label className="flex min-h-[var(--size-target-min)] cursor-pointer items-center gap-[var(--spacing-inline)]">
               <RadioGroupItem value="manual" />
-              <span>{t('members.create.passwordManual')}</span>
+              <span className="text-ui text-text">{t('members.create.passwordManual')}</span>
             </label>
           </RadioGroup>
         </fieldset>
 
         {mode === 'manual' ? (
-          <div>
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="create-member-password">{t('members.create.password')}</Label>
             {/* Heslo se po chybě NEVRACÍ do pole: prošlo by serializované do
                 klientského stavu, viz komentář v `action-result.ts`. */}
@@ -150,15 +157,19 @@ export function CreateMemberSection({
               autoComplete="new-password"
               {...fieldAria('password', fieldErrors)}
             />
-            <p className="mt-1 text-sm text-text-muted">{t('members.create.passwordHint')}</p>
+            <p className="text-meta text-text-muted">{t('members.create.passwordHint')}</p>
             <FieldError name="password" errors={fieldErrors} />
           </div>
         ) : null}
 
-        <SubmitButton
-          label={t('members.create.submit')}
-          pendingLabel={t('members.create.submitting')}
-        />
+        {/* Obal `flex`, aby se tlačítko neroztáhlo přes celou šířku formuláře:
+            ve sloupci `flex-col` je výchozí `align-items: stretch`. */}
+        <div className="flex">
+          <SubmitButton
+            label={t('members.create.submit')}
+            pendingLabel={t('members.create.submitting')}
+          />
+        </div>
       </form>
     </section>
   );

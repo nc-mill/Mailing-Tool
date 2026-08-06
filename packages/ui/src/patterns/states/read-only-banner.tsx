@@ -1,4 +1,4 @@
-import { Eye } from 'lucide-react';
+import { Eye } from '../../icons';
 import { cn } from '../../lib/cn';
 
 /**
@@ -15,7 +15,7 @@ export function ReadOnlyBanner({ reason, className }: { reason: string; classNam
         className,
       )}
     >
-      <Eye aria-hidden className="size-4 text-text-muted" />
+      <Eye aria-hidden className="icon-sm text-text-muted" />
       {reason}
     </div>
   );

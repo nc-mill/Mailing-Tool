@@ -1,7 +1,10 @@
 'use client';
 
 import { Link } from '@mlain/i18n/navigation';
+import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { FileUpload } from '@mlain/ui/patterns/file-upload';
+import { Alert } from '@mlain/ui/patterns/states';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { FormatGuide } from './format-guide';
@@ -66,7 +69,7 @@ export function StepUpload({
   const meta = state.phase === 'error' ? ((state.meta ?? {}) as Record<string, string>) : {};
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-[var(--spacing-gutter)]">
       <FileUpload
         labels={uploadLabels(t)}
         accept={ACCEPT}
@@ -79,7 +82,7 @@ export function StepUpload({
         {...(state.phase === 'uploading' ? { progress: state.percent, onCancel: cancel } : {})}
       />
 
-      <p className="text-sm text-text-muted">{t('upload.limits')}</p>
+      <p className="text-meta text-text-muted">{t('upload.limits')}</p>
 
       {/* Nápověda k formátu. Tlačítko tu bylo od začátku, ale volalo nepovinnou
           propu `onGuide`, kterou mu průvodce nikdy nepředal, takže kliknutí
@@ -88,8 +91,7 @@ export function StepUpload({
       <FormatGuide />
 
       {state.phase === 'error' && state.code === 'file_too_large' ? (
-        <div role="alert" className="flex flex-col gap-1">
-          <strong>{t('fileErrors.file_too_large.title')}</strong>
+        <Alert tone="error" title={t('fileErrors.file_too_large.title')}>
           <p>
             {t('upload.tooLarge', {
               filename: meta['filename'] ?? '',
@@ -97,13 +99,13 @@ export function StepUpload({
               limit: meta['limit'] ?? formatBytes(maxBytes),
             })}
           </p>
-        </div>
+        </Alert>
       ) : null}
 
       {state.phase === 'error' && state.code === 'unsupported_format' ? (
-        <div role="alert">
-          <p>{t('upload.unsupportedFormat', { filename: meta['filename'] ?? '' })}</p>
-        </div>
+        <Alert tone="error">
+          {t('upload.unsupportedFormat', { filename: meta['filename'] ?? '' })}
+        </Alert>
       ) : null}
 
       {/* Duplicita není chyba, je to otázka. Proto dvě rovnocenná tlačítka
@@ -114,44 +116,67 @@ export function StepUpload({
           Dřív se tu četlo `import_id` a `created_at`, které server nikdy
           neposlal, takže tlačítko „Otevřít původní import" otevíralo prázdné
           id a věta o duplicitě neměla datum. */}
+      {/* Duplicita je OTÁZKA, ne chyba, takže je to karta s tlumenou plochou
+          a dvěma rovnocennými tlačítky, ne červená hláška. Z červené by uživatel
+          usoudil, že se něco pokazilo, a hledal by, co má opravit. */}
       {state.phase === 'error' && state.code === 'import_duplicate' ? (
-        <div role="dialog" aria-label={t('duplicateImport.title')} className="flex flex-col gap-2">
-          <strong>{t('duplicateImport.title')}</strong>
-          <p>{t('duplicateImport.body', { date: formatUploadedAt(meta['createdAt'], locale) })}</p>
-          <div className="flex gap-2">
+        <Card
+          as="div"
+          role="dialog"
+          aria-label={t('duplicateImport.title')}
+          tone="muted"
+          padding="sm"
+        >
+          <CardTitle as="h3">{t('duplicateImport.title')}</CardTitle>
+          <p className="text-ui text-text">
+            {t('duplicateImport.body', { date: formatUploadedAt(meta['createdAt'], locale) })}
+          </p>
+          <div className="flex flex-wrap gap-[var(--spacing-inline)]">
             {/* Rozdělaný import se otevře v průvodci, dokončený na jeho
                 výsledku: krok Kontrola souboru u dokončeného importu skončí
                 na 409, protože ze stavu `completed` se nikam přejít nedá. */}
             {UNFINISHED.includes(String(meta['status'] ?? '')) ? (
-              <button type="button" onClick={() => onCreated(String(meta['importId'] ?? ''))}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onCreated(String(meta['importId'] ?? ''))}
+              >
                 {t('duplicateImport.openOriginal')}
-              </button>
+              </Button>
             ) : (
-              <Link href={`/w/${workspaceSlug}/contacts/import/${String(meta['importId'] ?? '')}`}>
+              <Link
+                href={`/w/${workspaceSlug}/contacts/import/${String(meta['importId'] ?? '')}`}
+                className="text-ui"
+              >
                 {t('duplicateImport.openOriginal')}
               </Link>
             )}
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => {
                 if (file) upload(file, { force: true });
               }}
             >
               {t('duplicateImport.runAgain')}
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       ) : null}
 
       {state.phase === 'error' &&
       !['file_too_large', 'unsupported_format', 'import_duplicate'].includes(state.code) ? (
-        <div role="alert" className="flex flex-col gap-1">
-          <strong>{t(`fileErrors.${state.code}.title`)}</strong>
+        <Alert
+          tone="error"
+          title={t(`fileErrors.${state.code}.title`)}
+          action={
+            <Button variant="secondary" size="sm" onClick={reset}>
+              {t('result.uploadAnother')}
+            </Button>
+          }
+        >
           <p>{t(`fileErrors.${state.code}.nextStep`, meta)}</p>
-          <button type="button" onClick={reset}>
-            {t('result.uploadAnother')}
-          </button>
-        </div>
+        </Alert>
       ) : null}
     </div>
   );

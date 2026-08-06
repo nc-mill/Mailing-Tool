@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { Label } from '@mlain/ui/components/label';
 import { Select, SelectItem } from '@mlain/ui/components/select';
 import { FieldError, fieldErrorId } from '@/lib/forms/field-error';
 import type { FieldErrors } from '@/lib/errors/field-errors';
@@ -45,36 +46,18 @@ export function SelectField({
   onSelected,
 }: SelectFieldProps) {
   const [value, setValue] = useState(defaultValue ?? '');
-  const wrapperRef = useRef<HTMLDivElement>(null);
   const invalid = (errors?.[name]?.length ?? 0) > 0;
 
-  /**
-   * ODCHYLKA OD PLÁNU, vynucená rozhraním P05: `Select` z `@mlain/ui` přijímá
-   * jen `value`, `onValueChange`, `placeholder`, `className` a `aria-label`
-   * a zbylé propy nepředává, takže `aria-invalid` ani `aria-describedby` se
-   * na spouštěč nedostanou propem. Pravidlo 11.3 části 6 přitom žádá, aby
-   * chybné pole bylo označené a svázané s textem chyby. Atributy se proto
-   * dopisují na spouštěč po vykreslení. Do `packages/ui` P06 nesmí zapsat
-   * (kapitola 0.2), takže je to zároveň zapsaný požadavek na P05: `Select`
-   * má `aria-invalid` a `aria-describedby` umět propem.
-   */
-  useEffect(() => {
-    const trigger = wrapperRef.current?.querySelector('[role="combobox"]');
-    if (!trigger) return;
-    if (invalid) {
-      trigger.setAttribute('aria-invalid', 'true');
-      trigger.setAttribute('aria-describedby', fieldErrorId(name));
-    } else {
-      trigger.removeAttribute('aria-invalid');
-      trigger.removeAttribute('aria-describedby');
-    }
-  }, [invalid, name]);
-
   return (
-    <div ref={wrapperRef} data-select-field={name}>
-      <span aria-hidden className="mb-1 block text-sm font-medium text-text">
+    <div data-select-field={name}>
+      {/* Popisek se kreslí systémovou komponentou, ne opsanými třídami.
+          Dřív tu bylo `text-sm font-medium` proti systémovému `font-semibold`
+          a ve formuláři pak mělo jedno pole popisek jinak tučný než sousední.
+          `aria-hidden` proto, že jméno nese `aria-label` spouštěče; bez toho
+          by ho čtečka přečetla dvakrát. */}
+      <Label as="span" aria-hidden className="mb-1">
         {label}
-      </span>
+      </Label>
       <input type="hidden" name={name} value={value} readOnly />
       <Select
         {...(value === '' ? {} : { value })}
@@ -84,6 +67,7 @@ export function SelectField({
         }}
         placeholder={placeholder}
         aria-label={label}
+        {...(invalid ? { 'aria-invalid': true, 'aria-describedby': fieldErrorId(name) } : {})}
       >
         {options.map((option) => (
           <SelectItem key={option.value} value={option.value}>
@@ -91,7 +75,7 @@ export function SelectField({
           </SelectItem>
         ))}
       </Select>
-      {hint ? <p className="mt-1 text-sm text-text-muted">{hint}</p> : null}
+      {hint ? <p className="mt-1 text-meta text-text-muted">{hint}</p> : null}
       {errors ? <FieldError name={name} errors={errors} /> : null}
     </div>
   );

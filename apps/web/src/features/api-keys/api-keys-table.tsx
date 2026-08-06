@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Badge } from '@mlain/ui/components/badge';
 import { Button } from '@mlain/ui/components/button';
+import { Tag } from '@mlain/ui/components/tag';
 import { EmptyState } from '@mlain/ui/patterns/states';
 import { CheckIcon, ClockIcon, SlashIcon } from '@/lib/ui/status-icons';
 import type { Result } from '@/lib/api-client/result';
@@ -120,28 +121,29 @@ export function ApiKeysTable(props: ApiKeysTableProps) {
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="w-full text-left">
+        <table className="w-full border-collapse text-left text-ui">
           <caption className="sr-only">{t('apiKeys.title')}</caption>
           <thead>
-            <tr>
-              <th scope="col" className="pb-2 pr-6">
-                {t('apiKeys.table.name')}
-              </th>
-              <th scope="col" className="pb-2 pr-6">
-                {t('apiKeys.table.prefix')}
-              </th>
-              <th scope="col" className="pb-2 pr-6">
-                {t('apiKeys.table.scopes')}
-              </th>
-              <th scope="col" className="pb-2 pr-6">
-                {t('apiKeys.table.lastUsedAt')}
-              </th>
-              <th scope="col" className="pb-2 pr-6">
-                {t('apiKeys.table.status')}
-              </th>
-              <th scope="col" className="pb-2 pr-6">
-                {t('apiKeys.table.actions')}
-              </th>
+            <tr className="bg-surface-muted">
+              {[
+                'apiKeys.table.name',
+                'apiKeys.table.scopes',
+                'apiKeys.table.lastUsedAt',
+                'apiKeys.table.status',
+                'apiKeys.table.actions',
+              ].map((key) => (
+                <th
+                  key={key}
+                  scope="col"
+                  // Hlavička se smí zalomit. „Naposledy použit" ve verzálkách
+                  // s prostrkáním je širší než hodnoty pod ním, takže by na
+                  // jednom řádku roztahovala sloupec o šedesát pixelů, které
+                  // pak chybí sloupci s akcemi.
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
+                  {t(key)}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -150,16 +152,48 @@ export function ApiKeysTable(props: ApiKeysTableProps) {
               const inGracePeriod =
                 row.previous_expires_at !== null && new Date(row.previous_expires_at) > now;
               return (
-                <tr key={row.id} className="border-t border-border">
-                  <td className="py-3 pr-6">
-                    <p className="font-medium">{row.name}</p>
-                    <p className="text-sm text-text-muted">{row.created_by_name}</p>
+                <tr key={row.id} className="border-b border-border hover:bg-surface-muted">
+                  {/* `whitespace-nowrap` je oprava vady, ne kosmetika: tabulka je
+                      `w-full` a prohlížeč šířku rozděloval podle obsahu, takže
+                      dlouhý výčet oprávnění ukrojil sloupec s názvem na tak
+                      úzký, že se „Měřicí kód na web" lámalo na čtyři řádky.
+                      Zalamovat se má výčet oprávnění, ne název.
+
+                      TŘÍDA MUSÍ BÝT NA `<p>`, NE JEN NA BUŇCE. `white-space` se
+                      sice dědí, ale `packages/ui/src/globals.css` má v základní
+                      vrstvě `p { text-wrap: pretty }`, a `text-wrap` je půlka
+                      zkratky `white-space`. Zděděné `nowrap` z buňky se tím
+                      u každého odstavce uvnitř zase přepne na zalamování.
+                      Naměřeno: buňka hlásila `white-space: nowrap` a text se
+                      přesto lámal na čtyři řádky. Utilita na `<p>` vyhraje,
+                      protože vrstva `utilities` je za vrstvou `base`. */}
+                  {/* PŘEDPONA KLÍČE JE V TÉTO BUŇCE, NE VE VLASTNÍM SLOUPCI.
+                      Šest sloupců se do hlavního sloupce Nastavení nevešlo:
+                      naměřeno 1056 px obsahu na 866 px místa, takže se sloupec
+                      s akcemi usekával. Předpona je druhé jméno téhož klíče,
+                      ne samostatný údaj, a návrh přesně tohle dělá v seznamech:
+                      název, pod ním meta řádek. Žádná informace nezmizela. */}
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
+                    <p className="font-semibold whitespace-nowrap text-text">{row.name}</p>
+                    <p className="font-mono text-meta whitespace-nowrap text-text-muted">
+                      {`ml_live_${row.prefix}_…`}
+                    </p>
+                    <p className="text-meta whitespace-nowrap text-text-muted">
+                      {row.created_by_name}
+                    </p>
                   </td>
-                  <td className="py-3 pr-6">
-                    <code>{`ml_live_${row.prefix}_…`}</code>
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
+                    {/* Oprávnění jsou doplněk k údaji, ne stav, takže `Tag`,
+                        ne `Badge`. Zalamují se, protože jich klíč může mít
+                        deset a jsou to jediná informace, která se zúžením
+                        sloupce nic neztratí. */}
+                    <span className="flex flex-wrap gap-1">
+                      {row.scopes.map((scope) => (
+                        <Tag key={scope}>{scope}</Tag>
+                      ))}
+                    </span>
                   </td>
-                  <td className="py-3 pr-6 text-sm">{row.scopes.join(', ')}</td>
-                  <td className="py-3 pr-6">
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)] font-mono text-meta whitespace-nowrap text-text-muted">
                     {row.last_used_at === null ? (
                       t('shared.never')
                     ) : (
@@ -168,22 +202,30 @@ export function ApiKeysTable(props: ApiKeysTableProps) {
                       </time>
                     )}
                   </td>
-                  <td className="py-3 pr-6">
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                     <Badge tone={STATUS_TONES[status]} icon={STATUS_ICONS[status]}>
                       {t(STATUS_KEYS[status])}
                     </Badge>
                     {inGracePeriod && row.previous_expires_at !== null ? (
-                      <p className="mt-1 text-sm text-warning-text">
+                      <p className="mt-1 text-meta text-warning-text">
                         {t('apiKeys.status.rotating', {
                           time: format.dateTime(new Date(row.previous_expires_at), 'short'),
                         })}
                       </p>
                     ) : null}
                   </td>
-                  <td className="py-3 pr-6">
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)] whitespace-nowrap">
                     {props.canWrite && status === 'active' ? (
-                      <div className="flex gap-2">
-                        <Button type="button" variant="secondary" onClick={() => setRotating(row)}>
+                      // `size="sm"` (36 px), ne výchozích 44 px: tlačítko
+                      // v řádku tabulky je v návrhu nižší než tlačítko
+                      // v hlavičce obrazovky.
+                      <div className="flex gap-[var(--spacing-inline)]">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setRotating(row)}
+                        >
                           {t('apiKeys.rotate.button')}
                         </Button>
                         {/* ODCHYLKA OD PLÁNU: destruktivní varianta `Button` z P05
@@ -191,6 +233,7 @@ export function ApiKeysTable(props: ApiKeysTableProps) {
                         <Button
                           type="button"
                           variant="destructive"
+                          size="sm"
                           onClick={() => setRevoking(row)}
                         >
                           {t('apiKeys.revoke.button')}

@@ -1,7 +1,8 @@
 'use client';
 
 import { useDraggable } from '@dnd-kit/core';
-import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
+import { GripVertical } from '../icons';
 import { useTranslations } from 'next-intl';
 import { EDITOR_DND_ENABLED } from '../../config';
 import { PALETTE } from '../../descriptors/registry';
@@ -44,15 +45,34 @@ export function BlockPalette() {
     return lastBlock ? { parent: [last], index: (lastBlock.children ?? []).length } : null;
   };
 
+  /*
+   * Paleta je KARTA, ne sloupec s dělicí linkou. Návrh ji kreslí stejně jako
+   * ostatní panely editoru: papír, hairline rámeček, rádius 10 px, vnitřní
+   * okraj 20 px. Nadpis je nadpis karty (19 px), názvy skupin jsou mono
+   * verzálky, tedy táž dvojice jako v hlavičce tabulky.
+   */
+  /*
+   * PALETA SE LEPÍ POD HLAVIČKU. Od chvíle, kdy roluje stránka a ne panely,
+   * by paleta u dlouhého e-mailu odjela nahoru a blok by nebylo odkud vzít.
+   * Lepí se pod horní lištu (`--size-topbar`) a když je vyšší než okno, roluje
+   * si sama, což je přesně to, co uměl původní sloupec přes celou výšku.
+   */
   return (
-    <aside
+    <Card
+      as="aside"
       aria-label={t('palette.title')}
-      className="w-48 shrink-0 space-y-3 overflow-auto border-r border-border p-3"
+      padding="sm"
+      gap="none"
+      className={[
+        'gap-3',
+        'sticky top-[calc(var(--size-topbar)+var(--spacing-stack))]',
+        'max-h-[calc(100dvh-var(--size-topbar)-var(--spacing-page))] overflow-y-auto',
+      ].join(' ')}
     >
-      <h2 className="text-sm font-semibold">{t('palette.title')}</h2>
+      <CardTitle>{t('palette.title')}</CardTitle>
       {PALETTE.map((group) => (
-        <div key={group.label} className="space-y-1">
-          <p className="text-xs uppercase text-text-muted">{t(group.label)}</p>
+        <div key={group.label} className="flex flex-col gap-1.5">
+          <p className="meta-caps text-text-muted">{t(group.label)}</p>
           {group.entries.map((entry) => (
             <PaletteEntry
               key={entry.id}
@@ -68,8 +88,8 @@ export function BlockPalette() {
           ))}
         </div>
       ))}
-      <p className="text-xs text-text-muted">{t('palette.dragHint')}</p>
-    </aside>
+      <p className="text-meta text-text-muted">{t('palette.dragHint')}</p>
+    </Card>
   );
 }
 
@@ -86,11 +106,27 @@ function PaletteEntry(props: {
     disabled: !EDITOR_DND_ENABLED,
   });
 
+  /*
+   * Položka palety NENÍ `Button` se spodní hranou. Návrh ji kreslí jako plochý
+   * obdélník s hairline rámečkem, který při najetí ztmavne, protože se do ní
+   * chytá a táhne; hrana „stojícího" tlačítka by u devíti položek pod sebou
+   * dělala z panelu klávesnici.
+   *
+   * Výška zůstává 44 px, ne 38 px z návrhu: je to hlavní ovládací prvek panelu
+   * a klikací plocha se kvůli vzhledu nezmenšuje.
+   */
   return (
-    <Button
+    <button
       ref={setNodeRef}
-      variant="ghost"
-      className="w-full cursor-grab justify-start"
+      type="button"
+      className={[
+        'flex w-full min-h-[var(--size-target-min)] cursor-grab items-center gap-[var(--spacing-inline)]',
+        'rounded-[var(--radius-control)] border border-border bg-surface px-3 py-2',
+        'text-left text-sm text-text',
+        'transition-colors duration-[var(--duration-fast)]',
+        'hover:border-border-strong hover:bg-surface-muted',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]',
+      ].join(' ')}
       style={{ opacity: isDragging ? 0.5 : 1 }}
       data-testid={`palette-${props.id}`}
       onClick={props.onClick}
@@ -100,7 +136,9 @@ function PaletteEntry(props: {
       // už má; přepsat je zpátky by rozbilo klávesovou cestu k vložení klikem.
       role={undefined}
     >
+      {/* Úchop říká, že se položka dá táhnout. Význam nese slovo vedle něj. */}
+      <GripVertical aria-hidden className="icon-xs shrink-0 text-border-strong" />
       {props.label}
-    </Button>
+    </button>
   );
 }

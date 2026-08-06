@@ -1,5 +1,10 @@
 'use client';
 
+import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
+import { PageHeader } from '@mlain/ui/components/page-header';
+import { RefreshCw } from '@mlain/ui/icons';
+import { Alert } from '@mlain/ui/patterns/states';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { formatCount, WARNING_CODES } from './labels';
@@ -58,10 +63,10 @@ export function ImportResult({
    */
   if (row.status === 'running') {
     return (
-      <div className="flex flex-col gap-4">
-        <h1>{t('result.running')}</h1>
+      <>
+        <PageHeader title={t('result.running')} />
         {workspaceId === undefined ? (
-          <p>{t('result.runningRefresh')}</p>
+          <p className="text-ui text-text-muted">{t('result.runningRefresh')}</p>
         ) : (
           <StepProgress
             importId={row.id}
@@ -70,7 +75,7 @@ export function ImportResult({
             onDone={() => router.refresh()}
           />
         )}
-      </div>
+      </>
     );
   }
 
@@ -80,13 +85,20 @@ export function ImportResult({
    */
   if (row.status === 'unknown') {
     return (
-      <div className="flex flex-col gap-4" role="alert">
-        <h1>{t('result.unknown')}</h1>
-        <p>{t('result.unknownNextStep', { status: row.rawStatus ?? '?' })}</p>
-        <button type="button" onClick={() => router.refresh()}>
-          {t('result.refresh')}
-        </button>
-        <a href={`/w/${workspaceSlug}/contacts?source_ref=${row.id}`}>{t('result.showImported')}</a>
+      <div role="alert">
+        <PageHeader title={t('result.unknown')} />
+        <div className="flex flex-col items-start gap-[var(--spacing-gutter)]">
+          <p className="text-ui text-text">
+            {t('result.unknownNextStep', { status: row.rawStatus ?? '?' })}
+          </p>
+          <Button variant="secondary" onClick={() => router.refresh()}>
+            <RefreshCw aria-hidden className="icon-sm" />
+            {t('result.refresh')}
+          </Button>
+          <a href={`/w/${workspaceSlug}/contacts?source_ref=${row.id}`} className="text-ui">
+            {t('result.showImported')}
+          </a>
+        </div>
       </div>
     );
   }
@@ -106,76 +118,110 @@ export function ImportResult({
   const warnings = WARNING_CODES.filter((code) => (row.errorSummary[code] ?? 0) > 0);
 
   return (
-    <div className="flex flex-col gap-4">
-      <h1>{heading}</h1>
+    <>
+      <PageHeader title={heading} />
 
-      {row.status === 'failed' ? (
-        <>
-          <p>{t('result.failedNothingWritten')}</p>
-          {row.failureDetail !== null ? (
-            <details>
-              <summary>{t('result.supportDetails')}</summary>
-              <pre>{row.failureDetail}</pre>
-            </details>
-          ) : null}
-        </>
-      ) : null}
+      <div className="flex flex-col gap-[var(--spacing-gutter)]">
+        {row.status === 'failed' ? (
+          <Alert tone="error">
+            <p>{t('result.failedNothingWritten')}</p>
+            {row.failureDetail !== null ? (
+              <details>
+                <summary className="cursor-pointer text-meta">{t('result.supportDetails')}</summary>
+                {/* Technický detail pro podporu se čte po znacích a nesmí
+                    rozšířit stránku, proto mono a vlastní posuv. */}
+                <pre className="mt-1.5 overflow-x-auto rounded-[var(--radius-control)] bg-surface p-[var(--spacing-inline)] font-mono text-meta text-text">
+                  {row.failureDetail}
+                </pre>
+              </details>
+            ) : null}
+          </Alert>
+        ) : null}
 
-      {row.status !== 'failed' ? (
-        <dl>
-          <dt>{t('result.breakdown.created')}</dt>
-          <dd>{n(row.createdRows)}</dd>
-          <dt>{t('result.breakdown.updated')}</dt>
-          <dd>{n(row.updatedRows)}</dd>
-          <dt>{t('result.breakdown.suppressed')}</dt>
-          <dd>{n(row.suppressedRows)}</dd>
-          <dt>{t('result.breakdown.failed')}</dt>
-          <dd>{n(row.errorRows)}</dd>
-        </dl>
-      ) : null}
-
-      {warnings.length > 0 ? (
-        <section>
-          <h2>{t('result.guessedSection')}</h2>
-          <p>
-            {t('result.guessedIntro', {
-              count: n(warnings.reduce((sum, code) => sum + (row.errorSummary[code] ?? 0), 0)),
-            })}
-          </p>
-          <ul>
-            {/* Varování s nulou se NEZOBRAZUJE. Řádek „0 jmen se nepodařilo
-                rozdělit" je šum, ve kterém zanikne to, co se opravdu stalo. */}
-            {warnings.map((code) => (
-              <li key={code}>
-                {t(`warnings.${code}`, { n: n(row.errorSummary[code] ?? 0), interpretation: '' })}
-                <button type="button">{t('result.guessedShow')}</button>
-              </li>
+        {/* Rozpad výsledku na čtyři čísla. Dlaždice, ne definiční seznam: čísla
+            se porovnávají mezi sebou a v řádku textu zanikají. Popisek je mono
+            verzálkami nad číslem, stejně jako na Přehledu. */}
+        {row.status !== 'failed' ? (
+          <dl className="grid grid-cols-[repeat(auto-fit,minmax(230px,1fr))] gap-[var(--spacing-gutter)]">
+            {(
+              [
+                ['created', row.createdRows, 'plain'],
+                ['updated', row.updatedRows, 'plain'],
+                ['suppressed', row.suppressedRows, 'plain'],
+                // Chybné řádky jsou to jediné, co žádá akci, takže tlumená
+                // plocha navíc, ne barevný poplach: import proběhl.
+                ['failed', row.errorRows, row.errorRows > 0 ? 'muted' : 'plain'],
+              ] as const
+            ).map(([key, count, tone]) => (
+              <Card key={key} as="div" tone={tone} padding="md" gap="none">
+                <dt className="meta-caps text-text-muted">{t(`result.breakdown.${key}`)}</dt>
+                <dd className="text-display leading-[var(--leading-number)] font-semibold tracking-[var(--tracking-number)] text-text">
+                  {n(count)}
+                </dd>
+              </Card>
             ))}
-          </ul>
-        </section>
-      ) : null}
+          </dl>
+        ) : null}
 
-      {row.errorRows > 0 ? (
-        <a href={`/api/v1/contacts/imports/${row.id}/errors.csv`} download>
-          {t('result.downloadErrors', { count: row.errorRows })}
-        </a>
-      ) : null}
+        {warnings.length > 0 ? (
+          <Card as="section" tone="muted" padding="sm">
+            <CardTitle as="h2">{t('result.guessedSection')}</CardTitle>
+            <p className="text-ui text-text">
+              {t('result.guessedIntro', {
+                count: n(warnings.reduce((sum, code) => sum + (row.errorSummary[code] ?? 0), 0)),
+              })}
+            </p>
+            <ul className="flex flex-col gap-[var(--spacing-inline)]">
+              {/* Varování s nulou se NEZOBRAZUJE. Řádek „0 jmen se nepodařilo
+                  rozdělit" je šum, ve kterém zanikne to, co se opravdu stalo. */}
+              {warnings.map((code) => (
+                <li
+                  key={code}
+                  className="flex flex-wrap items-center gap-[var(--spacing-inline)] text-ui text-text"
+                >
+                  {t(`warnings.${code}`, { n: n(row.errorSummary[code] ?? 0), interpretation: '' })}
+                  <Button variant="link">{t('result.guessedShow')}</Button>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        ) : null}
 
-      {row.status === 'cancelled' ? (
-        <button type="button">{t('result.resume', { row: n(row.checkpointRow + 1) })}</button>
-      ) : null}
+        {/* Cesty dál. Stažení chyb a obnovení zrušeného importu jsou akce,
+            zbytek jsou odkazy, takže to nesplývá do řady stejných tlačítek. */}
+        <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
+          {row.errorRows > 0 ? (
+            <a href={`/api/v1/contacts/imports/${row.id}/errors.csv`} download className="text-ui">
+              {t('result.downloadErrors', { count: row.errorRows })}
+            </a>
+          ) : null}
 
-      {greetingEnabled && row.reviewRows > 0 ? (
-        <a href={`/w/${workspaceSlug}/contacts/vocative-review?import_id=${row.id}`}>
-          {t('result.reviewVocative')}
-        </a>
-      ) : null}
+          {row.status === 'cancelled' ? (
+            <Button variant="secondary" size="sm">
+              {t('result.resume', { row: n(row.checkpointRow + 1) })}
+            </Button>
+          ) : null}
 
-      {/* Náhrada za „vrátit tento import", který v MVP 0 není (rozhodnutí R5).
-          Mrtvé tlačítko Undo by slibovalo něco, co datový model neumí. */}
-      <a href={`/w/${workspaceSlug}/contacts?source_ref=${row.id}`}>{t('result.showImported')}</a>
+          {greetingEnabled && row.reviewRows > 0 ? (
+            <a
+              href={`/w/${workspaceSlug}/contacts/vocative-review?import_id=${row.id}`}
+              className="text-ui"
+            >
+              {t('result.reviewVocative')}
+            </a>
+          ) : null}
 
-      <a href={`/w/${workspaceSlug}/contacts/import`}>{t('result.uploadAnother')}</a>
-    </div>
+          {/* Náhrada za „vrátit tento import", který v MVP 0 není (rozhodnutí R5).
+              Mrtvé tlačítko Undo by slibovalo něco, co datový model neumí. */}
+          <a href={`/w/${workspaceSlug}/contacts?source_ref=${row.id}`} className="text-ui">
+            {t('result.showImported')}
+          </a>
+
+          <a href={`/w/${workspaceSlug}/contacts/import`} className="text-ui">
+            {t('result.uploadAnother')}
+          </a>
+        </div>
+      </div>
+    </>
   );
 }

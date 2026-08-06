@@ -14,6 +14,7 @@ const SERIES_COLORS = [
   'var(--color-primary)',
   'var(--color-success)',
   'var(--color-warning)',
+  'var(--color-chart-a)',
 ] as const;
 
 function colorFor(index: number): string {
@@ -22,11 +23,14 @@ function colorFor(index: number): string {
 
 export function BarChart({
   title,
+  hideTitle,
   series,
   labels,
   formatValue,
 }: {
   title: string;
+  /** Skryje viditelný nadpis, přístupné jméno zůstane. Viz `ChartFrame`. */
+  hideTitle?: boolean;
   series: ChartSeries[];
   labels: ChartLabels;
   formatValue?: (value: number) => string;
@@ -40,6 +44,7 @@ export function BarChart({
   return (
     <ChartFrame
       title={title}
+      {...(hideTitle === undefined ? {} : { hideTitle })}
       series={series}
       labels={labels}
       {...(formatValue ? { formatValue } : {})}
@@ -52,7 +57,13 @@ export function BarChart({
         <RechartsBar data={data} accessibilityLayer={false}>
           <CartesianGrid stroke="var(--color-border)" />
           <XAxis dataKey="x" stroke="var(--color-text-muted)" />
-          <YAxis stroke="var(--color-text-muted)" />
+          {/* Formátovač patří i na osu, ne jen do tabulky a bubliny. U měr
+              osa jinak kreslí 0 až 1 a „1" vypadá jako jeden kus, ne jako
+              sto procent. */}
+          <YAxis
+            stroke="var(--color-text-muted)"
+            {...(formatValue ? { tickFormatter: formatValue } : {})}
+          />
           {series.map((item, index) => (
             <Bar key={item.id} dataKey={item.id} fill={colorFor(index)} isAnimationActive={false} />
           ))}

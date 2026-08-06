@@ -33,7 +33,7 @@ export function SaveStatus() {
                 : '';
 
   return (
-    <p data-testid="save-status" aria-live="polite" className="text-xs text-text-muted">
+    <p data-testid="save-status" aria-live="polite" className="text-meta text-text-muted">
       {text}
     </p>
   );

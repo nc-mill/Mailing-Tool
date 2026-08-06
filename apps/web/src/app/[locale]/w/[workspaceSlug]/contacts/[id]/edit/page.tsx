@@ -23,6 +23,8 @@ type ContactApiDetail = {
   greeting: string;
   vocative_locked: boolean;
   status: string;
+  /** Do meta řádku pod nadpisem („přidán 4. 8. 2026"). */
+  created_at?: string | null;
   anonymized_at?: string | null;
   attributes: Record<string, unknown>;
   tags: { id: string; name: string }[];
@@ -115,6 +117,8 @@ export default async function EditContactPage({ params }: PageProps) {
         gender: payload.gender,
         greeting: payload.greeting,
         greeting_locked: payload.vocative_locked,
+        status: payload.status,
+        created_at: payload.created_at ?? null,
         fields: (fields.ok ? fields.data.data : [])
           .filter((field) => field.archived_at === null)
           .map((field) => ({

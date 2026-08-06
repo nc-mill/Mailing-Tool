@@ -1,9 +1,13 @@
 'use client';
 
 import type { FieldDefinition, SegmentAst } from '@mlain/ui/patterns/query-builder';
+import { Link } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
+import { PageHeader } from '@mlain/ui/components/page-header';
+import { ChevronRight, Save } from '@mlain/ui/icons';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { LiveCount } from './live-count';
@@ -72,52 +76,95 @@ export function SegmentEditor({
     if (res.ok) window.location.assign(`/w/${workspaceSlug}/segments`);
   }
 
-  return (
-    <section className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold text-text">
-          {segment === null ? t('new') : segment.name}
-        </h1>
-        <Field label={t('name')}>
-          <Input value={name} onChange={(event) => setName(event.target.value)} />
-        </Field>
-        {/*
-         * Předvyplněný návrh se PŘIZNÁ. Bez téhle věty uživatel netuší, odkud
-         * se podmínka vzala, a u segmentu, který má rozhodovat, komu se pošle
-         * další kampaň, je to zásadní rozdíl.
-         */}
-        {segment === null && draft !== undefined
-          ? draft.notices.map((notice) => (
-              <p
-                key={notice}
-                className="text-sm text-text-muted"
-                data-testid="segment-draft-notice"
-              >
-                {notice}
-              </p>
-            ))
-          : null}
-      </header>
+  const title = segment === null ? t('new') : segment.name;
 
-      <SegmentBuilder
-        value={ast}
-        fields={fields}
-        onChange={setAst}
-        {...(totalContacts === undefined ? {} : { totalContacts })}
-        footer={<LiveCount definition={ast} workspaceId={workspaceId} locale={locale} />}
+  return (
+    <>
+      <PageHeader
+        breadcrumbs={
+          <nav aria-label={t('title')} className="flex flex-wrap items-center gap-2 [&_a]:text-sm">
+            <Link href={`/w/${workspaceSlug}/segments`}>{t('title')}</Link>
+            <ChevronRight aria-hidden className="icon-xs text-border-strong" />
+            <span className="font-mono text-meta text-text-muted">{title}</span>
+          </nav>
+        }
+        title={title}
+        // Návrh má pod nadpisem editoru 8 px, ne pět: meta řádek tu není holý
+        // souhrn čísel, ale věta o stavu segmentu.
+        titleGap="md"
+        {...(segment === null ? { meta: t('builder.newMeta') } : {})}
+        actions={
+          <>
+            {/* Ústup je odkaz, ne tlačítko: nemá soupeřit s uložením. */}
+            <Button
+              variant="link"
+              onClick={() => window.location.assign(`/w/${workspaceSlug}/segments`)}
+            >
+              {t('builder.cancel')}
+            </Button>
+            <Button variant="primary" pending={saving} onClick={() => void save()}>
+              <Save aria-hidden className="icon-md" />
+              {t('builder.save')}
+            </Button>
+          </>
+        }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" pending={saving} onClick={() => void save()}>
-          {t('builder.save')}
-        </Button>
-        <Button
-          variant="ghost"
-          onClick={() => window.location.assign(`/w/${workspaceSlug}/segments`)}
-        >
-          {t('builder.cancel')}
-        </Button>
+      <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(380px,1fr))] items-start gap-[var(--spacing-gutter)]">
+        <div className="grid min-w-0 gap-[var(--spacing-gutter)]">
+          <Card gap="gutter">
+            <Field label={t('name')}>
+              <Input value={name} onChange={(event) => setName(event.target.value)} />
+            </Field>
+          </Card>
+
+          {/*
+           * Předvyplněný návrh se PŘIZNÁ. Bez téhle věty uživatel netuší, odkud
+           * se podmínka vzala, a u segmentu, který má rozhodovat, komu se pošle
+           * další kampaň, je to zásadní rozdíl.
+           */}
+          {segment === null && draft !== undefined
+            ? draft.notices.map((notice) => (
+                <Card key={notice} tone="muted" padding="sm">
+                  <p className="text-ui text-text-muted" data-testid="segment-draft-notice">
+                    {notice}
+                  </p>
+                </Card>
+              ))
+            : null}
+
+          <Card gap="gutter">
+            <CardTitle>{t('builder.conditionsTitle')}</CardTitle>
+            <SegmentBuilder
+              value={ast}
+              fields={fields}
+              onChange={setAst}
+              {...(totalContacts === undefined ? {} : { totalContacts })}
+            />
+          </Card>
+        </div>
+
+        {/*
+         * Počet stojí ve vlastním sloupci, ne pod staviteli. Je to odpověď na
+         * to, co uživatel právě naklikal, takže musí být vidět zároveň
+         * s podmínkou, ne až po odrolování.
+         */}
+        <Card gap="gutter">
+          <LiveCount
+            definition={ast}
+            workspaceId={workspaceId}
+            locale={locale}
+            {...(segment === null
+              ? {}
+              : {
+                  // Odkaz „Zobrazit všech" vede na kontakty filtrované tímhle
+                  // segmentem. U neuloženého segmentu není podle čeho filtrovat.
+                  onShowAll: () =>
+                    window.location.assign(`/w/${workspaceSlug}/contacts?segment_id=${segment.id}`),
+                })}
+          />
+        </Card>
       </div>
-    </section>
+    </>
   );
 }

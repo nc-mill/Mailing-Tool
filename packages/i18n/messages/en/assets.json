@@ -4,6 +4,8 @@
     "lead": "Images in this project. Uploads are converted to JPEG or PNG, because other formats fail to render in some mail clients.",
     "count": "{count, plural, =0 {No images} one {# image} other {# images}}",
     "countFiltered": "{count, plural, =0 {Nothing matched} one {# match} other {# matches}}",
+    "countUnused": "{count, plural, =0 {all are in use} one {# unused} other {# unused}}",
+    "upload": "Upload images",
     "loadFailed": "The library could not be loaded.",
     "refresh": "Load again"
   },

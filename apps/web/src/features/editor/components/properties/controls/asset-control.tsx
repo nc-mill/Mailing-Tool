@@ -90,7 +90,7 @@ export function AssetControl({ descriptor, value, onChange, id, ports, autoFocus
               <li key={asset.id}>
                 <button
                   type="button"
-                  className="w-full rounded border border-border p-1"
+                  className="w-full rounded-[var(--radius-control)] border border-border p-1"
                   onClick={() => {
                     onChange(asset.id);
                     setOpen(false);
@@ -100,7 +100,7 @@ export function AssetControl({ descriptor, value, onChange, id, ports, autoFocus
                       z portu za běhu a `next/image` by na ni potřeboval statickou
                       konfiguraci domén, kterou vlastní P01. */}
                   <img src={asset.url} alt="" className="h-20 w-full object-contain" />
-                  <span className="block truncate text-xs">{asset.name}</span>
+                  <span className="block truncate text-meta">{asset.name}</span>
                 </button>
               </li>
             ))}

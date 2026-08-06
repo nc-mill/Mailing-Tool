@@ -14,7 +14,11 @@ import {
   readWebTrackingStatus,
 } from '@mlain/core/tracking';
 import { ForbiddenSection } from '@/features/settings/forbidden-section';
-import { SettingsPageShell } from '@/features/settings/settings-page-shell';
+import {
+  SettingsPageShell,
+  SettingsSection,
+  SettingsStack,
+} from '@/features/settings/settings-page-shell';
 import { SettingsProblem } from '@/features/settings/settings-problem';
 import { IdentifySignatureHelp } from '@/features/tracking/identify-signature-help';
 import { TrackingDomains, type TrackingDomainView } from '@/features/tracking/tracking-domains';
@@ -139,32 +143,40 @@ export default async function TrackingSettingsPage({
 
   return (
     <SettingsPageShell title={t('settings.title')} lead={t('settings.lead')}>
-      <div className="space-y-12">
+      <SettingsStack>
         {reach.kind === 'public' ? null : (
           <UnreachableDomainAlert kind={reach.kind} host={reach.host} variant="settings" />
         )}
 
-        <TrackingSnippet publicKey={publicKey.key} host={trackingHost} size={sdkSize()} />
+        <SettingsSection>
+          <TrackingSnippet publicKey={publicKey.key} host={trackingHost} size={sdkSize()} />
+        </SettingsSection>
 
         {/* Návod na podpis patří hned za úryvek, ne až na konec: je to druhý
             krok téhož nasazení a bez něj server odmítne každé `identify`
             s e-mailem, aniž by kdokoli tušil proč. */}
-        <IdentifySignatureHelp />
+        <SettingsSection>
+          <IdentifySignatureHelp />
+        </SettingsSection>
 
-        <TrackingDomains
-          workspaceSlug={workspaceSlug}
-          domains={domains}
-          canWrite
-          domainLimit={TRACKING_DOMAIN_LIMIT}
-        />
+        <SettingsSection>
+          <TrackingDomains
+            workspaceSlug={workspaceSlug}
+            domains={domains}
+            canWrite
+            domainLimit={TRACKING_DOMAIN_LIMIT}
+          />
+        </SettingsSection>
 
-        <TrackingStatus
-          recentEvents={status.recentEvents}
-          recentVisitors={status.recentVisitors}
-          lastEventAt={status.lastEventAt === null ? null : status.lastEventAt.toISOString()}
-          enabled={settings.web_tracking_enabled}
-        />
-      </div>
+        <SettingsSection>
+          <TrackingStatus
+            recentEvents={status.recentEvents}
+            recentVisitors={status.recentVisitors}
+            lastEventAt={status.lastEventAt === null ? null : status.lastEventAt.toISOString()}
+            enabled={settings.web_tracking_enabled}
+          />
+        </SettingsSection>
+      </SettingsStack>
     </SettingsPageShell>
   );
 }

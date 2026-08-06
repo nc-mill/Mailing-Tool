@@ -103,7 +103,11 @@
     "emptySampleHint": "Fifty made-up contacts to try things on. You can remove them at any time.",
     "exportTitle": "Export of the contact list",
     "exportFileName": "contacts",
-    "filterClear": "Clear filter"
+    "filterClear": "Clear filter",
+    "searchPlaceholder": "Search an email, a name or a tag",
+    "countTotal": "{count, plural, =0 {No contact} one {# contact} other {# contacts}}",
+    "countTotalEstimated": "~{count} contacts",
+    "countUnconfirmed": "{count, plural, =0 {all confirmed} one {# unconfirmed} other {# unconfirmed}}"
   },
   "columns": {
     "email": "Email",
@@ -140,7 +144,11 @@
       "search": "search “{value}”",
       "createdAfter": "added from {value}",
       "createdBefore": "added until {value}"
-    }
+    },
+    "statusGroup": "Status filter",
+    "statusAll": "All",
+    "statusActive": "Active",
+    "statusUnconfirmed": "Unconfirmed"
   },
   "selection": {
     "pageOnly": "{count, plural, =0 {No contact selected} one {# contact selected on this page} other {# contacts selected on this page}}.",
@@ -219,6 +227,8 @@
     "consentHistory": "Consent history",
     "noLists": "Not in any list yet.",
     "noTags": "No tags yet.",
+    "tagsAdd": "Add a tag",
+    "added": "added {date}",
     "timelineTrackingOff": "Website tracking is turned off in this project, so you only see emails here.",
     "timelineTrackingOffAction": "Open tracking settings",
     "timelineNoConsent": "{name} did not consent to website tracking, so you don't see website activity here. Emails are here, they are part of the newsletter consent.",
@@ -486,6 +496,8 @@
     "contacts": "{count, plural, =0 {No contacts} one {# contact} other {# contacts}}",
     "openContacts": "Show contacts tagged {name}",
     "rowMenu": "More actions for tag {name}",
+    "columnName": "Name",
+    "columnContacts": "Contacts",
     "truncated": "Showing the first two hundred tags. The rest does not fit in this list yet.",
     "nameMissing": "Enter a tag name.",
     "emptyTitle": "No tags yet",
@@ -551,6 +563,9 @@
     "doubleOptIn": "Double opt-in",
     "doubleOptInOn": "On",
     "doubleOptInOff": "Off",
+    "doubleOptInColumn": "Email confirmation",
+    "membersColumn": "Contacts",
+    "metaDefault": "default list of the workspace",
     "optInDouble": "Ask for email confirmation",
     "optInDoubleHint": "Whoever subscribes gets a confirmation email and counts as a member only after they click. Use it wherever you collect addresses from strangers.",
     "optInSingle": "Subscribe straight away",
@@ -589,6 +604,7 @@
     "emailsTitle": "List emails",
     "emailsLead": "Messages that go out around subscribing and unsubscribing. Keep the general wording or write your own.",
     "email_confirmation": "Confirmation email",
+    "emailCannotDisable": "cannot be turned off",
     "email_confirmation_hint": "Sent with double opt-in and carries the link that completes the subscription. It cannot be turned off: without it nobody joins the list. If you do not want it, switch the list to single opt-in.",
     "email_welcome": "Welcome email",
     "email_welcome_hint": "Sent as soon as the subscription is confirmed.",
@@ -876,6 +892,7 @@
   },
   "paste": {
     "title": "Paste contacts as text",
+    "breadcrumb": "paste text",
     "intro": "One contact per line. The email address is the only thing we need.",
     "entry": "Paste contacts as text",
     "entryHint": "Got a short list in an email or a note? Paste it here, no file needed.",
@@ -941,7 +958,7 @@
     "action": "Mark as confirmed",
     "actionFor": "Mark contact {email} as confirmed",
     "bulkAction": "Mark as confirmed",
-    "column": "Confirmation",
+    "column": "Conf.",
     "hint": "Use this when you know these people agreed. It confirms them in their lists and records the consent as declared by you.",
     "confirming": "Confirming",
     "done": "{count, plural, =0 {No contact changed.} one {# contact is now confirmed.} other {# contacts are now confirmed.}}",
@@ -953,7 +970,8 @@
     "dialogLists": "We confirm their subscription in every list they are in.",
     "dialogStaysBlocked": "The address still stays blocked and sending skips it. A spam complaint cannot be unblocked, not even by you.",
     "dialogCancel": "Cancel",
-    "failed": "We could not change the state. Technical detail: {detail}"
+    "failed": "We could not change the state. Technical detail: {detail}",
+    "confirmed": "This contact is confirmed"
   },
   "errors": {
     "contactSuppressed": {
@@ -1016,6 +1034,9 @@
   "form": {
     "createTitle": "New contact",
     "editTitle": "Edit contact",
+    "breadcrumbNew": "new",
+    "breadcrumbEdit": "edit",
+    "metaAdded": "added {date}",
     "sectionIdentity": "Who they are",
     "email": "Email",
     "emailHint": "The address is the key of a contact. If you already have it in this project, we will fill in the existing contact instead of creating a second one.",
@@ -1046,6 +1067,7 @@
     "greetingLocked": "A person confirmed this greeting. Changing the name makes us compute it again.",
     "noTagsYet": "This project has no tags yet.",
     "newTags": "New tags",
+    "newTagsPlaceholder": "winter, sale",
     "newTagsHint": "Separate them with commas. Tags that do not exist yet get created.",
     "subscriptionTitle": "Add the contact as",
     "subscriptionConfirmed": "Confirmed",

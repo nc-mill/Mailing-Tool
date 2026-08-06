@@ -103,7 +103,11 @@
     "emptySampleHint": "Padesát vymyšlených kontaktů na vyzkoušení. Půjdou kdykoli odstranit.",
     "exportTitle": "Export kontaktů ze seznamu",
     "exportFileName": "kontakty",
-    "filterClear": "Zrušit filtr"
+    "filterClear": "Zrušit filtr",
+    "searchPlaceholder": "Hledat e-mail, jméno nebo štítek",
+    "countTotal": "{count, plural, =0 {Žádný kontakt} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}",
+    "countTotalEstimated": "~{count} kontaktů",
+    "countUnconfirmed": "{count, plural, =0 {všechny potvrzené} one {# nepotvrzený} few {# nepotvrzené} many {# nepotvrzeného} other {# nepotvrzených}}"
   },
   "columns": {
     "email": "E-mail",
@@ -140,7 +144,11 @@
       "search": "hledání „{value}“",
       "createdAfter": "přidán od {value}",
       "createdBefore": "přidán do {value}"
-    }
+    },
+    "statusGroup": "Filtr stavu",
+    "statusAll": "Všechny",
+    "statusActive": "Aktivní",
+    "statusUnconfirmed": "Nepotvrzené"
   },
   "selection": {
     "pageOnly": "{count, plural, =0 {Nevybrali jste žádný kontakt} one {Vybrán # kontakt na této stránce} few {Vybrány # kontakty na této stránce} many {Vybráno # kontaktu na této stránce} other {Vybráno # kontaktů na této stránce}}.",
@@ -219,6 +227,8 @@
     "consentHistory": "Historie souhlasů",
     "noLists": "Zatím v žádném seznamu.",
     "noTags": "Zatím bez štítku.",
+    "tagsAdd": "Přidat štítek",
+    "added": "přidán {date}",
     "timelineTrackingOff": "Sledování chování je v projektu vypnuté, proto tu vidíte jen e-maily.",
     "timelineTrackingOffAction": "Otevřít nastavení sledování",
     "timelineNoConsent": "{name} nedal souhlas se sledováním chování na webu, proto tu web nevidíte. E-maily ano, ty jsou součástí souhlasu s newsletterem.",
@@ -486,6 +496,8 @@
     "contacts": "{count, plural, =0 {Žádný kontakt} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}",
     "openContacts": "Zobrazit kontakty se štítkem {name}",
     "rowMenu": "Další akce se štítkem {name}",
+    "columnName": "Název",
+    "columnContacts": "Kontakty",
     "truncated": "Ukazujeme prvních dvě stě štítků. Další se do seznamu zatím nevejdou.",
     "nameMissing": "Zadejte název štítku.",
     "emptyTitle": "Zatím tu není žádný štítek",
@@ -551,6 +563,9 @@
     "doubleOptIn": "Potvrzení přihlášení e-mailem",
     "doubleOptInOn": "Zapnuté",
     "doubleOptInOff": "Vypnuté",
+    "doubleOptInColumn": "Potvrzení e-mailem",
+    "membersColumn": "Kontakty",
+    "metaDefault": "výchozí seznam projektu",
     "optInDouble": "Vyžádat potvrzení e-mailem",
     "optInDoubleHint": "Kdo se přihlásí, dostane potvrzovací e-mail a do seznamu se počítá až po kliknutí. Používejte tam, kde adresy sbíráte od cizích lidí.",
     "optInSingle": "Přihlásit rovnou",
@@ -589,6 +604,7 @@
     "emailsTitle": "E-maily seznamu",
     "emailsLead": "Zprávy, které odcházejí kolem přihlášení a odhlášení. U každé si můžete nechat obecné znění, nebo napsat vlastní.",
     "email_confirmation": "Potvrzovací e-mail",
+    "emailCannotDisable": "nejde vypnout",
     "email_confirmation_hint": "Chodí při dvojím potvrzení a je v něm odkaz, kterým člověk přihlášení dokončí. Vypnout ho nejde: bez něj se do seznamu nikdo nedostane. Kdo ho posílat nechce, přepne seznam na jeden krok.",
     "email_welcome": "Uvítací e-mail",
     "email_welcome_hint": "Chodí, jakmile je přihlášení potvrzené.",
@@ -876,6 +892,7 @@
   },
   "paste": {
     "title": "Vložit kontakty textem",
+    "breadcrumb": "vložit textem",
     "intro": "Jeden kontakt na řádek. Jediné, co potřebujeme, je e-mailová adresa.",
     "entry": "Vložit kontakty textem",
     "entryHint": "Máte krátký seznam v e-mailu nebo v poznámkách? Vložte ho sem, soubor k tomu není potřeba.",
@@ -941,7 +958,7 @@
     "action": "Označit jako potvrzený",
     "actionFor": "Označit kontakt {email} jako potvrzený",
     "bulkAction": "Označit jako potvrzené",
-    "column": "Potvrzení",
+    "column": "Potvr.",
     "hint": "Použijte, když víte, že tihle lidé souhlasili. Potvrdíme je i v jejich seznamech a zapíšeme souhlas s vaším prohlášením.",
     "confirming": "Potvrzujeme",
     "done": "{count, plural, =0 {Nezměnil se ani jeden kontakt.} one {# kontakt je teď potvrzený.} few {# kontakty jsou teď potvrzené.} many {# kontaktu je teď potvrzeného.} other {# kontaktů je teď potvrzených.}}",
@@ -953,7 +970,8 @@
     "dialogLists": "Potvrdíme jeho přihlášení ve všech seznamech, ve kterých je.",
     "dialogStaysBlocked": "Adresa přesto zůstane mezi blokovanými a odesílání ji přeskočí. Stížnost na spam odblokovat nejde ani vám.",
     "dialogCancel": "Zrušit",
-    "failed": "Stav se nepodařilo změnit. Technický detail: {detail}"
+    "failed": "Stav se nepodařilo změnit. Technický detail: {detail}",
+    "confirmed": "Kontakt je potvrzený"
   },
   "errors": {
     "contactSuppressed": {
@@ -1016,6 +1034,9 @@
   "form": {
     "createTitle": "Nový kontakt",
     "editTitle": "Úprava kontaktu",
+    "breadcrumbNew": "nový",
+    "breadcrumbEdit": "úprava",
+    "metaAdded": "přidán {date}",
     "sectionIdentity": "Kdo to je",
     "email": "E-mail",
     "emailHint": "Adresa je klíč kontaktu. Když už ji v projektu máte, doplníme údaje k existujícímu kontaktu místo zakládání druhého.",
@@ -1046,6 +1067,7 @@
     "greetingLocked": "Oslovení potvrdil člověk. Když změníte jméno, spočítáme ho znovu.",
     "noTagsYet": "Projekt zatím nemá žádné štítky.",
     "newTags": "Nové štítky",
+    "newTagsPlaceholder": "zima, sleva",
     "newTagsHint": "Oddělte je čárkami. Štítky, které ještě neexistují, založíme.",
     "subscriptionTitle": "Přidat kontakt jako",
     "subscriptionConfirmed": "Přihlášeného k odběru",

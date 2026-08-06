@@ -20,7 +20,7 @@ export function SocialItemsControl({ descriptor, value, onChange, id }: ControlP
         <div key={index} className="flex items-center gap-1">
           <select
             aria-label={t('social.network')}
-            className="h-9 rounded-[var(--radius-control)] border border-border bg-surface px-1 text-xs"
+            className="min-h-[var(--size-target-min)] rounded-[var(--radius-control)] border border-border-strong bg-field px-1 text-meta"
             value={item.network}
             onChange={(event) =>
               update(
@@ -64,7 +64,7 @@ export function SocialItemsControl({ descriptor, value, onChange, id }: ControlP
           {t('social.add')}
         </Button>
       ) : (
-        <p className="text-xs text-text-muted">{t('social.max', { max: descriptor.max })}</p>
+        <p className="text-meta text-text-muted">{t('social.max', { max: descriptor.max })}</p>
       )}
     </div>
   );

@@ -17,6 +17,9 @@ export function useContactsTableLabels(namespaceKeys: {
   selectAllOnPage: string;
 }): DataTableLabels {
   const t = useTranslations('contacts');
+  // Zavření panelu sloupců je obecná akce, ne pojem kontaktů, takže má klíč
+  // v `common`. Bez něj panel nemá čím zavřít, když si spouštěč drží obrazovka.
+  const tCommon = useTranslations('common');
   const format = useFormatter();
 
   return {
@@ -39,6 +42,7 @@ export function useContactsTableLabels(namespaceKeys: {
     sortedAscending: t('list.sortedAscending'),
     sortedDescending: t('list.sortedDescending'),
     columnSettings: t('list.columnSettings'),
+    closeColumnSettings: tCommon('actions.close'),
     columnVisible: (column) => t('list.columnVisible', { column }),
     columnWidth: (column) => t('list.columnWidth', { column }),
   };

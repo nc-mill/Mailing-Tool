@@ -3,6 +3,7 @@
 import { useActionState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
 import { Alert } from '@mlain/ui/patterns/states';
@@ -58,8 +59,13 @@ export function SystemMailScreen({
   const accountType = status.provider_type ?? '';
 
   return (
-    <div className="space-y-10">
-      <section aria-labelledby="system-mail-status">
+    // Tři karty, ne jeden dlouhý blok. Do 5. 8. 2026 to byl jediný `<div>`
+    // se třemi sekcemi uvnitř, takže z toho na obrazovce vyšla jedna karta
+    // vysoká přes celý výřez a nedalo se poznat, kde končí stav a kde začíná
+    // nastavení. Mezeru mezi kartami drží `--spacing-gutter`, dřív `space-y-10`
+    // z výchozí škály Tailwindu.
+    <div className="flex flex-col gap-[var(--spacing-gutter)]">
+      <Card aria-labelledby="system-mail-status">
         <h2 id="system-mail-status" className="sr-only">
           {t('systemMail.title')}
         </h2>
@@ -83,28 +89,33 @@ export function SystemMailScreen({
           </Alert>
         )}
 
-        <p className="mt-4">{t('systemMail.fromCurrent', { address: status.from_address })}</p>
-        <p className="mt-1 text-sm text-text-muted">
-          {status.from_source === 'configured'
-            ? t('systemMail.fromSource.configured')
-            : status.from_source === 'verified_domain'
-              ? t('systemMail.fromSource.verified_domain')
-              : t('systemMail.fromSource.app_url')}
-        </p>
-      </section>
+        <div className="flex flex-col gap-[var(--spacing-hairline)]">
+          {/* Adresa se čte po znacích, takže mono. */}
+          <p className="text-ui text-text">
+            {t('systemMail.fromCurrent', { address: status.from_address })}
+          </p>
+          <p className="text-meta text-text-muted">
+            {status.from_source === 'configured'
+              ? t('systemMail.fromSource.configured')
+              : status.from_source === 'verified_domain'
+                ? t('systemMail.fromSource.verified_domain')
+                : t('systemMail.fromSource.app_url')}
+          </p>
+        </div>
+      </Card>
 
       {!status.available ? (
-        <section aria-labelledby="system-mail-why" className="space-y-4">
-          <div>
-            <h2 id="system-mail-why" className="text-xl font-semibold">
-              {t('systemMail.limitationTitle')}
-            </h2>
-            <p className="mt-2 text-text-muted">{t('systemMail.limitationBody')}</p>
+        <Card aria-labelledby="system-mail-why" gap="gutter">
+          <div className="flex flex-col gap-[var(--spacing-hairline)]">
+            <CardTitle>
+              <span id="system-mail-why">{t('systemMail.limitationTitle')}</span>
+            </CardTitle>
+            <p className="text-meta text-text-muted">{t('systemMail.limitationBody')}</p>
           </div>
 
-          <div>
-            <h3 className="font-medium">{t('systemMail.blockedTitle')}</h3>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-text-muted">
+          <div className="flex flex-col gap-[var(--spacing-hairline)]">
+            <h3 className="text-ui font-semibold text-text">{t('systemMail.blockedTitle')}</h3>
+            <ul className="list-disc pl-5 text-ui text-text-muted">
               <li>{t('systemMail.blocked1')}</li>
               <li>{t('systemMail.blocked2')}</li>
               <li>{t('systemMail.blocked3')}</li>
@@ -112,42 +123,41 @@ export function SystemMailScreen({
             </ul>
           </div>
 
-          <div>
-            <h3 className="font-medium">{t('systemMail.fixTitle')}</h3>
-            <p className="mt-2 text-text-muted">{t('systemMail.fixBody')}</p>
-            <Link
-              href={`/w/${slug}/settings/sending`}
-              className="mt-2 inline-block font-medium underline"
-            >
+          <div className="flex flex-col items-start gap-[var(--spacing-hairline)]">
+            <h3 className="text-ui font-semibold text-text">{t('systemMail.fixTitle')}</h3>
+            <p className="text-ui text-text-muted">{t('systemMail.fixBody')}</p>
+            <Link href={`/w/${slug}/settings/sending`} className="text-ui font-semibold">
               {t('systemMail.fixLink')}
             </Link>
           </div>
-        </section>
+        </Card>
       ) : null}
 
       {canConfigure ? (
-        <section aria-labelledby="system-mail-form">
-          <h2 id="system-mail-form" className="text-xl font-semibold">
-            {t('systemMail.form.title')}
-          </h2>
+        <Card aria-labelledby="system-mail-form" gap="gutter">
+          <CardTitle>
+            <span id="system-mail-form">{t('systemMail.form.title')}</span>
+          </CardTitle>
 
           {status.accounts.length === 0 ? (
-            <p className="mt-2 text-text-muted">{t('systemMail.noAccounts')}</p>
+            <p className="text-meta text-text-muted">{t('systemMail.noAccounts')}</p>
           ) : null}
 
           {state.status === 'error' && Object.keys(fieldErrors).length === 0 ? (
-            <div className="mt-4">
-              <SettingsProblem problem={state.problem} />
-            </div>
+            <SettingsProblem problem={state.problem} />
           ) : null}
 
           {state.status === 'success' ? (
-            <p role="status" className="mt-4 text-sm">
+            <Alert tone="success" role="status">
               {t('systemMail.form.done')}
-            </p>
+            </Alert>
           ) : null}
 
-          <form action={formAction} className="mt-4 max-w-xl space-y-4" noValidate>
+          <form
+            action={formAction}
+            className="flex max-w-[var(--size-text-column)] flex-col gap-[var(--spacing-gutter)]"
+            noValidate
+          >
             <input type="hidden" name="workspace_id" value={workspaceId} readOnly />
             <input type="hidden" name="slug" value={slug} readOnly />
 
@@ -169,7 +179,7 @@ export function SystemMailScreen({
               errors={fieldErrors}
             />
 
-            <div>
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor="system-mail-from">{t('systemMail.form.fromAddress')}</Label>
               <Input
                 id="system-mail-from"
@@ -182,18 +192,22 @@ export function SystemMailScreen({
                 }
                 {...fieldAria('from_address', fieldErrors)}
               />
-              <p className="mt-1 text-sm text-text-muted">{t('systemMail.form.fromAddressHint')}</p>
+              <p className="text-meta text-text-muted">{t('systemMail.form.fromAddressHint')}</p>
               <FieldError name="from_address" errors={fieldErrors} />
             </div>
 
-            <SubmitButton
-              label={t('systemMail.form.submit')}
-              pendingLabel={t('systemMail.form.submitting')}
-            />
+            <div className="flex">
+              <SubmitButton
+                label={t('systemMail.form.submit')}
+                pendingLabel={t('systemMail.form.submitting')}
+              />
+            </div>
           </form>
-        </section>
+        </Card>
       ) : (
-        <p className="text-text-muted">{t('systemMail.noPermission')}</p>
+        <Card>
+          <p className="text-ui text-text-muted">{t('systemMail.noPermission')}</p>
+        </Card>
       )}
     </div>
   );

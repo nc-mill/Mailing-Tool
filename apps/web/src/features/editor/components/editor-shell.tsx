@@ -235,9 +235,32 @@ function EditorBody(props: BodyProps) {
     })();
   }
 
+  /*
+   * ŠÍŘKY SLOUPCŮ JSOU Z NÁVRHU, ne odhad: paleta 220, plátno aspoň 360 a pak
+   * zbytek, vlastnosti 300, asistent 320 otevřený a 56 sbalený. Mřížka má
+   * `min-width: 1140px` a roluje se vodorovně, protože tři panely vedle sebe
+   * pod tou šířkou přestanou být použitelné a zalomení sloupců pod sebe by
+   * z editoru udělalo dlouhý svitek.
+   */
+  const columns =
+    props.assistant === undefined
+      ? 'grid-cols-[220px_minmax(360px,1fr)_300px]'
+      : props.assistantOpen
+        ? 'grid-cols-[220px_minmax(360px,1fr)_300px_320px]'
+        : 'grid-cols-[220px_minmax(360px,1fr)_300px_56px]';
+
   return (
     <EditorHandoffProvider value={{ leave: leaveTo, flush, busy: leaving }}>
-      <div className="flex h-dvh flex-col">
+      {/*
+       * ROLUJE STRÁNKA, NE PANELY.
+       *
+       * Dřív tu stálo `h-dvh` a panely s vlastním `overflow`. Uvnitř skořápky
+       * aplikace to nesedělo: hlavní sloupec začíná 70 px pod horní lištou,
+       * takže editor o tu výšku přetékal a spodek panelů byl mimo okno.
+       * Návrh to kreslí jinak a líp: karty vedle sebe zarovnané na horní hranu,
+       * každá tak vysoká, jak je její obsah, a roluje celá stránka.
+       */}
+      <div className="flex min-w-0 flex-col gap-[var(--spacing-stack)]">
         {props.chrome}
         <EditorHeader
           mode={mode}
@@ -267,7 +290,11 @@ function EditorBody(props: BodyProps) {
         {readOnlyView ? (
           <div
             data-testid="view-read-only"
-            className="flex items-center justify-between gap-4 border-b border-border bg-surface-muted px-4 py-2"
+            className={[
+              'flex flex-wrap items-center justify-between gap-[var(--spacing-inline)]',
+              'rounded-[var(--radius-surface)] border border-border bg-surface-muted',
+              'px-[var(--spacing-stack)] py-3',
+            ].join(' ')}
           >
             <p className="text-sm text-text-muted">
               {t('preview.readOnlyView', { mode: t(`preview.${view.mode}`) })}
@@ -286,35 +313,69 @@ function EditorBody(props: BodyProps) {
         táhnout vůbec nic.
       */}
         <EditorDnd>
-          <div className="flex flex-1 overflow-hidden">
-            {editing ? <BlockPalette /> : null}
-            <main className="flex-1 overflow-auto">
-              {editing ? (
-                <Canvas
-                  canWriteHtml={props.canWriteHtml}
-                  fieldCatalog={props.fieldCatalog}
-                  ports={props.ports}
-                />
-              ) : (
-                <PreviewPane templateId={props.templateId} ports={props.ports} flush={flush} />
-              )}
+          {editing ? (
+            /*
+             * MŘÍŽKA NEMÁ VLASTNÍ ROLOVACÍ OBAL, a je to důsledek měření, ne
+             * nedbalost. Návrh kolem ní `overflow-x: auto` má, jenže obal
+             * s `overflow` se stane rolovací plochou i pro `position: sticky`
+             * uvnitř: paleta a panel vlastností se pak nemají k čemu přilepit
+             * a při rolování odjedou pryč. Naměřeno v prohlížeči, horní hrana
+             * panelu šla 411 → 211 → 25 místo toho, aby se zastavila na 85.
+             *
+             * Bez obalu je rolovací plochou okno, lepení funguje a vodorovné
+             * rolování zůstává: pod 1140 px si ho vezme celá stránka. Cena je,
+             * že se do strany posune i hlavička, což je proti ztrátě obou
+             * panelů u dlouhého e-mailu drobnost.
+             */
+            <div className="pb-[var(--spacing-hairline)]">
+              {/*
+               * BOČNÍ SLOUPCE SE ROZTAHUJÍ, PLÁTNO NE.
+               *
+               * Druhá věc, bez které se lepení nechytne: `position: sticky` se
+               * pohybuje jen uvnitř svého rodiče. Když má mřížka `items-start`,
+               * je buňka přesně tak vysoká jako panel, takže panel nemá kam
+               * cestovat a lepení je bez účinku, i když ho prohlížeč hlásí.
+               *
+               * Buňky palety a vlastností proto zůstávají roztažené (výchozí
+               * `stretch`) a lepí se karta uvnitř nich; plátno a asistent mají
+               * `self-start`, aby si zachovaly výšku podle obsahu, jak je kreslí
+               * návrh.
+               */}
+              <div className={`grid min-w-[1140px] gap-[var(--spacing-stack)] ${columns}`}>
+                <div className="min-w-0">
+                  <BlockPalette />
+                </div>
+                <main className="min-w-0 self-start">
+                  <Canvas
+                    canWriteHtml={props.canWriteHtml}
+                    fieldCatalog={props.fieldCatalog}
+                    ports={props.ports}
+                  />
+                </main>
+                <div className="min-w-0">
+                  <PropertiesPanel
+                    canWriteHtml={props.canWriteHtml}
+                    fieldCatalog={props.fieldCatalog}
+                    ports={props.ports}
+                    templateKind={props.templateKind}
+                  />
+                </div>
+                {props.assistant ? (
+                  <div className="min-w-0 self-start">
+                    <AssistantRail
+                      open={props.assistantOpen}
+                      onOpenChange={props.onAssistantOpen}
+                      panel={props.assistant}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <main className="min-w-0">
+              <PreviewPane templateId={props.templateId} ports={props.ports} flush={flush} />
             </main>
-            {editing ? (
-              <PropertiesPanel
-                canWriteHtml={props.canWriteHtml}
-                fieldCatalog={props.fieldCatalog}
-                ports={props.ports}
-                templateKind={props.templateKind}
-              />
-            ) : null}
-            {editing && props.assistant ? (
-              <AssistantRail
-                open={props.assistantOpen}
-                onOpenChange={props.onAssistantOpen}
-                panel={props.assistant}
-              />
-            ) : null}
-          </div>
+          )}
         </EditorDnd>
         <TestSendDialog
           open={props.testSendOpen}

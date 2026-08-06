@@ -3,6 +3,7 @@
 import { useActionState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Button } from '@mlain/ui/components/button';
+import { CardTitle } from '@mlain/ui/components/card';
 import { Checkbox } from '@mlain/ui/components/checkbox';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
@@ -59,14 +60,17 @@ export function TrackingDomains({
   };
 
   return (
-    <section aria-labelledby="tracking-domains">
-      <h2 id="tracking-domains" className="text-xl font-semibold">
-        {t('settings.domains.title')}
-      </h2>
-      <p className="mt-2 text-text-muted">{t('settings.domains.description')}</p>
+    <section
+      aria-labelledby="tracking-domains"
+      className="flex flex-col gap-[var(--spacing-gutter)]"
+    >
+      <CardTitle>
+        <span id="tracking-domains">{t('settings.domains.title')}</span>
+      </CardTitle>
+      <p className="text-meta text-text-muted">{t('settings.domains.description')}</p>
 
       {addState.status === 'error' ? (
-        <div className="mt-4">
+        <div>
           <Alert tone="error" data-error-code={addState.problem.code}>
             {errorText(addState.problem.code)}
           </Alert>
@@ -74,18 +78,18 @@ export function TrackingDomains({
       ) : null}
 
       {domains.length === 0 ? (
-        <div className="mt-4">
+        <div>
           <Alert tone="warning">{t('settings.domains.empty')}</Alert>
         </div>
       ) : (
-        <ul className="mt-4 divide-y divide-border rounded-md border border-border">
+        <ul className="divide-y divide-border rounded-[var(--radius-surface)] border border-border">
           {domains.map((domain) => (
             <li key={domain.id} className="flex items-center justify-between gap-4 px-4 py-3">
               <div>
-                <p className="font-medium">
+                <p className="text-ui font-semibold text-text">
                   {domain.includeSubdomains ? `*.${domain.host}` : domain.host}
                 </p>
-                <p className="text-sm text-text-muted">
+                <p className="text-meta text-text-muted">
                   {domain.verifiedAt === null
                     ? t('settings.domains.unverified')
                     : t('settings.domains.verified', {
@@ -93,7 +97,7 @@ export function TrackingDomains({
                       })}
                 </p>
                 {domain.internal ? (
-                  <p className="text-sm text-warning-text">{t('settings.domains.internal')}</p>
+                  <p className="text-meta text-warning-text">{t('settings.domains.internal')}</p>
                 ) : null}
               </div>
               {canWrite ? (
@@ -111,7 +115,11 @@ export function TrackingDomains({
       )}
 
       {canWrite ? (
-        <form action={addAction} className="mt-6 flex flex-wrap items-end gap-4" noValidate>
+        <form
+          action={addAction}
+          className="flex flex-wrap items-end gap-[var(--spacing-gutter)]"
+          noValidate
+        >
           <input type="hidden" name="workspace_slug" value={workspaceSlug} readOnly />
           <div className="min-w-64">
             <Label htmlFor="tracking-domain-host">{t('settings.domains.host_label')}</Label>

@@ -1,6 +1,13 @@
 {
   "title": "Segmenty",
   "new": "Nový segment",
+  "intro": "Segment je podmínka, ne skupina. Kdo jí odpovídá, ten v segmentu je, a přepočítáváme to sami.",
+  "columns": {
+    "name": "Název",
+    "count": "Kontaktů",
+    "recounted": "Přepočítáno"
+  },
+  "rowActions": "Další akce",
   "name": "Název segmentu",
   "emptyList": "Segment je uložená otázka nad kontakty, například „kdo za půl roku nic neotevřel\". Začněte hotovým, nebo si postavte vlastní.",
   "stale": "Aktualizováno před {time}.",
@@ -28,6 +35,8 @@
     },
     "addCondition": "Přidat podmínku",
     "addGroup": "Přidat skupinu podmínek",
+    "conditionsTitle": "Podmínky",
+    "newMeta": "nový segment · zatím neuložený",
     "removeCondition": "Odebrat podmínku",
     "groupNumber": "Skupina {path}",
     "noDeeper": "Hlouběji už zanořovat nejde.",
@@ -142,14 +151,19 @@
   },
   "count": {
     "action": "Spočítat",
+    "belongLabel": "Do segmentu patří",
+    "unit": "{count, plural, =0 {kontaktů} one {kontakt} few {kontakty} many {kontaktu} other {kontaktů}}",
     "counting": "Počítáme…",
     "exact": "Do segmentu patří {count, plural, =0 {nikdo} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}",
     "sampleTitle": "Například:",
+    "sampleLabel": "Například",
+    "previewNote": "Seznam je jen náhled. Segment se přepočítá znovu vždycky před odesláním kampaně, takže čísla mohou být do té doby jiná.",
     "showAll": "Zobrazit všech {count}",
     "failed": "Počet se nepodařilo spočítat.",
     "retry": "Zkusit znovu",
     "emptyAll": "Segment zatím nemá žádnou podmínku, obsahuje tedy všechny kontakty ({count, number}).",
-    "failedDetail": "Počet se nepodařilo spočítat. Technický detail: {detail}"
+    "failedDetail": "Počet se nepodařilo spočítat. Technický detail: {detail}",
+    "failedReferenceMissing": "Podmínka odkazuje na {kind}, který už neexistuje. Odeberte ji, nebo vyberte jinou hodnotu."
   },
   "warnings": {
     "segment_count_estimated": "Číslo je odhad, přesný výpočet by trval příliš dlouho.",
@@ -184,7 +198,9 @@
   },
   "presets": {
     "sectionTitle": "Začněte hotovým",
+    "editableHint": "podmínky se dají po vložení upravit",
     "orBuild": "Nebo si postavte vlastní",
+    "orBuildHint": "Skládá se z podmínek nad kontakty, seznamy, souhlasy a aktivitou v kampaních.",
     "build": "Postavit vlastní segment",
     "use": "Použít",
     "neverOpened": {
@@ -306,5 +322,11 @@
     "lastCampaigns": "({count, plural, =0 {bez kampaní} one {poslední kampaň} few {poslední # kampaně} many {posledních # kampaně} other {posledních # kampaní}})",
     "sinceDays": "(za {days, plural, =0 {dnešek} one {# den} few {# dny} many {# dne} other {# dní}})",
     "oneCampaign": "(v jedné kampani)"
+  },
+  "referenceKinds": {
+    "tag": "štítek",
+    "list": "seznam",
+    "segment": "segment",
+    "contact_field": "vlastní pole"
   }
 }

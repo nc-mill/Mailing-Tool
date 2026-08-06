@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from '@mlain/i18n/navigation';
+import { useTranslations } from 'next-intl';
+import { SettingsPageShell, SettingsStack } from '@/features/settings/settings-page-shell';
 import { AddDomainDialog } from './add-domain-dialog';
 import { AddProviderDialog } from './add-provider-dialog';
 import { DeleteDomainDialog } from './delete-domain-dialog';
@@ -50,6 +52,7 @@ export function SendingScreen({
   basePath: string;
   workspaceId: string;
 }) {
+  const t = useTranslations('campaigns');
   const router = useRouter();
   // Dialog se mountuje až při otevření, ne trvale se `open={false}`: jinak by
   // si po zavření podržel rozepsaný obsah včetně hesla.
@@ -132,39 +135,43 @@ export function SendingScreen({
   }
 
   return (
-    <>
-      <SendingSettings
-        providers={providers}
-        domains={domains}
-        guards={guards}
-        limits={limits}
-        basePath={basePath}
-        verification={verification}
-        onSaveGuards={async (next) => {
-          const result = await saveGuardsAction({ workspaceId, settings: next });
-          if (result.status === 'success') router.refresh();
-          return result;
-        }}
-        onAddProvider={() => setAddingProvider(true)}
-        onAddDomain={() => setAddingDomain(true)}
-        onTestProvider={(providerId) => void verify(providerId)}
-        onEditProvider={(providerId) => setEditingId(providerId)}
-        onDeleteProvider={(providerId) => setDeletingId(providerId)}
-        onDeleteDomain={(domainId) => setDeletingDomainId(domainId)}
-        onVerifyIdentity={(providerId) => setIdentityId(providerId)}
-        onRequestProductionAccess={(providerId) => setProductionId(providerId)}
-        onMakeDefault={async (providerId) => {
-          const result = await setDefaultProviderAction({ workspaceId, providerId });
-          // Nový výchozí okamžitě nahradí předchozí: obnova stránky je jediný způsob,
-          // jak seznam ukáže odznak Výchozí na správném řádku.
-          if (result.status === 'success') router.refresh();
-          return result;
-        }}
-      />
+    // Obrazovka do 5. 8. 2026 NEMĚLA název vůbec: začínala rovnou mezinadpisem
+    // „Odesílací účty“, takže se v levém menu Nastavení nedalo poznat, kde
+    // člověk je. Hlavičku teď dodává `SettingsPageShell` jako všem ostatním.
+    <SettingsPageShell title={t('sending.title')} lead={t('sending.lead')}>
+      <SettingsStack>
+        <SendingSettings
+          providers={providers}
+          domains={domains}
+          guards={guards}
+          limits={limits}
+          basePath={basePath}
+          verification={verification}
+          onSaveGuards={async (next) => {
+            const result = await saveGuardsAction({ workspaceId, settings: next });
+            if (result.status === 'success') router.refresh();
+            return result;
+          }}
+          onAddProvider={() => setAddingProvider(true)}
+          onAddDomain={() => setAddingDomain(true)}
+          onTestProvider={(providerId) => void verify(providerId)}
+          onEditProvider={(providerId) => setEditingId(providerId)}
+          onDeleteProvider={(providerId) => setDeletingId(providerId)}
+          onDeleteDomain={(domainId) => setDeletingDomainId(domainId)}
+          onVerifyIdentity={(providerId) => setIdentityId(providerId)}
+          onRequestProductionAccess={(providerId) => setProductionId(providerId)}
+          onMakeDefault={async (providerId) => {
+            const result = await setDefaultProviderAction({ workspaceId, providerId });
+            // Nový výchozí okamžitě nahradí předchozí: obnova stránky je jediný způsob,
+            // jak seznam ukáže odznak Výchozí na správném řádku.
+            if (result.status === 'success') router.refresh();
+            return result;
+          }}
+        />
 
-      {/* Zkušební režim patří na tuhle obrazovku, ne na vlastní: rozhoduje o tom,
-          komu se odešle, stejně jako odesílací účet a doména nad ním. */}
-      <div className="mt-10">
+        {/* Zkušební režim patří na tuhle obrazovku, ne na vlastní: rozhoduje o tom,
+            komu se odešle, stejně jako odesílací účet a doména nad ním.
+            Odstup dodává `SettingsStack`, dřív to byl `mt-10` z výchozí škály. */}
         <TrialModePanel
           trial={trial}
           onToggle={async (enabled) => {
@@ -185,7 +192,7 @@ export function SendingScreen({
             return result;
           }}
         />
-      </div>
+      </SettingsStack>
 
       {addingProvider && (
         <AddProviderDialog
@@ -343,6 +350,6 @@ export function SendingScreen({
           }}
         />
       )}
-    </>
+    </SettingsPageShell>
   );
 }

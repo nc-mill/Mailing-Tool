@@ -105,6 +105,34 @@ describe('WebActivityScreen', () => {
     expect(screen.getByText('přímo')).toBeInTheDocument();
   });
 
+  /**
+   * Dlaždice s čísly jsou hlavní obsah obrazovky a musí sedět na odpověď
+   * serveru. Známé lidi a neznámé návštěvníky drží ve dvou různých dlaždicích
+   * schválně: sečíst je dohromady by tvrdilo, že víme, kdo ti neznámí jsou.
+   */
+  it('dlaždice ukazují počty z odpovědi serveru', async () => {
+    renderScreen({
+      ...BASE,
+      known_contacts: 1,
+      anonymous_visitors: 2,
+      page_views: 4,
+      other_events: 1,
+      last_event_at: '2026-08-04T22:17:23.000Z',
+    });
+
+    const known = await screen.findByRole('heading', { name: 'Známí lidé' });
+    expect(known.closest('section')).toHaveTextContent('1');
+    expect(
+      screen.getByRole('heading', { name: 'Zatím neznámí' }).closest('section'),
+    ).toHaveTextContent('2');
+    expect(
+      screen.getByRole('heading', { name: 'Zobrazení stránek' }).closest('section'),
+    ).toHaveTextContent('4');
+    expect(
+      screen.getByRole('heading', { name: 'Další akce' }).closest('section'),
+    ).toHaveTextContent('1');
+  });
+
   it('když nikdy nic nedorazilo, pošle uživatele nastavit měření', async () => {
     renderScreen(BASE);
     await waitFor(() => {

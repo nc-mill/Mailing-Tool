@@ -96,7 +96,7 @@ export function DndCanvas(props: {
             vlastně veze, protože tlačítko v paletě zůstává na místě. */}
         <DragOverlay dropAnimation={null}>
           {payload ? (
-            <span className="rounded-[var(--radius-control)] border border-border bg-surface-overlay px-2 py-1 text-xs shadow-lg">
+            <span className="rounded-[var(--radius-control)] border border-border bg-surface-overlay px-2 py-1 text-meta shadow-[var(--shadow-flyout)]">
               {payload.label}
             </span>
           ) : null}

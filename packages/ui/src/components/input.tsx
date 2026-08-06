@@ -10,8 +10,8 @@ export const Input = forwardRef<HTMLInputElement, ComponentPropsWithoutRef<'inpu
       {...props}
       ref={ref}
       className={cn(
-        'min-h-11 w-full rounded-[var(--radius-control)] border border-border-strong',
-        'bg-surface px-3 text-sm text-text placeholder:text-text-muted',
+        'min-h-[var(--size-target-min)] w-full rounded-[var(--radius-control)] border border-border-strong',
+        'bg-field px-3.5 py-2.5 text-ui text-text placeholder:text-text-muted',
         'aria-[invalid=true]:border-danger',
         className,
       )}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { fetchJson, recipientsUrl } from '../api-client';
 import { ReportTable } from '../adapters/report-table';
 import {
@@ -117,23 +118,33 @@ export function RecipientsPanel({
   };
 
   return (
-    <section
-      aria-labelledby="recipients-heading"
-      className="rounded-lg border border-border bg-surface p-4"
-    >
-      <h2 id="recipients-heading" className="text-base font-semibold">
-        {t('report.recipients.heading')}
-      </h2>
+    <Card aria-labelledby="recipients-heading">
+      <CardTitle>
+        <span id="recipients-heading">{t('report.recipients.heading')}</span>
+      </CardTitle>
+      {/*
+        Filtr příjemců. Vybraná položka je TMAVÝ PANEL se světlým textem: je
+        jich vedle sebe až devět a jen tučnějším písmem by se vybraná ztratila.
+      */}
       <div
         role="group"
         aria-label={t('report.recipients.heading')}
-        className="mb-3 flex flex-wrap gap-2"
+        className="flex flex-wrap gap-[var(--spacing-inline)]"
       >
         {availableFilters(tracking).map((value) => (
           <button
             key={value}
             type="button"
-            className="inline-flex min-h-6 min-w-6 items-center justify-center rounded px-2 py-1 border border-border"
+            className={[
+              'min-h-[var(--size-control-sm)] px-3 text-sm',
+              'rounded-[var(--radius-control)] border border-border',
+              'transition-colors duration-[var(--duration-fast)]',
+              'focus-visible:outline-2 focus-visible:outline-offset-2',
+              'focus-visible:outline-[var(--color-focus-ring)]',
+              filter === value
+                ? 'border-panel bg-panel text-panel-foreground'
+                : 'bg-surface text-text-muted hover:bg-surface-muted hover:text-text',
+            ].join(' ')}
             aria-pressed={filter === value}
             onClick={() => onFilterChange(value)}
           >
@@ -155,7 +166,7 @@ export function RecipientsPanel({
         onNext={goNext}
         onPrevious={goPrevious}
         cursorInvalid={cursorInvalid}
-        emptyState={<p>{t('report.recipients.empty')}</p>}
+        emptyState={<p className="text-ui text-text-muted">{t('report.recipients.empty')}</p>}
         columns={[
           {
             key: 'contact',
@@ -182,7 +193,7 @@ export function RecipientsPanel({
                     timeStyle: 'short',
                   })}
                   {row.open_reliability === 'machine' ? (
-                    <span className="ml-1 text-xs text-text-muted">
+                    <span className="ml-1 text-micro text-text-muted">
                       {t('report.recipients.machineOpen')}
                     </span>
                   ) : null}
@@ -202,6 +213,6 @@ export function RecipientsPanel({
           },
         ]}
       />
-    </section>
+    </Card>
   );
 }

@@ -37,7 +37,7 @@ export default async function CampaignReportPage({
   const reach = classifyTrackingDomain(loadConfig().TRACKING_DOMAIN);
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-[var(--spacing-gutter)]">
       {reach.kind === 'public' ? null : (
         <UnreachableDomainAlert kind={reach.kind} host={reach.host} variant="report" />
       )}

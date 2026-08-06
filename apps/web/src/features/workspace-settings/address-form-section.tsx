@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
+import { Card, CardTitle } from '@mlain/ui/components/card';
+import { Alert } from '@mlain/ui/patterns/states';
 import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
 import { useConfirmDialogLabels } from '@/lib/feedback/confirm-labels';
 import { IDLE, type ActionState } from '@/lib/feedback/action-result';
@@ -102,13 +104,13 @@ export function AddressFormSectionView({
 
   if (!canWrite) {
     return (
-      <section aria-labelledby="general-address-form">
-        <h2 id="general-address-form" className="text-xl font-semibold">
-          {t('general.addressForm.label')}
-        </h2>
-        <p className="mt-2 text-text-muted">{t('general.addressForm.hint')}</p>
-        <p className="mt-4 font-medium">{t(LABEL_KEYS[current])}</p>
-      </section>
+      <Card aria-labelledby="general-address-form">
+        <CardTitle>
+          <span id="general-address-form">{t('general.addressForm.label')}</span>
+        </CardTitle>
+        <p className="text-meta text-text-muted">{t('general.addressForm.hint')}</p>
+        <p className="text-ui font-semibold text-text">{t(LABEL_KEYS[current])}</p>
+      </Card>
     );
   }
 
@@ -116,43 +118,45 @@ export function AddressFormSectionView({
   const selected: AddressForm = pendingValue ?? chosen ?? current;
 
   return (
-    <section aria-labelledby="general-address-form">
-      <h2 id="general-address-form" className="text-xl font-semibold">
-        {t('general.addressForm.label')}
-      </h2>
-      <p className="mt-2 text-text-muted">{t('general.addressForm.hint')}</p>
+    <Card aria-labelledby="general-address-form" gap="gutter">
+      <CardTitle>
+        <span id="general-address-form">{t('general.addressForm.label')}</span>
+      </CardTitle>
+      <p className="text-meta text-text-muted">{t('general.addressForm.hint')}</p>
 
       {state.status === 'success' ? (
-        <p role="status" className="mt-4 text-text-muted">
+        <Alert tone="success" role="status">
           {t(state.messageKey)}
-        </p>
+        </Alert>
       ) : null}
-      {state.status === 'error' ? (
-        <div className="mt-4">
-          <SettingsProblem problem={state.problem} />
-        </div>
-      ) : null}
+      {state.status === 'error' ? <SettingsProblem problem={state.problem} /> : null}
 
-      <fieldset className="mt-4 flex flex-col gap-2">
+      {/* Dvojice voleb má rozvržení z návrhu (sekce „Potvrzení přihlášení"
+          na detailu seznamu): tečka v úzkém prvním sloupci, vedle ní název
+          volby polotučně, pod tím příklad drobným tlumeným písmem. Rámeček
+          kolem každé volby návrh nemá, oddělují je mezery. */}
+      <fieldset className="flex flex-col gap-[var(--spacing-gutter)]">
         <legend className="sr-only">{t('general.addressForm.label')}</legend>
         {(['formal', 'informal'] as const).map((option) => (
           <label
             key={option}
-            className="flex items-start gap-3 rounded-md border border-border p-3"
+            className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5"
           >
             <input
               type="radio"
               name="address_form_choice"
               value={option}
               checked={selected === option}
+              // Tečka je nativní, ne Radix (viz komentář nad komponentou).
+              // Barvu jí dává token hrany, jinak by byla systémově modrá.
+              className="mt-0.5 accent-[var(--color-edge)]"
               onChange={() => {
                 if (option !== selected) setPendingValue(option);
               }}
             />
-            <span>
-              <span className="font-medium">{t(LABEL_KEYS[option])}</span>
-              <span className="mt-1 block text-sm text-text-muted">{t(EXAMPLE_KEYS[option])}</span>
-            </span>
+            <span className="text-ui font-semibold text-text">{t(LABEL_KEYS[option])}</span>
+            <span />
+            <span className="text-meta text-text-muted">{t(EXAMPLE_KEYS[option])}</span>
           </label>
         ))}
       </fieldset>
@@ -180,7 +184,7 @@ export function AddressFormSectionView({
         onConfirm={() => submit(target)}
         labels={confirmLabels}
       />
-    </section>
+    </Card>
   );
 }
 

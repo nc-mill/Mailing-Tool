@@ -4,6 +4,9 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
+import { IconButton } from '@mlain/ui/components/icon-button';
+import { Tooltip } from '@mlain/ui/components/tooltip';
+import { CircleCheckBig } from '@mlain/ui/icons';
 import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
 import { useToast } from '@mlain/ui/patterns/toast';
 import { useConfirmDialogLabels } from '@/lib/feedback/confirm-labels';
@@ -24,9 +27,11 @@ export type ConfirmContactButtonProps = {
   email?: string | undefined;
   /**
    * `detail` je tlačítko s vysvětlením pod ním, `row` je kompaktní ovládání v řádku
-   * seznamu kontaktů. Liší se JEN vzhledem, chování je stejné.
+   * seznamu kontaktů, `banner` je samotné tlačítko do žlutého bloku o nepotvrzeném
+   * kontaktu, kde vysvětlení stojí ve větě vedle. Liší se JEN vzhledem, chování
+   * je stejné.
    */
-  variant?: 'detail' | 'row';
+  variant?: 'detail' | 'row' | 'banner';
 };
 
 /**
@@ -98,26 +103,67 @@ export function ConfirmContactButton({
 
   const label = pending ? t('confirmState.confirming') : t('confirmState.action');
 
+  function activate() {
+    if (pending) return;
+    if (needsDialog) {
+      setDialogOpen(true);
+      return;
+    }
+    void confirm();
+  }
+
   const button = (
     <Button
       variant="secondary"
       disabled={pending}
       {...(email === undefined ? {} : { 'aria-label': t('confirmState.actionFor', { email }) })}
-      onClick={() => {
-        if (needsDialog) {
-          setDialogOpen(true);
-          return;
-        }
-        void confirm();
-      }}
+      onClick={activate}
     >
       {label}
     </Button>
   );
 
+  /**
+   * V ŘÁDKU SEZNAMU JE TO IKONA S BUBLINOU, NE TLAČÍTKO SE SLOVEM.
+   *
+   * Je to rozhodnutí návrhu Kontaktů, ne úspora místa: sloupec „Potvrzení" má
+   * v tabulce 60 px a deset textových tlačítek pod sebou by z něj udělalo druhý
+   * sloupec stavu. Význam nese `aria-label` a bublina, takže ikona nikdy nestojí
+   * sama; bublina se ukáže i při zaostření klávesnicí, protože spouštěčem je
+   * skutečné `<button>`.
+   *
+   * Vzhled je z návrhu: 34px čtverec bez rámečku, který rámeček dostane teprve
+   * při najetí nebo zaostření.
+   */
+  const rowButton = (
+    <Tooltip content={label}>
+      <IconButton
+        variant="ghost"
+        size="row"
+        // Barva klidového stavu je z návrhu `border-strong`, ne tlumený text:
+        // v řádku má být ikona tišší než údaje kolem ní, ale pořád čitelná.
+        className="text-border-strong data-[pending]:opacity-60"
+        aria-busy={pending ? true : undefined}
+        data-pending={pending ? '' : undefined}
+        label={
+          email === undefined ? t('confirmState.action') : t('confirmState.actionFor', { email })
+        }
+        // Bublina říká, co se stane, a při čekání „Potvrzujeme"; `title` by nad ní
+        // vykreslil druhou, prohlížečovou, takže se vypíná prázdnou hodnotou.
+        title=""
+        icon={<CircleCheckBig aria-hidden className="icon-md" />}
+        onClick={activate}
+      />
+    </Tooltip>
+  );
+
   return (
     <>
       {variant === 'row' ? (
+        rowButton
+      ) : variant === 'banner' ? (
+        // Vysvětlení tu chybí schválně: v žlutém bloku ho nese věta vedle
+        // tlačítka, takže by tu stálo dvakrát pod sebou.
         button
       ) : (
         <div className="flex flex-col items-start gap-1">

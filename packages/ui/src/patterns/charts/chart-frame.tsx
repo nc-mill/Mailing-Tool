@@ -4,7 +4,12 @@ import { useId, useState } from 'react';
 import { Button } from '../../components/button';
 import { cn } from '../../lib/cn';
 
-export type SeriesPattern = 'solid' | 'dashed' | 'dotted';
+/**
+ * Vzor čáry. **Barva nikdy není jediným nositelem informace** (WCAG 1.4.1),
+ * takže se řady rozlišují i tvarem. Čtyři vzory jsou strop: pátá řada už se
+ * nedá spolehlivě rozlišit ani tvarem, a patří tedy do tabulky, ne do grafu.
+ */
+export type SeriesPattern = 'solid' | 'dashed' | 'dotted' | 'dashDot';
 
 export type ChartSeries = {
   id: string;
@@ -31,6 +36,7 @@ export type ChartLabels = {
  */
 export function ChartFrame({
   title,
+  hideTitle = false,
   series,
   labels,
   children,
@@ -38,6 +44,19 @@ export function ChartFrame({
   className,
 }: {
   title: string;
+  /**
+   * Skryje viditelný nadpis grafu, ale **NE jeho přístupné jméno**.
+   *
+   * K čemu: graf skoro vždycky sedí v kartě, která už nadpis má, a nadpis se
+   * pak na obrazovce objeví dvakrát pod sebou. Mizet má ten grafový, protože
+   * nadpis karty je systémový prvek a vypadá na všech obrazovkách stejně.
+   *
+   * Nadpis se **nemaže, jen se schová do `sr-only`**. Kdyby zmizel úplně,
+   * přišel by graf i s tabulkou o jméno a čtečka by ohlásila „obrázek" bez
+   * dalšího. Ta cena za srovnaný vzhled je zbytečná, když stačí nadpis
+   * přesunout mimo obraz.
+   */
+  hideTitle?: boolean;
   series: ChartSeries[];
   labels: ChartLabels;
   /** Samotný graf, například `<LineChart>` z recharts. */
@@ -51,7 +70,10 @@ export function ChartFrame({
 
   return (
     <figure aria-labelledby={titleId} className={cn('flex flex-col gap-3', className)}>
-      <figcaption id={titleId} className="text-base font-semibold text-text">
+      <figcaption
+        id={titleId}
+        className={cn(hideTitle ? 'sr-only' : 'text-h3 font-semibold text-text')}
+      >
         {title}
       </figcaption>
 
@@ -69,6 +91,7 @@ export function ChartFrame({
                 'inline-block h-0.5 w-6 border-t-2 border-text',
                 item.pattern === 'dashed' ? 'border-dashed' : '',
                 item.pattern === 'dotted' ? 'border-dotted' : '',
+                item.pattern === 'dashDot' ? 'border-double' : '',
               )}
             />
             {item.label}

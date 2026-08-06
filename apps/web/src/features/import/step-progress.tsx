@@ -1,5 +1,10 @@
 'use client';
 
+import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
+// Alias, protože tenhle soubor má vlastní typ `Progress` (tvar dat o průběhu).
+import { Progress as ProgressBar } from '@mlain/ui/components/progress';
+import { Alert } from '@mlain/ui/patterns/states';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { formatCount } from './labels';
@@ -126,63 +131,73 @@ export function StepProgress({
   const rest = Math.max(total - progress.processed, 0);
 
   return (
-    <div className="flex flex-col gap-4">
-      <h2>{t('progress.title')}</h2>
+    <div className="flex max-w-[var(--container-prose)] flex-col gap-[var(--spacing-gutter)]">
+      <CardTitle>{t('progress.title')}</CardTitle>
 
-      <div
-        role="progressbar"
-        aria-valuenow={progress.processed}
-        aria-valuemin={0}
-        aria-valuemax={total}
-        aria-valuetext={t('progress.counter', {
+      {/* Pruh průběhu byl PRÁZDNÝ `div` s aria atributy: čtečka věděla, jak
+          daleko import je, oko ne. `Progress` z návrhového systému kreslí totéž
+          a nese stejné atributy, takže se přístupnost nemění, jen přibývá to,
+          co bylo vidět jen čtečce. */}
+      <ProgressBar
+        value={progress.processed}
+        max={total}
+        label={t('progress.title')}
+        valueText={t('progress.counter', {
           processed: formatCount(progress.processed, locale),
           total: formatCount(total, locale),
         })}
       />
 
-      <p>
+      {/* Počet zpracovaných je číslo, které se sleduje, takže mono: číslice mají
+          stejnou šířku a nepodskakují při každé změně. */}
+      <p className="font-mono text-body text-text">
         {t('progress.counter', {
           processed: formatCount(progress.processed, locale),
           total: formatCount(total, locale),
         })}
       </p>
 
-      <p role="status" aria-live="polite">
+      <p role="status" aria-live="polite" className="text-ui text-text">
         {announced}
       </p>
 
-      <p>{t('progress.runsOnServer')}</p>
-      {degraded ? <p>{t('progress.liveUpdatesFailed')}</p> : null}
+      <p className="text-meta text-text-muted">{t('progress.runsOnServer')}</p>
+      {degraded ? <Alert tone="warning">{t('progress.liveUpdatesFailed')}</Alert> : null}
 
-      <button type="button" onClick={() => setConfirmCancel(true)}>
+      <Button variant="secondary" className="self-start" onClick={() => setConfirmCancel(true)}>
         {t('progress.cancel')}
-      </button>
+      </Button>
 
       {confirmCancel ? (
-        <div role="dialog" aria-label={t('progress.cancelConfirmTitle')}>
-          <strong>{t('progress.cancelConfirmTitle')}</strong>
-          <p>
+        <Card as="div" role="dialog" aria-label={t('progress.cancelConfirmTitle')} padding="sm">
+          <CardTitle as="h3">{t('progress.cancelConfirmTitle')}</CardTitle>
+          <p className="text-ui text-text">
             {t('progress.cancelConfirmBody', {
               done: formatCount(progress.processed, locale),
               rest: formatCount(rest, locale),
             })}
           </p>
-          <button
-            type="button"
-            onClick={() => {
-              void fetch(`/api/v1/contacts/imports/${importId}/cancel`, {
-                method: 'POST',
-                headers: { 'X-Workspace-Id': workspaceId, 'Content-Type': 'application/json' },
-              });
-              setConfirmCancel(false);
-            }}
-          >
-            {t('progress.cancelConfirm')}
-          </button>
-          <button type="button" onClick={() => setConfirmCancel(false)}>
-            {t('progress.cancelDismiss')}
-          </button>
-        </div>
+          <div className="flex flex-wrap gap-[var(--spacing-inline)]">
+            {/* Zastavení importu je nevratné, proto destruktivní tón. Ústup je
+                vedle něj rovnocenný, ne schovaný. */}
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                void fetch(`/api/v1/contacts/imports/${importId}/cancel`, {
+                  method: 'POST',
+                  headers: { 'X-Workspace-Id': workspaceId, 'Content-Type': 'application/json' },
+                });
+                setConfirmCancel(false);
+              }}
+            >
+              {t('progress.cancelConfirm')}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setConfirmCancel(false)}>
+              {t('progress.cancelDismiss')}
+            </Button>
+          </div>
+        </Card>
       ) : null}
     </div>
   );

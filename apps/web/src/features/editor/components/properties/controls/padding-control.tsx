@@ -14,7 +14,7 @@ export function PaddingControl({ descriptor, value, onChange, id, autoFocus }: C
   return (
     <div className="grid grid-cols-4 gap-1" role="group" aria-labelledby={id}>
       {SIDES.map((side, index) => (
-        <label key={side} className="text-xs">
+        <label key={side} className="text-meta">
           <span className="text-text-muted">{t(`value.side.${side}`)}</span>
           <Input
             type="number"

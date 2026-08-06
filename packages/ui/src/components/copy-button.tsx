@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy } from '../icons';
 import { useEffect, useState } from 'react';
 import { Button } from './button';
 
@@ -43,7 +43,11 @@ export function CopyButton({
         setCopied(true);
       }}
     >
-      {copied ? <Check aria-hidden className="size-4" /> : <Copy aria-hidden className="size-4" />}
+      {copied ? (
+        <Check aria-hidden className="icon-sm" />
+      ) : (
+        <Copy aria-hidden className="icon-sm" />
+      )}
       {copied ? copiedLabel : label}
       {/* Změnu musí slyšet i ten, kdo tlačítko nevidí. */}
       <span role="status" aria-live="polite" className="sr-only">

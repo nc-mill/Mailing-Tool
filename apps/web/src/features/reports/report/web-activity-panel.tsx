@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useFormatter, useTranslations } from 'next-intl';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { campaignWebActivityUrl, fetchJson } from '../api-client';
 
 export type CampaignWebActivityPayload = {
@@ -68,44 +69,36 @@ export function WebActivityPanel({
 
   if (payload === null) return null;
 
-  const heading = (
-    <h2 id="web-activity-heading" className="text-base font-semibold">
-      {t('web.campaign.heading')}
-    </h2>
-  );
-
   const frame = (children: React.ReactNode) => (
-    <section
-      data-testid="web-activity-panel"
-      aria-labelledby="web-activity-heading"
-      className="rounded-lg border border-border bg-surface p-4"
-    >
-      {heading}
+    <Card data-testid="web-activity-panel" aria-labelledby="web-activity-heading">
+      <CardTitle>
+        <span id="web-activity-heading">{t('web.campaign.heading')}</span>
+      </CardTitle>
       {children}
-    </section>
+    </Card>
   );
 
   if (payload.started_at === null) {
-    return frame(<p className="mt-2 text-sm text-text-muted">{t('web.campaign.notSent')}</p>);
+    return frame(<p className="text-ui text-text-muted">{t('web.campaign.notSent')}</p>);
   }
 
   if (payload.clicked_contacts === 0) {
-    return frame(<p className="mt-2 text-sm text-text-muted">{t('web.campaign.emptyNoClicks')}</p>);
+    return frame(<p className="text-ui text-text-muted">{t('web.campaign.emptyNoClicks')}</p>);
   }
 
   if (payload.visitor_contacts === 0) {
     return frame(
       <>
-        <p className="mt-2 text-sm">
+        <p className="text-ui text-text">
           {t('web.campaign.clicked', { count: payload.clicked_contacts })}
         </p>
-        <p className="mt-2 text-sm text-text-muted">{t('web.campaign.emptyNoVisits')}</p>
-        <p className="mt-2 text-sm">
-          <Link href={`/w/${workspaceSlug}/settings/tracking`} className="underline">
+        <p className="text-ui text-text-muted">{t('web.campaign.emptyNoVisits')}</p>
+        <p className="text-ui">
+          <Link href={`/w/${workspaceSlug}/settings/tracking`}>
             {t('web.campaign.emptyNoVisitsAction')}
           </Link>
         </p>
-        <p className="mt-2 text-xs text-text-muted">
+        <p className="text-meta text-text-muted">
           {t('web.campaign.rule', { hours: payload.window_hours })}
         </p>
       </>,
@@ -115,7 +108,7 @@ export function WebActivityPanel({
   return frame(
     <>
       {/* Nejdřív věta, pak tabulky. Uživatel není analytik a čte odshora. */}
-      <p className="mt-2 text-sm" data-testid="web-activity-summary">
+      <p className="text-ui text-text" data-testid="web-activity-summary">
         {t('web.campaign.clicked', { count: payload.clicked_contacts })}{' '}
         {t('web.campaign.visited', { count: payload.visitor_contacts })}{' '}
         {t('web.campaign.browsed', {
@@ -124,7 +117,7 @@ export function WebActivityPanel({
         })}
       </p>
       {payload.last_visit_at === null ? null : (
-        <p className="mt-1 text-sm text-text-muted">
+        <p className="font-mono text-meta text-text-muted">
           {t('web.campaign.lastVisit', {
             when: format.dateTime(new Date(payload.last_visit_at), {
               dateStyle: 'short',
@@ -133,13 +126,13 @@ export function WebActivityPanel({
           })}
         </p>
       )}
-      <p className="mt-2 text-xs text-text-muted">
+      <p className="text-meta text-text-muted">
         {t('web.campaign.rule', { hours: payload.window_hours })}
       </p>
 
       {payload.pages.length === 0 ? null : (
         <div className="mt-4">
-          <h3 className="text-sm font-semibold">{t('web.campaign.pagesHeading')}</h3>
+          <h3 className="meta-caps text-text-muted">{t('web.campaign.pagesHeading')}</h3>
           <table className="mt-1 w-full text-sm">
             <thead>
               <tr className="text-left text-text-muted">
@@ -171,7 +164,7 @@ export function WebActivityPanel({
 
       {payload.events.length === 0 ? null : (
         <div className="mt-4">
-          <h3 className="text-sm font-semibold">{t('web.campaign.eventsHeading')}</h3>
+          <h3 className="meta-caps text-text-muted">{t('web.campaign.eventsHeading')}</h3>
           <table className="mt-1 w-full text-sm">
             <thead>
               <tr className="text-left text-text-muted">
@@ -205,7 +198,7 @@ export function WebActivityPanel({
 
       {payload.visitors.length === 0 ? null : (
         <div className="mt-4">
-          <h3 className="text-sm font-semibold">{t('web.campaign.visitorsHeading')}</h3>
+          <h3 className="meta-caps text-text-muted">{t('web.campaign.visitorsHeading')}</h3>
           <ul className="mt-1 text-sm">
             {payload.visitors.map((visitor) => (
               <li key={visitor.contact_id} className="flex flex-wrap gap-x-2">

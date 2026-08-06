@@ -54,12 +54,12 @@ export function Field({ label, children, hint, error, optionalLabel, className }
         'aria-invalid': error ? true : undefined,
       })}
       {hint ? (
-        <p id={hintId} className="text-sm text-text-muted">
+        <p id={hintId} className="text-meta text-text-muted">
           {hint}
         </p>
       ) : null}
       {error ? (
-        <p id={errorId} className="text-sm text-danger-text">
+        <p id={errorId} className="text-meta text-danger-text">
           {error}
         </p>
       ) : null}

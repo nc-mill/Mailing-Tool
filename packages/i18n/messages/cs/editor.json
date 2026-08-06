@@ -411,7 +411,9 @@
     "emptyColumn": "Prázdný sloupec",
     "emptySection": "Prázdná sekce",
     "assistantOpen": "AI asistent",
-    "assistantHide": "Skrýt AI asistenta"
+    "assistantHide": "Skrýt AI asistenta",
+    "noteDesktop": "Náhled na počítači · šířka {width} px",
+    "noteMobile": "Náhled na mobilu · šířka {width} px"
   },
   "asset": {
     "title": "Obrázky",
@@ -500,6 +502,13 @@
     "createFailed": "Šablonu se nepodařilo vytvořit.",
     "newName": "Nová šablona",
     "newTransactionalName": "Nový transakční e-mail",
+    "countAll": "{count, plural, =0 {žádná šablona} one {# šablona} few {# šablony} many {# šablony} other {# šablon}}",
+    "columns": {
+      "name": "Název",
+      "category": "Kategorie",
+      "usage": "Zapojení",
+      "changed": "Změněno"
+    },
     "category": {
       "legend": "Kategorie",
       "all": "Vše",

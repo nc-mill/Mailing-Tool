@@ -3,31 +3,50 @@
 import { cn } from '../../lib/cn';
 import { SystemBar, type SystemBarState } from './system-bar';
 
-/** Kostra stránky: topbar nahoře, sidebar vlevo, obsah, systémový pruh dole. */
+/**
+ * Kostra stránky: hlavička nahoře, boční menu vlevo, obsah, systémový pruh dole.
+ *
+ * SKROLUJE CELÁ STRÁNKA, ne obsah uvnitř rámu. Hlavička i boční menu jsou
+ * `sticky`, takže zůstanou na místě, ale prohlížeč pořád skroluje dokument.
+ * Dřív měl obsah vlastní `overflow-y: auto` a mělo to dva následky, kterých
+ * si všimne každý: kolečko myši nad menu nescrollovalo stránku a odkaz na
+ * kotvu uvnitř stránky skočil jinam, protože `scroll-padding-top` platí pro
+ * dokument, ne pro vnitřní rám.
+ *
+ * ŠÍŘKA OBSAHU se řídí `wide`. Běžná obrazovka má strop 1320 px, obrazovka
+ * s širokou tabulkou 1560 px. Bez stropu by se text na širokém monitoru
+ * roztáhl na řádky, které se špatně čtou.
+ */
 export function AppShell({
   topbar,
   sidebar,
   systemBarStates,
+  wide = false,
   children,
   className,
 }: {
   topbar: React.ReactNode;
   sidebar: React.ReactNode;
   systemBarStates: SystemBarState[];
+  /** Široký obsah, například tabulka kontaktů s deseti sloupci. */
+  wide?: boolean;
   children: React.ReactNode;
   className?: string;
 }) {
   return (
-    <div className={cn('flex min-h-dvh flex-col bg-surface', className)}>
+    <div className={cn('min-h-dvh bg-surface', className)}>
       {topbar}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex items-start">
         {sidebar}
         {/* Odsazení dole nechává místo systémovému pruhu, aby nezakryl
             fokusovaný prvek (WCAG 2.2, kritérium 2.4.11). */}
         <main
           id="main"
           tabIndex={-1}
-          className="flex-1 overflow-y-auto p-[var(--spacing-gutter)] pb-20"
+          className={cn(
+            'min-w-0 flex-1 p-[var(--spacing-page)] pb-20',
+            wide ? 'max-w-[var(--container-screen-wide)]' : 'max-w-[var(--container-screen)]',
+          )}
         >
           {children}
         </main>

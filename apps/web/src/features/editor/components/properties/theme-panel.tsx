@@ -1,5 +1,6 @@
 'use client';
 
+import { CardTitle } from '@mlain/ui/components/card';
 import { Input } from '@mlain/ui/components/input';
 import { useTranslations } from 'next-intl';
 import { THEME_GROUPS } from '../../descriptors/theme';
@@ -32,9 +33,14 @@ export function ThemePanel() {
   const document = useEditorState((state) => state.document);
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-sm font-semibold">{t('theme.title')}</h2>
-      <label className="block text-xs">
+    <div className="flex flex-col gap-[var(--spacing-stack)]">
+      <CardTitle>{t('theme.title')}</CardTitle>
+      {/*
+        Popisek obaluje pole, takže je s ním svázaný i bez `id`. `Field` by tu
+        vazbu udělal přes `htmlFor`, ale tenhle tvar už mají v rukou testy panelu
+        a přepisovat je kvůli vzhledu nedává smysl: vzhled je stejný tak jako tak.
+      */}
+      <label className="flex flex-col gap-1.5 text-sm font-semibold text-text">
         {t('meta.previewText')}
         <Input
           value={String(document.meta.previewText ?? '')}
@@ -43,8 +49,11 @@ export function ThemePanel() {
         />
       </label>
       {THEME_GROUPS.map((group) => (
-        <fieldset key={group.label} className="space-y-3">
-          <legend className="text-xs uppercase text-text-muted">{t(group.label)}</legend>
+        <fieldset
+          key={group.label}
+          className="flex flex-col gap-3 border-t border-border pt-[var(--spacing-stack)]"
+        >
+          <legend className="meta-caps text-text-muted">{t(group.label)}</legend>
           {group.props.map((descriptor) => (
             <PropField
               key={descriptor.key}

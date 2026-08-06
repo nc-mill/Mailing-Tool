@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Badge } from '@mlain/ui/components/badge';
 import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Dialog, DialogBody, DialogFooter, DialogTitle } from '@mlain/ui/components/dialog';
 import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
@@ -124,12 +125,12 @@ export function TrialModePanel({
   }
 
   return (
-    <section aria-labelledby="trial-title" className="flex flex-col gap-4" data-testid="trial-mode">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 id="trial-title" className="text-lg font-semibold">
-            {t('title')}
-          </h2>
+    <Card aria-labelledby="trial-title" gap="gutter" data-testid="trial-mode">
+      <div className="flex flex-wrap items-center justify-between gap-[var(--spacing-inline)]">
+        <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
+          <CardTitle>
+            <span id="trial-title">{t('title')}</span>
+          </CardTitle>
           <Badge
             tone={trial.trial_mode ? 'warning' : 'neutral'}
             icon={trial.trial_mode ? ClockIcon : CheckIcon}
@@ -161,7 +162,7 @@ export function TrialModePanel({
         a uživatel nemá jak poznat, které platí. Věta se proto vybírá podle
         toho, jestli ověřenou doménu OPRAVDU má.
       */}
-      <p className="text-text-muted" data-testid="trial-explanation">
+      <p className="text-ui text-text-muted" data-testid="trial-explanation">
         {trial.has_verified_domain ? t('explanationVerified') : t('explanationWaiting')}
       </p>
       {/*
@@ -289,6 +290,6 @@ export function TrialModePanel({
           />
         </Dialog>
       )}
-    </section>
+    </Card>
   );
 }

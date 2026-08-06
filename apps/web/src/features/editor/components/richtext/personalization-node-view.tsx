@@ -34,7 +34,7 @@ export function PersonalizationNodeView({ node, updateAttributes }: NodeViewProp
           <button
             type="button"
             data-testid="token"
-            className="rounded bg-surface-muted px-1 text-text"
+            className="rounded-[var(--radius-control)] bg-surface-muted px-1 text-text"
             aria-label={t('token.tooltip', { label: label(attrs.expr) })}
           >
             {substituted ?? label(attrs.expr)}

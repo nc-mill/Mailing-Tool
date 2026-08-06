@@ -80,12 +80,17 @@ export function BrandThemePreview({ palette, typography }: BrandThemePreviewProp
   const content = theme.light.roles['surface.content'];
 
   return (
-    <section aria-labelledby="brand-theme-preview" className="flex flex-col gap-3">
+    <section
+      aria-labelledby="brand-theme-preview"
+      className="flex flex-col gap-[var(--spacing-stack)]"
+    >
       <div>
-        <h3 id="brand-theme-preview" className="font-medium text-text">
+        <h3 id="brand-theme-preview" className="text-ui font-semibold text-text">
           {t('brand.themeTitle')}
         </h3>
-        <p className="mt-1 max-w-prose text-sm text-text-muted">{t('brand.themeIntro')}</p>
+        <p className="mt-1 max-w-[var(--container-prose)] text-meta text-text-muted">
+          {t('brand.themeIntro')}
+        </p>
       </div>
 
       <ul className="flex flex-col divide-y divide-border" data-testid="brand-theme-roles">
@@ -93,7 +98,11 @@ export function BrandThemePreview({ palette, typography }: BrandThemePreviewProp
           const value = theme.light.roles[role];
           const ratio = TEXT_ROLES.has(role) ? contrastRatio(value, content) : null;
           return (
-            <li key={role} className="flex flex-wrap items-center gap-3 py-2" data-role={role}>
+            <li
+              key={role}
+              className="flex flex-wrap items-center gap-[var(--spacing-stack)] py-[var(--spacing-inline)]"
+              data-role={role}
+            >
               <span
                 aria-hidden="true"
                 className="inline-block size-6 shrink-0 rounded border border-border-strong"

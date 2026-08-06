@@ -1,6 +1,6 @@
 'use client';
 
-import { Upload } from 'lucide-react';
+import { Upload } from '../../icons';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/button';
 import { Progress } from '../../components/progress';

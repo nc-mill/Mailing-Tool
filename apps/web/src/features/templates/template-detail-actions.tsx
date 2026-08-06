@@ -31,7 +31,7 @@ export function TemplateDetailActions({
   const router = useRouter();
 
   return (
-    <div className="flex items-center justify-end gap-2 border-b border-border px-4 py-2">
+    <div className="flex items-center justify-end gap-[var(--spacing-inline)] border-b border-border px-[var(--spacing-gutter)] py-[var(--spacing-inline)]">
       <DeleteTemplateButton
         workspaceId={workspaceId}
         templateId={templateId}

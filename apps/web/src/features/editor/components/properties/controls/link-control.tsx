@@ -86,12 +86,12 @@ export function LinkControl({
         }}
       />
       {problem !== 'ok' ? (
-        <p role="alert" className="text-xs text-danger-text">
+        <p role="alert" className="text-meta text-danger-text">
           {problem === 'scheme' ? t('link.schemeForbidden') : t('link.liquidForbidden')}
         </p>
       ) : null}
       {trackableKey ? (
-        <label className="flex items-center gap-2 text-xs">
+        <label className="flex items-center gap-2 text-meta">
           <Switch
             checked={declaredTrackable}
             onCheckedChange={(checked) => {

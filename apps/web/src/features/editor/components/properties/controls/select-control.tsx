@@ -10,7 +10,7 @@ export function SelectControl({ descriptor, value, onChange, id, autoFocus }: Co
     <select
       id={id}
       data-autofocus={autoFocus ? '' : undefined}
-      className="h-9 w-full rounded-[var(--radius-control)] border border-border bg-surface px-2 text-sm"
+      className="min-h-[var(--size-target-min)] w-full rounded-[var(--radius-control)] border border-border-strong bg-field px-3 text-ui"
       value={String(value ?? '')}
       onChange={(event) => {
         const raw = event.target.value;

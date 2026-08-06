@@ -1,6 +1,6 @@
 'use client';
 
-import { X } from 'lucide-react';
+import { X } from '../../icons';
 import { cn } from '../../lib/cn';
 
 export type ToastLabels = {
@@ -76,7 +76,7 @@ export function ToastItem({
         aria-label={labels.close}
         className="flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-text-muted"
       >
-        <X aria-hidden className="size-4" />
+        <X aria-hidden className="icon-sm" />
       </button>
     </div>
   );

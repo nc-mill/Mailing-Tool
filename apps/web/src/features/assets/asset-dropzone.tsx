@@ -57,7 +57,7 @@ export function AssetDropzone({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-[var(--spacing-stack)]">
       <div
         data-testid="asset-dropzone"
         data-dragging={dragging ? '' : undefined}
@@ -73,12 +73,16 @@ export function AssetDropzone({
         }}
         onDrop={onDrop}
         className={[
-          'flex flex-col items-center gap-3 rounded-[var(--radius-surface)] border-2 border-dashed p-8 text-center',
+          'flex flex-col items-center gap-[var(--spacing-stack)] text-center',
+          // Přerušovaný rámeček je jediné místo v systému, kde rámeček není
+          // hairline: plocha se nemá číst jako karta, ale jako místo, kam se
+          // něco pustí. Při tažení se přebarví do identitní žluté.
+          'rounded-[var(--radius-surface)] border-2 border-dashed p-[var(--spacing-card)]',
           dragging ? 'border-primary bg-surface-muted' : 'border-border bg-surface',
           disabled ? 'opacity-60' : '',
         ].join(' ')}
       >
-        <p className="text-sm font-medium text-text">{t('upload.dropzone')}</p>
+        <p className="text-body font-semibold text-text">{t('upload.dropzone')}</p>
         <Button
           variant="secondary"
           onClick={() => inputRef.current?.click()}
@@ -104,12 +108,12 @@ export function AssetDropzone({
             event.target.value = '';
           }}
         />
-        <p className="text-xs text-text-muted">{t('upload.hint', { limit: maxBytesLabel })}</p>
+        <p className="text-meta text-text-muted">{t('upload.hint', { limit: maxBytesLabel })}</p>
       </div>
 
       {progress === null ? null : (
-        <div className="flex flex-col gap-1" aria-live="polite">
-          <p className="text-sm text-text">
+        <div className="flex flex-col gap-[var(--spacing-hairline)]" aria-live="polite">
+          <p className="font-mono text-meta text-text-muted">
             {t('upload.progress', { done: progress.done, total: progress.total })}
             {progress.current === '' ? '' : ` · ${progress.current}`}
           </p>

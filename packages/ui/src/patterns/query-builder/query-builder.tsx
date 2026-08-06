@@ -1,6 +1,6 @@
 'use client';
 
-import { Trash2, X } from 'lucide-react';
+import { Plus, SquarePlus, Trash2, X } from '../../icons';
 import { useState } from 'react';
 import { Button } from '../../components/button';
 import { cn } from '../../lib/cn';
@@ -53,8 +53,14 @@ export type QueryBuilderLabels = {
 
 export type GroupSentenceSlots = { polarity: React.ReactNode; quantifier: React.ReactNode };
 
+/**
+ * Ovládací prvek podmínky. Vypadá jako formulářové pole, protože jím je:
+ * výška 44 px, vnitřní okraj 10/14, rámeček `border-strong`, plocha `field`
+ * a text 15 px. Stejné hodnoty má `Input` i `Select`, aby řádek podmínky
+ * nevypadal jako jiný druh formuláře než zbytek aplikace.
+ */
 const CONTROL =
-  'min-h-11 rounded-[var(--radius-control)] border border-border-strong bg-surface px-3 text-sm text-text';
+  'min-h-[var(--size-target-min)] rounded-[var(--radius-control)] border border-border-strong bg-field px-3.5 py-2.5 text-ui text-text';
 
 function inputTypeOf(valueType: FieldValueType): 'text' | 'number' | 'date' | 'datetime-local' {
   if (valueType === 'number') return 'number';
@@ -127,21 +133,26 @@ function ValueList({
   }
 
   return (
-    <div data-testid="condition-value-list" className="flex flex-wrap items-center gap-2">
-      <ul className="flex flex-wrap items-center gap-1">
+    <div
+      data-testid="condition-value-list"
+      className="flex flex-wrap items-center gap-[var(--spacing-inline)]"
+    >
+      <ul className="flex flex-wrap items-center gap-[var(--spacing-hairline)]">
         {values.map((item, index) => (
           <li
             key={`${String(item)}-${index}`}
-            className="flex items-center gap-1 rounded-[var(--radius-control)] bg-surface-muted px-2 py-1 text-sm text-text"
+            // Vybraná hodnota je ŠTÍTEK, tedy žlutá plocha. Na tlumené ploše
+            // skupiny by se tlumený štítek ztratil a vypadal by jako text.
+            className="flex items-center gap-1.5 rounded-[var(--radius-control)] bg-accent-surface px-2 py-1 text-sm text-text"
           >
             {labelOf(item)}
             <button
               type="button"
               aria-label={labels.removeValue(labelOf(item))}
               onClick={() => onChange(values.filter((_, position) => position !== index))}
-              className="flex size-5 items-center justify-center text-text-muted"
+              className="flex size-[var(--size-icon-lg)] items-center justify-center rounded-[var(--radius-control)] text-text-muted hover:text-danger-text"
             >
-              <X aria-hidden className="size-3" />
+              <X aria-hidden className="icon-xs" />
             </button>
           </li>
         ))}
@@ -187,7 +198,7 @@ function ValueList({
             }}
             className={CONTROL}
           />
-          <Button variant="secondary" onClick={commit}>
+          <Button variant="secondary" size="sm" onClick={commit}>
             {labels.addValue}
           </Button>
         </>
@@ -385,7 +396,7 @@ export function QueryBuilder({
       <div
         key={path.join('.')}
         data-testid="condition-row"
-        className="flex flex-wrap items-center gap-2 py-1"
+        className="flex flex-wrap items-center gap-3"
       >
         <select
           aria-label={labels.chooseField}
@@ -432,17 +443,20 @@ export function QueryBuilder({
 
         {field && operator ? renderValue(condition, path, field, operator) : null}
 
+        {/* Odebrání podmínky je tiché tlačítko, které se ohlásí až při najetí,
+            a to červeně. Trvale červený koš v každém řádku by z rozhraní udělal
+            výstražnou plochu. */}
         <button
           type="button"
           aria-label={labels.removeRule}
           onClick={() => builder.remove(path)}
-          className="flex size-11 items-center justify-center rounded-[var(--radius-control)] text-text-muted"
+          className="flex size-[var(--size-control)] items-center justify-center rounded-[var(--radius-control)] border border-transparent text-text-muted hover:border-danger hover:text-danger-text"
         >
-          <Trash2 aria-hidden className="size-4" />
+          <Trash2 aria-hidden className="icon-sm" />
         </button>
 
         {operator?.negating ? (
-          <div className="flex w-full items-center gap-2 pl-1 text-sm text-text-muted">
+          <div className="flex w-full items-center gap-[var(--spacing-inline)] text-sm text-text-muted">
             <span>{labels.notNullHint}</span>
             <Button variant="link" onClick={() => builder.addCondition(parentPath)}>
               {labels.addEmptyCondition}
@@ -488,69 +502,92 @@ export function QueryBuilder({
     );
 
     return (
+      /*
+       * VĚTA SKUPINY JE `legend` UVNITŘ `fieldset`, a zůstane jí.
+       *
+       * Je to sémantická dvojice: díky ní čtečka u každé podmínky přečte, do
+       * které skupiny patří, a u vnořených skupin je to jediný kontext, který
+       * uživatel má. Návrh kreslí větu NAD tlumeným boxem, ne v něm, takže
+       * `fieldset` obaluje víc než ten box: sám nemá rámeček ani plochu,
+       * legenda stojí nahoře a box je jeho vnitřní prvek.
+       */
       <fieldset
         key={path.join('.') || 'root'}
-        className={cn(
-          'rounded-[var(--radius-surface)] border border-border p-4',
-          depth > 0 ? 'mt-2 bg-surface-muted' : 'bg-surface',
-        )}
+        className={cn('min-w-0 border-0 p-0', depth > 0 ? 'mt-3' : undefined)}
       >
-        <legend className="flex flex-wrap items-center gap-2 text-sm text-text">
+        <legend className="mb-[var(--spacing-gutter)] flex flex-wrap items-center gap-3 text-meta text-text">
           {renderGroupSentence({ polarity, quantifier })}
         </legend>
 
-        {negated ? <p className="mt-1 text-sm text-text-muted">{labels.negationHint}</p> : null}
+        {negated ? (
+          <p className="mb-[var(--spacing-inline)] text-sm text-text-muted">
+            {labels.negationHint}
+          </p>
+        ) : null}
 
-        <div className="mt-2">
+        <div
+          className={cn(
+            'grid gap-3 rounded-[var(--radius-surface)] border border-border p-[var(--spacing-gutter)]',
+            // Vnořená skupina se odliší OBRÁCENÍM plochy, ne dalším odstínem:
+            // systém má dvě plochy papíru a třetí by si musel vymyslet.
+            depth > 0 ? 'bg-surface' : 'bg-surface-muted',
+          )}
+        >
           {group.children.map((child, index) =>
             child.type === 'condition'
               ? renderCondition(child, [...path, index], path)
               : renderGroup(child, [...path, index]),
           )}
-        </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {builder.canAddRule(path) ? (
-            <Button variant="secondary" onClick={() => builder.addCondition(path)}>
-              {labels.addRule}
-            </Button>
-          ) : (
-            <p className="text-sm text-text-muted">{labels.childLimit}</p>
-          )}
+          <div className="flex flex-wrap items-center gap-[var(--spacing-inline)] pt-[var(--spacing-hairline)]">
+            {builder.canAddRule(path) ? (
+              <Button variant="secondary" size="sm" onClick={() => builder.addCondition(path)}>
+                <Plus aria-hidden className="icon-sm" />
+                {labels.addRule}
+              </Button>
+            ) : (
+              <p className="text-sm text-text-muted">{labels.childLimit}</p>
+            )}
 
-          {/* Při dosažení hloubky se tlačítko schová a vysvětlí se proč.
-              Chybová hláška by tvrdila, že uživatel udělal něco špatně. */}
-          {builder.canAddGroup(path) ? (
-            <Button variant="secondary" onClick={() => builder.addGroup(path)}>
-              {labels.addGroup}
-            </Button>
-          ) : depth >= MAX_DEPTH - 1 ? (
-            <p className="text-sm text-text-muted">{labels.depthLimit}</p>
-          ) : null}
+            {/* Při dosažení hloubky se tlačítko schová a vysvětlí se proč.
+                Chybová hláška by tvrdila, že uživatel udělal něco špatně. */}
+            {builder.canAddGroup(path) ? (
+              <Button variant="secondary" size="sm" onClick={() => builder.addGroup(path)}>
+                <SquarePlus aria-hidden className="icon-sm" />
+                {labels.addGroup}
+              </Button>
+            ) : depth >= MAX_DEPTH - 1 ? (
+              <p className="text-sm text-text-muted">{labels.depthLimit}</p>
+            ) : null}
 
-          {depth > 0 ? (
-            <Button variant="secondary" onClick={() => builder.remove(path)}>
-              {labels.removeGroup}
-            </Button>
-          ) : null}
+            {depth > 0 ? (
+              <Button variant="secondary" size="sm" onClick={() => builder.remove(path)}>
+                {labels.removeGroup}
+              </Button>
+            ) : null}
+          </div>
         </div>
       </fieldset>
     );
   }
 
   return (
-    <div className={cn('flex flex-col gap-3', className)}>
+    <div className={cn('flex min-w-0 flex-col gap-[var(--spacing-gutter)]', className)}>
       {renderGroup(builder.root, [])}
       {footer}
       {showJsonToggle ? (
-        <div>
-          <Button variant="link" onClick={() => setShowJson((current) => !current)}>
+        <div className="flex flex-col items-start gap-[var(--spacing-inline)]">
+          <Button
+            variant="link"
+            className="text-sm"
+            onClick={() => setShowJson((current) => !current)}
+          >
             {labels.showJson}
           </Button>
           {showJson ? (
             <pre
               role="code"
-              className="mt-2 overflow-auto rounded-[var(--radius-control)] bg-surface-muted p-3 font-mono text-xs text-text"
+              className="w-full overflow-auto rounded-[var(--radius-control)] border border-border bg-surface-muted p-[var(--spacing-stack)] font-mono text-meta text-text"
             >
               {builder.json}
             </pre>

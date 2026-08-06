@@ -44,7 +44,7 @@ export function CampaignStepNav({
 
   return (
     <nav aria-label={t('label')}>
-      <ol className="flex flex-wrap gap-1 border-b border-border">
+      <ol className="flex flex-wrap gap-[var(--spacing-hairline)] border-b border-border">
         {CAMPAIGN_STEPS.map((step, index) => {
           const active = step === current;
           return (
@@ -60,19 +60,24 @@ export function CampaignStepNav({
                   if (!active) onSelect(step);
                 }}
                 className={[
-                  'flex min-h-11 items-center gap-2 border-b-2 px-4 text-sm',
+                  'flex min-h-[var(--size-target-min)] items-center gap-[var(--spacing-inline)]',
+                  'border-b-[3px] px-4 py-3 text-ui',
+                  'transition-colors duration-[var(--duration-fast)]',
                   'focus-visible:outline-2 focus-visible:outline-offset-2',
                   'focus-visible:outline-[var(--color-focus-ring)]',
                   'disabled:cursor-not-allowed disabled:opacity-60',
                   active
-                    ? 'border-primary font-medium text-text'
+                    ? 'border-primary font-semibold text-text'
                     : 'border-transparent text-text-muted hover:text-text',
                 ].join(' ')}
               >
+                {/* Číslo kroku je v kolečku, jediná kulatá věc v systému vedle
+                    přepínače. Mono, protože je to údaj, ne slovo. */}
                 <span
                   aria-hidden="true"
                   className={[
-                    'flex size-6 shrink-0 items-center justify-center rounded-full text-xs',
+                    'flex size-6 shrink-0 items-center justify-center rounded-full',
+                    'font-mono text-meta',
                     active ? 'bg-primary text-primary-foreground' : 'bg-surface-muted text-text',
                   ].join(' ')}
                 >

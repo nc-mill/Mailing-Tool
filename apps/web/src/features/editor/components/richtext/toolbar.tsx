@@ -68,45 +68,45 @@ export function RichTextToolbar(props: {
             key={mark.id}
             variant="ghost"
             size="sm"
-            className="min-h-8 px-2"
+            className="size-[var(--size-control-xs)] min-h-[var(--size-control-xs)] px-0"
             aria-label={t(mark.label)}
             aria-pressed={editor.isActive(mark.id)}
             onClick={mark.run}
           >
-            <mark.icon aria-hidden className="size-4" />
+            <mark.icon aria-hidden className="icon-sm" />
           </Button>
         ))}
         <Button
           variant="ghost"
           size="sm"
-          className="min-h-8 px-2"
+          className="size-[var(--size-control-xs)] min-h-[var(--size-control-xs)] px-0"
           aria-label={t('richtext.link')}
           aria-pressed={editor.isActive('link')}
           onClick={() => setLinkDraft(String(editor.getAttributes('link').href ?? ''))}
         >
-          <Link2 aria-hidden className="size-4" />
+          <Link2 aria-hidden className="icon-sm" />
         </Button>
         {props.allowLists ? (
           <>
             <Button
               variant="ghost"
               size="sm"
-              className="min-h-8 px-2"
+              className="size-[var(--size-control-xs)] min-h-[var(--size-control-xs)] px-0"
               aria-label={t('richtext.bulletList')}
               aria-pressed={editor.isActive('bulletList')}
               onClick={() => editor.chain().focus().toggleBulletList().run()}
             >
-              <List aria-hidden className="size-4" />
+              <List aria-hidden className="icon-sm" />
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="min-h-8 px-2"
+              className="size-[var(--size-control-xs)] min-h-[var(--size-control-xs)] px-0"
               aria-label={t('richtext.orderedList')}
               aria-pressed={editor.isActive('orderedList')}
               onClick={() => editor.chain().focus().toggleOrderedList().run()}
             >
-              <ListOrdered aria-hidden className="size-4" />
+              <ListOrdered aria-hidden className="icon-sm" />
             </Button>
           </>
         ) : null}
@@ -128,7 +128,7 @@ export function RichTextToolbar(props: {
         >
           <input
             aria-label={t('richtext.linkUrl')}
-            className="h-8 w-56 rounded border border-border px-2 text-sm"
+            className="min-h-[var(--size-control-sm)] w-56 rounded-[var(--radius-control)] border border-border-strong bg-field px-2 text-sm"
             value={linkDraft}
             onChange={(event) => setLinkDraft(event.target.value)}
           />

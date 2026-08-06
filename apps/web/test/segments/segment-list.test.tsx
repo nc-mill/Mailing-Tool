@@ -77,6 +77,17 @@ beforeEach(() => {
   recountSegmentAction.mockReset().mockResolvedValue({ status: 'success' });
 });
 
+/**
+ * Přepočet bydlí v nabídce „Další akce" v řádku, jak ji kreslí návrh. Test ji
+ * musí nejdřív otevřít: zavřená nabídka svoje položky vůbec nevykresluje.
+ */
+async function openRowMenu(user: ReturnType<typeof userEvent.setup>, index: number) {
+  const triggers = await screen.findAllByRole('button', { name: 'Další akce' });
+  const trigger = triggers[index];
+  if (trigger === undefined) throw new Error(`Řádek ${index} nemá nabídku akcí.`);
+  await user.click(trigger);
+}
+
 describe('SegmentList', () => {
   it('„Spočítat" opravdu spustí přepočet a načte nové číslo', async () => {
     const user = userEvent.setup();
@@ -92,7 +103,8 @@ describe('SegmentList', () => {
     const user = userEvent.setup();
     renderList();
 
-    await user.click(await screen.findByRole('button', { name: 'Přepočítat' }));
+    await openRowMenu(user, 1);
+    await user.click(await screen.findByRole('menuitem', { name: 'Přepočítat' }));
 
     expect(recountSegmentAction).toHaveBeenCalledWith({ workspaceId: 'w-1', id: 's-2' });
     await waitFor(() => expect(refresh).toHaveBeenCalled());
@@ -113,7 +125,8 @@ describe('SegmentList', () => {
     const user = userEvent.setup();
     renderList(withoutTimestamp);
 
-    await user.click(await screen.findByRole('button', { name: 'Přepočítat' }));
+    await openRowMenu(user, 0);
+    await user.click(await screen.findByRole('menuitem', { name: 'Přepočítat' }));
 
     expect(recountSegmentAction).toHaveBeenCalledWith({ workspaceId: 'w-1', id: 's-3' });
   });

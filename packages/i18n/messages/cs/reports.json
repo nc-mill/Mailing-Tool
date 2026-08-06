@@ -23,6 +23,8 @@
   },
   "report": {
     "title": "Report kampaně",
+    "sentAt": "odesláno {at}",
+    "recipientCount": "{count, plural, =0 {žádní příjemci} one {# příjemce} few {# příjemci} many {# příjemce} other {# příjemců}}",
     "subjectLabel": "Předmět",
     "toProgress": "Zobrazit průběh odesílání",
     "clicked": {
@@ -216,7 +218,10 @@
     "empty": "U tohoto kontaktu zatím nemáme žádnou aktivitu.",
     "emptyHint": "Až kontaktu pošlete e-mail nebo až navštíví váš web, uvidíte to tady.",
     "emptyFiltered": "V tomhle období se nic nestalo.",
+    "emptyFilter": "V tomhle filtru zatím nic není.",
     "emptyFilteredAction": "Zobrazit posledních 90 dní",
+    "count": "{count, plural, =0 {žádná událost} one {# událost} few {# události} many {# události} other {# událostí}}",
+    "filterGroup": "Filtr událostí",
     "webNotMeasured": "Chování na webu se neměří.",
     "webNotMeasuredAction": "Nastavit",
     "error": "Historie se nenačetla. Zkuste zúžit období.",
@@ -279,7 +284,29 @@
     "rateUnknown": "Míru nespočítáme: u {count, plural, =0 {žádné kampaně} one {# kampaně} few {# kampaní} many {# kampaně} other {# kampaní}} zatím nevíme, kolik zpráv dorazilo.",
     "problemsUnknown": "zatím nevíme",
     "problemsUnknownHint": "Odrazy a stížnosti hlásí odesílací služba. Od té zatím nedorazila jediná zpráva o osudu e-mailů, takže nula tady neznamená, že je všechno v pořádku.",
-    "webActiveAction": "Co dělali na webu"
+    "webActiveAction": "Co dělali na webu",
+    "periodLabel": "Období",
+    "rangeMeta": "posledních {range} · {at}",
+    "rangeWords": "za posledních {range}",
+    "deltaSincePrevious": "od minulého období",
+    "importContacts": "Naimportovat kontakty",
+    "newCampaign": "Založit kampaň",
+    "sentCampaigns": "{count, plural, =0 {žádná kampaň v období} one {# kampaň · naposledy {date}} few {# kampaně · naposledy {date}} many {# kampaně · naposledy {date}} other {# kampaní · naposledy {date}}}",
+    "problemsAction": "Nastavení doručování",
+    "clicksTrend": "Vývoj prokliků",
+    "clicksTrendAction": "Rozpad po kampaních",
+    "clicksTrendEmpty": "Graf se objeví s první odeslanou kampaní.",
+    "clicksTrendCaption": "Prokliky posledních kampaní",
+    "clicksTrendColumn": "Kampaň",
+    "clicksSeries": "Prokliky",
+    "webActiveUnit": "{count, plural, =0 {kontaktů} one {kontakt} few {kontakty} many {kontaktu} other {kontaktů}}",
+    "webActiveHint": "Známé kontakty, které za posledních 24 hodin otevřely web.",
+    "allCampaigns": "Všechny kampaně",
+    "columnCampaign": "Kampaň",
+    "columnClicks": "Prokliky",
+    "columnStatus": "Stav",
+    "sentMessages": "{count, plural, =0 {neodesláno} one {# zpráva} few {# zprávy} many {# zprávy} other {# zpráv}}",
+    "recentEmpty": "V tomhle období se neodeslala žádná kampaň."
   },
   "stats": {
     "campaignsHeading": "Vývoj v čase",
@@ -293,7 +320,13 @@
     "columnSentAt": "Odesláno",
     "emptyTooFew": "Trend se ukáže od třetí odeslané kampaně.",
     "openWithMachineNote": "U míry otevření je vždy uvedený podíl automatických.",
-    "excludedUnknown": "V grafu {count, plural, =0 {nechybí žádná kampaň} one {není # kampaň} few {nejsou # kampaně} many {není # kampaně} other {není # kampaní}}, u {count, plural, =0 {kterých} one {které} other {kterých}} zatím nevíme, kolik zpráv dorazilo. Míra by se počítala z odhadu, ne z měření."
+    "excludedUnknown": "V grafu {count, plural, =0 {nechybí žádná kampaň} one {není # kampaň} few {nejsou # kampaně} many {není # kampaně} other {není # kampaní}}, u {count, plural, =0 {kterých} one {které} other {kterých}} zatím nevíme, kolik zpráv dorazilo. Míra by se počítala z odhadu, ne z měření.",
+    "chartHeading": "Míry v čase",
+    "loading": "Načítáme vývoj kampaní",
+    "excludedLabel": "Mimo měření",
+    "excludedHint": "Kampaně, u kterých zatím nevíme, kolik zpráv dorazilo.",
+    "campaignsInPeriod": "{count, plural, =0 {žádná kampaň v období} one {# kampaň v období} few {# kampaně v období} many {# kampaně v období} other {# kampaní v období}}",
+    "chartAxisNote": "Osa grafu je podíl: 1 znamená 100 %."
   },
   "web": {
     "campaign": {
@@ -351,7 +384,13 @@
       "emptyNeverAction": "Nastavit měření webu",
       "emptyPeriod": "Za tohle období z webu nic nedorazilo. Naposled se někdo objevil {when}.",
       "error": "Aktivitu na webu se nepodařilo načíst.",
-      "loading": "Načítáme aktivitu na webu"
+      "loading": "Načítáme aktivitu na webu",
+      "tileKnown": "Známí lidé",
+      "tileAnonymous": "Zatím neznámí",
+      "tilePages": "Zobrazení stránek",
+      "tileEvents": "Další akce",
+      "eventsEmpty": "Kromě zobrazení stránek zatím z webu nic nedorazilo.",
+      "referrersEmpty": "Všichni přišli přímo, bez odkazující stránky."
     }
   }
 }

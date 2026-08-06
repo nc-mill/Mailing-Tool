@@ -92,17 +92,20 @@ export function MembersTable(props: MembersTableProps) {
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="w-full text-left">
+        <table className="w-full border-collapse text-left text-ui">
           <caption className="sr-only">{t('members.title')}</caption>
+          {/* Hlavička tabulky ze základu: tlumená plocha, mono verzálky
+              v tlumeném textu, okraj 12/20. Dřív `pb-2 pr-6` bez plochy,
+              takže hlavička splývala s prvním řádkem. */}
           <thead>
-            <tr>
-              <th scope="col" className="pb-2 pr-6">
+            <tr className="bg-surface-muted">
+              <th scope="col" className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted">
                 {t('members.table.person')}
               </th>
-              <th scope="col" className="pb-2 pr-6">
+              <th scope="col" className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted">
                 {t('members.table.role')}
               </th>
-              <th scope="col" className="pb-2 pr-6">
+              <th scope="col" className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted">
                 {t('members.table.actions')}
               </th>
             </tr>
@@ -111,12 +114,17 @@ export function MembersTable(props: MembersTableProps) {
             {rows.map((member) => {
               const isSelf = member.user_id === props.currentUserId;
               return (
-                <tr key={member.user_id} className="border-t border-border">
-                  <td className="py-3 pr-6">
-                    <p className="font-medium">{member.name === '' ? member.email : member.name}</p>
-                    <p className="text-sm text-text-muted">{member.email}</p>
+                <tr key={member.user_id} className="border-b border-border hover:bg-surface-muted">
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
+                    <p className="font-semibold whitespace-nowrap text-text">
+                      {member.name === '' ? member.email : member.name}
+                    </p>
+                    {/* Adresa se čte po znacích, takže mono. */}
+                    <p className="font-mono text-meta whitespace-nowrap text-text-muted">
+                      {member.email}
+                    </p>
                   </td>
-                  <td className="py-3 pr-6">
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                     {props.canManage && !isSelf ? (
                       <form
                         ref={(node) => {
@@ -153,17 +161,20 @@ export function MembersTable(props: MembersTableProps) {
                         />
                       </form>
                     ) : (
-                      <span>{t(ROLE_LABEL_KEYS[member.role])}</span>
+                      <span className="text-ui text-text">{t(ROLE_LABEL_KEYS[member.role])}</span>
                     )}
-                    <p className="mt-1 text-sm text-text-muted">
+                    <p className="mt-1 text-meta text-text-muted">
                       {t(ROLE_DESCRIPTION_KEYS[member.role])}
                     </p>
                   </td>
-                  <td className="py-3 pr-6">
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)] whitespace-nowrap">
                     {props.canManage && !isSelf ? (
+                      // `size="sm"` (36 px): tlačítko v řádku tabulky je
+                      // v návrhu nižší než tlačítko v hlavičce obrazovky.
                       <Button
                         type="button"
                         variant="secondary"
+                        size="sm"
                         onClick={() => setPendingRemoval(member)}
                       >
                         {t('members.remove.button')}

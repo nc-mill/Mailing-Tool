@@ -84,4 +84,18 @@ describe('ChartFrame', () => {
     );
     expect(screen.getByRole('figure', { name: 'Vývoj v čase' })).toBeInTheDocument();
   });
+
+  // Graf sedí v kartě, která nadpis už má, takže by byl na obrazovce dvakrát.
+  // Schovat se smí jen z obrazu: bez přístupného jména by čtečka ohlásila
+  // „obrázek" a nic víc.
+  it('skrytý nadpis zmizí z obrazu, ale graf o jméno nepřijde', () => {
+    render(
+      <ChartFrame hideTitle title="Vývoj prokliků" series={series} labels={labels}>
+        <svg />
+      </ChartFrame>,
+    );
+    const nadpis = screen.getByText('Vývoj prokliků');
+    expect(nadpis).toHaveClass('sr-only');
+    expect(screen.getByRole('figure', { name: 'Vývoj prokliků' })).toBeInTheDocument();
+  });
 });

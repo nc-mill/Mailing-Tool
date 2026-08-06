@@ -52,8 +52,8 @@ export function UnreachableDomainAlert({ kind, host, variant }: UnreachableDomai
       data-error-code="tracking_domain_unreachable"
     >
       <p>{reason}</p>
-      <p className="mt-2">{t('settings.reach.consequence')}</p>
-      <p className="mt-2 text-sm text-text-muted">{t('settings.reach.fix')}</p>
+      <p className="mt-[var(--spacing-hairline)]">{t('settings.reach.consequence')}</p>
+      <p className="text-meta text-text-muted">{t('settings.reach.fix')}</p>
     </Alert>
   );
 }

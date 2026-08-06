@@ -5,6 +5,7 @@ import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
 import { Select, SelectItem } from '@mlain/ui/components/select';
+import { CircleCheckBig, Download, Trash2 } from '@mlain/ui/icons';
 // K5 z 13.1 části 6: fronta oznámení, odpočet u „Vrátit zpět", chyba se nezavírá sama.
 import { useToast } from '@mlain/ui/patterns/toast';
 import { BulkDeleteDialog } from './bulk-delete-dialog';
@@ -43,6 +44,28 @@ export type ContactsBulkActionsProps = {
    */
   lists?: { id: string; name: string }[];
 };
+
+/**
+ * HROMADNÉ AKCE STOJÍ NA TMAVÉM PANELU, ne na papíře.
+ *
+ * `SelectionBar` je v návrhu tmavý pruh, takže sekundární tlačítko v jeho výchozí
+ * podobě (tmavý text a tmavá hrana) by na něm bylo prakticky neviditelné. Přebarvuje
+ * se proto na světlý obrys, jak je to v návrhu Kontaktů: 36px výška, hairline rámeček
+ * v `panel-soft`, text v `panel-foreground`, najetí zesvětlí plochu na `panel-line`.
+ *
+ * Hrana pod tlačítkem se vypíná schválně: plná spodní hrana je kresba tištěného
+ * tlačítka na papíře a na tmavém pruhu nemá o co se opřít.
+ */
+const PANEL_BUTTON = [
+  'border-panel-soft bg-transparent text-sm text-panel-foreground shadow-none',
+  'hover:translate-y-0 hover:bg-panel-line hover:shadow-none',
+].join(' ');
+
+/** Nabídka na tmavém pruhu. Rozbalený seznam se portáluje na papír, proto se nemění. */
+const PANEL_SELECT = [
+  'w-56 min-h-[var(--size-control-sm)] h-[var(--size-control-sm)] py-1',
+  'border-panel-soft bg-transparent text-sm text-panel-foreground',
+].join(' ');
 
 export function ContactsBulkActions({
   workspaceId,
@@ -263,11 +286,14 @@ export function ContactsBulkActions({
     <>
       <Button
         variant="secondary"
+        size="sm"
+        className={PANEL_BUTTON}
         disabled={confirming || selection.mode !== 'ids'}
         onClick={() => {
           void confirmSelected();
         }}
       >
+        <CircleCheckBig aria-hidden className="icon-sm" />
         {confirming ? t('confirmState.confirming') : t('confirmState.bulkAction')}
       </Button>
 
@@ -275,7 +301,7 @@ export function ContactsBulkActions({
           rozbalovátko na celou šířku zabere celý řádek a vytlačí tlačítka pod sebe. */}
       {tags.length > 0 ? (
         <Select
-          className="w-56"
+          className={PANEL_SELECT}
           aria-label={t('bulk.addTag')}
           placeholder={t('bulk.addTag')}
           onValueChange={(tagId: string) => {
@@ -296,7 +322,7 @@ export function ContactsBulkActions({
       {lists.length > 0 ? (
         <>
           <Select
-            className="w-56"
+            className={PANEL_SELECT}
             aria-label={t('bulk.addToList')}
             placeholder={t('bulk.addToList')}
             onValueChange={setListId}
@@ -309,6 +335,8 @@ export function ContactsBulkActions({
           </Select>
           <Button
             variant="secondary"
+            size="sm"
+            className={PANEL_BUTTON}
             disabled={addingToList || listId === null || selection.mode !== 'ids'}
             onClick={() => {
               void addToList();
@@ -322,6 +350,8 @@ export function ContactsBulkActions({
               nemá hledat opačnou akci na jiném místě obrazovky. */}
           <Button
             variant="secondary"
+            size="sm"
+            className={PANEL_BUTTON}
             disabled={removingFromList || listId === null || selection.mode !== 'ids'}
             onClick={() => setRemoveOpen(true)}
           >
@@ -336,6 +366,8 @@ export function ContactsBulkActions({
           tedy jen tomu, kdo ho chtěl smazat, a i tam skončil na 422. */}
       <Button
         variant="secondary"
+        size="sm"
+        className={PANEL_BUTTON}
         onClick={() =>
           void contactExport.start({
             title: t('bulk.exportTitle'),
@@ -344,10 +376,19 @@ export function ContactsBulkActions({
           })
         }
       >
+        <Download aria-hidden className="icon-sm" />
         {t('bulk.export', { count: selection.count })}
       </Button>
 
-      <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+      {/* Mazání si plnou barvu nechává: na tmavém pruhu je to jediná akce s vnějším
+          dopadem, který nejde vzít zpět, a nesmí splynout s ostatními. */}
+      <Button
+        variant="destructive"
+        size="sm"
+        className="text-sm shadow-none hover:translate-y-0 hover:shadow-none"
+        onClick={() => setDeleteOpen(true)}
+      >
+        <Trash2 aria-hidden className="icon-sm" />
         {t('bulk.delete')}
       </Button>
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { Badge } from '@mlain/ui/components/badge';
 import { Button } from '@mlain/ui/components/button';
 import { useTranslations } from 'next-intl';
 import type { EditorPorts } from '../../ports/types';
@@ -42,9 +43,24 @@ export function EditorHeader(props: {
   const isDirty = useEditorState((state) => state.isDirty);
   const status = useEditorState((state) => state.status);
 
+  /*
+   * Hlavička je TLUMENÝ PRUH s rádiusem 10 px, jak ji kreslí návrh nad plátnem:
+   * `padding 12/15`, plocha `surface-muted`, hairline rámeček. Dřív to byla
+   * linka přes celou šířku, což k mřížce karet pod ní nesedělo.
+   *
+   * Vlevo název, stav ukládání a ovladače zobrazení, vpravo akce. Návrh má
+   * vpravo `margin-left: auto`, tady to dělá `ml-auto` na skupině tlačítek,
+   * aby se při zúžení zalomila jako celek.
+   */
   return (
-    <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2">
-      <div className="flex flex-wrap items-center gap-3">
+    <header
+      className={[
+        'flex flex-wrap items-center gap-[var(--spacing-inline)]',
+        'rounded-[var(--radius-surface)] border border-border bg-surface-muted',
+        'px-[var(--spacing-stack)] py-3',
+      ].join(' ')}
+    >
+      <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
         {/*
           Obsah kampaně NENÍ obecná šablona, i když leží ve stejné tabulce.
           Uživatel, který se sem proklikl z kampaně, musí vidět, že upravuje
@@ -52,11 +68,10 @@ export function EditorHeader(props: {
           všechny ostatní.
         */}
         {props.contentKind === 'campaign' ? (
-          <span
-            data-testid="content-kind"
-            className="rounded-[var(--radius-control)] bg-accent-surface px-2 py-0.5 text-xs font-medium text-accent-text"
-          >
-            {t('header.campaignContent')}
+          // Je to odznak, ne vlastní obdélníček: odpovídá na otázku „v jakém
+          // je to stavu", tedy „tohle není šablona, tohle je obsah kampaně".
+          <span data-testid="content-kind">
+            <Badge tone="accent">{t('header.campaignContent')}</Badge>
           </span>
         ) : null}
         {/*
@@ -73,7 +88,7 @@ export function EditorHeader(props: {
         <SaveStatus />
         <ViewControls ports={props.ports} />
       </div>
-      <div className="flex gap-2">
+      <div className="ml-auto flex flex-wrap items-center gap-[var(--spacing-inline)]">
         {/*
           NÁVRAT DO KAMPANĚ. Editor sám o kampaních nic neví a vědět nemá:
           dostane jen adresu, kam se po uložení vrátit, a popisek tlačítka.

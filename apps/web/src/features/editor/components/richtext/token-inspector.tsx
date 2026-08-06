@@ -60,21 +60,21 @@ export function TokenInspector(props: {
 
   return (
     <div className="space-y-2">
-      <p className="text-xs text-text-muted">{t('token.title')}</p>
+      <p className="text-meta text-text-muted">{t('token.title')}</p>
       {/* Vysvětlení role značky. U suroviny jména je to varování, ne popisek:
           přesně z ní si uživatel skládal „Dobrý den, " + jméno a dostával 1. pád
           u kontaktů v jazyce bez vokativu a visící čárku u kontaktů bez jména. */}
       {guidance === 'greeting' ? (
-        <p data-testid="token-greeting-hint" className="text-xs text-text-muted">
+        <p data-testid="token-greeting-hint" className="text-meta text-text-muted">
           {t('token.greetingHint')}
         </p>
       ) : null}
       {guidance === 'nameFragment' && greetingOffered ? (
-        <p data-testid="token-fragment-warning" className="text-xs text-warning-text">
+        <p data-testid="token-fragment-warning" className="text-meta text-warning-text">
           {t('token.fragmentWarning')}
         </p>
       ) : null}
-      <label className="block text-xs">
+      <label className="block text-meta">
         {t('token.fallbackLabel')}
         <Input
           aria-label={t('token.fallbackLabel')}
@@ -92,17 +92,17 @@ export function TokenInspector(props: {
         />
       </label>
       {invalid ? (
-        <p role="alert" className="text-xs text-danger-text">
+        <p role="alert" className="text-meta text-danger-text">
           {t('token.fallbackInvalid')}
         </p>
       ) : null}
-      <p className="text-xs text-text-muted">{t('token.fallbackHint')}</p>
+      <p className="text-meta text-text-muted">{t('token.fallbackHint')}</p>
       {isDate ? (
-        <label className="block text-xs">
+        <label className="block text-meta">
           {t('token.dateFormatLabel')}
           <select
             aria-label={t('token.dateFormatLabel')}
-            className="mt-1 h-9 w-full rounded-[var(--radius-control)] border border-border bg-surface px-2 text-sm"
+            className="mt-1 min-h-[var(--size-target-min)] w-full rounded-[var(--radius-control)] border border-border-strong bg-field px-3 text-ui"
             defaultValue={props.attrs.dateFormat ?? ''}
             onChange={(event) => props.onChange({ dateFormat: event.target.value || null })}
           >
@@ -116,7 +116,7 @@ export function TokenInspector(props: {
         </label>
       ) : null}
       {isLongText ? (
-        <p data-testid="token-hint" className="text-xs text-text-muted">
+        <p data-testid="token-hint" className="text-meta text-text-muted">
           {t('token.longTextHint')}
         </p>
       ) : null}

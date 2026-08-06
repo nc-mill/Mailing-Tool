@@ -45,16 +45,20 @@ describe('DemoDataBanner', () => {
     // ODCHYLKA OD PLÁNU, OVĚŘENÁ V PROHLÍŽEČI: plán psal `?tag=ukazkova-data`,
     // jenže tabulka kontaktů filtruje podle `tag_id`. Se jménem štítku v URL
     // se seznam nefiltroval vůbec a odkaz jen vypadal, že něco dělá.
+    //
+    // Akce se jmenuje „Zobrazit v kontaktech" (návrh má vpravo dvě krátké
+    // akce), o štítku mluví věta v pruhu. Podstatná je pořád ADRESA.
     renderWithProviders(<DemoDataBanner state={present} slug="e-shop" />);
-    expect(screen.getByRole('link', { name: /štítku Ukázková data/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Zobrazit v kontaktech' })).toHaveAttribute(
       'href',
       `/w/e-shop/contacts?tag_id=${present.tagId}`,
     );
+    expect(screen.getByText(/pod štítkem Ukázková data/)).toBeInTheDocument();
   });
 
   it('bez známého štítku vede odkaz aspoň na seznam kontaktů, ne na rozbité URL', () => {
     renderWithProviders(<DemoDataBanner state={{ ...present, tagId: null }} slug="e-shop" />);
-    expect(screen.getByRole('link', { name: /štítku Ukázková data/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Zobrazit v kontaktech' })).toHaveAttribute(
       'href',
       '/w/e-shop/contacts',
     );

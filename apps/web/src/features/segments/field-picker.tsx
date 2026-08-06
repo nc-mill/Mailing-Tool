@@ -40,6 +40,13 @@ export const FIELD_GROUPS: FieldGroup[] = [
 const MAX_ENGAGEMENT = 5;
 
 /**
+ * POZOR: TAHLE KOMPONENTA NENÍ NIKDE ZAPOJENÁ.
+ *
+ * Výběr pole na obrazovce segmentu vykresluje `QueryBuilder`
+ * z `@mlain/ui/patterns/query-builder`. Tenhle soubor umí navíc dvě věci,
+ * které stavitel zatím nemá (odznak neindexovaného pole a strop na počet
+ * podmínek nad aktivitou), a zůstává tu kvůli nim.
+ *
  * Výběr pole seskupený do deseti sekcí. Neindexované vlastní pole je označené
  * a řekne PROČ je pomalejší; varování se váže na to, jestli kompilátor umí
  * podmínku přeložit na `@>`, ne na sloupec `contact_fields.indexed`, který

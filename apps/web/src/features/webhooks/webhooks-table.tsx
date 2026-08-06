@@ -91,20 +91,20 @@ export function WebhooksTable(props: WebhooksTableProps) {
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="w-full text-left">
+        <table className="w-full border-collapse text-left text-ui">
           <caption className="sr-only">{t('webhooks.title')}</caption>
           <thead>
-            <tr>
-              <th scope="col" className="pb-2 pr-6">
+            <tr className="bg-surface-muted">
+              <th scope="col" className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted">
                 {t('webhooks.table.url')}
               </th>
-              <th scope="col" className="pb-2 pr-6">
+              <th scope="col" className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted">
                 {t('webhooks.table.events')}
               </th>
-              <th scope="col" className="pb-2 pr-6">
+              <th scope="col" className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted">
                 {t('webhooks.table.status')}
               </th>
-              <th scope="col" className="pb-2 pr-6">
+              <th scope="col" className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted">
                 {t('webhooks.table.lastDelivery')}
               </th>
             </tr>
@@ -113,16 +113,19 @@ export function WebhooksTable(props: WebhooksTableProps) {
             {rows.map((row) => {
               const href = `/w/${props.slug}/settings/webhooks/${row.id}`;
               return (
-                <tr key={row.id} className="border-t border-border align-top">
-                  <td className="py-3 pr-6">
-                    <Link href={href} className="font-medium underline">
+                <tr
+                  key={row.id}
+                  className="border-b border-border align-top hover:bg-surface-muted"
+                >
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
+                    <Link href={href} className="text-ui font-semibold">
                       {row.url}
                     </Link>
                     {row.description === '' ? null : (
-                      <p className="text-sm text-text-muted">{row.description}</p>
+                      <p className="text-meta text-text-muted">{row.description}</p>
                     )}
                     {row.status === 'disabled' && props.canWrite ? (
-                      <form action={props.enableAction} className="mt-2">
+                      <form action={props.enableAction} className="mt-[var(--spacing-hairline)]">
                         <input
                           type="hidden"
                           name="workspace_id"
@@ -142,8 +145,10 @@ export function WebhooksTable(props: WebhooksTableProps) {
                       </form>
                     ) : null}
                   </td>
-                  <td className="py-3 pr-6 text-sm">{row.event_types.join(', ')}</td>
-                  <td className="py-3 pr-6">
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)] text-meta">
+                    {row.event_types.join(', ')}
+                  </td>
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                     {row.status === 'disabled' ? (
                       <Badge tone="danger" icon={SlashIcon}>
                         {t('webhooks.status.disabled')}
@@ -158,7 +163,7 @@ export function WebhooksTable(props: WebhooksTableProps) {
                       </Badge>
                     )}
                   </td>
-                  <td className="py-3 pr-6">
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                     {row.last_success_at === null ? (
                       t('shared.never')
                     ) : (
@@ -175,7 +180,7 @@ export function WebhooksTable(props: WebhooksTableProps) {
       </div>
 
       {rows.length >= WEBHOOK_ENDPOINT_LIMIT ? (
-        <div className="mt-6">
+        <div className="mt-[var(--spacing-gutter)]">
           <OverLimitState title={t('webhooks.limitTitle')} body={t('webhooks.limitBody')} />
         </div>
       ) : null}

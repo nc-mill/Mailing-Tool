@@ -5,8 +5,9 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
 import { localeLabel } from '@/lib/i18n/locale-label';
 import { Button } from '@mlain/ui/components/button';
+import { Card } from '@mlain/ui/components/card';
+import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
-import { Label } from '@mlain/ui/components/label';
 import { useToast } from '@mlain/ui/patterns/toast';
 import { GreetingBadge } from './greeting-badge';
 import { clearGreetingAction, setGreetingAction } from './greeting-actions';
@@ -76,16 +77,17 @@ export function GreetingField({
   }
 
   return (
-    <section data-testid="greeting-field" className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-text">{contact.greeting}</span>
+    <section data-testid="greeting-field" className="flex flex-col gap-[var(--spacing-hairline)]">
+      <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
+        <span className="text-ui text-text">{contact.greeting}</span>
         <GreetingBadge contact={contact} showForm={false} />
-        <Button variant="secondary" onClick={() => setOpen((previous) => !previous)}>
+        <Button variant="secondary" size="sm" onClick={() => setOpen((previous) => !previous)}>
           {open ? t('greeting.cancel') : t('greeting.edit')}
         </Button>
         {contact.vocative_locked ? (
           <Button
             variant="secondary"
+            size="sm"
             disabled={pending}
             onClick={() => run(() => clearGreetingAction({ workspaceId, id: contactId }))}
           >
@@ -129,18 +131,17 @@ export function GreetingField({
       ) : null}
 
       {open ? (
-        <div className="flex flex-col gap-2 rounded-[var(--radius-surface)] border border-border bg-surface p-4">
-          <Label htmlFor="greeting-vocative">{t('greeting.fieldLabel')}</Label>
-          <Input
-            id="greeting-vocative"
-            name="greeting_vocative"
-            value={value}
-            autoComplete="off"
-            onChange={(event) => setValue(event.target.value)}
-          />
-          <p className="text-sm text-text-muted">{t('greeting.fieldHint')}</p>
-          <p className="text-sm text-text-muted">{t('greeting.emptyHint')}</p>
-          <div className="flex flex-wrap gap-2">
+        <Card padding="sm" className="mt-[var(--spacing-hairline)]">
+          <Field label={t('greeting.fieldLabel')} hint={t('greeting.fieldHint')}>
+            <Input
+              name="greeting_vocative"
+              value={value}
+              autoComplete="off"
+              onChange={(event) => setValue(event.target.value)}
+            />
+          </Field>
+          <p className="text-meta text-text-muted">{t('greeting.emptyHint')}</p>
+          <div className="flex flex-wrap gap-[var(--spacing-inline)]">
             {/* Primární tlačítko `disabled` nepřijímá (princip P5, kritérium 18),
                 stav běhu se hlásí přes `pending` a `pendingLabel`. */}
             <Button
@@ -159,7 +160,7 @@ export function GreetingField({
               {t('greeting.cancel')}
             </Button>
           </div>
-        </div>
+        </Card>
       ) : null}
     </section>
   );

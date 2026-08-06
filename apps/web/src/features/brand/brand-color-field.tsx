@@ -52,13 +52,13 @@ export function BrandColorField({
   const shown = valid ? draft.toLowerCase() : value;
 
   return (
-    <div className="flex flex-wrap items-start gap-3">
+    <div className="flex flex-wrap items-start gap-[var(--spacing-stack)]">
       <div className="min-w-40 flex-1">
         <Label htmlFor={textId}>{label}</Label>
-        <p className="mt-0.5 text-sm text-text-muted">{hint}</p>
+        <p className="mt-0.5 text-meta text-text-muted">{hint}</p>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-[var(--spacing-inline)]">
         {/*
           Vzorek je `span`, ne obrázek: barva je dekorace textu vedle, ne
           samostatná informace. Hodnota je hned vedle v hexu a ta se čte
@@ -67,7 +67,7 @@ export function BrandColorField({
         <span
           aria-hidden="true"
           data-testid={`brand-swatch-${name}`}
-          className="inline-block size-9 shrink-0 rounded-[var(--radius-control)] border border-border-strong"
+          className="inline-block size-[var(--size-control-sm)] shrink-0 rounded-[var(--radius-control)] border border-border-strong"
           style={{ backgroundColor: shown }}
         />
         {/*
@@ -86,7 +86,7 @@ export function BrandColorField({
             setDraft(next);
             onChange(next);
           }}
-          className="h-9 w-12 shrink-0 p-1"
+          className="h-[var(--size-control-sm)] w-12 shrink-0 p-1"
         />
         <Input
           id={textId}

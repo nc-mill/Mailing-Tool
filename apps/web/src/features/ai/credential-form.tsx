@@ -3,10 +3,12 @@
 import { useActionState, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@mlain/ui/components/button';
+import { CardTitle } from '@mlain/ui/components/card';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
 import { Alert } from '@mlain/ui/patterns/states';
 import { FieldError, fieldAria } from '@/lib/forms/field-error';
+import { SelectField } from '@/lib/forms/select-field';
 import { SubmitButton } from '@/lib/forms/submit-button';
 import { IdempotencyField } from '@/lib/feedback/idempotency-field';
 import { IDLE, type ActionState } from '@/lib/feedback/action-result';
@@ -50,50 +52,48 @@ export function CredentialForm({ workspaceId, slug, providers, action }: Credent
   const fieldErrors = state.status === 'error' ? state.fieldErrors : {};
 
   return (
-    <section aria-labelledby="ai-credential-create" className="max-w-xl">
-      <h2 id="ai-credential-create" className="text-xl font-semibold text-text">
-        {t('credentials.add')}
-      </h2>
+    <section
+      aria-labelledby="ai-credential-create"
+      className="flex max-w-[var(--size-text-column)] flex-col gap-[var(--spacing-gutter)]"
+    >
+      <CardTitle>
+        <span id="ai-credential-create">{t('credentials.add')}</span>
+      </CardTitle>
 
-      {state.status === 'success' ? (
-        <div className="mt-4">
-          <Alert tone="success" title={t('credentials.saved')} />
-        </div>
-      ) : null}
+      {state.status === 'success' ? <Alert tone="success" title={t('credentials.saved')} /> : null}
 
       {state.status === 'error' && Object.keys(fieldErrors).length === 0 ? (
-        <div className="mt-4">
-          <SettingsProblem problem={state.problem} />
-        </div>
+        <SettingsProblem problem={state.problem} />
       ) : null}
 
-      <form action={formAction} className="mt-4 flex flex-col gap-4" noValidate>
+      <form action={formAction} className="flex flex-col gap-[var(--spacing-gutter)]" noValidate>
         <IdempotencyField />
         <input type="hidden" name="workspace_id" value={workspaceId} readOnly />
         <input type="hidden" name="slug" value={slug} readOnly />
 
-        <div>
-          <Label htmlFor="ai-credential-provider">{t('credentials.provider')}</Label>
+        <div className="flex flex-col gap-1.5">
           {/*
-           * Nativní `<select>`, ne `Select` z P05: formulář se odesílá serverovou
-           * akcí přes `FormData`, a Radix Select hodnotu do formuláře nedává.
-           * Skrytý zrcadlící input by byl druhý zdroj pravdy pro totéž pole.
+           * `SelectField`, ne nativní `<select>`. Původní komentář tu tvrdil, že
+           * Radix Select hodnotu do `FormData` nedá a skryté zrcadlící pole by
+           * bylo druhý zdroj pravdy. To zrcadlící pole ale používá `SelectField`
+           * v celé aplikaci, od jazyka projektu po roli člena, takže tenhle
+           * jediný nativní výběr vypadal jako prvek z jiné aplikace: jinou
+           * výšku, jiný rámeček, systémovou šipku.
+           *
+           * `min-h-11` navíc nebyl token: 44 px z výchozí škály Tailwindu je
+           * náhoda, změna `--size-target-min` by ho minula.
            */}
-          <select
-            id="ai-credential-provider"
+          <SelectField
             name="provider"
-            value={providerId}
-            onChange={(event) => setProviderId(event.target.value)}
-            className="min-h-11 w-full rounded-[var(--radius-control)] border border-border-strong bg-surface px-3 text-sm text-text"
-          >
-            {providers.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+            label={t('credentials.provider')}
+            placeholder={t('credentials.provider')}
+            defaultValue={providerId}
+            options={providers.map((item) => ({ value: item.id, label: item.label }))}
+            errors={fieldErrors}
+            onSelected={setProviderId}
+          />
           {provider !== undefined && provider.signupUrl !== '' ? (
-            <p className="mt-1 text-sm text-text-muted">
+            <p className="text-meta text-text-muted">
               <a
                 className="text-accent-text underline underline-offset-4"
                 href={provider.signupUrl}
@@ -106,15 +106,15 @@ export function CredentialForm({ workspaceId, slug, providers, action }: Credent
           ) : null}
         </div>
 
-        <div>
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="ai-credential-label">{t('credentials.label')}</Label>
           <Input id="ai-credential-label" name="label" {...fieldAria('label', fieldErrors)} />
           <FieldError name="label" errors={fieldErrors} />
         </div>
 
-        <div>
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="ai-credential-key">{t('credentials.apiKey')}</Label>
-          <div className="flex gap-2">
+          <div className="flex gap-[var(--spacing-inline)]">
             <Input
               id="ai-credential-key"
               name="api_key"
@@ -127,12 +127,12 @@ export function CredentialForm({ workspaceId, slug, providers, action }: Credent
               {revealed ? t('credentials.hide') : t('credentials.reveal')}
             </Button>
           </div>
-          <p className="mt-1 text-sm text-text-muted">{t('credentials.apiKeyOnce')}</p>
+          <p className="text-meta text-text-muted">{t('credentials.apiKeyOnce')}</p>
           <FieldError name="api_key" errors={fieldErrors} />
         </div>
 
         {provider?.allowsBaseUrl === true ? (
-          <div>
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="ai-credential-base-url">{t('credentials.baseUrl')}</Label>
             <Input
               id="ai-credential-base-url"
@@ -145,7 +145,7 @@ export function CredentialForm({ workspaceId, slug, providers, action }: Credent
           </div>
         ) : null}
 
-        <div>
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="ai-credential-model">{t('credentials.defaultModel')}</Label>
           <Input
             id="ai-credential-model"
@@ -157,7 +157,7 @@ export function CredentialForm({ workspaceId, slug, providers, action }: Credent
           <FieldError name="default_model" errors={fieldErrors} />
         </div>
 
-        <div>
+        <div className="flex">
           <SubmitButton label={t('credentials.save')} pendingLabel={t('credentials.save')} />
         </div>
       </form>

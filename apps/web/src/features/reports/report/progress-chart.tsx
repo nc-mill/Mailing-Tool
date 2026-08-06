@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { useFormatter, useTranslations } from 'next-intl';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 
 /**
  * Graf není součástí základního balíku, viz kritérium 82 části 6.
@@ -63,37 +64,57 @@ export function ProgressChart({
   ].filter((key): key is string => key !== null);
 
   return (
-    <section
-      aria-labelledby="chart-heading"
-      className="rounded-lg border border-border bg-surface p-4"
-    >
-      <h2 id="chart-heading" className="text-base font-semibold">
-        {t('report.chart.heading')}
-      </h2>
-      <div role="group" aria-label={t('report.chart.heading')} className="mb-2 flex gap-2">
-        {(['5m', 'hour', 'day'] as const).map((value) => (
-          <button
-            key={value}
-            type="button"
-            className="inline-flex min-h-6 min-w-6 items-center justify-center rounded px-2 py-1 border border-border"
-            aria-pressed={granularity === value}
-            onClick={() => onGranularityChange(value)}
-          >
-            {t(
-              value === '5m'
-                ? 'report.chart.granularity5m'
-                : value === 'hour'
-                  ? 'report.chart.granularityHour'
-                  : 'report.chart.granularityDay',
-            )}
-          </button>
-        ))}
+    <Card aria-labelledby="chart-heading">
+      {/* Nadpis a přepínač měřítka na jedné lince, přepínač vpravo. */}
+      <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
+        <CardTitle>
+          <span id="chart-heading">{t('report.chart.heading')}</span>
+        </CardTitle>
+        {/*
+          Přepínač měřítka: jeden rámeček, uvnitř tlačítka bez rámečku. Vybrané
+          měřítko je TMAVÝ PANEL se světlým textem, ne jen tučnější písmo,
+          protože jinak není z odstupu poznat, které z těch tří platí.
+        */}
+        <div
+          role="group"
+          aria-label={t('report.chart.heading')}
+          className="ml-auto flex overflow-hidden rounded-[var(--radius-control)] border border-border"
+        >
+          {(['5m', 'hour', 'day'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={[
+                'min-h-[var(--size-control-sm)] px-3 text-sm',
+                'transition-colors duration-[var(--duration-fast)]',
+                'border-r border-border last:border-r-0',
+                'focus-visible:outline-2 focus-visible:-outline-offset-2',
+                'focus-visible:outline-[var(--color-focus-ring)]',
+                granularity === value
+                  ? 'bg-panel text-panel-foreground'
+                  : 'bg-surface text-text-muted hover:bg-surface-muted hover:text-text',
+              ].join(' ')}
+              aria-pressed={granularity === value}
+              onClick={() => onGranularityChange(value)}
+            >
+              {t(
+                value === '5m'
+                  ? 'report.chart.granularity5m'
+                  : value === 'hour'
+                    ? 'report.chart.granularityHour'
+                    : 'report.chart.granularityDay',
+              )}
+            </button>
+          ))}
+        </div>
       </div>
-      {compacted ? <p className="text-xs text-text-muted">{t('report.chart.compacted')}</p> : null}
+      {compacted ? (
+        <p className="text-meta text-text-muted">{t('report.chart.compacted')}</p>
+      ) : null}
       {/* Prázdný graf je díra v obrazovce. Dokud nedorazil ani jeden bod,
           řekne se to větou, ne prázdným místem. */}
       {points.length === 0 ? (
-        <p className="text-sm text-text-muted">{t('report.diagnostics.noEvents')}</p>
+        <p className="text-ui text-text-muted">{t('report.diagnostics.noEvents')}</p>
       ) : null}
       <ReportChart
         title={t('report.chart.heading')}
@@ -119,10 +140,10 @@ export function ProgressChart({
         }))}
       />
       {omitted.map((key) => (
-        <p key={key} data-testid="chart-omitted-series" className="mt-2 text-xs text-text-muted">
+        <p key={key} data-testid="chart-omitted-series" className="text-meta text-text-muted">
           {t(key)}
         </p>
       ))}
-    </section>
+    </Card>
   );
 }

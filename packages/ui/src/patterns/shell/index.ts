@@ -1,5 +1,6 @@
 export { AppShell } from './app-shell';
 export { Sidebar } from './sidebar';
+export type { SidebarLabels } from './sidebar';
 export { SystemBar } from './system-bar';
 export type { SystemBarKind, SystemBarState } from './system-bar';
 export { Topbar } from './topbar';

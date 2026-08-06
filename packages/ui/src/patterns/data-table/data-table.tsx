@@ -1,9 +1,9 @@
 'use client';
 
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, ArrowUp, Settings2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, SlidersHorizontal, X } from '../../icons';
 import { useRef, useState } from 'react';
-import { Button } from '../../components/button';
+import { IconButton } from '../../components/icon-button';
 import { Checkbox } from '../../components/checkbox';
 import { cn } from '../../lib/cn';
 import { PaginationFooter, type CountInfo } from './pagination-footer';
@@ -45,6 +45,13 @@ export type DataTableLabels = {
   columnSettings: string;
   columnVisible: (column: string) => string;
   columnWidth: (column: string) => string;
+  /**
+   * Popisek křížku, kterým se panel sloupců zavírá. Nepovinný, protože ho
+   * dřívější volající nemají; bez něj se křížek nevykreslí. Obrazovka, která
+   * si spouštěč vzala do hlavičky, ho ale předat MÁ, jinak panel nemá jak
+   * zavřít bez cesty zpátky nahoru. V katalogu je `common.actions.close`.
+   */
+  closeColumnSettings?: string;
 };
 
 export function DataTable<Row>({
@@ -65,6 +72,7 @@ export function DataTable<Row>({
   emptyState,
   defaultVisibleColumns,
   virtualizeFrom = VIRTUALIZE_FROM,
+  columnSettings,
 }: {
   tableId: string;
   /** Popisek tabulky pro čtečku. Nikdy prázdný. */
@@ -94,6 +102,19 @@ export function DataTable<Row>({
   defaultVisibleColumns?: number;
   /** Mez, od které se zapíná virtualizace. Specifikace 14.2 říká 100. */
   virtualizeFrom?: number;
+  /**
+   * Kdo drží otevření panelu „Nastavení sloupců".
+   *
+   * Bez téhle propy si ho tabulka řídí sama a vykreslí si nad sebou vlastní
+   * tlačítko. To je rozumné výchozí chování pro tabulku kdekoliv v aplikaci.
+   *
+   * Návrh ale spouštěč nemá nad tabulkou, má ho jako **ikonový čtverec 44×44
+   * v hlavičce obrazovky** vedle hlavní akce, a to shodně na Kontaktech
+   * i na Seznamech. Obrazovka proto může stav převzít: předá `open`
+   * a `onOpenChange`, vykreslí si `IconButton` v `PageHeader` a tabulka pak
+   * **žádné vlastní tlačítko nekreslí**, jen ukáže nebo schová panel.
+   */
+  columnSettings?: { open: boolean; onOpenChange: (open: boolean) => void };
 }) {
   const pageIds = rows.map(getRowId);
   const selection = useRowSelection({
@@ -102,7 +123,9 @@ export function DataTable<Row>({
     onSelectionChange: selectionProp?.onSelectionChange,
   });
   const [focusedIndex, setFocusedIndex] = useState(0);
-  const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
+  // Neřízený stav existuje pořád, jen se nepoužije, když si ho vzala obrazovka.
+  const [ownColumnSettingsOpen, setOwnColumnSettingsOpen] = useState(false);
+  const columnSettingsOpen = columnSettings?.open ?? ownColumnSettingsOpen;
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
   // Nastavení sloupců je tvrdý požadavek K1. Hook existoval od úkolu 19,
@@ -195,21 +218,43 @@ export function DataTable<Row>({
       {cursorInvalid ? (
         <p
           role="status"
-          className="rounded-[var(--radius-control)] bg-surface-muted px-4 py-3 text-sm text-text"
+          className="rounded-[var(--radius-control)] bg-surface-muted px-4 py-3 text-ui text-text"
         >
           {labels.cursorInvalid}
         </p>
       ) : null}
 
-      <div className="flex justify-end">
-        <Button variant="secondary" onClick={() => setColumnSettingsOpen((open) => !open)}>
-          <Settings2 aria-hidden className="size-4" />
-          {labels.columnSettings}
-        </Button>
-      </div>
+      {columnSettings ? null : (
+        <div className="flex justify-end">
+          <IconButton
+            variant="quiet"
+            label={labels.columnSettings}
+            icon={<SlidersHorizontal aria-hidden className="icon-md" />}
+            onClick={() => setOwnColumnSettingsOpen((open) => !open)}
+            aria-expanded={columnSettingsOpen}
+          />
+        </div>
+      )}
 
       {columnSettingsOpen ? (
         <div className="flex flex-col gap-2 rounded-[var(--radius-surface)] border border-border bg-surface p-4">
+          {/* Zavírací křížek. Když spouštěč drží obrazovka, je to jediná cesta,
+              jak panel zavřít bez cesty zpátky do hlavičky. */}
+          {labels.closeColumnSettings ? (
+            <div className="flex items-center justify-end">
+              <IconButton
+                variant="ghost"
+                size="xs"
+                label={labels.closeColumnSettings}
+                icon={<X aria-hidden className="icon-sm" />}
+                onClick={() =>
+                  columnSettings
+                    ? columnSettings.onOpenChange(false)
+                    : setOwnColumnSettingsOpen(false)
+                }
+              />
+            </div>
+          ) : null}
           {columns.map((column) => (
             <div key={column.id} className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-sm text-text">
@@ -229,7 +274,7 @@ export function DataTable<Row>({
                 onChange={(event) =>
                   preferences.setWidth(column.id, Number(event.target.value) || 0)
                 }
-                className="min-h-11 w-24 rounded-[var(--radius-control)] border border-border-strong bg-surface px-2 text-sm text-text"
+                className="min-h-[var(--size-target-min)] w-[var(--size-field-narrow)] rounded-[var(--radius-control)] border border-border-strong bg-field px-2 text-ui text-text"
               />
             </div>
           ))}
@@ -261,17 +306,18 @@ export function DataTable<Row>({
         // proto se bere z dat, ne z počtu vykreslených uzlů.
         aria-rowcount={rows.length + 1}
         data-table-id={tableId}
-        className="overflow-auto rounded-[var(--radius-surface)] border border-border"
+        className="overflow-auto rounded-[var(--radius-surface)] border border-border bg-surface"
       >
         <div
           role="row"
           aria-rowindex={1}
           data-testid="data-table-head"
-          className="sticky top-0 z-[var(--z-sticky)] flex gap-3 border-b border-border bg-surface-muted px-3 py-2"
+          className="sticky top-0 z-[var(--z-sticky)] flex items-center gap-[var(--spacing-stack)] border-b border-border bg-surface-muted px-[var(--spacing-row-x)] py-3"
         >
           <span role="columnheader" className="flex w-8 items-center">
             <Checkbox
               aria-label={labels.selectAllOnPage}
+              dense
               checked={selection.allOnPageSelected}
               onCheckedChange={() => selection.toggleAllOnPage()}
             />
@@ -287,7 +333,7 @@ export function DataTable<Row>({
                     : 'descending'
                   : undefined
               }
-              className="flex-1 text-sm font-medium text-text"
+              className="meta-caps flex-1 text-text-muted"
               style={
                 (preferences.widths[column.id] ?? column.width)
                   ? { width: preferences.widths[column.id] ?? column.width, flex: 'none' }
@@ -309,9 +355,9 @@ export function DataTable<Row>({
                   {column.header}
                   {sortColumn === column.id ? (
                     sortDirection === 'asc' ? (
-                      <ArrowUp aria-label={labels.sortedAscending} className="size-4" />
+                      <ArrowUp aria-label={labels.sortedAscending} className="icon-sm" />
                     ) : (
-                      <ArrowDown aria-label={labels.sortedDescending} className="size-4" />
+                      <ArrowDown aria-label={labels.sortedDescending} className="icon-sm" />
                     )
                   ) : null}
                 </button>
@@ -355,13 +401,17 @@ export function DataTable<Row>({
                     : undefined
                 }
                 className={cn(
-                  'flex gap-3 border-b border-border px-3 py-2 last:border-b-0',
-                  selection.isSelected(id) ? 'bg-accent-surface' : 'bg-surface',
+                  'flex items-center gap-[var(--spacing-stack)] border-b border-border last:border-b-0',
+                  'px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]',
+                  selection.isSelected(id)
+                    ? 'bg-accent-surface'
+                    : 'bg-surface hover:bg-surface-muted',
                 )}
               >
                 <span role="gridcell" className="flex w-8 items-center">
                   <Checkbox
                     aria-label={labels.selectRow}
+                    dense
                     checked={selection.isSelected(id)}
                     onClick={(event) => {
                       if (event.shiftKey) {
@@ -376,7 +426,7 @@ export function DataTable<Row>({
                   <span
                     key={column.id}
                     role="gridcell"
-                    className="flex-1 text-sm text-text"
+                    className="min-w-0 flex-1 text-ui text-text"
                     style={
                       (preferences.widths[column.id] ?? column.width)
                         ? { width: preferences.widths[column.id] ?? column.width, flex: 'none' }
@@ -390,17 +440,20 @@ export function DataTable<Row>({
             );
           })}
         </div>
-      </div>
 
-      <PaginationFooter
-        shown={rows.length}
-        count={count}
-        hasMore={pagination.hasMore}
-        canGoBack={pagination.canGoBack}
-        onPrevious={pagination.onPrevious}
-        onNext={pagination.onNext}
-        labels={labels}
-      />
+        {/* Stránkování je UVNITŘ karty, ne pod ní. V návrhu je tabulka jedna
+            plocha s hairline rámečkem a patička je její spodní pruh; kdyby
+            stála venku, vznikly by pod sebou dva rámečky. */}
+        <PaginationFooter
+          shown={rows.length}
+          count={count}
+          hasMore={pagination.hasMore}
+          canGoBack={pagination.canGoBack}
+          onPrevious={pagination.onPrevious}
+          onNext={pagination.onNext}
+          labels={labels}
+        />
+      </div>
     </div>
   );
 }

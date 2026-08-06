@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Badge } from '@mlain/ui/components/badge';
 import { Button } from '@mlain/ui/components/button';
+import { CardTitle } from '@mlain/ui/components/card';
 import { EmptyState, FilteredEmptyState } from '@mlain/ui/patterns/states';
 import { CheckIcon, ClockIcon, RunningIcon, SlashIcon, WarningIcon } from '@/lib/ui/status-icons';
 import { buildListHref, type Paginated } from '@/lib/api-client/cursor';
@@ -91,20 +92,26 @@ export function DeliveriesTable(props: DeliveriesTableProps) {
     .join(', ');
 
   return (
-    <section aria-labelledby="webhook-deliveries">
-      <h2 id="webhook-deliveries" className="text-xl font-semibold">
-        {t('webhooks.deliveries.title')}
-      </h2>
-      <p className="mt-2 text-text-muted">{t('webhooks.deliveries.lead')}</p>
+    <section
+      aria-labelledby="webhook-deliveries"
+      className="flex flex-col gap-[var(--spacing-gutter)]"
+    >
+      <CardTitle>
+        <span id="webhook-deliveries">{t('webhooks.deliveries.title')}</span>
+      </CardTitle>
+      <p className="text-meta text-text-muted">{t('webhooks.deliveries.lead')}</p>
 
       {props.cursorDropped ? (
-        <p role="status" className="mt-4 rounded-md bg-surface-muted p-3 text-sm">
+        <p
+          role="status"
+          className="mt-[var(--spacing-stack)] rounded-[var(--radius-control)] bg-surface-muted p-[var(--spacing-inline)] text-meta"
+        >
           {t('shared.cursorDropped')}
         </p>
       ) : null}
 
       {rows.length === 0 ? (
-        <div className="mt-4">
+        <div>
           {hasFilters ? (
             <FilteredEmptyState
               title={t('webhooks.deliveries.emptyFiltered')}
@@ -131,51 +138,74 @@ export function DeliveriesTable(props: DeliveriesTableProps) {
       ) : (
         <>
           <div className="overflow-x-auto">
-            <table className="mt-4 w-full text-left">
+            <table className="w-full border-collapse text-left text-ui">
               <caption className="sr-only">{t('webhooks.deliveries.title')}</caption>
               <thead>
-                <tr>
-                  <th scope="col" className="pb-2 pr-6">
+                <tr className="bg-surface-muted">
+                  <th
+                    scope="col"
+                    className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                  >
                     {t('webhooks.deliveries.table.eventType')}
                   </th>
-                  <th scope="col" className="pb-2 pr-6">
+                  <th
+                    scope="col"
+                    className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                  >
                     {t('webhooks.deliveries.table.status')}
                   </th>
-                  <th scope="col" className="pb-2 pr-6">
+                  <th
+                    scope="col"
+                    className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                  >
                     {t('webhooks.deliveries.table.attempt')}
                   </th>
-                  <th scope="col" className="pb-2 pr-6">
+                  <th
+                    scope="col"
+                    className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                  >
                     {t('webhooks.deliveries.table.responseStatus')}
                   </th>
-                  <th scope="col" className="pb-2 pr-6">
+                  <th
+                    scope="col"
+                    className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                  >
                     {t('webhooks.deliveries.table.createdAt')}
                   </th>
-                  <th scope="col" className="pb-2 pr-6">
+                  <th
+                    scope="col"
+                    className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                  >
                     {t('members.table.actions')}
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={row.id} className="border-t border-border align-top">
-                    <td className="py-3 pr-6">
-                      <code className="text-sm">{row.event_type}</code>
+                  <tr
+                    key={row.id}
+                    className="border-b border-border align-top hover:bg-surface-muted"
+                  >
+                    <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
+                      <code className="font-mono text-meta">{row.event_type}</code>
                     </td>
-                    <td className="py-3 pr-6">
+                    <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                       <Badge tone={STATUS_TONES[row.status]} icon={DELIVERY_ICONS[row.status]}>
                         {t(STATUS_KEYS[row.status])}
                       </Badge>
                       {row.error_code === 'blocked_target' ? (
-                        <p className="mt-1 text-sm text-danger-text">
+                        <p className="mt-1 text-meta text-danger-text">
                           {t('webhooks.deliveries.blockedTarget')}
                         </p>
                       ) : null}
                     </td>
-                    <td className="py-3 pr-6">{row.attempt}</td>
-                    <td className="py-3 pr-6">
+                    <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
+                      {row.attempt}
+                    </td>
+                    <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                       {row.response_status === null ? '' : row.response_status}
                       {row.response_body_snippet === null ? null : (
-                        <details className="mt-1 text-sm">
+                        <details className="mt-1 text-meta">
                           <summary className="cursor-pointer">
                             {t('webhooks.deliveries.responseSnippet')}
                           </summary>
@@ -185,12 +215,12 @@ export function DeliveriesTable(props: DeliveriesTableProps) {
                         </details>
                       )}
                     </td>
-                    <td className="py-3 pr-6">
+                    <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                       <time dateTime={row.created_at} title={row.created_at}>
                         {format.dateTime(new Date(row.created_at), 'short')}
                       </time>
                     </td>
-                    <td className="py-3 pr-6">
+                    <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                       {props.canWrite && RETRYABLE.includes(row.status) ? (
                         <form action={props.retryAction}>
                           <input
@@ -219,7 +249,10 @@ export function DeliveriesTable(props: DeliveriesTableProps) {
             </table>
           </div>
 
-          <nav aria-label={t('webhooks.deliveries.title')} className="mt-4 flex gap-4">
+          <nav
+            aria-label={t('webhooks.deliveries.title')}
+            className="mt-[var(--spacing-stack)] flex gap-[var(--spacing-gutter)]"
+          >
             {pagination.prev_cursor ? (
               <Link
                 href={buildListHref(props.basePath, props.filters, pagination.prev_cursor)}

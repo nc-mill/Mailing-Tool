@@ -1,6 +1,8 @@
 'use client';
 
 import { Button } from '@mlain/ui/components/button';
+import { Card } from '@mlain/ui/components/card';
+import { ArrowRight } from '@mlain/ui/icons';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { formatCount, hoursSince } from './labels';
@@ -38,17 +40,22 @@ export function PresetCard({
   const stale = ageHours !== null && ageHours >= STALE_HOURS;
 
   return (
-    <article
+    <Card
+      as="article"
+      padding="md"
+      gap="none"
       data-testid={`preset-${preset.key}`}
-      className="flex h-full flex-col gap-3 rounded-[var(--radius-surface)] border border-border bg-surface p-4"
+      className="h-full gap-3"
     >
-      <h3 className="text-sm font-semibold text-text">{t(preset.labelKey)}</h3>
+      <h3 className="text-body font-semibold tracking-[var(--tracking-heading)] text-text">
+        {t(preset.labelKey)}
+      </h3>
       {/* Podmínka na počet odeslaných zpráv je NA KARTĚ, ne v nápovědě: bez ní
           by do „nikdy neotevřel" spadli i lidé, kterým jsme nikdy nic neposlali,
           a to je nejčastější chyba konkurenčních nástrojů. */}
       <p className="text-sm text-text-muted">{t(preset.explanationKey)}</p>
 
-      <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
+      <div className="mt-auto flex flex-wrap items-center gap-[var(--spacing-inline)] pt-2">
         {/*
          * POČÍTACÍ TLAČÍTKA JEN S OBSLUHOU.
          *
@@ -66,7 +73,7 @@ export function PresetCard({
             </Button>
           )
         ) : (
-          <span className="text-sm font-medium text-text">
+          <span className="font-mono text-ui text-text">
             {formatCount(preset.cachedCount, locale)}
           </span>
         )}
@@ -74,7 +81,11 @@ export function PresetCard({
         {ageHours !== null ? (
           <span
             data-stale={stale ? 'true' : 'false'}
-            className={stale ? 'text-xs text-text-muted opacity-70' : 'text-xs text-text-muted'}
+            className={
+              stale
+                ? 'font-mono text-label text-text-muted opacity-70'
+                : 'font-mono text-label text-text-muted'
+            }
           >
             {t('stale', { time: `${ageHours} h` })}
           </span>
@@ -90,17 +101,13 @@ export function PresetCard({
             definici: jinak by úprava presetu v kódu tiše změnila segment,
             který si uživatel pojmenoval po svém. */}
         {onUse === undefined ? null : (
-          <Button
-            variant="primary"
-            size="sm"
-            className="ml-auto"
-            onClick={() => onUse({ preset_key: preset.key })}
-          >
+          <Button variant="secondary" size="sm" onClick={() => onUse({ preset_key: preset.key })}>
+            <ArrowRight aria-hidden className="icon-sm" />
             {t('presets.use')}
           </Button>
         )}
       </div>
-    </article>
+    </Card>
   );
 }
 
@@ -117,9 +124,14 @@ export function PresetGrid({
 }) {
   const t = useTranslations('segments');
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-base font-semibold text-text">{t('presets.sectionTitle')}</h2>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <section className="grid min-w-0 gap-[var(--spacing-gutter)]">
+      <div className="flex flex-wrap items-baseline gap-[var(--spacing-stack)]">
+        <h2 className="text-h2 font-semibold tracking-[var(--tracking-heading)] text-text">
+          {t('presets.sectionTitle')}
+        </h2>
+        <span className="font-mono text-meta text-text-muted">{t('presets.editableHint')}</span>
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-[var(--spacing-gutter)]">
         {presets.map((preset) => (
           <PresetCard
             key={preset.key}

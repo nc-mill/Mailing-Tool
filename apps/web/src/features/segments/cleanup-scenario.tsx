@@ -1,7 +1,13 @@
 'use client';
 
+import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
+import { Field } from '@mlain/ui/components/field';
+import { Input } from '@mlain/ui/components/input';
+import { RadioGroup, RadioGroupItem } from '@mlain/ui/components/radio-group';
+import { Alert } from '@mlain/ui/patterns/states';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { formatCount } from './labels';
 
 export type CleanupStep = 'freeze' | 'action' | 'countdown' | 'confirm';
@@ -40,57 +46,69 @@ export function CleanupScenario({
   const t = useTranslations('segments');
   const [typed, setTyped] = useState('');
   const [action, setAction] = useState<'unsubscribe' | 'tagOnly' | 'delete'>('unsubscribe');
+  const optionId = useId();
   const n = (value: number) => formatCount(value, locale);
 
   if (step === 'freeze') {
     return (
-      <section className="flex flex-col gap-2">
-        <h2>{t('freeze.action')}</h2>
-        <p>{t('freeze.explanation')}</p>
-        <button type="button">{t('freeze.action')}</button>
-      </section>
+      <Card>
+        <CardTitle>{t('freeze.action')}</CardTitle>
+        <p className="text-ui text-text-muted">{t('freeze.explanation')}</p>
+        <Button variant="secondary" className="self-start">
+          {t('freeze.action')}
+        </Button>
+      </Card>
     );
   }
 
   if (step === 'action') {
     return (
-      <fieldset className="flex flex-col gap-2">
-        <legend>{t('cleanup.title')}</legend>
-        {(['unsubscribe', 'tagOnly', 'delete'] as const).map((option) => (
-          <label key={option}>
-            <input
-              type="radio"
-              name="cleanup-action"
-              checked={action === option}
-              // Smazání smí jen vlastník projektu. U ostatních je volba
-              // vypnutá a důvod je vidět v textu, ne až po kliknutí.
-              disabled={option === 'delete' && role !== 'owner'}
-              onChange={() => setAction(option)}
-            />
-            {t(`cleanup.${option}`)}
-            <span>{t(`cleanup.${option}Hint`)}</span>
-          </label>
-        ))}
-      </fieldset>
+      <Card>
+        <CardTitle>{t('cleanup.title')}</CardTitle>
+        <RadioGroup
+          value={action}
+          onValueChange={(next) => setAction(next as typeof action)}
+          className="gap-[var(--spacing-stack)]"
+        >
+          {(['unsubscribe', 'tagOnly', 'delete'] as const).map((option) => (
+            <div key={option} className="flex items-start gap-[var(--spacing-inline)]">
+              <RadioGroupItem
+                id={`${optionId}-${option}`}
+                value={option}
+                // Smazání smí jen vlastník projektu. U ostatních je volba
+                // vypnutá a důvod je vidět v textu, ne až po kliknutí.
+                disabled={option === 'delete' && role !== 'owner'}
+                className="mt-1.5"
+              />
+              <label htmlFor={`${optionId}-${option}`} className="grid gap-1">
+                <span className="text-ui font-semibold text-text">{t(`cleanup.${option}`)}</span>
+                <span className="text-sm text-text-muted">{t(`cleanup.${option}Hint`)}</span>
+              </label>
+            </div>
+          ))}
+        </RadioGroup>
+      </Card>
     );
   }
 
   if (step === 'countdown') {
     return (
-      <section className="flex flex-col gap-2">
-        <p>{t('cleanup.countdown', { days, count: n(segment.count) })}</p>
-        <p role="alert">{t('cleanup.warning', { days, count: n(segment.count) })}</p>
-      </section>
+      <Card>
+        <p className="text-ui text-text">
+          {t('cleanup.countdown', { days, count: n(segment.count) })}
+        </p>
+        <Alert tone="warning">{t('cleanup.warning', { days, count: n(segment.count) })}</Alert>
+      </Card>
     );
   }
 
   const nameMatches = typed === segment.name;
 
   return (
-    <section className="flex flex-col gap-2">
-      <h2>{t('cleanup.confirmTitle', { days, count: n(segment.count) })}</h2>
+    <Card gap="gutter">
+      <CardTitle>{t('cleanup.confirmTitle', { days, count: n(segment.count) })}</CardTitle>
       {campaign ? (
-        <p>
+        <p className="text-ui text-text-muted">
           {t('cleanup.confirmBody', {
             campaign: campaign.name,
             sentAt: campaign.sentAt,
@@ -102,22 +120,27 @@ export function CleanupScenario({
         </p>
       ) : null}
 
-      <button type="button">{t('cleanup.download', { count: n(segment.count) })}</button>
+      <Button variant="secondary" className="self-start">
+        {t('cleanup.download', { count: n(segment.count) })}
+      </Button>
 
       {/* Ochrana úrovně N4: opsat název segmentu. Zaškrtávátko „rozumím"
           člověk odklikne ze zvyku, jméno musí opsat vědomě. */}
-      <label htmlFor="cleanup-confirm-name">{t('cleanup.typeName')}</label>
-      <input
-        id="cleanup-confirm-name"
-        value={typed}
-        onChange={(event) => setTyped(event.target.value)}
-      />
+      <Field label={t('cleanup.typeName')}>
+        <Input
+          id="cleanup-confirm-name"
+          value={typed}
+          onChange={(event) => setTyped(event.target.value)}
+        />
+      </Field>
 
-      <button type="button" aria-disabled={nameMatches ? 'false' : 'true'}>
-        {t('cleanup.review')}
-      </button>
-      <button type="button">{t('cleanup.postpone')}</button>
-      <button type="button">{t('cleanup.abort')}</button>
-    </section>
+      <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
+        <Button variant="destructive" aria-disabled={nameMatches ? 'false' : 'true'}>
+          {t('cleanup.review')}
+        </Button>
+        <Button variant="secondary">{t('cleanup.postpone')}</Button>
+        <Button variant="ghost">{t('cleanup.abort')}</Button>
+      </div>
+    </Card>
   );
 }

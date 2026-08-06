@@ -4,11 +4,13 @@ import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Badge } from '@mlain/ui/components/badge';
 import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Dialog, DialogBody, DialogFooter, DialogTitle } from '@mlain/ui/components/dialog';
 import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
 import { Select, SelectItem } from '@mlain/ui/components/select';
 import { Switch } from '@mlain/ui/components/switch';
+import { ArrowDown, ArrowUp, Plus, Save, X } from '@mlain/ui/icons';
 import { Alert } from '@mlain/ui/patterns/states';
 import { CheckIcon } from '@/lib/ui/status-icons';
 import { createContactFieldAction, saveFormFieldsAction, type FormFieldBody } from './actions';
@@ -173,14 +175,13 @@ export function FieldBuilder({
   }
 
   return (
-    <div
-      className="flex flex-col gap-4 rounded-[var(--radius-surface)] border border-border p-5"
-      data-testid="field-builder"
-    >
-      <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-medium text-text">{t('title')}</h2>
-        <p className="text-sm text-text-muted">{t('lead')}</p>
-        <p className="text-sm text-text-muted" data-testid="field-limit">
+    <Card gap="gutter" data-testid="field-builder">
+      <CardTitle>{t('title')}</CardTitle>
+
+      <div className="flex flex-col gap-[var(--spacing-hairline)]">
+        <p className="text-meta text-text-muted">{t('lead')}</p>
+        {/* Strop je číslo, které se čte po číslicích, proto mono. */}
+        <p className="font-mono text-meta text-text-muted" data-testid="field-limit">
           {left > 0 ? t('limit', { max: MAX_FIELDS, left }) : t('limitReached')}
         </p>
       </div>
@@ -191,132 +192,157 @@ export function FieldBuilder({
         </Alert>
       )}
 
-      <ul className="flex flex-col gap-3" data-testid="field-list">
-        {items.map((item, index) => {
-          const locked = item.target === 'email';
-          return (
-            <li
-              key={item.key}
-              data-testid={`field-${item.key}`}
-              className="flex flex-col gap-2 rounded-[var(--radius-control)] border border-border p-3"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium text-text">{item.key}</span>
-                {locked && (
-                  <Badge tone="neutral" icon={CheckIcon}>
-                    {t('required')}
-                  </Badge>
-                )}
-              </div>
-
-              <Field label={t('labelInput', { name: item.key })}>
-                <Input
-                  data-testid={`field-label-${item.key}`}
-                  value={item.label}
-                  disabled={!canEdit}
-                  onChange={(event) => {
-                    const next = [...items];
-                    next[index] = { ...item, label: event.target.value };
-                    change(next);
-                  }}
-                />
-              </Field>
-
-              <div className="flex flex-wrap items-center gap-4">
-                <label className="flex items-center gap-2 text-sm text-text">
-                  <Switch
-                    checked={item.required}
-                    disabled={!canEdit || locked}
-                    aria-label={t('requiredToggle', { name: item.key })}
-                    onCheckedChange={(next) => {
-                      const copy = [...items];
-                      copy[index] = { ...item, required: next };
-                      change(copy);
-                    }}
-                  />
-                  {item.required ? t('required') : t('optional')}
-                </label>
-
-                {canEdit && (
-                  <div className="flex items-center gap-2">
-                    {/* Pořadí klávesnicí i myší jednou cestou, viz hlavička. */}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      data-testid={`field-up-${item.key}`}
-                      aria-label={t('moveUp', { label: item.label })}
-                      onClick={() => move(index, -1)}
-                    >
-                      ↑
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      data-testid={`field-down-${item.key}`}
-                      aria-label={t('moveDown', { label: item.label })}
-                      onClick={() => move(index, 1)}
-                    >
-                      ↓
-                    </Button>
-                    {!locked && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        data-testid={`field-remove-${item.key}`}
-                        aria-label={t('remove', { label: item.label })}
-                        onClick={() => change(items.filter((_, position) => position !== index))}
-                      >
-                        ✕
-                      </Button>
+      {/* Pole vlevo, náhled vpravo. Náhled musí být vidět zároveň se seznamem,
+          jinak se uživatel proklikává nahoru a dolů a nepozná, co která změna
+          udělala. Pod 360 px na sloupec se to sesype pod sebe. */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] items-start gap-[var(--spacing-gutter)]">
+        <div className="flex flex-col gap-[var(--spacing-stack)]">
+          {/* `role="list"` na `div`u, protože položkou je karta a `Card` vykresluje
+              `section`, `div`, `article` nebo `aside`, ne `li`. Čtečka díky rolím
+              přečte totéž co u `ul`/`li`. */}
+          <div
+            role="list"
+            className="flex flex-col gap-[var(--spacing-stack)]"
+            data-testid="field-list"
+          >
+            {items.map((item, index) => {
+              const locked = item.target === 'email';
+              return (
+                <Card
+                  as="div"
+                  tone="muted"
+                  padding="sm"
+                  key={item.key}
+                  data-testid={`field-${item.key}`}
+                  className="gap-3"
+                  role="listitem"
+                >
+                  <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
+                    {/* Klíč je technický údaj do API, čte se po znacích. */}
+                    <span className="font-mono text-meta text-text-muted">{item.key}</span>
+                    {locked && (
+                      <Badge tone="neutral" icon={CheckIcon} className="ml-auto">
+                        {t('required')}
+                      </Badge>
                     )}
                   </div>
-                )}
-              </div>
 
-              {/* Důvod stojí u pole, ne v nápovědě: uživatel ho hledá tam, kde
-                  čeká tlačítko na odebrání. */}
-              {locked && (
-                <p className="text-sm text-text-muted" data-testid="email-locked">
-                  {t('emailLocked')}
-                </p>
-              )}
+                  <Field label={t('labelInput', { name: item.key })}>
+                    <Input
+                      data-testid={`field-label-${item.key}`}
+                      value={item.label}
+                      disabled={!canEdit}
+                      onChange={(event) => {
+                        const next = [...items];
+                        next[index] = { ...item, label: event.target.value };
+                        change(next);
+                      }}
+                    />
+                  </Field>
 
-              {item.options !== undefined && (
-                <p className="text-sm text-text-muted">{t('optionsFromField')}</p>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+                  <div className="flex flex-wrap items-center gap-[var(--spacing-gutter)]">
+                    <label className="flex items-center gap-[var(--spacing-inline)] text-ui text-text">
+                      <Switch
+                        checked={item.required}
+                        disabled={!canEdit || locked}
+                        aria-label={t('requiredToggle', { name: item.key })}
+                        onCheckedChange={(next) => {
+                          const copy = [...items];
+                          copy[index] = { ...item, required: next };
+                          change(copy);
+                        }}
+                      />
+                      {item.required ? t('required') : t('optional')}
+                    </label>
 
-      {canEdit && (
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            variant="secondary"
-            data-testid="add-field"
-            disabled={left <= 0}
-            onClick={() => setAddOpen(true)}
-          >
-            {t('add')}
-          </Button>
-          <Button
-            variant="primary"
-            data-testid="save-fields"
-            pending={busy}
-            pendingLabel={tc('save')}
-            // Primární tlačítko `disabled` nepřijímá (princip P5): zůstane
-            // klikatelné a uložení bez změn prostě nic neposílá.
-            onClick={() => {
-              if (!dirty) return;
-              void save();
-            }}
-          >
-            {tc('save')}
-          </Button>
+                    {canEdit && (
+                      <div className="ml-auto flex items-center gap-[var(--spacing-inline)]">
+                        {/* Pořadí klávesnicí i myší jednou cestou, viz hlavička.
+                            Šipky jsou ikony z Lucide, ne znaky ↑ a ↓: znak se
+                            kreslí písmem a v jiné velikosti než zbytek rozhraní. */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-testid={`field-up-${item.key}`}
+                          aria-label={t('moveUp', { label: item.label })}
+                          onClick={() => move(index, -1)}
+                        >
+                          <ArrowUp aria-hidden className="icon-sm" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-testid={`field-down-${item.key}`}
+                          aria-label={t('moveDown', { label: item.label })}
+                          onClick={() => move(index, 1)}
+                        >
+                          <ArrowDown aria-hidden className="icon-sm" />
+                        </Button>
+                        {!locked && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`field-remove-${item.key}`}
+                            aria-label={t('remove', { label: item.label })}
+                            onClick={() =>
+                              change(items.filter((_, position) => position !== index))
+                            }
+                          >
+                            <X aria-hidden className="icon-sm" />
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Důvod stojí u pole, ne v nápovědě: uživatel ho hledá tam, kde
+                      čeká tlačítko na odebrání. */}
+                  {locked && (
+                    <p className="text-meta text-text-muted" data-testid="email-locked">
+                      {t('emailLocked')}
+                    </p>
+                  )}
+
+                  {item.options !== undefined && (
+                    <p className="text-meta text-text-muted">{t('optionsFromField')}</p>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+
+          {canEdit && (
+            <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
+              <Button
+                variant="secondary"
+                data-testid="add-field"
+                disabled={left <= 0}
+                onClick={() => setAddOpen(true)}
+              >
+                <Plus aria-hidden className="icon-md" />
+                {t('add')}
+              </Button>
+              <Button
+                variant="primary"
+                data-testid="save-fields"
+                pending={busy}
+                pendingLabel={tc('save')}
+                // Primární tlačítko `disabled` nepřijímá (princip P5): zůstane
+                // klikatelné a uložení bez změn prostě nic neposílá.
+                onClick={() => {
+                  if (!dirty) return;
+                  void save();
+                }}
+              >
+                <Save aria-hidden className="icon-md" />
+                {tc('save')}
+              </Button>
+            </div>
+          )}
         </div>
-      )}
 
-      <FormPreview items={items} />
+        <FormPreview items={items} />
+      </div>
 
       <AddFieldDialog
         open={addOpen}
@@ -340,7 +366,7 @@ export function FieldBuilder({
           addField(field);
         }}
       />
-    </div>
+    </Card>
   );
 }
 
@@ -391,9 +417,17 @@ function FormPreview({ items }: { items: BuilderField[] }) {
   }, [items, t]);
 
   return (
-    <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium text-text">{t('preview')}</h3>
-      <p className="text-sm text-text-muted">{t('previewHint')}</p>
+    <div className="flex flex-col gap-[var(--spacing-stack)]">
+      <div className="flex flex-col gap-[var(--spacing-hairline)]">
+        <h3 className="meta-caps text-text-muted">{t('preview')}</h3>
+        <p className="text-meta text-text-muted">{t('previewHint')}</p>
+      </div>
+      {/*
+       * `bg-white` je jediná barva na téhle obrazovce, která NENÍ token, a je to
+       * schválně: rámeček nepředstavuje plochu naší aplikace, ale cizí stránku
+       * s výchozími styly prohlížeče. Papírová barva ani tmavý režim by tady
+       * lhaly, protože web, kam si formulář někdo vloží, naše motivy nemá.
+       */}
       <iframe
         title={t('preview')}
         data-testid="field-preview"
@@ -429,13 +463,14 @@ function AddFieldDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTitle>{t('addTitle')}</DialogTitle>
       <DialogBody>
-        <div className="flex max-h-[52vh] flex-col gap-4 overflow-y-auto pr-1">
-          <section className="flex flex-col gap-2">
-            <h3 className="text-sm font-medium text-text">{t('targetContact')}</h3>
+        <div className="flex max-h-[52vh] flex-col gap-[var(--spacing-gutter)] overflow-y-auto pr-1">
+          <section className="flex flex-col gap-[var(--spacing-inline)]">
+            <h3 className="meta-caps text-text-muted">{t('targetContact')}</h3>
             {CONTACT_TARGETS.map((candidate) => (
               <Button
                 key={candidate.target}
                 variant="secondary"
+                className="justify-start font-mono"
                 data-testid={`pick-${candidate.target}`}
                 disabled={used.has(candidate.target)}
                 onClick={() => {
@@ -454,8 +489,8 @@ function AddFieldDialog({
             ))}
           </section>
 
-          <section className="flex flex-col gap-2">
-            <h3 className="text-sm font-medium text-text">{t('targetCustom')}</h3>
+          <section className="flex flex-col gap-[var(--spacing-inline)]">
+            <h3 className="meta-caps text-text-muted">{t('targetCustom')}</h3>
             {contactFields.map((field) => {
               const inputType = INPUT_TYPE_FOR[field.type];
               const key = `attr_${field.key}`;
@@ -472,6 +507,7 @@ function AddFieldDialog({
                 <Button
                   key={field.id}
                   variant="secondary"
+                  className="justify-start"
                   data-testid={`pick-attr-${field.key}`}
                   disabled={reason !== undefined}
                   onClick={() => {
@@ -499,9 +535,15 @@ function AddFieldDialog({
             })}
           </section>
 
-          <section className="flex flex-col gap-2">
-            <h3 className="text-sm font-medium text-text">{t('newFieldGroup')}</h3>
-            <Button variant="secondary" data-testid="new-contact-field" onClick={onCreateNew}>
+          <section className="flex flex-col gap-[var(--spacing-inline)]">
+            <h3 className="meta-caps text-text-muted">{t('newFieldGroup')}</h3>
+            <Button
+              variant="secondary"
+              className="justify-start"
+              data-testid="new-contact-field"
+              onClick={onCreateNew}
+            >
+              <Plus aria-hidden className="icon-md" />
               {t('newField')}
             </Button>
           </section>
@@ -568,7 +610,7 @@ function NewContactFieldDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTitle>{t('newFieldTitle')}</DialogTitle>
       <DialogBody>
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-[var(--spacing-gutter)]">
           <Field label={t('newFieldLabel')}>
             <Input
               data-testid="new-field-label"
@@ -598,8 +640,8 @@ function NewContactFieldDialog({
             />
           </Field>
 
-          <div data-testid="new-field-type">
-            <span aria-hidden className="mb-1 block text-sm font-medium text-text">
+          <div data-testid="new-field-type" className="flex flex-col gap-1.5">
+            <span aria-hidden className="text-sm font-semibold text-text">
               {t('newFieldType')}
             </span>
             <Select

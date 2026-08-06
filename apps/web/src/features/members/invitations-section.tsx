@@ -4,6 +4,7 @@ import { useActionState } from 'react';
 import Link from 'next/link';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Button } from '@mlain/ui/components/button';
+import { CardTitle } from '@mlain/ui/components/card';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
 import { Alert, EmptyState, OverLimitState } from '@mlain/ui/patterns/states';
@@ -60,13 +61,16 @@ export function InvitationsSectionView(props: InvitationsSectionViewProps) {
   const atLimit = rows.length >= PENDING_INVITATION_LIMIT;
 
   return (
-    <section aria-labelledby="members-invitations">
-      <h2 id="members-invitations" className="text-xl font-semibold">
-        {t('members.invitations.title')}
-      </h2>
+    <section
+      aria-labelledby="members-invitations"
+      className="flex flex-col gap-[var(--spacing-gutter)]"
+    >
+      <CardTitle>
+        <span id="members-invitations">{t('members.invitations.title')}</span>
+      </CardTitle>
 
       {!props.invitations.ok ? (
-        <div className="mt-4">
+        <div>
           <SettingsProblem
             problem={props.invitations.problem}
             onRetry={() => {
@@ -75,55 +79,96 @@ export function InvitationsSectionView(props: InvitationsSectionViewProps) {
           />
         </div>
       ) : rows.length === 0 ? (
-        <div className="mt-4">
+        <div>
+          {/**
+           * AKCE PRÁZDNÉHO STAVU SE ŘÍDÍ TÍM, CO INSTALACE OPRAVDU UMÍ.
+           *
+           * Do 5. 8. 2026 tu stálo natvrdo „Napsat e-mail kolegy" a kliknutí
+           * zaostřilo pole `invite-email`. Když ale systémová pošta odeslat
+           * neumí, formulář pozvánky se o kus níž **vůbec nevykreslí** (viz
+           * větev `!systemMailAvailable`), takže `getElementById` vrátil
+           * `null` a tlačítko nedělalo nic. Uživatel navíc pod ním četl
+           * hlášku, že pozvánka e-mailem teď nejde: prvek sliboval něco, co
+           * se nestane.
+           *
+           * Bez pošty proto akce vede na „Založit člena rovnou", tedy na tu
+           * cestu, která v daném stavu funguje a stojí hned v další kartě.
+           * `EmptyState` aspoň jednu akci vyžaduje, takže je to i jediné
+           * správné řešení: nabídnout tu druhou, ne žádnou.
+           */}
           <EmptyState
             variant="first"
             title={t('members.invitations.title')}
             explanation={t('members.invitations.empty')}
             actions={[
-              {
-                label: t('members.invitations.emptyAction'),
-                // Primární akce prázdného stavu vede rovnou do formuláře pod ním.
-                onClick: () => document.getElementById('invite-email')?.focus(),
-              },
+              props.systemMailAvailable
+                ? {
+                    label: t('members.invitations.emptyAction'),
+                    onClick: () => document.getElementById('invite-email')?.focus(),
+                  }
+                : {
+                    label: t('members.create.title'),
+                    onClick: () => document.getElementById('create-member-email')?.focus(),
+                  },
             ]}
           />
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="mt-4 w-full text-left">
+          <table className="w-full border-collapse text-left text-ui">
             <caption className="sr-only">{t('members.invitations.title')}</caption>
             <thead>
-              <tr>
-                <th scope="col" className="pb-2 pr-6">
+              <tr className="bg-surface-muted">
+                <th
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
                   {t('members.invitations.email')}
                 </th>
-                <th scope="col" className="pb-2 pr-6">
+                <th
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
                   {t('members.invitations.role')}
                 </th>
-                <th scope="col" className="pb-2 pr-6">
+                <th
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
                   {t('members.invitations.invitedBy')}
                 </th>
-                <th scope="col" className="pb-2 pr-6">
+                <th
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
                   {t('members.invitations.expiresAt')}
                 </th>
-                <th scope="col" className="pb-2 pr-6">
+                <th
+                  scope="col"
+                  className="meta-caps px-[var(--spacing-row-x)] py-3 text-text-muted"
+                >
                   {t('members.table.actions')}
                 </th>
               </tr>
             </thead>
             <tbody>
               {rows.map((invitation) => (
-                <tr key={invitation.id} className="border-t border-border">
-                  <td className="py-3 pr-6">{invitation.email}</td>
-                  <td className="py-3 pr-6">{t(ROLE_LABEL_KEYS[invitation.role])}</td>
-                  <td className="py-3 pr-6">{invitation.invited_by_name}</td>
-                  <td className="py-3 pr-6">
+                <tr key={invitation.id} className="border-b border-border hover:bg-surface-muted">
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
+                    {invitation.email}
+                  </td>
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
+                    {t(ROLE_LABEL_KEYS[invitation.role])}
+                  </td>
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
+                    {invitation.invited_by_name}
+                  </td>
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                     <time dateTime={invitation.expires_at} title={invitation.expires_at}>
                       {format.dateTime(new Date(invitation.expires_at), 'short')}
                     </time>
                   </td>
-                  <td className="py-3 pr-6">
+                  <td className="px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]">
                     <form action={props.revokeAction}>
                       <input type="hidden" name="workspace_id" value={props.workspaceId} readOnly />
                       <input type="hidden" name="slug" value={props.slug} readOnly />
@@ -148,39 +193,43 @@ export function InvitationsSectionView(props: InvitationsSectionViewProps) {
          * stojí důvod, odkaz na nastavení a věta, že náhradní cesta je hned pod
          * tímhle blokem. Stav S14 (chybějící předpoklad) podle 15.2 části 6.
          */
-        <div className="mt-6">
+        <div className="mt-[var(--spacing-gutter)]">
           <Alert tone="warning" title={t('members.invite.mailUnavailableTitle')}>
             <p>{t('members.invite.mailUnavailableBody')}</p>
-            <Link href={`/w/${props.slug}/settings/system-mail`} className="font-medium underline">
+            <Link href={`/w/${props.slug}/settings/system-mail`} className="text-ui font-semibold">
               {t('members.invite.mailUnavailableLink')}
             </Link>
           </Alert>
         </div>
       ) : atLimit ? (
-        <div className="mt-6">
+        <div className="mt-[var(--spacing-gutter)]">
           <OverLimitState
             title={t('members.invitations.limitTitle')}
             body={t('members.invitations.limitBody')}
           />
         </div>
       ) : (
-        <div className="mt-6">
-          <h3 className="font-medium">{t('members.invite.title')}</h3>
-          <p className="mt-1 text-sm text-text-muted">{t('members.invite.lead')}</p>
+        <div className="mt-[var(--spacing-gutter)]">
+          <h3 className="text-ui font-semibold text-text">{t('members.invite.title')}</h3>
+          <p className="text-meta text-text-muted">{t('members.invite.lead')}</p>
 
           {state.status === 'error' && Object.keys(fieldErrors).length === 0 ? (
-            <div className="mt-4">
+            <div>
               <SettingsProblem problem={state.problem} />
             </div>
           ) : null}
 
           {state.status === 'success' ? (
-            <p role="status" className="mt-4 text-sm">
+            <p role="status" className="text-meta">
               {t('members.invite.done', { email: String(state.values?.email ?? '') })}
             </p>
           ) : null}
 
-          <form action={formAction} className="mt-4 flex flex-wrap items-end gap-3" noValidate>
+          <form
+            action={formAction}
+            className="flex flex-wrap items-end gap-[var(--spacing-inline)]"
+            noValidate
+          >
             <IdempotencyField />
             <input type="hidden" name="workspace_id" value={props.workspaceId} readOnly />
             <input type="hidden" name="slug" value={props.slug} readOnly />

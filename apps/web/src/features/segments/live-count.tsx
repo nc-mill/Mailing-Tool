@@ -45,22 +45,58 @@ function isComplete(node: unknown): boolean {
   return children.length > 0 && children.every((child) => isComplete(child));
 }
 
+export type CountFailure = { code: string | null; kind: string | null; message: string | null };
+
 /**
- * Důvod z odpovědi serveru. Chybová odpověď je Problem Details a nese buď
- * `errors[].message` u validace, nebo `detail`. Bez toho zbývala uživateli
- * hláška „Počet se nepodařilo spočítat.", ze které se nedá poznat vůbec nic.
+ * Důvod z odpovědi serveru. Chybová odpověď je Problem Details a nese doménový
+ * kód v `params.code`, podrobnost ve `errors[].message` a obecný text
+ * v `detail`. Bez toho zbývala uživateli hláška „Počet se nepodařilo
+ * spočítat.", ze které se nedá poznat vůbec nic.
+ *
+ * `detail` z registru chyb je ANGLICKÝ a strojový („The requested resource does
+ * not exist."), takže se používá až jako poslední možnost. České znění se
+ * skládá z doménového kódu, viz `failureText`.
  */
-async function failureDetail(res: Response): Promise<string | null> {
+async function readFailure(res: Response): Promise<CountFailure> {
   try {
     const body = (await res.json()) as {
       detail?: string;
       errors?: { message?: string }[];
+      params?: { code?: string; kind?: string };
     };
-    return body.errors?.[0]?.message ?? body.detail ?? null;
+    return {
+      code: body.params?.code ?? null,
+      kind: body.params?.kind ?? null,
+      message: body.errors?.[0]?.message ?? body.detail ?? null,
+    };
   } catch {
-    return null;
+    return { code: null, kind: null, message: null };
   }
 }
+/** Doménové kódy, ke kterým umíme říct něco lepšího než „nepodařilo se". */
+const REFERENCE_KINDS = new Set(['tag', 'list', 'segment', 'contact_field']);
+
+/**
+ * České znění chyby. Pořadí je dané tím, co uživateli nejvíc pomůže: nejdřív
+ * doménový kód, teprve pak strojová podrobnost a nakonec obecná věta.
+ */
+export function failureText(
+  t: (key: string, values?: Record<string, string | number>) => string,
+  failure: CountFailure | null,
+): string {
+  if (failure === null) return t('count.failed');
+  if (
+    failure.code === 'segment_reference_not_found' &&
+    failure.kind !== null &&
+    REFERENCE_KINDS.has(failure.kind)
+  ) {
+    return t('count.failedReferenceMissing', { kind: t(`referenceKinds.${failure.kind}`) });
+  }
+  return failure.message === null
+    ? t('count.failed')
+    : t('count.failedDetail', { detail: failure.message });
+}
+
 /** Nad šest hodin je číslo zastaralé natolik, že se nesmí tvářit čerstvě. */
 export const STALE_HOURS = 6;
 
@@ -89,7 +125,7 @@ export function LiveCount({
   const [state, setState] = useState<CountState>(initial ?? { count: null });
   const [counting, setCounting] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [failedDetail, setFailedDetail] = useState<string | null>(null);
+  const [failure, setFailure] = useState<CountFailure | null>(null);
   const [ageHours, setAgeHours] = useState<number | null>(null);
   const [settled, setSettled] = useState<string>('');
   const abort = useRef<AbortController | null>(null);
@@ -123,7 +159,7 @@ export function LiveCount({
     const timer = setTimeout(() => {
       setCounting(true);
       setFailed(false);
-      setFailedDetail(null);
+      setFailure(null);
       void fetch('/api/v1/segments/preview', {
         method: 'POST',
         signal: controller.signal,
@@ -132,8 +168,7 @@ export function LiveCount({
       })
         .then(async (res) => {
           if (res.ok) return res.json();
-          const detail = await failureDetail(res);
-          setFailedDetail(detail);
+          setFailure(await readFailure(res));
           throw new Error('preview failed');
         })
         .then(
@@ -171,10 +206,10 @@ export function LiveCount({
 
   if (state.count === null && !counting) {
     return (
-      <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+      <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
         {/* Nikdy nepočítaný segment ukazuje „Spočítat", nikdy nulu. Nula je
             odpověď, kterou jsme nedali. */}
-        <p className="text-sm text-text-muted">{t('neverCounted')}</p>
+        <p className="text-ui text-text-muted">{t('neverCounted')}</p>
         <Button variant="secondary" size="sm" onClick={() => setState((prev) => ({ ...prev }))}>
           {t('count.action')}
         </Button>
@@ -183,45 +218,69 @@ export function LiveCount({
   }
 
   return (
-    <div className="flex flex-col gap-2 border-t border-border pt-4">
+    <div className="flex flex-col gap-[var(--spacing-gutter)]">
       <p role="status" aria-live="polite" className="sr-only">
         {settled}
       </p>
 
-      {state.count !== null ? (
-        state.exact === false ? (
-          <>
-            <p
-              data-stale={counting ? 'true' : 'false'}
-              className={
-                counting
-                  ? 'text-lg font-semibold text-text opacity-60'
-                  : 'text-lg font-semibold text-text'
-              }
-            >
-              {t('estimated', { count: formatCount(state.count, locale) })}
-            </p>
-            <Button variant="secondary" size="sm" className="self-start">
-              {t('countExactly')}
-            </Button>
-          </>
-        ) : (
-          // Předchozí číslo se při přepočtu ZTMAVÍ, nezmizí. Prázdné místo
-          // vypadá jako chyba a uživatel ztratí referenci, o kolik se změnilo.
-          <p
-            data-stale={counting || stale ? 'true' : 'false'}
-            className={
-              counting || stale
-                ? 'text-lg font-semibold text-text opacity-60'
-                : 'text-lg font-semibold text-text'
-            }
-          >
-            {t('count.exact', { count: state.count })}
-          </p>
-        )
-      ) : null}
+      <div className="grid gap-[var(--spacing-hairline)]">
+        <span className="meta-caps text-text-muted">{t('count.belongLabel')}</span>
 
-      {counting ? <p className="text-sm text-text-muted">{t('count.counting')}</p> : null}
+        {state.count !== null ? (
+          state.exact === false ? (
+            <>
+              {/* Odhad se PŘIZNÁ celou větou, ne jen číslem: „přibližně" musí
+                  být vidět dřív než hodnota, podle které se rozhoduje. */}
+              <p
+                data-stale={counting ? 'true' : 'false'}
+                className={cn(
+                  'text-h3 font-semibold tracking-[var(--tracking-heading)] text-text',
+                  counting ? 'opacity-60' : undefined,
+                )}
+              >
+                {t('estimated', { count: formatCount(state.count, locale) })}
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="mt-[var(--spacing-inline)] self-start"
+              >
+                {t('countExactly')}
+              </Button>
+            </>
+          ) : (
+            // Předchozí číslo se při přepočtu ZTMAVÍ, nezmizí. Prázdné místo
+            // vypadá jako chyba a uživatel ztratí referenci, o kolik se změnilo.
+            <p
+              data-stale={counting || stale ? 'true' : 'false'}
+              className={cn(
+                'flex items-baseline gap-[var(--spacing-inline)]',
+                'text-display leading-[var(--leading-number)] font-semibold tracking-[var(--tracking-number)] text-text',
+                counting || stale ? 'opacity-60' : undefined,
+              )}
+            >
+              {formatCount(state.count, locale)}
+              <span className="text-base font-normal text-text-muted">
+                {t('count.unit', { count: state.count })}
+              </span>
+            </p>
+          )
+        ) : null}
+
+        {ageHours !== null ? (
+          <span
+            data-stale={stale ? 'true' : 'false'}
+            className={cn('font-mono text-label text-text-muted', stale ? 'opacity-70' : undefined)}
+          >
+            {/* Pod hodinu se stáří neuvádí v hodinách. „Před 0 h" nikdo neřekne
+                a čerstvě spočítaný segment je přesně ten případ: razítko vzniklo
+                před vteřinou. Seznam segmentů to řeší stejně. */}
+            {ageHours < 1 ? t('freshNow') : t('stale', { time: `${ageHours} h` })}
+          </span>
+        ) : null}
+      </div>
+
+      {counting ? <p className="text-ui text-text-muted">{t('count.counting')}</p> : null}
       {failed ? (
         <Alert
           tone="error"
@@ -231,27 +290,15 @@ export function LiveCount({
             </Button>
           }
         >
-          {failedDetail === null
-            ? t('count.failed')
-            : t('count.failedDetail', { detail: failedDetail })}
+          {failureText(t, failure)}
         </Alert>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3">
-        {ageHours !== null ? (
-          <span
-            data-stale={stale ? 'true' : 'false'}
-            className={stale ? 'text-xs text-text-muted opacity-70' : 'text-xs text-text-muted'}
-          >
-            {t('stale', { time: `${ageHours} h` })}
-          </span>
-        ) : null}
-        {stale ? (
-          <Button variant="ghost" size="sm">
-            {t('recount')}
-          </Button>
-        ) : null}
-      </div>
+      {stale ? (
+        <Button variant="secondary" size="sm" className="self-start">
+          {t('recount')}
+        </Button>
+      ) : null}
 
       {/* Varování patří POD počet, ne místo něj: číslo je odpověď, varování
           je poznámka k tomu, jak přesná je. */}
@@ -262,22 +309,34 @@ export function LiveCount({
       ))}
 
       {state.sample && state.sample.length > 0 ? (
-        <div className="flex flex-col gap-2 rounded-[var(--radius-surface)] bg-surface-muted p-3">
-          <p className="text-xs font-medium text-text-muted">{t('count.sampleTitle')}</p>
-          <ul className="flex flex-col gap-1">
+        <div className="grid gap-[var(--spacing-inline)] rounded-[var(--radius-surface)] border border-border bg-surface-muted p-[var(--spacing-gutter)]">
+          <span className="meta-caps text-text-muted">{t('count.sampleLabel')}</span>
+          <ul className="grid gap-1.5">
             {state.sample.slice(0, 5).map((contact) => (
-              <li key={contact.id} data-testid="sample-contact" className="text-sm text-text">
+              <li
+                key={contact.id}
+                data-testid="sample-contact"
+                className="truncate font-mono text-sm text-text"
+              >
                 {contact.email}
               </li>
             ))}
           </ul>
-          {state.count !== null ? (
+          {/* Odkaz jen s obsluhou. U neuloženého segmentu není kam odkázat:
+              filtr kontaktů se ptá na `segment_id`, který ještě neexistuje. */}
+          {state.count !== null && onShowAll !== undefined ? (
             <Button variant="link" size="sm" className="self-start" onClick={onShowAll}>
               {t('count.showAll', { count: formatCount(state.count, locale) })}
             </Button>
           ) : null}
         </div>
       ) : null}
+
+      <p className="text-meta text-text-muted">{t('count.previewNote')}</p>
     </div>
   );
+}
+
+function cn(...values: (string | undefined)[]): string {
+  return values.filter(Boolean).join(' ');
 }

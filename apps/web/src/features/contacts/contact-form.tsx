@@ -1,18 +1,22 @@
 'use client';
 
 import { useActionState, useEffect, useId, useRef, useState, useTransition } from 'react';
-import { useTranslations } from 'next-intl';
+import { useFormStatus } from 'react-dom';
+import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@mlain/i18n/navigation';
-import { Badge } from '@mlain/ui/components/badge';
+import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Checkbox } from '@mlain/ui/components/checkbox';
+import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
-import { Label } from '@mlain/ui/components/label';
+import { PageHeader } from '@mlain/ui/components/page-header';
+import { RadioGroup, RadioGroupItem } from '@mlain/ui/components/radio-group';
+import { Tag } from '@mlain/ui/components/tag';
 import { Textarea } from '@mlain/ui/components/textarea';
-import { MailIcon } from '@/lib/ui/status-icons';
+import { ChevronDown, ChevronRight, Mail, Save } from '@mlain/ui/icons';
+import { Alert } from '@mlain/ui/patterns/states';
 import { SelectField } from '@/lib/forms/select-field';
-import { FieldError, fieldAria } from '@/lib/forms/field-error';
 import type { FieldErrors } from '@/lib/errors/field-errors';
-import { SubmitButton } from '@/lib/forms/submit-button';
 import { useFormErrorFocus } from '@/lib/forms/use-form-error-focus';
 import { IDLE, type ActionState } from '@/lib/feedback/action-result';
 import { formLevelErrors } from '@/lib/errors/field-errors';
@@ -48,6 +52,10 @@ export type ContactFormValues = {
   /** Oslovení uložené v databázi. U založení null, protože ještě žádné není. */
   greeting: string | null;
   greeting_locked: boolean;
+  /** Stav kontaktu do meta řádku pod nadpisem. U založení chybí. */
+  status?: string;
+  /** Kdy kontakt vznikl. Taky jen do meta řádku. */
+  created_at?: string | null;
   fields: ContactFormField[];
   /** Jména štítků projektu a příznak, jestli je kontakt má. */
   tags: { name: string; selected: boolean }[];
@@ -102,8 +110,31 @@ function hasAdvancedValue(values: ContactFormValues): boolean {
 }
 
 /**
+ * Hlavní tlačítko formuláře. Je na obrazovce DVAKRÁT, v hlavičce i pod
+ * formulářem, přesně jak to má návrh: formulář je dlouhý a k tlačítku by se
+ * jinak muselo rolovat nahoru nebo dolů podle toho, kde uživatel skončil.
+ *
+ * Nepoužívá se sdílený `SubmitButton`, protože ten ikonu nenese a návrh ji
+ * u ukládání má. Chování je jinak stejné: `disabled` nikdy (princip P5),
+ * běh se hlásí přes `pending` a `pendingLabel`.
+ */
+function SaveButton({ label, pendingLabel }: { label: string; pendingLabel: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" variant="primary" pending={pending} pendingLabel={pendingLabel}>
+      <Save aria-hidden className="icon-md" />
+      {label}
+    </Button>
+  );
+}
+
+/**
  * Formulář kontaktu. Jeden pro založení i pro úpravu, protože je to týž formulář:
  * liší se jedním polem (adresa) a jednou větou nad seznamy.
+ *
+ * ROZVRŽENÍ PODLE NÁVRHU: dva sloupce karet. Vlevo „Kdo to je" a „Údaje",
+ * vpravo „Štítky" a „Seznamy". Při zúžení okna se sloupce zalomí pod sebe,
+ * protože mřížka je `auto-fit` s minimem 360 px.
  *
  * CO STAČÍ VYPLNIT, MUSÍ BÝT VIDĚT NA PRVNÍ POHLED. Povinná je jediná věc, adresa,
  * ale dokud byl formulář jeden dlouhý sloupec polí, vypadal, že chce všechno. U založení
@@ -118,6 +149,7 @@ function hasAdvancedValue(values: ContactFormValues): boolean {
  * tom, že se česky oslovuje pátým pádem, a jestli z „Ondřej" vypadne „Ondřeji", se bez
  * náhledu pozná až v odeslané kampani. Počítá ho server, protože skloňování stojí na
  * slovníku, na přepisech projektu a na nastavení vykání, a nic z toho v prohlížeči není.
+ * Proto je to jediná zvýrazněná karta na obrazovce.
  */
 export function ContactForm({
   mode,
@@ -129,6 +161,8 @@ export function ContactForm({
   greetingEnabled = true,
 }: ContactFormProps) {
   const t = useTranslations('contacts');
+  const tCommon = useTranslations('common');
+  const format = useFormatter();
   const [state, formAction] = useActionState(action, IDLE);
   const formRef = useRef<HTMLFormElement>(null);
   const fieldErrors = state.status === 'error' ? state.fieldErrors : {};
@@ -217,348 +251,422 @@ export function ContactForm({
   const formErrors = formLevelErrors(fieldErrors);
 
   /**
-   * Údaje, které u založení nejsou vidět hned. Jsou to tytéž prvky jako dřív, jen
-   * vytažené do proměnné, aby je šlo u úpravy vykreslit rovnou a u založení do
-   * rozbalovací části, bez druhé kopie JSX.
+   * Chyba pole pro `Field`. Vrací prázdný objekt, ne `undefined`: projekt má
+   * zapnuté `exactOptionalPropertyTypes`, takže se volitelná propa nepředává
+   * s hodnotou `undefined`, ale vynechá se.
    */
-  const advanced = (
+  function errorProps(name: string): { error?: string } {
+    const messages = fieldErrors[name];
+    return messages && messages.length > 0 ? { error: messages.join(' ') } : {};
+  }
+
+  const detailHref = values.id === null ? basePath : `${basePath}/${values.id}`;
+  const contactName = [values.first_name, values.last_name].filter((part) => part !== '').join(' ');
+
+  /**
+   * Meta řádek pod nadpisem: adresa, stav a den vzniku. Mono, protože jsou to
+   * údaje, které se čtou po znacích. Skládá se jen z toho, co obrazovka
+   * doopravdy má; u založení kontakt ještě neexistuje, takže meta řádek není.
+   */
+  const meta =
+    mode === 'edit'
+      ? [
+          values.email,
+          values.status === undefined ? null : t(`status.${values.status}`),
+          values.created_at === undefined || values.created_at === null
+            ? null
+            : t('form.metaAdded', {
+                date: format.dateTime(new Date(values.created_at), {
+                  day: 'numeric',
+                  month: 'numeric',
+                  year: 'numeric',
+                }),
+              }),
+        ]
+          .filter((part): part is string => part !== null)
+          .join(' · ')
+      : null;
+
+  /** Tituly, rod a náhled oslovení. U úpravy rovnou, u založení po rozbalení. */
+  const identityAdvanced = (
     <>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <Label htmlFor="title_prefix">{t('form.titlePrefix')}</Label>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-[var(--spacing-gutter)]">
+        <Field
+          label={t('form.titlePrefix')}
+          hint={t('form.titlePrefixHint')}
+          {...errorProps('title_prefix')}
+        >
           <Input
-            id="title_prefix"
             name="title_prefix"
             value={titlePrefix}
             onChange={(event) => setTitlePrefix(event.target.value)}
-            {...fieldAria('title_prefix', fieldErrors)}
           />
-          <p className="mt-1 text-sm text-text-muted">{t('form.titlePrefixHint')}</p>
-          <FieldError name="title_prefix" errors={fieldErrors} />
-        </div>
-        <div>
-          <Label htmlFor="title_suffix">{t('form.titleSuffix')}</Label>
-          <Input
-            id="title_suffix"
-            name="title_suffix"
-            defaultValue={values.title_suffix}
-            {...fieldAria('title_suffix', fieldErrors)}
-          />
-          <FieldError name="title_suffix" errors={fieldErrors} />
-        </div>
+        </Field>
+        <Field label={t('form.titleSuffix')} {...errorProps('title_suffix')}>
+          <Input name="title_suffix" defaultValue={values.title_suffix} />
+        </Field>
       </div>
 
-      <SelectField
-        name="gender"
-        label={t('form.gender')}
-        placeholder={t('detail.genderUnknown')}
-        defaultValue={values.gender}
-        options={[
-          { value: 'female', label: t('detail.genderFemale') },
-          { value: 'male', label: t('detail.genderMale') },
-          { value: 'unknown', label: t('detail.genderUnknown') },
-        ]}
-        // Nápověda u rodu mluví o skloňování oslovení, což v projektu bez oslovení
-        // neplatí. Samotné pole zůstává: rod je údaj o člověku, ne o 5. pádu.
-        hint={greetingEnabled ? t('form.genderHint') : t('form.genderHintPlain')}
-        errors={fieldErrors}
-        onSelected={(next) => setGender(next as ContactFormValues['gender'])}
-      />
+      <div className="flex flex-col gap-1.5">
+        <SelectField
+          name="gender"
+          label={t('form.gender')}
+          placeholder={t('detail.genderUnknown')}
+          defaultValue={values.gender}
+          options={[
+            { value: 'female', label: t('detail.genderFemale') },
+            { value: 'male', label: t('detail.genderMale') },
+            { value: 'unknown', label: t('detail.genderUnknown') },
+          ]}
+          errors={fieldErrors}
+          onSelected={(next) => setGender(next as ContactFormValues['gender'])}
+        />
+        {/* Nápověda u rodu mluví o skloňování oslovení, což v projektu bez oslovení
+            neplatí. Samotné pole zůstává: rod je údaj o člověku, ne o 5. pádu.
+            Píše se tady, ne propou `hint`, aby měla velikost nápovědy pod polem
+            (13 px) stejně jako u ostatních polí formuláře. */}
+        <p className="text-meta text-text-muted">
+          {greetingEnabled ? t('form.genderHint') : t('form.genderHintPlain')}
+        </p>
+      </div>
 
+      {/* JEDINÁ ZVÝRAZNĚNÁ KARTA NA OBRAZOVCE. Návrh jí dává žlutou plochu proto,
+          že je to jediný údaj, kvůli kterému se sem chodí: co kontaktu doopravdy
+          přijde v e-mailu. */}
       {greetingEnabled ? (
-        <div
+        <Card
+          as="div"
+          tone="highlight"
+          padding="sm"
+          gap="none"
           data-testid="greeting-preview"
-          className="rounded-[var(--radius-surface)] border border-border bg-surface-muted p-4"
+          className="gap-[var(--spacing-hairline)]"
         >
-          <h3 className="text-sm font-medium text-text">{t('form.greetingPreviewTitle')}</h3>
-          {values.greeting_locked ? (
-            <p className="mt-1 text-sm text-warning-text">{t('form.greetingLocked')}</p>
-          ) : null}
+          <span className="meta-caps text-warning-text">{t('form.greetingPreviewTitle')}</span>
           {preview === null ? (
-            <p className="mt-1 text-sm text-text-muted">{t('form.greetingPreviewEmpty')}</p>
+            <p className="text-ui text-text">{t('form.greetingPreviewEmpty')}</p>
           ) : (
-            <>
-              <p className="mt-1 text-base text-text">
-                {t('form.greetingPreviewValue', { greeting: preview.greeting })}
-              </p>
-              {preview.vocative_confidence === 'low' ? (
-                <p className="mt-1 text-sm text-warning-text">{t('form.greetingUncertain')}</p>
-              ) : null}
-              {preview.gender === 'unknown' ? (
-                <p className="mt-1 text-sm text-text-muted">{t('form.greetingGenderUnknown')}</p>
-              ) : null}
-            </>
+            <p className="text-h3 font-semibold tracking-[var(--tracking-heading)] text-text">
+              {t('form.greetingPreviewValue', { greeting: preview.greeting })}
+            </p>
           )}
-        </div>
+          {values.greeting_locked ? (
+            <p className="text-sm text-warning-text">{t('form.greetingLocked')}</p>
+          ) : null}
+          {/* Návrh má pod tvarem VŽDYCKY větu o tom, odkud se vzal. Jistý tvar se
+              proto taky komentuje, ne jen ten nejistý: bez toho by karta u dobře
+              skloněného jména vypadala, že se náhled nespočítal. */}
+          {preview !== null && preview.vocative_confidence === 'high' ? (
+            <p className="text-sm text-warning-text">{t('greeting.hint.derived')}</p>
+          ) : null}
+          {preview !== null && preview.vocative_confidence === 'low' ? (
+            <p className="text-sm text-warning-text">{t('form.greetingUncertain')}</p>
+          ) : null}
+          {preview !== null && preview.gender === 'unknown' ? (
+            <p className="text-sm text-warning-text">{t('form.greetingGenderUnknown')}</p>
+          ) : null}
+        </Card>
       ) : null}
+    </>
+  );
 
-      {values.fields.length > 0 ? (
-        <div className="flex flex-col gap-4">
-          <h3 className="font-semibold text-text">{t('detail.sectionData')}</h3>
-          {values.fields.map((field) => (
-            <div key={field.key}>
-              {/* Typ jde na server ve skrytém poli, protože formulář posílá všechno
-                  jako text a JSONB si typ pamatuje. Kdyby se číslo uložilo jako "42",
-                  segment s podmínkou nad číslem by kontakt nenašel a nic by nespadlo. */}
-              <input type="hidden" name={`attrtype:${field.key}`} value={field.type} readOnly />
-              <Label htmlFor={`attr-${field.key}`}>{field.label}</Label>
+  /** Vlastní pole projektu. U úpravy vlastní karta „Údaje", u založení schovaná část. */
+  const customFields =
+    values.fields.length === 0
+      ? null
+      : values.fields.map((field) => (
+          <div key={field.key} className="flex flex-col gap-1.5">
+            {/* Typ jde na server ve skrytém poli, protože formulář posílá všechno
+                jako text a JSONB si typ pamatuje. Kdyby se číslo uložilo jako "42",
+                segment s podmínkou nad číslem by kontakt nenašel a nic by nespadlo. */}
+            <input type="hidden" name={`attrtype:${field.key}`} value={field.type} readOnly />
+            <Field label={field.label} {...errorProps(`attributes.${field.key}`)}>
               {field.type === 'long_text' ? (
-                <Textarea
-                  id={`attr-${field.key}`}
-                  name={`attr:${field.key}`}
-                  defaultValue={field.value}
-                />
+                <Textarea name={`attr:${field.key}`} defaultValue={field.value} rows={4} />
               ) : (
                 <Input
-                  id={`attr-${field.key}`}
                   name={`attr:${field.key}`}
                   defaultValue={field.value}
                   {...(field.type === 'number' ? { inputMode: 'decimal' as const } : {})}
                 />
               )}
-              <FieldError name={`attributes.${field.key}`} errors={fieldErrors} />
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </>
+            </Field>
+          </div>
+        ));
+
+  const cancelLink = (
+    <Link href={detailHref} className="text-ui">
+      {t('form.cancel')}
+    </Link>
   );
 
+  const saveLabels = {
+    label: mode === 'create' ? t('form.create') : t('form.save'),
+    pendingLabel: t('form.saving'),
+  };
+
   return (
-    <article className="flex flex-col gap-6">
-      <Link href={mode === 'edit' && values.id ? `${basePath}/${values.id}` : basePath}>
-        {t('detail.back')}
-      </Link>
+    <form ref={formRef} action={formAction} noValidate>
+      <input type="hidden" name="workspace_id" value={workspaceId} readOnly />
+      <input type="hidden" name="workspace_slug" value={workspaceSlug} readOnly />
+      {values.id ? <input type="hidden" name="contact_id" value={values.id} readOnly /> : null}
 
-      <h1 className="text-xl font-semibold text-text">
-        {mode === 'create' ? t('form.createTitle') : t('form.editTitle')}
-      </h1>
-
-      {state.status === 'error' && formErrors.length === 0 ? (
-        <ContactsProblem problem={state.problem} />
-      ) : null}
-      {formErrors.length > 0 ? (
-        <p role="alert" className="text-sm text-danger-text">
-          {formErrors.join(' ')}
-        </p>
-      ) : null}
-
-      <form ref={formRef} action={formAction} className="flex flex-col gap-8" noValidate>
-        <input type="hidden" name="workspace_id" value={workspaceId} readOnly />
-        <input type="hidden" name="workspace_slug" value={workspaceSlug} readOnly />
-        {values.id ? <input type="hidden" name="contact_id" value={values.id} readOnly /> : null}
-
-        <section className="flex flex-col gap-4">
-          <h2 className="font-semibold text-text">{t('form.sectionIdentity')}</h2>
-
-          {mode === 'create' ? (
-            <div>
-              <Label htmlFor="email">{t('form.email')}</Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="off"
-                defaultValue={values.email}
-                {...fieldAria('email', fieldErrors)}
-              />
-              <p className="mt-1 text-sm text-text-muted">{t('form.emailHint')}</p>
-              <FieldError name="email" errors={fieldErrors} />
-            </div>
-          ) : (
-            <>
-              {/* Adresa je klíč kontaktu a zápisem se nemění (pravidlo 1 ze 4.1.2 části 2).
-                  Na obrazovce je vidět, ale jako hodnota, ne jako pole: měnit ji smí jen
-                  samostatná akce, která umí přepočítat otisky a odhalit kolizi. */}
-              <input type="hidden" name="email" value={values.email} readOnly />
-              <div>
-                <span className="block text-sm font-medium text-text">{t('form.email')}</span>
-                <p className="text-sm text-text">{values.email}</p>
-                <Link href={`${basePath}/${values.id}/email`} className="text-sm">
-                  {t('form.changeEmail')}
+      <PageHeader
+        title={mode === 'create' ? t('form.createTitle') : t('form.editTitle')}
+        {...(meta === null ? {} : { meta })}
+        breadcrumbs={
+          <nav aria-label={tCommon('a11y.breadcrumbs')} className="flex items-center gap-2">
+            <Link href={basePath} className="text-sm">
+              {t('detail.back')}
+            </Link>
+            {mode === 'edit' ? (
+              <>
+                <ChevronRight aria-hidden className="icon-xs text-border-strong" />
+                <Link href={detailHref} className="text-sm">
+                  {contactName === '' ? values.email : contactName}
                 </Link>
-              </div>
-            </>
-          )}
+              </>
+            ) : null}
+            <ChevronRight aria-hidden className="icon-xs text-border-strong" />
+            <span className="font-mono text-meta text-text-muted">
+              {mode === 'create' ? t('form.breadcrumbNew') : t('form.breadcrumbEdit')}
+            </span>
+          </nav>
+        }
+        actions={
+          <>
+            {cancelLink}
+            <SaveButton {...saveLabels} />
+          </>
+        }
+      />
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="first_name">{t('form.firstName')}</Label>
-              <Input
-                id="first_name"
-                name="first_name"
-                value={firstName}
-                onChange={(event) => setFirstName(event.target.value)}
-                {...fieldAria('first_name', fieldErrors)}
-              />
-              <FieldError name="first_name" errors={fieldErrors} />
-            </div>
-            <div>
-              <Label htmlFor="last_name">{t('form.lastName')}</Label>
-              <Input
-                id="last_name"
-                name="last_name"
-                value={lastName}
-                onChange={(event) => setLastName(event.target.value)}
-                {...fieldAria('last_name', fieldErrors)}
-              />
-              <FieldError name="last_name" errors={fieldErrors} />
-            </div>
-          </div>
+      <div className="flex flex-col gap-[var(--spacing-gutter)]">
+        {state.status === 'error' && formErrors.length === 0 ? (
+          <ContactsProblem problem={state.problem} />
+        ) : null}
+        {formErrors.length > 0 ? <Alert tone="error">{formErrors.join(' ')}</Alert> : null}
 
-          {mode === 'edit' ? advanced : null}
-        </section>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] items-start gap-[var(--spacing-gutter)]">
+          <div className="grid gap-[var(--spacing-gutter)]">
+            <Card gap="gutter">
+              <CardTitle>{t('form.sectionIdentity')}</CardTitle>
 
-        {mode === 'create' ? (
-          <section className="flex flex-col gap-3">
-            <fieldset className="flex flex-col gap-2">
-              <legend className="font-semibold text-text">{t('form.subscriptionTitle')}</legend>
-              {/* Volba správce, ne otázka na kontakt. Adresu odněkud má a je to on,
-                  kdo za tvrzení o souhlasu ručí; nástroj mu ho nemá co vyvracet.
-                  Výchozí je proto přihlášený. */}
-              {(['confirmed', 'pending'] as const).map((option) => (
-                <label
-                  key={option}
-                  className="flex items-start gap-3 rounded-[var(--radius-surface)] border border-border p-3"
-                >
-                  <input
-                    type="radio"
-                    name="subscription"
-                    value={option}
-                    className="mt-1"
-                    checked={subscription === option}
-                    onChange={() => setSubscription(option)}
+              {mode === 'create' ? (
+                <Field label={t('form.email')} hint={t('form.emailHint')} {...errorProps('email')}>
+                  <Input name="email" type="email" autoComplete="off" defaultValue={values.email} />
+                </Field>
+              ) : (
+                <>
+                  {/* Adresa je klíč kontaktu a zápisem se nemění (pravidlo 1 ze 4.1.2 části 2).
+                      Na obrazovce je vidět, ale jako hodnota, ne jako pole: měnit ji smí jen
+                      samostatná akce, která umí přepočítat otisky a odhalit kolizi. */}
+                  <input type="hidden" name="email" value={values.email} readOnly />
+                  <div className="flex items-center gap-[var(--spacing-stack)] rounded-[var(--radius-control)] border border-border bg-surface-muted p-[var(--spacing-stack)]">
+                    <div className="grid min-w-0 gap-0.5">
+                      <span className="meta-caps text-text-muted">{t('form.email')}</span>
+                      <span className="font-mono text-ui break-all text-text">{values.email}</span>
+                    </div>
+                    <Link
+                      href={`${basePath}/${values.id}/email`}
+                      className="ml-auto text-sm whitespace-nowrap"
+                    >
+                      {t('form.changeEmail')}
+                    </Link>
+                  </div>
+                </>
+              )}
+
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-[var(--spacing-gutter)]">
+                <Field label={t('form.firstName')} {...errorProps('first_name')}>
+                  <Input
+                    name="first_name"
+                    value={firstName}
+                    onChange={(event) => setFirstName(event.target.value)}
                   />
-                  <span>
-                    <span className="block font-medium text-text">
-                      {option === 'confirmed'
-                        ? t('form.subscriptionConfirmed')
-                        : t('form.subscriptionPending')}
-                    </span>
-                    {/* Jedna věta o tom, co to znamená pro odesílání. Ne poučování
-                        o právu: uživatel potřebuje vědět, jestli mu ten člověk přijde
-                        do kampaně, nebo ne. */}
-                    <span className="mt-1 block text-sm text-text-muted">
-                      {option === 'confirmed'
-                        ? t('form.subscriptionConfirmedHint')
-                        : t('form.subscriptionPendingHint')}
-                    </span>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-          </section>
-        ) : null}
+                </Field>
+                <Field label={t('form.lastName')} {...errorProps('last_name')}>
+                  <Input
+                    name="last_name"
+                    value={lastName}
+                    onChange={(event) => setLastName(event.target.value)}
+                  />
+                </Field>
+              </div>
 
-        {mode === 'create' ? (
-          <section className="flex flex-col gap-3">
-            {/* Rozbalovátko, ne odkaz na druhou obrazovku: schovaná pole zůstávají
-                v DOM a odešlou se i zavřená, takže rozbalení nic neztratí ani nepřidá. */}
-            <button
-              type="button"
-              aria-expanded={advancedVisible}
-              aria-controls={advancedId}
-              onClick={() => setAdvancedOpen(!advancedVisible)}
-              className="self-start text-left font-semibold text-text underline-offset-4 hover:underline"
-            >
-              {t('form.moreDetails')}
-            </button>
-            <p className="text-sm text-text-muted">
-              {greetingEnabled ? t('form.moreDetailsHint') : t('form.moreDetailsHintPlain')}
-            </p>
-            <div id={advancedId} hidden={!advancedVisible} className="flex flex-col gap-4">
-              {advanced}
-            </div>
-          </section>
-        ) : null}
+              {mode === 'edit' ? identityAdvanced : null}
 
-        <section className="flex flex-col gap-3">
-          <h2 className="font-semibold text-text">{t('detail.tags')}</h2>
-          {values.tags.length === 0 ? (
-            <p className="text-sm text-text-muted">{t('form.noTagsYet')}</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {values.tags.map((tag) => (
-                <li key={tag.name}>
-                  <label className="flex items-center gap-2 text-sm text-text">
-                    <Checkbox name="tag" value={tag.name} defaultChecked={tag.selected} />
-                    <span>{tag.name}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div>
-            <Label htmlFor="new_tags">{t('form.newTags')}</Label>
-            <Input id="new_tags" name="new_tags" />
-            <p className="mt-1 text-sm text-text-muted">{t('form.newTagsHint')}</p>
-          </div>
-        </section>
-
-        <section className="flex flex-col gap-3">
-          <h2 className="font-semibold text-text">{t('detail.lists')}</h2>
-          <p className="text-sm text-text-muted">
-            {mode === 'edit'
-              ? t('form.listsHintEdit')
-              : subscription === 'confirmed'
-                ? t('form.listsHintCreateConfirmed')
-                : t('form.listsHintCreatePending')}
-          </p>
-          {values.lists.length === 0 ? (
-            <p className="text-sm text-text-muted">{t('detail.noLists')}</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {values.lists.map((list) => (
-                <li key={list.id}>
-                  <label className="flex items-center gap-2 text-sm text-text">
-                    <Checkbox
-                      name="list"
-                      value={list.id}
-                      checked={checkedLists.has(list.id)}
-                      onCheckedChange={(next: boolean | 'indeterminate') =>
-                        toggleList(list.id, next === true)
-                      }
+              {mode === 'create' ? (
+                <div className="flex flex-col gap-[var(--spacing-stack)]">
+                  {/* Rozbalovátko, ne odkaz na druhou obrazovku: schovaná pole zůstávají
+                      v DOM a odešlou se i zavřená, takže rozbalení nic neztratí ani nepřidá. */}
+                  <button
+                    type="button"
+                    aria-expanded={advancedVisible}
+                    aria-controls={advancedId}
+                    onClick={() => setAdvancedOpen(!advancedVisible)}
+                    className="flex min-h-[var(--size-control-sm)] items-center gap-[var(--spacing-inline)] self-start text-left text-ui font-semibold text-text"
+                  >
+                    <ChevronDown
+                      aria-hidden
+                      className={`icon-sm text-text-muted transition-transform duration-[var(--duration-normal)] ${
+                        advancedVisible ? '' : '-rotate-90'
+                      }`}
                     />
-                    <span>{list.name}</span>
-                    {/* Dvojí potvrzení je vlastnost SEZNAMU, ne kontaktu, a rozhoduje
-                        o tom, jestli po uložení odejde potvrzovací e-mail. Bez tohohle
-                        štítku by se to uživatel dozvěděl až z doručené pošty příjemce. */}
-                    {list.double_opt_in ? (
-                      <Badge tone="neutral" icon={MailIcon}>
-                        {t('form.listDoubleOptIn')}
-                      </Badge>
-                    ) : null}
-                  </label>
-                  {/* Stav při vykreslení. Bez něj by akce nepoznala rozdíl mezi
-                      „uživatel seznam odškrtl" a „nikdy zaškrtnutý nebyl", a odhlašovala
-                      by kontakt ze seznamů, ve kterých nikdy nebyl. */}
-                  {list.selected ? (
-                    <input type="hidden" name="list_before" value={list.id} readOnly />
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-          {/* Kontakt mimo seznamy je legitimní stav, ne chyba, ale musí být vidět,
-              co z něj plyne. Bez seznamu se do publika kampaně nedostane a nikde
-              jinde se to nedozví. */}
-          {values.lists.length > 0 && checkedLists.size === 0 ? (
-            <p className="text-sm text-text-muted" data-testid="no-list-warning">
-              {t('form.listsNoneSelected')}
-            </p>
-          ) : null}
-        </section>
+                    {t('form.moreDetails')}
+                  </button>
+                  <p className="text-meta text-text-muted">
+                    {greetingEnabled ? t('form.moreDetailsHint') : t('form.moreDetailsHintPlain')}
+                  </p>
+                  <div
+                    id={advancedId}
+                    hidden={!advancedVisible}
+                    className="flex flex-col gap-[var(--spacing-gutter)]"
+                  >
+                    {identityAdvanced}
+                    {customFields}
+                  </div>
+                </div>
+              ) : null}
+            </Card>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <SubmitButton
-            label={mode === 'create' ? t('form.create') : t('form.save')}
-            pendingLabel={t('form.saving')}
-          />
-          <Link href={mode === 'edit' && values.id ? `${basePath}/${values.id}` : basePath}>
-            {t('form.cancel')}
-          </Link>
+            {mode === 'edit' && customFields !== null ? (
+              <Card gap="gutter">
+                <CardTitle>{t('detail.sectionData')}</CardTitle>
+                {customFields}
+              </Card>
+            ) : null}
+
+            {mode === 'create' ? (
+              <Card gap="gutter">
+                <CardTitle>{t('form.subscriptionTitle')}</CardTitle>
+                {/* Volba správce, ne otázka na kontakt. Adresu odněkud má a je to on,
+                    kdo za tvrzení o souhlasu ručí; nástroj mu ho nemá co vyvracet.
+                    Výchozí je proto přihlášený. */}
+                <RadioGroup
+                  name="subscription"
+                  value={subscription}
+                  className="gap-[var(--spacing-stack)]"
+                  onValueChange={(next: string) => setSubscription(next as 'confirmed' | 'pending')}
+                >
+                  {(['confirmed', 'pending'] as const).map((option) => (
+                    <div key={option} className="flex items-start gap-3">
+                      <RadioGroupItem
+                        value={option}
+                        id={`subscription-${option}`}
+                        aria-labelledby={`subscription-label-${option}`}
+                        className="mt-1"
+                      />
+                      <div className="flex flex-col gap-1.5">
+                        <label
+                          id={`subscription-label-${option}`}
+                          htmlFor={`subscription-${option}`}
+                          className="text-ui font-semibold text-text"
+                        >
+                          {option === 'confirmed'
+                            ? t('form.subscriptionConfirmed')
+                            : t('form.subscriptionPending')}
+                        </label>
+                        {/* Jedna věta o tom, co to znamená pro odesílání. Ne poučování
+                            o právu: uživatel potřebuje vědět, jestli mu ten člověk přijde
+                            do kampaně, nebo ne. */}
+                        <span className="text-meta text-text-muted">
+                          {option === 'confirmed'
+                            ? t('form.subscriptionConfirmedHint')
+                            : t('form.subscriptionPendingHint')}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </RadioGroup>
+              </Card>
+            ) : null}
+          </div>
+
+          <div className="grid gap-[var(--spacing-gutter)]">
+            <Card>
+              <CardTitle>{t('detail.tags')}</CardTitle>
+              {values.tags.length === 0 ? (
+                <p className="text-sm text-text-muted">{t('form.noTagsYet')}</p>
+              ) : (
+                <ul className="grid gap-1">
+                  {values.tags.map((tag) => (
+                    <li key={tag.name}>
+                      <label className="flex min-h-[var(--size-target-min)] cursor-pointer items-center gap-[var(--spacing-inline)] text-ui text-text">
+                        <Checkbox name="tag" value={tag.name} defaultChecked={tag.selected} />
+                        <span>{tag.name}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Field label={t('form.newTags')} hint={t('form.newTagsHint')}>
+                <Input name="new_tags" placeholder={t('form.newTagsPlaceholder')} />
+              </Field>
+            </Card>
+
+            <Card>
+              <CardTitle>{t('detail.lists')}</CardTitle>
+              <p className="text-sm text-text-muted">
+                {mode === 'edit'
+                  ? t('form.listsHintEdit')
+                  : subscription === 'confirmed'
+                    ? t('form.listsHintCreateConfirmed')
+                    : t('form.listsHintCreatePending')}
+              </p>
+              {values.lists.length === 0 ? (
+                <p className="text-sm text-text-muted">{t('detail.noLists')}</p>
+              ) : (
+                <ul className="grid gap-1">
+                  {values.lists.map((list) => (
+                    <li key={list.id}>
+                      <label className="flex min-h-[var(--size-target-min)] cursor-pointer items-center gap-3 text-ui text-text">
+                        <Checkbox
+                          name="list"
+                          value={list.id}
+                          checked={checkedLists.has(list.id)}
+                          onCheckedChange={(next: boolean | 'indeterminate') =>
+                            toggleList(list.id, next === true)
+                          }
+                        />
+                        <span>{list.name}</span>
+                        {/* Dvojí potvrzení je vlastnost SEZNAMU, ne kontaktu, a rozhoduje
+                            o tom, jestli po uložení odejde potvrzovací e-mail. Bez tohohle
+                            štítku by se to uživatel dozvěděl až z doručené pošty příjemce. */}
+                        {list.double_opt_in ? (
+                          <Tag tone="neutral" className="gap-1.5">
+                            <Mail aria-hidden className="icon-xs" />
+                            {t('form.listDoubleOptIn')}
+                          </Tag>
+                        ) : null}
+                      </label>
+                      {/* Stav při vykreslení. Bez něj by akce nepoznala rozdíl mezi
+                          „uživatel seznam odškrtl" a „nikdy zaškrtnutý nebyl", a odhlašovala
+                          by kontakt ze seznamů, ve kterých nikdy nebyl. */}
+                      {list.selected ? (
+                        <input type="hidden" name="list_before" value={list.id} readOnly />
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {/* Kontakt mimo seznamy je legitimní stav, ne chyba, ale musí být vidět,
+                  co z něj plyne. Bez seznamu se do publika kampaně nedostane a nikde
+                  jinde se to nedozví. */}
+              {values.lists.length > 0 && checkedLists.size === 0 ? (
+                <Alert tone="warning" data-testid="no-list-warning">
+                  {t('form.listsNoneSelected')}
+                </Alert>
+              ) : null}
+            </Card>
+          </div>
         </div>
-      </form>
-    </article>
+
+        <div className="mt-[var(--spacing-hairline)] flex flex-wrap items-center gap-[var(--spacing-stack)]">
+          <SaveButton {...saveLabels} />
+          {cancelLink}
+        </div>
+      </div>
+    </form>
   );
 }

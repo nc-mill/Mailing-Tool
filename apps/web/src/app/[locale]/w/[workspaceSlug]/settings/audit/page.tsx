@@ -3,7 +3,11 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AuditFilters } from '@/features/audit/audit-filters';
 import { AuditTable, type AuditRow } from '@/features/audit/audit-table';
-import { SettingsPageShell } from '@/features/settings/settings-page-shell';
+import {
+  SettingsPageShell,
+  SettingsSection,
+  SettingsStack,
+} from '@/features/settings/settings-page-shell';
 import { SettingsProblem } from '@/features/settings/settings-problem';
 import { ForbiddenSection } from '@/features/settings/forbidden-section';
 import { apiFetch } from '@/lib/api-client/fetch';
@@ -80,15 +84,24 @@ export default async function AuditPage({
 
   return (
     <SettingsPageShell title={t('audit.title')} lead={t('audit.lead')}>
-      <div className="space-y-8">
-        <AuditFilters basePath={basePath} filters={filters} />
-        <AuditTable
-          entries={entries.result}
-          filters={filters}
-          basePath={basePath}
-          cursorDropped={entries.cursorDropped}
-        />
-      </div>
+      <SettingsStack>
+        {/* Filtry sedí na tlumené ploše, aby se odlišily od obsahu, který
+            filtrují. Je to týž rytmus jako na Kontaktech: hlavička, filtry,
+            karta s obsahem. */}
+        <SettingsSection tone="muted" padding="sm">
+          <AuditFilters basePath={basePath} filters={filters} />
+        </SettingsSection>
+        {/* Tabulka jde až k rámečku karty: pět sloupců s dlouhými
+            identifikátory se do 806 px jinak nevejde (naměřeno 839). */}
+        <SettingsSection padding="none">
+          <AuditTable
+            entries={entries.result}
+            filters={filters}
+            basePath={basePath}
+            cursorDropped={entries.cursorDropped}
+          />
+        </SettingsSection>
+      </SettingsStack>
     </SettingsPageShell>
   );
 }

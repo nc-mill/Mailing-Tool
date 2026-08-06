@@ -4,6 +4,7 @@ import { useActionState, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Checkbox } from '@mlain/ui/components/checkbox';
 import { Input } from '@mlain/ui/components/input';
+import { CardTitle } from '@mlain/ui/components/card';
 import { Label } from '@mlain/ui/components/label';
 import { Textarea } from '@mlain/ui/components/textarea';
 import { FieldError, fieldAria } from '@/lib/forms/field-error';
@@ -52,18 +53,20 @@ export function WebhookFormView(props: WebhookFormViewProps) {
   const selected = new Set(props.endpoint?.event_types ?? []);
 
   return (
-    <section aria-labelledby="webhook-form">
-      <h2 id="webhook-form" className="text-xl font-semibold">
-        {props.mode === 'create' ? t('webhooks.form.createTitle') : t('webhooks.form.editTitle')}
-      </h2>
+    <section aria-labelledby="webhook-form" className="flex flex-col gap-[var(--spacing-gutter)]">
+      <CardTitle>
+        <span id="webhook-form">
+          {props.mode === 'create' ? t('webhooks.form.createTitle') : t('webhooks.form.editTitle')}
+        </span>
+      </CardTitle>
 
       {state.status === 'error' && Object.keys(fieldErrors).length === 0 ? (
-        <div className="mt-4">
+        <div>
           <SettingsProblem problem={state.problem} />
         </div>
       ) : null}
 
-      <form action={formAction} className="mt-4" noValidate>
+      <form action={formAction} className="flex flex-col gap-[var(--spacing-gutter)]" noValidate>
         {props.mode === 'create' ? <IdempotencyField /> : null}
         <input type="hidden" name="workspace_id" value={props.workspaceId} readOnly />
         <input type="hidden" name="slug" value={props.slug} readOnly />
@@ -71,7 +74,7 @@ export function WebhookFormView(props: WebhookFormViewProps) {
           <input type="hidden" name="endpoint_id" value={props.endpoint.id} readOnly />
         ) : null}
 
-        <div className="mb-4">
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="webhook-url">{t('webhooks.form.url')}</Label>
           <Input
             id="webhook-url"
@@ -80,11 +83,11 @@ export function WebhookFormView(props: WebhookFormViewProps) {
             defaultValue={props.endpoint?.url}
             {...fieldAria('url', fieldErrors)}
           />
-          <p className="mt-1 text-sm text-text-muted">{t('webhooks.form.urlHint')}</p>
+          <p className="text-meta text-text-muted">{t('webhooks.form.urlHint')}</p>
           <FieldError name="url" errors={fieldErrors} />
         </div>
 
-        <div className="mb-4">
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="webhook-description">{t('webhooks.form.description')}</Label>
           <Textarea
             id="webhook-description"
@@ -93,21 +96,25 @@ export function WebhookFormView(props: WebhookFormViewProps) {
             defaultValue={props.endpoint?.description}
             {...fieldAria('description', fieldErrors)}
           />
-          <p className="mt-1 text-sm text-text-muted">{t('webhooks.form.descriptionHint')}</p>
+          <p className="text-meta text-text-muted">{t('webhooks.form.descriptionHint')}</p>
           <FieldError name="description" errors={fieldErrors} />
         </div>
 
-        <fieldset className="mb-4">
-          <legend className="font-medium">{t('webhooks.form.events')}</legend>
-          <p className="mt-1 text-sm text-text-muted">{t('webhooks.form.eventsHint')}</p>
-          <div className="mt-2 grid gap-4 sm:grid-cols-2">
+        <fieldset className="flex flex-col gap-[var(--spacing-hairline)]">
+          <legend className="text-ui font-semibold text-text">{t('webhooks.form.events')}</legend>
+          <p className="text-meta text-text-muted">{t('webhooks.form.eventsHint')}</p>
+          <div className="mt-[var(--spacing-hairline)] grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-[var(--spacing-gutter)]">
             {groups.map((group) => (
               <fieldset key={group.prefix} aria-label={group.prefix}>
-                <legend className="text-sm font-medium">{group.prefix}</legend>
+                <legend className="text-sm font-semibold text-text">{group.prefix}</legend>
                 {group.types.map((type) => (
-                  <label key={type} className="mt-1 flex items-center gap-2">
+                  // 44 px klikací plochy i u zaškrtávátka v seznamu.
+                  <label
+                    key={type}
+                    className="flex min-h-[var(--size-target-min)] cursor-pointer items-center gap-[var(--spacing-inline)]"
+                  >
                     <Checkbox name="event_types" value={type} defaultChecked={selected.has(type)} />
-                    <code className="text-sm">{type}</code>
+                    <code className="font-mono text-meta">{type}</code>
                   </label>
                 ))}
               </fieldset>
@@ -116,18 +123,21 @@ export function WebhookFormView(props: WebhookFormViewProps) {
           <FieldError name="event_types" errors={fieldErrors} />
         </fieldset>
 
-        <p className="mb-4 rounded-md bg-surface-muted p-3 text-sm">
+        <p className="rounded-[var(--radius-control)] bg-surface-muted p-[var(--spacing-inline)] text-meta">
           {t('webhooks.form.duplicateNote')}
         </p>
 
-        <SubmitButton
-          label={
-            props.mode === 'create' ? t('webhooks.form.submit') : t('webhooks.form.saveSubmit')
-          }
-          pendingLabel={
-            props.mode === 'create' ? t('webhooks.form.submitting') : t('shared.saving')
-          }
-        />
+        {/* Obal `flex`, aby se tlačítko neroztáhlo přes celou šířku formuláře. */}
+        <div className="flex">
+          <SubmitButton
+            label={
+              props.mode === 'create' ? t('webhooks.form.submit') : t('webhooks.form.saveSubmit')
+            }
+            pendingLabel={
+              props.mode === 'create' ? t('webhooks.form.submitting') : t('shared.saving')
+            }
+          />
+        </div>
       </form>
     </section>
   );

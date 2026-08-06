@@ -36,12 +36,12 @@ export function VisibilityControl({ descriptor, value, onChange, id, fieldCatalo
 
   return (
     <div className="space-y-2">
-      <label className="block text-xs">
+      <label className="block text-meta">
         {t('visibility.field')}
         <select
           id={id}
           aria-label={t('visibility.field')}
-          className="mt-1 h-9 w-full rounded-[var(--radius-control)] border border-border bg-surface px-2 text-sm"
+          className="mt-1 min-h-[var(--size-target-min)] w-full rounded-[var(--radius-control)] border border-border-strong bg-field px-3 text-ui"
           value={condition?.field ?? ''}
           onChange={(event) => {
             const path = event.target.value;
@@ -63,11 +63,11 @@ export function VisibilityControl({ descriptor, value, onChange, id, fieldCatalo
         </select>
       </label>
       {condition ? (
-        <label className="block text-xs">
+        <label className="block text-meta">
           {t('visibility.operator')}
           <select
             aria-label={t('visibility.operator')}
-            className="mt-1 h-9 w-full rounded-[var(--radius-control)] border border-border bg-surface px-2 text-sm"
+            className="mt-1 min-h-[var(--size-target-min)] w-full rounded-[var(--radius-control)] border border-border-strong bg-field px-3 text-ui"
             value={condition.op}
             onChange={(event) => emit({ ...condition, op: event.target.value })}
           >

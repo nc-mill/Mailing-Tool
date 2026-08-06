@@ -134,6 +134,7 @@
   "general": {
     "title": "Projekt",
     "lead": "Název, adresa a výchozí hodnoty projektu {projectName}.",
+    "identityTitle": "Základní údaje",
     "name": "Název projektu",
     "slug": "Adresa projektu",
     "slugHint": "Používá se v odkazech: /w/{slug}. Malá písmena, číslice a pomlčky.",

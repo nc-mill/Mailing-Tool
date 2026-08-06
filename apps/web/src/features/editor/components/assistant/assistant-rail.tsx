@@ -29,38 +29,42 @@ export function AssistantRail({
 }) {
   const t = useTranslations('editor');
 
+  /*
+   * SBALENÝ ASISTENT JE KARTA, ne proužek přilepený k okraji. Návrh ho kreslí
+   * jako svislé tlačítko se žlutou plochou, rámečkem `primary-hover` a rádiusem
+   * 10 px, tedy stejně jako zvýrazněnou kartu. Sedí tak do mřížky vedle palety,
+   * plátna a vlastností, kde je pro něj vyhrazený sloupec.
+   */
+  const railTone = [
+    'border border-primary-hover bg-accent-surface text-accent-text',
+    'rounded-[var(--radius-surface)]',
+    'transition-colors duration-[var(--duration-fast)] hover:bg-primary hover:text-primary-foreground',
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]',
+  ].join(' ');
+
   if (!open) {
     return (
-      <div className="flex">
-        <button
-          type="button"
-          aria-expanded={false}
-          aria-controls="editor-assistant"
-          data-testid="assistant-rail"
-          title={t('canvas.assistantOpen')}
-          onClick={() => onOpenChange(true)}
-          className={
-            'flex w-11 shrink-0 flex-col items-center gap-2 border-l border-border ' +
-            'bg-accent-surface py-3 text-accent-text hover:brightness-95 ' +
-            'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]'
-          }
-        >
-          <Sparkles aria-hidden className="size-5" />
-          {/* Svislý popisek: v úzkém proužku se vodorovný text nevejde a
-              zkratka („AI") by nedala vědět, co se rozbalí. */}
-          <span
-            className="text-xs font-medium tracking-wide"
-            style={{ writingMode: 'vertical-rl' }}
-          >
-            {t('canvas.assistantOpen')}
-          </span>
-        </button>
-      </div>
+      <button
+        type="button"
+        aria-expanded={false}
+        aria-controls="editor-assistant"
+        data-testid="assistant-rail"
+        title={t('canvas.assistantOpen')}
+        onClick={() => onOpenChange(true)}
+        className={`flex flex-col items-center gap-[var(--spacing-inline)] px-2 py-[var(--spacing-stack)] ${railTone}`}
+      >
+        <Sparkles aria-hidden className="icon-md" />
+        {/* Svislý popisek: v úzkém sloupci se vodorovný text nevejde a
+            zkratka („AI") by nedala vědět, co se rozbalí. */}
+        <span className="meta-caps" style={{ writingMode: 'vertical-rl' }}>
+          {t('canvas.assistantOpen')}
+        </span>
+      </button>
     );
   }
 
   return (
-    <div className="flex" id="editor-assistant">
+    <div className="flex min-w-0 gap-[var(--spacing-hairline)]" id="editor-assistant">
       <button
         type="button"
         aria-expanded
@@ -69,13 +73,9 @@ export function AssistantRail({
         title={t('canvas.assistantHide')}
         aria-label={t('canvas.assistantHide')}
         onClick={() => onOpenChange(false)}
-        className={
-          'flex w-6 shrink-0 items-center justify-center border-l border-border ' +
-          'bg-accent-surface text-accent-text hover:brightness-95 ' +
-          'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]'
-        }
+        className={`flex w-6 shrink-0 items-center justify-center ${railTone}`}
       >
-        <ChevronRight aria-hidden className="size-4" />
+        <ChevronRight aria-hidden className="icon-sm" />
       </button>
       {panel}
     </div>

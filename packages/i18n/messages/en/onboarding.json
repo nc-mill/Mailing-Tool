@@ -49,9 +49,11 @@
     }
   },
   "demo": {
+    "label": "Sample data",
     "bannerTitle": "This project contains sample data.",
     "bannerDetail": "{contacts, plural, =0 {No sample contact} one {# sample contact} other {# sample contacts}} on example.com addresses, which can never receive anything.",
-    "filterHint": "Show them in contacts by the Sample data tag",
+    "filterHint": "You will find them in contacts under the Sample data tag.",
+    "showInContacts": "Show in contacts",
     "remove": "Remove",
     "removed": "The sample data is gone.",
     "removeFailed": "The sample data could not be removed ({code}). Please try again.",
@@ -74,6 +76,7 @@
     "neverVerified": "Not verified yet.",
     "columnCreated": "Created",
     "columnSize": "Size",
+    "sizeMegabytes": "{size} MB",
     "columnRows": "Contacts in backup",
     "columnVerified": "Verification",
     "keyWarning": "The encryption key is not in the backup. Store the whole keyring separately, that is SECRET_KEY and every previous generation from SECRET_KEY_PREVIOUS. Without the old generations the fingerprints of erased addresses stop matching and erased people come back with the next import."

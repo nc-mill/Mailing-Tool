@@ -28,7 +28,10 @@ export function BlockToolbar({ blockId }: { blockId: string }) {
     <TooltipProvider>
       <div
         data-testid={`block-toolbar-${blockId}`}
-        className="absolute -top-3 right-2 flex gap-1 rounded-md border border-border bg-surface p-1 shadow-sm"
+        // Vysouvací ovládání nad blokem. Rádius je 10 px jako u každé plochy,
+        // ne 6 px, a stín systém nemá: odděluje ho hairline rámeček a plocha
+        // `surface-overlay`, tedy táž dvojice jako u rozbalené nabídky.
+        className="absolute -top-3 right-2 z-20 flex gap-1 rounded-[var(--radius-surface)] border border-border bg-surface-overlay p-1"
       >
         {TOOLBAR_OPERATIONS.map((operation) => {
           const Icon = operation.icon ? ICONS[operation.icon] : null;
@@ -37,7 +40,9 @@ export function BlockToolbar({ blockId }: { blockId: string }) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="min-h-8 px-2"
+                // Ikonový čtverec v liště: rozměr z tokenu pro ikonové tlačítko
+                // v řádku, ne z náhodného čísla škály.
+                className="size-[var(--size-control-xs)] min-h-[var(--size-control-xs)] px-0"
                 // Plátno má jediný tabstop (rozhodnutí R4): jeden Tab dovnitř,
                 // jeden ven. Tlačítka ovládání bloku proto z tabulátoru vypadávají
                 // a klávesnice je obsluhuje zkratkou z registru operací, kterou
@@ -49,7 +54,7 @@ export function BlockToolbar({ blockId }: { blockId: string }) {
                   runOperation(store, operation.id);
                 }}
               >
-                {Icon ? <Icon aria-hidden className="size-4" /> : null}
+                {Icon ? <Icon aria-hidden className="icon-sm" /> : null}
               </Button>
             </Tooltip>
           );

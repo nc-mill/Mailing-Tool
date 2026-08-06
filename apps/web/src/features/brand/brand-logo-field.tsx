@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@mlain/ui/components/button';
 import { Dialog, DialogBody, DialogTitle } from '@mlain/ui/components/dialog';
+import { Alert } from '@mlain/ui/patterns/states';
 import { toAssetRow, type ApiAssetList, type AssetRow } from '@/features/assets/types';
 
 export type BrandLogoValue = { id: string; url: string; name: string } | null;
@@ -61,9 +62,9 @@ export function BrandLogoField({
   }, [open, workspaceId]);
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
       {value === null ? (
-        <p className="text-sm text-text-muted">{t('brand.logoNone')}</p>
+        <p className="text-ui text-text-muted">{t('brand.logoNone')}</p>
       ) : (
         // Náhled je obyčejný `img`: adresa přichází z API za běhu a `next/image`
         // by na ni potřeboval statickou konfiguraci domén. Týž důvod jako
@@ -72,7 +73,7 @@ export function BrandLogoField({
           src={value.url}
           alt={value.name}
           data-testid="brand-logo-preview"
-          className="h-12 w-auto max-w-48 rounded border border-border bg-surface object-contain p-1"
+          className="h-12 w-auto max-w-48 rounded-[var(--radius-control)] border border-border bg-surface object-contain p-1"
         />
       )}
 
@@ -88,14 +89,16 @@ export function BrandLogoField({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTitle>{t('brand.logoDialogTitle')}</DialogTitle>
         <DialogBody>
-          {failed ? <p role="alert">{t('brand.logoLoadFailed')}</p> : null}
-          {!failed && assets.length === 0 ? <p>{t('brand.logoLibraryEmpty')}</p> : null}
-          <ul className="grid max-h-80 grid-cols-3 gap-2 overflow-auto">
+          {failed ? <Alert tone="error">{t('brand.logoLoadFailed')}</Alert> : null}
+          {!failed && assets.length === 0 ? (
+            <p className="text-ui text-text-muted">{t('brand.logoLibraryEmpty')}</p>
+          ) : null}
+          <ul className="grid max-h-80 grid-cols-3 gap-[var(--spacing-inline)] overflow-auto">
             {assets.map((asset) => (
               <li key={asset.id}>
                 <button
                   type="button"
-                  className="w-full rounded border border-border p-1 hover:border-border-strong"
+                  className="w-full rounded-[var(--radius-control)] border border-border p-1.5 hover:border-border-strong hover:bg-surface-muted"
                   onClick={() => {
                     onChange({ id: asset.id, url: asset.url, name: asset.originalFilename });
                     setOpen(false);
@@ -110,7 +113,9 @@ export function BrandLogoField({
                     className="h-20 w-full object-contain"
                     loading="lazy"
                   />
-                  <span className="block truncate text-xs">{asset.originalFilename}</span>
+                  <span className="block truncate font-mono text-label text-text-muted">
+                    {asset.originalFilename}
+                  </span>
                 </button>
               </li>
             ))}

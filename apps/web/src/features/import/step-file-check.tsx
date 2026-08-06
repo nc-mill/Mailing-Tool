@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@mlain/ui/components/button';
+import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Select, SelectItem } from '@mlain/ui/components/select';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
@@ -76,47 +77,61 @@ export function StepFileCheck({
   }
 
   return (
-    <div className="flex max-w-3xl flex-col gap-5">
-      <h2 className="text-lg font-semibold text-text">{t('fileCheck.title')}</h2>
+    <div className="flex max-w-[var(--container-prose)] flex-col gap-[var(--spacing-gutter)]">
+      <CardTitle>{t('fileCheck.title')}</CardTitle>
 
-      <table className="w-full text-left text-sm">
-        <caption className="sr-only">{t('fileCheck.title')}</caption>
-        {preview.hasHeader ? (
-          <thead>
-            <tr>
-              {(headerRow ?? []).map((cell, index) => (
-                <th
-                  key={index}
-                  scope="col"
-                  className="border-b border-border pr-3 pb-1 font-medium"
-                >
-                  {cell}
-                </th>
-              ))}
-            </tr>
-          </thead>
-        ) : null}
-        <tbody>
-          {dataSample.map((row, rowIndex) => (
-            <tr key={rowIndex}>
-              {row.map((cell, cellIndex) => (
-                <td key={cellIndex} className="pr-3 pt-1 text-text-muted">
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* Ukázka ze souboru. Je to obsah cizího souboru, tedy data ke čtení po
+          znacích: mono, na tlumené ploše a s vlastním vodorovným posuvem, aby
+          široký soubor neposouval celou stránku. */}
+      <Card as="div" tone="muted" padding="none" gap="none" className="overflow-x-auto">
+        <table className="w-full text-left font-mono text-meta">
+          <caption className="sr-only">{t('fileCheck.title')}</caption>
+          {preview.hasHeader ? (
+            <thead>
+              <tr>
+                {(headerRow ?? []).map((cell, index) => (
+                  <th
+                    key={index}
+                    scope="col"
+                    className="border-b border-border px-[var(--spacing-inline)] py-2 whitespace-nowrap text-text"
+                  >
+                    {cell}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+          ) : null}
+          <tbody>
+            {dataSample.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {row.map((cell, cellIndex) => (
+                  <td
+                    key={cellIndex}
+                    className="px-[var(--spacing-inline)] py-2 whitespace-nowrap text-text-muted"
+                  >
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
 
-      <p>{t('fileCheck.rowCount', { total: preview.totalRows, data: dataRows })}</p>
+      <p className="font-mono text-meta text-text-muted">
+        {t('fileCheck.rowCount', { total: preview.totalRows, data: dataRows })}
+      </p>
 
-      {rechecking ? <p role="status">{t('fileCheck.rechecking')}</p> : null}
+      {rechecking ? (
+        <p role="status" className="font-mono text-meta text-text-muted">
+          {t('fileCheck.rechecking')}
+        </p>
+      ) : null}
 
-      <fieldset className="flex flex-col gap-2">
-        <legend className="font-semibold text-text">{t('fileCheck.question')}</legend>
-        <p className="text-sm text-text-muted">{t('fileCheck.questionHint')}</p>
-        <div className="flex flex-wrap gap-2">
+      <fieldset className="flex flex-col gap-[var(--spacing-stack)]">
+        <legend className="text-ui font-semibold text-text">{t('fileCheck.question')}</legend>
+        <p className="text-meta text-text-muted">{t('fileCheck.questionHint')}</p>
+        <div className="flex flex-wrap gap-[var(--spacing-inline)]">
           <Button
             type="button"
             variant="primary"
@@ -133,14 +148,15 @@ export function StepFileCheck({
       {/* Odpověď „ne" musí něco udělat. Vybrané kódování se uloží a ukázka
           nahoře se překreslí, takže uživatel na místě vidí, jestli se trefil. */}
       {garbled ? (
-        <div className="flex flex-col gap-2 rounded-[var(--radius-surface)] border border-border p-4">
-          <p className="text-sm text-text">{t('fileCheck.alternatives')}</p>
-          <div className="flex flex-wrap gap-2">
+        <Card as="div" padding="sm">
+          <p className="text-ui text-text">{t('fileCheck.alternatives')}</p>
+          <div className="flex flex-wrap gap-[var(--spacing-inline)]">
             {ENCODINGS.filter((option) => option.value !== encoding).map((option) => (
               <Button
                 key={option.value}
                 type="button"
                 variant="secondary"
+                size="sm"
                 onClick={() => {
                   setEncoding(option.value);
                   void recheck({ encoding: option.value, delimiter });
@@ -150,12 +166,12 @@ export function StepFileCheck({
               </Button>
             ))}
           </div>
-          <p className="text-sm text-text-muted">{t('fileCheck.alternativesHint')}</p>
-        </div>
+          <p className="text-meta text-text-muted">{t('fileCheck.alternativesHint')}</p>
+        </Card>
       ) : null}
 
       <div className="flex flex-col gap-1.5">
-        <span aria-hidden className="text-sm font-medium text-text">
+        <span aria-hidden className="text-sm font-semibold text-text">
           {t('fileCheck.encoding')}
         </span>
         <Select
@@ -176,7 +192,7 @@ export function StepFileCheck({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <span aria-hidden className="text-sm font-medium text-text">
+        <span aria-hidden className="text-sm font-semibold text-text">
           {t('fileCheck.delimiter')}
         </span>
         {/* Když detekce selhala, oddělovač je POVINNÝ. Bez něj se soubor
@@ -197,7 +213,7 @@ export function StepFileCheck({
           ))}
         </Select>
         {preview.error === 'delimiter_not_detected' ? (
-          <p role="alert" className="text-sm text-danger-text">
+          <p role="alert" className="text-meta text-danger-text">
             {t('fileErrors.delimiter_not_detected.nextStep')}
           </p>
         ) : null}
