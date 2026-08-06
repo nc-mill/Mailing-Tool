@@ -143,10 +143,27 @@ export async function createInvitation(
     metadata: { email, role: input.role },
   });
 
+  /**
+   * POZVÁNKA CHODÍ V JAZYCE PROJEKTU, ne v jazyce instalace.
+   *
+   * Zvaný člověk účet ještě nemá, takže jeho vlastní jazyk se vzít nedá. Z toho,
+   * co k dispozici je, je projekt ta správná volba: pozvánka zve DO NĚJ a nový
+   * člen v něm bude pracovat. Totéž dělá `member-create.ts`, když zakládá účet
+   * rovnou: locale i timezone dědí z projektu.
+   *
+   * Dřív se bralo `cfg().DEFAULT_LOCALE`, tedy nastavení celé instalace, takže
+   * instalace s vícejazyčnými projekty poslala do anglického projektu českou
+   * pozvánku. `DEFAULT_LOCALE` zůstává jako pojistka pro případ, že by řádek
+   * projektu nešel přečíst.
+   */
+  const { rows: workspaces } = await tx.execute<{ locale: string }>(sql`
+    SELECT locale FROM workspaces WHERE id = ${ctx.workspaceId}::uuid LIMIT 1
+  `);
+
   await queueSystemMail({
     template: 'invitation',
     to: email,
-    locale: cfg().DEFAULT_LOCALE,
+    locale: workspaces[0]?.locale ?? cfg().DEFAULT_LOCALE,
     data: { url: `${cfg().APP_URL}/invitations/accept?token=${token}` },
     workspaceId: ctx.workspaceId,
   });

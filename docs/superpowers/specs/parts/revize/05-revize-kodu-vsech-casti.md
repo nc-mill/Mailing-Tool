@@ -1,5 +1,12 @@
 # Revize 5: soulad kusů kódu s textem napříč všemi sedmi částmi
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Křížová revize specifikací z 31. 7. 2026: revize kusů kódu ve všech sedmi částech.
+> Nálezy se **zapracovaly zpátky do částí v `parts/`** ještě před psaním plánů, takže dokument popisuje
+> tehdejší podobu textů, ne dnešní. Platné znění specifikace je vždycky v `parts/`, ne tady.
+> **Stav jednotlivých nálezů neověřen.**
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 Vlastník: hlavní agent (orchestrátor)
 Datum: 2026-07-31
 Předmět revize: všech sedm částí v `parts/`, hlavní specifikace, `ROZHODNUTI-PRO-ZADAVATELE.md`

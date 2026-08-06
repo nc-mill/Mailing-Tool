@@ -9,6 +9,7 @@ import { findBlock } from '../../model/tree';
 import type { EditorPorts } from '../../ports/types';
 import { useEditorState, useEditorStore } from '../../state/use-editor';
 import type { ValidationProfile } from '@mlain/emails/document/profile';
+import { ChevronLeft } from '../icons';
 import { PropField } from './prop-field';
 import { ThemePanel } from './theme-panel';
 
@@ -19,6 +20,14 @@ export function PropertiesPanel(props: {
   /** Profil kontroly dokumentu. Ovládací prvek odkazu podle něj pozná,
    *  jestli je proměnná v URL chyba, nebo normální stav. */
   templateKind: ValidationProfile;
+  /**
+   * Je tenhle dokument OBSAHEM KAMPANĚ, nebo samostatnou šablonou?
+   *
+   * Panel motivu podle toho vynechá „Úvodní řádek": u kampaně ho přebíjí
+   * „Předhlavička" z kroku 2, viz `ThemePanel`. Vynechání není kosmetika,
+   * je to jediná cesta, jak z panelu zmizí pole, které u kampaně nic nezmění.
+   */
+  contentKind?: 'template' | 'campaign' | undefined;
 }) {
   const t = useTranslations('editor');
   const store = useEditorStore();
@@ -52,7 +61,7 @@ export function PropertiesPanel(props: {
         gap="none"
         className={sticky}
       >
-        <ThemePanel />
+        <ThemePanel contentKind={props.contentKind} />
       </Card>
     );
   }
@@ -84,6 +93,30 @@ export function PropertiesPanel(props: {
       gap="none"
       className={`${sticky} gap-[var(--spacing-stack)]`}
     >
+      {/*
+        CESTA ZPÁTKY NA MOTIV. Panel motivu se ukazuje jen tehdy, když není
+        vybraný žádný blok, takže po prvním kliknutí do e-mailu se k nastavení
+        pozadí, písem a šířky nedalo vrátit jinak než znovunačtením stránky.
+        Zadavatel to hlásil doslova: „už není jak se vrátit k nastavení pozadí
+        motivu".
+
+        Je to TLAČÍTKO V PANELU, ne jen odznačení klikem do prázdna. Klik mimo
+        blok je přirozený, ale neviditelný: kdo ho nezkusí, tomu zůstane
+        nastavení e-mailu nedostupné. Panel je přitom místo, kam se uživatel
+        v tu chvíli dívá, takže cesta zpátky patří sem.
+
+        Stojí NAD nadpisem a nese jméno cíle („Motiv"), ne jen šipku: samotná
+        šipka by se dala číst i jako „zpět na předchozí blok".
+      */}
+      <button
+        type="button"
+        data-testid="back-to-theme"
+        onClick={() => store.select(null)}
+        className="-mx-1 -mt-1 flex items-center gap-1 self-start rounded-[var(--radius-control)] px-1 py-0.5 text-label text-text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+      >
+        <ChevronLeft aria-hidden className="icon-xs" />
+        {t('theme.title')}
+      </button>
       <CardTitle>{t(descriptor.label)}</CardTitle>
       {descriptor.groups.length === 0 ? (
         <p className="text-sm text-text-muted">
@@ -98,9 +131,15 @@ export function PropertiesPanel(props: {
         // Skupiny odděluje linka nad nadpisem, přesně jak je má návrh: mono
         // verzálky pod hairline oddělovačem. První skupina linku nemá, aby
         // nekopírovala rámeček karty.
+        // `min-w-0` NENÍ kosmetika: `fieldset` má z prohlížeče
+        // `min-width: min-content`, takže se sám odmítne zúžit pod nejširší
+        // prvek uvnitř a panel dostane vodorovný posuv místo zalomení.
         <fieldset
           key={group.label}
-          className="flex flex-col gap-3 border-t border-border pt-[var(--spacing-stack)] first-of-type:border-t-0 first-of-type:pt-0"
+          // Mezi vlastnostmi je 15 px, uvnitř vlastnosti (popisek a ovládání)
+          // 4 px. Dřív to bylo 12 a 4, tedy skoro totéž, a bloky vlastností
+          // se slily do jednoho pruhu, ve kterém nebylo poznat, co k čemu patří.
+          className="flex min-w-0 flex-col gap-[var(--spacing-stack)] border-t border-border pt-[var(--spacing-stack)] first-of-type:border-t-0 first-of-type:pt-0"
         >
           <legend className="meta-caps text-text-muted">{t(group.label)}</legend>
           {group.props.map((descriptorProp, propIndex) => (

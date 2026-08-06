@@ -200,20 +200,17 @@
     "theme": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "contentWidth",
-        "canvasBackground",
-        "contentBackground",
-        "colors",
-        "fonts",
-        "typography",
-        "radius",
-        "darkMode"
-      ],
+      "required": ["contentWidth", "colors", "fonts", "typography", "radius", "darkMode"],
       "properties": {
         "contentWidth": { "enum": [600, 640] },
-        "canvasBackground": { "$ref": "#/$defs/colorRef" },
-        "contentBackground": { "$ref": "#/$defs/colorRef" },
+        "canvasBackground": {
+          "$ref": "#/$defs/colorRef",
+          "description": "Pozůstatek. Nikdo ho nečte, plochu určuje role surface.canvas v colors. Zůstává povolený, aby dřív uložené dokumenty prošly validací; nové ho nemají."
+        },
+        "contentBackground": {
+          "$ref": "#/$defs/colorRef",
+          "description": "Pozůstatek. Nikdo ho nečte, plochu určuje role surface.content v colors. Zůstává povolený, aby dřív uložené dokumenty prošly validací; nové ho nemají."
+        },
         "colors": { "$ref": "#/$defs/roleColorMap" },
         "fonts": {
           "type": "object",

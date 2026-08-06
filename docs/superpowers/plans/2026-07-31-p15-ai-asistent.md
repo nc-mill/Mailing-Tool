@@ -1,5 +1,12 @@
 # P15 AI asistent: implementační plán
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P15 (AI asistent) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** `packages/core/src/ai` a `packages/core/src/brand` existují, asistent i extrakce značky fungují.
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **Pro agentní pracovníky:** POVINNÁ PODDOVEDNOST: k provedení plánu úkol po úkolu použij `superpowers:subagent-driven-development` (doporučeno) nebo `superpowers:executing-plans`. Kroky mají tvar zaškrtávacího pole (`- [ ]`) kvůli sledování postupu.
 
 **Goal:** Dodat AI asistenta na vlastní klíč uživatele (BYOK), extrakci značky z webu chráněnou proti SSRF a generování šablony strukturovaným výstupem proti blokovému schématu, včetně obrazovek 8.5.3 a 8.5.4 a namespace i18n `ai`.

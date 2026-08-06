@@ -6,6 +6,11 @@ import { loadAssetRefs } from './assets';
 export { assetIdsInDocument, loadAssetRefs } from './assets';
 export { ASSET_REF_TYPES, syncAssetReferences, type AssetRefType } from './asset-references';
 export { compileTemplate, type CompileTemplateInput } from './compile';
+/**
+ * Převlečení uložených e-mailů do barev značky. Volá ho uložení značky
+ * v `apps/web`, takže musí být vidět z veřejné plochy domény.
+ */
+export { redressTemplatesToBrand, type RedressResult } from './redress';
 export {
   assertSendable,
   preSendCheck,

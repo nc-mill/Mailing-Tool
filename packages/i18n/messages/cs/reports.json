@@ -18,8 +18,7 @@
     "sortedAscending": "Seřazeno vzestupně",
     "sortedDescending": "Seřazeno sestupně",
     "columnSettings": "Nastavení sloupců",
-    "columnVisible": "Zobrazit sloupec {column}",
-    "columnWidth": "Šířka sloupce {column}"
+    "columnVisible": "Zobrazit sloupec {column}"
   },
   "report": {
     "title": "Report kampaně",
@@ -290,7 +289,9 @@
     "rangeWords": "za posledních {range}",
     "deltaSincePrevious": "od minulého období",
     "importContacts": "Naimportovat kontakty",
+    "importForbidden": "Naimportovat kontakty smí editor, správce projektu nebo vlastník. Požádejte někoho z nich; vy na to nemáte oprávnění.",
     "newCampaign": "Založit kampaň",
+    "newCampaignForbidden": "Založit kampaň smí editor, správce projektu nebo vlastník. Požádejte někoho z nich; vy na to nemáte oprávnění.",
     "sentCampaigns": "{count, plural, =0 {žádná kampaň v období} one {# kampaň · naposledy {date}} few {# kampaně · naposledy {date}} many {# kampaně · naposledy {date}} other {# kampaní · naposledy {date}}}",
     "problemsAction": "Nastavení doručování",
     "clicksTrend": "Vývoj prokliků",

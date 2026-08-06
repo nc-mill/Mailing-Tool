@@ -1,23 +1,63 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@mlain/ui/components/button';
 import { Card } from '@mlain/ui/components/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@mlain/ui/components/dropdown-menu';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
 import { PageHeader } from '@mlain/ui/components/page-header';
-import { Copy, Save } from '@mlain/ui/icons';
+import { Copy, Save, Search } from '@mlain/ui/icons';
 import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
 import { Alert } from '@mlain/ui/patterns/states';
-import { SelectField } from '@/lib/forms/select-field';
 import { useConfirmDialogLabels } from '@/lib/feedback/confirm-labels';
 import { useEditorHandoff } from '@/features/editor/state/use-handoff';
-import { saveCampaignContentAsTemplateAction, useLibraryTemplateAction } from './actions';
+import {
+  renameCampaignAction,
+  saveCampaignContentAsTemplateAction,
+  useLibraryTemplateAction,
+} from './actions';
 import { CampaignBreadcrumbs } from './campaign-breadcrumbs';
+import { CampaignNameField } from './campaign-name-field';
 import { CampaignStepNav } from './campaign-steps';
-import { NO_SELECTION } from './no-selection';
 import { CAMPAIGN_STEPS, campaignStepHref, type CampaignStep } from './steps';
+
+/** Knihovní šablona v nabídce k převzetí. */
+type LibraryTemplate = { id: string; name: string };
+
+/**
+ * OD KOLIKA ŠABLON SE V NABÍDCE UKÁŽE HLEDÁNÍ.
+ *
+ * Dvanáct, a je to změřené, ne odhadnuté. Položka nabídky je 44 px vysoká
+ * a nabídka se otevírá zhruba 235 px od horní hrany okna, takže na okně
+ * vysokém 900 px (běžný notebook s panely prohlížeče) zbývá na seznam něco
+ * přes 600 px, tedy asi třináct řádků, než se začne skrolovat. Hledání se
+ * proto objeví TĚSNĚ PŘED tím, než seznam přestane být vidět celý: dokud se
+ * dá přejet očima, je pole navíc jen šum a ubírá místo tomu, co uživatel
+ * hledá. Že se ovládání s počtem položek mění, je záměr; obojí je táž nabídka
+ * pod týmž tlačítkem, jen delší seznam dostane náčiní na hledání.
+ */
+const SEARCH_FROM = 12;
+
+/**
+ * Porovnávací tvar názvu: malá písmena a bez diakritiky.
+ *
+ * Kdo hledá „vyprodej", musí najít „Ukázka: pozvánka na výprodej". České
+ * názvy se píšou s háčky a čárkami, hledá se ale často bez nich, a nabídka,
+ * která na „sablona" nenajde „šablonu", vypadá jako rozbitá.
+ */
+function fold(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLocaleLowerCase();
+}
 
 /**
  * Pruh nad editorem, který z editoru dělá PRVNÍ KROK KAMPANĚ.
@@ -39,8 +79,10 @@ export function CampaignContentChrome({
   workingCopyId,
   hasDesign,
   templates,
+  templatesTruncated = false,
   basePath,
   readOnly,
+  canRename,
 }: {
   workspaceId: string;
   campaignId: string;
@@ -51,10 +93,22 @@ export function CampaignContentChrome({
   /** Má kampaň vlastní dokument? Rozhoduje jen o tom, jestli je co přepsat. */
   hasDesign: boolean;
   /** Knihovní šablony, ze kterých jde obsah převzít. */
-  templates: ReadonlyArray<{ id: string; name: string }>;
+  templates: ReadonlyArray<LibraryTemplate>;
+  /**
+   * Server měl další stránku, kterou nabídka nedojde. Stovka je strop cesty,
+   * ne konec knihovny, a mlčet o tom by znamenalo tvrdit, že další šablony
+   * nejsou.
+   */
+  templatesTruncated?: boolean;
   basePath: string;
   /** Rozjetá kampaň se needituje: zůstává jen pás kroků, akce mizí. */
   readOnly: boolean;
+  /**
+   * Smí se kampaň přejmenovat? NENÍ TO `!readOnly`: obsah se u naplánované
+   * kampaně měnit nesmí, jméno ano (`EDITABLE_WHILE_SCHEDULED`). Rozhoduje
+   * o tom stránka, která zná stav kampaně i práva uživatele.
+   */
+  canRename: boolean;
 }) {
   const t = useTranslations('campaigns.settings');
   const tContent = useTranslations('campaigns.settings.content');
@@ -62,12 +116,47 @@ export function CampaignContentChrome({
   const labels = useConfirmDialogLabels();
   const handoff = useEditorHandoff();
 
-  const [panel, setPanel] = useState<'none' | 'save' | 'library'>('none');
+  /*
+   * Jméno kampaně si drží pruh, ne jen stránka pod ním. Přejmenovává se
+   * v hlavičce a totéž jméno nesou drobečky nad ní i předvyplněný název nové
+   * šablony; kdyby se četlo z propu, zůstala by po přejmenování polovina
+   * obrazovky u starého jména až do přenačtení stránky.
+   */
+  const [name, setName] = useState(campaignName);
+  const [panel, setPanel] = useState<'none' | 'save'>('none');
   const [saveName, setSaveName] = useState(campaignName);
-  const [libraryId, setLibraryId] = useState<string>(NO_SELECTION);
+  /** Šablona, na kterou uživatel klikl v nabídce. Drží se kvůli potvrzení. */
+  const [chosen, setChosen] = useState<LibraryTemplate | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [taking, setTaking] = useState(false);
   const [outcome, setOutcome] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+  const busy = saving || taking;
+
+  /* Nabídka šablon. Stav si drží pruh, protože na otevření navazuje fokus. */
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const searchable = templates.length >= SEARCH_FROM;
+  const found = useMemo(() => {
+    const needle = fold(query.trim());
+    if (needle === '') return templates;
+    return templates.filter((template) => fold(template.name).includes(needle));
+  }, [templates, query]);
+
+  /*
+   * Fokus patří do hledacího pole, jinak je pole z klávesnice NEDOSAŽITELNÉ.
+   *
+   * Radix nabídka si po otevření bere fokus na sebe a tabulátor ji zavírá, jak
+   * má nabídka podle vzoru dělat. Pole uvnitř by se tím pádem nedalo zaostřit
+   * jinak než myší. Zaostřuje se proto až v dalším snímku, tedy po tom, co si
+   * fokus vezme Radix; kdo pole nechce, jede dál šipkami do seznamu.
+   */
+  useEffect(() => {
+    if (!libraryOpen || !searchable) return undefined;
+    const frame = requestAnimationFrame(() => searchRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [libraryOpen, searchable]);
 
   /*
    * Převzetí šablony PŘEPÍŠE dokument, který je zrovna otevřený v editoru.
@@ -77,11 +166,14 @@ export function CampaignContentChrome({
    * po přepisu odeslalo zpátky ten starý dokument, který má editor ve stavu,
    * a převzatý obsah by zase zmizel. Bez `reload()` na konci by uživatel dál
    * upravoval starý dokument a neviděl, co si právě převzal.
+   *
+   * Šablona se předává v parametru, ne přes stav: nabídka se klikem zavírá
+   * a potvrzení běží až po překreslení, takže by se sahalo na hodnotu, kterou
+   * mezitím mohl přepsat další klik.
    */
-  function useLibrary() {
-    if (libraryId === NO_SELECTION) return;
+  function useLibrary(template: LibraryTemplate) {
     setConfirming(false);
-    setBusy(true);
+    setTaking(true);
     void (async () => {
       try {
         await handoff.flush();
@@ -89,7 +181,7 @@ export function CampaignContentChrome({
           workspaceId,
           campaignId,
           workingCopyId,
-          templateId: libraryId,
+          templateId: template.id,
         });
         if (result.status === 'error') {
           setOutcome({ tone: 'error', text: tContent('loadFailed') });
@@ -97,14 +189,52 @@ export function CampaignContentChrome({
         }
         window.location.reload();
       } finally {
-        setBusy(false);
+        setTaking(false);
       }
     })();
   }
 
+  /**
+   * Klik na šablonu v nabídce. Ptá se `hasDesign`, ne na to, jestli v dokumentu
+   * něco je: přepisuje se DOKUMENT a přijít se dá i o rozdělanou práci, ve které
+   * zatím nic není. Kampaň bez dokumentu nemá co přepsat, tam se nezdržuje.
+   */
+  function chooseTemplate(template: LibraryTemplate) {
+    if (busy) return;
+    setChosen(template);
+    if (hasDesign) setConfirming(true);
+    else useLibrary(template);
+  }
+
+  /**
+   * Klávesnice v hledacím poli. Dvě věci, obě naměřené v prohlížeči.
+   *
+   * 1. PÍSMENA PATŘÍ DO POLE. Radix nabídka bere psaní jako skok na položku
+   *    podle počátečního písmene, takže by se text do pole nedostal a seznam
+   *    by pod rukama poskakoval.
+   * 2. ŠIPKA DOLŮ MUSÍ DO SEZNAMU RUČNĚ. Radix zaostří první položku jen tehdy,
+   *    když šipka přijde z nabídky samotné (`event.target !== content` a končí).
+   *    Z pole tedy nedělala nic a seznam byl z klávesnice nedosažitelný:
+   *    tabulátor nabídku zavírá, takže jiná cesta k položkám nezbývala.
+   */
+  function handleSearchKey(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key.length === 1 || event.key === 'Home' || event.key === 'End') {
+      event.stopPropagation();
+      return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const items = event.currentTarget
+      .closest('[role="menu"]')
+      ?.querySelectorAll<HTMLElement>('[role="menuitem"]');
+    const target = event.key === 'ArrowDown' ? items?.[0] : items?.[items.length - 1];
+    if (target === undefined) return;
+    event.preventDefault();
+    target.focus();
+  }
+
   /** Uložení do knihovny je VÝSLOVNÁ akce, nikdy vedlejší účinek psaní kampaně. */
   function saveAsTemplate() {
-    setBusy(true);
+    setSaving(true);
     void (async () => {
       try {
         // I tady se nejdřív dopisuje: do knihovny má jít to, co je na obrazovce,
@@ -128,7 +258,7 @@ export function CampaignContentChrome({
               : tContent('saveAsTemplateFailed'),
         });
       } finally {
-        setBusy(false);
+        setSaving(false);
       }
     })();
   }
@@ -146,13 +276,27 @@ export function CampaignContentChrome({
         mezeru nemá a zbytek pruhu ji má ve vlastním sloupci.
       */}
       <PageHeader
-        title={campaignName}
+        title={
+          <CampaignNameField
+            name={name}
+            canRename={canRename}
+            onRename={async (next) => {
+              const result = await renameCampaignAction({
+                workspaceId,
+                campaignId,
+                name: next,
+              });
+              if (result.status === 'success') setName(next);
+              return result;
+            }}
+          />
+        }
         eyebrow={
           <span role="status" aria-live="polite">
             {tNew('stepOf', { current: 1, total: CAMPAIGN_STEPS.length })}
           </span>
         }
-        breadcrumbs={<CampaignBreadcrumbs basePath={basePath} campaignName={campaignName} />}
+        breadcrumbs={<CampaignBreadcrumbs basePath={basePath} campaignName={name} />}
         {...(readOnly
           ? {}
           : {
@@ -163,22 +307,128 @@ export function CampaignContentChrome({
                     size="sm"
                     data-testid="save-as-template"
                     onClick={() => {
-                      setSaveName(campaignName);
+                      setSaveName(name);
                       setPanel(panel === 'save' ? 'none' : 'save');
                     }}
                   >
                     <Save aria-hidden className="icon-sm" />
                     {tContent('saveAsTemplate')}
                   </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    data-testid="use-library-open"
-                    onClick={() => setPanel(panel === 'library' ? 'none' : 'library')}
+                  {/*
+                    Nabídka šablon visí PŘÍMO NA TLAČÍTKU.
+                    Dřív se tímhle tlačítkem rozbalil pruh pod hlavičkou, v něm
+                    bylo rozbalovací pole a vedle něj druhé tlačítko „Převzít
+                    obsah": čtyři kliknutí a dvě různá místa na obrazovce, než
+                    se něco stalo. Nabídka je jedno kliknutí navíc oproti výběru
+                    a klik na šablonu je rovnou tou volbou.
+                  */}
+                  <DropdownMenu
+                    open={libraryOpen}
+                    onOpenChange={(open) => {
+                      setLibraryOpen(open);
+                      // Zavřená nabídka zahazuje hledaný text. Otevřít ji podruhé
+                      // a najít v ní seznam zúžený minulým hledáním vypadá, jako
+                      // že šablony zmizely.
+                      if (!open) setQuery('');
+                    }}
                   >
-                    <Copy aria-hidden className="icon-sm" />
-                    {tContent('useLibraryTitle')}
-                  </Button>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        data-testid="use-library-open"
+                        pending={taking}
+                        pendingLabel={tContent('loading')}
+                      >
+                        <Copy aria-hidden className="icon-sm" />
+                        {tContent('useLibraryTitle')}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    {/*
+                      Výška nabídky se řídí místem, které pod tlačítkem zbývá
+                      (proměnnou dodává Radix), takže se dlouhý seznam skroluje
+                      uvnitř a nepřeteče přes spodní hranu okna.
+                    */}
+                    <DropdownMenuContent
+                      align="end"
+                      className="max-h-[var(--radix-dropdown-menu-content-available-height)] max-w-[var(--size-text-column)] overflow-y-auto"
+                    >
+                      {/*
+                        Hledání se ukazuje AŽ OD DVANÁCTI ŠABLON, viz `SEARCH_FROM`.
+                        Filtruje se to, co už je na stránce; server se znovu neptá,
+                        takže psaní nemá prodlevu a nabídka nemůže zůstat viset.
+                      */}
+                      {searchable ? (
+                        <div role="presentation" className="p-1">
+                          <div className="relative">
+                            <Search
+                              aria-hidden
+                              className="icon-sm pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-text-muted"
+                            />
+                            <Input
+                              ref={searchRef}
+                              value={query}
+                              onChange={(event) => setQuery(event.target.value)}
+                              aria-label={tContent('useLibrarySearch')}
+                              placeholder={tContent('useLibrarySearch')}
+                              className="pl-10"
+                              onKeyDown={handleSearchKey}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {templates.length === 0 ? (
+                        <p
+                          role="presentation"
+                          className="px-3 py-[var(--spacing-inline)] text-sm text-text-muted"
+                        >
+                          {tContent('libraryEmpty')}
+                        </p>
+                      ) : found.length === 0 ? (
+                        <p
+                          role="presentation"
+                          className="px-3 py-[var(--spacing-inline)] text-sm text-text-muted"
+                        >
+                          {tContent('useLibrarySearchEmpty')}
+                        </p>
+                      ) : (
+                        found.map((template) => (
+                          <DropdownMenuItem
+                            key={template.id}
+                            onSelect={() => chooseTemplate(template)}
+                          >
+                            {template.name}
+                          </DropdownMenuItem>
+                        ))
+                      )}
+
+                      {/*
+                        Patička nabídky. Jedna linka nad oběma větami, ne nad
+                        každou zvlášť: dvě hairline linky pár pixelů od sebe
+                        vypadají jako vada vykreslení.
+                      */}
+                      <div
+                        role="presentation"
+                        className="mt-1 flex max-w-[40ch] flex-col gap-[var(--spacing-hairline)] border-t border-border px-3 pt-[var(--spacing-inline)] pb-[var(--spacing-hairline)] text-meta text-text-muted"
+                      >
+                        {/*
+                          Stovka je strop cesty, ne konec knihovny. Bez téhle věty
+                          je uříznutý seznam k nerozeznání od úplného a uživatel
+                          hledá šablonu, která v nabídce prostě není.
+                        */}
+                        {templatesTruncated ? (
+                          <p>{tContent('useLibraryTruncated', { count: templates.length })}</p>
+                        ) : null}
+                        {/*
+                          Věta o tom, že se ze šablony jen kopíruje, zůstává vidět
+                          v okamžiku výběru. U kampaně bez obsahu se potvrzení
+                          neptá, takže jinde by ji uživatel neviděl vůbec.
+                        */}
+                        <p>{tContent('useLibraryHint')}</p>
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </>
               ),
             })}
@@ -217,7 +467,7 @@ export function CampaignContentChrome({
               <Button
                 variant="primary"
                 data-testid="save-as-template-submit"
-                pending={busy}
+                pending={saving}
                 pendingLabel={tContent('saving')}
                 onClick={saveAsTemplate}
               >
@@ -230,54 +480,32 @@ export function CampaignContentChrome({
           </Card>
         )}
 
-        {panel === 'library' && (
-          <Card tone="muted" padding="sm" data-testid="use-library-template">
-            {templates.length === 0 ? (
-              <p className="text-sm text-text-muted">{tContent('libraryEmpty')}</p>
-            ) : (
-              <div className="flex flex-wrap items-end gap-[var(--spacing-stack)]">
-                <SelectField
-                  name="library_template_id"
-                  label={tContent('useLibraryTitle')}
-                  placeholder={tContent('useLibraryPlaceholder')}
-                  options={templates.map((template) => ({
-                    value: template.id,
-                    label: template.name,
-                  }))}
-                  onSelected={setLibraryId}
-                />
-                <Button
-                  variant="secondary"
-                  data-testid="use-library-submit"
-                  pending={busy}
-                  pendingLabel={tContent('loading')}
-                  onClick={() => {
-                    if (libraryId === NO_SELECTION) return;
-                    // Ptá se `hasDesign`, ne na to, jestli v dokumentu něco je:
-                    // přepisuje se DOKUMENT a přijít se dá i o rozdělanou práci,
-                    // ve které zatím nic není.
-                    if (hasDesign) setConfirming(true);
-                    else useLibrary();
-                  }}
-                >
-                  {tContent('useLibrarySubmit')}
-                </Button>
-              </div>
-            )}
-            <p className="text-meta text-text-muted">{tContent('useLibraryHint')}</p>
-          </Card>
-        )}
-
+        {/*
+          Potvrzení pojmenovává šablonu, ze které se bere. Nabídka se klikem
+          zavřela, takže bez toho by v dialogu nikde nestálo, co vlastně
+          uživatel vybral, a „Přepsat obsah" by se odklikávalo poslepu.
+        */}
         <ConfirmDialog
           open={confirming}
-          onOpenChange={setConfirming}
+          onOpenChange={(open) => {
+            setConfirming(open);
+            // Zamítnuté potvrzení nesmí nechat viset vybranou šablonu:
+            // obsah kampaně zůstává, jak byl, a výběr začíná znovu od nabídky.
+            if (!open) setChosen(null);
+          }}
           level="N2"
           irreversible
           title={tContent('confirmTitle')}
-          consequences={[tContent('confirmOverwrite'), tContent('confirmTemplateStays')]}
+          consequences={[
+            tContent('confirmFromTemplate', { name: chosen?.name ?? '' }),
+            tContent('confirmOverwrite'),
+            tContent('confirmTemplateStays'),
+          ]}
           confirmLabel={tContent('confirmSubmit')}
           cancelLabel={tContent('confirmCancel')}
-          onConfirm={useLibrary}
+          onConfirm={() => {
+            if (chosen !== null) useLibrary(chosen);
+          }}
           labels={labels}
         />
       </div>

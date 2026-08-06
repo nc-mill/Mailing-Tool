@@ -7,7 +7,25 @@
     "count": "Kontaktů",
     "recounted": "Přepočítáno"
   },
-  "rowActions": "Další akce",
+  "rowMenu": "Další akce se segmentem {name}",
+  "rowActions": {
+    "recount": "Přepočítat",
+    "viewContacts": "Zobrazit kontakty",
+    "edit": "Upravit",
+    "delete": "Smazat"
+  },
+  "delete": {
+    "title": "Smazat segment {name}?",
+    "contactsStay": "Kontakty se nemažou. Segment je uložená podmínka, ne skupina lidí, takže v Kontaktech zůstane všechno tak, jak je.",
+    "membersGo": "Ruční soupis členů tohohle segmentu zmizí spolu s ním. Samotné kontakty zůstávají.",
+    "campaignsBreak": "Kampaň, která má segment v publiku, ho po smazání nenajde a publikum se jí nespočítá.",
+    "nestedBreak": "Segment, který si tenhle vnořil do své podmínky, přestane jít spočítat i uložit.",
+    "irreversible": "Vrátit to nejde.",
+    "cancel": "Ponechat segment",
+    "submit": "Smazat segment",
+    "submitting": "Mažeme…",
+    "failed": "Segment se nepodařilo smazat. Technický detail: {detail}"
+  },
   "name": "Název segmentu",
   "emptyList": "Segment je uložená otázka nad kontakty, například „kdo za půl roku nic neotevřel\". Začněte hotovým, nebo si postavte vlastní.",
   "stale": "Aktualizováno před {time}.",

@@ -3,6 +3,33 @@
 Datum: 2026-08-05. Krátký plán, ne specifikace. Cílem je, aby potvrzovací e-mail
 skutečně odešel a aby si šlo na úrovni seznamu nastavit, jak vypadá.
 
+---
+
+## Stav k 6. 8. 2026 (revize proti kódu): PLÁN JE HOTOVÝ CELÝ
+
+Všech osm položek z kapitoly 6 je dodělaných. Plán zůstává jako záznam
+rozhodnutí, ne jako seznam práce.
+
+| # | Práce | Důkaz v kódu |
+|---|---|---|
+| 1 | Port přes outbox, vestavěná znění, `data.confirm_url`, registrace | `packages/core/src/contacts/lists/subscription-emails.ts`, `default-emails.ts`, `installSubscriptionEmails()` v `apps/web/src/instrumentation.ts:50` a `apps/worker/src/main.ts:81` |
+| 2 | Ruční přidání u dvojího opt-inu jde přes `subscribeToList` | `packages/core/src/contacts/repo/contacts-api.ts:146–201` (čte `lists.opt_in` přes `optInByIdsIn`) |
+| 3 | API a obrazovka nastavení seznamu, zakládání seznamu | `packages/core/src/contacts/api/lists.routes.ts` (`send_welcome`, `send_goodbye`, tři ID šablon, TTL, limit), `apps/web/src/features/contacts/list-detail.tsx`, `list-create-form.tsx`, obrazovka `lists/new` |
+| 4 | Závora na potvrzovací e-mail | `contacts/lists/confirm-link-guard.ts` a `list-email-guards.ts`, volané z `lists.routes.ts:571` i z `templates/service.ts:168` |
+| 5 | Výchozí seznam projektu | `identity/workspace-service.ts:236` („Odběratelé" / „Subscribers", `isDefault: true`), migrace 0018 a 0019 |
+| 6 | Rozloučení | migrace 0017, `lists.send_goodbye`, `goodbye_template_id`, odeslání z `contacts/lists/unsubscribe.ts:78` |
+| 7 | Přesměrování a pole formuláře | `lists.confirm_redirect_url`, `unsubscribe_redirect_url` (0017), `redirect_url` a `success_message` v `apps/web/src/features/forms/form-editor.tsx:153` |
+| 8 | Cizí klíče `ON DELETE SET NULL` | migrace `0017_lists_subscription_emails.sql` |
+
+Čísla migrací: plán počítal s volnými čísly, ve skutečnosti sedí e-maily
+seznamu na **0017**, dosypání výchozího seznamu na **0018** a **0019**.
+Poslední migrace v repozitáři je **0021**.
+
+**Navazující úkol z kapitoly 8 (systémová pošta přes SES) hotový NENÍ.**
+`SYSTEM_MAIL_CAPABLE_TYPES` je pořád `['smtp']`
+(`packages/core/src/platform/system-mail-config.ts:33`). Řeší ho plán
+`2026-08-05-systemova-posta-ses.md`, který dál platí.
+
 ## 1. Co se dnes stane, když přidám kontakt ručně
 
 Krok za krokem, ověřeno v kódu:
@@ -70,6 +97,19 @@ a nepřidá hlavičku `List-Unsubscribe` (`worker.go:90`, `outbox/store.go:62`),
 potvrzovací e-mail přesně žádoucí. `{{ unsubscribe_url }}` v těle přesto funguje, kdyby ho
 autor u uvítacího e-mailu chtěl.
 
+> **Neplatí od 6. 8. 2026: poslední věta.** `{{ unsubscribe_url }}` v těle e-mailu seznamu
+> **nefunguje a vede do prázdna**. `Renderer.unsubscribe` v `apps/sender/internal/app/worker.go`
+> vrací pro transakční druh prázdný řetězec bez chyby, takže se do těla dosadí `""`
+> (viz i komentář v `packages/core/src/contacts/lists/default-emails.ts:22`). Produkt to dnes
+> aktivně brání: uložení uvítacího nebo rozlučkového e-mailu s `{{ unsubscribe_url }}` skončí
+> chybou `subscription_email_has_unsubscribe_link`
+> (`packages/core/src/contacts/lists/list-email-guards.ts`). Zbytek odstavce platí.
+>
+> Druhá půlka téhož rozhodnutí: kontrola před odesláním už odhlašovací odkaz nevyžaduje
+> bezpodmínečně. `packages/core/src/templates/precheck.ts:81` má podmínku
+> `unsubscribeRequired !== false` a `templates.routes.ts:991` předává `unsubscribeRequired: !listEmail`.
+> Protimluv „e-mail seznamu musí mít odhlášení, ale nesmí ho mít" tím zanikl.
+
 ### Registrace portu
 
 `registerSubscriptionEmails(port)` zavolat tam, kde se dnes volá `installSystemMailer()`:
@@ -136,7 +176,10 @@ Cizí klíče na `templates` u obou stávajících sloupců **chybí i v migrac�
 ### Obrazovka
 
 Dnes v UI **nejde seznam ani založit** (tlačítko `lists.create` v `lists-table.tsx:45`
-nemá akci) a nastavit jdou jen čtyři věci. Rozšířit `list-detail.tsx` a `PatchListSchema`
+nemá akci) a nastavit jdou jen čtyři věci.
+
+> **Neplatí od 6. 8. 2026.** Seznam se založit dá (`apps/web/src/features/contacts/list-create-form.tsx`,
+> obrazovka `lists/new`) a `list-detail.tsx` nastavuje všechno, co odstavec žádal. Rozšířit `list-detail.tsx` a `PatchListSchema`
 o: `name`, `description`, `confirmation_ttl_hours`, `confirmation_max_resends`,
 `send_welcome`, `send_goodbye` a tři ID šablon. Plus obrazovka „nový seznam".
 
@@ -206,6 +249,10 @@ Třetí místo, kde se totéž nastavuje, by z toho udělalo hádanku. **Doporu�
 `forms.redirect_url` a `success_message` jsou v API i ve schématu, ale v editoru formuláře
 nejsou vůbec (`apps/web/src/features/forms/types.ts:26` je ani nenese). To je nejlevnější
 položka celého plánu: doplnit dvě pole do existujícího editoru.
+
+> **Neplatí od 6. 8. 2026.** Obě pole editor formuláře nese
+> (`apps/web/src/features/forms/types.ts:44` a `form-editor.tsx:153`), stejně jako
+> `lists.confirm_redirect_url` a `unsubscribe_redirect_url` z migrace 0017.
 
 **Proč „už jste přihlášený" nedělat.** `subscribe()` má pravidlo 3: odpověď je vždy stejná,
 ať kontakt v databázi je, nebo není. Vlastní přesměrování pro už přihlášenou adresu by

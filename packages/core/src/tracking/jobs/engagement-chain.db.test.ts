@@ -44,8 +44,9 @@ const keyId = currentTrackingKeyId(keyring);
 /**
  * Datum se počítá z aktuálního času, ne z pevného řetězce.
  *
- * `messages` je dělená podle `created_at` a `platform.maintain_partitions`
- * zakládá oddíly pro aktuální a tři následující měsíce. Pevné datum z minulosti
+ * `messages` je dělená podle `created_at` a oddíly pro aktuální a tři následující
+ * měsíce zakládá `ensureUpcomingPartitions` z `@mlain/db`, kterou volá migrační
+ * runner na konci každé migrace a příkaz `mlain partitions`. Pevné datum z minulosti
  * by test shodilo chybou „no partition of relation messages found for row"
  * v okamžiku, kdy se čas přehoupne přes jeho oddíl, tedy někdy měsíc po napsání.
  *

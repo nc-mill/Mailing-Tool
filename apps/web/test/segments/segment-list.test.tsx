@@ -22,9 +22,12 @@ vi.mock('@mlain/i18n/navigation', () => ({
 
 const createSegmentFromPresetAction = vi.fn().mockResolvedValue({ status: 'success', id: 'new-1' });
 
+const deleteSegmentAction = vi.fn().mockResolvedValue({ status: 'success' });
+
 vi.mock('../../src/features/segments/actions', () => ({
   recountSegmentAction: (...args: unknown[]) => recountSegmentAction(...args),
   createSegmentFromPresetAction: (...args: unknown[]) => createSegmentFromPresetAction(...args),
+  deleteSegmentAction: (...args: unknown[]) => deleteSegmentAction(...args),
 }));
 
 const TOAST_LABELS = {
@@ -56,7 +59,14 @@ const PRESET = {
   cachedAt: null,
 };
 
-function renderList(current: SegmentListRow[] = rows, presets = [PRESET]) {
+/** Editor a výš. Čtenář má `write: false`, viz testy nabídky níž. */
+const ALL_PERMISSIONS = { write: true, readContacts: true };
+
+function renderList(
+  current: SegmentListRow[] = rows,
+  presets = [PRESET],
+  permissions = ALL_PERMISSIONS,
+) {
   return renderIntl(
     <ToastProvider labels={TOAST_LABELS}>
       <SegmentList
@@ -65,6 +75,7 @@ function renderList(current: SegmentListRow[] = rows, presets = [PRESET]) {
         workspaceSlug="eshop"
         workspaceId="w-1"
         locale="cs"
+        permissions={permissions}
       />
     </ToastProvider>,
   );
@@ -74,6 +85,7 @@ beforeEach(() => {
   refresh.mockClear();
   push.mockClear();
   createSegmentFromPresetAction.mockClear();
+  deleteSegmentAction.mockReset().mockResolvedValue({ status: 'success' });
   recountSegmentAction.mockReset().mockResolvedValue({ status: 'success' });
 });
 
@@ -82,10 +94,14 @@ beforeEach(() => {
  * musí nejdřív otevřít: zavřená nabídka svoje položky vůbec nevykresluje.
  */
 async function openRowMenu(user: ReturnType<typeof userEvent.setup>, index: number) {
-  const triggers = await screen.findAllByRole('button', { name: 'Další akce' });
+  const triggers = await screen.findAllByRole('button', { name: /Další akce se segmentem/ });
   const trigger = triggers[index];
   if (trigger === undefined) throw new Error(`Řádek ${index} nemá nabídku akcí.`);
   await user.click(trigger);
+}
+
+function itemNames() {
+  return screen.getAllByRole('menuitem').map((item) => item.textContent);
 }
 
 describe('SegmentList', () => {
@@ -152,5 +168,127 @@ describe('SegmentList', () => {
       name: 'Nikdy neotevřel',
     });
     await waitFor(() => expect(push).toHaveBeenCalledWith('/w/eshop/segments/new-1'));
+  });
+});
+
+/**
+ * KDYBY TENHLE BLOK SPADL: ze seznamu segmentů zase nejde nic než přepočet.
+ * Přesně tak vypadala nabídka do 6. 8. 2026: jediná položka, žádná cesta na
+ * kontakty ani na úpravu, a smazat segment nešlo z aplikace vůbec, přestože
+ * `DELETE /api/v1/segments/{id}` v jádru existuje od začátku.
+ */
+describe('nabídka „…" v řádku segmentu', () => {
+  it('editor má přepočet, kontakty, úpravu a smazání', async () => {
+    const user = userEvent.setup();
+    renderList();
+
+    await openRowMenu(user, 1);
+    expect(itemNames()).toEqual(['Přepočítat', 'Zobrazit kontakty', 'Upravit', 'Smazat']);
+  });
+
+  /*
+   * Přepočet si vyžádá `segments:write` (`segments.routes.ts:549`), přestože
+   * se čtenáři jeví jako čtení. Do 6. 8. 2026 se nabízel všem a čtenáři skončil
+   * na 403 bez vysvětlení.
+   */
+  it('čtenáři zbydou jen kontakty, ne přepočet ani úprava', async () => {
+    const user = userEvent.setup();
+    renderList(rows, [PRESET], { write: false, readContacts: true });
+
+    await openRowMenu(user, 1);
+    expect(itemNames()).toEqual(['Zobrazit kontakty']);
+  });
+
+  it('bez jediné použitelné akce se nekreslí ani spouštěč', () => {
+    renderList(rows, [PRESET], { write: false, readContacts: false });
+    expect(screen.queryByRole('button', { name: /Další akce se segmentem/ })).toBeNull();
+  });
+
+  it('nikdy nepočítaný segment nabízí „Spočítat", ne „Přepočítat"', async () => {
+    const user = userEvent.setup();
+    renderList();
+
+    await openRowMenu(user, 0);
+    expect(itemNames()).toEqual(['Spočítat', 'Zobrazit kontakty', 'Upravit', 'Smazat']);
+  });
+
+  it('„Zobrazit kontakty" vede na seznam zúžený na segment', async () => {
+    const user = userEvent.setup();
+    renderList();
+
+    await openRowMenu(user, 1);
+    await user.click(screen.getByRole('menuitem', { name: 'Zobrazit kontakty' }));
+
+    expect(push).toHaveBeenCalledWith('/w/eshop/contacts?segment_id=s-2');
+  });
+
+  it('„Upravit" otevře stavitele segmentu', async () => {
+    const user = userEvent.setup();
+    renderList();
+
+    await openRowMenu(user, 1);
+    await user.click(screen.getByRole('menuitem', { name: 'Upravit' }));
+
+    expect(push).toHaveBeenCalledWith('/w/eshop/segments/s-2');
+  });
+
+  /*
+   * KDYBY TENHLE TEST SPADL: z okna mazání zmizela věta o kontaktech a lidé si
+   * budou myslet, že smazáním segmentu mažou lidi. V řádku vidí číslo „42"
+   * a pod ním červené „Smazat", takže ten závěr je přirozený.
+   */
+  it('okno mazání říká, že kontakty zůstávají, a že to nejde vrátit', async () => {
+    const user = userEvent.setup();
+    renderList();
+
+    await openRowMenu(user, 1);
+    await user.click(screen.getByRole('menuitem', { name: 'Smazat' }));
+
+    expect(await screen.findByText(/Smazat segment Zastaralý\?/)).toBeInTheDocument();
+    expect(screen.getByText(/Kontakty se nemažou/)).toBeInTheDocument();
+    expect(screen.getByText(/Vrátit to nejde/)).toBeInTheDocument();
+    // Dynamický segment žádný ruční soupis členů nemá, takže se ta věta neslibuje.
+    expect(screen.queryByText(/Ruční soupis členů/)).toBeNull();
+  });
+
+  it('ruční segment navíc řekne, že s ním zmizí soupis členů', async () => {
+    const user = userEvent.setup();
+    renderList([{ ...rows[1]!, kind: 'static' }]);
+
+    await openRowMenu(user, 0);
+    await user.click(screen.getByRole('menuitem', { name: 'Smazat' }));
+
+    expect(await screen.findByText(/Ruční soupis členů/)).toBeInTheDocument();
+  });
+
+  it('potvrzení smaže segment a obnoví seznam', async () => {
+    const user = userEvent.setup();
+    renderList();
+
+    await openRowMenu(user, 1);
+    await user.click(screen.getByRole('menuitem', { name: 'Smazat' }));
+    await user.click(await screen.findByRole('button', { name: 'Smazat segment' }));
+
+    expect(deleteSegmentAction).toHaveBeenCalledWith({ workspaceId: 'w-1', id: 's-2' });
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+
+  /*
+   * Chyba zůstává v okně, seznam se neobnovuje: obnova by hlášku přebila novým
+   * vykreslením a uživatel by se nedozvěděl, proč se nic nestalo.
+   */
+  it('selhání zůstane v okně a seznam se neobnoví', async () => {
+    const user = userEvent.setup();
+    deleteSegmentAction.mockResolvedValueOnce({ status: 'error', code: 'insufficient_scope' });
+    renderList();
+
+    await openRowMenu(user, 1);
+    await user.click(screen.getByRole('menuitem', { name: 'Smazat' }));
+    await user.click(await screen.findByRole('button', { name: 'Smazat segment' }));
+
+    expect(await screen.findByTestId('delete-segment-error')).toHaveTextContent(
+      'insufficient_scope',
+    );
+    expect(refresh).not.toHaveBeenCalled();
   });
 });

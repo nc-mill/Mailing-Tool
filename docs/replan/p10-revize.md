@@ -1,5 +1,12 @@
 # P10 Tracking: revize souladu s databázovým schématem P03
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Revize plánu P10 (tracking) z prověrky plánů
+> (31. 7. až 1. 8. 2026), tedy kontrola **textu plánu před stavbou**, ne kontrola kódu.
+> **Verdikt typu „plán není proveditelný" se týkal tehdejšího plánu, ne dnešního produktu.** Ten stojí a funguje.
+> Opravy se prováděly podle `docs/superpowers/plans/POSTUP-OPRAV.md`; **stav jednotlivých nálezů neověřen**.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 **Recenzovaný plán:** `docs/superpowers/plans/2026-07-31-p10-tracking-tokeny-sdk.md` (12663 řádků)
 **Zdroj pravdy pro schéma:** `docs/superpowers/plans/2026-07-31-p03-databaze-schema-rls.md`
 **Datum revize:** 2026-08-01

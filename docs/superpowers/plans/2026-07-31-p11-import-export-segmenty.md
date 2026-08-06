@@ -1,5 +1,12 @@
 # P11 Import, export a segmenty: implementační plán
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P11 (import, export a segmenty) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** segmenty i import existují, **import se ale opravoval až 5. 8. 2026**, protože průvodce byl kulisa.
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Dodat proudový import kontaktů ze souboru včetně fronty ke kontrole oslovení, export kontaktů a celý segmentační engine s vizuálním builderem, tedy vertikální řez od kompilátoru SQL až po prokliknutelnou obrazovku.

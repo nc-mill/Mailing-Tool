@@ -2,6 +2,7 @@
 import '@testing-library/jest-dom/vitest';
 
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import csReports from '../../../../../../packages/i18n/messages/cs/reports.json';
@@ -21,10 +22,13 @@ vi.mock('@mlain/i18n/navigation', () => ({
 
 const messages = { reports: csReports };
 
-function renderGrid(workspaceSlug = 'ws-1') {
+function renderGrid(
+  workspaceSlug = 'ws-1',
+  permissions: { canImportContacts?: boolean; canCreateCampaign?: boolean } = {},
+) {
   return render(
     <NextIntlClientProvider locale="cs" messages={messages} timeZone="Europe/Prague">
-      <DashboardGrid workspaceSlug={workspaceSlug} />
+      <DashboardGrid workspaceSlug={workspaceSlug} {...permissions} />
     </NextIntlClientProvider>,
   );
 }
@@ -326,5 +330,79 @@ describe('DashboardGrid', () => {
     await waitFor(() => {
       expect(screen.getByTestId('web-active-link')).toHaveAttribute('href', '/w/ws-1/stats/web');
     });
+  });
+});
+
+/**
+ * PRAVIDLO 2 z 7.2b: akce se neskrývají, vysvětlují se. Přehled nabízel import
+ * i založení kampaně každému, takže prohlížející klikl a dostal odmítnutí, aniž
+ * by tušil proč. Skrýt je nesmíme: pak by nevěděl, co má chtít po kolegovi.
+ */
+describe('DashboardGrid a chybějící oprávnění', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubEmptyDashboard() {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              period_days: 30,
+              computed_at: '2026-08-01T00:00:00.000Z',
+              tiles: EMPTY_TILES,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        ),
+      ),
+    );
+  }
+
+  it('s oprávněním vedou obě akce odkazem na svoji obrazovku', async () => {
+    stubEmptyDashboard();
+    renderGrid('ws-1');
+
+    expect(await screen.findByRole('link', { name: 'Naimportovat kontakty' })).toHaveAttribute(
+      'href',
+      '/w/ws-1/contacts/import',
+    );
+    expect(screen.getByRole('link', { name: /Založit kampaň/ })).toHaveAttribute(
+      'href',
+      '/w/ws-1/campaigns/new',
+    );
+    expect(screen.queryByTestId('dashboard-import-forbidden')).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  });
+
+  it('bez oprávnění akce nemizí, jen řeknou, koho požádat', async () => {
+    stubEmptyDashboard();
+    renderGrid('ws-1', { canImportContacts: false, canCreateCampaign: false });
+
+    // Vidět jsou pořád obě, jen už to nejsou odkazy na obrazovku, která by je odmítla.
+    expect(await screen.findByTestId('dashboard-import-forbidden')).toBeInTheDocument();
+    expect(screen.getByTestId('dashboard-new-campaign-forbidden')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Naimportovat kontakty' })).toBeNull();
+    expect(
+      screen.getByText(/Naimportovat kontakty smí editor, správce projektu nebo vlastník/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Založit kampaň smí editor, správce projektu nebo vlastník/),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  });
+
+  it('tlačítko bez oprávnění není mrtvé: kliknutí ukáže důvod fokusem', async () => {
+    stubEmptyDashboard();
+    const user = userEvent.setup();
+    renderGrid('ws-1', { canImportContacts: false });
+
+    await user.click(await screen.findByTestId('dashboard-import-forbidden'));
+
+    // Fokus je na větě s důvodem, takže se k vysvětlení dostane i klávesnice
+    // a odečítač, ne jen oko.
+    expect(document.activeElement?.textContent).toMatch(/Naimportovat kontakty smí editor/);
   });
 });

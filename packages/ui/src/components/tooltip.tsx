@@ -33,7 +33,9 @@ export function Tooltip({
         <Radix.Content
           sideOffset={6}
           className={cn(
-            'z-[var(--z-dialog)] max-w-72 rounded-[var(--radius-control)]',
+            // `--z-flyout`, ne `--z-dialog`: bublina visí u tlačítka, které může
+            // stát v horní liště, a ta má vyšší vrstvu. Viz `tokens.css`.
+            'z-[var(--z-flyout)] max-w-72 rounded-[var(--radius-control)]',
             'bg-panel px-2.5 py-[var(--spacing-hairline)]',
             'font-mono text-label text-panel-foreground',
             className,

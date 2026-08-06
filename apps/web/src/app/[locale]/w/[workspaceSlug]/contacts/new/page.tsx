@@ -94,6 +94,10 @@ export default async function NewContactPage({ params }: PageProps) {
           // jen se u toho řekne, co to znamená.
           selected: list.is_default,
           double_opt_in: list.opt_in === 'double',
+          // Předvyplněnou volbu formulář PŘIZNÁ štítkem u zaškrtávátka. Bez toho
+          // vypadá jako rozhodnutí uživatele a přehlédne se, což se dvěma lidem
+          // nezávisle na sobě stalo.
+          is_default: list.is_default,
         })),
       }}
     />

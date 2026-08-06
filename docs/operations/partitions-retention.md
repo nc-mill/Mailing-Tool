@@ -1,13 +1,26 @@
 # Oddíly a retence odeslané pošty
 
+**K čemu to je:** jak se v instalaci uklízí odeslaná pošta a události, co je
+potřeba zapsat do plánovače a co se stane, když to nikdo neudělá.
+
+Revize: 2026-08-06. Příkaz i přepínače ověřené proti
+`apps/cli/src/commands/partitions.ts`, jména front proti
+`packages/core/src/queues/registry.ts`, výchozí lhůty proti
+`packages/core/src/config/schema-domains.ts`.
+
 Odeslaná pošta se v databázi nedrží navždy. O úklid se stará jediný příkaz,
 `mlain partitions`, a **pouští se z plánovače hostitele**, ne z fronty úloh.
 Dokud ho nikam nezapíšete, retence neběží.
 
 ```sh
-docker compose exec app mlain partitions --dry-run   # ukáže, co by se stalo
-docker compose exec app mlain partitions             # provede to
+docker compose exec app mlain partitions --dry-run       # ukáže, co by se stalo
+docker compose exec app mlain partitions                 # provede to
+docker compose exec app mlain partitions --months 6      # zakládat půl roku dopředu
 ```
+
+`--months` bere celé číslo 1 až 24, výchozí je 4. Mimo ten rozsah příkaz skončí
+kódem 64 a nic neudělá. `compose.yml` leží v `docker/`, takže příkazy pouštějte
+z adresáře, kde ten soubor máte, nebo přidejte `-f docker/compose.yml`.
 
 ## 1. Co příkaz dělá
 
@@ -16,7 +29,10 @@ Dvě věci v tomhle pořadí, obojí v jednom běhu:
 1. **Založí oddíly dopředu** pro aktuální a další tři měsíce (`--months` mění
    počet, výchozí 4). Bez toho instalace po čtyřech měsících přestane přijímat
    zápisy: výchozí oddíl se schválně nezakládá a zápis mimo existující okno
-   tvrdě selže.
+   tvrdě selže. Oddíly zakládá **i migrační runner**, taky na čtyři měsíce
+   dopředu (`packages/db/src/migrate.ts`), takže každý upgrade okno posune.
+   Spoléhat se na to ale nejde: instalace, která rok neupgraduje, upgradem
+   zachráněná není.
 2. **Zahodí oddíly, které přesáhly retenční lhůtu.**
 
 | tabulka | co v ní je | proměnná | výchozí lhůta |
@@ -27,8 +43,9 @@ Dvě věci v tomhle pořadí, obojí v jednom běhu:
 
 Ostatní partitionované tabulky příkaz **nechává být**, a to schválně:
 
-- `audit_log` má vlastní úklid po řádcích (`platform.cleanup_audit_log`) podle
-  `AUDIT_RETENTION_MONTHS`. Ten běží pod aplikační rolí a funguje.
+- `audit_log` má vlastní úklid po řádcích (`platform.cleanup_audit_log`, cron
+  `35 2 * * *`) podle `AUDIT_RETENTION_MONTHS`, výchozí 24 měsíců. Ten běží
+  ve frontě pod aplikační rolí a funguje.
 - `inbound_deliveries` spadá pod projektovou retenci (`retention.run`), protože
   lhůtu si nastavuje každý projekt zvlášť, kdežto oddíl je společný všem.
 - `webhook_events`, `webhook_deliveries`, `provider_event_receipts`
@@ -51,8 +68,15 @@ to mazat část dat před uplynutím lhůty.
 
 ## 3. Jak často to pouštět
 
-**Jednou denně.** Doporučený čas je krátce po druhé hodině ráno, tedy po
-`platform.maintain_partitions` a před ranním provozem.
+**Jednou denně.** Doporučený čas je krátce po druhé hodině ráno, tedy mimo
+provoz a před ranním špičkou.
+
+> **Oprava proti starší verzi tohohle dokumentu.** Stálo tu, že se má pouštět
+> „po `platform.maintain_partitions`". Taková fronta **v produktu neexistuje**,
+> byla z registru odstraněná (`packages/core/src/queues/registry.ts`, řádek s
+> poznámkou „TADY UŽ NENÍ a nezakládejte ji znovu"). Nic tedy oddíly ve dvě
+> ráno nezakládá a čas 02:20 není synchronizace s ničím, je to jen rozumná
+> hodina. **Zakládání i mazání oddílů dělá výhradně tenhle příkaz.**
 
 Cron na hostiteli:
 
@@ -124,9 +148,11 @@ nevlastní, takže by úloha skončila na `permission denied`. Dát té roli pr�
 měnit schéma kvůli jedné úloze znamená, že tabulku může zahodit kterákoli chyba
 v kterékoli obsluze v aplikaci.
 
-Fronty `retention.drop_message_partitions` a `tracking.enforce_retention` proto
-z registru **zmizely**. Byly v něm od začátku, měly nastavený cron a vypadaly
-jako běžící úklid, přitom obsluhu neměly a mít nemohly.
+Z registru proto **zmizely tři fronty**, ne dvě: `retention.drop_message_partitions`,
+`tracking.enforce_retention` a `platform.maintain_partitions`. Všechny tři v něm
+byly od začátku, měly nastavený cron a vypadaly jako běžící údržba, přitom
+obsluhu neměly a mít nemohly. Registr na jejich místě nese poznámku, ať je tam
+nikdo nezakládá znovu.
 
 Příkaz se připojuje přes `DATABASE_URL_MIGRATOR`, stejně jako `mlain migrate`.
 Bez té proměnné odmítne běžet a řekne proč. Není to formalita: `messages` má
@@ -177,8 +203,10 @@ proto pusťte `mlain partitions` a uklidí se znovu.
 ## 9. Transakční pošta
 
 Transakční zprávy mají navíc **vlastní** úklid: `transactional.purge_render_data`
-vynuluje `render_data` odeslané transakční zprávy po 24 hodinách, protože v něm
-leží odkaz s jednorázovým tokenem na reset hesla. Ten běží dál ve frontě, po
+vynuluje `render_data` odeslané transakční zprávy po 24 hodinách
+(`TRANSACTIONAL_RENDER_DATA_TTL_HOURS`), protože v něm leží odkaz s jednorázovým
+tokenem na reset hesla. Fronta tiká **každou hodinu** (cron `15 * * * *`), takže
+skutečné stáří vynulovaného záznamu je 24 až 25 hodin. Běží dál ve frontě, po
 řádcích, pod aplikační rolí, a s tímhle příkazem si nepřekáží: pracuje uvnitř
 oddílu, kdežto `mlain partitions` pracuje s oddílem jako celkem. Zpráva, které
 se vynulovalo `render_data`, zmizí i tak později celá se svým oddílem podle

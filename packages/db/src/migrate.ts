@@ -1,8 +1,21 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { Client } from 'pg';
+import { isMigrationsFolder } from './migrations-folder';
+
+/**
+ * Reexport, aby si `resolveMigrationsFolder` odnesl každý, kdo runner načítá
+ * dynamickým importem `import('@mlain/db/migrate')`. Bez něj by si volající
+ * v `packages/core` museli přidat druhý import, a druhý import do statického
+ * grafu Next.js aplikace je přesně to, čemu se ten dynamický vyhýbá.
+ */
+export {
+  findMigrationsFolderFrom,
+  isMigrationsFolder,
+  MigrationsFolderNotFoundError,
+  resolveMigrationsFolder,
+} from './migrations-folder';
 
 /**
  * Pevná konstanta. Session-scoped advisory lock se uvolní i při pádu procesu,
@@ -12,27 +25,21 @@ import { Client } from 'pg';
  */
 export const MIGRATION_ADVISORY_LOCK_ID = 7264150401;
 
-/**
- * Cesta k adresáři s migracemi. Počítá se AŽ PŘI VOLÁNÍ, ne při načtení modulu.
- *
- * Na modulové úrovni to byl výraz `fileURLToPath(new URL('../migrations',
- * import.meta.url))`, který bundler neumí přeložit a hlásí „Module not found:
- * Can't resolve '../migrations'". Jakmile se tenhle modul jakkoli dostal do
- * grafu Next.js aplikace, spadla CELÁ aplikace na 500, ne jen migrace.
- *
- * Stalo se to dvakrát a pokaždé jinou cestou: nejdřív přes reexport v kořeni
- * `@mlain/db`, podruhé přes `ops/api/backups.routes.ts` a `openapi.ts`.
- * Ani dynamický import to neřeší, protože bundler prochází i ty. Jediná
- * spolehlivá oprava je nemít ten výraz na modulové úrovni: uvnitř funkce
- * se vyhodnotí až v Node, kam patří, a bundler ho nikdy nepotká.
- */
-function defaultMigrationsFolder(): string {
-  return fileURLToPath(new URL('../migrations', import.meta.url));
-}
-
 export type RunMigrationsOptions = {
   url: string;
-  migrationsFolder?: string;
+  /**
+   * Adresář s migracemi. POVINNÝ, a je to ta povinnost, která tu vadu uzavírá.
+   *
+   * Dřív byl volitelný a runner si při vynechání odvozoval `../migrations`
+   * vůči `import.meta.url`. V zabundlované aplikaci to ukazuje jinam
+   * (`/app/apps/cli/migrations`), takže volitelnost znamenala tichou past:
+   * kdo parametr vynechal, dostal ENOENT až za běhu v produkci. Vynechalo ho
+   * postupně pět míst. Teď se takové místo nepřeloží.
+   *
+   * Hodnotu skládá `resolveMigrationsFolder()` z `./migrations-folder`, jediné
+   * místo v repozitáři, které tu cestu odvozuje.
+   */
+  migrationsFolder: string;
   /** Strop čekání na zámek. Přetečení = exit 75 (EX_TEMPFAIL), kontejner restartuje. */
   lockTimeoutSeconds?: number;
   /** Zajistí partition na aktuální a další tři měsíce. Vypíná se jen v testech runneru. */
@@ -118,8 +125,23 @@ async function readSchemaVersion(client: Client): Promise<number | null> {
 }
 
 export async function runMigrations(options: RunMigrationsOptions): Promise<void> {
-  const folder = options.migrationsFolder ?? defaultMigrationsFolder();
+  const folder = options.migrationsFolder;
   const log = options.logger ?? ((m: string) => console.info(`[migrate] ${m}`));
+
+  // Vlastní kontrola, ne ENOENT z `readFileSync`. Volající (obnova ze zálohy,
+  // upgrade, nedělní ověření) chybu překládají na exit kód a na hlášku pro
+  // provozovatele; syrové „ENOENT open '…/meta/_journal.json'" neřekne, co
+  // s tím, a hlavně se nedá odlišit od selhané migrace.
+  if (typeof folder !== 'string' || folder === '' || !isMigrationsFolder(folder)) {
+    throw new MigrationError(
+      `adresář s migracemi ${folder === '' || folder === undefined ? '(nepředaný)' : folder} ` +
+        'neobsahuje meta/_journal.json, takže není co aplikovat. ' +
+        'Cestu skládá resolveMigrationsFolder(); přebít ji jde proměnnou MIGRATIONS_DIR.',
+      78,
+      'migrations_folder_invalid',
+    );
+  }
+
   const journal: Journal = JSON.parse(readFileSync(join(folder, 'meta', '_journal.json'), 'utf8'));
   const entries = [...journal.entries].sort((a, b) => a.idx - b.idx);
   const maxVersion = entries.length;

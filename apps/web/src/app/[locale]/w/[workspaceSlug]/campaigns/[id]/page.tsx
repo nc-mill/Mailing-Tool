@@ -4,7 +4,9 @@ import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api-client/fetch';
 import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
 import { updateCampaignSettingsAction } from '@/features/campaigns/actions';
+import { CampaignLoadProblem } from '@/features/campaigns/campaign-load-problem';
 import { isFinishedCampaign } from '@/features/campaigns/campaign-target';
+import { canEditCampaignContent } from '@/features/campaigns/campaign-state';
 import {
   CampaignSettingsForm,
   type CampaignSettings,
@@ -68,14 +70,13 @@ type CampaignDetail = {
   track_clicks: boolean;
 };
 
-/**
- * Stavy, ve kterých se kampaň ještě smí měnit.
- *
- * Odpovídá bráně v `PATCH /campaigns/{id}`, která pro ostatní stavy vrací 409
- * `campaign_locked`. Naplánovaná kampaň sem schválně nepatří: povolené jsou
- * u ní jen tři klíče plánu a ty se nastavují jinou akcí, ne tímhle formulářem.
+/*
+ * Stavy, ve kterých se kampaň ještě smí měnit, drží sdílený `campaign-state.ts`
+ * pod jménem `canEditCampaignContent`. Odpovídají bráně v `PATCH /campaigns/{id}`,
+ * která pro ostatní stavy vrací 409 `campaign_locked`; naplánovaná kampaň mezi ně
+ * schválně nepatří, protože u ní projdou jen tři klíče plánu a ty nastavuje jiná
+ * akce, ne tenhle formulář.
  */
-const EDITABLE_STATUSES = new Set(['draft', 'schedule_missed']);
 
 /**
  * `audience` je v odpovědi `unknown`, protože schéma kampaně nechává výčet
@@ -109,7 +110,20 @@ export default async function CampaignSettingsPage({ params, searchParams }: Pag
   const requestedStep = (await searchParams)[STEP_PARAM];
   const step = parseCampaignStep(requestedStep);
   const access = await getWorkspaceAccess(workspaceSlug);
-  if (!access.ok) notFound();
+  /*
+   * 404 JEN Z OPRAVDOVÉ 404, viz `CampaignLoadProblem`.
+   *
+   * Dřív tu stálo `if (!access.ok) notFound()`, takže se na „stránku
+   * nenalezena" překlopilo i vypršení požadavku (`apiFetch` má desetisekundový
+   * limit), nedostupné API i vnitřní chyba. Uživatel z toho čte, že kampaň
+   * neexistuje, jenže o její existenci žádný z těch případů nic neříká, a
+   * hlášení „kampaň vrací 404" se pak nedá zopakovat, protože příčina mezitím
+   * pominula. Nečlen projektu dál dostane 404, ta je správně (3.4 části 1).
+   */
+  if (!access.ok) {
+    if (access.problem.status === 404) notFound();
+    return <CampaignLoadProblem problem={access.problem} occurredAt={new Date().toISOString()} />;
+  }
   const workspaceId = access.data.workspace.id;
 
   const [campaign, lists, segments, templates, providers, domains, senders] = await Promise.all([
@@ -135,7 +149,15 @@ export default async function CampaignSettingsPage({ params, searchParams }: Pag
     apiFetch<{ data: SenderIdentityOption[] }>('/api/v1/senders', { workspaceId }),
   ]);
 
-  if (!campaign.ok) notFound();
+  /*
+   * Smazaná ani cizí kampaň = 404, to je pravda o kampani. Cokoli jiného je
+   * pravda o požadavku a patří do chybového bloku s kódem a číslem požadavku,
+   * ne pod větu „stránka nenalezena". Viz komentář u čtení projektu výš.
+   */
+  if (!campaign.ok) {
+    if (campaign.problem.status === 404) notFound();
+    return <CampaignLoadProblem problem={campaign.problem} occurredAt={new Date().toISOString()} />;
+  }
 
   /*
    * DOJETÁ KAMPAŇ SEM VŮBEC NEPATŘÍ a nestačí schovat tlačítko.
@@ -173,7 +195,7 @@ export default async function CampaignSettingsPage({ params, searchParams }: Pag
   if (
     step === 'content' &&
     (requestedStep !== undefined ||
-      (EDITABLE_STATUSES.has(campaign.data.status) && campaign.data.template_id !== null))
+      (canEditCampaignContent(campaign.data.status) && campaign.data.template_id !== null))
   ) {
     redirect(`/${locale}/w/${workspaceSlug}/campaigns/${id}/content`);
   }
@@ -242,7 +264,7 @@ export default async function CampaignSettingsPage({ params, searchParams }: Pag
       workspaceId={workspaceId}
       campaign={settings}
       options={options}
-      canEdit={EDITABLE_STATUSES.has(data.status)}
+      canEdit={canEditCampaignContent(data.status)}
       basePath={`/w/${workspaceSlug}`}
       initialStep={step}
     />

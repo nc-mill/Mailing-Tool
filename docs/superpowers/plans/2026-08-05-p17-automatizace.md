@@ -3,6 +3,59 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. **Nejdřív si ale přečti kapitolu 0**: tenhle dokument je rozhodovací plán, ne rozepsaný seznam úkolů, a před spuštěním se musí fáze A až F rozepsat do úkolů ve tvaru P13.
 
 **Datum:** 5. 8. 2026, verze 2 po prověrce šesti recenzenty (viz kapitola 16)
+
+---
+
+## Stav k 6. 8. 2026 (revize proti kódu)
+
+Plán jako celek **platí a nic ho nenahradilo**. `packages/core/src/automations/`
+neexistuje, obrazovky ani tabulky nevznikly, takže fáze A až F jsou otevřené.
+Za dva dny od sepsání ale okolí ujelo natolik, že **část plánu je dnes nepravdivá**.
+Než se podle něj začne stavět, přečti si tenhle seznam.
+
+**Co se mezitím udělalo za P17 (položky plánu, které jsou hotové):**
+
+- **A9 je hotové.** `MESSAGE_KINDS` v `packages/contracts/src/outbox.ts:17` už je
+  `['campaign', 'test', 'transactional', 'automation']`. Přibylo k tomu
+  `NON_CAMPAIGN_MESSAGE_KINDS` a `NO_UNSUBSCRIBE_MESSAGE_KINDS`.
+- **`ck_messages__kind` je rozšířené.** Udělala to migrace
+  **`0016_message_kinds.sql`**, která přidala `transactional` i `automation`
+  najednou. Blok DDL v kapitole 3, který totéž dělá znovu přes `NOT VALID`,
+  se **musí vypustit**.
+- **Třetí claim větev v senderu už je, jen obecnější.**
+  `StmtClaimNonCampaignBatch` (`apps/sender/internal/outbox/statements.go:183`)
+  claimuje `kind <> 'campaign'`, takže automatizační zprávy do ní spadnou samy.
+  `Store.ClaimNonCampaignBatch`, `Claimer` i blok v `Tick` existují
+  (`app/loop.go:24,153`), dávku řídí `SENDER_NON_CAMPAIGN_BATCH_SIZE`
+  (výchozí 20, `config/load.go:178`) a dotaz vrací `c.revision` přímo, tedy
+  přesně to, co si D7 přál v bodě 3.
+
+**Co je proto v plánu neplatné (podrobnosti u jednotlivých míst):**
+
+| Místo | Neplatí | Jak to je |
+|---|---|---|
+| 1.1, kapitola 3, A2, A3, „Rezervace čísel" | čísla migrací `0016` a `0017` | obojí je obsazené (`0016_message_kinds.sql`, `0017_lists_subscription_emails.sql`). Poslední migrace je **0021**, automatizace tedy dostanou **0022 a 0023** |
+| 1.4, D7, D31, D3 až D5 fáze D | `StmtClaimAutomationBatch`, `AutomationBatchSize`, `SENDER_AUTOMATION_BATCH_SIZE`, `claim_automation_test.go`, index `idx_messages__automation_claimable` | zbytečné, viz výš. Zbývá ověřit chování obecné větve pod zátěží, ne psát čtvrtou |
+| 1.4, A5 | `registry.test.ts` fixuje **61** front | fixuje **59** (přibyla `transactional.purge_render_data`, odešly tři fronty na oddíly). Pět nových tedy dá **64** |
+| 1.4, A6 | `permissions.test.ts` fixuje **48** | fixuje **49** (`transactional:send`). Šest nových dá **55**, a přepočítat se musí i `owner`, `admin`, `editor`, `viewer` |
+| D5, D26 | „vzor `upsertSystemCampaign` z `delivery-email.ts`" | ta funkce je dnes ve **třech** soukromých kopiích (`contacts/forms/delivery-email.ts:242`, `contacts/lists/subscription-emails.ts:412`, `transactional/send.ts`). Port z D26 má být místo, kam se sjednotí, ne čtvrtá kopie |
+
+**Co naopak pořád platí, ověřeno:**
+
+- `config/manifest.test.ts` fixuje **182** proměnných, `errors/registry.test.ts`
+  fixuje **34** `MESSAGE_CODES`, `audit-actions.test.ts` fixuje **28** akcí.
+- `WebEventInsert.source` je pořád literál `'email'`
+  (`tracking/repo/web-events.repo.ts:22`), takže E1 je potřeba celé.
+- `reports/timeline/branches.ts` má pořád `AND m.kind = 'campaign'`, takže E3 platí.
+- Položka `automations` v `packages/ui/src/patterns/navigation/registry.ts:412`
+  má `mvp0: false` a `reservedFor: 'MVP2'`, takže F6 platí.
+- **O2 je pořád otevřená vada.** `StmtPauseCampaign` má dál
+  `WHERE id = $1 AND status IN ('queueing', 'sending')`, takže hlavičková kampaň
+  ve stavu `draft` se pozastavit nedá.
+- `packages/core/src/automations/` neexistuje, `packages/db/src/schema/automations.ts` taky ne.
+
+---
+
 **Rozsah specifikace:** MVP 2, „Automatizační engine" z kapitoly 7 hlavní specifikace, část 5 (3.9.3 krok 8, 3.12.1, 2.2.1), část 1 (4.10.1), část 4a (2.4).
 
 **Goal:** Dodat automatizační engine Mlain Maileru: vizuální scénář s neměnnými verzemi, běh kontaktu, který přežije restart a čekání dlouhé měsíce, spouštěče navázané na hotové zpracování událostí, uzly čekání, podmínky s větvením a odeslání e-mailu, odesílání týmž outboxem jako kampaně, a časovou osu, která netechnickému člověku vysvětlí větou, proč kontakt šel danou větví.
@@ -33,6 +86,13 @@ Co dokument naopak už obsahuje a co se rozepisováním nemá měnit: rozhodnut�
 | `packages/db/src/schema/automations.ts` | Drizzle schéma šesti nových tabulek |
 | `packages/db/migrations/0016_automations.sql` | migrace (generovaná) |
 | `packages/db/migrations/0017_automations_grants_rls.sql` | migrace (ručně psaná): RLS, granty, cyklický FK, `messages.kind` |
+
+> **Neplatí od 6. 8. 2026: čísla migrací.** `0016` i `0017` jsou obsazené
+> (`0016_message_kinds.sql`, `0017_lists_subscription_emails.sql`), poslední
+> migrace v repozitáři je `0021_campaign_working_copy_orphans.sql`. Automatizace
+> tedy dostanou `0022_automations.sql` a `0023_automations_grants_rls.sql`,
+> a v té ruční části už **nebude blok pro `messages.kind`**, protože hodnotu
+> `automation` přidala migrace 0016.
 | `packages/i18n/messages/cs/automations.json` | český katalog nového namespace |
 | `packages/i18n/messages/en/automations.json` | anglický katalog nového namespace |
 | `apps/web/src/app/[locale]/w/[workspaceSlug]/automations/**` | obrazovky scénářů |
@@ -59,11 +119,11 @@ Tenhle seznam je závazný. Každý řádek je v úkolech popsaný doslova a nes
 
 | Soubor | Zásah |
 |---|---|
-| `packages/core/src/queues/registry.ts` | pět nových `QueueEntry`. **Rozbije `packages/core/test/queues/registry.test.ts`**, který fixuje 61 front na 66 |
+| `packages/core/src/queues/registry.ts` | pět nových `QueueEntry`. **Rozbije `packages/core/test/queues/registry.test.ts`**, který fixuje 61 front na 66. *(Neplatí od 6. 8. 2026: test dnes fixuje **59** front, pět nových tedy dá **64**.)* |
 | `packages/core/src/errors/types.ts` | rozhodnout doménu front, viz D24 |
 | `packages/core/src/errors/problem-codes.ts` | nové API kódy (`automation_graph_invalid`, `automation_locked`, `automation_not_publishable`) |
 | `packages/core/src/errors/message-codes.ts` | nové `messages.error_code` (`automation_paused`, `automation_not_eligible`). **Rozbije `packages/core/test/errors/registry.test.ts`**, který fixuje 34 kódů |
-| `packages/core/src/identity/permissions.ts` | šest nových klíčů a jejich zařazení do rolí. **Rozbije `packages/core/src/identity/permissions.test.ts`**, který fixuje 48 na třech místech |
+| `packages/core/src/identity/permissions.ts` | šest nových klíčů a jejich zařazení do rolí. **Rozbije `packages/core/src/identity/permissions.test.ts`**, který fixuje 48 na třech místech. *(Neplatí od 6. 8. 2026: test fixuje **49** (`transactional:send`) a počty na rolích jsou owner 49, admin 44, editor 29, viewer 12. Šest nových klíčů dá 55 a přepočítat se musí i role.)* |
 | `packages/core/src/config/schema-domains.ts` | šest automatizačních proměnných |
 | `packages/core/src/config/schema-platform.ts` | `SENDER_AUTOMATION_BATCH_SIZE` (všech dvacet `SENDER_*` proměnných je tady, ne v `schema-domains.ts`) |
 | `packages/core/src/config/config.manifest.json` | regenerace `tsx packages/core/scripts/write-manifest.ts`. **Rozbije `packages/core/test/config/manifest.test.ts`**, který fixuje 182 proměnných |
@@ -113,6 +173,16 @@ Tenhle seznam je závazný. Každý řádek je v úkolech popsaný doslova a nes
 | `packages/i18n/messages/{cs,en}/settings.json` | překlady nových auditních akcí. **Rozbije `apps/web/src/features/audit/audit-actions.test.ts`**, který fixuje 28 |
 
 **Kontrakty a sender**
+
+> **Neplatí od 6. 8. 2026: celá tahle tabulka až na poslední řádek.**
+> `MESSAGE_KINDS` už `'automation'` obsahuje a claim větev pro zprávy mimo kampaň
+> v senderu existuje jako **jedna obecná** (`StmtClaimNonCampaignBatch`,
+> `kind <> 'campaign'`), ne jako výčet druhů. P17 tedy do `apps/sender/**`
+> nepotřebuje sáhnout vůbec: `Store.ClaimNonCampaignBatch`, rozhraní `Claimer`,
+> blok v `Tick`, `SENDER_NON_CAMPAIGN_BATCH_SIZE` i `c.revision` v `RETURNING`
+> jsou hotové. Zbývá jediná otevřená věc, a je to **měření**, ne kód: ověřit,
+> že společná dávka 20 zpráv na tik stačí i pro scénáře, a případně zvednout
+> výchozí hodnotu. Fixture `OB-23` a `claim_automation_test.go` odpadají.
 
 | Soubor | Zásah |
 |---|---|
@@ -248,6 +318,14 @@ Zvažoval jsem **mikrokampaně**, tedy nový řádek `campaigns` na každý tik 
 | `provider_id`, `sender_identity_id`, `from_*`, `reply_to`, `unsubscribe_list_id`, `track_opens`, `track_clicks` | **z konfigurace uzlu**, povinné při publikování | viz D19 |
 | vazba na uzel | tabulka `automation_emails` | vazba přes jméno kampaně, jak to dnes dělá `delivery-email.ts`, je v tom souboru sama označená za obcházení chybějícího sloupce |
 
+> **Doplněk k 6. 8. 2026.** Rozhodnutí D5 platí beze změny, ale jeho okolí se
+> rozrostlo: funkce `upsertSystemCampaign` je dnes ve **třech** soukromých kopiích
+> (`contacts/forms/delivery-email.ts:242`, `contacts/lists/subscription-emails.ts:412`
+> a `transactional/send.ts`). Port `upsertAutomationHeaderCampaign` z D26 má být
+> místo, kam se to sjednotí, ne čtvrtá kopie. Vazba přes jméno kampaně se mezitím
+> rozšířila i do e-mailů seznamu (`SYSTEM_CAMPAIGN_NAME · kind · listId`), takže
+> argument pro pořádnou mapovací tabulku je silnější, ne slabší.
+
 Odkaz na rodiče podle části 4a tedy existuje, jen nevede přes `parent_campaign_id`, ale přes `automation_emails.version_id`. Sloupec `parent_campaign_id` tenhle plán nezavádí, protože by měl jediného uživatele a duplikoval by mapovací tabulku.
 
 **Hlavičkové kampaně vyřazených verzí se nemažou**, dokud na ně odkazují zprávy. Uklidí je táž retence, která odpojuje oddíly `messages`. Deset publikování kvůli překlepům znamená deset kopií zkompilovaného HTML, tedy jednotky megabajtů, což je přijatelné.
@@ -269,6 +347,26 @@ Generovaný sloupec `audience_campaign_id` (`CASE WHEN kind = 'campaign' THEN ca
 **Vedlejší důsledek, který musí padnout vědomě (viz O8):** segmentové podmínky typu „za 90 dní nic neotevřel" se ptají nad `messages` a `message_events` **bez filtru na `kind`** (`segments/compile/engagement-event.ts`). Po zavedení nového druhu do nich začnou vstupovat i automatizační e-maily, což změní výsledky existujících segmentů u všech zákazníků, a uzel `condition` uvidí e-mail, který mu tentýž scénář poslal o krok dřív.
 
 ### D7. Sender dostane třetí claim větev, ale bez rotace podle projektu
+
+> **Neplatí od 6. 8. 2026: celé D7 je bezpředmětné, práci udělal někdo jiný a líp.**
+> Sender má **jednu obecnou větev pro všechny druhy mimo kampaň**:
+> `StmtClaimNonCampaignBatch` s podmínkou `m.kind <> 'campaign'`
+> (`apps/sender/internal/outbox/statements.go:169`). Komentář u ní říká doslova,
+> proč je to podmínka a ne výčet: „Nová hodnota v `ck_messages__kind` tím spadne
+> do téhle větve sama a nezůstane ležet ve frontě navěky proto, že ji někdo
+> zapomněl dopsat do seznamu." Automatizační zprávy se tedy claimují bez jediného
+> řádku Go navíc.
+>
+> Body 1 až 3 tím padají takto: **priorita** je společná pro test, transakční
+> poštu i automatizace a řídí ji `SENDER_NON_CAMPAIGN_BATCH_SIZE` (výchozí 20);
+> **rotace podle projektu** se pořád nedělá, takže odložení platí dál;
+> **revize** se z dotazu vrací (`RETURNING … c.revision`) a je to v komentáři
+> zdůvodněné přesně jako v bodě 3.
+>
+> Co z toho zbývá jako skutečná práce: **rozhodnout výchozí dávku.** Dvacet zpráv
+> na tik bylo číslo pro testovací odeslání a reset hesla, ne pro scénář, kterému
+> ve stejnou hodinu doběhne čekání stovkám lidí. Patří to do fáze D jako měření,
+> ne jako nový kód.
 
 Větev je kopie `StmtClaimTestBatch` s `m.kind = 'automation'`. Doložený odhad podle testovací větve: 80 řádků produkčního Go a 100 řádků testů, kde šablonou je `claim_test_message_test.go`.
 
@@ -557,7 +655,13 @@ Běh ve stavu `waiting` bez jediného kroku ve `scheduled` nebo `running` zůsta
 | `AUTOMATION_CATCHUP_HOURS` | `schema-domains.ts` | 24 | 0–720 | jak staré splatné kroky se po obnovení ještě odbaví |
 | `AUTOMATION_MIN_WAIT_SECONDS` | `schema-domains.ts` | 60 | 60–86400 | nejkratší čekání v cyklu, brána publikování |
 | `AUTOMATION_MAX_ENTRIES_PER_MINUTE` | `schema-domains.ts` | 300 | 1–10000 | strop nových běhů na projekt (D28) |
-| `SENDER_AUTOMATION_BATCH_SIZE` | **`schema-platform.ts`** | 50 | 1–500 | dávka třetí claim větve. Všech dvacet `SENDER_*` proměnných je tady |
+| ~~`SENDER_AUTOMATION_BATCH_SIZE`~~ | **`schema-platform.ts`** | 50 | 1–500 | dávka třetí claim větve. Všech dvacet `SENDER_*` proměnných je tady |
+
+> **Neplatí od 6. 8. 2026: poslední řádek.** Proměnná se nezavádí, dávku zpráv
+> mimo kampaň řídí existující `SENDER_NON_CAMPAIGN_BATCH_SIZE` (výchozí 20,
+> `apps/sender/internal/config/load.go:178`), viz poznámka u D7. Nových
+> proměnných je tedy **šest**, ne sedm, a všechny jsou v `schema-domains.ts`.
+> Do Go se nesahá.
 
 Stropy `AUTOMATION_MAX_NODES` (100), `AUTOMATION_MAX_STEPS_PER_RUN` (500) a `AUTOMATION_MAX_GRAPH_BYTES` (256 kB) jsou konstanty v kódu, ne konfigurace: mění tvar dat, ne provozní chování, a měnit je za běhu instalace nedává smysl.
 
@@ -568,6 +672,16 @@ Tvar `envInt(min, max).default(n)` je povinný, jinak spadne `packages/core/test
 ## 3. Datový model
 
 Schéma v `packages/db/src/schema/automations.ts`, DDL vzniká `drizzle-kit generate` do `0016_automations.sql`, ruční část je v `0017_automations_grants_rls.sql`.
+
+> **Neplatí od 6. 8. 2026: čísla migrací a blok pro `messages.kind`.**
+> Generovaná část jde do **`0022_automations.sql`**, ruční do
+> **`0023_automations_grants_rls.sql`**. Z ruční části se vypouští celý blok
+> `ck_messages__kind` (hodnotu `automation` přidala migrace `0016_message_kinds.sql`
+> a je spuštěná) i `idx_messages__automation_claimable`, protože claim větev
+> senderu je obecná (`kind <> 'campaign'`) a vlastní index na `kind = 'automation'`
+> by nepoužila. Zbytek ruční části, tedy cyklický FK, RLS šesti tabulek,
+> `maintenance_scan FOR SELECT` a kopie `mlain_apply_grants()` se dvěma novými
+> bloky, platí beze změny.
 
 > **Past, na kterou se v tomhle repozitáři už jednou naběhlo:** středník uvnitř řetězcového literálu v raw `sql` výrazu (typicky `check()`) rozbije `drizzle-kit generate`. Generátor na tom středníku uřízne celý `CREATE TABLE` a zapíše nespustitelné SQL, přestože snapshot v `migrations/meta/` má hodnotu správně a `drizzle-kit check` nic nehlásí. Potkalo to `ck_imports__delimiter`. **Žádný `CHECK` v tomhle schématu proto nesmí obsahovat středník v literálu** (ověřeno, žádný neobsahuje). Kontrola po vygenerování se nedělá grepem na `IN (')`, ten řetězec nevznikne ani v poškozené migraci: spustí se `pnpm --filter @mlain/db test:migrations`, který migraci pouští proti kontejneru, a porovná se počet `CONSTRAINT ck_` v migraci s počtem v Drizzle schématu.
 
@@ -799,6 +913,10 @@ CREATE INDEX IF NOT EXISTS idx_messages__automation_claimable
 
 **Rezervace čísel.** Poslední migrace je 0015 a v repozitáři běží paralelně další práce. Čísla 0016 a 0017 se musí zarezervovat dřív, než se začne psát, jinak vznikne konflikt v souboru, který se needituje.
 
+> **Neplatí od 6. 8. 2026, a je to přesně ten konflikt, před kterým odstavec varoval.**
+> Poslední migrace je **0021**, čísla 0016 až 0021 padla během dvou dnů na jinou
+> práci. Před psaním si zarezervuj **0022 a 0023** a ověř to znovu, tempo je vysoké.
+
 ---
 
 ## 4. Tvar grafu
@@ -1016,13 +1134,19 @@ Po každé fázi musí být aplikace použitelná a testy zelené.
 - [ ] A0 Rozhodnout D19 (odesílací konfigurace uzlu) a kapitolu 4 (tvar grafu). Z nich plyne tvar zod schémat, brány publikování i panel vlastností, takže se to musí rozhodnout dřív než všechno ostatní.
 - [ ] A1 Drizzle schéma šesti tabulek, doplnění do `drizzle.config.ts` a `schema/index.ts`.
 - [ ] A2 `db:generate` do `0016_automations.sql`, kontrola počtu `CONSTRAINT ck_` proti schématu.
+      *(Neplatí od 6. 8. 2026: soubor se jmenuje `0022_automations.sql`.)*
 - [ ] A3 Ruční migrace `0017`: cyklický FK, RLS pro šest tabulek, `maintenance_scan FOR SELECT`, kopie `mlain_apply_grants()` s dvěma novými bloky, `ck_messages__kind` přes `NOT VALID`, claim index.
+      *(Neplatí od 6. 8. 2026: soubor je `0023_automations_grants_rls.sql` a **bez** bloku `ck_messages__kind` a **bez** claim indexu, viz poznámka u kapitoly 3.)*
 - [ ] A4 `packages/db/src/rls.ts`: `WS_ISOLATION_TABLES`, `MAINTENANCE_SCAN_TABLES`, **`EXTRA_POLICIES`**. `packages/db/src/partitions.ts`: `PARTITIONED_REFERENCES`.
 - [ ] A5 Pět front do registru, zápis do `UNDELIVERED`, oprava počtu v `registry.test.ts`.
+      *(Neplatí od 6. 8. 2026: z 59 na 64, ne z 61 na 66.)*
 - [ ] A6 Šest oprávnění do rolí, oprava tří počtů v `permissions.test.ts`, `pnpm ci:openapi-drift`.
+      *(Neplatí od 6. 8. 2026: z 49 na 55, a počtů je pět, ne tři: celkem plus čtyři role.)*
 - [ ] A7 Sedm konfiguračních proměnných do dvou souborů, `.env.example`, **regenerace manifestu** a oprava počtu v `manifest.test.ts`, Go strana.
+      *(Neplatí od 6. 8. 2026: proměnných je šest, všechny v `schema-domains.ts`, Go strana odpadá. Manifest jde ze 182 na 188.)*
 - [ ] A8 Namespace `automations` do `load-messages.ts` a prázdné katalogy cs a en.
-- [ ] A9 `MESSAGE_KINDS` o `'automation'`, commit s prefixem `contract:`.
+- [x] A9 `MESSAGE_KINDS` o `'automation'`, commit s prefixem `contract:`.
+      **Hotovo před začátkem prací (ověřeno 6. 8. 2026):** `packages/contracts/src/outbox.ts:17`.
 - [ ] A10 `audit.ts` s výčtem akcí, překlady v `settings.json`, oprava počtu v `audit-actions.test.ts`.
 - [ ] A11 Nové API kódy a `messages.error_code`, oprava počtu v `errors/registry.test.ts`.
 - [ ] A12 `packages/core/package.json`: klíč `"./automations/jobs"`.
@@ -1058,9 +1182,12 @@ Po každé fázi musí být aplikace použitelná a testy zelené.
 
 - [ ] D1 `engine/eligibility.ts`, všech šest vrstev z kapitoly 6, jednotkové i databázové testy včetně zkušebního režimu a ukázkových kontaktů.
 - [ ] D2 Uzel `send_email` v téže transakci jako posun kroku.
-- [ ] D3 Go: `StmtClaimAutomationBatch`, `AllStatements()`, `statements_test.go`, `Store.ClaimAutomationBatch`, revize v `RETURNING`.
-- [ ] D4 Go: `AutomationBatchSize`, blok v `Tick`, `SENDER_AUTOMATION_BATCH_SIZE`. **Bez rotace podle projektu** (D7).
-- [ ] D5 Go: `claim_automation_test.go`, fixture `OB-23`.
+- [x] ~~D3 Go: `StmtClaimAutomationBatch`, `AllStatements()`, `statements_test.go`, `Store.ClaimAutomationBatch`, revize v `RETURNING`.~~
+      **Odpadá (ověřeno 6. 8. 2026):** obecná větev `StmtClaimNonCampaignBatch` (`kind <> 'campaign'`) to už umí, včetně `c.revision`.
+- [x] ~~D4 Go: `AutomationBatchSize`, blok v `Tick`, `SENDER_AUTOMATION_BATCH_SIZE`. **Bez rotace podle projektu** (D7).~~
+      **Odpadá:** blok v `Tick` i `NonCampaignBatchSize` existují. **Zbývá jediné:** změřit, jestli výchozí dávka 20 stačí i pro scénáře, a případně ji zvednout.
+- [x] ~~D5 Go: `claim_automation_test.go`, fixture `OB-23`.~~
+      **Odpadá:** není co testovat navíc, větev je společná a otestovaná pro transakční poštu.
 - [ ] D6 Zrušení čekajících zpráv při pozastavení a smazání, `deleteProvider` podle D27.
 - [ ] D7 Testovací odeslání uzlu (D21).
 
@@ -1170,6 +1297,14 @@ Tohle je největší zbývající kus produktu. **Odhad po prověrce: 22 až 28 
 | E2E | `pnpm test:e2e` | celý tok |
 
 **Testy s pevnými počty, které tenhle plán rozbije a musí je opravit** (jinak spadne brána A): `queues/registry.test.ts` (61 front), `identity/permissions.test.ts` (48 na třech místech), `config/manifest.test.ts` (182 proměnných), `errors/registry.test.ts` (34 kódů), `audit-actions.test.ts` (28 akcí), `rls-registry.test.ts` (celkový počet politik), `timeline/titles.test.ts` a `group-sessions.test.ts` (obojí fixuje `automation_entered` na generický fallback), `apps/web/e2e/reports/timeline.spec.ts`.
+
+> **Neplatí od 6. 8. 2026: dvě čísla ze seznamu.** `registry.test.ts` fixuje **59**
+> front (ne 61) a `permissions.test.ts` fixuje **49** (ne 48), a to na pěti místech,
+> ne na třech: celkem plus `owner` 49, `admin` 44, `editor` 29, `viewer` 12.
+> Zbytek seznamu ověřen a platí: 182 proměnných, 34 `MESSAGE_CODES`, 28 auditních akcí.
+>
+> Řádek o `test:parity` a fixture `OB-23` v tabulce bran výš odpadá spolu s D3 až D5.
+> Otisk sekce outbox se změnil už s hodnotou `automation` v `MESSAGE_KINDS`.
 
 **Čas v testech se neposouvá, posouvají se data.** Žádný `Clock` port v repozitáři neexistuje, `vi.useFakeTimers` se v databázových testech nepoužívá a nefungoval by, protože všechna okna se porovnávají proti `now()` v Postgresu. Zavedený vzor je `UPDATE … SET due_at = now() - interval '…'`, jako to dělá `campaigns/test/harness.ts`. Proto musí `engine/nodes/wait.ts` brát `now` a `timezone` jako parametry: jinak nejde testovat letní čas vůbec.
 

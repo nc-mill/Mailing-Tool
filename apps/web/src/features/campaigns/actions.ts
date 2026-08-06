@@ -304,6 +304,38 @@ export async function deleteCampaignAction(input: {
   return { status: 'success' };
 }
 
+/**
+ * Duplikace kampaně. Kopie je vždycky `draft` se jménem „… (kopie)".
+ *
+ * ENDPOINT EXISTOVAL BEZ VOLAJÍCÍHO. `POST /campaigns/{id}/duplicate` je v jádru
+ * od začátku a kopíruje i pracovní obsah, aby úprava kopie nepřepsala předlohu
+ * (`packages/core/src/campaigns/api/service.ts:444`). V rozhraní pro něj do 6. 8. 2026
+ * neexistovalo jediné tlačítko: jediný odkaz, který se jako duplikace tvářil, vedl
+ * z reportu na `/campaigns/new?duplicate={id}`, což je adresa, jejíž stránka ten
+ * parametr vůbec nečte, takže se otevřel prázdný průvodce.
+ *
+ * Vrací id KOPIE, ne předlohy. Bez něj by se uživatel po duplikaci nedozvěděl, že
+ * se něco stalo: kopie se v seznamu objeví mezi ostatními a nic ji neoznačuje.
+ */
+export async function duplicateCampaignAction(input: {
+  workspaceId: string;
+  campaignId: string;
+}): Promise<{ status: 'success'; campaignId: string } | { status: 'error'; code: string }> {
+  const result = await apiMutate<{ id: string }>(
+    `/api/v1/campaigns/${input.campaignId}/duplicate`,
+    {
+      method: 'POST',
+      workspaceId: input.workspaceId,
+      // Prázdné tělo ze stejného důvodu jako u `control` níž: bez `Content-Type`
+      // vrací kostra API 415 a obrazovka mlčí.
+      body: {},
+    },
+  );
+  if (!result.ok) return { status: 'error', code: result.problem.code };
+  revalidatePath(CAMPAIGNS_PATH, 'page');
+  return { status: 'success', campaignId: result.data.id };
+}
+
 async function control(
   workspaceId: string,
   campaignId: string,
@@ -595,6 +627,45 @@ export async function updateCampaignSettingsAction(
   revalidatePath(CAMPAIGN_DETAIL_PATH, 'page');
   revalidatePath(CAMPAIGNS_PATH, 'page');
   return succeeded({ channel: 'inline', messageKey: 'settings.saved' });
+}
+
+/**
+ * Přejmenování kampaně z hlavičky obrazovky.
+ *
+ * SAMOSTATNÁ AKCE, ne `updateCampaignSettingsAction` s jedním polem. Ta akce
+ * posílá celý stav formuláře (předmět, odesílatele, publikum, měření) a po
+ * uložení ještě kompiluje obsah. Z kroku 1 přitom žádný formulář neexistuje,
+ * takže by se musely dopisovat hodnoty, o kterých hlavička nic neví, a
+ * přejmenování by mohlo spadnout na chybě publika, se kterým nemá co dělat.
+ *
+ * `PATCH` s jediným klíčem `name` je zároveň jediný tvar, který projde
+ * u NAPLÁNOVANÉ kampaně: `EDITABLE_WHILE_SCHEDULED` v doméně povoluje mimo
+ * `draft` a `schedule_missed` právě `name`, `scheduled_at` a `schedule_timezone`.
+ * Klíč navíc by celý požadavek shodil na `campaign_locked`.
+ *
+ * Meze se tu ZÁMĚRNĚ NEKONTROLUJÍ: hlídá je obrazovka (stejné hlášky jako
+ * krok 2) a schéma `PatchCampaignRequest` na serveru (`min(1).max(200)`).
+ * Třetí kopie pravidla by se jen rozešla s oběma.
+ */
+export async function renameCampaignAction(input: {
+  workspaceId: string;
+  campaignId: string;
+  name: string;
+}): Promise<ActionResult> {
+  const result = await apiMutate<unknown>(`/api/v1/campaigns/${input.campaignId}`, {
+    method: 'PATCH',
+    body: { name: input.name.trim() },
+    workspaceId: input.workspaceId,
+  });
+  if (!result.ok) return { status: 'error', code: result.problem.code };
+  /*
+   * Jméno kampaně nese seznam kampaní, detail i drobečky nad editorem. Bez
+   * obou cest by se uživatel po přejmenování vrátil na krok 2 nebo do seznamu
+   * a viděl tam jméno staré, přestože v databázi je nové.
+   */
+  revalidatePath(CAMPAIGN_DETAIL_PATH, 'page');
+  revalidatePath(CAMPAIGNS_PATH, 'page');
+  return { status: 'success' };
 }
 
 /* ------------------------------------------------------------------------ *

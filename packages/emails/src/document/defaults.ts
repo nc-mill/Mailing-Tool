@@ -18,8 +18,6 @@ import type {
 
 export const DEFAULT_THEME: Theme = {
   contentWidth: 600,
-  canvasBackground: 'surface.canvas',
-  contentBackground: 'surface.content',
   colors: {},
   fonts: { heading: 'system', body: 'system' },
   typography: { baseFontSize: 16, baseLineHeight: 1.5, headingScale: 1.25 },

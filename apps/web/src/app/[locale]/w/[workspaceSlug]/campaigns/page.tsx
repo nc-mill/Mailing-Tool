@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api-client/fetch';
-import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
+import { getWorkspaceAccess, hasPermission } from '@/lib/identity/workspace-access';
 import { CampaignsScreen } from '@/features/campaigns/campaigns-screen';
 import type { CampaignRow } from '@/features/campaigns/campaign-list';
 
@@ -51,6 +51,22 @@ export default async function CampaignsPage({ params, searchParams }: PageProps)
       state={state}
       basePath={`/w/${workspaceSlug}`}
       workspaceId={access.data.workspace.id}
+      /*
+       * Práva se počítají TADY, ne v tabulce. Klientská komponenta o rolích nic
+       * neví a vědět nemá; nabídka „…" jen dostane pět příznaků a podle nich
+       * vynechá položky, které by na serveru skončily na 403.
+       *
+       * `editContent` je `templates:write` schválně: obsah kampaně je řádek
+       * v `templates` a upravuje se přes `PATCH /api/v1/templates/{id}`, takže
+       * právo na kampaně by tu bylo to nesprávné.
+       */
+      permissions={{
+        editContent: hasPermission(access.data, 'templates:write'),
+        write: hasPermission(access.data, 'campaigns:write'),
+        send: hasPermission(access.data, 'campaigns:send'),
+        control: hasPermission(access.data, 'campaigns:control'),
+        remove: hasPermission(access.data, 'campaigns:delete'),
+      }}
     />
   );
 }

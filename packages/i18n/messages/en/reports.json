@@ -18,8 +18,7 @@
     "sortedAscending": "Sorted ascending",
     "sortedDescending": "Sorted descending",
     "columnSettings": "Column settings",
-    "columnVisible": "Show column {column}",
-    "columnWidth": "Width of column {column}"
+    "columnVisible": "Show column {column}"
   },
   "report": {
     "title": "Campaign report",
@@ -290,7 +289,9 @@
     "rangeWords": "over the last {range}",
     "deltaSincePrevious": "since the previous period",
     "importContacts": "Import contacts",
+    "importForbidden": "Importing contacts is for editors, workspace admins and the owner. Ask one of them; you do not have the permission.",
     "newCampaign": "Create campaign",
+    "newCampaignForbidden": "Creating a campaign is for editors, workspace admins and the owner. Ask one of them; you do not have the permission.",
     "sentCampaigns": "{count, plural, =0 {no campaigns in this period} one {# campaign · last on {date}} other {# campaigns · last on {date}}}",
     "problemsAction": "Delivery settings",
     "clicksTrend": "Click trend",

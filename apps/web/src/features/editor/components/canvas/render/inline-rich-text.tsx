@@ -14,7 +14,7 @@ import Underline from '@tiptap/extension-underline';
 import { Placeholder, UndoRedo } from '@tiptap/extensions';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { useTranslations } from 'next-intl';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import type { RichText } from '../../../model/document-types';
 import type { FieldCatalog } from '../../../model/field-catalog';
@@ -22,6 +22,29 @@ import { richTextToTiptap, tiptapToRichText } from '../../../model/richtext';
 import { PersonalizationExtension } from '../../richtext/personalization-extension';
 import { PersonalizationMenu } from '../../richtext/personalization-menu';
 import { RichTextToolbar } from '../../richtext/toolbar';
+
+/**
+ * KLIK DO PLOVOUCÍ LIŠTY: VÝBĚR V TEXTU DRŽ, FOKUS POLI NEBER.
+ *
+ * `preventDefault` na `mousedown` je jediné, čím se dá udržet výběr v
+ * ProseMirroru živý, když uživatel sáhne na tlačítko lišty. Bez něj prohlížeč
+ * přesune fokus, výběr v `contenteditable` zmizí a „tučné" nemá co ztučnit.
+ *
+ * Jenže potlačená výchozí akce sebere fokus i tomu, kdo ho potřebuje: textovému
+ * poli pro odkaz. Naměřeno v prohlížeči na plátně, ne odhadnuto: po kliknutí do
+ * pole zůstal `document.activeElement` na `[data-inline-editor]`, tedy na textu
+ * pod lištou, a napsaná adresa přepsala označený text místo aby se objevila
+ * v poli. Pole tím vypadalo mrtvě, ačkoli je samo v pořádku.
+ *
+ * Rozhoduje se proto podle cíle kliknutí: ovládací prvky, které si fokus samy
+ * berou (pole, výběr, vnořený editovatelný obsah), si výchozí chování ponechají,
+ * všechno ostatní ho ztratí.
+ */
+function keepEditorSelection(event: ReactMouseEvent<HTMLElement>): void {
+  const target = event.target as HTMLElement;
+  if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+  event.preventDefault();
+}
 
 /**
  * Bohatý text editovatelný PŘÍMO na plátně.
@@ -241,7 +264,7 @@ export function InlineRichText(props: {
           }}
           // Kliknutí do lišty nesmí probublat na plátno, jinak by výběr bloku
           // zmizel a lišta by se odmontovala dřív, než se stihne tlačítko použít.
-          onMouseDown={(event) => event.preventDefault()}
+          onMouseDown={keepEditorSelection}
           onClick={(event) => event.stopPropagation()}
         >
           <RichTextToolbar
@@ -279,7 +302,7 @@ export function InlineRichText(props: {
             borderRadius: 'var(--radius-surface)',
             boxShadow: 'var(--shadow-flyout)',
           }}
-          onMouseDown={(event) => event.preventDefault()}
+          onMouseDown={keepEditorSelection}
           onClick={(event) => event.stopPropagation()}
         >
           <PersonalizationMenu editor={editor} fieldCatalog={props.fieldCatalog} />

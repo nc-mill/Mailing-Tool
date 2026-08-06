@@ -15,7 +15,8 @@ export default [
   ...base,
   {
     /**
-     * Skripty v `public/` běží v PROHLÍŽEČI, ne v Node.
+     * Skripty v `public/` a v ukázkové stránce návrhu běží v PROHLÍŽEČI,
+     * ne v Node.
      *
      * Bez tohohle je `document` i `window` neznámý identifikátor a lint hlásí
      * `no-undef` na kódu, který je správně. Svádí to k tomu skript přepsat nebo
@@ -25,9 +26,15 @@ export default [
      * Statické skripty jsou tu schválně, ne jako vložený kód ve stránce: nese
      * je cache prohlížeče, projdou přísnou politikou obsahu a nikdy do nich
      * nemůže vstoupit hodnota z požadavku.
+     *
+     * `docs/design/**` je statická ukázka návrhového systému, kterou si otevře
+     * člověk v prohlížeči. Zvažoval jsem ji z lintu vyřadit úplně a zahodil
+     * jsem to: je to pořád javascript, který se spouští, takže nepoužitá
+     * proměnná nebo překlep v ní je stejná vada jako kdekoli jinde. Chyběla
+     * jí jen pravda o prostředí, a to je jeden řádek, ne výjimka z kontroly.
      */
-    name: 'mlain/public-browser-scripts',
-    files: ['apps/web/public/**/*.js'],
+    name: 'mlain/browser-scripts',
+    files: ['apps/web/public/**/*.js', 'docs/design/**/*.js'],
     languageOptions: {
       globals: {
         document: 'readonly',

@@ -8,20 +8,34 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@mlain/ui/components/dropdown-menu';
 import { IconButton } from '@mlain/ui/components/icon-button';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
 import { PageHeader } from '@mlain/ui/components/page-header';
-import { Ellipsis, Plus, RefreshCw } from '@mlain/ui/icons';
+import { Plus } from '@mlain/ui/icons';
 import { Alert, EmptyState } from '@mlain/ui/patterns/states';
 import { useToast } from '@mlain/ui/patterns/toast';
 import { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
-import { createSegmentFromPresetAction, recountSegmentAction } from './actions';
+import { Fragment, useEffect, useState } from 'react';
+import { MoreIcon } from '@/lib/ui/status-icons';
+import {
+  createSegmentFromPresetAction,
+  deleteSegmentAction,
+  recountSegmentAction,
+} from './actions';
+import { DeleteSegmentDialog } from './delete-segment-dialog';
 import { formatCount, hoursSince } from './labels';
 import { PresetGrid, type PresetCardData } from './preset-card';
+import {
+  DESTRUCTIVE_SEGMENT_ACTIONS,
+  segmentContactsHref,
+  segmentRowActions,
+  type SegmentPermissions,
+  type SegmentRowAction,
+} from './segment-state';
 
 export type SegmentListRow = {
   id: string;
@@ -42,12 +56,97 @@ const STALE_HOURS = 6;
 const COLUMNS =
   'grid grid-cols-[minmax(0,1fr)_70px_190px_44px] items-center gap-[var(--spacing-stack)] px-[var(--spacing-row-x)]';
 
+/**
+ * Nabídka „…" v řádku segmentu, tvarem shodná s kontakty a kampaněmi.
+ *
+ * Do 6. 8. 2026 tu byla nabídka s JEDINOU položkou (přepočet), takže se ze
+ * seznamu nedalo přejít na kontakty, které do segmentu spadají, ani segment
+ * upravit, a smazat ho nešlo z aplikace vůbec: `DELETE /api/v1/segments/{id}`
+ * existoval bez volajícího.
+ *
+ * CO NEDÁVÁ SMYSL, SE NENABÍZÍ, ne zašedle. Rozhodnutí dělá `segmentRowActions`
+ * ve sdíleném `segment-state.ts`, takže se dá zkoušet bez Reactu.
+ *
+ * Okno mazání kreslí obrazovka, ne tahle komponenta: obsah rozbalené nabídky se
+ * při volbě položky odpojí z DOM a odnesl by okno s sebou dřív, než by se
+ * ukázalo. Je to týž důvod, jaký mají u sebe napsané kontakty i kampaně.
+ */
+function SegmentRowMenu({
+  row,
+  permissions,
+  onAction,
+}: {
+  row: SegmentListRow;
+  permissions: SegmentPermissions;
+  /*
+   * Kam která akce vede, rozhoduje obal, ne nabídka. Adresu kontaktů i stavitele
+   * skládá `onRowAction` ze `segmentContactsHref`, takže tahle komponenta
+   * nepotřebuje znát ani projekt.
+   */
+  onAction: (action: SegmentRowAction, row: SegmentListRow) => void;
+}) {
+  const t = useTranslations('segments');
+  const actions = segmentRowActions(permissions);
+
+  // Segment, se kterým se z řádku nedá udělat nic (čtenář bez práva na kontakty),
+  // nemá ani spouštěč. Prázdná nabídka je horší než žádná.
+  if (actions.length === 0) return null;
+
+  /*
+   * Oddělovač stojí PŘED PRVNÍ rušivou akcí, ne před každou z nich, stejně jako
+   * u kampaní.
+   */
+  const firstDestructive = actions.findIndex((action) =>
+    DESTRUCTIVE_SEGMENT_ACTIONS.includes(action),
+  );
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          variant="ghost"
+          size="row"
+          label={t('rowMenu', { name: row.name })}
+          data-testid={`segment-row-menu-${row.id}`}
+          icon={MoreIcon}
+          /*
+           * ČTVEREC JE 34 PX, KLIKACÍ PLOCHA 44 PX, stejně jako u kontaktů.
+           * Tlačítko o straně 44 px by řádek natáhlo a rozešlo by se s rytmem
+           * ostatních tabulek; plochu proto roztahuje neviditelný překryv.
+           */
+          className="relative after:absolute after:top-1/2 after:left-1/2 after:size-[var(--size-target-min)] after:-translate-x-1/2 after:-translate-y-1/2 after:content-['']"
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {actions.map((action, index) => (
+          <Fragment key={action}>
+            {index === firstDestructive ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuItem
+              {...(DESTRUCTIVE_SEGMENT_ACTIONS.includes(action)
+                ? ({ tone: 'danger' } as const)
+                : {})}
+              onSelect={() => onAction(action, row)}
+            >
+              {/* Přepočet se u nikdy nepočítaného segmentu jmenuje „Spočítat":
+                  „Přepočítat" slibuje, že tu nějaké číslo bylo. */}
+              {action === 'recount' && row.cachedCount === null
+                ? t('count.action')
+                : t(`rowActions.${action}`)}
+            </DropdownMenuItem>
+          </Fragment>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /** Seznam segmentů a karty presetů. Stáří počtu se počítá až na klientu. */
 export function SegmentList({
   rows,
   presets,
   workspaceSlug,
   workspaceId,
+  permissions,
   locale = 'cs',
 }: {
   rows: SegmentListRow[];
@@ -55,6 +154,12 @@ export function SegmentList({
   workspaceSlug: string;
   /** Projekt pro přepočet. Bez něj běží požadavek mimo kontext a RLS vrátí 404. */
   workspaceId: string;
+  /**
+   * Práva přihlášeného člověka. Počítá je stránka přes `hasPermission`; klientská
+   * komponenta se na role ptát nemá a ani nemá kde. Povinné schválně: výchozí
+   * „všechno smí" by čtenáři nabídlo akce, které server odmítne se 403.
+   */
+  permissions: SegmentPermissions;
   locale?: string;
 }) {
   const t = useTranslations('segments');
@@ -67,6 +172,11 @@ export function SegmentList({
   const [presetName, setPresetName] = useState('');
   const [presetPending, setPresetPending] = useState(false);
   const [presetFailed, setPresetFailed] = useState<string | null>(null);
+  /*
+   * Okno mazání drží obrazovka, ne řádek: obsah rozbalené nabídky se při volbě
+   * položky odpojí z DOM i s oknem, které by v něm bydlelo.
+   */
+  const [deleting, setDeleting] = useState<SegmentListRow | null>(null);
 
   /**
    * Aktuální čas se čte až po připojení. Stáří počtu na něm závisí, server ho
@@ -100,6 +210,24 @@ export function SegmentList({
     // Číslo i čas poslední aktualizace přijdou ze serveru, ne z odpovědi akce:
     // stránka je čte z `GET /segments` a jinak by se rozešly.
     router.refresh();
+  }
+
+  /** Volba z řádkové nabídky. Vratné akce běží rovnou, mazání otevře okno. */
+  function onRowAction(action: SegmentRowAction, row: SegmentListRow) {
+    switch (action) {
+      case 'recount':
+        void recount(row.id);
+        return;
+      case 'viewContacts':
+        router.push(segmentContactsHref(workspaceSlug, row.id));
+        return;
+      case 'edit':
+        router.push(`/w/${workspaceSlug}/segments/${row.id}`);
+        return;
+      case 'delete':
+        setDeleting(row);
+        return;
+    }
   }
 
   /**
@@ -229,26 +357,17 @@ export function SegmentList({
                       </span>
 
                       {/*
-                       * Přepočet bydlí v nabídce „Další akce", jak ji kreslí návrh.
-                       * Není to ozdoba: bez něj se u zastaralého čísla nedá udělat
-                       * nic, a to je přesně chvíle, kdy ho člověk potřebuje nejvíc.
+                       * Přepočet bydlí v nabídce „…", jak ji kreslí návrh. Není to
+                       * ozdoba: bez něj se u zastaralého čísla nedá udělat nic,
+                       * a to je přesně chvíle, kdy ho člověk potřebuje nejvíc.
                        */}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <IconButton
-                            variant="ghost"
-                            size="row"
-                            label={t('rowActions')}
-                            icon={<Ellipsis aria-hidden className="icon-md" />}
-                          />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={() => void recount(row.id)}>
-                            <RefreshCw aria-hidden className="icon-sm" />
-                            {row.cachedCount === null ? t('count.action') : t('recount')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <span className="flex justify-end">
+                        <SegmentRowMenu
+                          row={row}
+                          permissions={permissions}
+                          onAction={onRowAction}
+                        />
+                      </span>
                     </div>
                   );
                 })}
@@ -290,6 +409,25 @@ export function SegmentList({
           </Button>
         </Card>
       </div>
+
+      {deleting !== null && (
+        <DeleteSegmentDialog
+          // `key` zařídí, že okno otevřené nad jiným segmentem začíná načisto.
+          key={deleting.id}
+          segment={{ name: deleting.name, kind: deleting.kind }}
+          open
+          onOpenChange={(open) => {
+            if (!open) setDeleting(null);
+          }}
+          onConfirm={async () => {
+            const result = await deleteSegmentAction({ workspaceId, id: deleting.id });
+            // Obnova až po úspěchu. Kdyby běžela vždycky, přebila by chybovou
+            // hlášku v okně novým vykreslením a uživatel by ji nepřečetl.
+            if (result.status === 'success') router.refresh();
+            return result;
+          }}
+        />
+      )}
 
       <Dialog
         open={usingPreset !== null}

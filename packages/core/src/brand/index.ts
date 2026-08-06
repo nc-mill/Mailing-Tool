@@ -13,6 +13,19 @@
 export { BLOCKED_HOST_SUFFIXES, MAX_URL_LENGTH, normalizeBrandUrl } from './url';
 export type { NormalizeResult, UrlPolicy } from './url';
 
+/**
+ * Značka projektu jako motiv dokumentu. Reexportuje se, protože je to jediná
+ * odpověď na otázku „jakou paletu má nový e-mail" a používají ji domény šablon,
+ * kontaktů i ukázkových dat.
+ */
+export {
+  applyWorkspaceBrandTheme,
+  brandProfileTheme,
+  brandThemeParts,
+  workspaceBrandTheme,
+  type BrandThemeParts,
+} from './theme';
+
 export { createBrandRuntime } from './runtime';
 export type { BrandRuntime, BrandRuntimeConfig } from './runtime';
 

@@ -4,10 +4,11 @@ import { Button } from '@mlain/ui/components/button';
 import { Input } from '@mlain/ui/components/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@mlain/ui/components/popover';
 import { Switch } from '@mlain/ui/components/switch';
+import { Tooltip } from '@mlain/ui/components/tooltip';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import type { ContactSummary, EditorPorts } from '../../ports/types';
-import { Code, Monitor, Smartphone, TextLines, UserRound } from '../icons';
+import { Check, Code, Monitor, Moon, Smartphone, TextLines, UserRound } from '../icons';
 import { useView, type Audience, type ViewMode } from '../view/view-state';
 
 const MODES: Array<{ mode: ViewMode; Icon: typeof Monitor }> = [
@@ -45,6 +46,30 @@ export function ViewControls({ ports }: { ports?: EditorPorts | undefined }) {
        * jako samostatná tlačítka vedle přepínače, ale pro obsluhu i pro čtečku
        * je to jedna volba ze čtyř, a rozdělit ji kvůli vzhledu by z jedné
        * otázky udělalo tři.
+       *
+       * PROČ TU ZŮSTALY JEN IKONY, když u „Náhledu" vpravo jsme se právě vrátili
+       * ke slovu. Jsou to dvě různé otázky a mají různé odpovědi:
+       *
+       * „Náhled" je SAMOSTATNÁ AKCE, která přepne celou obrazovku. Když je
+       * ikona sama a nemá se s čím porovnat, čte se z ní jen tvar, a oko
+       * v aplikaci znamená taky „ukázat heslo" a „viditelný sloupec". Proto
+       * slovo.
+       *
+       * Tohle je JEDNA VOLBA ZE ČTYŘ, seřazená v jedné souvislé skupině. Tvary
+       * se čtou proti sobě, ne samy o sobě: monitor, telefon, řádky textu
+       * a špičaté závorky jsou vedle sebe rozlišitelné na první pohled a jsou
+       * to tytéž kresby, jaké má panel vlastností a pruh „jen pro čtení".
+       * Jméno každé volby nese `aria-label` i bublina, takže se dá vyvolat
+       * hlasem a čtečka ji čte beze změny.
+       *
+       * Zvolená volba MUSÍ být poznat i bez textu, protože tučné písmo tu už
+       * nemá na čem být: má proto plochu `accent-surface`, tmavý obrys ikony
+       * a vnitřní pruh 2 px u spodní hrany. Barva sama by nestačila (WCAG
+       * 1.4.1), proto ten pruh.
+       *
+       * KLIKACÍ PLOCHA 44 px, ne 36. Bylo to zapsané jako nesrovnalost proti
+       * WCAG 2.5.8 a s odebráním textu by se čtvereček zmenšil ještě víc.
+       * Sada je i tak o víc než polovinu užší než dřív.
        */}
       <div
         role="radiogroup"
@@ -52,43 +77,96 @@ export function ViewControls({ ports }: { ports?: EditorPorts | undefined }) {
         className="flex items-center overflow-hidden rounded-[var(--radius-control)] border border-border bg-surface"
       >
         {MODES.map(({ mode, Icon }) => (
-          <button
-            key={mode}
-            type="button"
-            role="radio"
-            aria-checked={view.mode === mode}
-            title={t(`preview.${mode}`)}
-            data-testid={`view-mode-${mode}`}
-            className={
-              'flex min-h-[var(--size-control-sm)] items-center gap-1.5 px-3 py-1.5 text-sm ' +
-              'border-r border-border last:border-r-0 ' +
-              'text-text-muted hover:bg-surface-muted aria-checked:bg-surface-muted ' +
-              'aria-checked:font-semibold aria-checked:text-text ' +
-              'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]'
-            }
-            onClick={() => view.setMode(mode)}
-          >
-            <Icon aria-hidden className="icon-sm" />
-            {t(`preview.${mode}`)}
-          </button>
+          <Tooltip key={mode} content={t(`preview.${mode}`)}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={view.mode === mode}
+              aria-label={t(`preview.${mode}`)}
+              title={t(`preview.${mode}`)}
+              data-testid={`view-mode-${mode}`}
+              className={
+                'flex size-[var(--size-target-min)] shrink-0 items-center justify-center ' +
+                'border-r border-border last:border-r-0 ' +
+                'text-text-muted hover:bg-surface-muted ' +
+                'aria-checked:bg-accent-surface aria-checked:text-text ' +
+                'aria-checked:shadow-[inset_0_-2px_0_var(--color-accent-text)] ' +
+                'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]'
+              }
+              onClick={() => view.setMode(mode)}
+            >
+              <Icon aria-hidden className="icon-md" />
+            </button>
+          </Tooltip>
         ))}
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-text-muted">
-        <Switch aria-label={t('preview.dark')} checked={view.dark} onCheckedChange={view.setDark} />
-        {t('preview.dark')}
-      </label>
+      {/*
+        TMAVÝ REŽIM ZŮSTÁVÁ PŘEPÍNAČEM (`switch`), jen přišel o slova.
+
+        Není to volba ze skupiny, je to samostatné zapnuto/vypnuto, a přesně
+        na to je přepínač; udělat z něj páté tlačítko vedle čtyř režimů by
+        tvrdilo, že si s nimi konkuruje, a přitom se s nimi kombinuje.
+
+        Měsíc vedle něj je tam proto, aby ovladač nebyl holá pilulka bez
+        jediného vodítka, co zapíná. Jméno akce nese `aria-label` i bublina,
+        takže čtečka ani hlasové ovládání o nic nepřišly.
+      */}
+      <Tooltip content={t('preview.dark')}>
+        <label className="flex h-[var(--size-target-min)] items-center gap-1.5 text-text-muted">
+          <Moon aria-hidden className="icon-sm" />
+          <Switch
+            aria-label={t('preview.dark')}
+            checked={view.dark}
+            onCheckedChange={view.setDark}
+          />
+        </label>
+      </Tooltip>
 
       <AudienceMenu ports={ports} />
     </div>
   );
 }
 
-/** Popisek volby do spouštěče nabídky, ať je vidět, čí data se právě dosazují. */
+/** Jméno zvoleného publika. Čte se z něj `aria-label` tlačítka i první řádek nabídky. */
 function audienceLabel(audience: Audience, t: ReturnType<typeof useTranslations>): string {
   if (audience.kind === 'tokens') return t('preview.tokens');
   if (audience.kind === 'contact') return audience.contact.name || audience.contact.email;
   return audience.variant === 'no_name' ? t('preview.noNameContact') : t('preview.sampleData');
+}
+
+/** Sedí zvolené publikum na tuhle nabídku? Kontakt vlastní položku nemá. */
+function isSample(audience: Audience, variant: 'default' | 'no_name'): boolean {
+  return audience.kind === 'sample' && audience.variant === variant;
+}
+
+/**
+ * Položka nabídky, která zároveň ukazuje, jestli je právě zvolená.
+ *
+ * Zaškrtnutí není jen ozdoba: spouštěč nabídky nese od zúžení hlavičky jen
+ * slova „Zobrazit jako", takže rozbalená nabídka je jediné místo, kde se
+ * volba dá VIDĚT. `aria-current` říká totéž čtečce, aby zaškrtnutí nebylo
+ * informací nesenou jen obrázkem.
+ */
+function AudienceChoice(props: {
+  current: boolean;
+  onClick: () => void;
+  /** „Značky" jsou výchozí stav, takže zůstávají tiché. Zbytek má rámeček. */
+  variant?: 'secondary' | 'ghost';
+  children: React.ReactNode;
+}) {
+  return (
+    <Button
+      variant={props.variant ?? 'secondary'}
+      size="sm"
+      className="w-full justify-between gap-1.5"
+      aria-current={props.current ? 'true' : undefined}
+      onClick={props.onClick}
+    >
+      {props.children}
+      {props.current ? <Check aria-hidden className="icon-sm" /> : null}
+    </Button>
+  );
 }
 
 function AudienceMenu({ ports }: { ports?: EditorPorts | undefined }) {
@@ -105,16 +183,43 @@ function AudienceMenu({ ports }: { ports?: EditorPorts | undefined }) {
     setFound([]);
   };
 
+  const current = audienceLabel(view.audience, t);
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="secondary" size="sm" className="gap-1.5">
+        {/*
+          NA TLAČÍTKU JE JEN „ZOBRAZIT JAKO". Se jménem publika bylo dvakrát
+          širší než kterýkoli jiný ovladač v hlavičce a pruh se kvůli němu
+          lámal do dvou řádků.
+
+          Zvolená hodnota se tím ale NESMÍ ztratit. Nevidomý uživatel ji čte
+          z `aria-label` („Zobrazit jako: Značky"), vidomý ji najde
+          v rozbalené nabídce u zaškrtnuté položky a v jejím prvním řádku.
+          Viditelný text je v `aria-label` obsažený celý, takže hlasové
+          ovládání tlačítko dál najde podle toho, co je na něm napsané
+          (WCAG 2.5.3).
+        */}
+        <Button
+          variant="secondary"
+          size="sm"
+          className="gap-1.5"
+          aria-label={t('preview.viewAsCurrent', { value: current })}
+        >
           <UserRound aria-hidden className="icon-sm" />
-          {t('preview.viewAs')}: {audienceLabel(view.audience, t)}
+          {t('preview.viewAs')}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-72">
         <div className="flex flex-col gap-2">
+          {/*
+            První řádek nabídky říká, čí data se právě dosazují. Bez něj by
+            volba „konkrétní kontakt" nebyla vidět nikde: vlastní položku
+            v nabídce nemá, vzniká hledáním.
+          */}
+          <p className="text-sm text-text" data-testid="view-as-current">
+            {t('preview.viewAsCurrent', { value: current })}
+          </p>
           <Input
             className="w-full"
             value={query}
@@ -154,23 +259,25 @@ function AudienceMenu({ ports }: { ports?: EditorPorts | undefined }) {
           >
             {t('preview.randomContact')}
           </Button>
-          <Button
-            variant="secondary"
-            size="sm"
+          <AudienceChoice
+            current={isSample(view.audience, 'no_name')}
             onClick={() => choose({ kind: 'sample', variant: 'no_name' })}
           >
             {t('preview.noNameContact')}
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
+          </AudienceChoice>
+          <AudienceChoice
+            current={isSample(view.audience, 'default')}
             onClick={() => choose({ kind: 'sample', variant: 'default' })}
           >
             {t('preview.sampleData')}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => choose({ kind: 'tokens' })}>
+          </AudienceChoice>
+          <AudienceChoice
+            variant="ghost"
+            current={view.audience.kind === 'tokens'}
+            onClick={() => choose({ kind: 'tokens' })}
+          >
             {t('preview.tokens')}
-          </Button>
+          </AudienceChoice>
           <p className="text-meta text-text-muted">{t('preview.viewAsHint')}</p>
         </div>
       </PopoverContent>

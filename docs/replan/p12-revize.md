@@ -1,5 +1,12 @@
 # Revize P12: editor šablon nad blokovým modelem
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Revize plánu P12 (editor šablon) z prověrky plánů
+> (31. 7. až 1. 8. 2026), tedy kontrola **textu plánu před stavbou**, ne kontrola kódu.
+> **Verdikt typu „plán není proveditelný" se týkal tehdejšího plánu, ne dnešního produktu.** Ten stojí a funguje.
+> Opravy se prováděly podle `docs/superpowers/plans/POSTUP-OPRAV.md`; **stav jednotlivých nálezů neověřen**.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 **Recenzovaný plán:** `/Users/petr/Projects/Mailing_Tool/docs/superpowers/plans/2026-07-31-p12-editor-sablon.md` (7 549 řádků, 30 úkolů)
 **Zdroje pravdy:** `2026-07-31-p05-design-system-i18n-skorapka.md` (komponenty), `2026-07-31-p08-sablony-model-renderer.md` (blokový model), `2026-07-31-p01-kostra-provoz-ci.md` (kostra a konfigurace)
 **Normativní zdroj:** část 6 kapitoly 12, 13.1, 15; část 3 kapitoly 3.3 a 5.5

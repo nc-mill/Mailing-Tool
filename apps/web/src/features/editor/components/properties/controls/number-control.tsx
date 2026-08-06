@@ -12,10 +12,13 @@ export function NumberControl({ descriptor, value, onChange, id, autoFocus }: Co
   const clamp = (raw: number) => Math.min(descriptor.max, Math.max(descriptor.min, raw));
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 items-center gap-2">
       <Input
         id={id}
         type="number"
+        // Bez `min-w-0` si pole v pružném řádku drží vlastní vnitřní šířku
+        // a vytlačí jednotku i přepínač mimo panel.
+        className="min-w-0"
         data-autofocus={autoFocus ? '' : undefined}
         min={descriptor.min}
         max={descriptor.max}

@@ -78,7 +78,6 @@
     "language": "Language",
     "length": "Length",
     "brand": "Brand: {name} (colors and logo from the website)",
-    "brandChange": "Change",
     "submit": "Create a draft",
     "stop": "Stop",
     "emptyTitle": "Describe what the email should contain.",

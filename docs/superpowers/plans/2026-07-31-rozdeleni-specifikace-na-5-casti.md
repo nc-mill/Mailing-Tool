@@ -1,5 +1,12 @@
 # Rozdělení specifikace na 5 částí
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Zápis z 31. 7. 2026 o tom, jak se hlavní specifikace
+> rozdělila na části a co měl kdo napsat. **Práce, kterou zadává, je dávno hotová:** sedm částí
+> leží v `docs/superpowers/specs/parts/` a jsou to platné dokumenty. Tenhle soubor je jen zadání k jejich sepsání.
+> Větve `spec/*` z tabulky níž už neexistují, pracuje se na `main`.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 Datum: 2026-07-31
 Vstup: `docs/superpowers/specs/2026-07-31-mailing-tool-spec.md` (dále "hlavní specifikace")
 Výstup: pět detailních dokumentů v `docs/superpowers/specs/parts/`

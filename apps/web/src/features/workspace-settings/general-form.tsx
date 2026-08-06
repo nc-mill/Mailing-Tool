@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
+import { Link } from '@mlain/i18n/navigation';
 import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
@@ -35,6 +36,30 @@ function valueWithHint(value: string, hint?: string) {
       {value}
       <span className="mt-1 block text-meta text-text-muted">{hint}</span>
     </>
+  );
+}
+
+/** Adresa Můj účet. Prefix jazyka doplní `Link` z `@mlain/i18n/navigation`. */
+const PROFILE_PATH = '/settings/profile';
+
+/**
+ * Odkaz z jazyka projektu na jazyk rozhraní.
+ *
+ * Zadavatel si přepnul „Jazyk projektu" a čekal, že se přepne celé rozhraní.
+ * Jsou to dvě různá nastavení a nápověda sama o sobě člověka jen odmítne;
+ * odkaz ho pošle tam, kde to opravdu přepne. Míří se na ADRESU profilu,
+ * ne na položku v menu Nastavení, protože ta z nabídky mizí.
+ *
+ * `Link` je z `@mlain/i18n/navigation`, aby v anglickém rozhraní odkaz mířil
+ * na `/en/settings/profile`. S `next/link` by spadl na českou cestu.
+ */
+function InterfaceLocaleLink({ label }: { label: string }) {
+  return (
+    <p className="text-meta">
+      <Link className="text-accent-text underline underline-offset-4" href={PROFILE_PATH}>
+        {label}
+      </Link>
+    </p>
   );
 }
 
@@ -73,10 +98,13 @@ export function GeneralForm({
         <div className="flex flex-col gap-[var(--spacing-stack)]">
           <ReadOnlyValue label={t('general.name')} value={workspace.name} />
           <ReadOnlyValue label={t('general.slug')} value={workspace.slug} />
-          <ReadOnlyValue
-            label={t('general.locale')}
-            value={valueWithHint(workspace.locale, t('general.localeHint'))}
-          />
+          <div className="flex flex-col gap-[var(--spacing-hairline)]">
+            <ReadOnlyValue
+              label={t('general.locale')}
+              value={valueWithHint(workspace.locale, t('general.localeHint'))}
+            />
+            <InterfaceLocaleLink label={t('general.localeUiLink')} />
+          </div>
           <ReadOnlyValue
             label={t('general.timezone')}
             value={valueWithHint(workspace.timezone, t('general.timezoneHint'))}
@@ -137,18 +165,24 @@ export function GeneralForm({
           <p className="text-meta text-warning-text">{t('general.slugChangeWarning')}</p>
         </div>
 
-        <SelectField
-          name="locale"
-          label={t('general.locale')}
-          placeholder={t('shared.selectPlaceholder')}
-          defaultValue={workspace.locale}
-          options={locales.map((locale) => ({
-            value: locale,
-            label: localeLabel(locale, uiLocale),
-          }))}
-          hint={t('general.localeHint')}
-          errors={fieldErrors}
-        />
+        {/* Odkaz stojí mimo `SelectField` ze stejného důvodu jako varování
+            u adresy: `hint` je řetězec, ne uzel, a nápověda k vyplnění není
+            totéž co rozcestník jinam. */}
+        <div className="flex flex-col gap-[var(--spacing-hairline)]">
+          <SelectField
+            name="locale"
+            label={t('general.locale')}
+            placeholder={t('shared.selectPlaceholder')}
+            defaultValue={workspace.locale}
+            options={locales.map((locale) => ({
+              value: locale,
+              label: localeLabel(locale, uiLocale),
+            }))}
+            hint={t('general.localeHint')}
+            errors={fieldErrors}
+          />
+          <InterfaceLocaleLink label={t('general.localeUiLink')} />
+        </div>
 
         <SelectField
           name="timezone"

@@ -109,6 +109,13 @@ export default [
       // pro člověka u terminálu, ne produkční cesta.
       'packages/emails/scripts/**/*.ts',
       'packages/db/src/migrate.ts',
+      // `docker/collect-runtime-deps.mjs` je stavební skript image: na konci
+      // vypíše, kolik balíčků posbíral a které to jsou. Je to jediný doklad
+      // o tom, co se do runtime vrstvy dostalo, takže se čte při stavbě
+      // i z logu buildu. Přepsat ho na `console.error` by výsledek přesunul
+      // mezi chyby, kam nepatří, a mlčky ho zavřít by znamenalo, že chybějící
+      // balíček se pozná až pádem workeru za běhu.
+      'docker/**/*.mjs',
     ],
     rules: { 'no-console': 'off' },
   },

@@ -56,13 +56,41 @@ V produkční image tenhle problém není, `docker/Dockerfile` instaluje
 
 ```sh
 pnpm install
-cp .env.example apps/web/.env.local   # a vyplňte APP_URL, SECRET_KEY, DATABASE_URL
+cp .env.example apps/web/.env.local
 pnpm --filter @mlain/cli run build
 node apps/cli/dist/main.js migrate    # založí schéma
 pnpm --filter @mlain/web dev
 ```
 
-`SECRET_KEY` vygenerujete příkazem `node apps/cli/dist/main.js genkey`.
+Do `apps/web/.env.local` patří `APP_URL`, `SECRET_KEY` a **tři** připojení, ne
+jedno:
+
+| Proměnná                | Role             | Nač                                                                                                       |
+| ----------------------- | ---------------- | --------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`          | `mlain_app`      | běžný provoz aplikace, podléhá row-level security                                                         |
+| `DATABASE_URL_MIGRATOR` | `mlain_migrator` | migrace, zálohy, oddíly. **Bez ní `migrate` skončí kódem 78** a řekne, že aplikační role schéma nevlastní |
+| `DATABASE_URL_SENDER`   | `mlain_sender`   | odesílací služba v Go                                                                                     |
+
+Vývojová databáze běží v kontejneru `mlain-dev-pg` na portu **55432**, ne 5432
+(ověřeno `docker ps` 2026-08-06). Testovací kontejner `mlain-test-pg` je jiný
+a port si volí sám.
+
+`SECRET_KEY` vygenerujete příkazem `node apps/cli/dist/main.js genkey --id 1`.
+`--id` je u prvního klíče nutné: pokolení si příkaz odvozuje z `SECRET_KEY`
+v prostředí, a když tam žádné není, odmítne hádat.
+
+**Na portu si dejte pozor, sám se nesrovná.** `pnpm --filter @mlain/web dev`
+spustí `next dev`, a ten poslouchá na `PORT`, jinak na 3000; `APP_URL` ho
+neovlivní. Playwright si naopak port a hostname **odvozuje z `APP_URL`**
+v `apps/web/.env.local` a server si spouští s `--port` podle něj. Ručně
+spuštěný server na jiném portu, než říká `APP_URL`, tedy znamená dva servery nad
+jedním `.next`, a to se pozná mizerně: stránky vracejí 200, ale React se
+nenamountuje.
+
+Praktický důsledek: **z `.env.local` se nepozná, na čem server doopravdy běží.**
+Když si nejste jistí, ověřte si to (`lsof -nP -iTCP -sTCP:LISTEN | grep node`),
+než začnete něco ladit. Kde je níž v příkladech `localhost:3000`, dosaďte ten
+svůj port.
 
 ### Worker a sender ve vývoji
 
@@ -80,10 +108,11 @@ Každý běží ve vlastním terminálu:
 # worker
 pnpm --filter @mlain/worker run build && node apps/worker/dist/main.js
 
-# sender (Go)
+# sender (Go). TRACKING_DOMAIN musí ukazovat na port, kde web SKUTEČNĚ běží,
+# jinak vedou odkazy v e-mailech nikam.
 cd apps/sender && MODE=sender \
   SECRET_KEY=<týž jako má web> \
-  DATABASE_URL_SENDER=postgres://mlain_sender:heslo@127.0.0.1:5432/mlain \
+  DATABASE_URL_SENDER=postgres://mlain_sender:heslo@127.0.0.1:55432/mlain \
   TRACKING_DOMAIN=http://localhost:3000 \
   SENDER_HEALTH_PORT=3002 \
   LOG_LEVEL=info \
@@ -133,8 +162,8 @@ packages/
   i18n       texty v češtině a angličtině
   contracts  sdílené kontrakty a golden fixtures pro obě strany, TS i Go
   emails     šablony systémových e-mailů
-docker/      produkční image a entrypoint
-docs/        plány, specifikace a registr nálezů
+docker/      produkční image, entrypoint a compose
+docs/        specifikace, plány, registr nálezů a provozní runbooky
 ```
 
 ## Testy
@@ -158,15 +187,26 @@ si nespustí druhý server nad týmž adresářem `.next`. Dva servery nad jedn�
 
 ## Provoz
 
+Úplný seznam vypíše `mlain --help`; tohle je jeho obsah k 2026-08-06, ověřený
+proti `apps/cli/src/registry.ts`.
+
 ```sh
-mlain migrate              # aplikuje migrace pod rolí migrátora
-mlain backup               # záloha databáze i nahraných souborů
-mlain backup verify <dir>  # obnoví zálohu do dočasné databáze a spočítá řádky
-mlain restore <dir>        # obnova, odmítne neprázdnou databázi
-mlain doctor               # diagnostika instalace
-mlain upgrade              # záloha, migrace, kontrola připravenosti
-mlain reset-password       # když se ztratí přístup k účtu
-mlain partitions           # oddíly dopředu a retence odeslané pošty, denně z cronu
+mlain version                                  # verze image
+mlain config check                             # ověří konfiguraci, vypíše všechny problémy naráz
+mlain healthcheck                              # kontrola procesů podle MODE, volá ji HEALTHCHECK v Dockerfile
+mlain migrate                                  # aplikuje migrace pod rolí migrátora
+mlain genkey [--id <n>]                        # nový SECRET_KEY, pokolení odvodí z prostředí; první klíč: --id 1
+mlain backup [--skip-prune]                    # záloha databáze i nahraných souborů
+mlain backup verify <dir>                      # obnoví zálohu do dočasné databáze a spočítá řádky
+mlain backup list                              # co leží v BACKUP_DIR
+mlain restore <dir> [--force] [--skip-uploads] [--i-know-the-key-differs]
+mlain doctor [--json] [--strict]               # diagnostika instalace
+mlain upgrade                                  # záloha, migrace, granty, kontrola připravenosti
+mlain rotate-credentials                       # přešifruje obálky na aktuální pokolení klíče
+mlain reset-password <e-mail> [--password <heslo>]
+mlain partitions [--dry-run] [--months <n>]    # oddíly dopředu a retence, denně z cronu
+mlain rebuild-engagement --workspace <id> [--batch-size <n>]
+mlain redress-brand                            # převleče uložené e-maily do barev značky
 ```
 
 Zálohy se musí dělat pod rolí migrátora. Pod aplikační rolí by row-level
@@ -200,18 +240,26 @@ mlain reset-password <e-mail>                  # vygeneruje heslo a vypíše ho
 mlain reset-password <e-mail> --password <heslo>
 ```
 
-Příkaz jako jediný z osmi vystačí s `DATABASE_URL` bez migrátorské role,
-protože `users` a `sessions` jsou na whitelistu tabulek bez row-level security.
+Příkaz jako jediný z provozních příkazů vystačí s `DATABASE_URL` bez migrátorské
+role, protože `users` a `sessions` jsou na whitelistu tabulek bez row-level
+security. Zálohy, obnova, upgrade, rotace i oddíly bez `DATABASE_URL_MIGRATOR`
+odmítnou běžet.
 Zruší všechny relace uživatele. Nového člena lze místo pozvánky založit rovnou
 s heslem v **Nastavení → Tým**.
 
 ## Dokumentace
 
+- `docs/operations/` jsou **provozní runbooky**: zálohy a obnova, rotace klíče,
+  upgrade, oddíly a retence, licence třetích stran, runbook dema.
 - `docs/superpowers/plans/` jsou implementační plány jednotlivých částí.
 - `docs/superpowers/plans/NALEZY-NAPRIC-PLANY.md` je registr nálezů. Stojí
   za přečtení dřív, než sáhnete na `exports` mapu v `packages/core`, na
   konfiguraci Next.js nebo na testovací harness. Většina těch nálezů má
   společný tvar: nic nespadlo, jen se něco tiše přeskočilo.
+- `docs/PRAMENY.md` vysvětluje, co jsou `docs/transcribe.txt`
+  a `docs/Reference-konverzace.txt`: historické prameny, ne platné zadání.
+- `docs/operations/p16-nalezy.md` je **snímek k 2026-08-02**, ne dnešní stav.
+  Má vlastní hlavičku s tím, co z něj už neplatí.
 
 ## Licence
 

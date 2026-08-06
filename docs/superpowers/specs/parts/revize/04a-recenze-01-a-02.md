@@ -1,5 +1,12 @@
 # Křížová revize: části 1 a 2 očima části 4a
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Křížová revize specifikací z 31. 7. 2026: křížová recenze částí 1 a 2 očima části 4a.
+> Nálezy se **zapracovaly zpátky do částí v `parts/`** ještě před psaním plánů, takže dokument popisuje
+> tehdejší podobu textů, ne dnešní. Platné znění specifikace je vždycky v `parts/`, ne tady.
+> **Stav jednotlivých nálezů neověřen.**
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 Recenzent: subagent part4a-kampane (autor části 4a: kampaně, providery, doručitelnost)
 Datum: 2026-07-31
 Recenzované dokumenty:

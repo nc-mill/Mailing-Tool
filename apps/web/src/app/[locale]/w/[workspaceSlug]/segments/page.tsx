@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api-client/fetch';
-import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
+import { getWorkspaceAccess, hasPermission } from '@/lib/identity/workspace-access';
 import { SegmentList, type SegmentListRow } from '@/features/segments/segment-list';
 
 /**
@@ -62,6 +62,18 @@ export default async function SegmentsPage({ params }: PageProps) {
       workspaceSlug={workspaceSlug}
       workspaceId={workspaceId}
       locale={locale}
+      /*
+       * Práva se počítají TADY, ne v seznamu. Klientská komponenta o rolích nic
+       * neví a vědět nemá; nabídka „…" jen dostane dva příznaky a podle nich
+       * vynechá položky, které by na serveru skončily na 403.
+       *
+       * Přepočet je pod `segments:write` schválně, i když se jeví jako čtení:
+       * `POST /segments/{id}/recount` si zápis vyžádá. Čtenáři se tedy nenabídne.
+       */
+      permissions={{
+        write: hasPermission(access.data, 'segments:write'),
+        readContacts: hasPermission(access.data, 'contacts:read'),
+      }}
       presets={(presets.ok ? presets.data.items : []).map((preset) => ({
         key: preset.key,
         labelKey: preset.label_key,

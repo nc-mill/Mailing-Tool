@@ -10,11 +10,12 @@
     "save": "Save",
     "saved": "Saved at {time}",
     "saving": "Saving…",
+    "autosave": "Saves itself",
     "saveFailed": "Could not save, retrying",
     "saveInvalid": "Cannot save yet, please fix the problems above",
+    "saveConflict": "Not saved: someone else changed the content. Copy your edits and reload the page.",
     "unsaved": "Unsaved changes",
     "preview": "Preview",
-    "edit": "Back to editing",
     "testSend": "Send test",
     "rename": "Template name",
     "name": {
@@ -241,7 +242,6 @@
     "color": {
       "none": "Transparent",
       "custom": "Custom color",
-      "paletteLabel": "Theme colors",
       "brand": {
         "primary": "Primary brand color",
         "secondary": "Secondary brand color",
@@ -270,7 +270,8 @@
     "altMissing": "Image description is missing",
     "decorative": "Screen readers skip a decorative image and it needs no description.",
     "darkVariant": "An alternative image for recipients using dark mode.",
-    "unsubscribeRequired": "In campaigns the unsubscribe link has to stay on."
+    "unsubscribeRequired": "In campaigns the unsubscribe link has to stay on.",
+    "previewText": "Shows in the inbox list next to the subject. It is not visible inside the email."
   },
   "op": {
     "moveUp": "Move up",
@@ -449,6 +450,7 @@
     "modes": "Preview mode",
     "frameTitle": "Email preview",
     "viewAs": "View as",
+    "viewAsCurrent": "View as: {value}",
     "randomContact": "Random contact",
     "noNameContact": "Contact without a name",
     "sampleData": "Sample data",
@@ -508,6 +510,15 @@
       "category": "Category",
       "usage": "Wired up",
       "changed": "Changed"
+    },
+    "rowMenu": "More actions for template {name}",
+    "rowActions": {
+      "edit": "Edit",
+      "duplicate": "Duplicate",
+      "delete": "Delete"
+    },
+    "duplicate": {
+      "failed": "The template copy could not be created. Technical detail: {code}"
     },
     "category": {
       "legend": "Category",

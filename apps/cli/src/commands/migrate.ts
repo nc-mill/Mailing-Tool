@@ -1,24 +1,8 @@
 import { ConfigError, loadConfig } from '@mlain/core/config';
 import { EXIT_CONFIG, EXIT_OK } from '../exit-codes';
+import { reportMigrationFailure } from './migration-failure';
 import type { CliStreams } from '../dispatch';
-import { resolveMigrationsFolder } from '../migrations-folder';
 
-/**
- * Kde leží migrace, počítáno vůči SESTAVENÉMU CLI, ne vůči `packages/db`.
- *
- * `packages/db/src/migrate.ts` si výchozí cestu skládá jako
- * `new URL('../migrations', import.meta.url)`. To platí, dokud modul běží ze
- * svého místa ve stromu. CLI se ale bundluje esbuildem do jediného souboru
- * `apps/cli/dist/main.js`, takže se `import.meta.url` vztahuje k NĚMU a výchozí
- * cesta vyjde na `apps/cli/migrations`, kde nic není. Stejně mimo je i v image:
- * Dockerfile kopíruje migrace do `/app/packages/db/migrations`.
- *
- * Z `apps/cli/dist/main.js` vede ke kořeni `../../..`, což sedí lokálně
- * i v kontejneru, protože image drží tentýž tvar stromu.
- *
- * `MIGRATIONS_DIR` je únikový východ pro nestandardní rozložení. Běžně se
- * nenastavuje.
- */
 /**
  * `mlain migrate` aplikuje migrace pod rolí `mlain_migrator`.
  *
@@ -73,7 +57,10 @@ export async function runMigrateCommand(
   // Runner se načítá dynamicky, aby se `packages/db/src/migrate.ts` nedostal
   // do statického grafu modulů. Skládá si cestu k adresáři s migracemi
   // a bundler ji neumí přeložit; dvakrát to shodilo celou aplikaci na 500.
-  const { MigrationError, runMigrations } = await import('@mlain/db/migrate');
+  // `resolveMigrationsFolder` přichází ze STEJNÉHO importu jako runner.
+  // Je to jediné místo v repozitáři, které cestu k migracím odvozuje, a runner
+  // ji vyžaduje jako povinný parametr, takže ji nejde vynechat.
+  const { resolveMigrationsFolder, runMigrations } = await import('@mlain/db/migrate');
 
   try {
     await runMigrations({
@@ -84,13 +71,13 @@ export async function runMigrateCommand(
     await bootstrapQueueSchema(streams, migratorUrl, env);
     return EXIT_OK;
   } catch (error) {
-    if (error instanceof MigrationError) {
-      // Runner rozlišuje důvod selhání vlastním exit kódem: 3 selhaná migrace,
-      // 4 přeskočená major verze, 5 schema_version_ahead, 75 timeout zámku.
-      // Entrypoint podle nich rozhoduje, jestli má kontejner restartovat.
-      streams.stderr(error.message);
-      return error.exitCode;
-    }
+    // Runner rozlišuje důvod selhání vlastním exit kódem: 3 selhaná migrace,
+    // 4 přeskočená major verze, 5 schema_version_ahead, 75 timeout zámku.
+    // Entrypoint podle nich rozhoduje, jestli má kontejner restartovat.
+    // Překlad dělá `reportMigrationFailure`, jediné místo v CLI, které to umí;
+    // dřív to uměl jenom tenhle příkaz a `restore` s `upgrade` padaly stackem.
+    const code = reportMigrationFailure(streams, error);
+    if (code !== null) return code;
     throw error;
   }
 }

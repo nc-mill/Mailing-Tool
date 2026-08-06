@@ -358,6 +358,7 @@ function EditorBody(props: BodyProps) {
                     fieldCatalog={props.fieldCatalog}
                     ports={props.ports}
                     templateKind={props.templateKind}
+                    contentKind={props.contentKind}
                   />
                 </div>
                 {props.assistant ? (

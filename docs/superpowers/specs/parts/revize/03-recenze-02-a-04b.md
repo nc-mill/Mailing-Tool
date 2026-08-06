@@ -1,5 +1,12 @@
 # Křížová revize: části 2 a 4b očima části 3
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Křížová revize specifikací z 31. 7. 2026: křížová recenze částí 2 a 4b očima části 3.
+> Nálezy se **zapracovaly zpátky do částí v `parts/`** ještě před psaním plánů, takže dokument popisuje
+> tehdejší podobu textů, ne dnešní. Platné znění specifikace je vždycky v `parts/`, ne tady.
+> **Stav jednotlivých nálezů neověřen.**
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 Recenzent: part3-obsah (vlastník blokového modelu, kompilace šablony, Liquid validátoru, merge tagů a AI)
 Datum: 2026-07-31
 Recenzované soubory: `parts/04b-sender.md` (1847 řádků), `parts/02-kontakty.md` (3475 řádků)

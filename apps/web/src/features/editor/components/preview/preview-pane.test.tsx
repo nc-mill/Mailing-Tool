@@ -1,4 +1,5 @@
 import messages from '@mlain/i18n/messages/cs/editor.json';
+import { TooltipProvider } from '@mlain/ui/components/tooltip';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
@@ -20,13 +21,17 @@ if (!Element.prototype.hasPointerCapture) {
  * jeden stav: přepínač zařízení, tmavý režim i „Zobrazit jako" sedí v hlavičce
  * a řídí zároveň plátno. Kdyby si je náhled držel sám, byly by dva stavy.
  */
+// Ovladače zobrazení jsou od zúžení hlavičky ikony v bublinách a `Tooltip`
+// mimo `TooltipProvider` vyhodí výjimku. V aplikaci ho dodává skořápka.
 function setup(ports = createFakePorts()) {
   render(
     <NextIntlClientProvider locale="cs" messages={{ editor: messages }}>
-      <ViewProvider language="cs">
-        <ViewControls ports={ports} />
-        <PreviewPane templateId="t1" ports={ports} flush={async () => {}} />
-      </ViewProvider>
+      <TooltipProvider>
+        <ViewProvider language="cs">
+          <ViewControls ports={ports} />
+          <PreviewPane templateId="t1" ports={ports} flush={async () => {}} />
+        </ViewProvider>
+      </TooltipProvider>
     </NextIntlClientProvider>,
   );
   return ports;

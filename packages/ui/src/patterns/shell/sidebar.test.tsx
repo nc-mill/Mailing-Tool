@@ -35,6 +35,35 @@ const ITEMS: VisibleNavigationItem[] = [
       },
     ],
   } as unknown as VisibleNavigationItem,
+  /**
+   * Sekce, která podpoložky MÁ, ale boční menu je nevykresluje: druhou úroveň
+   * si kreslí sama uvnitř obrazovky a v menu by stály podruhé. V aplikaci je
+   * to Nastavení, tady je to jen vstup, aby test nezávisel na registru.
+   */
+  {
+    id: 'settings',
+    labelKey: 'nav.settings',
+    path: 'settings/general',
+    permission: null,
+    href: '/w/eshop-kolo/settings/general',
+    sidebarSubmenu: false,
+    children: [
+      {
+        id: 'settings-general',
+        labelKey: 'nav.settingsGeneral',
+        path: 'settings/general',
+        permission: null,
+        href: '/w/eshop-kolo/settings/general',
+      },
+      {
+        id: 'settings-audit',
+        labelKey: 'nav.settingsAudit',
+        path: 'settings/audit',
+        permission: null,
+        href: '/w/eshop-kolo/settings/audit',
+      },
+    ],
+  } as unknown as VisibleNavigationItem,
 ];
 
 const LABELS = {
@@ -49,6 +78,9 @@ const TRANSLATIONS: Record<string, string> = {
   'nav.contacts': 'Kontakty',
   'nav.contactsAll': 'Všechny kontakty',
   'nav.lists': 'Seznamy',
+  'nav.settings': 'Nastavení',
+  'nav.settingsGeneral': 'Projekt',
+  'nav.settingsAudit': 'Audit log',
 };
 
 function renderSidebar(props: { collapsed?: boolean; currentPath?: string } = {}) {
@@ -141,6 +173,70 @@ describe('Sidebar', () => {
     renderSidebar({ collapsed: true });
     await user.tab();
     await user.tab();
+    expect(await screen.findByRole('link', { name: 'Seznamy' })).toBeVisible();
+  });
+});
+
+/**
+ * SEKCE, KTERÁ SE V BOČNÍM MENU NEROZBALUJE (`sidebarSubmenu: false`).
+ *
+ * Podpoložky má a menu je dostane, jen je nevykreslí: druhou úroveň nabízí
+ * stránková navigace uvnitř sekce a v menu by stály podruhé. V aplikaci je to
+ * Nastavení, kde uživatel viděl tytéž položky dvakrát vedle sebe.
+ *
+ * Cesta je schválně `/settings/audit`, tedy podstránka, která NELEŽÍ pod cestou
+ * sekce. Bez toho by testy prošly i tehdy, kdyby se podpoložky nevykreslily jen
+ * proto, že je sekce zavřená.
+ */
+describe('Sidebar: sekce bez rozbalování', () => {
+  const onSettings = { currentPath: '/w/eshop-kolo/settings/audit' };
+
+  it('je obyčejný odkaz: žádná šipka, žádné podpoložky', () => {
+    renderSidebar(onSettings);
+    expect(screen.getByRole('link', { name: 'Nastavení' })).toHaveAttribute(
+      'href',
+      '/w/eshop-kolo/settings/general',
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Rozbalit nebo sbalit podpoložky: Nastavení' }),
+    ).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Projekt' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Audit log' })).toBeNull();
+  });
+
+  it('svítí jako otevřená i na podstránce, která neleží pod její cestou', () => {
+    // Označení sekce se počítá z podpoložek, takže `children` musí v datech
+    // zůstat. Kdyby je někdo zahodil při filtrování, projde test výš a spadne
+    // tenhle: uživatel by v Nastavení nepoznal, kde v menu stojí.
+    renderSidebar(onSettings);
+    expect(row('Nastavení').className).toContain('border-l-primary');
+  });
+
+  it('nerozbalí ji ani klávesnice, není čím', async () => {
+    const user = userEvent.setup();
+    renderSidebar(onSettings);
+
+    const link = screen.getByRole('link', { name: 'Nastavení' });
+    link.focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard('{ArrowRight}');
+
+    expect(screen.queryByRole('link', { name: 'Audit log' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /podpoložky: Nastavení/ })).toBeNull();
+  });
+
+  it('v zabaleném menu neotevře vysouvací panel ani myš, ani fokus', async () => {
+    const user = userEvent.setup();
+    renderSidebar({ ...onSettings, collapsed: true });
+
+    const link = screen.getByRole('link', { name: 'Nastavení' });
+    await user.hover(link);
+    expect(screen.queryByRole('link', { name: 'Audit log' })).toBeNull();
+
+    link.focus();
+    expect(screen.queryByRole('link', { name: 'Audit log' })).toBeNull();
+    // Kontakty panel dál otevírají, pravidlo se týká jen označené sekce.
+    await user.hover(screen.getByRole('link', { name: 'Kontakty' }));
     expect(await screen.findByRole('link', { name: 'Seznamy' })).toBeVisible();
   });
 });

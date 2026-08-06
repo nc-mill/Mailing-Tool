@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@mlain/ui/components/dropdown-menu';
 import { Field } from '@mlain/ui/components/field';
+import { IconButton } from '@mlain/ui/components/icon-button';
 import { Input } from '@mlain/ui/components/input';
 import { PageHeader } from '@mlain/ui/components/page-header';
 import { Select, SelectItem } from '@mlain/ui/components/select';
@@ -314,13 +315,32 @@ export function TagsScreen({
                       a vedle sebe by z každého řádku udělaly lištu nástrojů, ve které se
                       ztratí to podstatné, tedy název štítku a počet kontaktů. */}
                   <DropdownMenu>
-                    <DropdownMenuTrigger
-                      aria-label={t('tags.rowMenu', { name: tag.name })}
-                      className="flex size-[var(--size-target-min)] items-center justify-center rounded-[var(--radius-control)] border border-transparent bg-transparent text-text-muted hover:border-border-strong hover:bg-surface-raised hover:text-text"
-                    >
-                      {MoreIcon}
+                    <DropdownMenuTrigger asChild>
+                      <IconButton
+                        variant="ghost"
+                        size="row"
+                        label={t('tags.rowMenu', { name: tag.name })}
+                        data-testid={`tag-row-menu-${tag.id}`}
+                        icon={MoreIcon}
+                        /*
+                         * ČTVEREC JE 34 PX, KLIKACÍ PLOCHA 44 PX, stejně jako
+                         * u kontaktů. Do 6. 8. 2026 tu byl vlastní `button`
+                         * o straně 44 px, takže se spouštěč téže nabídky lišil
+                         * obrazovku od obrazovky. Plochu teď roztahuje
+                         * neviditelný překryv a viditelný čtverec drží rytmus
+                         * řádku; sloupec zůstává široký 44 px, aby se překryv
+                         * vešel a nepřekrýval počet kontaktů.
+                         */
+                        className="relative after:absolute after:top-1/2 after:left-1/2 after:size-[var(--size-target-min)] after:-translate-x-1/2 after:-translate-y-1/2 after:content-['']"
+                      />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      {/* Kontakty se štítkem jsou i pod názvem v řádku, ale nabídka
+                          je jediné místo, kde uživatel akce hledá. Kdo si zvykne
+                          otevírat „…", nemá důvod tušit, že název je odkaz. */}
+                      <DropdownMenuItem onSelect={() => router.push(contactsHref(tag.id))}>
+                        {t('tags.viewContacts')}
+                      </DropdownMenuItem>
                       <DropdownMenuItem onSelect={() => openRename(tag)}>
                         {t('tags.rename')}
                       </DropdownMenuItem>

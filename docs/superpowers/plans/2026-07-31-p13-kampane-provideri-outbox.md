@@ -1,5 +1,12 @@
 # P13: Kampaně, provideři a outbox, implementační plán
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P13 (kampaně, provideři a outbox) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** kampaně, provideři a outbox v `packages/core/src` existují, kampaň projde celou cestou.
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Dodat aplikační polovinu odesílacího toku Mlain Maileru: model kampaně s úplným stavovým strojem, zmrazení a materializaci publika do outboxu, nastavení a ověření odesílacích providerů a domén, příjem a normalizaci událostí od Amazonu, pojistky doručitelnosti s automatickou pauzou a obrazovky kampaní a nastavení odesílání.

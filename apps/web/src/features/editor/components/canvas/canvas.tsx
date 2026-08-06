@@ -33,6 +33,22 @@ export type CanvasProps = {
 };
 
 /**
+ * Prvky, které si vstup obsluhují samy a plátno jim do něj nesmí mluvit.
+ *
+ * JEDNA KONSTANTA PRO VŠECHNY OBSLUHY NA OBALU, ne opsaný řetězec u každé.
+ * Plátno je obal, do kterého probublávají události ze všeho uvnitř, a přesně
+ * na tomhle vzorci projekt 6. 8. 2026 uklouzl třikrát za dopoledne (viz
+ * `docs/superpowers/DESIGN-INTEGRACE.md`, kapitola 7): obsluha na obalu, která
+ * nevyjímá ovládací prvky uvnitř. V `data-table.tsx` se to stalo dvakrát tím,
+ * že výjimka existovala jen pro jednu ze dvou cest a druhá se s ní rozešla.
+ *
+ * `[data-inline-editor]` je pole pro psaní textu, zbytek jsou formulářové prvky
+ * plovoucí lišty (adresa odkazu, výběry). Kdo sem sáhne, mění chování všech
+ * obsluh naráz, což je záměr.
+ */
+const SELF_HANDLING = 'input, textarea, select, [data-inline-editor]';
+
+/**
  * Plátno editoru.
  *
  * Proti dřívějšímu znění se změnilo těžiště: plátno už není odsazený seznam
@@ -125,6 +141,30 @@ function CanvasBody({ canWriteHtml, fieldCatalog }: CanvasProps) {
     },
   });
 
+  /**
+   * Konec psaní S VRÁCENÍM FOKUSU NA BLOK.
+   *
+   * Pole pro psaní se odchodem z něj odmontuje (`InlineRichText` ustoupí
+   * `RichView`) a fokus, který na něm stál, spadne na `<body>`. Naměřeno
+   * v prohlížeči: po Esc hlásil `document.activeElement` `BODY`. Od té chvíle
+   * nedojde na plátno ŽÁDNÁ klávesa, protože události chodí z fokusovaného
+   * prvku a `<body>` uvnitř stromu neleží. Klávesová cesta k blokům tím po
+   * každém psaní tiše končila; všimlo se toho až ve chvíli, kdy měla druhá
+   * klávesa něco udělat.
+   *
+   * Prvek se hledá v DOM, ne přes `ref`: obal bloku patří `BlockChrome`
+   * a plátno na něj odkaz nemá. `data-testid` je jeho stabilní jméno,
+   * používají ho i testy.
+   */
+  const stopEditing = (blockId: string | null) => {
+    const wrapper =
+      blockId === null
+        ? null
+        : window.document.querySelector<HTMLElement>(`[data-testid="block-${blockId}"]`);
+    setEditingId(null);
+    wrapper?.focus();
+  };
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     /*
      * Esc opouští psaní, ať fokus drží cokoliv, a stojí PŘED pojistkou níž.
@@ -138,19 +178,54 @@ function CanvasBody({ canWriteHtml, fieldCatalog }: CanvasProps) {
      */
     if (event.key === 'Escape' && editingId !== null) {
       event.preventDefault();
-      setEditingId(null);
+      stopEditing(editingId);
       return;
     }
 
     /*
-     * Dokud je fokus uvnitř textu, patří klávesnice textu.
+     * DRUHÝ Esc ODZNAČÍ BLOK, a tím vrátí panel vlastností na Motiv.
+     *
+     * Nastavení motivu se ukazuje jen tehdy, když není vybraný žádný blok,
+     * takže po prvním kliknutí do e-mailu k němu klávesnicí nevedla žádná cesta.
+     *
+     * Je to DRUHÝ krok téže klávesy, ne první: první Esc opouští psaní (větev
+     * výš) a je z něj vidět, co se stalo, protože se nad blokem znovu objeví
+     * jeho ovládání a tlačítko „+" (`BlockChrome`, podmínka `isSelected &&
+     * !isEditing`). Kdyby první stisk nic viditelného neudělal, vypadala by
+     * klávesa jako nefunkční.
+     *
+     * Co si klávesnici obsluhuje samo, tomu se do ní nemluví: pole odkazu
+     * v plovoucí liště leží uvnitř stromu a Esc v něm zavírá lištu, ne výběr
+     * bloku. Táž úvaha jako u pojistek níž, jen musí stát tady, protože ty
+     * běží až po větvi Escape.
+     */
+    if (event.key === 'Escape' && selectedId !== null) {
+      if ((event.target as HTMLElement).closest(SELF_HANDLING)) return;
+      event.preventDefault();
+      store.select(null);
+      return;
+    }
+
+    /*
+     * Dokud vstup drží něco, co si ho obsluhuje samo, patří klávesnice jemu.
      *
      * Bez téhle pojistky by šipky uvnitř `contenteditable` zároveň posouvaly
      * výběr po stromu a `Backspace` na konci slova by kromě znaku smazal
      * i celý blok. Událost probublává až sem, takže se to musí odchytit tady,
      * ne v editoru.
+     *
+     * Týká se to i plovoucí lišty u textu: má pole pro adresu odkazu a leží
+     * uvnitř stromu, takže sem probublají i klávesy z ní. Naměřeno v prohlížeči:
+     * `Backspace` při psaní adresy nesmazal znak, ale celý blok (pět položek
+     * stromu před, čtyři po), a `Enter` neodeslal formulář, protože
+     * `matchOperation` obojí spároval s operací nad blokem a zavolal
+     * `preventDefault`. Šipky by ze stejného důvodu skákaly po stromu místo
+     * po napsaném textu.
+     *
+     * Rozhoduje typ prvku, ne jeho umístění, a výčet je jediný (`SELF_HANDLING`),
+     * takže se tahle pojistka nemůže rozejít s tou ve větvi Escape výš.
      */
-    if ((event.target as HTMLElement).closest('[data-inline-editor]')) return;
+    if ((event.target as HTMLElement).closest(SELF_HANDLING)) return;
 
     if (event.key === 'Enter' && selectedId && richKeyOf(blockById(items, selectedId))) {
       event.preventDefault();
@@ -178,7 +253,10 @@ function CanvasBody({ canWriteHtml, fieldCatalog }: CanvasProps) {
       <InlineRichText
         value={slot.value as RichText}
         onChange={(next) => store.patchProps(slot.block.id, { [slot.propKey]: next })}
-        onExit={() => setEditingId(null)}
+        // Esc uvnitř textu si odchytí Tiptap sám a ohlásí ho sem, takže větev
+        // v `onKeyDown` na něj vůbec nedojde. Fokus se proto musí vracet i tady,
+        // jinak po prvním Esc spadne na `<body>` a druhý už nikam nedojde.
+        onExit={() => stopEditing(slot.block.id)}
         allowLists={richProp.allowLists}
         singleParagraph={richProp.singleParagraph}
         fieldCatalog={fieldCatalog}
@@ -316,9 +394,36 @@ function CanvasBody({ canWriteHtml, fieldCatalog }: CanvasProps) {
         style={{
           backgroundColor: darkOverride('surface.canvas', theme.light.roles['surface.canvas']),
         }}
-        // Klik mimo blok ukončí psaní, ale výběr nechá být: uživatel se často
-        // jen potřebuje podívat, jak text vypadá bez kurzoru.
-        onClick={() => setEditingId(null)}
+        /*
+         * KLIK MIMO BLOK ukončí psaní A ZRUŠÍ VÝBĚR, takže se panel vlastností
+         * vrátí na Motiv.
+         *
+         * Dřív tady stálo jen `setEditingId(null)` a výběr zůstával, takže se
+         * uživatel k nastavení pozadí, písem a šířky po prvním kliknutí do
+         * e-mailu nedostal jinak než znovunačtením stránky.
+         *
+         * PROČ TO NEUBLÍŽÍ PRÁCI S BLOKY: klik na blok se sem vůbec nedostane.
+         * `BlockChrome` na své položce volá `event.stopPropagation()`, takže
+         * tenhle obsluhovač běží jen pro kliknutí, která nedopadla na žádný
+         * blok. Totéž platí pro ovládání bloku, tlačítko „+" i nabídky, protože
+         * všechny bydlí uvnitř položky.
+         *
+         * Zbývá jediný případ, kdy se sem klik z bloku dostane: uživatel začne
+         * TÁHNOUT VÝBĚR TEXTU uvnitř bloku a pustí tlačítko až venku na ploše.
+         * Klik pak nevznikne na bloku, ale na jejich společném předkovi, tedy
+         * tady. Proto se nejdřív ptáme na výběr textu: dokud je v okně něco
+         * označeného, uživatel právě vybíral text a o blok nepřišel.
+         */
+        onClick={(event) => {
+          setEditingId(null);
+          // Týž výčet jako u klávesnice, ať se obě cesty nerozejdou. Sem se
+          // klik z ovládacího prvku dostane jen přes plovoucí vrstvu mimo blok,
+          // ale pravidlo z kapitoly 7 zní, že výjimka má být na OBOU cestách.
+          if ((event.target as HTMLElement).closest(SELF_HANDLING)) return;
+          const selection = window.getSelection();
+          if (selection && !selection.isCollapsed) return;
+          store.select(null);
+        }}
       >
         <div
           role="tree"

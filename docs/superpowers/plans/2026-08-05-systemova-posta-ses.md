@@ -1,6 +1,32 @@
 # Systémová pošta i přes SES
 
-Datum: 2026-08-05. Krátký plán, ne specifikace. Cílem je, aby pozvánka, obnova hesla
+Datum: 2026-08-05. Krátký plán, ne specifikace.
+
+---
+
+## Stav k 6. 8. 2026 (revize proti kódu): PLÁN PLATÍ CELÝ, NEZAČALO SE
+
+Ověřeno: `SYSTEM_MAIL_CAPABLE_TYPES` je pořád `['smtp']`
+(`packages/core/src/platform/system-mail-config.ts:33`), soubor
+`platform/system-mail-ses.ts` neexistuje, `DefaultSystemMailer.send` větev pro
+SES nemá. Body 1 až 10 z kapitoly 3 jsou všechny otevřené.
+
+Tři věci z okolí, které plán zpřesňují:
+
+- **Klient SES v TypeScriptu je opravdu k dispozici** (kapitola 1). Od té doby
+  přibyl další doklad: transakční pošta a e-maily seznamu jedou outboxem, ale
+  `packages/core/src/providers/ses/client.ts` a závislost `@aws-sdk/client-sesv2`
+  jsou na místě, takže krok 1 zůstává jedním voláním `SendEmailCommand`.
+- **RZ4 (souběh s prací na e-mailech seznamu) je vyřízené.** Ta práce je hotová
+  a registruje se v `apps/web/src/instrumentation.ts` vedle `installSystemMailer()`
+  jako `installSubscriptionEmails()`. Kolize v místě registrace při startu tedy
+  zbývá jen jako jeden řádek navíc, ne jako riziko.
+- Poslední migrace v repozitáři je **0021**. Tenhle plán žádnou migraci nepotřebuje,
+  takže se ho číslování netýká.
+
+---
+
+Cílem plánu je, aby pozvánka, obnova hesla
 a ostatní systémové zprávy odešly i na instalaci, která má jen účet typu SES, a aby se
 uživatel vždycky dozvěděl pravdu o tom, jestli zpráva odešla.
 

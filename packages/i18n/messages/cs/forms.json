@@ -42,7 +42,16 @@
     "openDetail": "Otevřít formulář {name}",
     "embed": "Kód k vložení",
     "created": "Vytvořen",
-    "signups": "Přihlášení"
+    "signups": "Přihlášení",
+    "rowMenu": "Další akce s formulářem {name}"
+  },
+  "rowActions": {
+    "edit": "Upravit",
+    "embed": "Vložit na web",
+    "pause": "Pozastavit",
+    "activate": "Spustit",
+    "viewList": "Zobrazit cílový seznam",
+    "delete": "Smazat"
   },
   "embed": {
     "delegateNote": "E-mail za vás zatím neodešleme. Zkopírujte si návod i s kódem a pošlete ho svou poštou.",

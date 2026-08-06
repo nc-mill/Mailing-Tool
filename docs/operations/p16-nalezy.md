@@ -1,5 +1,47 @@
 # Nálezy P16 proti jiným plánům
 
+> **ČTĚTE TOHLE DŘÍV NEŽ ZBYTEK. Tenhle dokument je snímek k 2026-08-02, ne
+> popis dnešního stavu.**
+>
+> Slova „otevřené" a „blokuje" níž platila **tehdy**. Velká část z nich je dnes
+> opravená a některé nálezy popisují stav produktu, který už neexistuje
+> (nejkřiklavější: A5 tvrdí, že `mlain migrate` není implementovaný, přitom
+> `apps/cli/src/commands/migrate.ts` existuje a v registru má
+> `implemented: true`).
+>
+> **Nepoužívejte tenhle dokument jako seznam práce.** K tomu slouží
+> `docs/superpowers/plans/NALEZY-NAPRIC-PLANY.md`
+> a `docs/superpowers/plans/STAV-IMPLEMENTACE.md`. Tady je hodnota jinde:
+> v popisu, JAK se ty vady projevily a proč je testy nechytily.
+>
+> Revize hlavičky: 2026-08-06. Text nálezů se schválně nemění, je to záznam.
+
+## Co z toho k 2026-08-06 už neplatí
+
+Ověřeno čtením zdrojů, ne odhadem. Sloupec „důkaz" říká, kde se to dá zkontrolovat.
+
+| Nález | Tvrdí | Dnes | Důkaz |
+|---|---|---|---|
+| A3 | CLI bundluje nativní `.node` | opraveno | `apps/cli/build.mjs`, `external: ['@node-rs/argon2']` |
+| A5 | `mlain migrate` není implementovaný | opraveno | `apps/cli/src/commands/migrate.ts`, registr má `implemented: true` |
+| A6 | readiness vrací 200 bez schématu | opraveno | `apps/web/src/app/api/health/ready/route.ts` volá `schemaCheck()` |
+| A8 | `.env.local` se dostává do image | opraveno | `.dockerignore` má `**/.env` a `**/.env.*` |
+| A9 | `next build` vyžaduje běhovou konfiguraci | opraveno | `apps/web/src/app/t/[[...path]]/route.ts`: `export const dynamic = 'force-dynamic'` |
+| A10 | `@node-rs/argon2` chybí v runtime image | opraveno | `docker/collect-runtime-deps.mjs` a ověřovací `RUN` v Dockerfilu |
+| A11 | brána velikosti skončí nulou | planý poplach | `tools/ci/image-size.mjs` má `process.exit(1)` při překročení |
+| B1 | chybí skript `test:e2e:golden` | opraveno | `apps/web/package.json`, a `ci.yml` ukládá `playwright-report-golden` |
+| B2 | konfigurace P05 sbírá i zlatou cestu | opraveno | `apps/web/playwright.config.ts`: `testIgnore: '**/golden/**'` |
+| B3 | Dockerfile nekopíruje LICENSES | opraveno | `docker/Dockerfile`: `COPY … LICENSES /app/LICENSES` |
+| B4 | zkušební režim nemá API ani obrazovku | opraveno | trasa `…/settings/sending` v `apps/web/src/app` |
+| B5 | systémovou poštu nikdo nezapojil | opraveno | `packages/core/src/platform/system-mail-runtime.ts` volá `setSystemMailer()` |
+| B7 | chybí obrazovky kampaní a odesílání | opraveno | adresáře `campaigns`, `settings/sending` v `apps/web/src/app` |
+
+Nálezy **B6** (průvodce importem četl vlastní výchozí hodnoty místo stavu ze
+serveru) a části A-bis se tímhle způsobem ověřit nedaly; jestli platí, se pozná
+jedině spuštěním, ne čtením.
+
+---
+
 Stav k 2026-08-02, po úkolech 28 až 36 (E2E zlatá cesta).
 
 Každý nález má číslo rozhraní z kapitoly 0.6 plánu P16, adresáta a **červený test,

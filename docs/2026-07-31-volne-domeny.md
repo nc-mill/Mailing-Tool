@@ -1,5 +1,18 @@
 # Volné .com domény pro projekt
 
+> **K čemu tenhle dokument je:** jednorázový průzkum volných domén z 2026-07-31,
+> ze kterého se vybíral název produktu. Je to **historický podklad, ne platné
+> zadání.**
+>
+> Revize dokumentu: 2026-08-06. Obsah průzkumu se nemění, doplněná je jen tahle
+> hlavička a příloha s holým seznamem.
+>
+> **Název už padl jinak.** Produkt se dnes jmenuje **Mlain Mailer** a image je
+> `ghcr.io/nc-mill/mlain` (`docker/compose.yml`), takže pracovní název
+> „OpenEngage" ani doporučená „openmailhouse.com" níž neplatí jako rozhodnutí.
+> Dostupnost a ceny **nikdo od 2026-07-31 znovu neověřoval**; domény mohl
+> mezitím zaregistrovat kdokoli.
+
 Datum ověření: 2026-07-31
 Projekt: open-source self-hosted e-mailingová a customer engagement platforma (pracovní název OpenEngage)
 
@@ -256,3 +269,95 @@ Krátké jednoslovné .com jsou v tomhle oboru prakticky vytěžené. Z osmdesá
 ## Stav
 
 Nic není koupeno. Ceny a dostupnost platí k 2026-07-31 a mohou se kdykoli změnit, doména se dá zaregistrovat kýmkoli jiným během minut.
+
+---
+
+## Příloha: holý seznam volných domén ke kopírování
+
+Sem se 2026-08-06 přenesl obsah zrušeného souboru `docs/volne-domeny.txt`. Byl
+to týž seznam bez jediného slova navíc a všech 77 položek už bylo v tabulkách
+výš, takže dva soubory k jednomu tématu držely tutéž informaci dvakrát. Zůstává
+tedy jeden dokument, a v něm i strojově čitelná podoba.
+
+Platnost je táž jako u zbytku dokumentu: **ověřeno 2026-07-31, dnes neplatí nic
+z toho jistě.**
+
+```
+openmailhouse.com
+openmailyard.com
+openmailhq.com
+openmailbase.com
+openmailengine.com
+openmaillab.com
+openmailtool.com
+openmailflow.com
+openmailmarketing.com
+openmailpost.com
+openmailcast.com
+openmailwave.com
+openmailcamp.com
+openmailship.com
+openmailkitchen.com
+openmailry.com
+openemailstack.com
+openemailplatform.com
+openemailhq.com
+openemailengine.com
+openemailtool.com
+opensendhouse.com
+opensendengine.com
+opensendyard.com
+opensendworks.com
+opensendlab.com
+opensendhub.com
+opensendbox.com
+opensendforge.com
+opensendtool.com
+opensendtools.com
+opensendapp.com
+opensendspace.com
+opensendsource.com
+opensendplatform.com
+opensendmarketing.com
+opensendmailer.com
+opensendmailhouse.com
+opensendhouseapp.com
+opensendpost.com
+opensendletter.com
+opensendcast.com
+opensendcamp.com
+opensendwave.com
+sendopenly.com
+sendopensource.com
+sendaudience.com
+sendmailhouse.com
+sendbarn.com
+sendrune.com
+sendfern.com
+sendlamp.com
+sendquay.com
+sendhorn.com
+sendtorch.com
+sendflag.com
+sendreef.com
+sendreed.com
+senddune.com
+sendmoor.com
+sendkiln.com
+sendcliff.com
+sendelm.com
+libremailer.com
+libresender.com
+postquay.com
+sendhearth.com
+posthearth.com
+sendlantern.com
+postorchard.com
+sendthicket.com
+postwillow.com
+sendclover.com
+enveline.com
+letterfern.com
+swallowpost.com
+swallowtide.com
+```

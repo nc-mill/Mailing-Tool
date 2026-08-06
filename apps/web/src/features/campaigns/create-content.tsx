@@ -6,8 +6,9 @@ import { useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
 import { PageHeader } from '@mlain/ui/components/page-header';
 import { Alert } from '@mlain/ui/patterns/states';
-import { createCampaignContentAction } from './actions';
+import { createCampaignContentAction, renameCampaignAction } from './actions';
 import { CampaignBreadcrumbs } from './campaign-breadcrumbs';
+import { CampaignNameField } from './campaign-name-field';
 import { CampaignStepNav } from './campaign-steps';
 import { CAMPAIGN_STEPS, campaignStepHref, type CampaignStep } from './steps';
 
@@ -29,6 +30,7 @@ export function CreateCampaignContent({
   campaignName,
   basePath,
   canEdit,
+  canRename,
 }: {
   workspaceId: string;
   campaignId: string;
@@ -36,6 +38,8 @@ export function CreateCampaignContent({
   basePath: string;
   /** Rozjetá kampaň se needituje, obsah jí už nikdo nezaloží. */
   canEdit: boolean;
+  /** Přejmenovat jde i tam, kde se obsah zakládat nesmí. Viz `CampaignNameField`. */
+  canRename: boolean;
 }) {
   const t = useTranslations('campaigns.settings');
   const tContent = useTranslations('campaigns.settings.content');
@@ -44,6 +48,8 @@ export function CreateCampaignContent({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [failed, setFailed] = useState(false);
+  /* Jméno drží obrazovka, ať se hlavička a drobečky po přejmenování nerozejdou. */
+  const [name, setName] = useState(campaignName);
 
   function goToStep(step: CampaignStep) {
     router.push(campaignStepHref(basePath, campaignId, step));
@@ -52,13 +58,23 @@ export function CreateCampaignContent({
   return (
     <section className="flex flex-col">
       <PageHeader
-        title={campaignName}
+        title={
+          <CampaignNameField
+            name={name}
+            canRename={canRename}
+            onRename={async (next) => {
+              const result = await renameCampaignAction({ workspaceId, campaignId, name: next });
+              if (result.status === 'success') setName(next);
+              return result;
+            }}
+          />
+        }
         eyebrow={
           <span role="status" aria-live="polite">
             {tNew('stepOf', { current: 1, total: CAMPAIGN_STEPS.length })}
           </span>
         }
-        breadcrumbs={<CampaignBreadcrumbs basePath={basePath} campaignName={campaignName} />}
+        breadcrumbs={<CampaignBreadcrumbs basePath={basePath} campaignName={name} />}
       />
 
       <div className="flex flex-col gap-[var(--spacing-gutter)]">
@@ -85,7 +101,9 @@ export function CreateCampaignContent({
                   const result = await createCampaignContentAction({
                     workspaceId,
                     campaignId,
-                    campaignName,
+                    // Jméno z obrazovky, ne z propu: pracovní kopie se pojmenuje
+                    // podle kampaně TEĎ, i když ji uživatel před chvílí přejmenoval.
+                    campaignName: name,
                     locale,
                   });
                   if (result.status === 'error') {

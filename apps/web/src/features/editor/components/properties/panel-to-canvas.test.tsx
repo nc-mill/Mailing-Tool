@@ -1,6 +1,6 @@
 import messages from '@mlain/i18n/messages/cs/editor.json';
 import { LiveRegionProvider } from '@mlain/ui/a11y';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it } from 'vitest';
@@ -127,13 +127,51 @@ describe('změna v panelu se hned promítne do plátna', () => {
     expect(markup('b_d1')).toContain('border-top: 3px');
   });
 
+  // Barva se vybírá kliknutím na vzorek, ne v rozbalovacím poli: to z panelu
+  // zmizelo 6. 8. 2026 na výslovné zadání („Ty barvy nepotřebují mít selectbox").
   it('barva pozadí bloku', async () => {
     const store = setup('b_d1');
-    await userEvent.selectOptions(screen.getByLabelText(/Barva pozadí/), 'brand.primary');
+    const palette = screen.getByTestId('color-palette-backgroundColor');
+    await userEvent.click(within(palette).getByRole('button', { name: /Hlavní barva značky/ }));
     expect(store.getState().document.blocks[0]?.children?.[1]?.props.backgroundColor).toBe(
       'brand.primary',
     );
     // Barva role z motivu, spočítaná `resolveTheme`, ne třídou aplikace.
     expect(markup('b_d1')).toContain('background-color: rgb(');
+  });
+
+  /**
+   * POZADÍ PLÁTNA. Tenhle test je tu kvůli konkrétní vadě.
+   *
+   * Panel měl pole „Pozadí plátna" navázané na `theme.canvasBackground`, jenže
+   * to pole nečetl NIKDO: `resolveTheme` skládá barvy jen z `theme.colors`
+   * a plátno i emitter kreslí roli `surface.canvas`. Uživatel si barvu vybral,
+   * uložila se do dokumentu a plátno ani odeslaný e-mail se nezměnily.
+   *
+   * Proto se tu neměří ULOŽENÍ, ale VÝSLEDEK: barva plochy, kterou plátno
+   * doopravdy nakreslilo. Test na uložení by tehdejší vadu prošel.
+   */
+  it('pozadí plátna z panelu Motiv se hned promítne na plochu e-mailu', async () => {
+    // Bez vybraného bloku ukazuje panel Motiv, tedy vlastnosti celého e-mailu.
+    const store = setup('');
+    const surface = screen.getByRole('tree').parentElement!;
+    expect(surface.style.backgroundColor).toBe('rgb(244, 245, 247)');
+
+    const palette = screen.getByTestId('color-palette-surface.canvas');
+    await userEvent.click(within(palette).getByRole('button', { name: /^Hlavní barva značky/ }));
+
+    // #2563eb je `brand.primary` z výchozí palety (`theme/palette.ts`).
+    expect(surface.style.backgroundColor).toBe('rgb(37, 99, 235)');
+    // A do dokumentu se uložil ODSTÍN v roli, ne název role a ne pole vedle ní.
+    expect(store.getState().document.theme.colors['surface.canvas']).toBe('#2563eb');
+  });
+
+  it('pozadí obsahu z panelu Motiv se promítne do plochy sekce', async () => {
+    const store = setup('');
+    const palette = screen.getByTestId('color-palette-surface.content');
+    await userEvent.click(within(palette).getByRole('button', { name: /^Hlavní barva značky/ }));
+
+    expect(store.getState().document.theme.colors['surface.content']).toBe('#2563eb');
+    expect(markup('b_s1')).toContain('rgb(37, 99, 235)');
   });
 });

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api-client/fetch';
 import { readCursor } from '@/lib/api-client/cursor';
-import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
+import { getWorkspaceAccess, hasPermission } from '@/lib/identity/workspace-access';
 import { ContactsProblem } from '@/features/contacts/contacts-problem';
 import { ContactsTable, type ContactRow } from '@/features/contacts/contacts-table';
 import { filtersToQuery, readContactFilters } from '@/features/contacts/filters';
@@ -87,6 +87,12 @@ function toRow(contact: ContactApiRow): ContactRow {
     snooze_until: snooze.length > 0 ? snooze.toSorted().at(-1)! : null,
     anonymized_at: contact.anonymized_at ?? null,
     lists: contact.lists.map((list) => list.name),
+    // Jen seznamy, ze kterých je z čeho odhlašovat. Táž podmínka jako na detailu
+    // kontaktu: odhlášení míří na `DELETE /lists/{id}/subscribe`, takže potřebuje
+    // identifikátory, a na už odhlášené přihlášení nemá co volat.
+    subscribed_list_ids: contact.lists
+      .filter((list) => list.status !== 'unsubscribed')
+      .map((list) => list.list_id),
     tags: contact.tags.map((tag) => tag.name),
     created_at: contact.created_at,
   };
@@ -173,6 +179,10 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
       tags={tagList}
       lists={listOptions}
       greetingEnabled={greetingEnabled}
+      // Omezení zpracování podle článku 18 drží `suppressions:write`, tedy admin a výš.
+      // Server to kontroluje sám; tohle jen rozhoduje, jestli se položka objeví
+      // v nabídce řádku. Stejné oprávnění jako na detailu kontaktu.
+      canManageRestriction={hasPermission(access.data, 'suppressions:write')}
       // Počet nejistých oslovení. Když se endpoint nepodaří zavolat, odkaz se ukáže
       // bez čísla: odkaz na frontu je pravdivý vždycky, číslo jen tehdy, když ho víme.
       // S vypnutým oslovením se prop vynechá úplně, viz `exactOptionalPropertyTypes`.

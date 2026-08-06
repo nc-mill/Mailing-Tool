@@ -9,23 +9,6 @@ export type VerifyInput = {
   backupDir: string;
   /** URL role, která smí zakládat a rušit databáze, tedy mlain_migrator s CREATEDB. */
   adminUrl: string;
-  /**
-   * Adresář s migracemi. Volitelný, ale v ZABALENÉ APLIKACI nutný.
-   *
-   * `@mlain/db/migrate` si cestu jinak odvodí jako `../migrations` vůči
-   * `import.meta.url`. Ve zdrojích to vyjde na `packages/db/migrations`, jenže
-   * CLI se do image bundluje do jediného souboru, takže `import.meta.url`
-   * ukazuje na `/app/apps/cli/dist/main.js` a odvození vyjde na
-   * `/app/apps/cli/migrations`, kde nic není. `mlain backup verify` proto
-   * v produkční image padalo:
-   *
-   *   ENOENT: no such file or directory,
-   *   open '/app/apps/cli/migrations/meta/_journal.json'
-   *
-   * Skutečné migrace leží v `/app/packages/db/migrations`. Příkaz `mlain migrate`
-   * si cestu předává už dřív, ověření zálohy na to zapomnělo.
-   */
-  migrationsFolder?: string;
   now?: Date;
 };
 
@@ -109,11 +92,13 @@ export async function verifyBackup(input: VerifyInput): Promise<VerifyReport> {
     //
     // Dynamický import drží runner mimo statický graf, takže se do bundlu
     // nedostane a v Node se načte normálně.
-    const { runMigrations } = await import('@mlain/db/migrate');
-    await runMigrations({
-      url: verifyUrl,
-      ...(input.migrationsFolder === undefined ? {} : { migrationsFolder: input.migrationsFolder }),
-    });
+    //
+    // Cestu k migracím si volající NEPŘEDÁVÁ. Dřív to byl volitelný vstup a
+    // předával ho jenom `mlain backup verify`; nedělní ověření ve workeru na
+    // to zapomnělo a padalo na ENOENT. Teď ji skládá `resolveMigrationsFolder()`,
+    // jediné místo v repozitáři, které to umí, a runner ji vyžaduje.
+    const { resolveMigrationsFolder, runMigrations } = await import('@mlain/db/migrate');
+    await runMigrations({ url: verifyUrl, migrationsFolder: resolveMigrationsFolder() });
     await applyGrants(verifyUrl);
 
     await withAdminTx(verifyUrl, async (tx) => {

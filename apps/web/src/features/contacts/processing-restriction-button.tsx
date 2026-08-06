@@ -35,6 +35,8 @@ export function ProcessingRestrictionButton({
   name,
   mode,
   appearance = 'button',
+  open: openProp,
+  onOpenChange,
 }: {
   workspaceId: string;
   contactId: string;
@@ -44,16 +46,32 @@ export function ProcessingRestrictionButton({
   mode: 'restrict' | 'lift';
   /**
    * `icon` je čtverec s ikonou a bublinou v řadě akcí v hlavičce obrazovky,
-   * `button` je běžné tlačítko se slovem uvnitř žlutého bloku o omezení.
+   * `button` je běžné tlačítko se slovem uvnitř žlutého bloku o omezení,
+   * `dialog` je SAMOTNÉ OKNO BEZ SPOUŠTĚČE.
    * Liší se JEN vzhledem: okno, povinné odůvodnění i akce jsou stejné.
+   *
+   * `dialog` vzniklo kvůli nabídce „…" v řádku seznamu kontaktů. Položka nabídky
+   * spouštěčem být nemůže: obsah rozbalené nabídky se při výběru položky odpojí
+   * z DOM, takže by se s ním odpojilo i okno a nikdy by se neukázalo. Spouštěč
+   * proto kreslí seznam, okno stojí mimo nabídku a otevření se řídí zvenčí.
    */
-  appearance?: 'button' | 'icon';
+  appearance?: 'button' | 'icon' | 'dialog';
+  /**
+   * Řízené otevření okna. Bez něj si otevření drží komponenta sama, což je
+   * chování obou podob se spouštěčem. S podobou `dialog` je povinné, jinak
+   * okno nemá kdo otevřít.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const t = useTranslations('contacts');
   const router = useRouter();
   const toast = useToast();
   const dialogLabels = useConfirmDialogLabels();
-  const [open, setOpen] = useState(false);
+  // Neřízený stav existuje pořád, jen se nepoužije, když si otevření vzal volající.
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = openProp ?? ownOpen;
+  const setOpen = onOpenChange ?? setOwnOpen;
   const [note, setNote] = useState('');
   const [pending, setPending] = useState(false);
 
@@ -98,9 +116,9 @@ export function ProcessingRestrictionButton({
 
   return (
     <>
-      {/* Obě podoby používají `pending`, ne `disabled`: zašedlé tlačítko bez
-          vysvětlení je zakázané (kritérium 18 části 6). */}
-      {appearance === 'icon' ? (
+      {/* Podoby se spouštěčem používají `pending`, ne `disabled`: zašedlé tlačítko
+          bez vysvětlení je zakázané (kritérium 18 části 6). */}
+      {appearance === 'dialog' ? null : appearance === 'icon' ? (
         <Tooltip content={label}>
           <IconButton
             variant="solid"

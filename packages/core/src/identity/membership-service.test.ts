@@ -4,7 +4,8 @@ import { v7 as uuidv7 } from 'uuid';
 import * as schema from '@mlain/db/schema';
 import { startPgHarness, type PgHarness } from '../test-support/pg-harness';
 import { closePools, withWorkspace, withoutContext } from '../tx';
-import { setSystemMailer } from '../platform/system-mail';
+import { setSystemMailer, type SystemMail } from '../platform/system-mail';
+import { loadConfig } from '../config';
 import { createWorkspaceContext } from './context';
 import { hashPassword } from './password';
 import { createWorkspace } from './workspace-service';
@@ -254,5 +255,59 @@ describe('pozvánky', () => {
     await expect(
       withWorkspace(ownerCtx, (tx) => revokeInvitation(tx, ownerCtx, uuidv7(), ownerEmail)),
     ).rejects.toMatchObject({ code: 'not_found' });
+  });
+});
+
+/**
+ * POZVÁNKA JE PRVNÍ ZPRÁVA, KTEROU ČLOVĚK OD NÁSTROJE DOSTANE.
+ *
+ * Vada: jazyk se bral z `DEFAULT_LOCALE`, tedy z nastavení celé instalace, takže
+ * česká instalace poslala do anglického projektu českou pozvánku. Zvaný člověk
+ * účet ještě nemá, takže jeho vlastní jazyk se vzít nedá, ale projekt, do kterého
+ * je zvaný, je k dispozici a je to ta správná volba.
+ *
+ * Test čte, co se doopravdy zařadilo k odeslání, ne co si funkce myslí: odesílatel
+ * se na dobu testu nahradí sběračem přes `setSystemMailer`.
+ */
+describe('jazyk pozvánky', () => {
+  it('do anglického projektu odchází anglicky, i když instalace jede česky', async () => {
+    // Bez tohohle rozdílu by test nedokazoval nic: kdyby byla instalace anglická,
+    // prošla by i vadná verze, která bere jazyk z instalace.
+    expect(loadConfig().DEFAULT_LOCALE).toBe('cs');
+
+    const owner = await makeUser('pozvanka-en');
+    const created = await createWorkspace(owner.id, owner.email, {
+      name: `Anglický projekt ${Date.now()}`,
+      locale: 'en',
+    });
+    const ctx = await createWorkspaceContext({
+      kind: 'session',
+      userId: owner.id,
+      workspaceRef: created.workspace.id,
+    });
+    await seedSystemMailAccount(ctx);
+
+    const sent: SystemMail[] = [];
+    setSystemMailer({
+      async send(mail) {
+        sent.push(mail);
+      },
+    });
+    try {
+      await withWorkspace(ctx, (tx) =>
+        createInvitation(
+          tx,
+          ctx,
+          { email: `pozvany-en-${Date.now()}@example.cz`, role: 'editor' },
+          owner.email,
+        ),
+      );
+    } finally {
+      setSystemMailer({ async send() {} });
+    }
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.template).toBe('invitation');
+    expect(sent[0]!.locale).toBe('en');
   });
 });

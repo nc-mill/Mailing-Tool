@@ -4,6 +4,7 @@ import { prepareRenderData } from '@mlain/contracts/liquid/prepare-render-data';
 import { hasContentBlocks } from '@mlain/emails/document/content-stats';
 import type { Document } from '@mlain/emails/document/types';
 import { toPreparedSchema } from '@mlain/emails/paths';
+import { applyWorkspaceBrandTheme } from '../../brand/theme';
 import { loadConfig } from '../../config';
 import { createWorkspaceContext } from '../../identity/context';
 import { wsEq } from '../../identity/scope';
@@ -214,9 +215,22 @@ async function send(
     const template = templateId === null ? undefined : await findTemplateById(tx, ctx, templateId);
     if (templateId !== null && template === undefined) return 'template_missing';
 
+    /*
+     * OBECNÉ ZNĚNÍ VZNIKÁ AŽ TADY, při odeslání, a nikde se neukládá. Proto se
+     * mu značka projektu musí doplnit na tomhle místě: cestou přes
+     * `createTemplate` neprochází, takže by potvrzovací e-mail odešel
+     * v modré výchozí paletě i projektu, který má značku nastavenou.
+     *
+     * Připojené vlastní znění se nechává, jak je: to je uložený dokument,
+     * kterému značku doplnilo už jeho založení, a od té doby o jeho barvách
+     * rozhoduje autor.
+     */
     const document =
       template === undefined
-        ? defaultSubscriptionEmail(input.kind, subscriptionEmailLanguage(contact.locale))
+        ? await applyWorkspaceBrandTheme(
+            tx,
+            defaultSubscriptionEmail(input.kind, subscriptionEmailLanguage(contact.locale)),
+          )
         : (template.design as Document);
 
     // Prázdný e-mail se neposílá. Dokument s pouhou patičkou je platný

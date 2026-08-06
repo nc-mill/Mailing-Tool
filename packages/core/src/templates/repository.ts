@@ -511,6 +511,47 @@ export async function renameTemplateRow(
   return row!;
 }
 
+/**
+ * Zápis dokumentu převlečeného do barev značky.
+ *
+ * VLASTNÍ FUNKCE, ne `updateTemplateDesign`, a rozhodují o tom dvě věci:
+ *
+ * 1. `updated_at` se NEPOSOUVÁ. Převlečení do značky není úprava od uživatele.
+ *    Kdyby posouvalo, přerovnala by se po změně značky celá knihovna řazená
+ *    podle „Změněno" a vypadalo by to, že někdo v noci sáhl na všechny šablony.
+ *    Týž důvod má `restoreTemplateRow` i migrace 0019 a 0021.
+ * 2. Dokument a jeho stav validace se zapisují JEDNÍM příkazem. Kontrast se
+ *    počítá z motivu, takže dvě oddělené věty by mezi sebou měly okamžik,
+ *    kdy u nových barev stojí starý verdikt.
+ *
+ * Optimistický zámek se tu nekontroluje schválně: nejde o souběh dvou autorů,
+ * ale o hromadnou změnu, kterou si vyžádal správce projektu. Editor, který má
+ * šablonu zrovna otevřenou, dostane při nejbližším uložení `precondition_failed`,
+ * a to je pravdivá odpověď: obsah se opravdu změnil.
+ */
+export async function redressTemplateRow(
+  tx: Tx,
+  ctx: WorkspaceContext,
+  id: string,
+  input: {
+    design: Document;
+    designHash: Buffer;
+    state: 'unknown' | 'valid' | 'invalid';
+    errors: unknown[];
+  },
+): Promise<void> {
+  await tx
+    .update(schema.templates)
+    .set({
+      design: input.design,
+      designHash: input.designHash,
+      schemaVersion: input.design.schemaVersion,
+      validationState: input.state,
+      validationErrors: input.errors,
+    })
+    .where(and(eq(schema.templates.id, id), wsEq(ctx, schema.templates)));
+}
+
 export async function setValidationState(
   tx: Tx,
   ctx: WorkspaceContext,

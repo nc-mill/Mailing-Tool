@@ -64,7 +64,18 @@ export type ContactFormValues = {
    * 5. 8. 2026 se u volby „nepotvrzený" na takovém seznamu POTVRZOVACÍ E-MAIL
    * SKUTEČNĚ POŠLE, takže to musí být vidět u zaškrtávátka, ne až v historii.
    */
-  lists: { id: string; name: string; selected: boolean; double_opt_in: boolean }[];
+  lists: {
+    id: string;
+    name: string;
+    selected: boolean;
+    double_opt_in: boolean;
+    /**
+     * Výchozí seznam projektu. Při zakládání je předem zaškrtnutý (rozhodnutí
+     * zadavatele z 5. 8. 2026), takže u něj musí být vidět, PROČ je zaškrtnutý.
+     * Bez toho vypadá předvyplněná volba jako volba uživatele a přehlédne se.
+     */
+    is_default?: boolean;
+  }[];
 };
 
 export type ContactFormProps = {
@@ -204,6 +215,16 @@ export function ContactForm({
    */
   const [checkedLists, setCheckedLists] = useState<Set<string>>(
     () => new Set(values.lists.filter((list) => list.selected).map((list) => list.id)),
+  );
+
+  /**
+   * Seznamy, kvůli kterým po uložení ODEJDE potvrzovací e-mail. Počítá se ze
+   * stavu obrazovky, ne z domněnky: musí být zaškrtnuté, mít dvojí potvrzení
+   * a správce musí zvolit „nepotvrzený". Kterákoli z těch tří podmínek jinak
+   * znamená přímý zápis bez jediné odeslané zprávy.
+   */
+  const willSendConfirmation = values.lists.filter(
+    (list) => checkedLists.has(list.id) && list.double_opt_in && subscription === 'pending',
   );
 
   function toggleList(id: string, checked: boolean): void {
@@ -620,7 +641,7 @@ export function ContactForm({
                 <ul className="grid gap-1">
                   {values.lists.map((list) => (
                     <li key={list.id}>
-                      <label className="flex min-h-[var(--size-target-min)] cursor-pointer items-center gap-3 text-ui text-text">
+                      <label className="flex min-h-[var(--size-target-min)] cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 text-ui text-text">
                         <Checkbox
                           name="list"
                           value={list.id}
@@ -639,6 +660,13 @@ export function ContactForm({
                             {t('form.listDoubleOptIn')}
                           </Tag>
                         ) : null}
+                        {/* PŘEDVYPLNĚNÁ VOLBA SE PŘIZNÁ. Výchozí seznam je při zakládání
+                            zaškrtnutý za uživatele, takže u něj musí stát, kdo ho zaškrtl
+                            a proč. Dva lidé nezávisle na sobě přehlédli, že tím někoho
+                            přihlašují do seznamu, o kterém nevěděli. */}
+                        {mode === 'create' && list.is_default ? (
+                          <Tag tone="accent">{t('form.listDefault')}</Tag>
+                        ) : null}
                       </label>
                       {/* Stav při vykreslení. Bez něj by akce nepoznala rozdíl mezi
                           „uživatel seznam odškrtl" a „nikdy zaškrtnutý nebyl", a odhlašovala
@@ -650,6 +678,27 @@ export function ContactForm({
                   ))}
                 </ul>
               )}
+              {/*
+                ODCHOZÍ E-MAIL SE OHLÁSÍ DŘÍV, NEŽ ODEJDE, a jmenovitě.
+
+                Věta nad zaškrtávátky mluví obecně („u seznamů s dvojím potvrzením"),
+                takže z ní nikdo nevyčte, jestli se to týká právě téhle situace.
+                Tahle hláška se ukáže jen tehdy, když po uložení opravdu odejde
+                zpráva, a vyjmenuje seznamy, kvůli kterým odejde.
+
+                Ověřeno v `repo/contacts-api.ts`: při zakládání jde přes
+                `subscribeToList` (a tedy přes potvrzovací e-mail) jedině
+                zaškrtnutý seznam s dvojím potvrzením při volbě „nepotvrzený".
+                Volba „přihlášený" i seznam s jedním krokem se zapisují přímo,
+                takže z nich neodejde nic.
+              */}
+              {mode === 'create' && willSendConfirmation.length > 0 ? (
+                <Alert tone="warning" data-testid="confirmation-email-warning">
+                  {t('form.listsWillSendConfirmation', {
+                    lists: willSendConfirmation.map((list) => list.name).join(', '),
+                  })}
+                </Alert>
+              ) : null}
               {/* Kontakt mimo seznamy je legitimní stav, ne chyba, ale musí být vidět,
                   co z něj plyne. Bez seznamu se do publika kampaně nedostane a nikde
                   jinde se to nedozví. */}

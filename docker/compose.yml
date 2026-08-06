@@ -38,7 +38,7 @@ services:
       # proměnnou vyplňte v .env; když ji necháte prázdnou, aplikace naběhne,
       # ale ŽÁDOST O VÝMAZ SE NEVYŘÍDÍ a úloha gdpr.erase skončí v chybě.
       DATABASE_URL_GDPR: ${DATABASE_URL_GDPR:-postgres://mlain_gdpr:mlain@postgres:5432/mlain}
-      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY je povinná, vygenerujte ji příkazem mlain genkey}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY je povinná, vygenerujte ji příkazem mlain genkey --id 1}
       # Doména pro odkazy /t/o/, /t/c/ a /u/, které staví SENDER.
       #
       # Konfigurace v Node si ji umí odvodit z APP_URL, jenže sender je binárka

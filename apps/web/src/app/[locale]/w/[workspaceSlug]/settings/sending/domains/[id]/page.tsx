@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api-client/fetch';
 import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
+import { SettingsProblem } from '@/features/settings/settings-problem';
 import { DomainScreen } from '@/features/sending/domain-screen';
 import type { DnsRecord, DomainChecks } from '@/features/sending/dns-records';
 
@@ -43,12 +44,24 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function DomainPage({ params }: PageProps) {
   const { workspaceSlug, id } = await params;
   const access = await getWorkspaceAccess(workspaceSlug);
-  if (!access.ok) notFound();
+  /* 404 jen z opravdové 404, viz komentář u obrazovky předvoleb odesílatele. */
+  if (!access.ok) {
+    if (access.problem.status === 404) notFound();
+    return <SettingsProblem problem={access.problem} />;
+  }
 
   const result = await apiFetch<DomainResponse>(`/api/v1/domains/${id}`, {
     workspaceId: access.data.workspace.id,
   });
-  if (!result.ok) notFound();
+  /*
+   * Smazaná nebo cizí doména = 404, to je pravda o doméně. Vypršení požadavku
+   * je pravda o požadavku a patří do chybového bloku: doména existuje dál a
+   * druhý pokus obvykle projde.
+   */
+  if (!result.ok) {
+    if (result.problem.status === 404) notFound();
+    return <SettingsProblem problem={result.problem} />;
+  }
 
   return (
     <DomainScreen

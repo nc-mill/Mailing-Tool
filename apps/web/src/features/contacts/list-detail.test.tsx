@@ -31,9 +31,12 @@ vi.mock('./list-email-actions', () => ({
   setDefaultListAction: (...args: unknown[]) => makeDefault(...args),
 }));
 
+/** Archivace se sleduje jmenovitě: testy níž hlídají, že se nespustí bez potvrzení. */
+const archive = vi.fn().mockResolvedValue({ status: 'success' });
+
 vi.mock('./actions', () => ({
   setConfirmationModeAction: (...args: unknown[]) => setMode(...args),
-  archiveListAction: vi.fn().mockResolvedValue({ status: 'success' }),
+  archiveListAction: (...args: unknown[]) => archive(...args),
   setListPublicVisibilityAction: (...args: unknown[]) => setPublic(...args),
 }));
 
@@ -271,5 +274,83 @@ describe('výchozí seznam projektu', () => {
     renderDetail({ is_default: true });
     expect(screen.queryByTestId('list-make-default')).toBeNull();
     expect(screen.getByTestId('list-is-default')).toBeInTheDocument();
+  });
+});
+
+/**
+ * ARCHIVACE JE JEDINÉ MAZÁNÍ SEZNAMU, KTERÉ PRODUKT MÁ. Dřív ji ikona spouštěla
+ * rovnou z `onClick` a obrazovka hned odešla na přehled, takže kliknutí vedle
+ * znamenalo ztrátu přístupu k seznamu bez jediné otázky. Testy hlídají obojí:
+ * že se otevře okno místo akce a že se v okně nelže o následcích.
+ */
+describe('archivace seznamu', () => {
+  beforeEach(() => archive.mockClear());
+
+  it('kliknutí na ikonu archivace nearchivuje, jen se zeptá', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+
+    await user.click(screen.getByTestId('list-archive-open'));
+
+    expect(archive).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toHaveTextContent('Archivovat seznam Newsletter?');
+  });
+
+  it('vypisuje pravdivé následky: co zmizí, co přestane chodit a co zůstává', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+
+    await user.click(screen.getByTestId('list-archive-open'));
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Seznam zmizí z nabídek');
+    expect(dialog).toHaveTextContent('Nová přihlášení seznam přestane přijímat');
+    expect(dialog).toHaveTextContent('ani historie souhlasů se nemažou');
+    // Následek o výchozím seznamu platí jen pro výchozí seznam, jinak by to byla lež.
+    expect(dialog).not.toHaveTextContent('přestane být výchozí');
+  });
+
+  it('u výchozího seznamu přidá i následek o ztrátě role výchozího', async () => {
+    const user = userEvent.setup();
+    renderDetail({ is_default: true });
+
+    await user.click(screen.getByTestId('list-archive-open'));
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('přestane být výchozí');
+  });
+
+  it('archivuje teprve po potvrzení v okně', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+
+    await user.click(screen.getByTestId('list-archive-open'));
+    await user.click(screen.getByRole('button', { name: 'Archivovat seznam' }));
+
+    expect(archive).toHaveBeenCalledWith({ workspaceId: 'w-1', id: 'l-1' });
+  });
+
+  it('ústup z okna seznam nechá být', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+
+    await user.click(screen.getByTestId('list-archive-open'));
+    await user.click(screen.getByRole('button', { name: 'Nechat seznam' }));
+
+    expect(archive).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Neúspěch se nesmí spolknout. Dřív se návrat z akce vůbec nečetl, takže by
+   * uživatel odešel na přehled s tím, že archivoval, a seznam by přitom stál.
+   */
+  it('neúspěch ohlásí a nechá uživatele na obrazovce', async () => {
+    const user = userEvent.setup();
+    archive.mockResolvedValueOnce({ status: 'error', code: 'forbidden' });
+    renderDetail();
+
+    await user.click(screen.getByTestId('list-archive-open'));
+    await user.click(screen.getByRole('button', { name: 'Archivovat seznam' }));
+
+    expect(await screen.findByText(/Seznam se nepodařilo archivovat \(forbidden\)/)).toBeVisible();
   });
 });

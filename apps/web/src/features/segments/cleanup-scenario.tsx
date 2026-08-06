@@ -50,13 +50,23 @@ export function CleanupScenario({
   const n = (value: number) => formatCount(value, locale);
 
   if (step === 'freeze') {
+    /*
+     * TLAČÍTKO „ZMRAZIT SEZNAM" TU BYLO MRTVÉ a je pryč, zůstalo vysvětlení.
+     *
+     * Endpoint `POST /segments/{id}/freeze` sice existuje, ale žádat po něm
+     * zmrazení odsud nejde: chce `id` segmentu a název nové statické kopie,
+     * a tahle obrazovka nedostává ani jedno. Stránka `/segments/cleanup` si
+     * bere z adresy jen krok a jméno segmentu a počet drží natvrdo na nule,
+     * takže je to nákres scénáře, ne zapojená obrazovka.
+     *
+     * Tlačítko, které nic nedělá, je horší než žádné: uživatel si po kliknutí
+     * myslí, že je seznam zmrazený, a pustí kampaň nad množinou, která se
+     * mezitím mění. Zapojení patří k dodělání celého úklidu, ne sem.
+     */
     return (
       <Card>
         <CardTitle>{t('freeze.action')}</CardTitle>
         <p className="text-ui text-text-muted">{t('freeze.explanation')}</p>
-        <Button variant="secondary" className="self-start">
-          {t('freeze.action')}
-        </Button>
       </Card>
     );
   }

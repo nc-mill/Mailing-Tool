@@ -1,5 +1,12 @@
 # P04: Jádro API a identita (backend), implementační plán
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P04 (jádro API a identita) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** jádro API a identita v `packages/core/src/identity` a `apps/web/src/lib/api` existují, přihlášení i `/api/v1` běží.
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Postavit backend jádro produktu Mlain Mailer: identitu (uživatelé, hesla, sessions, workspaces, členství, pozvánky, role, API klíče), průřezové konvence veřejného API (chyby podle RFC 9457, kurzorové stránkování, idempotence, rate limiting, verzování, OpenAPI 3.1), dvouvrstvé vynucení izolace workspace, zápis do audit logu a infrastrukturu odchozích webhooků, včetně 45 endpointů pod `/api/v1`.

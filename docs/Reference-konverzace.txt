@@ -1,3 +1,11 @@
+=== POZNÁMKA DOPLNĚNÁ 2026-08-06, NENÍ SOUČÁSTÍ EXPORTU ===
+Tohle je EXPORT SDÍLENÉ KONVERZACE S CHATGPT z počátku projektu
+(v repozitáři od 2026-07-31). Je to historický pramen, NE závazné zadání
+a NE ověřený fakt o cizích produktech; text psal jazykový model.
+Závazná je specifikace: docs/superpowers/specs/2026-07-31-mailing-tool-spec.md
+Vysvětlení a kontext: docs/PRAMENY.md
+=== KONEC POZNÁMKY, DÁL NÁSLEDUJE PŮVODNÍ EXPORT BEZE ZMĚNY ===
+
 ChatGPT Plus
 
 

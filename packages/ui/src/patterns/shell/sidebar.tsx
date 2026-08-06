@@ -156,6 +156,26 @@ export function Sidebar({
             const Icon = sectionIcon(section.id);
             const count = counts?.[section.id];
             const expanded = opened[section.id] ?? sectionActive;
+            /*
+             * Rozbaluje se tahle sekce?
+             *
+             * Podpoložky mít může a přesto se nerozbalovat: sekce, která má
+             * `sidebarSubmenu: false`, si druhou úroveň vykresluje sama uvnitř
+             * obrazovky, a boční menu by ji tedy ukazovalo podruhé. Zavedlo to
+             * Nastavení, kde stály tytéž položky dvakrát vedle sebe; proč
+             * přesně, stojí u příznaku v registru.
+             *
+             * Rozhoduje se to na JEDNOM místě a platí to pro všechny čtyři,
+             * které se šipkou souvisejí: vnitřní okraj odkazu, samotnou šipku,
+             * druhou úroveň v rozbaleném menu a vysouvací panel v zabaleném.
+             * Kdyby si to každé místo řešilo samo, jedno by se zapomnělo a
+             * uživateli by zbyla šipka, která nic neotevře, nebo panel, který
+             * se otevře i tam, kde nemá.
+             *
+             * `children` se jinak NEKONTROLUJE: sekce, která podpoložky nemá,
+             * je nemá vůbec (`visibleNavigation` prázdný seznam nevrací).
+             */
+            const hasSubmenu = section.children !== undefined && section.sidebarSubmenu !== false;
 
             return (
               <li
@@ -208,7 +228,7 @@ export function Sidebar({
                           // Vnitřní okraj vpravo drží sám odkaz jen tam, kde
                           // za ním nestojí šipka. Se šipkou ho drží tlačítko,
                           // jinak by mezi počtem a šipkou vznikla mezera navíc.
-                          !collapsed && !section.children ? 'pr-3' : '',
+                          !collapsed && !hasSubmenu ? 'pr-3' : '',
                           sectionActive
                             ? 'font-semibold text-panel-foreground'
                             : 'text-panel-soft group-hover:text-panel-foreground',
@@ -240,7 +260,7 @@ export function Sidebar({
                       12 + 16 + 12 = 40 px. Záporný levý okraj ty čtyři pixely
                       navíc vrací odkazu, takže počet i šipka stojí přesně tam,
                       kde je má návrh, a klikací plocha přesto zůstane 44 px. */}
-                  {!collapsed && section.children ? (
+                  {!collapsed && hasSubmenu ? (
                     <button
                       type="button"
                       aria-expanded={expanded}
@@ -265,7 +285,7 @@ export function Sidebar({
                 </div>
 
                 {/* Druhá úroveň v rozbaleném menu: odsazená, oddělená linkou. */}
-                {!collapsed && section.children && expanded ? (
+                {!collapsed && hasSubmenu && section.children && expanded ? (
                   <ul className="mt-1 mb-1.5 ml-[var(--spacing-stack)] grid gap-0.5 border-l border-panel-line pl-3">
                     {section.children.map((child) => {
                       const childLabel = translate(child.labelKey);
@@ -299,7 +319,7 @@ export function Sidebar({
                 ) : null}
 
                 {/* Druhá úroveň v zabaleném menu: vysouvací panel vedle. */}
-                {collapsed && section.children && flyout === section.id ? (
+                {collapsed && hasSubmenu && section.children && flyout === section.id ? (
                   <div
                     onMouseEnter={() => openFlyout(section.id)}
                     onMouseLeave={scheduleClose}

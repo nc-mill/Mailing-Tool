@@ -42,6 +42,19 @@ export type NavigationItem = {
   children?: NavigationItem[];
   /** Rezervované místo, které se v MVP 0 nezobrazuje. */
   reservedFor?: 'MVP2';
+  /**
+   * Vykresluje BOČNÍ MENU podpoložky téhle sekce?
+   *
+   * `false` znamená „podpoložky dál existují, ale boční menu je neukazuje".
+   * Nezaměňovat s vymazáním dětí z registru: děti se dál filtrují podle
+   * oprávnění, dál z nich `visibleNavigation` počítá, jestli má sekce vůbec
+   * smysl, a dál je vykresluje ten, kdo za navigaci uvnitř sekce odpovídá.
+   * Vypíná se JEN druhá úroveň v bočním menu.
+   *
+   * Je to příznak, ne výjimka podle `id`: popisuje vlastnost sekce, kterou si
+   * lze u kterékoli další přečíst na místě, kde se rozhoduje o jejím obsahu.
+   */
+  sidebarSubmenu?: false;
 };
 
 export const NAVIGATION: NavigationItem[] = [
@@ -254,6 +267,25 @@ export const NAVIGATION: NavigationItem[] = [
     labelKey: 'common.nav.settings',
     path: '/settings/general',
     mvp0: true,
+    /*
+     * NASTAVENÍ SE V BOČNÍM MENU NEROZBALUJE. Rozhodnutí zadavatele ze 6. 8. 2026,
+     * doslova: „Sidebar má nastavení submenu, ale to se pak objevuje samostatně
+     * na každé stránce v nastavení. Není potřeba to duplikovat."
+     *
+     * Důvodem je DUPLICITA, ne délka seznamu. Každá obrazovka Nastavení má vedle
+     * sebe stránkovou navigaci (`apps/web/src/features/settings/settings-nav.tsx`),
+     * která nabízí přesně tytéž položky. Uživatel je tedy viděl dvakrát naráz,
+     * pokaždé jinak zvýrazněné, a musel řešit, jestli jsou to dva různé seznamy.
+     *
+     * PODPOLOŽKY ZŮSTÁVAJÍ, jen je boční menu nevykresluje. Nemazat je odsud:
+     * viditelnost celé sekce se počítá Z NICH (`visible-navigation.ts`), protože
+     * sekce nemá vlastní `permission`. Sekce bez dětí se řídí vlastním
+     * oprávněním, a to žádné není, takže by po smazání Nastavení uviděli VŠICHNI
+     * včetně prohlížejícího, kterému `/settings/general` odmítne přístup.
+     * Stránková navigace ty děti navíc dál čte a vykresluje, takže by s nimi
+     * zmizela i ona.
+     */
+    sidebarSubmenu: false,
     children: [
       {
         id: 'settings-general',
@@ -389,13 +421,21 @@ export const NAVIGATION: NavigationItem[] = [
         permission: 'backups:read',
         mvp0: true,
       },
-      // Můj účet vidí každý, je to jeho vlastní profil.
-      {
-        id: 'settings-account',
-        labelKey: 'common.nav.settingsAccount',
-        path: '/settings/account',
-        mvp0: true,
-      },
+      // MŮJ ÚČET TU BÝVAL A UŽ TU NENÍ, rozhodnutí zadavatele ze 6. 8. 2026:
+      // „Přístup do Můj účet je ze dvou míst. Nastavení > Můj účet a z pravého
+      // horního rohu. Nechal bych to jen vpravo nahoře."
+      //
+      // Nevracej ji sem. Profil je OSOBNÍ, ne projektový, takže do sekce, která
+      // popisuje nastavení jednoho projektu, věcně nepatří; bydlí mimo skořápku
+      // na `/settings/profile` a vede k němu nabídka v pravém horním rohu, která
+      // je na každé obrazovce.
+      //
+      // Následek, který je vidět a je ZÁMĚRNÝ: prohlížející teď v menu nemá
+      // Nastavení vůbec. Byla to jediná podpoložka, na kterou mu stačila
+      // oprávnění, a sekce bez jediné viditelné podpoložky mizí celá. Nepřišel
+      // tím o nic použitelného: sekce sama míří na `/settings/general`, kam
+      // potřebuje `workspace:update`, takže by ho klik na ni stejně odmítl.
+      // Ke svému účtu se dostane vpravo nahoře, odkudkoli.
     ],
   },
   {

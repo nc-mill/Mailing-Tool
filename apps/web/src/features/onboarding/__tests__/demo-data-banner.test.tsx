@@ -117,3 +117,34 @@ describe('DemoDataBanner', () => {
     expect(await screen.findByText(/Ukázková data jsou pryč/)).toBeInTheDocument();
   });
 });
+
+/**
+ * PRAVIDLO 2 z 7.2b: akce se neskrývají, vysvětlují se. Mazání ukázkových dat
+ * chce `contacts:delete`, tedy editora a výš. Prohlížející tlačítko viděl,
+ * klikl, a dostal odmítnutí bez jediného vysvětlení.
+ */
+describe('DemoDataBanner bez oprávnění mazat', () => {
+  it('tlačítko nemizí a vedle něj stojí, koho požádat', () => {
+    renderWithProviders(<DemoDataBanner state={present} slug="e-shop" canRemove={false} />);
+    expect(screen.getByTestId('demo-remove')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Odstranit ukázková data smí editor, správce projektu nebo vlastník/),
+    ).toBeInTheDocument();
+  });
+
+  it('kliknutí neotevře okno mazání, ale ukáže důvod fokusem', async () => {
+    renderWithProviders(<DemoDataBanner state={present} slug="e-shop" canRemove={false} />);
+
+    await userEvent.click(screen.getByTestId('demo-remove'));
+
+    expect(screen.queryByRole('button', { name: /Odstranit ukázková data/ })).toBeNull();
+    expect(removeDemoDataAction).not.toHaveBeenCalled();
+    expect(document.activeElement?.textContent).toMatch(/Odstranit ukázková data smí editor/);
+  });
+
+  it('s oprávněním se chová jako dřív a okno otevře', async () => {
+    renderWithProviders(<DemoDataBanner state={present} slug="e-shop" />);
+    await userEvent.click(screen.getByTestId('demo-remove'));
+    expect(screen.getByRole('button', { name: /Odstranit ukázková data/ })).toBeInTheDocument();
+  });
+});

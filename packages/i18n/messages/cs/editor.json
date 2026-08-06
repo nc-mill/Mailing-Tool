@@ -10,11 +10,12 @@
     "save": "Uložit",
     "saved": "Uloženo v {time}",
     "saving": "Ukládáme…",
+    "autosave": "Ukládá se samo",
     "saveFailed": "Nepodařilo se uložit, zkoušíme to znovu",
     "saveInvalid": "Zatím nejde uložit, opravte prosím chyby výš",
+    "saveConflict": "Neuloženo: obsah mezitím změnil někdo jiný. Zkopírujte si úpravy a načtěte stránku znovu.",
     "unsaved": "Neuložené změny",
     "preview": "Náhled",
-    "edit": "Zpět k úpravám",
     "testSend": "Poslat test",
     "rename": "Název šablony",
     "name": {
@@ -241,7 +242,6 @@
     "color": {
       "none": "Průhledné",
       "custom": "Vlastní barva",
-      "paletteLabel": "Barvy motivu",
       "brand": {
         "primary": "Hlavní barva značky",
         "secondary": "Doplňková barva značky",
@@ -270,7 +270,8 @@
     "altMissing": "Chybí popis obrázku",
     "decorative": "Ozdobný obrázek čtečka přeskočí a popis nepotřebuje.",
     "darkVariant": "Alternativní obrázek pro příjemce s tmavým režimem.",
-    "unsubscribeRequired": "U kampaní musí odkaz na odhlášení zůstat zapnutý."
+    "unsubscribeRequired": "U kampaní musí odkaz na odhlášení zůstat zapnutý.",
+    "previewText": "Ukáže se v seznamu doručené pošty vedle předmětu. V samotném e-mailu vidět není."
   },
   "op": {
     "moveUp": "Posunout nahoru",
@@ -449,6 +450,7 @@
     "modes": "Režim náhledu",
     "frameTitle": "Náhled e-mailu",
     "viewAs": "Zobrazit jako",
+    "viewAsCurrent": "Zobrazit jako: {value}",
     "randomContact": "Náhodný kontakt",
     "noNameContact": "Kontakt bez jména",
     "sampleData": "Vzorová data",
@@ -508,6 +510,15 @@
       "category": "Kategorie",
       "usage": "Zapojení",
       "changed": "Změněno"
+    },
+    "rowMenu": "Další akce se šablonou {name}",
+    "rowActions": {
+      "edit": "Upravit",
+      "duplicate": "Duplikovat",
+      "delete": "Smazat"
+    },
+    "duplicate": {
+      "failed": "Kopii šablony se nepodařilo vytvořit. Technický detail: {code}"
     },
     "category": {
       "legend": "Kategorie",

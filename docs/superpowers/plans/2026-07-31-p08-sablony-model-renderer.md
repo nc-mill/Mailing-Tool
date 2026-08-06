@@ -1,5 +1,12 @@
 # P08 Šablony: blokový model, renderer a kompilace do Liquidu
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P08 (šablony, blokový model a renderer) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** `packages/emails` a `packages/core/src/templates` existují, kampaň se odešle.
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Postavit `packages/emails` (blokový JSON model, katalog bloků, emitter do HTML přes react-email, emitter prostého textu, univerzální základní šablonu) a `packages/core/templates` (validátor dokumentu, kompilace do Liquidu, `CompileMeta`, verzování, předodesílací kontrola) plus endpointy `/api/v1/templates/*`, tedy celou fázi 1 renderu bez jediného kusu editoru.

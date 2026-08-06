@@ -64,7 +64,7 @@ const buttonVariants = cva(
       size: {
         sm: 'min-h-[var(--size-control-sm)] px-3.5 text-ui',
         md: 'min-h-[var(--size-target-min)] px-5 text-base',
-        lg: 'min-h-12 px-6 text-body',
+        lg: 'min-h-[var(--size-control-lg)] px-6 text-body',
       },
     },
     // Odkazové tlačítko nemá rozměry tlačítka.

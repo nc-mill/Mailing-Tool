@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as schema from '@mlain/db/schema';
 import { blockDefaults, DEFAULT_THEME } from '@mlain/emails/document/defaults';
 import type { Document } from '@mlain/emails/document/types';
+import { saveDefaultBrandProfile } from '../brand/repo/profiles.repo';
 import type { FieldCatalog } from '../contacts/fields/catalog';
 import type { WorkspaceContext } from '../identity/types';
 import { startPgHarness, type PgHarness } from '../test-support/pg-harness';
@@ -505,5 +506,110 @@ describe('vrácení smazané šablony', () => {
     expect(
       await withWorkspace(ctx.ctx, (tx) => findTemplateById(tx, ctx.ctx, row.id)),
     ).toBeUndefined();
+  });
+});
+
+/**
+ * ZNAČKA PROJEKTU V NOVÉM DOKUMENTU.
+ *
+ * Vada, kterou to chytá: `brandToTheme` existovala, uměla to a NIKDO JI PŘI
+ * ZAKLÁDÁNÍ DOKUMENTU NEVOLAL. Nastavená fialová se ukázala jen v náhledu na
+ * obrazovce značky, kdežto nová kampaň i nová šablona zůstaly modré, protože
+ * dostaly `DEFAULT_THEME`. Testuje se proto ZAPOJENÍ, ne převod: převod má
+ * vlastní testy v `packages/emails/test/base/brand.test.ts`.
+ */
+describe('createTemplate a značka projektu', () => {
+  const BRAND_PRIMARY = '#d324eb';
+
+  const withBrand = async () => {
+    const seeded = await serviceCtx();
+    await withWorkspace(seeded.ctx.ctx, (tx) =>
+      saveDefaultBrandProfile(tx, seeded.ctx.ctx.workspaceId, {
+        name: 'Testovací značka',
+        palette: {
+          primary: BRAND_PRIMARY,
+          secondary: '#52ff6e',
+          accent: '#aceb24',
+          background: '#ffffff',
+          text: '#111827',
+          source: {},
+        },
+        typography: { headingStack: 'georgia', bodyStack: 'arial', radius: 12 },
+        logoAssetId: null,
+      }),
+    );
+    return seeded;
+  };
+
+  const storedTheme = async (ctx: Awaited<ReturnType<typeof serviceCtx>>['ctx'], id: string) => {
+    const row = await withWorkspace(ctx.ctx, (tx) => findTemplateById(tx, ctx.ctx, id));
+    return (row!.design as Document).theme;
+  };
+
+  it('nová šablona dostane barvy, písma i rádius ze značky, ne výchozí modrou', async () => {
+    const { ctx } = await withBrand();
+    const row = await createTemplate(ctx, { name: 'Nová', kind: 'campaign', document: design });
+
+    const theme = await storedTheme(ctx, row.id);
+    expect(theme.colors['brand.primary']).toBe(BRAND_PRIMARY);
+    expect(theme.colors['brand.secondary']).toBe('#52ff6e');
+    expect(theme.colors['brand.accent']).toBe('#aceb24');
+    expect(theme.fonts).toEqual({ heading: 'georgia', body: 'arial' });
+    expect(theme.radius).toBe(12);
+  });
+
+  it('pracovní obsah kampaně (kind system) značku dostane taky', async () => {
+    const { ctx } = await withBrand();
+    const row = await createTemplate(ctx, {
+      name: 'Kampaň · pracovní kopie',
+      kind: 'system',
+      document: design,
+    });
+
+    expect((await storedTheme(ctx, row.id)).colors['brand.primary']).toBe(BRAND_PRIMARY);
+  });
+
+  it('ručně nastavenou barvu značka nepřepíše', async () => {
+    const { ctx } = await withBrand();
+    const row = await createTemplate(ctx, {
+      name: 'Vlastní barvy',
+      kind: 'campaign',
+      document: {
+        ...design,
+        theme: { ...DEFAULT_THEME, colors: { 'brand.primary': '#ff0000' } },
+      } as unknown as Document,
+    });
+
+    expect((await storedTheme(ctx, row.id)).colors['brand.primary']).toBe('#ff0000');
+  });
+
+  it('projekt bez značky zůstane na výchozím motivu, barvy se nevymýšlejí', async () => {
+    const { ctx } = await serviceCtx();
+    const row = await createTemplate(ctx, {
+      name: 'Bez značky',
+      kind: 'campaign',
+      document: design,
+    });
+
+    expect((await storedTheme(ctx, row.id)).colors).toEqual({});
+  });
+
+  /**
+   * Duplikát nemá vlastní ochranu motivu a nepotřebuje ji.
+   *
+   * Chvíli tu stál přepínač `preserveTheme`, aby kopie vyšla stejně jako
+   * předloha. Odpadl, protože uložení značky dnes převléká celý projekt
+   * (`redressTemplatesToBrand`): předloha je tedy vždycky v aktuálních barvách
+   * a doplňovat kopii není z čeho. Test hlídá výsledek, ne cestu k němu.
+   */
+  it('kopie vyjde v týchž barvách jako předloha', async () => {
+    const { ctx } = await withBrand();
+    const row = await createTemplate(ctx, { name: 'Předloha', kind: 'campaign', document: design });
+
+    const copy = await duplicateTemplate(ctx, row.id);
+    expect((await storedTheme(ctx, copy.id)).colors).toEqual(
+      (await storedTheme(ctx, row.id)).colors,
+    );
+    expect((await storedTheme(ctx, copy.id)).colors['brand.primary']).toBe(BRAND_PRIMARY);
   });
 });

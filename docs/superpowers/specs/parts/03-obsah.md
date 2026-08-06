@@ -1,5 +1,12 @@
 # Část 3: Obsah: šablony, editor a AI
 
+<!-- puvod-dokumentu -->
+> **Platná produktová specifikace, ne historický záznam.** Část 3: obsah, šablony, editor a AI ze 31. 7. 2026, dopsaná
+> do rozhodnutě úplného stavu a zmrazená spolu s kontrakty. Pořád je to zdroj pravdy o tom, co produkt má dělat.
+> **Řádek „Stav: koncept" níž už neplatí**, dokument prošel křížovou revizí i narovnáním (viz `parts/STAV.md`).
+> Co se od té doby rozhodlo jinak, přebíjí ji. Pozdější rozhodnutí, které tuhle část přebíjí: přestavba editoru od 4. 8. 2026.
+> **Jak daleko je provedení:** `docs/superpowers/STAV-UKOLU.md`.
+
 Vlastník: part3-obsah
 Datum: 2026-07-31
 Rozvíjí kapitoly hlavní specifikace: 6.4, 6.5 (dotýká se 3.1, 4.5, 5)

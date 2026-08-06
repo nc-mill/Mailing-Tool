@@ -1,5 +1,12 @@
 # Revize P16 proti schématu P03
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Revize plánu P16 (onboarding a provoz) z prověrky plánů
+> (31. 7. až 1. 8. 2026), tedy kontrola **textu plánu před stavbou**, ne kontrola kódu.
+> **Verdikt typu „plán není proveditelný" se týkal tehdejšího plánu, ne dnešního produktu.** Ten stojí a funguje.
+> Opravy se prováděly podle `docs/superpowers/plans/POSTUP-OPRAV.md`; **stav jednotlivých nálezů neověřen**.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 **Recenzovaný plán:** `/Users/petr/Projects/Mailing_Tool/docs/superpowers/plans/2026-07-31-p16-onboarding-provoz-zalohy-e2e.md` (8691 řádků)
 **Zdroj pravdy pro schéma:** `/Users/petr/Projects/Mailing_Tool/docs/superpowers/plans/2026-07-31-p03-databaze-schema-rls.md`
 **Datum:** 2026-08-01

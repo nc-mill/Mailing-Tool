@@ -67,7 +67,6 @@ export function AssistantPanelView({
   onStop,
   onKeep,
   onRetry,
-  onChangeBrand,
 }: {
   state: PanelState;
   hasCredential: boolean;
@@ -78,7 +77,6 @@ export function AssistantPanelView({
   onStop?: () => void;
   onKeep?: () => void;
   onRetry?: () => void;
-  onChangeBrand?: () => void;
 }) {
   const t = useTranslations('ai');
 
@@ -168,12 +166,7 @@ export function AssistantPanelView({
           </div>
 
           {brandName === null ? null : (
-            <p className="flex flex-wrap items-center gap-2 text-sm text-text">
-              {t('panel.brand', { name: brandName })}
-              <Button type="button" variant="ghost" onClick={onChangeBrand}>
-                {t('panel.brandChange')}
-              </Button>
-            </p>
+            <p className="text-sm text-text">{t('panel.brand', { name: brandName })}</p>
           )}
 
           <div>

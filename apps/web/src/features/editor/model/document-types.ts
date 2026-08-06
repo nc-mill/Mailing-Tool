@@ -27,6 +27,31 @@ export type {
 export { BLOCK_ID_PATTERN, blockDefaults, DEFAULT_THEME, isBlockId, KNOWN_BLOCK_TYPES, newBlockId };
 
 /**
+ * Doplnění chybějících částí motivu před `resolveTheme`.
+ *
+ * `resolveTheme` čte `theme.darkMode.colors` a `theme.typography.*` bez kontroly,
+ * takže nad dokumentem s neúplným motivem vyhodí `Cannot read properties of
+ * undefined`. V klientské komponentě to neshodí jeden ovládací prvek, ale CELÝ
+ * strom po nejbližší error boundary, takže uživatel místo panelu vlastností
+ * uvidí „Aplikace se neočekávaně zastavila".
+ *
+ * Uložený dokument má motiv vždy úplný (hlídá to JSON schéma i normalizace),
+ * takže je to pojistka, ne běžná cesta. Slučuje se po částech, ne celý objekt
+ * naráz: motiv s vlastními barvami a chybějícím tmavým režimem si má nechat
+ * svoje barvy, ne spadnout na výchozí paletu.
+ */
+export function themeWithDefaults(theme: Theme | undefined): Theme {
+  return {
+    ...DEFAULT_THEME,
+    ...theme,
+    fonts: { ...DEFAULT_THEME.fonts, ...theme?.fonts },
+    typography: { ...DEFAULT_THEME.typography, ...theme?.typography },
+    darkMode: { ...DEFAULT_THEME.darkMode, ...theme?.darkMode },
+    colors: { ...theme?.colors },
+  };
+}
+
+/**
  * Strukturální pohled na blok. Editor záměrně nepracuje s diskriminovaným sjednocením z P08:
  * operace nad stromem jsou na typu bloku nezávislé a znalost typů drží descriptory.
  * Index signature nese neznámé vlastnosti beze ztráty, což vyžaduje kritérium 5 části 3.

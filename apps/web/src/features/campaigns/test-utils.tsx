@@ -2,6 +2,7 @@ import { render, type RenderResult } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { formats } from '@mlain/i18n/formats';
 import { TooltipProvider } from '@mlain/ui/components/tooltip';
+import { ToastProvider } from '@mlain/ui/patterns/toast';
 import type { ReactElement } from 'react';
 import csCampaigns from '../../../../../packages/i18n/messages/cs/campaigns.json';
 import csCommon from '../../../../../packages/i18n/messages/cs/common.json';
@@ -17,6 +18,18 @@ import csSettings from '../../../../../packages/i18n/messages/cs/settings.json';
 export const MESSAGES = { campaigns: csCampaigns, common: csCommon, settings: csSettings };
 
 /**
+ * Popisky oznámení. `useToast` mimo `ToastProvider` vyhodí výjimku, takže ho
+ * testy montují taky: přejmenování kampaně v hlavičce jím hlásí, že se uložilo.
+ */
+export const TOAST_LABELS = {
+  undo: 'Vrátit zpět',
+  close: 'Zavřít',
+  notifications: 'Oznámení',
+  countdown: (seconds: number) => `Zbývá ${seconds} s`,
+  repeated: (message: string, count: number) => `${message} (${count})`,
+};
+
+/**
  * Obal s poskytovateli zvlášť, protože `rerender` z testing-library nahrazuje
  * CELÝ strom. Bez obalu by se při něm ztratil katalog i formáty a komponenta
  * by spadla na chybějícím kontextu, ne na tvrzení testu.
@@ -29,7 +42,9 @@ export function withProviders(ui: ReactElement): ReactElement {
       formats={formats}
       timeZone="Europe/Prague"
     >
-      <TooltipProvider>{ui}</TooltipProvider>
+      <TooltipProvider>
+        <ToastProvider labels={TOAST_LABELS}>{ui}</ToastProvider>
+      </TooltipProvider>
     </NextIntlClientProvider>
   );
 }

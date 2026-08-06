@@ -44,6 +44,5 @@ export function useContactsTableLabels(namespaceKeys: {
     columnSettings: t('list.columnSettings'),
     closeColumnSettings: tCommon('actions.close'),
     columnVisible: (column) => t('list.columnVisible', { column }),
-    columnWidth: (column) => t('list.columnWidth', { column }),
   };
 }

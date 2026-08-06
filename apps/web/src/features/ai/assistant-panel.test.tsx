@@ -34,10 +34,16 @@ describe('panel asistenta', () => {
     expect(screen.getByLabelText('Délka')).toBeInTheDocument();
   });
 
-  it('ukáže vybranou značku a nabídne její změnu', () => {
+  /**
+   * Tlačítko „Změnit" vedle značky se odstranilo: byla to prázdná obsluha,
+   * propa `onChangeBrand` se nikdy odnikud nepředávala a klik nedělal nic.
+   * Test proto nově hlídá, že tam žádné tlačítko není, aby se mrtvé ovládání
+   * nevrátilo. Změna značky patří na `/settings/brand`.
+   */
+  it('ukáže vybranou značku bez mrtvého tlačítka na její změnu', () => {
     wrap(<AssistantPanelView state={{ phase: 'idle' }} hasCredential brandName="Kolo Shop" />);
     expect(screen.getByText(/Značka: Kolo Shop/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Změnit' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Změnit' })).toBeNull();
   });
 
   it('při generování ukáže kroky, ne spinner', () => {

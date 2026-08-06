@@ -102,3 +102,17 @@ Plán přepsán do verze 2 (1 299 řádků, z 880). Podstatné změny:
 - odhad zvýšen z 12 až 16 na 22 až 28 dnů plus 2 dny na rozepsání
 - otevřené otázky rozšířeny ze sedmi na deset (O8 segmenty a automatizační e-maily, O9 souhlas s marketingem, O10 retence kroků)
 - zamítnuty čtyři nálezy s odůvodněním, zapsané v kapitole 16
+
+## Poznámka k platnosti (6. 8. 2026)
+
+Tenhle soubor je **záznam jednoho běhu prověrky z 5. 8. 2026**, ne živý dokument.
+Popisuje stav plánu v okamžiku `plan_hash: f0ef937` a v tomhle smyslu platí dál.
+
+Plán se od té doby změnil (revizní hlavička o tom, co v něm mezitím přestalo
+platit) a hlavně se změnil kód pod ním. Před použitím nálezů níž si proto přečti
+kapitolu „Stav k 6. 8. 2026" v
+`docs/superpowers/plans/2026-08-05-p17-automatizace.md`. Tři nálezy z tohohle
+záznamu jsou dnes bezpředmětné, protože práci udělal někdo jiný: rozšíření
+`MESSAGE_KINDS`, změna `ck_messages__kind` a claim větev v senderu (dnes obecná,
+`kind <> 'campaign'`). Rezervace čísel migrací 0016 a 0017 propadla, poslední
+migrace je 0021.

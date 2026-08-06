@@ -33,10 +33,22 @@ export type Padding = { top: number; right: number; bottom: number; left: number
 export type HeadingScale = 1.125 | 1.2 | 1.25 | 1.333;
 export type Radius = 0 | 4 | 6 | 8 | 12;
 
+/**
+ * Motiv dokumentu.
+ *
+ * PLOCHY JSOU ROLE, NE VLASTNÍ POLE. Motiv míval navíc `canvasBackground`
+ * a `contentBackground`, jenže je nečetl nikdo: `resolveTheme` skládá barvy
+ * výhradně z `colors`, plátno editoru i emitter kreslí role `surface.canvas`
+ * a `surface.content`. Uživatel si v panelu vybral barvu, ta se uložila do
+ * dokumentu a nezměnila ani plátno, ani odeslaný e-mail. Panel proto dnes píše
+ * rovnou do `colors` a ta dvě pole zmizela, aby k téže barvě nevedly dvě cesty,
+ * které se dřív nebo později rozejdou.
+ *
+ * Uložené dokumenty ta pole ještě nesou. Schéma je proto pořád zná, jen už je
+ * nevyžaduje, a nic je nečte.
+ */
 export type Theme = {
   contentWidth: 600 | 640;
-  canvasBackground: ColorRef;
-  contentBackground: ColorRef;
   /** Částečná mapa. Neuvedená role bere výchozí hodnotu z theme/palette.ts (3.1.4). */
   colors: Partial<Record<ThemeColorRole, HexColor>>;
   fonts: { heading: FontStackId; body: FontStackId };

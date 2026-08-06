@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api-client/fetch';
-import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
+import { getWorkspaceAccess, hasPermission } from '@/lib/identity/workspace-access';
 import { ContactsProblem } from '@/features/contacts/contacts-problem';
 import { ListsTable, type ListRow } from '@/features/contacts/lists-table';
 
@@ -32,6 +32,8 @@ type ListApiRow = {
   name: string;
   opt_in: 'single' | 'double';
   archived_at: string | null;
+  /** Výchozí seznam projektu. Řádková nabídka mu „Nastavit jako výchozí" nenabízí. */
+  is_default: boolean;
 };
 
 type ListStats = { pending: number; confirmed: number };
@@ -67,8 +69,25 @@ export default async function ListsPage({ params }: PageProps) {
       pending_count: row?.ok ? row.data.pending : 0,
       double_opt_in: list.opt_in === 'double',
       archived: list.archived_at !== null,
+      is_default: list.is_default,
     };
   });
 
-  return <ListsTable basePath={`/w/${workspaceSlug}/lists`} lists={lists} />;
+  return (
+    <ListsTable
+      basePath={`/w/${workspaceSlug}/lists`}
+      workspaceSlug={workspaceSlug}
+      workspaceId={workspaceId}
+      lists={lists}
+      /*
+       * Práva se počítají TADY, ne v tabulce. Klientská komponenta o rolích nic
+       * neví; nabídka „…" jen dostane dva příznaky a podle nich vynechá položky,
+       * které by na serveru skončily na 403.
+       */
+      permissions={{
+        write: hasPermission(access.data, 'lists:write'),
+        readContacts: hasPermission(access.data, 'contacts:read'),
+      }}
+    />
+  );
 }

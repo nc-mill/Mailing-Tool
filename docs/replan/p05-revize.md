@@ -1,5 +1,12 @@
 # Revize P05: dodává design systém všechno, co po něm jedenáct navazujících plánů chce?
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Revize plánu P05 (design systém a skořápka) z prověrky plánů
+> (31. 7. až 1. 8. 2026), tedy kontrola **textu plánu před stavbou**, ne kontrola kódu.
+> **Verdikt typu „plán není proveditelný" se týkal tehdejšího plánu, ne dnešního produktu.** Ten stojí a funguje.
+> Opravy se prováděly podle `docs/superpowers/plans/POSTUP-OPRAV.md`; **stav jednotlivých nálezů neověřen**.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 **Recenzovaný plán:** `/Users/petr/Projects/Mailing_Tool/docs/superpowers/plans/2026-07-31-p05-design-system-i18n-skorapka.md` (13 125 řádků, 34 úkolů)
 **Normativní zdroj:** `/Users/petr/Projects/Mailing_Tool/docs/superpowers/specs/parts/06-ui-ux.md`, část 6, kapitola 13.1 (tvrdé požadavky K1 až K8), kapitoly 11, 12, 15, 16
 **Řídicí dokument:** `2026-07-31-rozdeleni-implementacnich-planu.md`, uzávěry S3, S4, S5, S6, S11

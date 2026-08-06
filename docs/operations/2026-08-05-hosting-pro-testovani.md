@@ -1,7 +1,20 @@
 # Kde rozjet Mlain Mailer na internetu pro testování
 
+**K čemu to je:** jednorázová rešerše hostingu pro testovací provoz. Není to
+provozní runbook a nic z toho není objednané.
+
 Zpracováno 5. 8. 2026. Zadání: testovací provoz na internetu, ne produkce pro zákazníky,
 vlastní doména zatím není potřeba, cíl je zdarma nebo za opravdu málo.
+
+> **Revize 2026-08-06.** Překontrolovaná byla **kapitola 2**, tedy to jediné, co
+> se dá ověřit v repozitáři: limit paměti 2 GB, port 3000, PostgreSQL 18 s ICU
+> `cs-CZ`, pět rolí v `docker/initdb/10-roles.sql` a fakt, že CI image nikam
+> nepublikuje. Všechno sedí.
+>
+> **Ceny, limity poskytovatelů a bezplatné úrovně z kapitol 3 až 8 nikdo
+> nepřekontroloval** a od 5. 8. 2026 se mohly změnit. Ber je jako stav
+> k tomu dni, ne jako platný ceník. Kapitola 11 sama vyjmenovává, co se
+> nepodařilo ověřit ani tehdy.
 
 Ceny a parametry pocházejí ze dvou nezávislých rešerší z 5. 8. 2026. **U každého údaje,
 který je z druhé ruky nebo neověřený, je to napsané.** Ceny se mění, před objednávkou
@@ -30,7 +43,7 @@ Ověřeno v repozitáři, ne odhadnuto.
 
 | Požadavek | Detail | Kde je to vidět |
 |---|---|---|
-| Jeden Docker obraz | Web (Next.js), worker na úlohy na pozadí a odesílač v Go běží v jednom kontejneru, port 3000 | `docker/Dockerfile` |
+| Jeden Docker obraz | Web (Next.js), worker na úlohy na pozadí a odesílač v Go běží v jednom kontejneru (`MODE=all`), port 3000. Rozdělit je do tří kontejnerů jde overlayem `docker/compose.scale.yml`, pro testování to není potřeba | `docker/Dockerfile`, `docker/compose.yml` |
 | Paměť aplikace | Limit **2 GB** | `docker/compose.yml`, `deploy.resources.limits.memory` |
 | **Reálné minimum stroje** | **4 GB.** Ty 2 GB jsou jen aplikace, PostgreSQL běží vedle a má vlastní spotřebu, k tomu operační systém | odvozeno |
 | PostgreSQL | **verze 18**, zakládaná s `--locale-provider=icu --icu-locale=cs-CZ` | `docker/compose.yml` |

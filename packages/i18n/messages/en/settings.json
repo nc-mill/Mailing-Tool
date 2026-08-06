@@ -140,7 +140,8 @@
     "slugHint": "Used in links: /w/{slug}. Lowercase letters, digits, and hyphens.",
     "slugChangeWarning": "Changing the address breaks links you've already sent to colleagues.",
     "locale": "Project language",
-    "localeHint": "The language of system emails and of the public pages your recipients see.",
+    "localeHint": "The language of the public pages your recipients see, of greetings, and of newly created contacts. It does not change the interface language, which everyone sets for themselves.",
+    "localeUiLink": "Change the interface language in My account",
     "timezone": "Project time zone",
     "timezoneHint": "Campaigns are scheduled and reports are counted in this zone.",
     "greetingEnabled": {

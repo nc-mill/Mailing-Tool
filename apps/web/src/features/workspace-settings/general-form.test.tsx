@@ -50,6 +50,28 @@ describe('GeneralForm', () => {
     expect(container.querySelector('input[name="timezone"]')).toHaveValue('Europe/Prague');
   });
 
+  /**
+   * Zadavatel si přepnul „Jazyk projektu" a čekal, že se přepne rozhraní.
+   * Nápověda ho teď odmítne a odkaz ho pošle na správné místo. Míří se na
+   * ADRESU profilu, ne na položku v menu Nastavení, protože ta z nabídky mizí.
+   *
+   * Popisek se čte z katalogu, ne opisuje: přeformulovat větu smí kdokoliv,
+   * ale odkaz musí zůstat a musí vést na profil. Test drží tohle, ne slova.
+   */
+  it('od jazyka projektu odkazuje na profil, kde se mění jazyk rozhraní', () => {
+    renderForm(true);
+    const link = screen.getByRole('link', { name: csSettings.general.localeUiLink });
+    expect(link).toHaveAttribute('href', '/settings/profile');
+  });
+
+  it('odkaz na profil vidí i člen bez práva zápisu', () => {
+    renderForm(false);
+    expect(screen.getByRole('link', { name: csSettings.general.localeUiLink })).toHaveAttribute(
+      'href',
+      '/settings/profile',
+    );
+  });
+
   it('upozorní, že změna adresy rozbije poslané odkazy', () => {
     renderForm(true);
     expect(screen.getByText(/rozbije odkazy, které jste už poslali/)).toBeInTheDocument();

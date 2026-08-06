@@ -148,6 +148,11 @@
   --size-sidebar: 236px;
   --size-sidebar-collapsed: 76px;
   --size-target-min: 44px; /* nejmenší klikací cíl, WCAG 2.2 (2.5.8) */
+  /* Velké tlačítko, `size="lg"`. DESIGN-ZAKLAD.md, kapitola „Tlačítko":
+     sm 36 px, md 44 px, lg 48 px. Vlastní token má proto, že 48 px je
+     rozhodnutí návrhu, ne náhodná shoda s `min-h-12` z Tailwindu; kdyby tu
+     stálo číslo, změna velikostí by ho minula. */
+  --size-control-lg: 48px;
   --size-control: 40px; /* pole filtru, ikonové tlačítko v hlavičce */
   --size-control-sm: 36px; /* tlačítko v liště, stránkování, ikona dlaždice */
   --size-control-xs: 34px; /* ikonové tlačítko v řádku tabulky */
@@ -195,14 +200,37 @@
 
   /* ------------------------------------------------------------------
    * Vrstvy a časování
+   *
+   * Stupnice je uzavřená. Nové číslo se nepřidává, vybere se z těchhle
+   * sedmi, protože vrstva bez jména se za půl roku nedá s ničím porovnat.
+   *
+   * DĚLICÍ ČÁRA VEDE MEZI SKOŘÁPKOU A VYJÍŽDĚCÍ VRSTVOU. Skořápka je horní
+   * lišta a boční menu, tedy rámy, které drží na místě, když obsah odjede.
+   * Vyjížděcí vrstva je nabídka, výběr, bublina a panel, tedy něco, co si
+   * uživatel PRÁVĚ TEĎ otevřel z konkrétního tlačítka. Otevřená nabídka
+   * musí být vidět celá, i když ji spouštěč tlačí do lišty, takže
+   * `--z-flyout` je nad `--z-topbar` a je to jediná správná volba pro
+   * cokoli, co Radix vykresluje portálem k tlačítku.
+   *
+   * Nález ze 6. 8. 2026: nabídka přepínače projektů se otevírala pod horní
+   * lištou a přišla o horních 11 px i s rámečkem a zaoblením. Měla
+   * `--z-dialog` (40), lišta má 50. Napravené použitím `--z-flyout`
+   * u nabídky, výběru, popoveru a bubliny naráz, ne přebitím na jednom
+   * místě: pod lištu se dostane každá z nich, jen se to nejdřív projeví
+   * u té, která se otevírá ze samotné lišty.
    * ------------------------------------------------------------------ */
-  --z-sticky: 10;
-  --z-systembar: 20;
-  --z-toast: 30;
+  --z-sticky: 10; /* hlavička tabulky a osy uvnitř obsahu */
+  --z-systembar: 20; /* systémový pruh u dolního okraje */
+  --z-toast: 30; /* oznámení */
+  /* Modální dialog i jeho zatmívací plocha. POZOR, leží POD `--z-topbar`,
+     takže zatmívací plocha horní lištu nepřekryje a ta zůstane za otevřeným
+     dialogem svítit. Je to vidět a je to vada; kliknutí ale nepustí, o to se
+     stará Radix. Rovná se `--z-sidebar` schválně, o pořadí těch dvou pak
+     rozhoduje pořadí v DOM a plocha vychází nad menu. */
   --z-dialog: 40;
-  --z-sidebar: 40;
-  --z-topbar: 50;
-  --z-flyout: 60;
+  --z-sidebar: 40; /* boční menu */
+  --z-topbar: 50; /* horní lišta */
+  --z-flyout: 60; /* nabídka, výběr, popover, bublina, vysouvací panel menu */
   --duration-fast: 120ms;
   --duration-normal: 200ms;
   --duration-nav: 280ms; /* zabalení bočního menu */

@@ -2,6 +2,7 @@ import { CONTENT_BLOCK_TYPES } from '@mlain/emails/document/content-stats';
 import { loadConfig } from '../../config/index';
 import { ApiError } from '../../errors/api-error';
 import { enqueueJob, type OnMerged } from '../../queues/enqueue-sql';
+import { syncAssetReferences } from '../../templates/asset-references';
 import { withWorkspace, type Tx, type WorkspaceContext } from '../../tx';
 import { rawSql } from '../repo/raw-sql';
 import { withPending, type CampaignCounters } from '../types';
@@ -351,6 +352,8 @@ const DELETABLE_STATUSES: readonly string[] = ['draft', 'schedule_missed'];
  * Cizí klíče MÍŘÍCÍ na kampaň se tímhle netrápí. Měkké smazání je `UPDATE`,
  * takže se `ON DELETE` pravidla dětských tabulek vůbec nevyhodnocují a chyba
  * 23503 tu vzniknout nemůže.
+ *
+ * PRACOVNÍ OBSAH ODCHÁZÍ S KAMPANÍ, viz `deleteWorkingCopy` níž.
  */
 export async function softDeleteCampaign(
   ctx: WorkspaceContext,
@@ -369,14 +372,74 @@ export async function softDeleteCampaign(
         [id, ctx.workspaceId, DELETABLE_STATUSES],
       ),
     );
-    return { deleted: (r.rowCount ?? 0) > 0 };
+    const deleted = (r.rowCount ?? 0) > 0;
+    if (deleted) await deleteWorkingCopy(tx, ctx.workspaceId, id);
+    return { deleted };
   });
+}
+
+/**
+ * Měkké smazání PRACOVNÍHO OBSAHU kampaně, tedy řádku `templates` s
+ * `kind = 'system'`, na který míří `campaigns.template_id`.
+ *
+ * PROČ TO SEM PATŘÍ. Pracovní obsah není šablona z knihovny, je to plátno
+ * jedné kampaně: vyrábí ho zakládání kampaně, uživatel ho ve výpisu šablon
+ * nikdy neuvidí (`listConditions` řádky `kind = 'system'` vynechává) a jinou
+ * cestou než přes kampaň se k němu nedostane. Dokud se smazání kampaně
+ * nepropisovalo sem, zůstával v databázi řádek s `deleted_at IS NULL`, který
+ * nese CELÝ TEXT E-MAILU, tedy i jména, adresy a cokoli dalšího, co do něj
+ * uživatel napsal. U produktu, který mazání osobních údajů slibuje, je to
+ * rozdíl mezi „smazáno" a „schováno před výpisem".
+ *
+ * MĚKCE, NE TVRDĚ. Kampaň sama se maže měkce, takže tvrdé smazání obsahu by
+ * bylo NESOUMĚRNÉ: řádek kampaně by dál držel `template_id`, jenže cizí klíč
+ * `ON DELETE SET NULL` by ho vynuloval, a případná budoucí obnova kampaně by
+ * ji vrátila bez obsahu. Takhle se obojí chová stejně a dá se to vrátit
+ * jedním `UPDATE`.
+ *
+ * PODMÍNKA `NOT EXISTS` NENÍ OPATRNOST NAVÍC. `POST /campaigns/{id}/duplicate`
+ * kopíruje `template_id` beze změny, takže kopie a předloha SDÍLEJÍ jeden
+ * pracovní obsah. Bez téhle podmínky by smazání kopie vzalo obsah i té
+ * kampani, která zůstala, a editor by u ní hlásil, že šablona neexistuje.
+ * V tomhle příkazu je kampaň už označená za smazanou (běží jako druhý příkaz
+ * TÉŽE transakce, ne jako CTE, které by četlo starý snímek), takže se
+ * podmínka ptá právě na ty OSTATNÍ živé kampaně.
+ *
+ * `kind = 'system'` je druhá pojistka: kampaň z doby před pracovními kopiemi
+ * může mít `template_id` namířené rovnou na knihovní šablonu a tu smazat nesmí
+ * nic, je to práce uživatele pro příště.
+ *
+ * OPRÁVNĚNÍ. Běží pod `mlain_app`, která má na `templates` plný `UPDATE`
+ * (migrace 0005), a pod politikou `ws_isolation`, které stačí `mlain.workspace_id`
+ * nastavené v `withWorkspace`. Filtr na `workspace_id` je v dotazu i tak,
+ * protože izolace se nemá opírat jen o nastavení sezení.
+ */
+async function deleteWorkingCopy(tx: Tx, workspaceId: string, campaignId: string): Promise<void> {
+  await tx.execute(
+    rawSql(
+      `UPDATE templates t
+          SET deleted_at = now(),
+              updated_at = now()
+        WHERE t.workspace_id = $2
+          AND t.kind = 'system'
+          AND t.deleted_at IS NULL
+          AND t.id = (SELECT c.template_id FROM campaigns c
+                       WHERE c.id = $1 AND c.workspace_id = $2)
+          AND NOT EXISTS (SELECT 1 FROM campaigns o
+                           WHERE o.template_id = t.id
+                             AND o.workspace_id = $2
+                             AND o.deleted_at IS NULL)`,
+      [campaignId, workspaceId],
+    ),
+  );
 }
 
 /**
  * Kopie kampaně je vždycky `draft` s vynulovanými čítači a bez zmrazeného publika.
  * Kopírovat `audience_built_at` by znamenalo vyrobit druhou kampaň se stejným
  * invariantem I1 a unikátní index v outboxu by ji rozbil až při materializaci.
+ *
+ * PRACOVNÍ OBSAH SE KLONUJE, NESDÍLÍ. Viz `cloneWorkingCopy` níž.
  */
 export async function duplicateCampaign(
   ctx: WorkspaceContext,
@@ -399,8 +462,109 @@ export async function duplicateCampaign(
         [id, ctx.workspaceId],
       ),
     );
-    return r.rows[0] ?? null;
+    const copy = r.rows[0];
+    if (copy === undefined) return null;
+
+    const clonedId = await cloneWorkingCopy(tx, ctx, copy.id, copy.template_id);
+    // `template_id` je v `COLUMNS`, takže odpověď API musí nést ten NOVÝ řádek.
+    // Bez tohohle by obrazovka poslala uživatele upravovat pracovní obsah předlohy.
+    return clonedId === null ? copy : { ...copy, template_id: clonedId };
   });
+}
+
+/**
+ * Vlastní pracovní obsah pro kopii kampaně. Vrací `null`, když se neklonovalo.
+ *
+ * PROČ VŮBEC. `duplicateCampaign` kopíruje `template_id` beze změny, takže
+ * předloha a kopie mířily na TÝŽ řádek `templates`. Obsah kampaně se edituje
+ * výhradně přes ten řádek (`PATCH /api/v1/templates/{id}`, jiný koncový bod pro
+ * rozepsaný dokument neexistuje), takže úprava obsahu kopie PŘEPSALA obsah
+ * předlohy. Tiše, bez chyby a bez cesty zpátky. Je to táž vada, jakou zadání
+ * zakazuje u startu kampaně ze šablony, jen se k ní chodilo jinými dveřmi.
+ *
+ * `campaigns.design` tomu nepomohlo: to je kopie pořízená posledním převzetím
+ * obsahu, kdežto EDITOVANÝ dokument byl sdílený.
+ *
+ * KLONUJE SE JEN `kind = 'system'`. Míří-li `template_id` na knihovní šablonu,
+ * je to jen záznam o původu a sdílet ho je správně: knihovní šablonu žádná
+ * kampaň nepřepisuje, obsah si vždycky vezme do svého `design`.
+ *
+ * JMÉNO. Táž podoba, jakou dává `workingCopyName` v aplikaci, tedy
+ * „<jméno kampaně> · <id kampaně>". Uživatel ho nikdy nevidí (pracovní obsah se
+ * v knihovně nevypisuje a editor bere popisek z `meta.name`), ale nesmí být
+ * libovolné: `uq_templates__workspace_name` je unikátní index nad `lower(name)`
+ * mezi živými řádky. Identifikátor kampaně je unikátní sám o sobě, takže kolize
+ * vzniknout nemůže, a jméno se před ním zkracuje na 80 znaků, aby se celek vešel
+ * do `ck_templates__name_len`: 80 + 3 + 36 = 119 ze 120.
+ *
+ * DOKUMENT SE NEPŘEPOČÍTÁVÁ. `design_hash`, `used_fields` i stav kontroly se
+ * kopírují, protože dokument je bajt po bajtu tentýž. Přepočítat je znovu by
+ * vyžadovalo katalog polí, který tahle vrstva nemá, a hlavně by to mohlo dát
+ * JINÝ výsledek než u předlohy, což je přesně ten rozpor, co se hledá nejhůř.
+ *
+ * `current_version_id` se NEKOPÍRUJE. Ukazuje do historie verzí PŘEDLOHY a klon
+ * by ji tím zdědil jako svou. Prázdné je to správně: tak vypadá i čerstvě
+ * založená šablona z `createTemplateRow`.
+ */
+async function cloneWorkingCopy(
+  tx: Tx,
+  ctx: WorkspaceContext,
+  copyId: string,
+  sourceTemplateId: string | null,
+): Promise<string | null> {
+  if (sourceTemplateId === null) return null;
+
+  const created = await tx.execute<{ id: string }>(
+    rawSql(
+      `INSERT INTO templates
+         (workspace_id, name, kind, schema_version, design, design_hash, used_fields,
+          thumbnail_asset_id, starter, validation_state, validation_errors, created_by)
+       SELECT t.workspace_id,
+              left(c.name, 80) || ' · ' || c.id::text,
+              t.kind, t.schema_version, t.design, t.design_hash, t.used_fields,
+              t.thumbnail_asset_id, t.starter, t.validation_state, t.validation_errors,
+              t.created_by
+         FROM campaigns c
+         JOIN templates t ON t.id = $3::uuid AND t.workspace_id = c.workspace_id
+        WHERE c.id = $1 AND c.workspace_id = $2
+          AND t.kind = 'system' AND t.deleted_at IS NULL
+       RETURNING id`,
+      [copyId, ctx.workspaceId, sourceTemplateId],
+    ),
+  );
+  const clonedId = created.rows[0]?.id;
+  if (clonedId === undefined) return null;
+
+  /*
+   * Odkazy na obrázky se klonu MUSÍ založit taky, a přes `syncAssetReferences`,
+   * ne ručním `INSERT`em. `assets.reference_count` je denormalizovaný čítač,
+   * který ta funkce udržuje v téže transakci jako reference samotné; noční
+   * kontrola `content.verify_asset_refcounts` hlídá, že se ta dvojice nerozejde.
+   * Bez toho by obrázek použitý v klonu vypadal jako nepoužitý a úklid by ho
+   * mohl sebrat pod rukama rozepsané kampani.
+   */
+  const references = await tx.execute<{ asset_id: string }>(
+    rawSql(
+      `SELECT asset_id FROM asset_references
+        WHERE workspace_id = $1 AND ref_type = 'template' AND ref_id = $2::uuid`,
+      [ctx.workspaceId, sourceTemplateId],
+    ),
+  );
+  await syncAssetReferences(
+    tx,
+    ctx,
+    { refType: 'template', refId: clonedId },
+    references.rows.map((row) => row.asset_id),
+  );
+
+  await tx.execute(
+    rawSql(`UPDATE campaigns SET template_id = $3::uuid WHERE id = $1 AND workspace_id = $2`, [
+      copyId,
+      ctx.workspaceId,
+      clonedId,
+    ]),
+  );
+  return clonedId;
 }
 
 export type MessageRow = {

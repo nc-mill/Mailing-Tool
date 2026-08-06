@@ -42,7 +42,16 @@
     "openDetail": "Open the form {name}",
     "embed": "Embed code",
     "created": "Created",
-    "signups": "Signups"
+    "signups": "Signups",
+    "rowMenu": "More actions for form {name}"
+  },
+  "rowActions": {
+    "edit": "Edit",
+    "embed": "Embed on a website",
+    "pause": "Pause",
+    "activate": "Start",
+    "viewList": "View the target list",
+    "delete": "Delete"
   },
   "embed": {
     "delegateNote": "We do not send the email for you yet. Copy the instructions with the code and send them from your own mailbox.",

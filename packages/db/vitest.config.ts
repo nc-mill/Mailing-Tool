@@ -24,7 +24,11 @@ export default defineConfig({
       {
         test: {
           name: 'unit',
-          include: ['test/schema-shape.test.ts', 'test/column-types.test.ts'],
+          include: [
+            'test/schema-shape.test.ts',
+            'test/column-types.test.ts',
+            'test/migrations-folder.test.ts',
+          ],
           environment: 'node',
           sequence: { groupOrder: 0 },
         },
@@ -33,7 +37,11 @@ export default defineConfig({
         test: {
           name: 'db',
           include: ['test/**/*.test.ts'],
-          exclude: ['test/schema-shape.test.ts', 'test/column-types.test.ts'],
+          exclude: [
+            'test/schema-shape.test.ts',
+            'test/column-types.test.ts',
+            'test/migrations-folder.test.ts',
+          ],
           environment: 'node',
           sequence: { groupOrder: 1 },
           // Rozhodnutí R31: JEDEN kontejner na celý běh, ne jeden na soubor.

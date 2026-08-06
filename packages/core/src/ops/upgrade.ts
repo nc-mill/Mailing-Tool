@@ -80,8 +80,13 @@ export async function runUpgrade(input: UpgradeInput): Promise<UpgradeReport> {
   // což bundler Next.js neumí přeložit; jakmile se modul dostane do grafu
   // aplikace (a přes barrel `@mlain/core/ops` se tam dostane), spadne KAŽDÁ
   // stránka, ne jen zálohy. Totéž řeší `backup-verify.ts`.
-  const { runMigrations } = await import('@mlain/db/migrate');
-  await runMigrations({ url: input.adminUrl });
+  //
+  // `migrationsFolder` je povinný a skládá ho `resolveMigrationsFolder()`,
+  // jediné místo v repozitáři, které tu cestu odvozuje. Runner si ji sám
+  // odvodit neumí: v zabundlovaném CLI míří `import.meta.url` do
+  // `/app/apps/cli/dist/`, kdežto migrace leží v `/app/packages/db/migrations`.
+  const { resolveMigrationsFolder, runMigrations } = await import('@mlain/db/migrate');
+  await runMigrations({ url: input.adminUrl, migrationsFolder: resolveMigrationsFolder() });
   steps.push('migrate');
 
   // Granty po migraci. Při běžném upgradu jsou už na místě a funkce je

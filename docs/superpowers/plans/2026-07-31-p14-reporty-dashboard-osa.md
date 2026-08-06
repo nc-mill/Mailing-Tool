@@ -1,5 +1,12 @@
 # P14 Reporty, dashboard a časová osa: implementační plán
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P14 (reporty, dashboard a časová osa) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** `packages/core/src/reports`, report kampaně i přehled projektu existují.
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **Pro agentní pracovníky:** POVINNÁ PODŘÍZENÁ DOVEDNOST: použij `superpowers:subagent-driven-development` (doporučeno) nebo `superpowers:executing-plans` a proveď plán úkol po úkolu. Kroky mají zaškrtávací syntaxi (`- [ ]`) kvůli sledování postupu.
 
 **Cíl:** Dodat čtecí vrstvu nad agregacemi trackingu a všechny obrazovky, které z nich žijí: report kampaně se třemi patry, přehled projektu, statistiky vývoje v čase a naplněnou časovou osu kontaktu, včetně pěti endpointů (`stats`, `stats/timeline`, `links`, `recipients`, `stream`), časové osy kontaktu, dashboardu a živého průběhu odesílání, který přežije výpadek spojení.

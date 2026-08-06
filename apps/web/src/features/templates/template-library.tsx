@@ -4,18 +4,32 @@ import { Link, useRouter } from '@mlain/i18n/navigation';
 import { Badge } from '@mlain/ui/components/badge';
 import { Button } from '@mlain/ui/components/button';
 import { Card } from '@mlain/ui/components/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@mlain/ui/components/dropdown-menu';
+import { IconButton } from '@mlain/ui/components/icon-button';
 import { Alert, FilteredEmptyState } from '@mlain/ui/patterns/states';
 import { useFormatter, useTranslations } from 'next-intl';
-import { useState, useTransition } from 'react';
-import { FormIcon, MailIcon } from '@/lib/ui/status-icons';
-import { restoreTemplateAction } from './actions';
-import { DeleteTemplateButton, type DeletedTemplate } from './delete-template-button';
+import { Fragment, useState, useTransition } from 'react';
+import { FormIcon, MailIcon, MoreIcon } from '@/lib/ui/status-icons';
+import { duplicateTemplateAction, restoreTemplateAction } from './actions';
+import {
+  TemplateDeleteDialog,
+  useDeleteFailureText,
+  type DeletedTemplate,
+} from './template-delete-dialog';
+import {
+  DESTRUCTIVE_TEMPLATE_ACTIONS,
+  templateRowActions,
+  type TemplateRowAction,
+  type TemplateUsage,
+} from './template-state';
 
-/** Zapojení šablony. Prázdná pole znamenají volnou šablonu, ne chybějící data. */
-export type TemplateUsage = {
-  forms: Array<{ id: string; name: string }>;
-  lists: Array<{ id: string; name: string; role: string }>;
-};
+export type { TemplateUsage };
 
 export type TemplateListItem = {
   id: string;
@@ -31,11 +45,6 @@ export type TemplateListItem = {
   updated_at: string;
 };
 
-/** Šablona, kterou někdo živě rozesílá, se nesmí tvářit jako volná předloha. */
-function isWired(usage: TemplateUsage): boolean {
-  return usage.forms.length > 0 || usage.lists.length > 0;
-}
-
 /**
  * Sloupce výpisu. Šířky drží rytmus výpisu kampaní z návrhu: název se
  * roztahuje, kategorie má pevný sloupec na odznak, zapojení dostane zbytek,
@@ -43,6 +52,76 @@ function isWired(usage: TemplateUsage): boolean {
  */
 const COLUMNS =
   'grid grid-cols-[minmax(0,1.5fr)_190px_minmax(0,1.3fr)_110px_44px] items-center gap-[var(--spacing-stack)] px-[var(--spacing-row-x)]';
+
+/**
+ * Nabídka „…" v řádku knihovny, tvarem shodná s kontakty, kampaněmi i segmenty.
+ *
+ * Do 6. 8. 2026 tu stála jediná ikona koše, takže se ze šablony nedalo udělat
+ * nic než ji smazat, a to jen u nezapojené. Kopie hotové šablony odsud dostupná
+ * nebyla vůbec, přestože `POST /templates/{id}/duplicate` v jádru existuje.
+ *
+ * CO NEDÁVÁ SMYSL, SE NENABÍZÍ, ne zašedle. Rozhoduje `templateRowActions`
+ * ve sdíleném `template-state.ts`.
+ *
+ * Okno mazání kreslí knihovna, ne tahle komponenta: obsah rozbalené nabídky se
+ * při volbě položky odpojí z DOM a odnesl by okno s sebou dřív, než by se
+ * ukázalo.
+ */
+function TemplateRowMenu({
+  template,
+  canWrite,
+  onAction,
+}: {
+  template: TemplateListItem;
+  canWrite: boolean;
+  onAction: (action: TemplateRowAction, template: TemplateListItem) => void;
+}) {
+  const t = useTranslations('editor');
+  const actions = templateRowActions(template, { write: canWrite });
+
+  // Čtenář nemá v nabídce nic, takže se nekreslí ani spouštěč. Prázdná nabídka
+  // je horší než žádná: slibuje akce, které nemá.
+  if (actions.length === 0) return null;
+
+  const firstDestructive = actions.findIndex((action) =>
+    DESTRUCTIVE_TEMPLATE_ACTIONS.includes(action),
+  );
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          variant="ghost"
+          size="row"
+          label={t('list.rowMenu', { name: template.name })}
+          data-testid={`template-row-menu-${template.id}`}
+          icon={MoreIcon}
+          /*
+           * ČTVEREC JE 34 PX, KLIKACÍ PLOCHA 44 PX, stejně jako u kontaktů.
+           * Tlačítko o straně 44 px by řádek natáhlo a rozešlo by se s rytmem
+           * ostatních výpisů; plochu proto roztahuje neviditelný překryv.
+           */
+          className="relative after:absolute after:top-1/2 after:left-1/2 after:size-[var(--size-target-min)] after:-translate-x-1/2 after:-translate-y-1/2 after:content-['']"
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {actions.map((action, index) => (
+          <Fragment key={action}>
+            {index === firstDestructive ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuItem
+              {...(DESTRUCTIVE_TEMPLATE_ACTIONS.includes(action)
+                ? ({ tone: 'danger' } as const)
+                : {})}
+              onSelect={() => onAction(action, template)}
+            >
+              {t(`list.rowActions.${action}`)}
+            </DropdownMenuItem>
+          </Fragment>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 /**
  * Knihovna šablon. Je klientská kvůli JEDINÉ věci, kterou serverová komponenta
@@ -88,7 +167,13 @@ export function TemplateLibrary({
   const [undoFailure, setUndoFailure] = useState<string | null>(null);
   /** Důvod odmítnutého smazání. Vykresluje se nad výpisem, viz `onFailed`. */
   const [deleteFailure, setDeleteFailure] = useState<string | null>(null);
+  /*
+   * Šablona, nad kterou je otevřené okno mazání. Drží ji knihovna, ne řádek:
+   * obsah rozbalené nabídky se při volbě položky odpojí z DOM i s oknem.
+   */
+  const [deleting, setDeleting] = useState<TemplateListItem | null>(null);
   const [pending, startTransition] = useTransition();
+  const failureText = useDeleteFailureText();
 
   function undo(template: DeletedTemplate) {
     setUndoFailure(null);
@@ -107,6 +192,42 @@ export function TemplateLibrary({
       // objevila až po ručním načtení stránky.
       router.refresh();
     });
+  }
+
+  /**
+   * Kopie šablony. Odchází se ROVNOU DO KOPIE, ne zpátky do výpisu.
+   *
+   * Kopie se jmenuje „… (kopie)" a mezi ostatními řádky ji nic neoznačuje; kdo
+   * duplikoval hotovou šablonu, ji navíc chce hned upravit. Přechod je tedy
+   * zpětná vazba i další krok naráz, stejně jako u kampaní.
+   */
+  function duplicate(template: TemplateListItem) {
+    setDeleteFailure(null);
+    startTransition(async () => {
+      const result = await duplicateTemplateAction({ workspaceId, id: template.id });
+      if (result.status === 'error') {
+        // Týž pruh nad výpisem jako u odmítnutého mazání: v řádku pro celou
+        // větu místo není.
+        setDeleteFailure(t('list.duplicate.failed', { code: result.code }));
+        return;
+      }
+      router.push(`/w/${workspaceSlug}/templates/${result.id}`);
+    });
+  }
+
+  /** Volba z řádkové nabídky. Vratné akce běží rovnou, mazání otevře okno. */
+  function onRowAction(action: TemplateRowAction, template: TemplateListItem) {
+    switch (action) {
+      case 'edit':
+        router.push(`/w/${workspaceSlug}/templates/${template.id}`);
+        return;
+      case 'duplicate':
+        duplicate(template);
+        return;
+      case 'delete':
+        setDeleting(template);
+        return;
+    }
   }
 
   /** Věty o zapojení. Jedna za každé místo, kde se šablona živě odesílá. */
@@ -271,27 +392,18 @@ export function TemplateLibrary({
                     {/*
                       Zapojenou šablonu nejde smazat, protože formulář i seznam z ní
                       čtou při každém odeslání; server takové mazání odmítne (409
-                      `template_in_use`). Tlačítko, které vždycky selže, je horší než
-                      žádné, takže na jeho místě stojí důvod ve sloupci vedle.
-                      Volná šablona se maže dál beze změny.
+                      `template_in_use`). Položka, která vždycky selže, je horší než
+                      žádná, takže se u takového řádku v nabídce vůbec neukáže
+                      a důvod stojí ve sloupci „Zapojení" vedle. Úprava a kopie
+                      v nabídce zůstávají: obojí je u živě rozesílané předlohy
+                      právě to, co člověk potřebuje.
                     */}
-                    <span className="justify-self-center">
-                      {canWrite && !isWired(template.usage) ? (
-                        <DeleteTemplateButton
-                          workspaceId={workspaceId}
-                          templateId={template.id}
-                          name={template.name}
-                          appearance="icon"
-                          onFailed={(message) => setDeleteFailure(message)}
-                          onDeleted={(item) => {
-                            setRestored(null);
-                            setUndoFailure(null);
-                            setDeleteFailure(null);
-                            setDeleted(item);
-                            router.refresh();
-                          }}
-                        />
-                      ) : null}
+                    <span className="flex justify-end">
+                      <TemplateRowMenu
+                        template={template}
+                        canWrite={canWrite}
+                        onAction={onRowAction}
+                      />
                     </span>
                   </div>
                 );
@@ -299,6 +411,28 @@ export function TemplateLibrary({
             </div>
           </div>
         </Card>
+      )}
+
+      {deleting !== null && (
+        <TemplateDeleteDialog
+          // `key` zařídí, že okno otevřené nad jinou šablonou začíná načisto.
+          key={deleting.id}
+          workspaceId={workspaceId}
+          templateId={deleting.id}
+          name={deleting.name}
+          open
+          onOpenChange={(open) => {
+            if (!open) setDeleting(null);
+          }}
+          onFailed={(code) => setDeleteFailure(failureText(code))}
+          onDeleted={(item) => {
+            setRestored(null);
+            setUndoFailure(null);
+            setDeleteFailure(null);
+            setDeleted(item);
+            router.refresh();
+          }}
+        />
       )}
     </div>
   );

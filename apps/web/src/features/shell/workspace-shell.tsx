@@ -174,7 +174,7 @@ export function WorkspaceShell({
               // atrapu, která po kliknutí neudělala nic. `Topbar` je proto bere
               // jako nepovinné a místo po nich se drží samo pořadím prvků.
               jobsBadge={null}
-              userMenu={<UserMenu user={user} />}
+              userMenu={<UserMenu user={user} workspaceSlug={workspaceSlug} />}
               labels={{
                 search: t('shell.search'),
                 help: t('shell.help'),

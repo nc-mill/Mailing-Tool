@@ -91,6 +91,10 @@ const CALLS: Record<string, (module: typeof ActionsModule) => Promise<unknown>> 
     }),
   deleteCampaignAction: (m) =>
     m.deleteCampaignAction({ workspaceId: WORKSPACE, campaignId: CAMPAIGN }),
+  duplicateCampaignAction: (m) =>
+    m.duplicateCampaignAction({ workspaceId: WORKSPACE, campaignId: CAMPAIGN }),
+  renameCampaignAction: (m) =>
+    m.renameCampaignAction({ workspaceId: WORKSPACE, campaignId: CAMPAIGN, name: 'Nové jméno' }),
   startCampaignFromBlankAction: (m) =>
     m.startCampaignFromBlankAction({ workspaceId: WORKSPACE, name: 'Kampaň', locale: 'cs' }),
   startCampaignFromTemplateAction: (m) =>
@@ -144,6 +148,57 @@ describe('unscheduleCampaignAction', () => {
     // Prázdné tělo je povinné: kostra API kontroluje `Content-Type` u každého POST
     // a bez těla by hlavička chyběla a cesta by vrátila 415.
     expect(options.body).toEqual({});
+  });
+});
+
+describe('duplicateCampaignAction', () => {
+  /**
+   * VRACÍ ID KOPIE, NE PŘEDLOHY. Obrazovka na ně po duplikaci odchází, takže
+   * záměna by uživatele poslala upravovat kampaň, kterou zrovna kopíroval.
+   * `duplicateCampaign` v jádru navíc vrací i nově naklonovaný `template_id`,
+   * tedy vlastní pracovní obsah kopie.
+   */
+  it('míří na cestu duplikace a vrací identifikátor kopie', async () => {
+    mutate.mockResolvedValueOnce({ ok: true, data: { id: 'copy-1' } });
+    const { duplicateCampaignAction } = await import('./actions');
+    const result = await duplicateCampaignAction({
+      workspaceId: WORKSPACE,
+      campaignId: CAMPAIGN,
+    });
+
+    const [path, options] = mutate.mock.calls[0] as [string, { method: string; body: unknown }];
+    expect(path).toBe(`/api/v1/campaigns/${CAMPAIGN}/duplicate`);
+    expect(options.method).toBe('POST');
+    // Prázdné tělo ze stejného důvodu jako u zrušení plánu: bez `Content-Type`
+    // vrátí kostra API 415.
+    expect(options.body).toEqual({});
+    expect(result).toEqual({ status: 'success', campaignId: 'copy-1' });
+  });
+});
+
+describe('renameCampaignAction', () => {
+  /**
+   * TĚLO MÁ JEDINÝ KLÍČ, a je to podmínka funkčnosti, ne úhlednosti.
+   * `PATCH /campaigns/{id}` pouští u NAPLÁNOVANÉ kampaně jen klíče
+   * z `EDITABLE_WHILE_SCHEDULED` (`name`, `scheduled_at`, `schedule_timezone`).
+   * Cokoli navíc, třeba předmět opsaný ze stavu obrazovky, by celý požadavek
+   * shodilo na `campaign_locked` a přejmenování by u naplánované kampaně
+   * přestalo fungovat.
+   */
+  it('posílá jen jméno, aby prošlo i u naplánované kampaně', async () => {
+    const { renameCampaignAction } = await import('./actions');
+    await renameCampaignAction({
+      workspaceId: WORKSPACE,
+      campaignId: CAMPAIGN,
+      name: '  Podzimní výprodej  ',
+    });
+
+    const [path, options] = mutate.mock.calls[0] as [string, { method: string; body: unknown }];
+    expect(path).toBe(`/api/v1/campaigns/${CAMPAIGN}`);
+    expect(options.method).toBe('PATCH');
+    // Mezery na krajích se ořežou, jinak by se do seznamu dostalo jméno
+    // s odsazením, které si nikdo nepřál a v tabulce vypadá jako vada.
+    expect(options.body).toEqual({ name: 'Podzimní výprodej' });
   });
 });
 

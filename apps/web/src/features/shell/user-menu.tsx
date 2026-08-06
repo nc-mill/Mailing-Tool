@@ -14,6 +14,9 @@ import { logoutAction } from '@/features/profile/actions';
 
 export type UserMenuProps = {
   user: { name: string; email: string };
+  /** Projekt, ze kterého se na profil odchází. Nese ho adresa, aby se z profilu
+      bylo kam vrátit. */
+  workspaceSlug: string;
 };
 
 /**
@@ -32,10 +35,18 @@ export type UserMenuProps = {
  * totéž co odhlášení na `/no-workspace`, včetně přesměrování na přihlášení.
  *
  * Profil je OSOBNÍ, ne projektový, a leží mimo skořápku projektu na
- * `/settings/profile`. Uvnitř projektu na něj míří `/settings/account`, což je
- * jen přesměrování; nabídka proto vede rovnou na cíl.
+ * `/settings/profile`. Nabídka vede rovnou tam.
+ *
+ * OD 6. 8. 2026 je to JEDINÁ cesta do Můj účet: položka „Nastavení > Můj účet"
+ * z registru navigace odešla, protože přístup ze dvou míst mátl a účet do
+ * nastavení projektu nepatří. Když tuhle nabídku někdo rozbije nebo schová,
+ * uživatel se ke svému profilu nedostane odnikud.
+ *
+ * Adresa nese `?from=<slug>`, protože profil je mimo skořápku a sám nepozná,
+ * ze kterého projektu se na něj přišlo. Bez toho by cesta zpět mířila u
+ * uživatele s víc projekty do jiného, než ze kterého odešel.
  */
-export function UserMenu({ user }: UserMenuProps) {
+export function UserMenu({ user, workspaceSlug }: UserMenuProps) {
   const t = useTranslations('common');
   const router = useRouter();
   const logoutRef = useRef<HTMLFormElement>(null);
@@ -83,7 +94,11 @@ export function UserMenu({ user }: UserMenuProps) {
             <p className="text-sm text-text-muted">{user.email}</p>
           </div>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => router.push('/settings/profile')}>
+          <DropdownMenuItem
+            onSelect={() =>
+              router.push(`/settings/profile?from=${encodeURIComponent(workspaceSlug)}`)
+            }
+          >
             {t('shell.profile')}
           </DropdownMenuItem>
           <DropdownMenuItem tone="danger" onSelect={() => logoutRef.current?.requestSubmit()}>

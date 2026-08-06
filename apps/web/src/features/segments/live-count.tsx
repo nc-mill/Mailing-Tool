@@ -3,7 +3,7 @@
 import { Button } from '@mlain/ui/components/button';
 import { Alert } from '@mlain/ui/patterns/states';
 import { useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatCount, hoursSince } from './labels';
 
 export type CountState = {
@@ -139,7 +139,17 @@ export function LiveCount({
     setAgeHours(hoursSince(state.cachedAt, new Date()));
   }, [state.cachedAt]);
 
-  useEffect(() => {
+  /**
+   * Jeden dotaz na počet. VYTAŽENO Z EFEKTU SCHVÁLNĚ: dokud byl dotaz zamčený
+   * uvnitř `useEffect`, neměla tlačítka „Spočítat", „Zkusit znovu"
+   * a „Přepočítat" co zavolat, a přesně proto tu stála bez `onClick`.
+   *
+   * Počítá se PODLE TOHO, CO JE NA OBRAZOVCE, ne uložený segment.
+   * `recountSegmentAction` se sem nehodí: přepočítává uloženou definici podle
+   * `id`, které tahle komponenta vůbec nedostává, takže by v editoru vrátila
+   * číslo k jiné podmínce, než jakou má uživatel rozepsanou před sebou.
+   */
+  const runPreview = useCallback(async () => {
     if (definition === undefined || definition === null) return;
     // Segment BEZ PODMÍNKY se na server neposílá. Není to prázdný dotaz,
     // je to „všechny kontakty", což builder říká sám, a schéma AST prázdnou
@@ -156,51 +166,53 @@ export function LiveCount({
     abort.current?.abort();
     const controller = new AbortController();
     abort.current = controller;
-    const timer = setTimeout(() => {
-      setCounting(true);
-      setFailed(false);
-      setFailure(null);
-      void fetch('/api/v1/segments/preview', {
+    setCounting(true);
+    setFailed(false);
+    setFailure(null);
+    try {
+      const res = await fetch('/api/v1/segments/preview', {
         method: 'POST',
         signal: controller.signal,
         headers: { 'Content-Type': 'application/json', 'X-Workspace-Id': workspaceId },
         body: JSON.stringify({ definition }),
-      })
-        .then(async (res) => {
-          if (res.ok) return res.json();
-          setFailure(await readFailure(res));
-          throw new Error('preview failed');
-        })
-        .then(
-          (body: {
-            count: number;
-            exact: boolean;
-            warnings: string[];
-            sample: CountState['sample'];
-          }) => {
-            setState({
-              count: body.count,
-              exact: body.exact,
-              warnings: body.warnings,
-              sample: body.sample ?? [],
-              cachedAt: new Date().toISOString(),
-            });
-            // Do aria-live se píše JEDNOU, až se hodnota ustálí.
-            setSettled(formatCount(body.count, locale));
-          },
-        )
-        .catch((error: unknown) => {
-          if ((error as { name?: string }).name === 'AbortError') return;
-          setFailed(true);
-        })
-        .finally(() => setCounting(false));
-    }, DEBOUNCE_MS);
+      });
+      if (!res.ok) {
+        setFailure(await readFailure(res));
+        setFailed(true);
+        return;
+      }
+      const body = (await res.json()) as {
+        count: number;
+        exact: boolean;
+        warnings: string[];
+        sample: CountState['sample'];
+      };
+      setState({
+        count: body.count,
+        exact: body.exact,
+        warnings: body.warnings,
+        sample: body.sample ?? [],
+        cachedAt: new Date().toISOString(),
+      });
+      // Do aria-live se píše JEDNOU, až se hodnota ustálí.
+      setSettled(formatCount(body.count, locale));
+    } catch (error: unknown) {
+      if ((error as { name?: string }).name === 'AbortError') return;
+      setFailed(true);
+    } finally {
+      // „Počítáme" smí zhasnout jen ten dotaz, který je pořád aktuální.
+      // Zrušený požadavek doběhne později než jeho náhrada a jinak by ji zhasl.
+      if (abort.current === controller) setCounting(false);
+    }
+  }, [definition, locale, workspaceId]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => void runPreview(), DEBOUNCE_MS);
     return () => {
       clearTimeout(timer);
-      controller.abort();
+      abort.current?.abort();
     };
-  }, [definition, locale, workspaceId]);
+  }, [runPreview]);
 
   const stale = ageHours !== null && ageHours >= STALE_HOURS;
 
@@ -210,7 +222,15 @@ export function LiveCount({
         {/* Nikdy nepočítaný segment ukazuje „Spočítat", nikdy nulu. Nula je
             odpověď, kterou jsme nedali. */}
         <p className="text-ui text-text-muted">{t('neverCounted')}</p>
-        <Button variant="secondary" size="sm" onClick={() => setState((prev) => ({ ...prev }))}>
+        {/* Dřív tu bylo `setState((prev) => ({ ...prev }))`, což jen vyrobilo
+            nový objekt stavu. Efekt na něm nezávisí, takže se nic nespočítalo
+            a tlačítko bylo mrtvé stejně jako ta bez `onClick`. */}
+        <Button
+          variant="secondary"
+          size="sm"
+          data-testid="live-count-run"
+          onClick={() => void runPreview()}
+        >
           {t('count.action')}
         </Button>
       </div>
@@ -285,7 +305,14 @@ export function LiveCount({
         <Alert
           tone="error"
           action={
-            <Button variant="secondary" size="sm">
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="live-count-retry"
+              pending={counting}
+              pendingLabel={t('count.counting')}
+              onClick={() => void runPreview()}
+            >
               {t('count.retry')}
             </Button>
           }
@@ -295,7 +322,15 @@ export function LiveCount({
       ) : null}
 
       {stale ? (
-        <Button variant="secondary" size="sm" className="self-start">
+        <Button
+          variant="secondary"
+          size="sm"
+          className="self-start"
+          data-testid="live-count-recount"
+          pending={counting}
+          pendingLabel={t('count.counting')}
+          onClick={() => void runPreview()}
+        >
           {t('recount')}
         </Button>
       ) : null}

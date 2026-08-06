@@ -1,5 +1,9 @@
+import { notFound } from 'next/navigation';
 import { loadConfig } from '@mlain/core/config';
 import { classifyTrackingDomain } from '@mlain/core/tracking';
+import { apiFetch } from '@/lib/api-client/fetch';
+import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
+import { CampaignLoadProblem } from '@/features/campaigns/campaign-load-problem';
 import { CampaignReport } from '@/features/reports/report/campaign-report';
 import { UnreachableDomainAlert } from '@/features/tracking/unreachable-domain-alert';
 
@@ -21,6 +25,39 @@ export default async function CampaignReportPage({
   // jména pro tutéž dynamickou cestu a sourozenci `send` i `progress` už
   // `id` používaly. Rozdíl shodil celou aplikaci na 500, ne jen tuhle stránku.
   const { workspaceSlug, id: campaignId } = await params;
+
+  /*
+   * EXISTENCI KAMPANĚ OVĚŘUJE SERVER, ne až komponenta v prohlížeči.
+   *
+   * Dřív tu žádná kontrola nebyla: data si tahal až klientský `CampaignReport`,
+   * takže vymyšlené `id` vrátilo 200 a uživatel dostal rozbitý report s nulami
+   * a chybovou hláškou uvnitř místo poctivé 404. Ze stavu stránky se pak nedalo
+   * poznat, jestli kampaň neexistuje, nebo jen nemá čísla.
+   *
+   * 404 SE ALE POSÍLÁ JEN Z OPRAVDOVÉ 404. Vypršení požadavku (`apiFetch` má
+   * desetisekundový limit), nedostupné API i vnitřní chyba nic neříkají o tom,
+   * jestli kampaň existuje, a věta „stránka nenalezena" by z nich udělala
+   * tvrzení, že kampaň zmizela. Tyhle případy patří do chybového bloku s kódem
+   * a číslem požadavku, viz `CampaignLoadProblem`; je to táž oprava, jakou už
+   * dostala obrazovka nastavení kampaně a obrazovka odeslání.
+   *
+   * Načítá se detail kampaně, ne její statistiky: report umí žít i s tím, že
+   * čísla ještě nedoběhla, ale nesmí se otevřít nad kampaní, která není.
+   */
+  const access = await getWorkspaceAccess(workspaceSlug);
+  if (!access.ok) {
+    // Nečlen projektu dál dostane 404, ta je správně (3.4 části 1).
+    if (access.problem.status === 404) notFound();
+    return <CampaignLoadProblem problem={access.problem} occurredAt={new Date().toISOString()} />;
+  }
+
+  const campaign = await apiFetch<{ id: string }>(`/api/v1/campaigns/${campaignId}`, {
+    workspaceId: access.data.workspace.id,
+  });
+  if (!campaign.ok) {
+    if (campaign.problem.status === 404) notFound();
+    return <CampaignLoadProblem problem={campaign.problem} occurredAt={new Date().toISOString()} />;
+  }
 
   /**
    * Pruh o nedosažitelné měřicí doméně stojí NAD reportem, ne uvnitř něj.

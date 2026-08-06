@@ -18,7 +18,7 @@ import {
 import { blockDefaults, DEFAULT_THEME } from '@mlain/emails/document/defaults';
 import type { Document } from '@mlain/emails/document/types';
 import { getFieldCatalog } from '../../../contacts/fields/catalog';
-import { createTemplate } from '../../../templates/service';
+import { createTemplate, saveDesign } from '../../../templates/service';
 import { registerCampaignRoutes } from '../campaigns.routes';
 import type { CampaignsEnv } from '../index';
 import { registerProviderRoutes } from '../../../providers/api/providers.routes';
@@ -869,6 +869,142 @@ describe('REST API kampaní', () => {
   it('DELETE neexistující kampaně je 404, ne 409', async () => {
     const res = await deleteCampaign('00000000-0000-4000-8000-000000000000');
     expect(res.status).toBe(404);
+  });
+
+  /* ---------------------------------------------------------------------- *
+   * Pracovní obsah smazané kampaně
+   *
+   * Kampaň nemá vlastní editor, upravovat se dá jedině šablona. Zakládání
+   * kampaně jí proto vyrobí v `templates` VLASTNÍ řádek `kind = 'system'`,
+   * který se v knihovně nevypisuje, a namíří na něj `campaigns.template_id`.
+   *
+   * Ten řádek nese CELÝ TEXT E-MAILU. Dokud smazání kampaně končilo na
+   * `campaigns`, zůstával v databázi s `deleted_at IS NULL`, tedy jako obsah,
+   * který se z pohledu databáze nikdy nesmazal. Naměřeno na datech: sirotci
+   * po každé smazané kampani, od prvního dne.
+   * ---------------------------------------------------------------------- */
+
+  /** Pracovní obsah kampaně: řádek `kind = 'system'` napojený přes `template_id`. */
+  async function seedWorkingCopy(campaignId: string, name: string): Promise<string> {
+    const fields = await getFieldCatalog(ctx.workspace);
+    const row = await createTemplate(
+      { ctx: ctx.workspace, fields, userId: ctx.userId },
+      { name, kind: 'system', document: templateDocument() as Document },
+    );
+    await migratorClient().query(`UPDATE campaigns SET template_id = $1 WHERE id = $2`, [
+      row.id,
+      campaignId,
+    ]);
+    return row.id;
+  }
+
+  /** Čte se pod migrátorskou rolí, tedy mimo RLS i mimo filtry domény. */
+  async function templateDeletedAt(templateId: string): Promise<string | null> {
+    const r = await migratorClient().query<{ deleted_at: string | null }>(
+      `SELECT deleted_at FROM templates WHERE id = $1`,
+      [templateId],
+    );
+    if (r.rows.length !== 1) throw new Error(`šablona ${templateId} v testovací databázi není`);
+    return r.rows[0]!.deleted_at;
+  }
+
+  /** Popisek dokumentu šablony. Na něm je poznat, čí obsah se právě čte. */
+  async function templateDocumentName(templateId: string): Promise<string> {
+    const r = await migratorClient().query<{ design: { meta: { name: string } } }>(
+      `SELECT design FROM templates WHERE id = $1`,
+      [templateId],
+    );
+    if (r.rows.length !== 1) throw new Error(`šablona ${templateId} v testovací databázi není`);
+    return r.rows[0]!.design.meta.name;
+  }
+
+  it('DELETE kampaně měkce smaže i její pracovní obsah, ne jen kampaň', async () => {
+    const id = await seedCampaign(ctx, { status: 'draft' });
+    const workingCopyId = await seedWorkingCopy(id, `Pracovní obsah · ${id}`);
+
+    expect((await deleteCampaign(id)).status).toBe(204);
+
+    expect(await templateDeletedAt(workingCopyId)).not.toBeNull();
+  });
+
+  it('DELETE kampaně nechá knihovní šablonu být: není to odpad, je to práce pro příště', async () => {
+    const libraryId = await seedTemplateWithLink();
+    const id = await seedCampaign(ctx, { status: 'draft' });
+    await migratorClient().query(`UPDATE campaigns SET template_id = $1 WHERE id = $2`, [
+      libraryId,
+      id,
+    ]);
+
+    expect((await deleteCampaign(id)).status).toBe(204);
+
+    expect(await templateDeletedAt(libraryId)).toBeNull();
+  });
+
+  /**
+   * Závora na jiné živé kampaně. Bez ní by smazání jedné z dvojice vzalo obsah
+   * i té druhé a editor by u ní hlásil, že šablona neexistuje.
+   *
+   * SDÍLENÍ SE TU VYRÁBÍ PŘÍMO V DATABÁZI, ne přes `POST /duplicate`, a je to
+   * po opravě duplikace JEDINÁ poctivá cesta: `duplicate` teď pracovní obsah
+   * KLONUJE, takže by tudy sdílený stav vůbec nevznikl a test by prošel
+   * naprázdno, aniž by závoru vyzkoušel.
+   *
+   * Takhle spárované kampaně v databázích existují: vyrobila je duplikace
+   * z doby před opravou a měkké smazání je nepřepisuje. Závora je proto pro
+   * dnešek zbytečná a pro data ze včerejška nutná.
+   */
+  it('DELETE kampaně nesahá na pracovní obsah, který drží ještě jiná živá kampaň', async () => {
+    const first = await seedCampaign(ctx, { status: 'draft' });
+    const second = await seedCampaign(ctx, { status: 'draft' });
+    const workingCopyId = await seedWorkingCopy(first, `Sdílený obsah · ${first}`);
+    // Druhá kampaň se na týž řádek namíří ručně, tedy do stavu, jaký po sobě
+    // nechala duplikace před opravou.
+    await migratorClient().query(`UPDATE campaigns SET template_id = $1 WHERE id = $2`, [
+      workingCopyId,
+      second,
+    ]);
+
+    expect((await deleteCampaign(second)).status).toBe(204);
+    expect(await templateDeletedAt(workingCopyId)).toBeNull();
+
+    // A jakmile odejde i ta druhá, obsah odejde s ní. Závora nic nedrží navěky.
+    expect((await deleteCampaign(first)).status).toBe(204);
+    expect(await templateDeletedAt(workingCopyId)).not.toBeNull();
+  });
+
+  /**
+   * Tichá ztráta dat, ne kosmetika. Dokud `duplicate` přebíral `template_id`
+   * beze změny, byla kopie a předloha JEDEN řádek `templates`, a protože obsah
+   * kampaně se edituje výhradně přes něj, přepsala úprava kopie obsah předlohy.
+   * Bez chyby a bez cesty zpátky.
+   */
+  it('duplikace dá kopii vlastní pracovní obsah, úprava kopie nepřepíše předlohu', async () => {
+    const original = await seedCampaign(ctx, { status: 'draft' });
+    const originalName = `Obsah předlohy · ${original}`;
+    const originalCopyId = await seedWorkingCopy(original, originalName);
+
+    const duplicated = await appFor(ctx.workspace).request(`/campaigns/${original}/duplicate`, {
+      method: 'POST',
+    });
+    expect(duplicated.status).toBe(201);
+    const copy = (await duplicated.json()) as { id: string; template_id: string | null };
+
+    // Odpověď musí nést NOVÝ řádek. Kdyby v ní zůstal ten původní, poslala by
+    // obrazovka uživatele upravovat pracovní obsah předlohy.
+    expect(copy.template_id).not.toBeNull();
+    expect(copy.template_id).not.toBe(originalCopyId);
+
+    const source = templateDocument() as Document;
+    const changed: Document = { ...source, meta: { ...source.meta, name: 'Přepsáno v kopii' } };
+    const fields = await getFieldCatalog(ctx.workspace);
+    await saveDesign(
+      { ctx: ctx.workspace, fields, userId: ctx.userId },
+      copy.template_id!,
+      changed,
+    );
+
+    expect(await templateDocumentName(copy.template_id!)).toBe('Přepsáno v kopii');
+    expect(await templateDocumentName(originalCopyId)).toBe(originalName);
   });
 });
 

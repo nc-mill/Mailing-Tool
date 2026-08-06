@@ -29,6 +29,10 @@ describe('mlain dispatcher', () => {
       // obsluhy, protože odpojení oddílu je DDL a worker na ně nemá práva.
       'partitions',
       'rebuild-engagement',
+      // Jednorázové převlečení uložených e-mailů do barev značky. Bez příkazu
+      // by instalace, která značku má a od upgradu ji znovu neuloží, zůstala
+      // se starými barvami napořád: jinak převlékání spouští až uložení značky.
+      'redress-brand',
       'reset-password',
       'restore',
       'rotate-credentials',

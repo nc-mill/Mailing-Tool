@@ -6,6 +6,13 @@ napíšeš první řádek.** Je to psané pro někoho, kdo návrhy neviděl.
 Etapa 0 je hotová: tokeny, písmo, ikony, skořápka a základní prvky. Tvoje
 obrazovka z toho skládá, nezakládá si vlastní.
 
+**Revize 6. 8. 2026.** Všechny tokeny z kapitoly 1 byly porovnány s
+`packages/ui/src/tokens.css` hodnotu po hodnotě a **sedí**. Cesty komponent
+a jejich propy z kapitoly 2 byly ověřeny proti `packages/ui/src/components/`
+a `packages/ui/src/patterns/`. Opraveny byly tři drobnosti: počet ikon, mřížka
+časové osy a ikona v ukázce nastavení sloupců (`SlidersHorizontal`, ne
+`Settings2`). Chybějící tokeny jsou dopsané v 1.7.
+
 ---
 
 ## 0. Než začneš
@@ -173,6 +180,7 @@ každou hodnotu.
 | `--size-sidebar` | `236px` | Rozbalené boční menu. |
 | `--size-sidebar-collapsed` | `76px` | Zabalené boční menu. |
 | `--size-target-min` | `44px` | **Nejmenší klikací plocha.** Nikdy pod to. |
+| `--size-control-lg` | `48px` | Velké tlačítko, `size="lg"`. |
 | `--size-control` | `40px` | Pole filtru, ikonové tlačítko v hlavičce. |
 | `--size-control-sm` | `36px` | Tlačítko v liště, stránkování, ikonový čtverec na dlaždici. |
 | `--size-control-xs` | `34px` | Ikonové tlačítko v řádku tabulky. |
@@ -187,8 +195,17 @@ každou hodnotu.
 | `--size-text-column` | `640px` | **Sloupec souvislého textu:** věta v hlavičce, formulář. Starší název `--container-prose` na něj odkazuje a funguje, ale nový kód piš s tímhle. |
 | `--size-field-number` | `200px` | Krátké číselné pole: platnost odkazu, strop odeslání. |
 | `--size-field-narrow` | `96px` | Nejužší číselné pole: šířka sloupce tabulky. |
+| `--size-timeline-time` | `62px` | **Nejmenší** šířka sloupce s časem na časové ose, viz 5.11. |
+| `--size-timeline-anchor` | `36px` | Sloupec s kotvou na časové ose. Kotva sama je `--size-control-2xs` (32 px). |
+| `--size-nav-item-collapsed` | `52px` | Položka menu, když je menu zabalené. |
+| `--size-flyout-min` | `242px` | Nejužší vysouvací panel podmenu. |
+| `--size-textarea-min` | `110px` | Nejnižší textová oblast, asi čtyři řádky. |
+| `--size-collapse-offset` | `26px` | Jak nízko pod hlavičkou sedí tlačítko zabalení menu. |
 | `--container-screen` | `1320px` | Strop šířky běžné obrazovky. |
 | `--container-screen-wide` | `1560px` | Strop obrazovky se širokou tabulkou. |
+
+Kromě toho existují `--color-chart-a` a `--color-chart-b` (barvy křivky
+v `TrendChart`) a `--shadow-flyout`. Sahá na ně jen základ, obrazovka ne.
 
 ### 1.8 Velikosti ikon
 
@@ -492,7 +509,8 @@ Sloupce, řazení, výběr, virtualizace a uložené šířky už komponenta um�
 Nepředělávej je, jen jí dodej data.
 
 **Nastavení sloupců patří do hlavičky obrazovky**, ne nad tabulku: ikonový
-čtverec 44×44 vedle hlavní akce, s ikonou `SlidersHorizontal`.
+čtverec 44×44 vedle hlavní akce, s ikonou `SlidersHorizontal`. Tu používá
+`DataTable` i všechny hotové obrazovky, jinou nedávej.
 
 Pozor, **návrhy si v tomhle odporují**: Seznamy to mají jako ikonový čtverec
 44×44 v hlavičce, Kontakty jako tlačítko se slovem „Sloupce" 40 px v řádku
@@ -507,7 +525,7 @@ const [sloupce, setSloupce] = useState(false);
   actions={
     <IconButton
       label={t('table.columnSettings')}
-      icon={<Settings2 aria-hidden className="icon-md" />}
+      icon={<SlidersHorizontal aria-hidden className="icon-md" />}
       aria-expanded={sloupce}
       onClick={() => setSloupce((o) => !o)}
     />
@@ -529,7 +547,9 @@ nemá jak zavřít.
 místo, kde se to rozhoduje**: osu používá detail kontaktu, report kampaně
 i webová aktivita, takže ji nepředělávej u sebe.
 
-- Mřížka `62px minmax(0,1fr) 36px`, mezera 15 px, okraj 14 px svisle.
+- Mřížka `minmax(var(--size-timeline-time),auto) minmax(0,1fr) var(--size-timeline-anchor)`,
+  tedy 62 px jako **nejmenší** šířka sloupce s časem (ne pevná, viz 5.11),
+  a 36 px sloupec kotvy. Mezera 15 px, okraj 14 px svisle.
 - **Linka je NAHOŘE** (`border-top`), ne dole. První řádek pod nadpisem dne
   tedy linku má, poslední v den ji nemá.
 - Čas: mono 13 px tlumeně.
@@ -552,7 +572,7 @@ Lucide, tedy přesně to, co je v návrhu.
 
 - V `apps/web` **nesmí být `lucide-react`** v `package.json`. Nepřidávej ho.
   `@mlain/ui` ho má a přeposílá, to stačí.
-- Sada má **122 ikon**: všechny, které jsou v návrzích (vytaženy strojově
+- Sada má **124 ikon** (stav 6. 8. 2026): všechny, které jsou v návrzích (vytaženy strojově
   porovnáním cest SVG proti datům Lucide), plus zásoba pro Nastavení,
   tabulku a editor. Než si o novou napíšeš, podívej se, jestli tam není.
 - **Ikonu nikdy nekresli ručně.** Když chybí, **napiš hlavnímu agentovi**;

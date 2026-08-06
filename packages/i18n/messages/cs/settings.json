@@ -140,7 +140,8 @@
     "slugHint": "Používá se v odkazech: /w/{slug}. Malá písmena, číslice a pomlčky.",
     "slugChangeWarning": "Změna adresy rozbije odkazy, které jste už poslali kolegům.",
     "locale": "Jazyk projektu",
-    "localeHint": "Jazyk systémových e-mailů a veřejných stránek pro příjemce.",
+    "localeHint": "Jazyk veřejných stránek pro příjemce, oslovení a nově zakládaných kontaktů. Jazyk rozhraní tím nezměníte, ten si každý nastavuje sám.",
+    "localeUiLink": "Přepnout jazyk rozhraní v Můj účet",
     "timezone": "Časová zóna projektu",
     "timezoneHint": "V téhle zóně se plánují kampaně a počítají reporty.",
     "greetingEnabled": {

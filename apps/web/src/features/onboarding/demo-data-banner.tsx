@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
 import { Badge } from '@mlain/ui/components/badge';
@@ -40,11 +40,26 @@ export type DemoDataState = {
  * Uživatel po každém potvrzení viděl jen hlášku, že se to nepovedlo, a data
  * v projektu zůstala.
  */
-export function DemoDataBanner({ state, slug }: { state: DemoDataState; slug: string }) {
+export function DemoDataBanner({
+  state,
+  slug,
+  canRemove = true,
+}: {
+  state: DemoDataState;
+  slug: string;
+  /**
+   * Smí přihlášený člověk ukázková data smazat? Rozhoduje `contacts:delete`,
+   * tedy editor a výš. Prohlížející tlačítko viděl, klikl a dostal odmítnutí,
+   * aniž by se dozvěděl proč. Skrýt se nesmí (pravidlo 2 z 7.2b), vysvětlí se.
+   */
+  canRemove?: boolean;
+}) {
   const t = useTranslations('onboarding.demo');
   const router = useRouter();
   const toast = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const reasonId = useId();
+  const reasonRef = useRef<HTMLParagraphElement | null>(null);
 
   if (!state.present || state.counts === null) return null;
   const counts = state.counts;
@@ -89,6 +104,11 @@ export function DemoDataBanner({ state, slug }: { state: DemoDataState; slug: st
           nebezpečí ukáže až při najetí. Pruh nemá k mazání tlačit, jen ho
           nabídnout, a potvrzení stejně řeší dialog.
         */}
+        {/*
+          Bez oprávnění tlačítko nemizí, jen místo okna přesune fokus na větu
+          s důvodem. Tichá varianta tlačítka `unavailableReason` neumí (to je
+          výsada hlasitých) a zašedit ji bez vysvětlení zakazuje kritérium 18.
+        */}
         <Button
           variant="ghost"
           size="sm"
@@ -96,11 +116,31 @@ export function DemoDataBanner({ state, slug }: { state: DemoDataState; slug: st
             'border-border-strong text-text-muted',
             'hover:border-danger hover:bg-transparent hover:text-danger-text',
           )}
-          onClick={() => setDialogOpen(true)}
+          data-testid="demo-remove"
+          {...(canRemove ? {} : { 'aria-describedby': reasonId })}
+          onClick={() => {
+            if (canRemove) {
+              setDialogOpen(true);
+              return;
+            }
+            reasonRef.current?.focus();
+          }}
         >
           {t('remove')}
         </Button>
       </div>
+
+      {canRemove ? null : (
+        <p
+          id={reasonId}
+          ref={reasonRef}
+          tabIndex={-1}
+          data-testid="demo-remove-forbidden"
+          className="w-full text-meta text-text-muted"
+        >
+          {t('removeForbidden')}
+        </p>
+      )}
 
       <DemoDataDialog
         open={dialogOpen}

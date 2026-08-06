@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { Button } from '@mlain/ui/components/button';
@@ -27,12 +27,68 @@ type DashboardPayload = {
 
 const PERIODS = [7, 30, 90] as const;
 
+/**
+ * Akce, na kterou přihlášený člověk nemá právo. NESKRÝVÁ SE, VYSVĚTLUJE SE
+ * (pravidlo 2 z 7.2b): skrytá akce vypadá, jako by v produktu nebyla, a člověk
+ * neví, co má chtít po kolegovi.
+ *
+ * Tlačítko není mrtvé a není zašedlé: kliknutí přesune fokus na větu s důvodem,
+ * takže se k vysvětlení dostane i ten, kdo obrazovku čte klávesnicí nebo
+ * odečítačem. Je to týž postup, jaký si vynutila tichá tlačítka jinde
+ * (viz `features/sending/guard-thresholds.tsx`): `unavailableReason` umí jen
+ * hlasité varianty tlačítka, a zašedit tichou variantu bez vysvětlení
+ * zakazuje kritérium 18.
+ */
+function ActionWithoutPermission({
+  label,
+  reason,
+  testId,
+}: {
+  label: string;
+  reason: string;
+  testId: string;
+}) {
+  const reasonId = useId();
+  const reasonRef = useRef<HTMLParagraphElement | null>(null);
+
+  return (
+    <div className="flex min-w-0 flex-col items-start">
+      <Button
+        variant="secondary"
+        aria-describedby={reasonId}
+        data-testid={testId}
+        onClick={() => reasonRef.current?.focus()}
+      >
+        {label}
+      </Button>
+      <p
+        id={reasonId}
+        ref={reasonRef}
+        tabIndex={-1}
+        className="mt-1 max-w-[42ch] text-meta text-text-muted"
+      >
+        {reason}
+      </p>
+    </div>
+  );
+}
+
 export function DashboardGrid({
   workspaceSlug,
   slots = {},
+  canImportContacts = true,
+  canCreateCampaign = true,
 }: {
   workspaceSlug: string;
   slots?: DashboardSlots;
+  /**
+   * Smí přihlášený člověk import (`contacts:import`) a založení kampaně
+   * (`campaigns:write`)? Obojí má editor a výš. Bez tohohle rozlišení nabízel
+   * Přehled obě akce i prohlížejícímu, který po kliknutí narazil na odmítnutí,
+   * aniž by tušil proč.
+   */
+  canImportContacts?: boolean;
+  canCreateCampaign?: boolean;
 }) {
   const t = useTranslations('reports');
   const format = useFormatter();
@@ -124,16 +180,37 @@ export function DashboardGrid({
           // Obě akce jsou ODKAZY, ne tlačítka s `router.push`: vedou na jinou
           // obrazovku, takže se musí dát otevřít prostředním tlačítkem myši
           // i s Cmd. Vzhled tlačítka dodá `asChild`.
+          //
+          // Komu na akci chybí oprávnění, ten ji vidí dál, jen s vysvětlením,
+          // koho požádat. Odkaz by ho pustil na obrazovku, která ho stejně
+          // odmítne, a to už je dneska: obě cílové stránky oprávnění samy
+          // nekontrolují, takže prohlížející doklikal až k odmítnutému uložení.
           <>
-            <Button asChild>
-              <Link href={`${basePath}/contacts/import`}>{t('dashboard.importContacts')}</Link>
-            </Button>
-            <Button asChild variant="primary">
-              <Link href={`${basePath}/campaigns/new`}>
-                {t('dashboard.newCampaign')}
-                <ArrowRight aria-hidden className="icon-sm" />
-              </Link>
-            </Button>
+            {canImportContacts ? (
+              <Button asChild>
+                <Link href={`${basePath}/contacts/import`}>{t('dashboard.importContacts')}</Link>
+              </Button>
+            ) : (
+              <ActionWithoutPermission
+                label={t('dashboard.importContacts')}
+                reason={t('dashboard.importForbidden')}
+                testId="dashboard-import-forbidden"
+              />
+            )}
+            {canCreateCampaign ? (
+              <Button asChild variant="primary">
+                <Link href={`${basePath}/campaigns/new`}>
+                  {t('dashboard.newCampaign')}
+                  <ArrowRight aria-hidden className="icon-sm" />
+                </Link>
+              </Button>
+            ) : (
+              <ActionWithoutPermission
+                label={t('dashboard.newCampaign')}
+                reason={t('dashboard.newCampaignForbidden')}
+                testId="dashboard-new-campaign-forbidden"
+              />
+            )}
           </>
         }
       >

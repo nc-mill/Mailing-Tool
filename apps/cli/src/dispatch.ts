@@ -8,6 +8,7 @@ import { runBackupCommand } from './commands/backup';
 import { runDoctorCommand } from './commands/doctor';
 import { runGenkeyCommand } from './commands/genkey';
 import { runRebuildEngagementCommand } from './commands/rebuild-engagement';
+import { runRedressBrandCommand } from './commands/redress-brand';
 import { runResetPasswordCommand } from './commands/reset-password';
 import { runRestoreCommand } from './commands/restore';
 import { runRotateCredentialsCommand } from './commands/rotate-credentials';
@@ -53,6 +54,18 @@ export async function dispatch(argv: readonly string[], streams: CliStreams): Pr
     streams.stdout(command.usage);
     streams.stdout('');
     streams.stdout(command.summary);
+    // Přepínače vypisuje TENHLE blok, protože `--help` se zachytává tady,
+    // dřív než se příkaz vůbec zavolá. Dokud registr přepínače neznal, neměla
+    // je nápověda odkud vzít a `mlain doctor --json` a `--strict` nebyly
+    // popsané nikde, přestože `--strict` mění exit kód.
+    if (command.options && command.options.length > 0) {
+      streams.stdout('');
+      streams.stdout('Přepínače:');
+      const width = Math.max(...command.options.map((option) => option.flag.length));
+      for (const option of command.options) {
+        streams.stdout(`  ${option.flag.padEnd(width)}  ${option.summary}`);
+      }
+    }
     if (!command.implemented) {
       streams.stdout('');
       streams.stdout(`Tenhle příkaz zatím není implementovaný. Dodá ho plán ${command.owner}.`);
@@ -104,7 +117,7 @@ export async function dispatch(argv: readonly string[], streams: CliStreams): Pr
       return runRotateCredentialsCommand(streams, rest, env);
     }
     case 'genkey': {
-      return runGenkeyCommand(streams, rest);
+      return runGenkeyCommand(streams, rest, env);
     }
     case 'reset-password': {
       return runResetPasswordCommand(streams, rest, env);
@@ -114,6 +127,9 @@ export async function dispatch(argv: readonly string[], streams: CliStreams): Pr
     }
     case 'partitions': {
       return runPartitionsCommand(streams, rest, env);
+    }
+    case 'redress-brand': {
+      return runRedressBrandCommand(streams, rest, env);
     }
     default: {
       streams.stderr(

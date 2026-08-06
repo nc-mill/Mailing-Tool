@@ -5,6 +5,8 @@ import { getProvider } from '@mlain/core/ai';
 import { Link } from '@mlain/i18n/navigation';
 import { NotFoundState } from '@mlain/ui/patterns/states';
 import { AiAssistantPanel } from '@/features/ai/assistant-panel';
+import { canRenameCampaign } from '@/features/campaigns/campaign-rename';
+import { canEditCampaignContent } from '@/features/campaigns/campaign-state';
 import { CampaignContentChrome } from '@/features/campaigns/content-step-chrome';
 import { CreateCampaignContent } from '@/features/campaigns/create-content';
 import { isFinishedCampaign } from '@/features/campaigns/campaign-target';
@@ -40,8 +42,12 @@ type CampaignDetail = {
   has_design: boolean;
 };
 
-/** Stavy, ve kterých se obsah kampaně ještě smí měnit. Shodné s detailem kampaně. */
-const EDITABLE_STATUSES = new Set(['draft', 'schedule_missed']);
+/*
+ * Stavy, ve kterých se obsah kampaně ještě smí měnit, jsou ve sdíleném
+ * `campaign-state.ts`. Do 6. 8. 2026 tu i na detailu kampaně stál vlastní
+ * `new Set(['draft', 'schedule_missed'])` a řádková nabídka by přidala třetí
+ * kopii téhož pravidla.
+ */
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('campaigns.settings');
@@ -61,6 +67,7 @@ export default async function CampaignContentPage({ params }: PageProps) {
   const { locale, workspaceSlug, id } = await params;
   const t = await getTranslations('campaigns.settings');
   const tEditor = await getTranslations('editor');
+  const tActions = await getTranslations('common.actions');
 
   const me = await requireUser(`/w/${workspaceSlug}/campaigns/${id}/content`);
   if (!me.ok) notFound();
@@ -75,9 +82,14 @@ export default async function CampaignContentPage({ params }: PageProps) {
     /*
      * `view=summary` vynechá dokument `design`, který je zdaleka největší sloupec
      * tabulky šablon a do nabídky k převzetí není k ničemu.
+     *
+     * `limit=100` je STROP CESTY, ne rozmar. Bez něj platí výchozí 25 a nabídka
+     * ukázala prvních dvacet pět šablon podle poslední úpravy, aniž by se z ní
+     * dalo poznat, že je uříznutá. Sto je maximum, které cesta připouští;
+     * `next_cursor` proto putuje dál do pruhu, ať se i o tenhle strop ví.
      */
-    apiFetch<{ items: Array<{ id: string; name: string }> }>(
-      '/api/v1/templates?kind=campaign&view=summary',
+    apiFetch<{ items: Array<{ id: string; name: string }>; next_cursor: string | null }>(
+      '/api/v1/templates?kind=campaign&view=summary&limit=100',
       { workspaceId },
     ),
   ]);
@@ -94,7 +106,16 @@ export default async function CampaignContentPage({ params }: PageProps) {
 
   const basePath = `/w/${workspaceSlug}`;
   const canEdit =
-    EDITABLE_STATUSES.has(campaign.data.status) && hasPermission(access.data, 'templates:write');
+    canEditCampaignContent(campaign.data.status) && hasPermission(access.data, 'templates:write');
+
+  /*
+   * PŘEJMENOVAT SE SMÍ ŠIRŠÍ MNOŽINA STAVŮ NEŽ UPRAVOVAT OBSAH, a jiné právo.
+   * Naplánovaná kampaň má obsah zamčený, ale `PATCH /campaigns/{id}` u ní
+   * `name` pouští (`EDITABLE_WHILE_SCHEDULED`). Právo je `campaigns:write`,
+   * ne `templates:write`: jméno je údaj kampaně, ne dokumentu.
+   */
+  const canRename =
+    canRenameCampaign(campaign.data.status) && hasPermission(access.data, 'campaigns:write');
 
   /*
    * Kampaň bez pracovní kopie nemá co otevřít. Jsou to kampaně z doby před
@@ -109,6 +130,7 @@ export default async function CampaignContentPage({ params }: PageProps) {
         campaignName={campaign.data.name}
         basePath={basePath}
         canEdit={canEdit}
+        canRename={canRename}
       />
     );
   }
@@ -177,7 +199,17 @@ export default async function CampaignContentPage({ params }: PageProps) {
        */
       returnTo={{
         href: campaignStepHref(basePath, id, 'basics'),
-        label: t('nextStep', { step: t('steps.basics') }),
+        /*
+         * JEN „Pokračovat", bez jména dalšího kroku.
+         *
+         * V pásu kroků nad editorem je vidět, že po obsahu jde „Předmět
+         * a název", takže „Pokračovat: Předmět a název" tutéž informaci
+         * opakuje a v hlavičce editoru zabírá skoro dvakrát tolik místa než
+         * ostatní akce. Ve formuláři kampaně (`settings-form`) delší tvar
+         * zůstává: tam je tlačítko samo na řádku a pás kroků je jinde na
+         * obrazovce.
+         */
+        label: tActions('continue'),
         campaignId: id,
       }}
       chrome={
@@ -188,8 +220,10 @@ export default async function CampaignContentPage({ params }: PageProps) {
           workingCopyId={campaign.data.template_id}
           hasDesign={campaign.data.has_design}
           templates={templates.ok ? templates.data.items : []}
+          templatesTruncated={templates.ok && templates.data.next_cursor !== null}
           basePath={basePath}
           readOnly={!canEdit}
+          canRename={canRename}
         />
       }
       canWriteHtml={canEdit}

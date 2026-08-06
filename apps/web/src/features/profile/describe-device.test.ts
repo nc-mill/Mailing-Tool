@@ -25,6 +25,16 @@ describe('describeDevice', () => {
     expect(describeDevice('curl/8.4.0', FALLBACK)).toBe(FALLBACK);
   });
 
+  /**
+   * STARÉ RELACE. Do 6. 8. 2026 se k přihlášení ukládal user agent Node
+   * (`node`), protože požadavek na API odesílal server, ne prohlížeč. Takové
+   * řádky v databázi zůstávají a obrazovka je musí unést: ukáže náhradní text,
+   * nespadne a nevypíše `node` jako jméno zařízení.
+   */
+  it('u starých relací s hodnotou node vrátí náhradní text', () => {
+    expect(describeDevice('node', FALLBACK)).toBe(FALLBACK);
+  });
+
   it('nikdy nevrátí celý user agent', () => {
     const agent = 'Mozilla/5.0 (X11; Linux x86_64) Firefox/141.0';
     expect(describeDevice(agent, FALLBACK)).not.toContain('Mozilla/5.0');

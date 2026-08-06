@@ -1,5 +1,12 @@
 # Část 5: Tracking, timeline a reporty
 
+<!-- puvod-dokumentu -->
+> **Platná produktová specifikace, ne historický záznam.** Část 5: tracking, timeline a reporty ze 31. 7. 2026, dopsaná
+> do rozhodnutě úplného stavu a zmrazená spolu s kontrakty. Pořád je to zdroj pravdy o tom, co produkt má dělat.
+> **Řádek „Stav: koncept" níž už neplatí**, dokument prošel křížovou revizí i narovnáním (viz `parts/STAV.md`).
+> Co se od té doby rozhodlo jinak, přebíjí ji.
+> **Jak daleko je provedení:** `docs/superpowers/STAV-UKOLU.md`.
+
 Vlastník: subagent part5-tracking
 Datum: 2026-07-31
 Rozvíjí kapitoly hlavní specifikace: 4.3, 4.4, 6.7 (a části 5, 9 v rozsahu eventů a soukromí)

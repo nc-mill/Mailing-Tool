@@ -1,5 +1,12 @@
 # P16: Onboarding, provoz, zálohy, ukázková data a E2E zlaté cesty
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P16 (onboarding, provoz, zálohy, ukázková data a E2E) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** průvodce prvním spuštěním, ukázková data, příkazy `mlain` i E2E zlaté cesty existují a produkční image naběhne.
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **Pro agentické pracovníky:** POVINNÁ PODDOVEDNOST: použij `superpowers:subagent-driven-development` (doporučeno) nebo `superpowers:executing-plans` a proveď plán úkol po úkolu. Kroky mají tvar zaškrtávacího políčka (`- [ ]`) kvůli sledování postupu.
 
 **Cíl:** Dovést instalaci od `docker compose up` k první odeslané kampani a k prokazatelně obnovitelné záloze: průvodce prvním spuštěním, ukázková data, která jdou hromadně označit a smazat, provozní příkazy `mlain` včetně `doctor`, který hlásí chybějící stará pokolení klíče jako kritickou chybu, a Playwright test zlaté cesty proti běžícímu compose.

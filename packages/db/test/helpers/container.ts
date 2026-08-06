@@ -1,6 +1,7 @@
 import { Client, Pool } from 'pg';
 import { inject } from 'vitest';
 import { runMigrations } from '../../src/migrate';
+import { resolveMigrationsFolder } from '../../src/migrations-folder';
 import { ROLES, TEMPLATE_DB, type RoleName } from '../global-setup';
 
 export type { RoleName };
@@ -94,5 +95,8 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
 
 /** Zmigruje databázi harnessu založeného s `migrate: false`. */
 export async function migrateHarness(h: Harness): Promise<void> {
-  await runMigrations({ url: h.urlFor('mlain_migrator') });
+  await runMigrations({
+    url: h.urlFor('mlain_migrator'),
+    migrationsFolder: resolveMigrationsFolder(),
+  });
 }

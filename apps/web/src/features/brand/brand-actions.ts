@@ -2,8 +2,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { saveDefaultBrandProfile } from '@mlain/core/brand';
+import { findDefaultBrandProfile, saveDefaultBrandProfile } from '@mlain/core/brand';
+import { getFieldCatalog } from '@mlain/core/contacts';
 import { createWorkspaceContext } from '@mlain/core/identity/context';
+import { redressTemplatesToBrand } from '@mlain/core/templates';
 import { withWorkspace } from '@mlain/core/tx';
 import type { Problem } from '@/lib/api-client/problem';
 import { failed, succeeded, type ActionState } from '@/lib/feedback/action-result';
@@ -143,9 +145,25 @@ export async function saveBrandProfileAction(
     workspaceRef: slug,
   });
 
+  /*
+   * Katalog polí se vyzvedává PŘED transakcí, stejně jako u ukázkových dat
+   * (`demo/api/demo-data.routes.ts`). Uvnitř by si otevřel druhé spojení
+   * z poolu, zatímco to první drží zámek nad řádky šablon. Potřebuje ho
+   * převlečení, které u každého dokumentu přepočítává stav validace.
+   */
+  const fields = await getFieldCatalog(ctx);
+
   try {
-    await withWorkspace(ctx, (tx) =>
-      saveDefaultBrandProfile(tx, access.data.workspace.id, {
+    await withWorkspace(ctx, async (tx) => {
+      /*
+       * Předchozí značka se čte PŘED zápisem a bez ní by převlečení neumělo
+       * rozlišit zděděné písmo od ručně nastaveného: `redressTemplatesToBrand`
+       * přebírá písmo a rádius jen tehdy, když v dokumentu pořád stojí hodnota
+       * ze staré značky nebo výchozí.
+       */
+      const previous = await findDefaultBrandProfile(tx);
+
+      await saveDefaultBrandProfile(tx, access.data.workspace.id, {
         name: parsed.data.name,
         palette: {
           primary: parsed.data.primary,
@@ -172,8 +190,31 @@ export async function saveBrandProfileAction(
           radius: parsed.data.radius,
         },
         logoAssetId: parsed.data.logo_asset_id === '' ? null : parsed.data.logo_asset_id,
-      }),
-    );
+      });
+
+      /*
+       * PŘEVLEČENÍ ULOŽENÝCH E-MAILŮ, ve stejné transakci jako uložení značky.
+       *
+       * Bez něj řeší značka jen nově zakládané e-maily a stížnost „změnil jsem
+       * barvy a v kampani mám pořád staré" platí dál. Motiv je součást
+       * uloženého dokumentu, takže se musí přepsat, ne dopočítat při zobrazení.
+       *
+       * SYNCHRONNĚ, ne úlohou na pozadí, a je to rozhodnutí podle rozsahu:
+       * převlékají se šablony JEDNOHO projektu, kterých jsou řádově desítky
+       * (v běžící instalaci šestnáct). Na pozadí by mezi uložením značky
+       * a převlečením vzniklo okno, ve kterém uživatel otevře kampaň a uvidí
+       * staré barvy, tedy přesně tu vadu, kvůli které to vzniká. Až by projekty
+       * měly stovky šablon, patří to do fronty úloh; hranice je v tom, kdy
+       * začne být transakce znatelně dlouhá, ne v počtu samotném.
+       *
+       * Nová značka se čte z databáze, ne skládá z formuláře: `saveDefaultBrandProfile`
+       * je upsert a jediný pravdivý tvar profilu je ten uložený.
+       */
+      const saved = await findDefaultBrandProfile(tx);
+      if (saved !== null) {
+        await redressTemplatesToBrand(tx, ctx, { previous, next: saved, fields });
+      }
+    });
   } catch {
     // Skutečný důvod (porušení cizího klíče u loga, výpadek spojení) se
     // uživateli nehodí. Hlásí se jedna věta a stav zůstane vyplněný.

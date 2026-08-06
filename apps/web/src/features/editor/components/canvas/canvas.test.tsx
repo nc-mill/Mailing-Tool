@@ -112,6 +112,66 @@ describe('Canvas', () => {
     expect(screen.getByTestId('block-b_t1')).toHaveAttribute('aria-selected', 'true');
   });
 
+  /**
+   * NÁVRAT K NASTAVENÍ MOTIVU.
+   *
+   * Panel motivu se ukazuje jen tehdy, když není vybraný žádný blok. Po prvním
+   * kliknutí do e-mailu k němu nevedla žádná cesta, takže se uživatel
+   * k nastavení pozadí, písem a šířky nedostal jinak než znovunačtením stránky.
+   * Zadavatel to hlásil doslova: „už není jak se vrátit k nastavení pozadí
+   * motivu". Odznačení se proto měří jako stav výběru, ne jako vzhled panelu:
+   * panel je jiná komponenta a na `selectedId` jen reaguje.
+   */
+  it('klik na plátno mimo blok výběr zruší, a tím se panel vrátí na Motiv', async () => {
+    const store = setup();
+    await userEvent.click(screen.getByTestId('block-b_t1'));
+    expect(store.getState().selectedId).toBe('b_t1');
+
+    // Plocha plátna je obal stromu, tedy to, co je kolem e-mailu.
+    await userEvent.click(screen.getByRole('tree').parentElement!);
+    expect(store.getState().selectedId).toBeNull();
+  });
+
+  /**
+   * A TEĎ TA DRUHÁ STRANA: odznačení nesmí ublížit práci s bloky.
+   *
+   * Obsluha sedí na obalu, kam kliknutí probublávají, což je přesně vzorec,
+   * na kterém se to dá pokazit. `BlockChrome` proto probublání zastavuje;
+   * kdyby to přestal dělat, klik do bloku by blok vybral a hned zase odznačil.
+   */
+  it('klik dovnitř bloku výběr nezruší', async () => {
+    const store = setup();
+    await userEvent.click(screen.getByTestId('block-b_t1'));
+    await userEvent.click(screen.getByTestId('block-b_h1'));
+    expect(store.getState().selectedId).toBe('b_h1');
+  });
+
+  /*
+   * POZOR, VRÁCENÍ FOKUSU PO PSANÍ SE TADY OTESTOVAT NEDÁ.
+   *
+   * V prohlížeči se pole pro psaní odchodem odmontuje a fokus spadne na
+   * `<body>`, který uvnitř stromu neleží, takže na plátno nedojde žádná další
+   * klávesa. Naměřeno: po prvním Esc hlásil `document.activeElement` `BODY`.
+   * Řeší to `stopEditing` v `canvas.tsx`, které fokus vrátí na obal bloku.
+   *
+   * Test na to tu ale NENÍ schválně: jsdom fokus po odmontování prvku
+   * nepřesouvá stejně jako prohlížeč, takže tvrzení projde i s vypnutou
+   * opravou. Zkoušeno. Test, který nemůže spadnout, dělá jen falešnou jistotu,
+   * a důkazem je proto měření v prohlížeči, ne tenhle soubor.
+   */
+  it('Escape odznačí blok, ale až když se nepíše', async () => {
+    const store = setup();
+    await userEvent.click(screen.getByTestId('block-b_t1'));
+    expect(store.getState().selectedId).toBe('b_t1');
+
+    // Klik do textového bloku rovnou otevře psaní, takže první Esc opouští
+    // psaní a blok zůstává vybraný. Teprve druhý výběr zruší.
+    await userEvent.keyboard('{Escape}');
+    expect(store.getState().selectedId).toBe('b_t1');
+    await userEvent.keyboard('{Escape}');
+    expect(store.getState().selectedId).toBeNull();
+  });
+
   it('Alt se šipkou dolů přesune vybraný blok', async () => {
     const store = setup();
     await userEvent.click(screen.getByTestId('block-b_h1'));

@@ -40,20 +40,22 @@ const OWNER = [
 ];
 
 describe('SettingsNav', () => {
-  it('vlastníkovi ukáže všech šest položek MVP 0', () => {
+  it('vlastníkovi ukáže všech pět položek MVP 0', () => {
+    // Pět, ne šest: „Můj účet" z Nastavení odešel 6. 8. 2026, protože profil je
+    // osobní, ne projektový, a vede k němu nabídka v pravém horním rohu.
     renderNav(OWNER);
-    for (const label of ['Projekt', 'Tým', 'Klíče k API', 'Webhooky', 'Audit log', 'Můj účet']) {
+    for (const label of ['Projekt', 'Tým', 'Klíče k API', 'Webhooky', 'Audit log']) {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
     }
+    expect(screen.queryByRole('link', { name: 'Můj účet' })).not.toBeInTheDocument();
   });
 
-  it('prohlížejícímu nechá jen Můj účet, protože ostatní položky mají oprávnění', () => {
-    renderNav(['workspace:read']);
-    // Můj účet je v registru bez oprávnění: je to vlastní profil uživatele.
-    expect(screen.getByRole('link', { name: 'Můj účet' })).toBeInTheDocument();
-    for (const label of ['Projekt', 'Tým', 'Klíče k API', 'Webhooky', 'Audit log']) {
-      expect(screen.queryByRole('link', { name: label })).not.toBeInTheDocument();
-    }
+  it('prohlížejícímu se navigace nevykreslí vůbec, nemá oprávnění na žádnou položku', () => {
+    // Dřív mu zbýval „Můj účet", jediná podpoložka bez oprávnění. Ta je pryč,
+    // takže sekce nemá co nabídnout a `SettingsNav` vrací `null`. Prázdná karta
+    // s nadpisem a bez jediného odkazu by byla horší než žádná.
+    const { container } = renderNav(['workspace:read']);
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('editorovi ukáže webhooky, ale ne klíče a audit', () => {

@@ -64,7 +64,6 @@ export function contactTableLabels(common: Translate, segments: Translate): Data
     sortedDescending: common('table.sortedDescending'),
     columnSettings: common('table.columns'),
     columnVisible: (column) => `${common('table.columns')}: ${column}`,
-    columnWidth: (column) => `${common('table.columns')}: ${column}`,
     // Popisek segmentu se do tabulky nepromítá, ale překladač se předává
     // schválně: obrazovka bez něj by si texty musela skládat sama.
     ...(segments('title') === '' ? {} : {}),

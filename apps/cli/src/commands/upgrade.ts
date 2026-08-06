@@ -6,6 +6,7 @@ import {
 } from '@mlain/core/ops';
 import { EXIT_CONFIG, EXIT_OK, EXIT_TEMPFAIL } from '../exit-codes';
 import { loadCliConfig } from './load-cli-config';
+import { reportMigrationFailure } from './migration-failure';
 import type { CliStreams } from '../dispatch';
 
 export async function runUpgradeCommand(
@@ -44,6 +45,17 @@ export async function runUpgradeCommand(
       streams.stderr(err.message);
       return EXIT_TEMPFAIL;
     }
+    // Sjednoceno s `mlain migrate`: selhaná migrace má svůj exit kód (3, 4, 5
+    // nebo 75), ne kód 1 se stackem. Upgrade padal právě tak, přestože volá
+    // týž runner, a protože běží ručně po zastavení procesů, byl ten stack
+    // jediné, co provozovatel dostal.
+    const code = reportMigrationFailure(streams, err, [
+      'Upgrade se zastavil za zálohou, schéma se NEZMĚNILO nebo se změnilo jen zčásti.',
+      'Procesy nechte zastavené a databázi nespouštějte proti nové verzi image.',
+      'Záloha z tohohle běhu je hotová, proběhla před migrací; vypíše ji mlain backup list.',
+      'Po odstranění příčiny spusťte mlain upgrade znovu, kroky jsou opakovatelné.',
+    ]);
+    if (code !== null) return code;
     throw err;
   }
 }

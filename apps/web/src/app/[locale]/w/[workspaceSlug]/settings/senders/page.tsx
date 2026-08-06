@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api-client/fetch';
 import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
+import { SettingsProblem } from '@/features/settings/settings-problem';
 import { SendersScreen, type SenderIdentityView } from '@/features/senders/senders-screen';
 import type { SenderDomainOption } from '@/features/senders/sender-dialog';
 
@@ -26,7 +27,17 @@ type ProviderRow = { id: string; name: string };
 export default async function SendersSettingsPage({ params }: PageProps) {
   const { workspaceSlug } = await params;
   const access = await getWorkspaceAccess(workspaceSlug);
-  if (!access.ok) notFound();
+  /*
+   * 404 JEN Z OPRAVDOVÉ 404. Nečlen projektu ji dostat má (3.4 části 1),
+   * vypršelý požadavek ne: `apiFetch` má desetisekundový limit a na přetíženém
+   * stroji ho překročí i zdravé čtení. Stará podoba `if (!access.ok) notFound()`
+   * z toho udělala „stránka nenalezena" a uživatel z ní čte, že mu projekt
+   * zmizel. Týž vzor drží zbytek Nastavení i obrazovka kampaně.
+   */
+  if (!access.ok) {
+    if (access.problem.status === 404) notFound();
+    return <SettingsProblem problem={access.problem} />;
+  }
   const workspaceId = access.data.workspace.id;
 
   const [identities, domains, providers] = await Promise.all([

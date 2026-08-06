@@ -1,8 +1,25 @@
 # Stav zpracování specifikací
 
-Poslední aktualizace: 2026-07-31, po revizi kódu a jednom kole rozmrazení kontraktu
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Stavový dokument fáze psaní specifikací, poslední zápis 31. 7. 2026.
+> Popisuje, jak se sedm částí psalo, revidovalo a mrazilo. **Ta fáze skončila**, specifikace v `parts/` jsou hotové a platné.
+> Oddíl „Co zbývá" je stav k 31. 7. 2026, ne dnešní seznam úkolů.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
+**Poslední revize: 2026-08-06.** Co je tenhle dokument: uzavřený zápis o tom, jak vznikaly
+a jak se srovnávaly specifikace v `parts/`. Hledej v něm, které kontroly proběhly, co se
+kdy zaneslo do kterého dokumentu a kde skončily jednotlivé otázky. **Není to popis stavu
+implementace**, ten je v `docs/superpowers/plans/STAV-IMPLEMENTACE.md`.
+
+> **Fáze specifikací skončila 2026-08-01.** Od té doby se píše kód a některá tvrzení
+> níž jsou proto překonaná implementací. Kde se to podařilo ověřit, je to u položky
+> napsané. Obsah specifikací se nemění, mění se jen zápis o jejich stavu.
+
+Původní hlavička: poslední aktualizace 2026-07-31, po revizi kódu a jednom kole rozmrazení
+kontraktu.
 Orchestrátor: hlavní agent. Subagenti nesahají na git.
-Název produktu: **Mlain Mailer**, rozhodnuto zadavatelem, zaneseno.
+Název produktu: **Mlain Mailer**, rozhodnuto zadavatelem, zaneseno. Ověřeno 2026-08-06, že
+scope balíčků je `@mlain/*` a CLI má tvar `mlain <příkaz>`.
 
 ## Hotovo
 
@@ -56,11 +73,14 @@ Kontroly doplněné po vlně 3, všechny ověřené skriptem proti obsahu soubor
 
 ## Co zbývá
 
+Přepočítáno 2026-08-06 proti `../ROZHODNUTI-PRO-ZADAVATELE.md`, protože dřívější čísla
+v téhle tabulce se s ním neshodovala.
+
 | Co | Kdo | Poznámka |
 |---|---|---|
-| Šest otázek pro právníka | zadavatel | Blokuje spuštění provozu, ne psaní kódu |
-| Čtyři empirická ověření | tým, před implementací | Většina je na pět minut, dvě mění návrh, když dopadnou špatně |
-| Souhlas s měřením per kontakt | nikdo to nevlastní | Práce na půl dne, závisí na odpovědi právníka |
+| Otázky pro právníka | zadavatel | Blokuje spuštění provozu, ne psaní kódu. **Kolik jich je, se z dokumentů nedá určit:** kapitola 4 v `ROZHODNUTI-PRO-ZADAVATELE.md` vypisuje **čtyři**, zatímco její vlastní shrnutí v kapitole 6.1 i dřívější znění tady mluví o **šesti**. Rozpor se nepodařilo rozhodnout, seznam čtyř je jediný doložený |
+| Empirická ověření | tým, před implementací | Šest celkem, z toho **dvě už prozkoumaná** (SES a hlavičky pro odhlášení, rozpoznání falešných otevření od Applu) a **čtyři otevřená**. Dvě mění návrh, když dopadnou špatně. Dřívější „čtyři" mířilo jen na ta otevřená |
+| Souhlas s měřením per kontakt | nikdo to nevlastní | Práce na půl dne, závisí na odpovědi právníka. **Ověřeno 2026-08-06 grepem: v kódu pro to není nic**, takže tvrzení platí dál |
 
 ## Průchod s rozhodnutími zadavatele k části 4 (2026-07-31)
 
@@ -105,10 +125,22 @@ Zanesené rozhodnutí zadavatele: **renderer `@react-email/components` a `@react
 
 **Zásah do ZMRAZENÉHO KONTRAKTU 4.10.2:** řetězcové literály jsou vyřazené z autorské šablony. Důvod: každý React renderer escapuje uvozovky, takže `{{ x | default: "y" }}` se změní na entity a přestane být platným Liquidem (`TokenizationError` proti liquidjs). Náhradní hodnota `default` a formát `date` se berou z atributů uzlu `var` a kompilace je doplní až po renderu.
 
-**Dvě věci zůstaly otevřené a jsou v dokumentech označené jako nerozhodnuté:**
+**Dvě věci zůstávaly otevřené. Obě jsou od té doby uzavřené, viz níž.**
 
-1. **Operátory `>`, `<`, `>=`, `<=` v podmínkách** se escapují úplně stejně jako uvozovky (`&gt;`, `&lt;`), takže `{% if score > 5 %}` má tentýž problém. Rozhodnutí zadavatele se týkalo jen uvozovek. Do rozhodnutí je validátor odmítá jako blokující chybu. Zapsáno v 1, 4.10.2 jako otevřená podotázka, a v 3, 3.7.2.
-2. **Nález K4 (`blank` a `empty` neexistují v `osteele/liquid`)** měl schválené řešení „nahradit `!= \"\"`", což je teď zakázaný řetězcový literál. Nález nezaniká, jen ho nelze obejít takhle. Zapsáno v 4b, K4 a v 3, 3.7.2a.
+1. **Operátory `>`, `<`, `>=`, `<=` v podmínkách** se escapují úplně stejně jako uvozovky (`&gt;`, `&lt;`), takže `{% if score > 5 %}` má tentýž problém. Rozhodnutí zadavatele se týkalo jen uvozovek. Do rozhodnutí je validátor odmítal jako blokující chybu. Zapsáno v 1, 4.10.2 jako otevřená podotázka, a v 3, 3.7.2.
+
+   > **UZAVŘENO 2026-08-01 zadavatelem, rozhodnutí R7** v `../../plans/ROZHODNUTI-O-VLASTNICTVI.md`.
+   > V MVP 0 zůstávají zakázané, kdo potřebuje porovnávat, použije segment. Zařazeno do MVP 1.
+   > Pro plány to neznamenalo žádnou změnu, validátor se tak choval už předtím. Kdo tu poznámku
+   > znovu otevře, ať si napřed přečte R7.
+
+2. **Nález K4 (`blank` a `empty` neexistují v `osteele/liquid`)** měl schválené řešení „nahradit `!= \"\"`", což je teď zakázaný řetězcový literál. Nález nezanikl, jen ho nešlo obejít takhle. Zapsáno v 4b, K4 a v 3, 3.7.2a.
+
+   > **UZAVŘENO IMPLEMENTACÍ, ověřeno 2026-08-06 v kódu.** Ze dvou cest, které 4b nechávala
+   > otevřené, se šlo tou první: `blank` a `empty` v gramatice zůstávají a Go je řeší
+   > předzpracováním podmínky při kompilaci. Porovnání se přepisuje na dopočítanou vazbu
+   > `_blank`, viz `apps/sender/internal/liquidx/rewrite.go` a `rewrite_test.go`.
+   > Text v 4b, kapitola 11.1, o tom pořád píše jako o nerozhodnuté věci.
 
 ## Poznámka k metodě
 

@@ -41,7 +41,6 @@ const labels = {
   sortedDescending: 'seřazeno sestupně',
   columnSettings: 'Nastavit sloupce',
   columnVisible: (column: string) => `Zobrazit sloupec ${column}`,
-  columnWidth: (column: string) => `Šířka sloupce ${column}`,
 };
 
 function props(overrides: Partial<React.ComponentProps<typeof DataTable<Contact>>> = {}) {
@@ -168,17 +167,12 @@ describe('klávesová rovnocennost datové tabulky', () => {
     expect(order.onChange).toHaveBeenCalledWith('email.desc');
   });
 
-  it('viditelnost i šířka sloupce jdou nastavit z klávesnice', async () => {
+  it('viditelnost sloupce jde nastavit z klávesnice', async () => {
     const user = userEvent.setup();
     render(<DataTable {...props()} />);
 
     screen.getByRole('button', { name: 'Nastavit sloupce' }).focus();
     await user.keyboard('{Enter}');
-
-    const width = screen.getByLabelText('Šířka sloupce E-mail');
-    width.focus();
-    await user.keyboard('320');
-    expect(width).toHaveValue(320);
 
     screen.getByRole('checkbox', { name: 'Zobrazit sloupec Jméno' }).focus();
     await user.keyboard(' ');
@@ -207,5 +201,93 @@ describe('klávesová rovnocennost datové tabulky', () => {
     screen.getAllByRole('row')[2]!.focus();
     await user.keyboard('{Enter}');
     expect(onRowActivate).toHaveBeenCalledWith(rows[1]!);
+  });
+});
+
+/**
+ * OVLÁDACÍ PRVEK UVNITŘ BUŇKY. Tohle tady do 6. 8. 2026 nebylo, a proto byl
+ * soubor zelený, přestože se tlačítko v řádku z klávesnice spustit NEDALO.
+ *
+ * Naměřeno v prohlížeči na seznamu kontaktů: Enter na tlačítku „označit jako
+ * potvrzený" neposlal na server nic, stav kontaktu se nezměnil a uživatel skončil
+ * na detailu; mezerník místo potvrzení přepnul výběr řádku. Myší tlačítko
+ * fungovalo. Příčina byla v tom, že obsluha kláves na řádku volala
+ * `preventDefault()` i pro klávesu, která přišla z tlačítka, a tím potlačila
+ * jeho vlastní aktivaci.
+ *
+ * Sweep tabulátorem výš tohle nechytí a nikdy nechytil: dostat se na prvek
+ * a spustit ho jsou dvě různá tvrzení. Proto tahle skupina.
+ */
+describe('klávesová rovnocennost: ovládací prvek uvnitř buňky', () => {
+  beforeEach(() => window.localStorage.clear());
+
+  /** Sloupec s akcí v buňce, jako má seznam kontaktů (potvrzení, nabídka „…"). */
+  function withAction(onAction: () => void): DataTableColumn<Contact>[] {
+    return [
+      ...columns,
+      {
+        id: 'action',
+        header: 'Akce',
+        cell: (row) => (
+          <button type="button" onClick={onAction}>
+            {`Potvrdit ${row.email}`}
+          </button>
+        ),
+      },
+    ];
+  }
+
+  it('Enter na tlačítku v buňce ho spustí a NEOTEVŘE řádek', async () => {
+    const user = userEvent.setup();
+    const onAction = vi.fn();
+    const onRowActivate = vi.fn();
+    render(<DataTable {...props({ columns: withAction(onAction), onRowActivate })} />);
+
+    screen.getByRole('button', { name: 'Potvrdit kontakt1@firma.cz' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    // Tohle je ta vada: uživatel skončil na detailu místo toho, aby se stala akce.
+    expect(onRowActivate).not.toHaveBeenCalled();
+  });
+
+  it('mezerník na tlačítku v buňce ho spustí a NEPŘEPNE výběr řádku', async () => {
+    const user = userEvent.setup();
+    const onAction = vi.fn();
+    render(<DataTable {...props({ columns: withAction(onAction) })} />);
+
+    screen.getByRole('button', { name: 'Potvrdit kontakt1@firma.cz' }).focus();
+    await user.keyboard(' ');
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole('row')[2]).toHaveAttribute('aria-selected', 'false');
+    expect(screen.queryByTestId('selection-bar')).toBeNull();
+  });
+
+  it('zaškrtávátko řádku jde přepnout mezerníkem, a to právě jednou', async () => {
+    const user = userEvent.setup();
+    render(<DataTable {...props()} />);
+
+    // Dvojí přepnutí (jednou prvkem, jednou řádkem) by se vyrušilo a zaškrtávátko
+    // by se tvářilo jako rozbité. Proto se ověřuje výsledek, ne počet volání.
+    screen.getAllByRole('checkbox', { name: 'Označit řádek' })[1]!.focus();
+    await user.keyboard(' ');
+
+    expect(screen.getAllByRole('row')[2]).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('Vybráno 1 kontaktů na této stránce')).toBeVisible();
+  });
+
+  /**
+   * Pohyb mezi řádky výjimku nemá a mít nesmí. Kdo stojí na tlačítku uvnitř buňky,
+   * se musí šipkou dostat na další řádek, jinak je v tabulce uvězněný.
+   */
+  it('šipky fungují i z tlačítka uvnitř buňky', async () => {
+    const user = userEvent.setup();
+    render(<DataTable {...props({ columns: withAction(vi.fn()) })} />);
+
+    screen.getByRole('button', { name: 'Potvrdit kontakt1@firma.cz' }).focus();
+    await user.keyboard('{ArrowDown}');
+
+    expect(document.activeElement).toBe(screen.getAllByRole('row')[3]);
   });
 });

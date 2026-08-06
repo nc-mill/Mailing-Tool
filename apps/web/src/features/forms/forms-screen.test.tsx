@@ -18,8 +18,12 @@ Element.prototype.releasePointerCapture ??= () => {};
 Element.prototype.scrollIntoView ??= () => {};
 
 const createForm = vi.fn();
+const updateForm = vi.fn();
+const deleteForm = vi.fn();
 vi.mock('./actions', () => ({
   createFormAction: (input: unknown) => createForm(input),
+  updateFormAction: (input: unknown) => updateForm(input),
+  deleteFormAction: (input: unknown) => deleteForm(input),
 }));
 
 const push = vi.fn();
@@ -73,7 +77,24 @@ function renderScreen(forms: FormView[], canEdit = true) {
 beforeEach(() => {
   vi.clearAllMocks();
   createForm.mockResolvedValue({ status: 'success', id: 'form-9' });
+  updateForm.mockResolvedValue({ status: 'success', id: 'form-1' });
+  deleteForm.mockResolvedValue({ status: 'success', id: 'form-1' });
 });
+
+/**
+ * Akce řádku bydlí od 6. 8. 2026 v nabídce „…". Zavřená nabídka svoje položky
+ * vůbec nevykresluje, takže ji test musí nejdřív otevřít.
+ */
+async function openRowMenu(user: ReturnType<typeof userEvent.setup>, index = 0) {
+  const triggers = screen.getAllByRole('button', { name: /Další akce s formulářem/ });
+  const trigger = triggers[index];
+  if (trigger === undefined) throw new Error(`Řádek ${index} nemá nabídku akcí.`);
+  await user.click(trigger);
+}
+
+function itemNames() {
+  return screen.getAllByRole('menuitem').map((item) => item.textContent);
+}
 
 describe('FormsScreen', () => {
   it('prázdný stav vysvětlí, k čemu formulář je, a nabídne založení', async () => {
@@ -141,5 +162,154 @@ describe('FormsScreen', () => {
       'Seznam, do kterého má formulář zapisovat, neexistuje.',
     );
     expect(push).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * KDYBY TENHLE BLOK SPADL: z řádku formuláře zase vede jediná cesta, a to kód
+ * k vložení. Pozastavení bylo do 6. 8. 2026 schované v přepínači uvnitř
+ * editoru, takže se muselo dvakrát proklikat, a smazat formulář šlo taky jen
+ * odtamtud.
+ */
+describe('nabídka „…" v řádku formuláře', () => {
+  it('běžící formulář nabízí pozastavení, ne spuštění', async () => {
+    const user = userEvent.setup();
+    renderScreen([FORM]);
+
+    await openRowMenu(user);
+    expect(itemNames()).toEqual([
+      'Upravit',
+      'Vložit na web',
+      'Pozastavit',
+      'Zobrazit cílový seznam',
+      'Smazat',
+    ]);
+  });
+
+  /*
+   * Dvě různé položky, ne jedna zašedlá: v nabídce stojí vždycky ta, která stav
+   * doopravdy změní. Zašedlá položka bez vysvětlení je zakázaná.
+   */
+  it('pozastavený formulář nabízí spuštění, ne pozastavení', async () => {
+    const user = userEvent.setup();
+    renderScreen([{ ...FORM, active: false }]);
+
+    await openRowMenu(user);
+    expect(itemNames()).toContain('Spustit');
+    expect(itemNames()).not.toContain('Pozastavit');
+  });
+
+  it('formulář bez cílového seznamu ho nenabízí zobrazit', async () => {
+    const user = userEvent.setup();
+    renderScreen([{ ...FORM, list_ids: [] }]);
+
+    await openRowMenu(user);
+    expect(itemNames()).not.toContain('Zobrazit cílový seznam');
+  });
+
+  /*
+   * Vložení na web je ČTENÍ: stránka s kódem nic nemění, takže na ni má nárok
+   * i ten, kdo formuláře upravovat nesmí.
+   */
+  it('bez práva zapisovat zbyde jen vložení na web a cílový seznam', async () => {
+    const user = userEvent.setup();
+    renderScreen([FORM], false);
+
+    await openRowMenu(user);
+    expect(itemNames()).toEqual(['Vložit na web', 'Zobrazit cílový seznam']);
+  });
+
+  it('„Pozastavit" vypne sběr přihlášení a obnoví seznam', async () => {
+    const user = userEvent.setup();
+    renderScreen([FORM]);
+
+    await openRowMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Pozastavit' }));
+
+    await waitFor(() => {
+      expect(updateForm).toHaveBeenCalledWith({
+        workspaceId: 'ws-1',
+        id: 'form-1',
+        body: { active: false },
+      });
+    });
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it('„Spustit" sběr zase zapne', async () => {
+    const user = userEvent.setup();
+    renderScreen([{ ...FORM, active: false }]);
+
+    await openRowMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Spustit' }));
+
+    await waitFor(() => {
+      expect(updateForm).toHaveBeenCalledWith({
+        workspaceId: 'ws-1',
+        id: 'form-1',
+        body: { active: true },
+      });
+    });
+  });
+
+  it('„Zobrazit cílový seznam" vede na detail seznamu, ne na formulář', async () => {
+    const user = userEvent.setup();
+    renderScreen([FORM]);
+
+    await openRowMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Zobrazit cílový seznam' }));
+
+    expect(push).toHaveBeenCalledWith('/w/muj-projekt/lists/list-1');
+  });
+
+  it('„Vložit na web" vede na stránku s kódem', async () => {
+    const user = userEvent.setup();
+    renderScreen([FORM]);
+
+    await openRowMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Vložit na web' }));
+
+    expect(push).toHaveBeenCalledWith('/w/muj-projekt/forms/form-1/embed');
+  });
+
+  /*
+   * KDYBY TENHLE TEST SPADL: z okna mazání zmizel výčet následků. Formulář
+   * vložený na cizím webu po smazání ukáže prázdno, a to se musí říct předem.
+   */
+  it('mazání se ptá a vyjmenuje následky včetně veřejné adresy', async () => {
+    const user = userEvent.setup();
+    renderScreen([FORM]);
+
+    await openRowMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Smazat' }));
+
+    expect(await screen.findByText(/Smazat formulář Newsletter\?/)).toBeInTheDocument();
+    expect(screen.getByText(/jeho veřejná adresa přestane fungovat/)).toBeInTheDocument();
+    expect(screen.getByText(/Kontakty, které přes formulář přišly, zůstávají/)).toBeInTheDocument();
+    expect(screen.getByText(/vypněte přepínač/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Smazat formulář' }));
+    await waitFor(() => {
+      expect(deleteForm).toHaveBeenCalledWith({ workspaceId: 'ws-1', id: 'form-1' });
+    });
+  });
+
+  it('selhání mazání řekne důvod ze serveru', async () => {
+    const user = userEvent.setup();
+    deleteForm.mockResolvedValue({
+      status: 'error',
+      code: 'conflict',
+      detail: 'Formulář zrovna zpracovává přihlášení.',
+      fieldErrors: {},
+    });
+    renderScreen([FORM]);
+
+    await openRowMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Smazat' }));
+    await user.click(screen.getByRole('button', { name: 'Smazat formulář' }));
+
+    expect(await screen.findByTestId('forms-error')).toHaveTextContent(
+      'Formulář zrovna zpracovává přihlášení.',
+    );
   });
 });

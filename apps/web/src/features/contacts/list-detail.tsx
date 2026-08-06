@@ -15,12 +15,12 @@ import { Tooltip } from '@mlain/ui/components/tooltip';
 import { Archive, ChevronRight, CircleCheckBig, Save } from '@mlain/ui/icons';
 import { Alert } from '@mlain/ui/patterns/states';
 import {
-  archiveListAction,
   confirmPendingAction,
   setConfirmationModeAction,
   setListPublicVisibilityAction,
   setOptInAction,
 } from './actions';
+import { ListArchiveDialog } from './list-archive-dialog';
 import {
   saveListBasicsAction,
   saveListRedirectsAction,
@@ -155,6 +155,9 @@ export function ListDetail({
   const [redirectsSaved, setRedirectsSaved] = useState(false);
   const [defaultSaved, setDefaultSaved] = useState(false);
   const [defaultError, setDefaultError] = useState(false);
+  // Archivace se ptá. Je to jediné mazání seznamu, které produkt má, takže se
+  // nesmí provést z jednoho kliknutí na ikonu, viz `ListArchiveDialog`.
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [savingBasics, setSavingBasics] = useState(false);
   const [basicsSaved, setBasicsSaved] = useState(false);
   const [basicsError, setBasicsError] = useState(false);
@@ -286,12 +289,15 @@ export function ListDetail({
           <>
             {/* Archivace je v návrhu ikonový čtverec 44×44 s bublinou, ne tlačítko
                 se slovem: vedle hlavní akce by druhé textové tlačítko soupeřilo
-                o pozornost. Popisek nese `aria-label`, takže se význam neztratí. */}
+                o pozornost. Popisek nese `aria-label`, takže se význam neztratí.
+                Ikona jen OTEVÍRÁ okno, nearchivuje: je to jediné mazání seznamu,
+                které produkt má, a kliknutí vedle by znamenalo ztrátu přístupu. */}
             {list.archived ? null : (
               <Tooltip content={t('lists.archive')}>
                 <button
                   type="button"
                   aria-label={t('lists.archive')}
+                  data-testid="list-archive-open"
                   className={[
                     'inline-flex items-center justify-center',
                     'size-[var(--size-target-min)] rounded-[var(--radius-control)]',
@@ -301,10 +307,7 @@ export function ListDetail({
                     'hover:translate-y-[var(--edge-travel)] hover:bg-surface-muted',
                     'hover:shadow-[0_var(--edge-pressed)_0_var(--color-edge)]',
                   ].join(' ')}
-                  onClick={async () => {
-                    await archiveListAction({ workspaceId, id: list.id });
-                    router.push(basePath);
-                  }}
+                  onClick={() => setArchiveOpen(true)}
                 >
                   <Archive aria-hidden className="icon-md" />
                 </button>
@@ -324,6 +327,19 @@ export function ListDetail({
             </Button>
           </>
         }
+      />
+
+      <ListArchiveDialog
+        workspaceId={workspaceId}
+        listId={list.id}
+        name={list.name}
+        isDefault={list.is_default}
+        open={archiveOpen}
+        onOpenChange={setArchiveOpen}
+        onArchived={() => {
+          setArchiveOpen(false);
+          router.push(basePath);
+        }}
       />
 
       <div className="flex flex-col gap-[var(--spacing-gutter)]">

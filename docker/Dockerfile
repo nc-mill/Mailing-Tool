@@ -52,6 +52,24 @@ RUN pnpm dlx turbo@2.10.7 prune @mlain/web @mlain/worker @mlain/cli --docker
 FROM node:24.18.1-alpine AS node-deps
 RUN corepack enable && corepack prepare pnpm@11.18.0 --activate
 WORKDIR /app
+# Výměna libvips za vlastní sestavení. NENÍ to volitelné pohodlí, je to druhá
+# licenční povinnost LGPL-3.0: `@img/sharp-libvips` se s image distribuuje
+# a příjemce musí mít reálnou cestu, jak si tu knihovnu nahradit svou.
+#
+# Musí to být ARG a ENV právě TADY, ve fázi node-deps a PŘED `pnpm install`:
+# proměnnou čte instalační skript balíčku sharp, tedy se musí projevit ve chvíli
+# instalace závislostí. Později už je pozdě a dřív ji fáze nevidí (ARG před FROM
+# je ve fázích neviditelný, dokud ho fáze nezopakuje).
+#
+# Dokumentace tenhle postup popisovala dřív, než tady ARG existoval. Nepřevzatý
+# `--build-arg` Docker jen odvaruje na stderr a build normálně doběhne
+# s přibalenou knihovnou, takže výměna TIŠE neproběhla a vypadalo to, že
+# proběhla. Hlídá to `apps/web/test/ci/license-obligations.test.ts`, a hlídá
+# tenhle řádek, ne větu v dokumentaci.
+#
+# Výchozí 0 = chování beze změny, tedy přibalená knihovna z npm.
+ARG SHARP_FORCE_GLOBAL_LIBVIPS=0
+ENV SHARP_FORCE_GLOBAL_LIBVIPS=${SHARP_FORCE_GLOBAL_LIBVIPS}
 COPY --from=pruner /app/out/json/ ./
 RUN --mount=type=cache,target=/pnpm-store \
     pnpm config set store-dir /pnpm-store && pnpm install --frozen-lockfile

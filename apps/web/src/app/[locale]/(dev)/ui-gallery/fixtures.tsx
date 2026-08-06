@@ -47,7 +47,6 @@ const tableLabels = {
   sortedDescending: 'seřazeno sestupně',
   columnSettings: 'Nastavit sloupce',
   columnVisible: (column: string) => `Zobrazit sloupec ${column}`,
-  columnWidth: (column: string) => `Šířka sloupce ${column}`,
 };
 
 const table = {

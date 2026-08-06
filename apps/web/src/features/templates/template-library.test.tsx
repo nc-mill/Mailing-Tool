@@ -12,9 +12,11 @@ import { TemplateLibrary, type TemplateListItem } from './template-library';
 // Serverové akce sahají na `server-only` a cookies, které v jsdom nejsou.
 const deleteTemplateAction = vi.fn();
 const restoreTemplateAction = vi.fn();
+const duplicateTemplateAction = vi.fn();
 vi.mock('./actions', () => ({
   deleteTemplateAction: (input: unknown) => deleteTemplateAction(input),
   restoreTemplateAction: (input: unknown) => restoreTemplateAction(input),
+  duplicateTemplateAction: (input: unknown) => duplicateTemplateAction(input),
 }));
 
 const refresh = vi.fn();
@@ -56,27 +58,56 @@ function renderLibrary(props: Partial<Parameters<typeof TemplateLibrary>[0]> = {
 beforeEach(() => {
   deleteTemplateAction.mockReset();
   restoreTemplateAction.mockReset();
+  duplicateTemplateAction.mockReset();
   refresh.mockReset();
   replace.mockReset();
   push.mockReset();
   deleteTemplateAction.mockResolvedValue({ status: 'success' });
   restoreTemplateAction.mockResolvedValue({ status: 'success' });
+  duplicateTemplateAction.mockResolvedValue({ status: 'success', id: 't1-copy' });
 });
 
+/**
+ * Mazání i kopie bydlí od 6. 8. 2026 v řádkové nabídce „…", ne v samostatné
+ * ikoně koše. Zavřená nabídka svoje položky vůbec nevykresluje, takže ji test
+ * musí nejdřív otevřít.
+ */
+async function openRowMenu(index = 0) {
+  const triggers = screen.getAllByRole('button', { name: /Další akce se šablonou/ });
+  const trigger = triggers[index];
+  if (trigger === undefined) throw new Error(`Řádek ${index} nemá nabídku akcí.`);
+  await userEvent.click(trigger);
+}
+
+/** Položka nabídky se jménem akce. Zkratka do všech testů mazání níž. */
+async function chooseRowAction(name: string, index = 0) {
+  await openRowMenu(index);
+  await userEvent.click(await screen.findByRole('menuitem', { name }));
+}
+
+function itemNames() {
+  return screen.getAllByRole('menuitem').map((item) => item.textContent);
+}
+
 describe('knihovna šablon', () => {
-  it('nabídne mazání u každé šablony, ne jen u první', () => {
+  it('nabídne mazání u každé šablony, ne jen u první', async () => {
     renderLibrary();
-    expect(screen.getAllByRole('button', { name: 'Smazat' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /Další akce se šablonou/ })).toHaveLength(2);
+
+    await openRowMenu(1);
+    expect(screen.getByRole('menuitem', { name: 'Smazat' })).toBeInTheDocument();
   });
 
-  it('bez oprávnění templates:write mazání nenabízí', () => {
+  it('bez oprávnění templates:write se nekreslí ani spouštěč nabídky', () => {
     renderLibrary({ canWrite: false });
-    expect(screen.queryByRole('button', { name: 'Smazat' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Další akce se šablonou/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('okno vyjmenuje následky včetně toho, že kampaně zůstanou beze změny', async () => {
     renderLibrary();
-    await userEvent.click(screen.getAllByRole('button', { name: 'Smazat' })[0]!);
+    await chooseRowAction('Smazat');
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(/Smazat šablonu „Newsletter“\?/)).toBeInTheDocument();
@@ -88,7 +119,7 @@ describe('knihovna šablon', () => {
 
   it('okno NETVRDÍ, že akce je nevratná, protože vratná je', async () => {
     renderLibrary();
-    await userEvent.click(screen.getAllByRole('button', { name: 'Smazat' })[0]!);
+    await chooseRowAction('Smazat');
 
     // Tahle věta patří k nevratným akcím. U měkkého mazání s nabídkou vrácení
     // zpět by to byla lež, kterou uživatel jednou prohlédne a příště přeskočí
@@ -99,7 +130,7 @@ describe('knihovna šablon', () => {
 
   it('potvrzení zavolá akci a nabídne vrácení zpět', async () => {
     renderLibrary();
-    await userEvent.click(screen.getAllByRole('button', { name: 'Smazat' })[0]!);
+    await chooseRowAction('Smazat');
     await userEvent.click(screen.getByRole('button', { name: 'Smazat šablonu' }));
 
     expect(deleteTemplateAction).toHaveBeenCalledWith({ workspaceId: 'ws1', id: 't1' });
@@ -132,13 +163,51 @@ describe('knihovna šablon', () => {
   it('neúspěšné smazání zavře okno a řekne důvod na obrazovce', async () => {
     deleteTemplateAction.mockResolvedValue({ status: 'error', code: 'template_starter_immutable' });
     renderLibrary();
-    await userEvent.click(screen.getAllByRole('button', { name: 'Smazat' })[0]!);
+    await chooseRowAction('Smazat');
     await userEvent.click(screen.getByRole('button', { name: 'Smazat šablonu' }));
 
     // Hláška pod zastíněným dialogem by byla neviditelná, viz komentář v akci.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByText(/Tohle je dodávaná šablona/)).toBeInTheDocument();
     expect(screen.queryByText('Šablona „Newsletter“ je smazaná.')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * KDYBY TENHLE BLOK SPADL: z řádku knihovny zase nejde nic než smazat volnou
+ * šablonu. Přesně tak výpis vypadal do 6. 8. 2026, přestože
+ * `POST /templates/{id}/duplicate` v jádru existuje od začátku a rozhraní ho
+ * nevolalo odnikud.
+ */
+describe('nabídka „…" v řádku knihovny', () => {
+  it('„Upravit" otevře šablonu', async () => {
+    renderLibrary();
+    await chooseRowAction('Upravit');
+
+    expect(push).toHaveBeenCalledWith('/w/eshop/templates/t1');
+  });
+
+  it('„Duplikovat" udělá kopii a odejde rovnou do ní', async () => {
+    renderLibrary();
+    await chooseRowAction('Duplikovat');
+
+    expect(duplicateTemplateAction).toHaveBeenCalledWith({ workspaceId: 'ws1', id: 't1' });
+    expect(push).toHaveBeenCalledWith('/w/eshop/templates/t1-copy');
+  });
+
+  /*
+   * Selhání kopie se hlásí týmž pruhem nad výpisem jako odmítnuté mazání:
+   * v řádku pro celou větu místo není a mlčení vypadá jako nefunkční položka.
+   */
+  it('neúspěšná kopie řekne důvod na obrazovce a nikam neodchází', async () => {
+    duplicateTemplateAction.mockResolvedValue({ status: 'error', code: 'template_name_conflict' });
+    renderLibrary();
+    await chooseRowAction('Duplikovat');
+
+    expect(await screen.findByTestId('template-delete-failed')).toHaveTextContent(
+      'template_name_conflict',
+    );
+    expect(push).not.toHaveBeenCalled();
   });
 });
 
@@ -165,12 +234,25 @@ describe('kategorie a zapojení', () => {
     expect(screen.getByText('Rozesílá formulář „Patička webu“.')).toBeInTheDocument();
   });
 
-  it('zapojenou šablonu nenabízí ke smazání, protože server takové mazání odmítne', () => {
+  /*
+   * KDYBY TENHLE TEST SPADL: v nabídce živě rozesílané šablony se zase objeví
+   * mazání, které server odmítne (409 `template_in_use`). Úprava a kopie tam
+   * zůstat MUSÍ: kopie je jediná cesta, jak z rozesílané předlohy vyjít a nesáhnout
+   * na poštu, která odchází teď.
+   */
+  it('zapojená šablona nabízí úpravu a kopii, ne mazání', async () => {
     renderLibrary({ templates: [formTemplate, ...templates] });
 
-    // Dvě volné šablony ano, ta z formuláře ne.
-    expect(screen.getAllByRole('button', { name: 'Smazat' })).toHaveLength(2);
+    await openRowMenu(0);
+    expect(itemNames()).toEqual(['Upravit', 'Duplikovat']);
     expect(screen.getByText(/Dokud je takhle zapojená, nejde smazat/)).toBeInTheDocument();
+  });
+
+  it('volná šablona nabízí úpravu, kopii i mazání', async () => {
+    renderLibrary({ templates: [formTemplate, ...templates] });
+
+    await openRowMenu(1);
+    expect(itemNames()).toEqual(['Upravit', 'Duplikovat', 'Smazat']);
   });
 
   it('šablona seznamu řekne, co v tom seznamu dělá', () => {

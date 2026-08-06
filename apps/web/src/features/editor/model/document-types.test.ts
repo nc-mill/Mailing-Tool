@@ -31,13 +31,15 @@ describe('document-types', () => {
 
   it('prázdný dokument splňuje tvrdé požadavky schématu, ne jen tvar typu', () => {
     // Prázdný motiv a prázdné props by prošly typem a spadly až ve validaci
-    // na serveru. Kořen schématu vyžaduje osm klíčů motivu, sekce vyžaduje
+    // na serveru. Kořen schématu vyžaduje šest klíčů motivu, sekce vyžaduje
     // props i children a obojí má additionalProperties: false.
+    //
+    // Šest, ne osm: `canvasBackground` a `contentBackground` z motivu zmizely.
+    // Nikdo je nečetl, plochu určují role `surface.canvas` a `surface.content`
+    // v `colors`. Nový dokument je proto nemá.
     const doc = emptyDocument('cs');
     expect(Object.keys(doc.theme).sort()).toEqual([
-      'canvasBackground',
       'colors',
-      'contentBackground',
       'contentWidth',
       'darkMode',
       'fonts',

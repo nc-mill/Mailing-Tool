@@ -57,6 +57,7 @@
     "remove": "Remove",
     "removed": "The sample data is gone.",
     "removeFailed": "The sample data could not be removed ({code}). Please try again.",
+    "removeForbidden": "Removing the sample data is for editors, workspace admins and the owner. Ask one of them; you do not have the permission.",
     "dialogTitle": "Remove the sample data?",
     "dialogContacts": "{contacts, plural, =0 {no contact} one {# contact} other {# contacts}}, {lists, plural, =0 {no list} one {# list} other {# lists}} and {tags, plural, =0 {no tag} one {# tag} other {# tags}}.",
     "dialogContent": "{segments, plural, =0 {no segment} one {# segment} other {# segments}}, {templates, plural, =0 {no template} one {# template} other {# templates}} and {campaigns, plural, =0 {no campaign} one {# campaign} other {# campaigns}} with its report.",

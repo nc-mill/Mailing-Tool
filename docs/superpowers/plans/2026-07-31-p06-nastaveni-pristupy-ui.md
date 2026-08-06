@@ -1,5 +1,12 @@
 # P06 Nastavení projektu a přístupy: implementační plán
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P06 (nastavení projektu a přístupy) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** obrazovky nastavení, přihlášení a profilu v aplikaci jsou; stránka detailu úlohy (`/w/{slug}/jobs/...`, nález N30) v repozitáři **není**.
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **Pro agentní pracovníky:** POVINNÁ PODŘÍZENÁ DOVEDNOST: použij `superpowers:subagent-driven-development` (doporučeno) nebo `superpowers:executing-plans` a proveď plán úkol po úkolu. Kroky mají zaškrtávací syntaxi (`- [ ]`) kvůli sledování postupu.
 
 **Cíl:** Dodat čtrnáct obrazovek nad jádrem identity produktu Mlain Mailer, tedy přihlášení a první spuštění (`/setup`, `/login`, `/forgot-password`, `/reset-password`, `/invitations/accept`, `/no-workspace`), profil uživatele (`/settings/profile`), pět obrazovek nastavení projektu (`/w/{slug}/settings/general`, `members`, `api-keys`, `webhooks`, `audit`) s detailem webhooku a stránku detailu úlohy (`/w/{slug}/jobs/{kind}/{jobId}`, nález N30), včetně namespace i18n `auth` a `settings` v češtině a angličtině, se všemi povinnými stavy seznamu a s doloženou přístupností.

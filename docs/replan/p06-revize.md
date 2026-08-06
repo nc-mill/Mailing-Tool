@@ -1,5 +1,12 @@
 # Revize P06: nastavení projektu a přístupy, třináct obrazovek nad P04 a P05
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Revize plánu P06 (nastavení a přístupy) z prověrky plánů
+> (31. 7. až 1. 8. 2026), tedy kontrola **textu plánu před stavbou**, ne kontrola kódu.
+> **Verdikt typu „plán není proveditelný" se týkal tehdejšího plánu, ne dnešního produktu.** Ten stojí a funguje.
+> Opravy se prováděly podle `docs/superpowers/plans/POSTUP-OPRAV.md`; **stav jednotlivých nálezů neověřen**.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 **Recenzovaný plán:** `/Users/petr/Projects/Mailing_Tool/docs/superpowers/plans/2026-07-31-p06-nastaveni-pristupy-ui.md` (13 995 řádků, 36 úkolů)
 **Zdroj pravdy pro komponenty:** `2026-07-31-p05-design-system-i18n-skorapka.md`
 **Normativní zdroj:** část 6 (`06-ui-ux.md`) kapitoly 11, 12, 15; část 1 kapitola 5.3

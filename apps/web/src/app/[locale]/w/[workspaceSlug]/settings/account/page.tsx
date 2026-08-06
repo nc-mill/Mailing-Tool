@@ -10,14 +10,26 @@ import { redirect } from 'next/navigation';
 export const dynamic = 'force-dynamic';
 
 /**
- * Registr navigace P05 má u položky „Můj účet" cestu `/settings/account`,
- * tedy uvnitř projektu. Profil je ale osobní, ne projektový, a bydlí na
- * `/settings/profile` mimo skořápku projektu (5.3 části 1).
+ * Přesměrování `/settings/account` na `/settings/profile`.
  *
- * Bez tohohle přesměrování by šestá položka menu vedla na 404. Registr
- * vlastní P05 a uzávěr S5 zakazuje měnit v něm cestu, takže se to řeší
- * na straně P06, jedním souborem, který nic nevykresluje.
+ * VZNIKLO PROTO, že registr navigace měl položku „Můj účet" s cestou uvnitř
+ * projektu, kdežto profil je osobní a bydlí mimo skořápku (5.3 části 1). Bez
+ * přesměrování by položka menu vedla na 404.
+ *
+ * Ta položka je od 6. 8. 2026 z registru pryč (rozhodnutí zadavatele: do účtu
+ * se chodí jen nabídkou v pravém horním rohu), takže na tuhle adresu už nic
+ * z aplikace neodkazuje. Soubor ZŮSTÁVÁ kvůli uloženým odkazům a záložkám:
+ * je to jeden řádek a bez něj by z nich byla 404.
+ *
+ * Slug projektu se přenáší do `?from`, aby hlavička profilu věděla, kam vede
+ * cesta zpět. Jinak by uživatel, který na profil došel touhle cestou, skončil
+ * u prvního projektu v seznamu místo toho, ze kterého odešel.
  */
-export default function WorkspaceAccountPage() {
-  redirect('/settings/profile');
+export default async function WorkspaceAccountPage({
+  params,
+}: {
+  params: Promise<{ workspaceSlug: string }>;
+}) {
+  const { workspaceSlug } = await params;
+  redirect(`/settings/profile?from=${encodeURIComponent(workspaceSlug)}`);
 }

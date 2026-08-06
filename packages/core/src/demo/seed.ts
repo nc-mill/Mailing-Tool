@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { buildRenderSchema } from '@mlain/emails/compile/render-schema';
 import { designHash } from '@mlain/emails/document/canonical';
 import { writeAuditLog } from '../audit/write';
+import { applyWorkspaceBrandTheme } from '../brand/theme';
 import type { FieldCatalog } from '../contacts/fields/catalog';
 import { resolveName } from '../contacts/naming/resolve';
 import { EMPTY_OVERRIDES } from '../contacts/naming/types';
@@ -269,7 +270,17 @@ async function insertAll(
     // projevila až při kompilaci kampaně jako `template_document_invalid`.
     // Assety jsou prázdná množina schválně: ukázkové šablony žádný obrázek
     // nepoužívají, takže není co dohledávat.
-    const validation = validateTemplateDocument(template.design, {
+    /*
+     * Ukázkové šablony se vkládají přímým SQL, ne přes `createTemplate`, takže
+     * značku projektu jim musí doplnit tenhle řádek. Bez něj by projekt
+     * s nastavenou značkou dostal jako ukázku modré e-maily, tedy pravý opak
+     * toho, k čemu ukázková data jsou. Dokument z `DEMO_TEMPLATES` nese
+     * `DEFAULT_THEME`, takže se dorovná celý; validace, otisk i `used_fields`
+     * se počítají až z výsledku, aby si uložený dokument a jeho hash odpovídaly.
+     */
+    const design = await applyWorkspaceBrandTheme(tx, template.design);
+
+    const validation = validateTemplateDocument(design, {
       templateKind: 'campaign',
       fields: input.fields,
       assetIds: new Set<string>(),
@@ -293,7 +304,7 @@ async function insertAll(
     // a uživatel by dostal „používá to 0 šablon" u pole, které se v nich používá.
     // Sjednocení použitých a podmínkových cest, stejně jako `computeUsedFields`
     // ve službě šablon: pole použité jen v podmínce nesmí z analýzy vypadnout.
-    const renderSchema = buildRenderSchema(template.design, {
+    const renderSchema = buildRenderSchema(design, {
       fields: input.fields,
       skippedBlockIds: new Set<string>(),
     });
@@ -304,8 +315,8 @@ async function insertAll(
       INSERT INTO templates
         (workspace_id, name, kind, schema_version, design, design_hash,
          used_fields, validation_state, validation_errors)
-      VALUES (${ws}, ${template.name}, 'campaign', ${template.design.schemaVersion},
-              ${JSON.stringify(template.design)}::jsonb, ${designHash(template.design)},
+      VALUES (${ws}, ${template.name}, 'campaign', ${design.schemaVersion},
+              ${JSON.stringify(design)}::jsonb, ${designHash(design)},
               ${sql.param(usedFields)}::text[], 'valid', ${JSON.stringify(validation.issues)}::jsonb)
       RETURNING id`);
     templateIds.set(template.key, rows[0]!.id);

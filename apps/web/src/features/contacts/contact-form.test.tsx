@@ -354,3 +354,79 @@ describe('ContactForm', () => {
     expect(screen.getByTestId('greeting-preview')).toBeInTheDocument();
   });
 });
+
+/**
+ * PŘEDVYPLNĚNÝ SEZNAM. Výchozí seznam projektu je při zakládání zaškrtnutý za
+ * uživatele (rozhodnutí zadavatele z 5. 8. 2026). Dva lidé si toho nezávisle na
+ * sobě nevšimli a jedním uložením vyrobili odchozí potvrzovací e-mail. Prefill
+ * zůstává, ale formulář se k němu přizná a odchozí zprávu ohlásí dřív, než odejde.
+ */
+describe('ContactForm a předvyplněný seznam', () => {
+  const withDefaultList = (double: boolean) => ({
+    ...EMPTY,
+    lists: [
+      { id: 'l-1', name: 'Odběratelé', selected: true, double_opt_in: double, is_default: true },
+      { id: 'l-2', name: 'VIP', selected: false, double_opt_in: true },
+    ],
+  });
+
+  it('u předvyplněného seznamu řekne, že ho zaškrtl formulář, ne uživatel', () => {
+    renderForm(withDefaultList(true), 'create');
+    // Štítek stojí u zaškrtávátka výchozího seznamu a právě jednou: u seznamu,
+    // který výchozí není, nemá co dělat.
+    const tags = screen.getAllByText(/výchozí seznam, zaškrtli jsme ho za vás/);
+    expect(tags).toHaveLength(1);
+    expect(screen.getByRole('checkbox', { name: /Odběratelé/ }).closest('label')).toContainElement(
+      tags[0]!,
+    );
+  });
+
+  it('u úpravy se štítek o předvyplnění neukazuje, tam nic předvyplněné není', () => {
+    renderForm(withDefaultList(true), 'edit');
+    expect(screen.queryByText(/výchozí seznam/)).toBeNull();
+  });
+
+  /**
+   * Ve výchozím stavu („přihlášený") neodejde nic: `contacts-api.ts` zapisuje
+   * takové přihlášení přímo, mimo `subscribeToList`. Slibovat e-mail, který
+   * neodejde, by bylo stejně špatné jako mlčet o tom, který odejde.
+   */
+  it('u přihlášeného kontaktu žádnou zprávu neslibuje', () => {
+    renderForm(withDefaultList(true), 'create');
+    expect(screen.queryByTestId('confirmation-email-warning')).toBeNull();
+  });
+
+  it('u nepotvrzeného kontaktu ohlásí odchozí e-mail i s názvem seznamu', async () => {
+    const user = userEvent.setup();
+    renderForm(withDefaultList(true), 'create');
+
+    await user.click(screen.getByRole('radio', { name: /Nepotvrzeného/ }));
+
+    const warning = screen.getByTestId('confirmation-email-warning');
+    expect(warning).toHaveTextContent(/odejde na adresu kontaktu potvrzovací e-mail/);
+    expect(warning).toHaveTextContent('Odběratelé');
+    // Jmenuje jen ty seznamy, kvůli kterým zpráva opravdu odejde.
+    expect(warning).not.toHaveTextContent('VIP');
+  });
+
+  it('po odškrtnutí seznamu hláška o odchozím e-mailu zmizí', async () => {
+    const user = userEvent.setup();
+    renderForm(withDefaultList(true), 'create');
+
+    await user.click(screen.getByRole('radio', { name: /Nepotvrzeného/ }));
+    expect(screen.getByTestId('confirmation-email-warning')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('checkbox', { name: /Odběratelé/ }));
+    expect(screen.queryByTestId('confirmation-email-warning')).toBeNull();
+  });
+
+  /** Seznam s jedním krokem se zapisuje přímo, takže z něj neodejde nic. */
+  it('u seznamu bez dvojího potvrzení žádnou zprávu neslibuje ani u nepotvrzeného', async () => {
+    const user = userEvent.setup();
+    renderForm(withDefaultList(false), 'create');
+
+    await user.click(screen.getByRole('radio', { name: /Nepotvrzeného/ }));
+
+    expect(screen.queryByTestId('confirmation-email-warning')).toBeNull();
+  });
+});

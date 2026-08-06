@@ -7,6 +7,7 @@ import {
 } from '@mlain/core/ops';
 import { EXIT_CONFIG, EXIT_OK, EXIT_USAGE } from '../exit-codes';
 import { loadCliConfig } from './load-cli-config';
+import { reportMigrationFailure } from './migration-failure';
 import type { CliStreams } from '../dispatch';
 
 export async function runRestoreCommand(
@@ -75,6 +76,18 @@ export async function runRestoreCommand(
       streams.stderr(err.message);
       return 1;
     }
+    // Selhaná migrace uprostřed obnovy. Bez tohohle bloku končil `mlain restore`
+    // kódem 1 a stackem z `main.ts`, tedy výpisem, ze kterého se nedalo poznat,
+    // co se stalo ani v jakém stavu databáze zůstala. A zůstala v tom nejhorším:
+    // data obnovená, granty NE, protože `mlain_apply_grants()` se volá až za
+    // migrací a pád ho přeskočil.
+    const code = reportMigrationFailure(streams, err, [
+      'Obnova se zastavila UPROSTŘED. Data z dumpu v databázi jsou, ale oprávnění NE:',
+      'volání mlain_apply_grants() přijde až za migrací a to už neproběhlo.',
+      'Aplikaci zatím nespouštějte, odpovídala by "permission denied for table contacts".',
+      'Až příčinu odstraníte, spusťte obnovu znovu nad touž zálohou; je opakovatelná.',
+    ]);
+    if (code !== null) return code;
     throw err;
   }
 }

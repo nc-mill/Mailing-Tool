@@ -30,7 +30,14 @@ export type { KeyringEnv, OpsKeyring } from './keyring';
 export { isDatabaseEmpty, RestoreRefusedError, restoreBackup } from './restore';
 export type { RestoreReport } from './restore';
 export { binaryMajorVersion, majorVersionOf, ProcessFailedError, runProcess } from './run-process';
-export { generateSecretKey, rotationRunbook } from './genkey';
+export {
+  decideKeyId,
+  generateSecretKey,
+  keyIdsInEnv,
+  MAX_KEY_ID,
+  rotationRunbook,
+  type KeyIdDecision,
+} from './genkey';
 export {
   ENCRYPTED_COLUMNS,
   discoverEncryptedColumns,
@@ -40,6 +47,11 @@ export { enqueueRefingerprint, rotateCredentials } from './rotate-credentials';
 export type { RotateReport } from './rotate-credentials';
 export { MIN_PASSWORD_LENGTH, resetPassword, UserNotFoundError } from './reset-password';
 export { rebuildEngagement } from './rebuild-engagement';
+/**
+ * Jednorázové převlečení uložených e-mailů do barev značky. Pro instalace,
+ * které značku mají a od upgradu ji znovu neuloží; jinak to dělá samo uložení.
+ */
+export { redressAllWorkspacesToBrand, type RedressBrandReport } from './redress-brand';
 export { retentionTargets, runPartitionMaintenance } from './partition-retention';
 export type {
   RetentionReport,

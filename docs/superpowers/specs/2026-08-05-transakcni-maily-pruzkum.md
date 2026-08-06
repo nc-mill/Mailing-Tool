@@ -6,7 +6,52 @@ Rozsah: transakční pošta **zákazníka pro jeho vlastní uživatele** (uvíta
 
 ---
 
+## Stav k 6. 8. 2026: NEJMENŠÍ UŽITEČNÁ VERZE JE POSTAVENÁ
+
+Tohle byl průzkum, ne plán. Postavilo se podle něj a **devět z deseti položek
+kapitoly 11.1 je hotových**. Dokument dál platí jako popis rozhodnutí a rizik,
+ale **jako seznam práce už ne**. Čti ho s tímhle v ruce.
+
+| # | Práce z 11.1 | Stav a důkaz |
+|---|---|---|
+| 1 | Kořen `data` v Liquidu | **hotovo**, `packages/contracts/src/liquid/grammar.ts:53` plus `rootsForTemplateKind()`, která `data` pouští jen do šablon s `kind = 'transactional'` |
+| 2 | `buildRenderSchema` sbírá cesty z URL polí (R1) | **hotovo**, `packages/emails/src/compile/render-schema.ts` (`addUrlField(node.href)`, `urlFieldsOf(block)`) |
+| 3 | `validateHref` respektuje `trackable` | **hotovo**, `link-control.tsx:31` bere `options.trackable` a při `false` Liquid propustí |
+| 4 | `messages.kind = 'transactional'` | **hotovo**, `MESSAGE_KINDS` i migrace `0016_message_kinds.sql` (přidala rovnou i `automation`, viz O7) |
+| 5 | Samostatná claim smyčka (R2) | **hotovo**, `StmtClaimNonCampaignBatch` s `kind <> 'campaign'` a `Claimer` v `apps/sender/internal/app/loop.go`, dávka `SENDER_NON_CAMPAIGN_BATCH_SIZE` (výchozí 20) |
+| 6 | Vypnutí odhlašovacího odkazu a `List-Unsubscribe` | **hotovo**, `Renderer.unsubscribe` vrací pro transakční druh prázdný řetězec bez chyby, `NO_UNSUBSCRIBE_MESSAGE_KINDS` v kontraktu |
+| 7 | Rozlišení tvrdých a marketingových důvodů suppression | **hotovo na obou stranách**, `contacts/suppression/transactional.ts` a `transactionalBlocks()` v `apps/sender/internal/outbox/suppression.go` (komentáře se na sebe navzájem odkazují) |
+| 8 | Scope, endpoint, upsert kontaktu, nosná kampaň, chybové kódy, OpenAPI | **hotovo**, `transactional:send` v `PERMISSIONS` (test fixuje 49 oprávnění), `packages/core/src/transactional/`, kódy `template_kind_not_transactional`, `recipient_suppressed`, `transactional_data_too_large`, `transactional_variable_unknown`, `sender_identity_not_found` |
+| 9 | Limit klíčovaný na workspace | **hotovo**, pravidlo `transactional_send` (60 za minutu) v `apps/web/src/lib/api/rate-limit.ts:83` |
+| 10 | Testy | `packages/core/src/transactional/transactional.db.test.ts` a další |
+
+**Co z dokumentu zbývá jako otevřená práce:**
+
+- **`GET /api/v1/transactional/{message_id}` neexistuje.** Router má jedinou cestu,
+  `POST /transactional`. Kapitola 9.2 s ním počítá, stav zprávy se dnes dá zjistit
+  jen odchozími webhooky.
+- **Sloupec `sender_identities.purpose` nevznikl** (kapitola 8.2 a 11.4 C). Oddělení
+  marketingového a transakčního proudu se dá nastavit ručně druhým providerem
+  a vlastní subdoménou, ale endpoint nemá jak vybrat „transakční" identitu podle
+  příznaku.
+- **Příchozí webhook (kapitola 7) dál nemá HTTP endpoint ani UI.** Datová vrstva
+  `packages/core/src/contacts/inbound/` je pořád jen mapování, podpis a cesta.
+- **Rozpad reportů podle proudu a prahy doručitelnosti zvlášť** (kapitola 8.2) hotové nejsou.
+
+**Nález mimo zadání, který sám sebe vyřešil:** `delivery-email.ts` už kontroluje
+suppression i přes `fingerprint` (R10), komentář na řádku 86 to zdůvodňuje.
+
+---
+
 ## Shrnutí pro zadavatele (deset řádků)
+
+> **Neplatí od 6. 8. 2026: skoro celé shrnutí v přítomném čase.** Popisuje stav
+> před implementací. Endpoint `POST /api/v1/transactional` stojí (bod 1), čtyři
+> brány z bodu 2 jsou opravené, kontrakt i `messages.kind` rozšířené, odhlašovací
+> pojistka v Go má výjimku pro transakční druh, suppression rozlišuje důvody
+> a claim smyčka pro zprávy mimo kampaň běží. Scopes je dnes 49, ne 48.
+> Podrobnosti v tabulce nahoře. Bod 6 platí dál a bod 10 se potvrdil: odhad seděl
+> a koordinace s P17 proběhla jednou migrací (`0016_message_kinds.sql`).
 
 1. API je správná volba a je na něj postaveno prostředí: Hono + OpenAPI, 48 granulárních scopes, RFC 9457 chyby, idempotence i rate limit už existují. Endpoint `POST /api/v1/transactional` ale postavený není.
 2. Jádro dotazu, tedy odkaz do tlačítka, dnes **nefunguje na čtyřech nezávislých místech naráz**. Není to jedna chyba, jsou to čtyři.
@@ -51,6 +96,10 @@ POST   /api/v1/transactional              transakční mail přes šablonu (fáz
 MVP 2 v téže specifikaci jmenuje „transakční e-maily přes API". Kontrakt outboxu (část 1, kapitola 4.10.1) navíc podle plánu P17 výslovně nechává „prostor pro `transactional`". Záměr tedy existuje, realizace ne.
 
 ### 1.3 Co dnes chybí, jedním pohledem
+
+> **Neplatí od 6. 8. 2026.** Z celého seznamu níž zbývá jediná položka:
+> **rozlišení účelu odesílací identity** (sloupec `sender_identities.purpose`).
+> Všechno ostatní vzniklo, viz tabulka na začátku dokumentu.
 
 - endpoint `POST /api/v1/transactional`
 - scope pro odesílání jednotlivé zprávy (nejblíž je `campaigns:send`, ten ale umí i pozastavit a zrušit kampaň)
@@ -112,6 +161,13 @@ Druhé varování: backend `postgres` záměrně hází výjimku, protože chyb�
 ## 3. Proměnné a odkaz do tlačítka
 
 **Tohle je jádro dotazu a je tu nejvíc práce. Dnes to nefunguje na čtyřech místech nezávisle na sobě.**
+
+> **Neplatí od 6. 8. 2026: všechny čtyři brány jsou opravené.** Kapitola zůstává
+> jako popis toho, proč se to muselo opravit na čtyřech místech naráz, a jako
+> návod, kam sáhnout, kdyby se to znovu rozešlo. Konkrétně: brána 1 kořenem `data`
+> a funkcí `rootsForTemplateKind`, brána 2 vypnutým sledováním v transakčním
+> profilu, brána 3 parametrem `trackable` ve `validateHref`, brána 4 sběrem
+> URL polí v `buildRenderSchema`.
 
 ### 3.1 Brána první: zmrazený seznam kořenů
 
@@ -258,6 +314,14 @@ Tady je největší koncepční rozpor s dnešním kódem.
 
 ### 5.1 Odhlašovací odkaz je dnes vynucený, a to natvrdo v Go
 
+> **Neplatí od 6. 8. 2026.** Výjimka existuje a je vázaná na jednu hodnotu jednoho
+> kontraktního sloupce: `Renderer.unsubscribe` vrací pro `IsTransactional()`
+> prázdný řetězec bez chyby a hlavička `List-Unsubscribe` se nepíše. Kampaňová
+> zpráva bez odhlášení dál neodejde. Vedlejší důsledek, který je potřeba znát:
+> **e-maily seznamu jedou jako transakční**, takže `{{ unsubscribe_url }}`
+> v uvítacím e-mailu vede do prázdna a produkt to při ukládání šablony odmítá
+> (`contacts/lists/list-email-guards.ts`).
+
 `apps/sender/internal/app/worker.go:242`:
 
 ```go
@@ -305,6 +369,12 @@ Pozor na následek: transakční volání by tím zakládalo kontakty. To je cho
 ### 5.3 Blokovaná adresa: tvrdý odraz versus odhlášení z marketingu
 
 **Tohle je nejdůležitější rozhodnutí celé kapitoly.**
+
+> **Neplatí od 6. 8. 2026: „dnešní suppression list je jednolitý".** Rozlišení je
+> zavedené a na obou stranách: `packages/core/src/contacts/suppression/transactional.ts`
+> (funkce `transactionalVerdict`) a `transactionalBlocks()` v
+> `apps/sender/internal/outbox/suppression.go`. Tabulka důvodů níž je závazný popis
+> toho, co kód dělá, ne návrh. R9 (rozejití TS a Go) tím zůstává jako riziko údržby.
 
 Dnešní suppression list je jednolitý. Důvody (`packages/core/src/contacts/suppression/rank.ts`):
 
@@ -368,6 +438,12 @@ CHECK `ck_messages__kind` dnes zná jen `('campaign','test')` a `MESSAGE_KINDS` 
 **Koordinace s P17:** plán automatizace (`docs/superpowers/plans/2026-08-05-p17-automatizace.md`) chce z týchž důvodů přidat hodnotu `automation` a třetí větev claimu. Doporučuji **jednu migraci, která přidá obě hodnoty**, a jednu společnou „ne-kampaňovou" claim větev parametrizovanou podle `kind`. Dvě nezávislé změny téhož zmrazeného CHECKu a téže smyčky by se srazily.
 
 ### 6.3 Zásadní nález o latenci: dnešní smyčka by reset hesla zdržela
+
+> **Neplatí od 6. 8. 2026: nález je vypořádaný.** Zprávy mimo kampaň se claimují
+> vlastní větví (`ClaimNonCampaignBatch`) v samostatném bloku `Tick`, nezávisle
+> na dojíždění kampaňové rotace, a dávka je konfigurovatelná
+> (`SENDER_NON_CAMPAIGN_BATCH_SIZE`, výchozí 20). Doporučení 1 a 2 z konce
+> kapitoly jsou tím splněná, doporučení 3 (oddělený provider) zůstává na zákazníkovi.
 
 `apps/sender/internal/app/loop.go:71` (funkce `ClaimLoop.Tick`):
 

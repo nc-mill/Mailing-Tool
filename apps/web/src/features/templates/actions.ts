@@ -88,6 +88,36 @@ export async function deleteTemplateAction(
   return { status: 'success' };
 }
 
+/**
+ * Kopie šablony.
+ *
+ * ENDPOINT EXISTOVAL BEZ VOLAJÍCÍHO. `POST /templates/{id}/duplicate` je v jádru
+ * od začátku a jméno kopie si řeší sám (`copyName` v `templates/service.ts:257`
+ * hledá první volné pořadové číslo), takže tudy konflikt jména nechodí a akce
+ * ho na rozdíl od zakládání nemusí obcházet. V rozhraní pro něj do 6. 8. 2026
+ * neexistovalo jediné tlačítko: kdo chtěl vyjít z hotové šablony, musel ji
+ * naklikat znovu.
+ *
+ * Vrací id KOPIE, aby knihovna měla kam přejít. Bez toho by se uživatel po
+ * duplikaci nedozvěděl, že něco vzniklo: kopie se ve výpisu objeví mezi
+ * ostatními a nic ji neoznačuje.
+ */
+export async function duplicateTemplateAction(
+  input: WithWorkspace & { id: string },
+): Promise<CreateTemplateResult> {
+  const result = await apiMutate<{ id: string }>(`/api/v1/templates/${input.id}/duplicate`, {
+    method: 'POST',
+    workspaceId: input.workspaceId,
+    // Prázdné tělo je tu schválně: kostra API kontroluje `Content-Type` u každého
+    // POST a `apiMutate` hlavičku posílá jen tehdy, když nějaké tělo dostane.
+    // Bez toho vrací požadavek 415 `unsupported_media_type` a obrazovka mlčí.
+    body: {},
+  });
+  if (!result.ok) return { status: 'error', code: result.problem.code };
+  revalidatePath(TEMPLATES_PATH, 'page');
+  return { status: 'success', id: result.data.id };
+}
+
 /** Vrácení smazané šablony zpět. Selže konfliktem, když jméno mezitím někdo zabral. */
 export async function restoreTemplateAction(
   input: WithWorkspace & { id: string },

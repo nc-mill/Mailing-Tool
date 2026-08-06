@@ -1,5 +1,12 @@
 # P10 Tracking: podepsané tokeny, sběr událostí a web SDK
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P10 (tracking, tokeny a web SDK) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** `packages/core/src/tracking` i `packages/sdk-web` existují; měření z Gmailu na vývojové instalaci nefunguje z principu, běží na localhostu.
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Postavit celou měřicí vrstvu produktu Mlain Mailer: ověřování podepsaných trackovacích tokenů, endpointy pro otevření a proklik, příjem událostí z prohlížeče i ze serveru, web SDK, propojení kliku v mailu s chováním na webu a joby, které z událostí skládají stav pro reporty a časovou osu.

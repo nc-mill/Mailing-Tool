@@ -54,7 +54,7 @@ import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { getContainerRuntimeClient } from 'testcontainers';
 import { Client } from 'pg';
 import { inject } from 'vitest';
-import { runMigrations } from '@mlain/db/migrate';
+import { resolveMigrationsFolder, runMigrations } from '@mlain/db/migrate';
 import { PGBOSS_RECIPE, installPgBoss } from './pgboss';
 
 /**
@@ -373,7 +373,12 @@ async function ensureBootstrap(server: PgServer): Promise<void> {
 
     // Migrace se pouští JEDNOU do šablony, ne v každém souboru ani běhu.
     const migratorUrl = `postgres://mlain_migrator:mlain_migrator@${server.host}:${server.port}/${template}`;
-    await runMigrations({ url: migratorUrl, ensurePartitions: true, logger: () => {} });
+    await runMigrations({
+      url: migratorUrl,
+      migrationsFolder: resolveMigrationsFolder(),
+      ensurePartitions: true,
+      logger: () => {},
+    });
 
     // A hned za nimi tabulky fronty, protože přesně tohle dělá `mlain migrate`:
     // SQL migrace zakládají jen SCHÉMA `pgboss`, tabulky staví knihovna sama.
@@ -504,7 +509,11 @@ async function startOnServer(server: PgServer, options: PgHarnessOptions): Promi
 
   const urls = harnessUrls(host, port, database);
   if (!fromTemplate && migrate) {
-    await runMigrations({ url: urls.migratorUrl, ensurePartitions: partitions });
+    await runMigrations({
+      url: urls.migratorUrl,
+      migrationsFolder: resolveMigrationsFolder(),
+      ensurePartitions: partitions,
+    });
   }
 
   applyHarnessEnv(urls);

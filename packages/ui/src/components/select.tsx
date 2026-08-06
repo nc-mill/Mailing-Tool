@@ -74,7 +74,10 @@ export function Select({
         <Radix.Content
           position="popper"
           sideOffset={4}
-          className="z-[var(--z-dialog)] max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-auto rounded-[var(--radius-surface)] border border-border bg-surface-overlay p-1"
+          // `--z-flyout`, ne `--z-dialog`: rozbalený seznam je vyjížděcí vrstva
+          // a patří nad skořápku i nad otevřený dialog, ze kterého se často
+          // otevírá. Viz stupnice vrstev v `tokens.css`.
+          className="z-[var(--z-flyout)] max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-auto rounded-[var(--radius-surface)] border border-border bg-surface-overlay p-1"
         >
           <Radix.Viewport>{children}</Radix.Viewport>
         </Radix.Content>

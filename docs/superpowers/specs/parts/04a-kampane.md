@@ -1,5 +1,12 @@
 # Část 4a: Kampaně, providery a doručitelnost
 
+<!-- puvod-dokumentu -->
+> **Platná produktová specifikace, ne historický záznam.** Část 4a: kampaně, provideři a doručitelnost ze 31. 7. 2026, dopsaná
+> do rozhodnutě úplného stavu a zmrazená spolu s kontrakty. Pořád je to zdroj pravdy o tom, co produkt má dělat.
+> **Řádek „Stav: koncept" níž už neplatí**, dokument prošel křížovou revizí i narovnáním (viz `parts/STAV.md`).
+> Co se od té doby rozhodlo jinak, přebíjí ji.
+> **Jak daleko je provedení:** `docs/superpowers/STAV-UKOLU.md`.
+
 Vlastník: subagent part4a-kampane
 Datum: 2026-07-31
 Rozvíjí kapitoly hlavní specifikace: 4.2, 6.6, částečně 5 (tabulky kampaní a outboxu)

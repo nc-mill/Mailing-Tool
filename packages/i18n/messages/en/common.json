@@ -74,6 +74,11 @@
     "overLimitResetsAt": "The limit resets {resetAt}.",
     "overLimitNoReset": "The limit does not reset on its own, it has to be raised."
   },
+  "notFoundPage": {
+    "title": "We could not find this page",
+    "body": "The address leads nowhere. Either it has a typo, or the content that used to be there was moved or deleted.",
+    "back": "Back to the app"
+  },
   "errors": {
     "loadFailedTitle": "We could not load {entity}",
     "genericBody": "Please try again. If that does not help, send the details below to support.",
@@ -131,6 +136,7 @@
     "clearSelection": "Clear the selection",
     "cursorInvalid": "The list changed in the meantime, you are back at the start.",
     "columns": "Columns",
+    "action": "Actions",
     "rowsPerPage": "Rows per page",
     "sortNotAvailable": "This column cannot be sorted.",
     "selectRow": "Select row",
@@ -173,7 +179,6 @@
     "settingsAi": "AI assistant",
     "settingsAudit": "Audit log",
     "settingsBackups": "Backups",
-    "settingsAccount": "My account",
     "automations": "Automations"
   },
   "shell": {
@@ -186,6 +191,7 @@
     "help": "Help",
     "userMenu": "My account",
     "profile": "My profile",
+    "backToProject": "Back to {name}",
     "signOut": "Sign out",
     "newProject": "New project",
     "newProjectLead": "A project is a separate set of contacts, templates, and campaigns. Nothing is shared between projects and you will be its owner.",

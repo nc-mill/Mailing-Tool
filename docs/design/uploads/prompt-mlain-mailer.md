@@ -1,5 +1,12 @@
 # Zadání: prezentační web Mlain Mailer
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Zadání prezentačního webu Mlain Mailer z 3. 8. 2026.
+> **Zadání bylo provedeno**, výsledek leží v `docs/design/` (`index.html`, `styleguide.html`, `komponenty.html` a další).
+> Věty typu „logo zatím nemáme" tedy popisují stav při zadávání, ne dnešek.
+> Netýká se vzhledu samotné aplikace: ten řeší `docs/superpowers/DESIGN-INTEGRACE.md`.
+> **Dnešní stav produktu:** `docs/superpowers/STAV-UKOLU.md` (živý dokument).
+
 ## Kontext produktu
 
 Mlain Mailer je **hotová, instalovatelná** open-source aplikace pro e-mailový marketing: **completely free & self-hosted**, MIT licence, žádný licenční klíč, žádné feature gates, žádné limity na počet uživatelů ani kontaktů, nikdy „nevolá domů". Kód je na GitHubu. Čtyři pilíře: Messaging (kampaně, šablony, plánování, transakční e-maily), Customer profiles (kontakty, vlastní pole, segmenty), Behavioural tracking (opens, clicks a hlavně **co se děje na webu po prokliku** — vlajková funkce), Automation (triggery a sekvence).

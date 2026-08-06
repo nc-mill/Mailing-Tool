@@ -1,5 +1,12 @@
 # Rozdělení implementace na plány
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Zápis z 31. 7. 2026 o tom, proč se práce rozřezala
+> na šestnáct plánů podle vlastnictví souborů. Popisuje rozhodnutí té doby, ne dnešní organizaci práce:
+> dnes se pracuje z jednoho adresáře, bez worktree, a přibyly plány, které tady nejsou (P17 a dál).
+> **Vlny 0 až 3 proběhly**, kód všech šestnácti plánů v repozitáři je.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 Datum: 2026-07-31
 Vstup: sedm specifikací v `docs/superpowers/specs/parts/` (32 tisíc řádků) a hlavní specifikace
 Výstup: 16 implementačních plánů v `docs/superpowers/plans/`, které jdou provádět paralelně ve worktree

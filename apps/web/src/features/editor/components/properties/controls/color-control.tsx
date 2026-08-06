@@ -1,13 +1,13 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Input } from '@mlain/ui/components/input';
 import { useTranslations } from 'next-intl';
 import type { ThemeColorRole } from '@mlain/emails/document/types';
 import { contrastRatio } from '@mlain/emails/theme/palette';
 import { resolveTheme } from '@mlain/emails/theme/resolve';
-import { DEFAULT_THEME, type Theme } from '../../../model/document-types';
+import { DEFAULT_THEME, themeWithDefaults, type Theme } from '../../../model/document-types';
 import { useOptionalEditorState } from '../../../state/use-editor';
+import { Plus } from '../../icons';
 import type { ControlProps } from '../prop-field';
 
 const ROLES: readonly ThemeColorRole[] = [
@@ -39,31 +39,53 @@ const CONTRAST_KEY = 'color';
 const CONTRAST_MIN = 4.5;
 
 /**
- * Doplnění chybějících částí motivu.
- *
- * `resolveTheme` čte `theme.darkMode.colors` a `theme.typography.*` bez
- * kontroly, takže nad dokumentem s neúplným motivem vyhodí
- * `Cannot read properties of undefined`. V klientské komponentě to neshodí
- * ovládací prvek, ale CELÝ strom po nejbližší error boundary, takže by uživatel
- * místo panelu vlastností dostal „Aplikace se neočekávaně zastavila".
- *
- * Uložený dokument má motiv vždy úplný (hlídá to JSON schéma i normalizace),
- * takže je to pojistka, ne běžná cesta. Slučuje se po částech, ne celý objekt
- * naráz: motiv s vlastními barvami a chybějícím tmavým režimem si má nechat
- * svoje barvy, ne spadnout na výchozí paletu.
+ * Odstín, se kterým se otevře systémový výběr, když se z aktuální hodnoty
+ * nedá odvodit. `input type="color"` přijímá jen zápis `#rrggbb`; cokoli
+ * jiného prohlížeč tiše přepíše na černou, takže je lepší ji dosadit vědomě.
  */
-function withDefaults(theme: Theme | undefined): Theme {
-  return {
-    ...DEFAULT_THEME,
-    ...theme,
-    fonts: { ...DEFAULT_THEME.fonts, ...theme?.fonts },
-    typography: { ...DEFAULT_THEME.typography, ...theme?.typography },
-    darkMode: { ...DEFAULT_THEME.darkMode, ...theme?.darkMode },
-    colors: { ...theme?.colors },
-  };
-}
+const CUSTOM_FALLBACK = '#000000';
 
-export function ColorControl({ descriptor, value, onChange, id, autoFocus }: ControlProps) {
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/**
+ * Průhledné se kreslí šachovnicí, ne bílou: bílá je platná barva a od
+ * „nic tu není" by nešla rozeznat.
+ */
+const CHECKERBOARD = {
+  backgroundImage:
+    'linear-gradient(45deg,var(--color-border) 25%,transparent 25%,transparent 75%,var(--color-border) 75%),linear-gradient(45deg,var(--color-border) 25%,transparent 25%,transparent 75%,var(--color-border) 75%)',
+  backgroundSize: '10px 10px',
+  backgroundPosition: '0 0, 5px 5px',
+} as const;
+
+/** Buňka vzorníku. Celá plocha je barva a celá plocha je klikací cíl. */
+const CELL = [
+  'min-h-[var(--size-target-min)] w-full rounded-[var(--radius-control)]',
+  'flex items-center justify-center',
+].join(' ');
+
+/**
+ * Zvolený vzorek se pozná DVOJITOU LINKOU, ne jen tmavým rámečkem.
+ *
+ * Samotný `border-text` je téměř černý, takže na tmavém vzorku (Text
+ * `#111827`) splyne a zvolená barva nejde poznat. Vnitřní linka v barvě
+ * papíru je vidět na tmavém vzorku, vnější tmavá na světlém, takže je
+ * volba čitelná na obou koncích palety. Stav navíc nese `aria-pressed`,
+ * takže na barvě nestojí sám.
+ */
+const selectedEdge = (active: boolean) =>
+  active
+    ? 'border-2 border-text shadow-[inset_0_0_0_var(--border-accent)_var(--color-surface)]'
+    : 'border border-border-strong';
+
+export function ColorControl({
+  descriptor,
+  value,
+  onChange,
+  id,
+  labelId,
+  autoFocus,
+}: ControlProps) {
   const t = useTranslations('editor');
 
   /*
@@ -77,7 +99,7 @@ export function ColorControl({ descriptor, value, onChange, id, autoFocus }: Con
    * lepší než shozený panel vlastností.
    */
   const theme = useOptionalEditorState<Theme>((state) => state.document.theme, DEFAULT_THEME);
-  const resolved = useMemo(() => resolveTheme(withDefaults(theme)), [theme]);
+  const resolved = useMemo(() => resolveTheme(themeWithDefaults(theme)), [theme]);
 
   const isHex = typeof value === 'string' && value.startsWith('#');
   const selected = typeof value === 'string' ? value : null;
@@ -109,82 +131,53 @@ export function ColorControl({ descriptor, value, onChange, id, autoFocus }: Con
 
   if (descriptor.kind !== 'color') return <></>;
 
-  const label = isHex ? t('value.color.custom') : selected === null ? t('value.color.none') : null;
+  const name = isHex
+    ? t('value.color.custom')
+    : selected === null
+      ? t('value.color.none')
+      : t(`value.color.${selected}`);
+
+  /*
+   * Odstín, se kterým se otevře systémový výběr. Když je vybraná role motivu,
+   * otevře se na její barvě, takže uživatel ladí od toho, co vidí, a nezačíná
+   * pokaždé u černé.
+   */
+  const pickerValue = isHex
+    ? String(value)
+    : typeof shown === 'string' && HEX.test(shown)
+      ? shown
+      : CUSTOM_FALLBACK;
+
+  /*
+   * Hodnota, která není ani hex, ani známá role motivu (například barva
+   * z importu nebo ze staršího dokumentu), nemá kde vzít odstín: `color()`
+   * v `resolveTheme` u neznámé role vrátí `undefined`. Do textu se pak psalo
+   * „ · undefined". Radši se v takovém případě hex vynechá; sám název pořád
+   * říká, co v dokumentu stojí, a kliknutím na vzorek to jde přepsat.
+   */
+  const shownHex = typeof shown === 'string' && HEX.test(shown) ? shown : null;
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        {/*
-          Vzorek zvolené hodnoty. `aria-hidden`, protože tutéž informaci nese
-          název v nabídce vedle a hex pod ní: kdo barvy nerozlišuje, přijde
-          nanejvýš o ozdobu, ne o informaci.
-        */}
-        <span
-          aria-hidden="true"
-          data-testid={`color-swatch-${descriptor.key}`}
-          className="inline-block size-[var(--size-control-sm)] shrink-0 rounded-[var(--radius-control)] border border-border-strong"
-          style={
-            shown === null
-              ? // Průhledné se kreslí šachovnicí, ne bílou: bílá je platná barva
-                // a od „nic tu není" by nešla rozeznat.
-                {
-                  backgroundImage:
-                    'linear-gradient(45deg,var(--color-border) 25%,transparent 25%,transparent 75%,var(--color-border) 75%),linear-gradient(45deg,var(--color-border) 25%,transparent 25%,transparent 75%,var(--color-border) 75%)',
-                  backgroundSize: '8px 8px',
-                  backgroundPosition: '0 0, 4px 4px',
-                }
-              : { backgroundColor: shown }
-          }
-        />
-        <select
-          id={id}
-          data-autofocus={autoFocus ? '' : undefined}
-          // Je to pole, do kterého se volí, takže má tvar pole ze systému:
-          // rámeček `border-strong`, plocha `field`, výška 44 px, text 15 px.
-          className="min-h-[var(--size-target-min)] flex-1 rounded-[var(--radius-control)] border border-border-strong bg-field px-3.5 text-ui"
-          value={isHex ? '$custom' : String(value ?? '$none')}
-          onChange={(event) => {
-            const next = event.target.value;
-            if (next === '$none') onChange(null);
-            else if (next === '$custom') onChange('#000000');
-            else onChange(next);
-          }}
-        >
-          {descriptor.nullable ? <option value="$none">{t('value.color.none')}</option> : null}
-          {ROLES.map((role) => (
-            <option key={role} value={role}>
-              {t(`value.color.${role}`)}
-            </option>
-          ))}
-          <option value="$custom">{t('value.color.custom')}</option>
-        </select>
-        {isHex ? (
-          <Input
-            type="color"
-            aria-label={t('value.color.custom')}
-            value={String(value)}
-            onChange={(event) => onChange(event.target.value.toLowerCase())}
-            className="w-12 shrink-0 p-1"
-          />
-        ) : null}
-      </div>
-
+    <div className="flex min-w-0 flex-col gap-1.5">
       {/*
-        Pás vzorků. Nabídka výš je pořád hlavní ovládání (nese popisek pole,
-        chodí z klávesnice a čte se čtečkou), tohle je druhá cesta k témuž:
-        deset rolí VIDĚT naráz. Bez ní si uživatel musel deset názvů typu
-        „Jemné pozadí" postupně vyzkoušet, aby zjistil, jakou barvu vybírá.
+        VZORNÍK JE JEDINÉ OVLÁDÁNÍ BARVY. Rozbalovací pole nad ním bylo třetí
+        cesta k téže hodnotě (vzorek, nabídka, vzorník) a jeho nejdelší položka
+        („Doplňková barva značky") si vynucovala šířku, kterou panel nemá:
+        obsah pak přetékal do vodorovného posuvu. Co nabídka uměla navíc, tedy
+        „Průhledné" a „Vlastní barva", jsou dnes poslední dva vzorky.
 
-        Přístupné jméno každého tlačítka je NÁZEV ROLE PLUS HEX, ne jen barva.
-        Barva je doplněk názvu, ne náhrada.
+        Mřížka má PEVNÝ POČET SLOUPCŮ, ne zalomení podle šířky: pět buněk na
+        řadu vychází v panelu na 48 px, tedy nad klikací plochou 44 px, a řady
+        se nezalomí do useknuté poloviny.
       */}
       <div
+        id={id}
         role="group"
-        aria-label={t('value.color.paletteLabel')}
-        className="flex flex-wrap gap-1"
+        aria-labelledby={labelId}
         data-testid={`color-palette-${descriptor.key}`}
+        className="grid grid-cols-5 gap-1"
       >
-        {ROLES.map((role) => {
+        {ROLES.map((role, index) => {
           const hex = resolved.light.roles[role];
           const active = selected === role;
           return (
@@ -192,27 +185,77 @@ export function ColorControl({ descriptor, value, onChange, id, autoFocus }: Con
               key={role}
               type="button"
               aria-pressed={active}
+              data-autofocus={autoFocus && index === 0 ? '' : undefined}
+              // Přístupné jméno je NÁZEV ROLE PLUS HEX, ne jen barva. Barva je
+              // doplněk názvu, ne náhrada.
               title={`${t(`value.color.${role}`)} ${hex}`}
               aria-label={`${t(`value.color.${role}`)} ${hex}`}
               onClick={() => onChange(role)}
-              // Zvolený vzorek se pozná SILNĚJŠÍM RÁMEČKEM, jak ho kreslí návrh
-              // (2 px v barvě textu), ne prstencem. Barva sama nositelem stavu
-              // není: nese ho `aria-pressed` a název s hexem v přístupném jméně.
-              className={`size-6 rounded-[var(--radius-control)] ${active ? 'border-2 border-text' : 'border border-border-strong'}`}
+              className={`${CELL} ${selectedEdge(active)}`}
               style={{ backgroundColor: hex }}
             />
           );
         })}
-      </div>
 
-      {/*
-        Název a hodnota v textu. Zůstává i bez rozeznávání barev a je to jediné
-        místo, kde je hex vidět bez otevírání nabídky.
-      */}
-      <p className="font-mono text-label text-text-muted">
-        {label ?? t(`value.color.${selected}`)}
-        {shown === null ? '' : ` · ${shown}`}
-      </p>
+        {descriptor.nullable ? (
+          <button
+            type="button"
+            aria-pressed={selected === null}
+            title={t('value.color.none')}
+            aria-label={t('value.color.none')}
+            data-testid={`color-none-${descriptor.key}`}
+            onClick={() => onChange(null)}
+            className={`${CELL} ${selectedEdge(selected === null)}`}
+            style={CHECKERBOARD}
+          />
+        ) : null}
+
+        {/*
+          Vlastní barva otevře systémový výběr rovnou. Dřív se musela nejdřív
+          zvolit v nabídce (což hodnotu přepsalo na černou) a teprve pak se
+          vedle objevilo pole s výběrem.
+
+          Pole je průhledné přes celou buňku, aby byl klikací cíl celá buňka
+          a systémový výběr se otevřel u ní. Obrys zaostření kreslí obal, protože
+          na neviditelném poli by ho nikdo neviděl.
+        */}
+        <label
+          data-testid={`color-custom-${descriptor.key}`}
+          title={t('value.color.custom')}
+          className={[
+            CELL,
+            selectedEdge(isHex),
+            'relative cursor-pointer bg-field',
+            'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2',
+            'has-[:focus-visible]:outline-[var(--color-focus-ring)]',
+          ].join(' ')}
+          style={isHex ? { backgroundColor: String(value) } : undefined}
+        >
+          {isHex ? null : <Plus aria-hidden className="icon-sm text-text-muted" />}
+          <input
+            type="color"
+            aria-label={t('value.color.custom')}
+            value={pickerValue}
+            onChange={(event) => onChange(event.target.value.toLowerCase())}
+            className="absolute inset-0 size-full cursor-pointer opacity-0"
+          />
+        </label>
+
+        {/*
+          Název a hodnota v textu. Zůstává i bez rozeznávání barev a je to
+          jediné místo, kde je hex vidět jako text. Sedí ve zbytku poslední
+          řady, takže po ní nezůstane useknutý pruh prázdných buněk.
+        */}
+        <p
+          data-testid={`color-value-${descriptor.key}`}
+          className={`self-center ps-1 font-mono text-label text-text-muted ${
+            descriptor.nullable ? 'col-span-3' : 'col-span-4'
+          }`}
+        >
+          {name}
+          {shownHex === null ? '' : ` · ${shownHex}`}
+        </p>
+      </div>
 
       {lowContrast ? (
         <p role="status" className="text-meta text-warning-text">

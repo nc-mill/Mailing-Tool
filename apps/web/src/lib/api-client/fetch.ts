@@ -36,6 +36,22 @@ export async function buildRequestHeaders(workspaceId?: string): Promise<Headers
   const acceptLanguage = incoming.get('accept-language');
   if (acceptLanguage) outgoing.set('accept-language', acceptLanguage);
 
+  /*
+   * USER AGENT PROHLÍŽEČE, NE NAŠEHO SERVERU.
+   *
+   * Požadavek na API vzniká uvnitř Server Action, takže ho odesílá `fetch`
+   * v Node a ten se představuje jako `node`. API čte `User-Agent` z požadavku,
+   * který dostane, a přesně tohle si ukládalo k relaci: v tabulce `sessions`
+   * leželo u 262 přihlášení `node` a obrazovka „Aktivní relace" u každého psala
+   * „Neznámé zařízení". Tím ztratila jediný smysl, který má, tedy poznat cizí
+   * přihlášení. Totéž platí pro auditní záznamy o přihlášení a odhlášení.
+   *
+   * Přeposílá se stejně jako `accept-language` výš: je to údaj o TOM, KDO SEDÍ
+   * U PROHLÍŽEČE, a od nás k němu nemá co přibývat ani ubývat.
+   */
+  const userAgent = incoming.get('user-agent');
+  if (userAgent) outgoing.set('user-agent', userAgent);
+
   if (workspaceId) outgoing.set('x-workspace-id', workspaceId);
   return outgoing;
 }

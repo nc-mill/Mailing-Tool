@@ -129,9 +129,15 @@ Aktualizováno 5. 8. 2026, 21:10.
 | Blokované adresy | **hotovo** |
 | Štítky | **hotovo** |
 | Nastavení, rámec a sekce Projekt | **hotovo** |
-| Nastavení, obsah zbylých 11 sekcí | běží |
-| Editor e-mailu | běží |
-| Průvodce importem | běží |
+| Nastavení, obsah zbylých 11 sekcí | **hotovo** |
+| Editor e-mailu | **hotovo**, plus celý den doladění hlavičky a panelů 6. 8. |
+| Průvodce importem | **hotovo** |
+
+> **Poznámka k těm třem posledním řádkům, 6. 8. 2026:** stály tu jako „běží" ještě dlouho poté,
+> co ti agenti skončili, protože jsem tabulku neaktualizoval. Stav jsem ověřil zpětně, ale
+> **strukturálně, ne vizuálně**: všechny sekce nastavení i všechny kroky průvodce importem
+> stavějí na designovém systému a jsou v commitu `e594ee2`. Vizuální kontrolu proti návrhu
+> u nich nikdo nedělal, takže „hotovo" tu znamená „integrované", ne „proměřené".
 
 ### Co se opravilo mimochodem, protože si toho někdo všiml
 
@@ -175,3 +181,134 @@ oblékání. Čeká to na rozhodnutí zadavatele.
 - `exactOptionalPropertyTypes` je zapnuté: volitelnou propu s `undefined` nepředávat,
   prostě ji vynechat.
 - Git je jen pro hlavního agenta. Subagent nikdy necommituje.
+
+---
+
+## 7. Vzorec, který se má cíleně hledat: obal polykající ovládací prvky uvnitř
+
+**6. 8. 2026 jsme na tuhle past narazili třikrát za jedno dopoledne**, pokaždé jiný agent,
+pokaždé jiná část aplikace. Není to náhoda a je to cennější než ty tři opravy dohromady.
+
+Pravidlo, které z toho plyne, je jednou větou:
+**co si klávesnici nebo myš obsluhuje samo, tomu do ní obal nesmí mluvit.**
+
+| Kde | Co obal dělal | Jak se to projevilo |
+|---|---|---|
+| `data-table.tsx`, klávesnice | obsluha řádku se vyjímala jen z `INPUT` a `TEXTAREA` | tlačítko v řádku **nešlo z klávesnice spustit vůbec**. Enter odnavigoval jinam, mezerník zaškrtl řádek. Týkalo se šesti tabulek |
+| `data-table.tsx`, myš | výjimka pro prvky v buňce **existovala, ale jen pro klik** | tatáž vada zrcadlově. Opravila se jedna cesta a nezrcadlilo se to do druhé |
+| `canvas.tsx` + `inline-rich-text.tsx` | plátno bralo klávesy z pole jako operace nad bloky; lišta plošně potlačovala výchozí chování | do pole pro odkaz **nešlo psát**, adresa se vlévala do e-mailu a přepisovala označený text. `Backspace` mazal celý blok |
+
+### Proč to testy nechytily
+
+Protože **dostat se na prvek a spustit ho jsou dvě různá tvrzení**. Soubor
+`keyboard-parity.test.tsx` se jmenuje „klávesová rovnocennost", měl testy na výběr, řazení,
+stránkování i otevření řádku, a přesto byl zelený: netestoval **ani jeden ovládací prvek
+uvnitř buňky**.
+
+### Co s tím
+
+- Kdo píše obsluhu událostí na obalu (řádek, plátno, karta, plovoucí vrstva), **musí napsat
+  i výjimku pro ovládací prvky uvnitř**, a to pro obě cesty naráz, klávesnici i myš.
+- Výčet prvků držet **v jedné konstantě**, ze které čtou obě obsluhy. Dva opsané řetězce se
+  časem rozejdou, což je přesně to, co se stalo v `data-table.tsx`.
+- **Test se ověřuje tak, že se oprava dočasně vrátí a zkontroluje se, že spadne.** Oba agenti,
+  kteří to udělali, měli pravdu; kdo to neudělá, dodá zelenou dekoraci vedle opravy.
+
+---
+
+## 8. Nálezy, které nikdo nezadal a nikdo je zatím neopravil
+
+Věci, kterých si agenti všimli mimo své zadání. **Nejsou opravené**, jsou zapsané, aby
+se neztratily. Pořadí je podle toho, co může nejvíc bolet.
+
+### Značka projektu se do e-mailů nepromítá (řeší se)
+
+Barvy z Nastavení → Značka projektu se dnes dostanou do e-mailu **jedinou cestou, a to přes
+AI asistenta**. Nová kampaň, nová šablona, nový formulář, ukázková data i **systémové e-maily
+seznamu** (potvrzení odběru, uvítání, rozloučení) dostávají výchozí modrou.
+
+Dokument přitom **žádné barvy nenese**, má prázdný objekt a modrá vzniká až při dopočítávání.
+Díky tomu jde spolehlivě poznat „tuhle barvu nikdo nesahal" od „tuhle si někdo nastavil ručně".
+
+### Potvrzení odběru přepne po kliknutí jazyk
+
+**Úzká, ale skutečná vada.** Stránka „Potvrdit odběr" se ukáže v jazyce kontaktu, ale výsledek
+po kliknutí přijde v jazyce projektu (`confirmByRef`, `packages/core/src/contacts/public/confirm.ts:144`,
+který jako jediný jazyk kontaktu nepřepisuje).
+
+**Pozor na širší verzi tohoto tvrzení, ta je vyvrácená.** Během dne padlo, že „veřejné stránky
+ignorují jazyk kontaktu" a že anglicky mluvící příjemce dostane českou odhlašovací stránku.
+**Není to pravda a je to naměřené**, ne odvozené: anglický kontakt v českém projektu dostal
+odhlašovací stránku anglicky (`<html lang="en">`, tlačítko „Unsubscribe"), a to i v českém
+prohlížeči. Přes `readVerifiedToken`, který jazyk kontaktu dosazuje, jdou `/u/`, `/p/`, `/r/`
+i `/v/`.
+
+Mrtvý parametr `contactLocale` u `publicScope` a zavádějící komentář nad ním zůstávají, ale je
+to kosmetika.
+
+### Pozvánka do projektu chodí v jazyce instalace
+
+Ne v jazyce projektu ani zvaného (`identity/invitation-service.ts:149`). Totéž e-mail o konci
+zkušebního režimu. Pro instalaci s vícejazyčnými projekty je to špatně.
+
+### `Escape` v poli pro adresu odkazu ukončí psaní celého textu
+
+Místo aby zavřel jen řádek s odkazem. Plyne to z toho, že se `Escape` na plátně obsluhuje
+ještě před pojistkami a bez ohledu na cíl. **Spíš otázka návrhu než vada**, čeká na rozhodnutí.
+
+### Předvyplněný seznam ve formuláři „Přidat kontakt"
+
+Seznam Odběratelé je zaškrtnutý předem. Kdo si toho nevšimne, přihlásí člověka do seznamu,
+o kterém nevěděl, a **u dvojího potvrzení mu rovnou odejde e-mail**. Narazili na to dva agenti
+nezávisle, oba tím nechtěně vyrobili odchozí zprávu.
+
+### Dva konflikty (409) v konzoli editoru: VYVRÁCENO, není to vada
+
+Zapsal jsem sem, že jde o překryv automatického ukládání a že se kvůli tomu může ztratit
+úprava. **Není to pravda a je to doložené.**
+
+Ty dva 409 nepatří ukládání, ale volání `POST /templates/{id}/validate`, kde je 409
+**záměrný smluvní kód** se významem „mezi nálezy je aspoň jeden blokující"
+(`packages/core/src/templates/api/templates.routes.ts:1001`). Klient ho výslovně toleruje
+(`http-ports.ts:152` vyjímá 409 i 422) a nálezy vykreslí do lišty. Nová prázdná kampaň
+blokující nálezy má, takže 409 je **správná odpověď**.
+
+Konflikt ukládání by byl 412 `precondition_failed`, ne 409. Dvojí volání je dvojí spuštění
+efektu ve vývojovém režimu.
+
+**Zbývá jen kosmetika:** červený řádek v konzoli, který vypadá jako porucha, ačkoli není.
+
+### Klikací plocha 36 px u přepínačů v hlavičce editoru
+
+Spouštěč „Zobrazit jako" a tlačítka režimů zobrazení mají 36 px, náš práh je 44 px.
+Stav před integrací designu, nikdo na to nesahal. Bije se to s pravidlem, které jinde
+v aplikaci držíme, a v hlavičce editoru je to zrovna hodně používané místo.
+
+### Žlutá primární akce u samostatné šablony
+
+Tlačítko „Poslat test" bylo v editoru samostatné šablony primární (žluté). Po převodu
+na ikonu je tmavé, protože **ikonové tlačítko žlutou variantu nemá**.
+
+Rozhodnutí zadavatele: **necháváme tmavé.** Zavádět žlutou do ikonového tlačítka kvůli
+jednomu místu by znamenalo, že žlutá přestane znamenat „hlavní akce obrazovky" a začne
+se objevovat v řadě ikon. V editoru uvnitř kampaně se navíc nic neztrácí, primární akce
+tam zůstává „Uložit a zpět do kampaně".
+
+### Čtyři osiřelé překladové klíče po zrušení šířky sloupců
+
+`contacts.list.columnWidth` a `reports.table.columnWidth`, v češtině i angličtině.
+Ovládání zmizelo, klíče zůstaly. Smazat.
+
+### Náhledy šablon
+
+Chtějí změnu na straně serveru, samotným designem se to nespraví.
+
+### Zbytky zkušebních dat v `mlain_clean`
+
+Mimo jiné kampaň „Zkouška toku e-mailů", třicetibloková „Nová šablona" a segmenty
+začínající na „ZK". K úklidu, až přestanou být potřeba.
+
+### Kontrola kódu hlásí 11 chyb, které s designem nesouvisí
+
+Všechny v `docker/collect-runtime-deps.mjs` a `docs/design/script.js`. Starší stav,
+nikdo z agentů na tyhle soubory nesahal.

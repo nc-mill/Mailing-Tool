@@ -1,5 +1,12 @@
 # P05 Design systém, i18n a skořápka: implementační plán
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P05 (design systém, i18n a skořápka) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** `packages/ui` a `packages/i18n` existují, **ale vzhled se od 5. 8. 2026 přestavuje podle nových návrhů**, takže vizuální části plánu už neplatí doslova.
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **Pro agentní pracovníky:** POVINNÁ PODŘÍZENÁ DOVEDNOST: použij `superpowers:subagent-driven-development` (doporučeno) nebo `superpowers:executing-plans` a proveď plán úkol po úkolu. Kroky mají zaškrtávací syntaxi (`- [ ]`) kvůli sledování postupu.
 
 **Cíl:** Dodat kompletní sdílený základ rozhraní produktu Mlain Mailer, tedy `packages/ui` (tokeny, primitiva shadcn/ui, osm komponent K1 až K8), `packages/i18n` (infrastruktura, namespace `common`, ICU, kontroly v CI) a skořápku aplikace (topbar, sidebar, přepínač projektů, registr navigace, `proxy.ts`), aby jedenáct navazujících plánů stavělo obrazovky a nic si nedopisovalo do sdíleného balíčku.

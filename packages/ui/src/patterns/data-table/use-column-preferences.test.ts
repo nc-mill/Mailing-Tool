@@ -27,24 +27,46 @@ describe('useColumnPreferences', () => {
     expect(second.result.current.visible).not.toContain('tags');
   });
 
-  it('uloží šířku sloupce', () => {
-    const { result } = renderHook(() =>
+  it('zobrazení všech sloupců přežije nové připojení', () => {
+    const first = renderHook(() =>
       useColumnPreferences({ tableId: 'contacts', allColumns: columns, defaultVisible: 6 }),
     );
-    act(() => result.current.setWidth('email', 320));
-    expect(result.current.widths.email).toBe(320);
+    act(() => first.result.current.toggleColumn('lastActive'));
+    first.unmount();
+
+    const second = renderHook(() =>
+      useColumnPreferences({ tableId: 'contacts', allColumns: columns, defaultVisible: 6 }),
+    );
+    expect(second.result.current.visible).toEqual(columns);
   });
 
   it('nastavení je vázané na tabulku, ne globálně', () => {
     const contacts = renderHook(() =>
       useColumnPreferences({ tableId: 'contacts', allColumns: columns, defaultVisible: 6 }),
     );
-    act(() => contacts.result.current.setWidth('email', 320));
+    act(() => contacts.result.current.toggleColumn('email'));
+    contacts.unmount();
 
     const campaigns = renderHook(() =>
       useColumnPreferences({ tableId: 'campaigns', allColumns: columns, defaultVisible: 6 }),
     );
-    expect(campaigns.result.current.widths.email).toBeUndefined();
+    expect(campaigns.result.current.visible).toContain('email');
+  });
+
+  it('starší zápis se šířkami se přečte a šířky z úložiště zmizí', () => {
+    window.localStorage.setItem(
+      'mlain.table.contacts',
+      JSON.stringify({ version: 1, hidden: ['tags'], widths: { email: 320 } }),
+    );
+
+    const { result, unmount } = renderHook(() =>
+      useColumnPreferences({ tableId: 'contacts', allColumns: columns, defaultVisible: 6 }),
+    );
+    expect(result.current.visible).not.toContain('tags');
+    unmount();
+
+    const stored = JSON.parse(window.localStorage.getItem('mlain.table.contacts') ?? '{}');
+    expect(stored).toEqual({ version: 1, hidden: ['tags'] });
   });
 
   it('poškozený zápis v úložišti nezabije tabulku', () => {

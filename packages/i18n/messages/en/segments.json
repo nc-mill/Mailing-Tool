@@ -7,7 +7,25 @@
     "count": "Contacts",
     "recounted": "Recounted"
   },
-  "rowActions": "More actions",
+  "rowMenu": "More actions for segment {name}",
+  "rowActions": {
+    "recount": "Recount",
+    "viewContacts": "View contacts",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "delete": {
+    "title": "Delete segment {name}?",
+    "contactsStay": "No contacts are deleted. A segment is a saved condition, not a group of people, so everything in Contacts stays as it is.",
+    "membersGo": "The manual member list of this segment goes with it. The contacts themselves stay.",
+    "campaignsBreak": "A campaign that has this segment in its audience will not find it after the deletion and its audience cannot be counted.",
+    "nestedBreak": "A segment that nests this one in its condition can no longer be counted or saved.",
+    "irreversible": "This cannot be undone.",
+    "cancel": "Keep segment",
+    "submit": "Delete segment",
+    "submitting": "Deleting…",
+    "failed": "The segment could not be deleted. Technical detail: {detail}"
+  },
   "name": "Segment name",
   "emptyList": "A segment is a saved question about your contacts, for example „who opened nothing in half a year\". Start from a ready made one, or build your own.",
   "stale": "Updated {time} ago.",

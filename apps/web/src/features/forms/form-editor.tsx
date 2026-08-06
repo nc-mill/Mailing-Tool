@@ -12,29 +12,17 @@ import { Select, SelectItem } from '@mlain/ui/components/select';
 import { Switch } from '@mlain/ui/components/switch';
 import { Textarea } from '@mlain/ui/components/textarea';
 import { ChevronRight, CodeXml, ExternalLink, Mail, SquarePen, Trash2 } from '@mlain/ui/icons';
-import { ConfirmDialog, type ConfirmDialogLabels } from '@mlain/ui/patterns/feedback';
+import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
 import { Alert } from '@mlain/ui/patterns/states';
 import { emptyDocument } from '@/features/editor/model/document-types';
 import { FieldBuilder } from './field-builder';
+import { FormDeleteDialog, useFormConfirmLabels } from './form-delete-dialog';
 import { createDeliveryTemplateAction, deleteFormAction, updateFormAction } from './actions';
 import type { ContactFieldOption, FormView, ListOption, TemplateOption } from './types';
 
 const NO_LIST = 'none';
 /** Sentinel „žádný e-mail". Prázdnou hodnotu si `Select` z radix-ui drží pro „nevybráno". */
 const NO_TEMPLATE = 'none';
-
-/** Popisky potvrzovacího dialogu z obecného katalogu, ne z domény formulářů. */
-function useConfirmLabels(identifier: string): ConfirmDialogLabels {
-  const t = useTranslations('common.confirm');
-  return {
-    irreversible: t('irreversible'),
-    whatHappens: t('whatHappens'),
-    notYetConfirmed: t('notYetConfirmed'),
-    notYetTyped: t('notYetTyped', { identifier }),
-    typeToConfirmMismatch: t('typeToConfirmMismatch'),
-    filterInWords: (filter: string) => t('filterInWords', { filter }),
-  };
-}
 
 /**
  * Karta s jedním přepínačem: název tématu nahoře, přepínač a vysvětlení pod ním.
@@ -129,7 +117,7 @@ export function FormEditor({
   const ta = useTranslations('common.a11y');
   const locale = useLocale();
   const router = useRouter();
-  const confirmLabels = useConfirmLabels(form.name);
+  const confirmLabels = useFormConfirmLabels(form.name);
 
   const [name, setName] = useState(form.name);
   const [consentText, setConsentText] = useState(form.consent_text ?? '');
@@ -504,19 +492,12 @@ export function FormEditor({
         }}
       />
 
-      <ConfirmDialog
+      {/* Výčet následků kreslí `FormDeleteDialog`, ať je v editoru i v řádkové
+          nabídce seznamu tentýž. */}
+      <FormDeleteDialog
+        form={form}
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        level="N2"
-        title={tf('deleteTitle', { name: form.name })}
-        consequences={[
-          tf('deleteConsequenceForm'),
-          tf('deleteConsequenceSubmissions'),
-          tf('deleteConsequenceAlternative'),
-        ]}
-        confirmLabel={tf('deleteConfirm')}
-        cancelLabel={tc('cancel')}
-        labels={confirmLabels}
         onConfirm={() => void remove()}
       />
 

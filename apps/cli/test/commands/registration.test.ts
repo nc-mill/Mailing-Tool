@@ -54,3 +54,51 @@ describe('registrace příkazů P16', () => {
     }
   });
 });
+
+/**
+ * Nález: `mlain doctor` uměl `--json` a `--strict`, v registru stálo jen
+ * `usage: 'mlain doctor'` a `dispatch` zachytává `--help` DŘÍV než příkaz,
+ * takže je nevypsala ani nápověda. Přepínač, o kterém se nedá nikde dočíst,
+ * v praxi neexistuje, a `--strict` přitom mění exit kód.
+ */
+describe('přepínače příkazů jsou popsané', () => {
+  /** Přepínače z `usage`, tedy to, co registr sám slibuje. */
+  const flagsInUsage = (usage: string): string[] => [
+    ...new Set(usage.match(/--[a-z0-9-]+/g) ?? []),
+  ];
+
+  it.each(COMMANDS.filter((c) => flagsInUsage(c.usage).length > 0).map((c) => c.name))(
+    'příkaz %s má ke každému přepínači z usage vysvětlení',
+    (name) => {
+      const command = COMMANDS.find((c) => c.name === name)!;
+      const described = (command.options ?? []).map((o) => o.flag);
+      for (const flag of flagsInUsage(command.usage)) {
+        expect(described, `${name}: přepínač ${flag} není nikde popsaný`).toContain(flag);
+      }
+    },
+  );
+
+  it('žádný popis přepínače nepopisuje přepínač, který v usage není', () => {
+    for (const command of COMMANDS) {
+      for (const option of command.options ?? []) {
+        expect(
+          flagsInUsage(command.usage),
+          `${command.name}: ${option.flag} je popsaný, ale v usage chybí`,
+        ).toContain(option.flag);
+      }
+    }
+  });
+
+  it('mlain doctor umí --json i --strict a nápověda je vypíše', async () => {
+    const streams = io();
+    const code = await dispatch(['doctor', '--help'], { ...streams, env: {} });
+    expect(code).toBe(0);
+    const help = streams.out.join('\n');
+    expect(help).toContain('--json');
+    expect(help).toContain('--strict');
+    // Nestačí, že se přepínač jmenuje. Musí být vidět, co dělá, protože
+    // `--strict` je jediný způsob, jak nechat varování shodit hlídač v cronu.
+    expect(help).toMatch(/--strict\s+\S/);
+    expect(help).toContain('exit 1');
+  });
+});

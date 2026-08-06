@@ -74,6 +74,11 @@
     "overLimitResetsAt": "Limit se obnoví {resetAt}.",
     "overLimitNoReset": "Limit se sám neobnoví, je potřeba ho zvýšit."
   },
+  "notFoundPage": {
+    "title": "Tuhle stránku jsme nenašli",
+    "body": "Adresa nikam nevede. Buď je v ní překlep, nebo obsah, který na ní býval, mezitím někdo přesunul či smazal.",
+    "back": "Zpět do aplikace"
+  },
   "errors": {
     "loadFailedTitle": "{entity} se nepodařilo načíst",
     "genericBody": "Zkuste to prosím znovu. Když to nepomůže, pošlete podpoře podrobnosti níž.",
@@ -131,6 +136,7 @@
     "clearSelection": "Zrušit výběr",
     "cursorInvalid": "Seznam se mezitím změnil, jste zpátky na začátku.",
     "columns": "Sloupce",
+    "action": "Akce",
     "rowsPerPage": "Řádků na stránku",
     "sortNotAvailable": "Podle tohohle sloupce řadit nejde.",
     "selectRow": "Označit řádek",
@@ -173,7 +179,6 @@
     "settingsAi": "AI asistent",
     "settingsAudit": "Audit log",
     "settingsBackups": "Zálohy",
-    "settingsAccount": "Můj účet",
     "automations": "Automatizace"
   },
   "shell": {
@@ -186,6 +191,7 @@
     "help": "Nápověda",
     "userMenu": "Můj účet",
     "profile": "Můj profil",
+    "backToProject": "Zpět do projektu {name}",
     "signOut": "Odhlásit se",
     "newProject": "Nový projekt",
     "newProjectLead": "Projekt je samostatná sada kontaktů, šablon a kampaní. Nic se mezi projekty nesdílí a vy budete jeho vlastníkem.",

@@ -1,5 +1,12 @@
 # Revize 1: soulad ostatních částí s konvencemi a kontrakty části 1
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Křížová revize specifikací z 31. 7. 2026: soulad ostatních částí s konvencemi části 1.
+> Nálezy se **zapracovaly zpátky do částí v `parts/`** ještě před psaním plánů, takže dokument popisuje
+> tehdejší podobu textů, ne dnešní. Platné znění specifikace je vždycky v `parts/`, ne tady.
+> **Stav jednotlivých nálezů neověřen.**
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 Vlastník: subagent part1-platforma
 Datum: 2026-07-31
 Předmět revize: `02-kontakty.md`, `03-obsah.md`, `04a-kampane.md`, `04b-sender.md`, `05-tracking.md`, `06-ui-ux.md`

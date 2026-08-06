@@ -1,5 +1,12 @@
 # Nálezy napříč plány
 
+<!-- puvod-dokumentu -->
+> **Historický záznam z prověrky plánů, ne živý seznam úkolů.** Nálezy vznikly mezi 1. a 3. 8. 2026
+> při recenzích šestnácti plánů a při vlně 0 implementace. **Od 3. 8. 2026 sem nikdo nezapisuje.**
+> Nadpis „Otevřené" znamená otevřeno k 3. 8. 2026, ne dnes: část těch nálezů je mezitím opravená
+> (namátkou N3, kód `contract_mismatch` v registru dnes je), část platí dál. **Stav jednotlivých položek neověřen.**
+> Živý seznam otevřených věcí je `docs/superpowers/STAV-UKOLU.md`, ne tenhle soubor.
+
 ## Stav po fázi 2 (2026-08-01)
 
 Recenze proběhly na deseti plánech, zbylých šest běží. Výsledek je jednoznačný a shodný:

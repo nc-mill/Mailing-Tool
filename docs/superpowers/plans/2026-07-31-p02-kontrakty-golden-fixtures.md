@@ -1,5 +1,12 @@
 # P02: Kontrakty a golden fixtures, implementační plán
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P02 (kontrakty a golden fixtures) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** `packages/contracts` i golden fixtures existují; brána `contracts-golden` má podle `STAV-IMPLEMENTACE.md` vlastní vadu.
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Dodat balíček `packages/contracts` a jeho Go protějšek `apps/sender/internal/contracts` tak, aby pět zmrazených kontraktů (outbox protokol, Liquid subset, formát trackovacích tokenů, šifrování credentials, značky pro tracking) mělo **jednu** TypeScript implementaci, jazykově neutrální golden fixtures, **spustitelné runnery těch fixtures na obou stranách** a test, který rozchod TypeScriptu a Go zachytí v CI dřív, než se dostane do produktu.

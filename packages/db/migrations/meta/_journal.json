@@ -148,6 +148,13 @@
       "when": 1785613000000,
       "tag": "0020_workspaces_greeting_enabled",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1785614000000,
+      "tag": "0021_campaign_working_copy_orphans",
+      "breakpoints": true
     }
   ]
 }

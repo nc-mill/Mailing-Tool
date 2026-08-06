@@ -18,7 +18,9 @@ export function PopoverContent({
       <Radix.Content
         sideOffset={6}
         className={cn(
-          'z-[var(--z-dialog)] rounded-[var(--radius-surface)] border border-border',
+          // `--z-flyout`, ne `--z-dialog`: vyjížděcí vrstva patří nad skořápku,
+          // jinak ji horní lišta uřízne. Viz stupnice vrstev v `tokens.css`.
+          'z-[var(--z-flyout)] rounded-[var(--radius-surface)] border border-border',
           'bg-surface-overlay p-4 text-sm text-text shadow-lg',
           className,
         )}

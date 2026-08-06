@@ -114,7 +114,6 @@ export function RecipientsPanel({
     sortedDescending: t('table.sortedDescending'),
     columnSettings: t('table.columnSettings'),
     columnVisible: (column: string) => t('table.columnVisible', { column }),
-    columnWidth: (column: string) => t('table.columnWidth', { column }),
   };
 
   return (

@@ -13,12 +13,22 @@ vi.mock('@mlain/i18n/navigation', () => ({
 const createContactExportAction = vi
   .fn()
   .mockResolvedValue({ status: 'success', id: 'e-1', downloadUrl: '/api/v1/x?token=t' });
+const deleteContactAction = vi.fn().mockResolvedValue({ status: 'success' });
+const unsubscribeContactAction = vi.fn().mockResolvedValue({ status: 'success' });
 
 vi.mock('./actions', () => ({
   bulkDeleteContactsAction: vi.fn().mockResolvedValue({ status: 'success' }),
   bulkTagContactsAction: vi.fn().mockResolvedValue({ status: 'success' }),
   createContactExportAction: (...args: unknown[]) => createContactExportAction(...args),
   exportStatusAction: vi.fn().mockResolvedValue({ status: 'success', state: 'completed' }),
+  deleteContactAction: (...args: unknown[]) => deleteContactAction(...args),
+  unsubscribeContactAction: (...args: unknown[]) => unsubscribeContactAction(...args),
+}));
+
+const restrictProcessingAction = vi.fn().mockResolvedValue({ status: 'success' });
+vi.mock('./restriction-actions', () => ({
+  restrictProcessingAction: (...args: unknown[]) => restrictProcessingAction(...args),
+  liftProcessingRestrictionAction: vi.fn().mockResolvedValue({ status: 'success' }),
 }));
 
 // Serverové akce se musí odstínit VŠECHNY, jinak se přes ně načte
@@ -55,6 +65,7 @@ const rows: ContactRow[] = [
     snooze_until: null,
     anonymized_at: null,
     lists: ['Zákazníci'],
+    subscribed_list_ids: ['l-1'],
     tags: ['Brno'],
     created_at: '2026-06-12T14:20:00.000Z',
   },
@@ -75,6 +86,7 @@ const rows: ContactRow[] = [
     snooze_until: null,
     anonymized_at: null,
     lists: [],
+    subscribed_list_ids: [],
     tags: [],
     created_at: '2026-07-01T08:00:00.000Z',
   },
@@ -90,6 +102,7 @@ function renderTable(props: Partial<React.ComponentProps<typeof ContactsTable>> 
       total={{ count: 12480, precision: 'estimated' }}
       filters={{}}
       names={{ lists: {}, tags: {}, segments: {} }}
+      canManageRestriction
       {...props}
     />,
   );
@@ -98,6 +111,9 @@ function renderTable(props: Partial<React.ComponentProps<typeof ContactsTable>> 
 beforeEach(() => {
   push.mockClear();
   createContactExportAction.mockClear();
+  deleteContactAction.mockClear().mockResolvedValue({ status: 'success' });
+  unsubscribeContactAction.mockClear().mockResolvedValue({ status: 'success' });
+  restrictProcessingAction.mockClear().mockResolvedValue({ status: 'success' });
   confirmContactsAction.mockReset().mockResolvedValue({
     status: 'success',
     outcomes: [
@@ -409,5 +425,195 @@ describe('ContactsTable: potvrzení v řádku', () => {
 
     expect(await screen.findByText(/Podle hledaného výrazu exportovat neumíme/)).toBeVisible();
     expect(createContactExportAction).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * NABÍDKA „…" V ŘÁDKU. Čtyři akce z detailu kontaktu, aby se kvůli nim nemuselo
+ * rozklikávat: upravit, odhlásit, omezit zpracování, smazat.
+ *
+ * Testy hlídají dvě věci naráz. Za prvé že se akce SKUTEČNĚ nabízejí a míří tam,
+ * kam mají. Za druhé, a to je důležitější, že se NENABÍZÍ TAM, KDE NEDÁVAJÍ SMYSL:
+ * odhlásit už odhlášeného, omezit už omezeného ani sáhnout na smazaný kontakt.
+ * Nabídka je zkratka k hotovým akcím, ne druhá cesta kolem jejich pojistek.
+ */
+describe('ContactsTable: nabídka akcí v řádku', () => {
+  const restricted: ContactRow = { ...rows[0]!, id: 'c-4', processing_restricted: true };
+  const unsubscribed: ContactRow = {
+    ...rows[0]!,
+    id: 'c-5',
+    email: 'odhlaseny@firma.cz',
+    status: 'unsubscribed',
+    subscribed_list_ids: [],
+  };
+  const deleted: ContactRow = {
+    ...rows[0]!,
+    id: 'c-6',
+    email: 'smazany@firma.cz',
+    status: 'deleted',
+    subscribed_list_ids: [],
+  };
+
+  async function openMenu(email: string) {
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: `Další akce s kontaktem ${email}` }));
+    return user;
+  }
+
+  it('nabídne čtyři akce z detailu a mazání odděluje', async () => {
+    renderTable();
+    await openMenu('jana@firma.cz');
+
+    expect(await screen.findByRole('menuitem', { name: 'Upravit kontakt' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Odhlásit' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Omezit zpracování' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Smazat' })).toBeInTheDocument();
+    expect(screen.getByRole('separator')).toBeInTheDocument();
+  });
+
+  it('úprava vede na formulář kontaktu, ne na detail', async () => {
+    renderTable();
+    const user = await openMenu('jana@firma.cz');
+    await user.click(await screen.findByRole('menuitem', { name: 'Upravit kontakt' }));
+
+    expect(push).toHaveBeenCalledWith('/w/eshop/contacts/c-1/edit');
+  });
+
+  it('odhlášení jde ze všech seznamů, ve kterých kontakt ještě je', async () => {
+    renderTable();
+    const user = await openMenu('jana@firma.cz');
+    await user.click(await screen.findByRole('menuitem', { name: 'Odhlásit' }));
+
+    await waitFor(() =>
+      expect(unsubscribeContactAction).toHaveBeenCalledWith({
+        workspaceId: 'w-1',
+        email: 'jana@firma.cz',
+        listIds: ['l-1'],
+      }),
+    );
+  });
+
+  /**
+   * Nález zadavatele u potvrzení v řádku, který platí i tady: co nedává smysl, se
+   * nenabízí vůbec. Odhlášený kontakt už odhlášený je a přihlásit ho zpět je jiná
+   * akce s vlastním oknem, ne položka „Odhlásit".
+   */
+  it('u odhlášeného kontaktu se odhlášení nenabízí', async () => {
+    renderTable({ rows: [unsubscribed] });
+    await openMenu('odhlaseny@firma.cz');
+
+    expect(await screen.findByRole('menuitem', { name: 'Upravit kontakt' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Odhlásit' })).toBeNull();
+  });
+
+  it('u kontaktu bez přihlášení do seznamu se odhlášení nenabízí, protože není odkud', async () => {
+    renderTable();
+    // Druhý řádek je nepotvrzený kontakt bez jediného seznamu. Stav odhlášení
+    // dovoluje, ale `DELETE /lists/{id}/subscribe` by nemělo co zavolat.
+    await openMenu('petr@firma.cz');
+
+    expect(await screen.findByRole('menuitem', { name: 'Upravit kontakt' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Odhlásit' })).toBeNull();
+  });
+
+  it('u už omezeného kontaktu se omezení nenabízí', async () => {
+    renderTable({ rows: [restricted] });
+    await openMenu('jana@firma.cz');
+
+    expect(await screen.findByRole('menuitem', { name: 'Upravit kontakt' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Omezit zpracování' })).toBeNull();
+  });
+
+  it('bez oprávnění se omezení nenabízí vůbec', async () => {
+    renderTable({ canManageRestriction: false });
+    await openMenu('jana@firma.cz');
+
+    expect(await screen.findByRole('menuitem', { name: 'Upravit kontakt' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Omezit zpracování' })).toBeNull();
+  });
+
+  it('smazaný kontakt nabídku nemá, protože by v ní nebylo nic', () => {
+    renderTable({ rows: [deleted] });
+
+    expect(
+      screen.queryByRole('button', { name: 'Další akce s kontaktem smazany@firma.cz' }),
+    ).toBeNull();
+  });
+
+  /**
+   * POJISTKY HOTOVÝCH AKCÍ SE NABÍDKOU NEOBCHÁZEJÍ. Omezení zpracování je táž
+   * komponenta jako na detailu, takže povinné odůvodnění platí i tady: bez něj
+   * se na server neposílá nic a audit nemá zůstat s „kdo a kdy" bez „proč".
+   */
+  it('omezení zpracování chce odůvodnění i z řádku', async () => {
+    renderTable();
+    const user = await openMenu('jana@firma.cz');
+    await user.click(await screen.findByRole('menuitem', { name: 'Omezit zpracování' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('vypadne ze všech segmentů');
+    await user.click(screen.getAllByRole('button', { name: /^omezit zpracování$/i }).at(-1)!);
+
+    expect(restrictProcessingAction).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Bez odůvodnění to neuděláme/i)).toBeInTheDocument();
+
+    await user.type(await screen.findByLabelText(/čeho se žádost týká/i), 'Žádost e-mailem 4. 8.');
+    await user.click(screen.getAllByRole('button', { name: /^omezit zpracování$/i }).at(-1)!);
+
+    await waitFor(() =>
+      expect(restrictProcessingAction).toHaveBeenCalledWith({
+        workspaceId: 'w-1',
+        id: 'c-1',
+        note: 'Žádost e-mailem 4. 8.',
+      }),
+    );
+  });
+
+  it('mazání se ptá oknem s následky a bez potvrzení nemaže', async () => {
+    renderTable();
+    const user = await openMenu('jana@firma.cz');
+    await user.click(await screen.findByRole('menuitem', { name: 'Smazat' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Smazat kontakt Jana Nováková?');
+    expect(dialog).toHaveTextContent('zmizí ze všech seznamů');
+    // Nabídka stáhnout data předem je podle 6.5 části 6 silnější ochrana než
+    // opisování textu, takže z řádku nesmí zmizet.
+    expect(within(dialog).getByRole('button', { name: 'Stáhnout data kontaktu' })).toBeVisible();
+    expect(deleteContactAction).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Smazat kontakt' }));
+    await waitFor(() =>
+      expect(deleteContactAction).toHaveBeenCalledWith({ workspaceId: 'w-1', id: 'c-1' }),
+    );
+  });
+
+  /**
+   * Nabídka stáhnout data před smazáním musí SKUTEČNĚ EXPORTOVAT, ne jen být vidět.
+   * Export jednoho kontaktu je v téhle doméně místo, kde tři různé akce posílaly
+   * neplatné tělo a končily na 422, aniž si toho kdokoli všiml.
+   */
+  it('stažení dat před smazáním vyveze právě ten kontakt', async () => {
+    renderTable();
+    const user = await openMenu('jana@firma.cz');
+    await user.click(await screen.findByRole('menuitem', { name: 'Smazat' }));
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Stáhnout data kontaktu',
+      }),
+    );
+
+    await waitFor(() => expect(createContactExportAction).toHaveBeenCalled());
+    const [call] = createContactExportAction.mock.calls as [[{ audience: unknown }]];
+    expect(JSON.stringify(call[0].audience)).toContain('jana@firma.cz');
+    expect(deleteContactAction).not.toHaveBeenCalled();
+  });
+
+  it('otevření nabídky neotevře detail kontaktu', async () => {
+    renderTable();
+    await openMenu('jana@firma.cz');
+
+    expect(await screen.findByRole('menuitem', { name: 'Upravit kontakt' })).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
   });
 });

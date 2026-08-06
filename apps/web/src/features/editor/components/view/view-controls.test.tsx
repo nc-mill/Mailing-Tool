@@ -1,5 +1,6 @@
 import { resolveTheme } from '@mlain/emails/theme/resolve';
 import messages from '@mlain/i18n/messages/cs/editor.json';
+import { TooltipProvider } from '@mlain/ui/components/tooltip';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
@@ -64,20 +65,24 @@ const document = (): EditorDocument =>
     ],
   }) as unknown as EditorDocument;
 
+// `Tooltip` v hlavičce potřebuje `TooltipProvider`; v aplikaci ho dodává
+// skořápka projektu, tady obal testu.
 function shell(assistant?: React.ReactNode) {
   render(
     <NextIntlClientProvider locale="cs" messages={{ editor: messages }}>
-      <EditorShell
-        templateId="t1"
-        designHash="h1"
-        document={document()}
-        canWriteHtml
-        readOnly={false}
-        fieldCatalog={catalog}
-        ports={createFakePorts()}
-        templateKind="campaign"
-        {...(assistant === undefined ? {} : { assistant })}
-      />
+      <TooltipProvider>
+        <EditorShell
+          templateId="t1"
+          designHash="h1"
+          document={document()}
+          canWriteHtml
+          readOnly={false}
+          fieldCatalog={catalog}
+          ports={createFakePorts()}
+          templateKind="campaign"
+          {...(assistant === undefined ? {} : { assistant })}
+        />
+      </TooltipProvider>
     </NextIntlClientProvider>,
   );
 }
@@ -105,6 +110,106 @@ describe('ovladače zobrazení v hlavičce editoru', () => {
     expect(screen.getByRole('radiogroup', { name: 'Režim náhledu' })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /Tmavý režim/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Zobrazit jako/ })).toBeInTheDocument();
+  });
+
+  /**
+   * REŽIMY JSOU OD 6. 8. 2026 IKONY BEZ SLOV.
+   *
+   * Hlavička se lámala do dvou řádků a místo drželi právě tihle čtyři
+   * s texty (390 px ze 927). Jméno volby se tím ale nesmělo ztratit: čtečka
+   * i hlasové ovládání ho čtou dál jako přístupné jméno přepínače, e2e taky.
+   */
+  describe('přepínač režimů zobrazení', () => {
+    const NAMES = ['Počítač', 'Mobil', 'Textová verze', 'Zdroj'];
+
+    it('každá volba se dál jmenuje svým slovem', () => {
+      shell();
+      for (const name of NAMES) {
+        expect(screen.getByRole('radio', { name })).toBeInTheDocument();
+      }
+    });
+
+    it('jméno je i v `title`, takže bublinu ukáže i prohlížeč sám', () => {
+      shell();
+      expect(screen.getByRole('radio', { name: 'Mobil' })).toHaveAttribute('title', 'Mobil');
+    });
+
+    it('slovo uvnitř tlačítka už není, zbyla ikona', () => {
+      shell();
+      expect(screen.getByTestId('view-mode-mobile').textContent).toBe('');
+    });
+
+    it('zvolená volba se pozná z `aria-checked`, ne jen z barvy', () => {
+      shell();
+      expect(screen.getByTestId('view-mode-desktop')).toHaveAttribute('aria-checked', 'true');
+      expect(screen.getByTestId('view-mode-mobile')).toHaveAttribute('aria-checked', 'false');
+    });
+
+    /*
+     * Barva sama by byla informace nesená jen barvou (WCAG 1.4.1). Zvolená
+     * volba proto kromě plochy dostává i vnitřní pruh u spodní hrany.
+     */
+    it('zvolená volba má kromě plochy i vlastní pruh, ne jen odstín', () => {
+      shell();
+      const mode = screen.getByTestId('view-mode-desktop');
+      expect(mode).toHaveClass('aria-checked:bg-accent-surface');
+      expect(mode.className).toContain(
+        'aria-checked:shadow-[inset_0_-2px_0_var(--color-accent-text)]',
+      );
+    });
+
+    /* WCAG 2.5.8. Bylo 36 px a s odebráním textu by se cíl zmenšil ještě víc. */
+    it('klikací plocha je 44 px, ne 36', () => {
+      shell();
+      for (const name of NAMES) {
+        expect(screen.getByRole('radio', { name })).toHaveClass('size-[var(--size-target-min)]');
+      }
+    });
+
+    /* Tmavý režim není volba ze skupiny, je to samostatné zapnuto/vypnuto. */
+    it('tmavý režim zůstal přepínačem se jménem, jen bez viditelného textu', () => {
+      shell();
+      const dark = screen.getByRole('switch', { name: 'Tmavý režim' });
+      expect(dark).toBeInTheDocument();
+      expect(dark.closest('label')?.textContent).toBe('');
+    });
+  });
+
+  /**
+   * SPOUŠTĚČ NABÍDKY NESE JEN „ZOBRAZIT JAKO", aby hlavička nebyla přes dva
+   * řádky. Zvolená hodnota se tím nesmí ztratit: čtečka ji čte z `aria-label`,
+   * oko ji najde v rozbalené nabídce.
+   */
+  it('na tlačítku je jen Zobrazit jako, hodnota je v přístupném jméně', () => {
+    shell();
+    const trigger = screen.getByRole('button', { name: /Zobrazit jako/ });
+    expect(trigger.textContent).toBe('Zobrazit jako');
+    expect(trigger).toHaveAttribute('aria-label', 'Zobrazit jako: Značky');
+  });
+
+  it('rozbalená nabídka ukáže současnou volbu řádkem i zaškrtnutím', async () => {
+    shell();
+    await userEvent.click(screen.getByRole('button', { name: /Zobrazit jako/ }));
+    expect(await screen.findByTestId('view-as-current')).toHaveTextContent('Zobrazit jako: Značky');
+    expect(screen.getByRole('button', { name: 'Značky' })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('button', { name: 'Vzorová data' })).not.toHaveAttribute(
+      'aria-current',
+    );
+  });
+
+  it('po přepnutí publika se posune i zaškrtnutí a přístupné jméno tlačítka', async () => {
+    shell();
+    await userEvent.click(screen.getByRole('button', { name: /Zobrazit jako/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Vzorová data' }));
+    expect(screen.getByRole('button', { name: /Zobrazit jako/ })).toHaveAttribute(
+      'aria-label',
+      'Zobrazit jako: Vzorová data',
+    );
+    await userEvent.click(screen.getByRole('button', { name: /Zobrazit jako/ }));
+    expect(await screen.findByRole('button', { name: 'Vzorová data' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
   });
 
   it('Mobil zúží plátno na šířku mobilu', async () => {

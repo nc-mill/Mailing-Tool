@@ -1,5 +1,12 @@
 # P03 Databáze: schéma, migrace, RLS. Implementační plán
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P03 (databáze, schéma, migrace a RLS) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** `packages/db` existuje a migrace pokračují dál, než plán popisuje (k 6. 8. 2026 je jich přes dvacet).
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Postavit balíček `packages/db` celý: Drizzle schéma všech sedmi domén naráz, migrace včetně vlastního runneru se zamykáním, partitioning, RLS politiky, databázové role a granty, základ repository vrstvy a testy proti reálnému PostgreSQL 18 v testcontainers.

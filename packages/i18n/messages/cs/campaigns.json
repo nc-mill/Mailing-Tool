@@ -17,7 +17,26 @@
       "audience": "Publikum",
       "sent": "Odesláno",
       "updated": "Změněno"
-    }
+    },
+    "rowMenu": "Další akce s kampaní {name}"
+  },
+  "rowActions": {
+    "editContent": "Upravit obsah",
+    "rename": "Přejmenovat",
+    "duplicate": "Duplikovat",
+    "unschedule": "Zrušit plán",
+    "pause": "Pozastavit",
+    "resume": "Pokračovat",
+    "cancel": "Zrušit rozesílku",
+    "delete": "Smazat",
+    "duplicateDone": "Kampaň „{name}\" je zkopírovaná, otevřeli jsme kopii.",
+    "duplicateFailed": "Kampaň se nepodařilo zkopírovat ({detail}).",
+    "unscheduleDone": "Plán kampaně „{name}\" je zrušený, je z ní zase koncept.",
+    "unscheduleFailed": "Plán se nepodařilo zrušit ({detail}).",
+    "pauseDone": "Rozesílka kampaně „{name}\" je pozastavená.",
+    "pauseFailed": "Rozesílku se nepodařilo pozastavit ({detail}).",
+    "resumeDone": "Rozesílka kampaně „{name}\" pokračuje.",
+    "resumeFailed": "Rozesílku se nepodařilo znovu spustit ({detail})."
   },
   "new": {
     "stepOf": "Krok {current} z {total}",
@@ -43,9 +62,7 @@
     "failed": "Kampaň se nepodařilo založit. Zkuste to znovu."
   },
   "delete": {
-    "columnHeader": "Smazání",
     "open": "Smazat",
-    "rowLabel": "Smazat kampaň {name}",
     "sectionTitle": "Smazání kampaně",
     "sectionHint": "Kampaň nikomu neodešla, takže se smazáním neztratí žádná odeslaná zpráva ani statistika.",
     "title": "Smazat kampaň {name}?",
@@ -129,10 +146,13 @@
     "basicsTitle": "Předmět a název",
     "name": "Název kampaně",
     "nameHint": "Vidíte ho jen vy v seznamu kampaní, příjemcům se neukazuje.",
+    "renameSaved": "Název kampaně uložen.",
+    "renameFailed": "Název se nepodařilo uložit, zůstal ten původní. Zkuste to znovu.",
+    "renameLocked": "Rozjetou kampaň už přejmenovat nejde. Název zůstal ten původní.",
     "subject": "Předmět",
     "subjectHint": "První, co příjemce uvidí ve schránce.",
     "preheader": "Předhlavička",
-    "preheaderHint": "Text, který se ve schránce ukáže hned za předmětem.",
+    "preheaderHint": "Ukáže se v seznamu doručené pošty vedle předmětu. V samotném e-mailu vidět není.",
     "contentTitle": "Obsah",
     "content": {
       "present": "Kampaň má vlastní obsah",
@@ -158,11 +178,15 @@
       "useLibrarySubmit": "Převzít obsah",
       "useLibraryHint": "Obsah se ze šablony zkopíruje do kampaně. Šablona se tím nemění a další úpravy kampaně se do ní nepromítnou.",
       "libraryEmpty": "V knihovně zatím žádná šablona není.",
+      "useLibrarySearch": "Hledat šablonu",
+      "useLibrarySearchEmpty": "Žádná šablona tomu, co hledáte, neodpovídá.",
+      "useLibraryTruncated": "Nabídka ukazuje {count} naposledy upravených šablon. V knihovně jich máte víc, zbytek najdete v Šablonách.",
       "loading": "Načítáme…",
       "loaded": "Obsah šablony jsme do kampaně načetli.",
       "replaced": "Obsah kampaně jsme přepsali obsahem šablony.",
       "loadFailed": "Obsah se nepodařilo načíst. Zkuste to znovu.",
       "confirmTitle": "Přepsat obsah kampaně obsahem šablony?",
+      "confirmFromTemplate": "Do kampaně se převezme obsah šablony „{name}“.",
       "confirmOverwrite": "Obsah, který má kampaň teď, se zahodí a nahradí ho obsah šablony.",
       "confirmTemplateStays": "Šablona se nemění. Kopíruje se z ní do kampaně, ne naopak.",
       "confirmSubmit": "Přepsat obsah",
@@ -239,6 +263,9 @@
     "body": "Kampaň existuje, jen jsme teď nezjistili, jestli je připravená k odeslání. Bývá za tím vypršené přihlášení nebo nedostupný odesílací účet. Zkuste to znovu, nebo si zkontrolujte nastavení kampaně.",
     "retry": "Zkusit znovu",
     "toSettings": "Upravit nastavení kampaně"
+  },
+  "loadError": {
+    "entity": "Kampaň"
   },
   "preflight": {
     "campaignAudienceEmpty": "Publikum je prázdné. Vyberte alespoň jeden seznam nebo segment.",
@@ -877,5 +904,22 @@
       "manage": "Spravovat odesílatele",
       "failed": "Předvolbu se nepodařilo použít. Zkuste to prosím znovu."
     }
+  },
+  "renameDialog": {
+    "title": "Přejmenovat kampaň „{name}\"",
+    "submit": "Uložit název",
+    "submitting": "Ukládám…",
+    "back": "Zpět"
+  },
+  "cancelDialog": {
+    "title": "Zrušit rozesílku kampaně „{name}\"?",
+    "explanation": "Zbytku příjemců se e-mail už neodešle.",
+    "numbers": "Odesláno {sent}, zbývajícím {remaining} příjemcům zpráva nepřijde.",
+    "sentStays": "Zprávy, které už odešly, zpátky vzít nejde a jejich výsledky zůstávají v reportu.",
+    "irreversible": "Zrušenou kampaň nejde znovu rozjet. Kdo chce zbytku napsat, udělá si kopii kampaně.",
+    "submit": "Zrušit rozesílku",
+    "submitting": "Ruším…",
+    "back": "Nechat běžet",
+    "failed": "Rozesílku se nepodařilo zrušit ({detail})."
   }
 }

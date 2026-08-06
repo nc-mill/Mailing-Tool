@@ -1,5 +1,12 @@
 # Revize P15: AI asistent
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Revize plánu P15 (AI asistent) z prověrky plánů
+> (31. 7. až 1. 8. 2026), tedy kontrola **textu plánu před stavbou**, ne kontrola kódu.
+> **Verdikt typu „plán není proveditelný" se týkal tehdejšího plánu, ne dnešního produktu.** Ten stojí a funguje.
+> Opravy se prováděly podle `docs/superpowers/plans/POSTUP-OPRAV.md`; **stav jednotlivých nálezů neověřen**.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 **Recenzovaný plán:** `/Users/petr/Projects/Mailing_Tool/docs/superpowers/plans/2026-07-31-p15-ai-asistent.md` (10 888 řádků, 38 úkolů, 229 kroků)
 **Datum:** 2026-08-01
 **Rozsah:** BYOK a registr providerů, extrakce značky s ochranou proti SSRF, strukturovaný výstup proti blokovému schématu, obrazovky 8.5.3 a 8.5.4, kritéria 7b a 7c

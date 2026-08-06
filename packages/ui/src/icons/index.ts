@@ -176,6 +176,10 @@ export {
   Link2,
   ListOrdered,
   Monitor,
+  // Měsíc pro tmavý režim plátna. Přepínač v hlavičce editoru přišel o slova,
+  // aby se pruh vešel na jeden řádek, takže ikona je jediné, co je z ovladače
+  // vidět; jméno akce nese `aria-label` a bublina.
+  Moon,
   Smartphone,
   Sparkles,
   Strikethrough,

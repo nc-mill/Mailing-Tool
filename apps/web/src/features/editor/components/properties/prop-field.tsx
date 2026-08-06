@@ -45,6 +45,17 @@ export type ControlProps = {
    * V transakční šabloně se odkazy nesledují, takže je to normální stav.
    */
   templateKind: ValidationProfile;
+  /**
+   * Id popisku vlastnosti. Nese ho ovládání, které NENÍ jedno pole, ale
+   * skupina prvků (vzorník barev, čtveřice odsazení, seznam sítí): takové
+   * se s popiskem sváže přes `aria-labelledby`, protože `<label for>` smí
+   * ukazovat jen na jeden formulářový prvek.
+   *
+   * Dřív si tyhle skupiny psaly `aria-labelledby={id}`, jenže `id` patří
+   * ovládacímu prvku uvnitř, ne popisku, takže odkaz mířil na prvek, který
+   * v panelu vůbec není, a skupina zůstala bez jména.
+   */
+  labelId: string;
   autoFocus?: boolean;
 };
 
@@ -63,34 +74,68 @@ const CONTROLS: Record<PropDescriptor['kind'], (props: ControlProps) => ReactEle
   visibility: VisibilityControl,
 };
 
-export function PropField(props: Omit<ControlProps, 'id'>) {
+/**
+ * Ovládání, které není jedno pole, ale skupina prvků. Popisek se u nich
+ * kreslí jako text (`Label as="span"`) a váže se přes `aria-labelledby`.
+ */
+const GROUP_KINDS = new Set<PropDescriptor['kind']>(['color', 'padding', 'socialItems']);
+
+/**
+ * Ovládání, u kterého popisek patří VEDLE, ne nad.
+ *
+ * Přepínač je široký 52 px a popisek nad ním nechával vedle sebe prázdný pruh
+ * přes celou šířku panelu. Patička má tři přepínače pod sebou, takže to byly
+ * tři řádky navíc a v té změti nebylo poznat, co ke které vlastnosti patří.
+ */
+const INLINE_KINDS = new Set<PropDescriptor['kind']>(['toggle']);
+
+export function PropField(props: Omit<ControlProps, 'id' | 'labelId'>) {
   const t = useTranslations('editor');
   const id = useId();
+  const labelId = `${id}-label`;
   const Control = CONTROLS[props.descriptor.kind];
   const hint = 'hint' in props.descriptor ? props.descriptor.hint : undefined;
   // Vlastnost chráněná oprávněním je jen pro čtení. Příznak je na obalu, aby se
   // dal přečíst u celé vlastnosti, ne až u vnitřku ovládacího prvku.
   const readOnly = props.descriptor.kind === 'code' && !props.canWriteHtml;
+  const isGroup = GROUP_KINDS.has(props.descriptor.kind);
+  const inline = INLINE_KINDS.has(props.descriptor.kind);
+
+  const label = (
+    <div className="flex min-w-0 items-center gap-1">
+      {isGroup ? (
+        <Label as="span" id={labelId}>
+          {t(props.descriptor.label)}
+        </Label>
+      ) : (
+        <Label id={labelId} htmlFor={id}>
+          {t(props.descriptor.label)}
+        </Label>
+      )}
+      {hint ? (
+        <TooltipProvider>
+          <Tooltip content={t(hint)}>
+            <span data-testid={`hint-${props.descriptor.key}`} tabIndex={0} aria-label={t(hint)}>
+              <Info aria-hidden className="icon-xs text-text-muted" />
+            </span>
+          </Tooltip>
+        </TooltipProvider>
+      ) : null}
+    </div>
+  );
 
   return (
     <div
       data-testid={`prop-${props.descriptor.key}`}
       data-readonly={readOnly ? 'true' : undefined}
-      className="space-y-1"
+      className={
+        inline ? 'flex min-w-0 items-center justify-between gap-[var(--spacing-inline)]' : 'min-w-0'
+      }
     >
-      <div className="flex items-center gap-1">
-        <Label htmlFor={id}>{t(props.descriptor.label)}</Label>
-        {hint ? (
-          <TooltipProvider>
-            <Tooltip content={t(hint)}>
-              <span data-testid={`hint-${props.descriptor.key}`} tabIndex={0} aria-label={t(hint)}>
-                <Info aria-hidden className="icon-xs text-text-muted" />
-              </span>
-            </Tooltip>
-          </TooltipProvider>
-        ) : null}
+      {label}
+      <div className={inline ? 'shrink-0' : 'mt-1 min-w-0'}>
+        <Control {...props} id={id} labelId={labelId} />
       </div>
-      <Control {...props} id={id} />
     </div>
   );
 }

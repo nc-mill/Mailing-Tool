@@ -97,4 +97,18 @@ describe('Button', () => {
     render(<Button variant="primary">Uložit</Button>);
     expect(screen.getByRole('button').className).toContain('min-h-[var(--size-target-min)]');
   });
+
+  // Táž kontrola pro velkou variantu. Ta pravidlo dlouho porušovala o řádek
+  // vedle: měla `min-h-12`, tedy 48 px z Tailwindu. Vypadalo to správně, ale
+  // číslo neviselo na ničem, takže by ho změna velikostí v tokenech minula.
+  it('velké tlačítko bere výšku z tokenu, ne z čísla ve třídě', () => {
+    render(
+      <Button variant="primary" size="lg">
+        Vrátit zpět
+      </Button>,
+    );
+    const className = screen.getByRole('button').className;
+    expect(className).toContain('min-h-[var(--size-control-lg)]');
+    expect(className).not.toContain('min-h-12');
+  });
 });

@@ -18,8 +18,6 @@ describe('document types', () => {
       meta: { name: 'Test', previewText: '', language: 'cs' },
       theme: {
         contentWidth: 600,
-        canvasBackground: 'surface.canvas',
-        contentBackground: 'surface.content',
         colors: {},
         fonts: { heading: 'system', body: 'system' },
         typography: { baseFontSize: 16, baseLineHeight: 1.5, headingScale: 1.25 },

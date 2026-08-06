@@ -7,16 +7,17 @@ import { Button } from '@mlain/ui/components/button';
 import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Trash2 } from '@mlain/ui/icons';
 import { deleteCampaignAction } from './actions';
+import { canDeleteCampaign } from './campaign-state';
 import { DeleteCampaignDialog, statusExplanationKey } from './delete-campaign-dialog';
 
 /**
  * Smazání kampaně na jejím detailu.
  *
- * Stavy, ze kterých API kampaň smaže. TÝŽ výčet jako `DELETABLE_STATUSES`
- * v jádru; kdyby se rozešly, obrazovka by nabízela tlačítko, které vždycky
- * skončí na 409.
+ * Stavy, ze kterých API kampaň smaže, drží sdílený `campaign-state.ts` pod
+ * jménem `canDeleteCampaign`. Kdyby se kopie rozešly, obrazovka by nabízela
+ * tlačítko, které vždycky skončí na 409; a od 6. 8. 2026 se na totéž pravidlo
+ * ptá i řádková nabídka v seznamu.
  */
-const DELETABLE_STATUSES = new Set(['draft', 'schedule_missed']);
 
 export function DeleteCampaignSection({
   workspaceId,
@@ -44,7 +45,7 @@ export function DeleteCampaignSection({
    */
   const dangerCard = 'border-danger';
 
-  if (!DELETABLE_STATUSES.has(campaign.status)) {
+  if (!canDeleteCampaign(campaign.status)) {
     return (
       <Card aria-labelledby="campaign-delete" padding="md" className={dangerCard}>
         <CardTitle className="text-danger-text">

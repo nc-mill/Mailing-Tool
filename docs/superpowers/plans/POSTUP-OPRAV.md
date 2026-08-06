@@ -1,6 +1,23 @@
 # Postup oprav plánů po recenzích
 
-Datum: 2026-08-01
+**Poslední revize: 2026-08-06.** Co je tenhle dokument: **dokončený** rozvrh, v jakém pořadí
+se v srpnu 2026 opravovalo šestnáct implementačních plánů po recenzích. Hledej v něm, proč
+plány stály v tomhle pořadí a jaká pravidla u oprav platila. **Není to seznam práce, která
+čeká**, ta je v `STAV-IMPLEMENTACE.md`.
+
+> **HOTOVO, vlny A až D proběhly.** Ověřeno 2026-08-06 podle časů souborů: všech šestnáct
+> plánů `2026-07-31-p01` až `p16` bylo naposledy upraveno 1. nebo 2. 8. 2026, tedy po tomhle
+> rozvrhu. Od té doby se implementuje a všechna rozhodnutí z `ROZHODNUTI-O-VLASTNICTVI.md`
+> jsou v kódu doložená.
+>
+> Stavy „běží" a „opravuje se" v tabulkách níž jsou proto **zmrazený zápis z 1. 8. 2026**,
+> ne dnešní stav. Nechávají se, aby bylo dohledatelné, čím to procházelo.
+>
+> **Na co si dát pozor:** čtyři plány vznikly až po tomhle rozvrhu a tímhle procesem
+> **neprošly**: `2026-08-04-editor-wysiwyg.md`, `2026-08-05-emaily-seznamu.md`,
+> `2026-08-05-p17-automatizace.md` a `2026-08-05-systemova-posta-ses.md`.
+
+Datum původního rozvrhu: 2026-08-01
 
 Recenzi má všech šestnáct plánů. Opravy se ale **nesmí pouštět najednou**, protože plány na sobě
 stojí: kdyby se doménový plán srovnával proti rozhraní, které se pod ním ještě mění, srovnal by
@@ -16,17 +33,19 @@ Dodavatel se ustálí první, odběratel se srovná proti jeho **hotové** podob
 
 ---
 
-## Vlna A: dodavatelé (běží)
+## Vlna A: dodavatelé (dokončeno 2026-08-02)
 
 Pět plánů, na kterých stojí všechno ostatní. Nedodávají doménu, dodávají nástroje.
 
-| Plán | Co dodává ostatním | Stav |
-|---|---|---|
-| P03 | databázové schéma, RLS, role, transakční primitiva | **hotovo** |
-| P01 | kostra repa, Docker, CI brány, registr chyb a front | opravuje se |
-| P02 | pět kontraktů mezi TypeScriptem a Go, golden fixtures | opravuje se |
-| P04 | konvence API, tvar chyb, transakční vrstva, identita | opravuje se |
-| P05 | design systém, osm komponent, i18n, skořápka | opravuje se |
+Sloupec „stav 1. 8." je původní zápis. Sloupec vpravo je ověření z 2026-08-06.
+
+| Plán | Co dodává ostatním | Stav 1. 8. | Ověřeno 6. 8. |
+|---|---|---|---|
+| P03 | databázové schéma, RLS, role, transakční primitiva | **hotovo** | soubor upraven 1. 8. 17:56 |
+| P01 | kostra repa, Docker, CI brány, registr chyb a front | opravuje se | soubor upraven 2. 8. 09:39 |
+| P02 | pět kontraktů mezi TypeScriptem a Go, golden fixtures | opravuje se | soubor upraven 1. 8. 12:31 |
+| P04 | konvence API, tvar chyb, transakční vrstva, identita | opravuje se | soubor upraven 1. 8. 13:04 |
+| P05 | design systém, osm komponent, i18n, skořápka | opravuje se | soubor upraven 1. 8. 11:14 |
 
 **Proč zrovna tyhle první.** P04 dodává transakční vrstvu a tvar chyb **všem** doménovým plánům.
 P05 dodává komponenty **jedenácti** plánům a jako jediný smí měnit `packages/ui`, takže si to
@@ -34,9 +53,10 @@ u sebe nikdo nesmí opravit. P02 a P01 drží brány, které mají rozchod zachy
 
 ---
 
-## Vlna B: doménové plány, které čtou jen z vlny A
+## Vlna B: doménové plány, které čtou jen z vlny A (dokončeno 2026-08-02)
 
-Čtyři plány. Mezi sebou se nedotýkají, takže mohou běžet naráz.
+**Pět** plánů. Mezi sebou se nedotýkají, takže mohou běžet naráz. Dřívější znění tady psalo
+„čtyři plány", ale tabulka jich vždycky měla pět; opraveno 2026-08-06.
 
 | Plán | Čte z | Hlavní úkol opravy |
 |---|---|---|
@@ -49,9 +69,15 @@ u sebe nikdo nesmí opravit. P02 a P01 drží brány, které mají rozchod zachy
 **Pozor u P09.** Podle rozhodnutí R1 přebírá Go implementaci všech kontraktů, kterou dosud dělal
 P02 dvakrát. Musí tedy počkat, až P02 svou Go část odstraní, jinak by se balíček nepřeložil.
 
+> **Vyřešeno, ověřeno 2026-08-06 v kódu.** Dělba podle R1 v repozitáři platí: testy
+> `TestGolden*` žijí v produkčních balíčcích P09 (`internal/token`, `internal/credentials`,
+> `internal/liquidx`, `internal/markers`, `internal/mimebuild`, `internal/outbox`)
+> a `apps/sender/internal/contracts` drží jen runnery. Že se to nesmí rozejít, hlídá
+> `apps/sender/internal/version/version_test.go` testem `TestGoldenRunnersFromP02Exist`.
+
 ---
 
-## Vlna C: plány, které čtou z vlny B
+## Vlna C: plány, které čtou z vlny B (dokončeno 2026-08-02)
 
 | Plán | Čte z | Hlavní úkol opravy |
 |---|---|---|
@@ -60,11 +86,16 @@ P02 dvakrát. Musí tedy počkat, až P02 svou Go část odstraní, jinak by se 
 | P13 kampaně a provideři | P07, P08, P03 | čtyři kritické, žádná fáze se dnes nezkompiluje |
 
 **Pozor u P11.** Jeho query builder závisí na tom, jak P05 opraví komponentu pro segmenty.
-Dnes unese šest ze čtyřiceti operátorů, takže se rozsah opravy může posunout.
+Tehdy unesl šest ze čtyřiceti operátorů, takže se rozsah opravy mohl posunout.
+
+> **Vyřešeno, ověřeno 2026-08-06 v kódu.** `packages/core/src/segments/ast.ts` má v `OPERATORS`
+> čtyřicet operátorů a `FIELD_CLASS_OPERATORS` je mapuje na třídy polí.
+> `packages/ui/src/patterns/query-builder/query-builder.tsx` si žádný seznam nedrží, bere
+> `field.operators` jako data, takže strop šesti operátorů v komponentě už není.
 
 ---
 
-## Vlna D: plány, které čtou ze všeho ostatního
+## Vlna D: plány, které čtou ze všeho ostatního (dokončeno 2026-08-02)
 
 | Plán | Čte z | Hlavní úkol opravy |
 |---|---|---|

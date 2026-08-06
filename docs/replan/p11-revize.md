@@ -1,5 +1,12 @@
 # Revize P11 (import, export, segmenty) proti schématu P03
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Revize plánu P11 (import, export, segmenty) z prověrky plánů
+> (31. 7. až 1. 8. 2026), tedy kontrola **textu plánu před stavbou**, ne kontrola kódu.
+> **Verdikt typu „plán není proveditelný" se týkal tehdejšího plánu, ne dnešního produktu.** Ten stojí a funguje.
+> Opravy se prováděly podle `docs/superpowers/plans/POSTUP-OPRAV.md`; **stav jednotlivých nálezů neověřen**.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 Datum: 2026-08-01
 Recenzovaný plán: `docs/superpowers/plans/2026-07-31-p11-import-export-segmenty.md` (10 224 řádků)
 Zdroj pravdy pro schéma: `docs/superpowers/plans/2026-07-31-p03-databaze-schema-rls.md`

@@ -3,6 +3,37 @@
 **Datum:** 4. 8. 2026
 **Nahrazuje rozhodnutí R7 a R8 plánu** `2026-07-31-p12-editor-sablon.md`.
 
+---
+
+## Stav k 6. 8. 2026 (revize proti kódu)
+
+Plán jako celek **platí a je z velké části hotový**. Nic ho nenahradilo.
+
+| Část | Stav |
+|---|---|
+| K1 až K7 (kapitola 8) | hotové, ověřeno v kódu |
+| Z1 přetahování do sloupce | **hotové 6. 8. 2026**, viz níž |
+| Z2 historie po znaku | **otevřené** |
+| Z3 tmavý režim na plátně | **hotové 6. 8. 2026** |
+| Z4 skutečné ikony sociálních sítí | **otevřené** |
+| Z5 mobilní náhled na plátně | **hotové 6. 8. 2026** |
+| Oprava náhradní hodnoty (6.1) | hotové, `apps/web/src/features/editor/model/richtext.ts`, funkce `exprWithFilters` |
+
+Co se od sepsání plánu změnilo v okolí a plán o tom neví:
+
+- **Pole „Úvodní řádek" zmizelo z editoru kampaně**, zůstalo jen u samostatné
+  šablony (`components/properties/theme-panel.tsx`). Předhlavička kampaně se
+  zadává v kroku 2 a kompilace sáhne po dokumentu, jen když je krok 2 prázdný.
+- **Panel Motiv píše pozadí plátna a obsahu do rolí `surface.canvas`
+  a `surface.content`.** Pole `canvasBackground` a `contentBackground` z motivu
+  zmizela úplně (`packages/emails/src/document/types.ts`).
+- **Automatické ukládání se po konfliktu zastaví** a neopakuje se donekonečna
+  (`autosave/use-autosave.ts`, `conflictedHash`).
+- Barvy značky projektu se propisují do nových dokumentů a uložení značky
+  převleče existující (`packages/core/src/templates/redress.ts`).
+
+---
+
 ## 1. Proč
 
 Zpětná vazba od reálných uživatelů: editor je neintuitivní, uživatel nechápe, co má dělat.
@@ -120,6 +151,10 @@ Obrázek dostane na plátně klikací plochu „Vyberte obrázek", která otevř
 
 ### 6.1 Oprava: náhradní hodnota nefunguje
 
+> **Hotovo 6. 8. 2026.** Doplňování filtrů dělá `exprWithFilters`
+> v `apps/web/src/features/editor/model/richtext.ts`, tedy na jediném převodním
+> místě mezi Tiptapem a dokumentem. Emitter ani zlaté vzorky se neměnily.
+
 Uzel `var` nese `fallback`, ale `varOutput` v emitteru náhradu **doplňuje záměnou za název filtru**:
 
 ```ts
@@ -158,17 +193,24 @@ Po každém kroku musí být aplikace použitelná.
 
 ### Co zbývá (nebylo v rozsahu tohohle průchodu)
 
-- [ ] **Z1** Přetahování myší je stále tenká vrstva nad `@dnd-kit` nad **plochým** seznamem
-  (`verticalListSortingStrategy` a `dropTargetFor`, které míří jen mezi sourozence). Funguje dál, ale
-  neumí upustit blok dovnitř sloupce. Zanořené plátno by uneslo lepší cíle upuštění.
+- [x] **Z1** *(hotovo 6. 8. 2026)* Přetahování myší bylo tenká vrstva nad `@dnd-kit` nad **plochým**
+  seznamem (`verticalListSortingStrategy` a `dropTargetFor`, které mířily jen mezi sourozence), takže
+  neumělo upustit blok dovnitř sloupce. Dnes je vrstva tažení zanořená:
+  `components/canvas/dnd/accepts.ts` bere gramatiku z `model/tree.ts` (`canContain`), takže do sloupce
+  se upustit dá, a `DropSlot` se kreslí i uvnitř sloupce (`canvas.tsx`, `typeAt(document, parent) === 'column'`).
 - [ ] **Z2** Historie se plní po znaku: `InlineRichText` volá `store.patchProps` na každý úhoz, stejně
   jako to dělalo pole v panelu. Slučování po sobě jdoucích úprav téhož bloku do jednoho kroku
-  historie chce podporu ve storu.
-- [ ] **Z3** Plátno kreslí jen světlý režim. Tmavý režim umí náhled; přepínač na plátně by šel dodělat
-  z `theme.dark`, který `resolveTheme` už vrací.
+  historie chce podporu ve storu. **Stále otevřené k 6. 8. 2026:** `onUpdate` v
+  `render/inline-rich-text.tsx` volá `onChange` bez odskoku a `mutate` v `state/editor-store.ts`
+  zapíše krok historie při každé změně.
+- [x] **Z3** *(hotovo 6. 8. 2026)* Plátno umí tmavý režim: `darkOverride(role, light)` z
+  `render/canvas-context.tsx` používá `canvas.tsx` i `render/block-view.tsx`, hodnoty bere
+  z `resolveTheme().dark`.
 - [ ] **Z4** Ikony sociálních sítí jsou na plátně kolečka se zkratkou. Skutečné ikony dodává produkt
-  z adresy, kterou zná až kompilace na serveru (`socialIconUrl`).
-- [ ] **Z5** Mobilní náhled přímo na plátně (dnes jen v odděleném náhledu).
+  z adresy, kterou zná až kompilace na serveru (`socialIconUrl`). **Stále otevřené k 6. 8. 2026**,
+  viz `SocialView` v `render/block-view.tsx`.
+- [x] **Z5** *(hotovo 6. 8. 2026)* Mobilní náhled je přímo na plátně: `canvas.tsx` zúží plochu na
+  375 px podle `view.mode === 'mobile'` a chytnou se tím tytéž mobilní hodnoty motivu.
 
 ## 9. Samostatné návrhy mimo tento plán
 

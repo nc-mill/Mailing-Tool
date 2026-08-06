@@ -1,14 +1,28 @@
 'use client';
 
+import { Fragment } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@mlain/ui/components/dropdown-menu';
 import { IconButton } from '@mlain/ui/components/icon-button';
 import { Skeleton } from '@mlain/ui/components/skeleton';
-import { Trash2 } from '@mlain/ui/icons';
 import { DataTable, type DataTableLabels } from '@mlain/ui/patterns/data-table';
 import { EmptyState, ErrorBlock } from '@mlain/ui/patterns/states';
+import { MoreIcon } from '@/lib/ui/status-icons';
 import { StatusBadge } from './status-badge';
 import { campaignHref } from './campaign-target';
+import {
+  campaignRowActions,
+  DESTRUCTIVE_CAMPAIGN_ACTIONS,
+  type CampaignPermissions,
+  type CampaignRowAction,
+} from './campaign-state';
 
 export type CampaignRow = {
   id: string;
@@ -17,6 +31,16 @@ export type CampaignRow = {
   audience_size: number | null;
   counters: { total: number; sent: number; delivered: number; bounced: number };
   updated_at: string;
+  /**
+   * Pracovní obsah kampaně. Rozhoduje o položce „Upravit obsah": bez něj nemá
+   * co otevřít. Odpověď `GET /campaigns` ho nese, dotahovat se nic nemusí.
+   */
+  template_id: string | null;
+  /**
+   * Proč je kampaň pozastavená. Rozhoduje o položce „Pokračovat": kampaň
+   * zastavenou poskytovatelem server znovu nepustí, takže se u ní nenabízí.
+   */
+  pause_reason: unknown;
   /**
    * Kdy kampaň dojela. Seznam z toho skládá jen meta řádek pod nadpisem
    * („naposledy odesláno …"), takže je nepovinné: starší volající, které
@@ -28,17 +52,103 @@ export type CampaignRow = {
 export type CampaignListState = 'loading' | 'empty' | 'error' | 'data';
 
 /**
- * Stavy, ze kterých API kampaň smaže. TÝŽ výčet jako `DELETABLE_STATUSES`
- * v jádru: kampaň, která nikdy neodešla, se nemá čím držet.
+ * Nabídka „…" v řádku kampaně, tvarem shodná s kontakty.
  *
- * Není to totéž co „vede na nastavení" (`campaignTarget`): naplánovaná kampaň
- * se otevírá v nastavení, ale smazat se nedá, dokud se plán nezruší.
+ * NIC SE TU NEDĚLÁ ZNOVU. Úprava obsahu je odkaz do editoru, přejmenování drží
+ * `renameCampaignAction`, duplikace `duplicateCampaignAction`, zrušení plánu
+ * `unscheduleCampaignAction`, pozastavení, pokračování a zrušení rozesílky tytéž
+ * akce, jaké volá obrazovka průběhu, a mazání `DeleteCampaignDialog` včetně výčtu
+ * následků. Nabídka jen říká, která z nich má u téhle kampaně smysl, a spustí ji.
  *
- * V řádcích ostatních stavů se tlačítko neukazuje vůbec. Tlačítko, které vždycky
- * jen ohlásí, že to nejde, je horší než žádné; vysvětlení, proč smazat nejde,
- * patří na detail kampaně, kde je vidět celý její stav.
+ * CO NEDÁVÁ SMYSL, SE NENABÍZÍ, ne zašedle. Rozhodnutí dělá `campaignRowActions`
+ * ve sdíleném `campaign-state.ts`, takže se táž tabulka stavů dá testovat bez
+ * Reactu a ptají se jí i serverové stránky.
+ *
+ * Okna kreslí obrazovka, ne tahle komponenta: obsah rozbalené nabídky se při
+ * volbě položky odpojí z DOM a odnesl by okno s sebou dřív, než by se ukázalo.
+ *
+ * Klávesu tady NIC NEZASTAVUJE, a je to tak správně. `DataTable` vyjímá cíle
+ * uvnitř `ROW_CONTROLS` (tedy i `button` a `[role="menuitem"]`) z aktivace řádku
+ * pro klávesnici i pro myš naráz, takže druhá pojistka v buňce by jen zakrývala,
+ * kde se to řeší doopravdy.
  */
-const DELETABLE_STATUSES = new Set(['draft', 'schedule_missed']);
+function CampaignRowMenu({
+  row,
+  basePath,
+  permissions,
+  onAction,
+}: {
+  row: CampaignRow;
+  /** Bez cesty se nedá sestavit odkaz do editoru, takže se ta položka vynechá. */
+  basePath: string | undefined;
+  permissions: CampaignPermissions;
+  onAction: (action: Exclude<CampaignRowAction, 'editContent'>, row: CampaignRow) => void;
+}) {
+  const t = useTranslations('campaigns');
+  const router = useRouter();
+
+  const actions = campaignRowActions(row, permissions).filter(
+    (action) => action !== 'editContent' || basePath !== undefined,
+  );
+
+  // Kampaň, se kterou se z řádku nedá udělat nic (typicky odeslaná bez práva
+  // zapisovat), nemá ani spouštěč. Prázdná nabídka je horší než žádná: slibuje
+  // akce, které nemá.
+  if (actions.length === 0) return null;
+
+  /*
+   * Oddělovač stojí PŘED PRVNÍ rušivou akcí, ne před každou z nich. Zrušení
+   * rozesílky a smazání jsou obě červené a stojí vedle sebe, takže druhá čára
+   * mezi nimi by je jen rozdrobila.
+   */
+  const firstDestructive = actions.findIndex((action) =>
+    DESTRUCTIVE_CAMPAIGN_ACTIONS.includes(action),
+  );
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          variant="ghost"
+          size="row"
+          label={t('list.rowMenu', { name: row.name })}
+          data-testid={`campaign-row-menu-${row.id}`}
+          icon={MoreIcon}
+          /*
+           * ČTVEREC JE 34 PX, KLIKACÍ PLOCHA 44 PX, stejně jako u kontaktů.
+           * Tlačítko o straně 44 px by řádek natáhlo a rozešlo by se s rytmem
+           * ostatních tabulek; plochu proto roztahuje neviditelný překryv.
+           */
+          className="relative after:absolute after:top-1/2 after:left-1/2 after:size-[var(--size-target-min)] after:-translate-x-1/2 after:-translate-y-1/2 after:content-['']"
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {actions.map((action, index) => (
+          <Fragment key={action}>
+            {index === firstDestructive ? <DropdownMenuSeparator /> : null}
+            {/* Značka pro test se sem nedává: `DropdownMenuItem` cizí atributy
+                nepropouští a položky nabídky se hledají podle jména, stejně jako
+                u kontaktů. */}
+            <DropdownMenuItem
+              {...(DESTRUCTIVE_CAMPAIGN_ACTIONS.includes(action)
+                ? ({ tone: 'danger' } as const)
+                : {})}
+              onSelect={() => {
+                if (action === 'editContent') {
+                  router.push(`${basePath}/${row.id}/content`);
+                  return;
+                }
+                onAction(action, row);
+              }}
+            >
+              {t(`rowActions.${action}`)}
+            </DropdownMenuItem>
+          </Fragment>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 /**
  * Čtyři stavy obrazovky (S1, S3, S4 a data). Prázdný stav vysvětluje pojem a nabízí
@@ -51,7 +161,7 @@ export function CampaignList({
   basePath,
   onCreate,
   onRetry,
-  onDelete,
+  rowActions,
   columnSettings,
 }: {
   rows: CampaignRow[];
@@ -66,11 +176,14 @@ export function CampaignList({
    */
   columnSettings?: { open: boolean; onOpenChange: (open: boolean) => void };
   /**
-   * Otevře potvrzení smazání. Dialog i akce patří obalu, protože seznam sám
-   * o projektu nic neví; bez téhle funkce se sloupec s mazáním nevykreslí,
-   * aby v tabulce nevzniklo tlačítko, které nikam nevede.
+   * Řádková nabídka „…". Dialogy i volání akcí patří obalu, protože seznam sám
+   * o projektu ani o přihlášeném člověku nic neví; bez tohohle propu se sloupec
+   * s nabídkou nevykreslí, aby v tabulce nevznikla nabídka, která nikam nevede.
    */
-  onDelete?: (row: CampaignRow) => void;
+  rowActions?: {
+    permissions: CampaignPermissions;
+    onAction: (action: Exclude<CampaignRowAction, 'editContent'>, row: CampaignRow) => void;
+  };
 }) {
   const t = useTranslations('campaigns');
   const tc = useTranslations('common');
@@ -144,7 +257,6 @@ export function CampaignList({
     sortedDescending: tc('a11y.sortedDescending'),
     columnSettings: tc('table.columns'),
     columnVisible: (column) => `${tc('table.columns')}: ${column}`,
-    columnWidth: (column) => `${tc('table.columns')}: ${column}`,
     // Bez tohohle popisku by panel se sloupci neměl jak zavřít, když si
     // spouštěč drží hlavička obrazovky.
     closeColumnSettings: tc('actions.close'),
@@ -217,41 +329,37 @@ export function CampaignList({
           ),
         },
         /*
-         * Sloupec s mazáním vzniká JEN tehdy, když obal dodal `onDelete`.
-         * Tlačítko bez napojené akce je mrtvé tlačítko a v tabulce se pozná
-         * až tím, že po kliknutí nic není.
+         * Nabídka „…" na konci řádku, tvarem shodná s kontakty. Vzniká JEN
+         * tehdy, když obal dodal `rowActions`: nabídka bez napojených akcí je
+         * mrtvá nabídka a v tabulce se to pozná až tím, že po volbě nic není.
          *
-         * Klik na tlačítko neotevře kampaň: `DataTable` u řádku ignoruje cíle
-         * uvnitř `button`, `a`, `input` a `label`.
+         * Do 6. 8. 2026 tu stála jediná ikona koše, takže se z řádku kampaně
+         * nedalo udělat nic než ji smazat, a to jen u rozepsané. Duplikace,
+         * zrušení plánu, pozastavení ani zrušení rozesílky odsud dostupné nebyly.
+         *
+         * Řádek zůstává prokliknutelný: `DataTable` vyjímá cíle uvnitř
+         * `ROW_CONTROLS` z aktivace řádku pro klávesnici i pro myš, takže se
+         * kampaň neotevře ani při rozbalení nabídky, ani při volbě položky.
          */
-        ...(onDelete
+        ...(rowActions
           ? [
               {
-                id: 'delete',
-                header: t('delete.columnHeader'),
-                width: 110,
-                cell: (row: CampaignRow) =>
-                  DELETABLE_STATUSES.has(row.status) ? (
-                    /*
-                     * Vidět je čtverec 34 px podle návrhu, ale kliká se do
-                     * 44 px: plochu roztahuje `before`, aby přístupnost
-                     * nezaplatila za to, že řádek tabulky je nízký.
-                     */
-                    <IconButton
-                      variant="ghost"
-                      size="row"
-                      label={t('delete.rowLabel', { name: row.name })}
-                      icon={<Trash2 aria-hidden className="icon-sm" />}
-                      data-testid={`delete-campaign-${row.id}`}
-                      onClick={() => onDelete(row)}
-                      className={[
-                        'relative text-danger-text hover:border-danger hover:text-danger-text',
-                        "before:absolute before:left-1/2 before:top-1/2 before:content-['']",
-                        'before:size-[var(--size-target-min)]',
-                        'before:-translate-x-1/2 before:-translate-y-1/2',
-                      ].join(' ')}
+                id: 'actions',
+                // `columns.action` je týž popisek, jaký nad sloupcem s nabídkou
+                // mají Kontakty, Formuláře i Vlastní pole. Nový klíč by znamenal
+                // dvě slova pro jednu věc, která se má číst všude stejně.
+                header: tc('table.action'),
+                width: 60,
+                cell: (row: CampaignRow) => (
+                  <span className="flex justify-end">
+                    <CampaignRowMenu
+                      row={row}
+                      basePath={basePath}
+                      permissions={rowActions.permissions}
+                      onAction={rowActions.onAction}
                     />
-                  ) : null,
+                  </span>
+                ),
               },
             ]
           : []),

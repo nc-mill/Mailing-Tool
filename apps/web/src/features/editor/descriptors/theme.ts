@@ -14,15 +14,23 @@ export const THEME_GROUPS: PropGroup[] = [
           { value: 640, label: 'value.width.640' },
         ],
       },
+      /*
+        KLÍČ JE ROLE MOTIVU, ne pole motivu. Obě plochy se kreslí z rolí
+        `surface.canvas` a `surface.content` (plátno v `canvas.tsx`, e-mail
+        v `emitter/shell.tsx` a `emitter/blocks/section.tsx`), takže panel
+        píše rovnou do nich. Dřív měl motiv na tutéž barvu vlastní pole
+        `canvasBackground` a `contentBackground`, jenže je nečetl nikdo:
+        volba se uložila a nezměnila nic. Dvě cesty k jedné barvě by se stejně
+        rozešly, tak zbyla ta, která se kreslí.
+
+        Hodnotu podle klíče proto NEHLEDEJ v `document.theme` cestou s tečkou:
+        role jméno s tečkou má a bydlí v `theme.colors`. Obsluhuje to
+        `theme-panel.tsx`, viz `ROLE_KEYS`.
+      */
+      { kind: 'color', key: 'surface.canvas', label: 'prop.canvasBackground', allowThemeRef: true },
       {
         kind: 'color',
-        key: 'canvasBackground',
-        label: 'prop.canvasBackground',
-        allowThemeRef: true,
-      },
-      {
-        kind: 'color',
-        key: 'contentBackground',
+        key: 'surface.content',
         label: 'prop.contentBackground',
         allowThemeRef: true,
       },

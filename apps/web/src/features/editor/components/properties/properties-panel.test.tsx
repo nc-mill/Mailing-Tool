@@ -50,6 +50,26 @@ describe('PropertiesPanel', () => {
     expect(screen.getByRole('heading', { name: /Motiv/ })).toBeInTheDocument();
   });
 
+  /**
+   * CESTA ZPÁTKY NA MOTIV.
+   *
+   * Panel motivu se ukazuje jen bez vybraného bloku, takže po prvním kliknutí
+   * do e-mailu se k nastavení pozadí, písem a šířky nedalo vrátit vůbec.
+   * Zadavatel hlásil doslova: „už není jak se vrátit k nastavení pozadí motivu".
+   * Test měří ten NÁVRAT, ne přítomnost tlačítka: po kliknutí musí být panel
+   * zpátky na motivu.
+   */
+  it('z vlastností bloku vede tlačítko zpátky na Motiv', async () => {
+    const { store } = setup('b_sp1');
+    expect(screen.queryByRole('heading', { name: /^Motiv$/ })).toBeNull();
+
+    await userEvent.click(screen.getByTestId('back-to-theme'));
+
+    expect(store.getState().selectedId).toBeNull();
+    expect(screen.getByRole('heading', { name: /^Motiv$/ })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Šířka obsahu/)).toBeInTheDocument();
+  });
+
   it('vykreslí skupiny a pole podle descriptoru, ne podle natvrdo psaného formuláře', () => {
     setup('b_sp1');
     expect(screen.getByRole('group', { name: /Vzhled/ })).toBeInTheDocument();

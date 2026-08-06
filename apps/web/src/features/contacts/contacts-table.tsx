@@ -5,6 +5,13 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { Link, useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
 import { Card } from '@mlain/ui/components/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@mlain/ui/components/dropdown-menu';
 import { IconButton } from '@mlain/ui/components/icon-button';
 import { PageHeader } from '@mlain/ui/components/page-header';
 import { Tooltip } from '@mlain/ui/components/tooltip';
@@ -21,11 +28,15 @@ import {
 // K1 z 13.1 části 6: výběr přežije přestránkování a je vidět jeho velikost, kurzorové
 // stránkování bez čísel stránek, virtualizace od 100 řádků, sticky hlavička.
 import { DataTable, type DataTableColumn } from '@mlain/ui/patterns/data-table';
+import { MoreIcon } from '@/lib/ui/status-icons';
 import { ContactsBulkActions } from './bulk-actions';
 import { ConfirmContactButton } from './confirm-contact-button';
+import { ContactDeleteDialog } from './contact-delete-dialog';
 import { ContactExportDialog, useContactExport } from './contact-export';
+import { useUnsubscribeContact } from './contact-unsubscribe';
 import { ContactsEmptyState, ContactsFilteredEmptyState } from './contacts-empty-state';
-import { filtersToAudience } from './export-audience';
+import { emailsToAudience, filtersToAudience } from './export-audience';
+import { ProcessingRestrictionButton } from './processing-restriction-button';
 import { ContactStatusBadges } from './status-badges';
 import { GreetingBadge } from './greeting-badge';
 import type { GreetingStatusInput } from './greeting-status';
@@ -55,6 +66,17 @@ export type ContactRow = {
   snooze_until: string | null;
   anonymized_at: string | null;
   lists: string[];
+  /**
+   * Seznamy, ze kterých je kontakt JEŠTĚ PŘIHLÁŠENÝ, jen jejich identifikátory.
+   *
+   * Není to duplicita `lists` a není to navíc. `lists` nese jména do buňky tabulky,
+   * tohle je podklad pro odhlášení v nabídce řádku: odhlášení je v API operace
+   * NAD SEZNAMEM (`DELETE /lists/{id}/subscribe`), takže bez identifikátorů se
+   * zavolat nedá, a bez stavu by se volalo i na seznamy, ze kterých je člověk
+   * odhlášený dávno. Prázdné pole znamená, že se odhlásit není odkud, a nabídka
+   * tu položku vůbec neukáže.
+   */
+  subscribed_list_ids: string[];
   tags: string[];
   created_at: string;
 };
@@ -100,6 +122,17 @@ export type ContactsTableProps = {
    * ho posílá vždycky.
    */
   greetingEnabled?: boolean;
+  /**
+   * Smí přihlášený člověk sáhnout na omezení zpracování podle článku 18? Rozhoduje
+   * `suppressions:write`, stejně jako na detailu kontaktu.
+   *
+   * V nabídce řádku se položka bez oprávnění NENABÍZÍ, kdežto na detailu je místo
+   * tlačítka věta, koho požádat. Je to schválně: detail je jediná obrazovka, kde
+   * se o omezení dá něco dozvědět, takže tam vysvětlení patří. V řádku seznamu by
+   * padesát zašedlých položek pod sebou jen zabíralo místo a odpověď „koho požádat"
+   * je od nich dvě kliknutí daleko.
+   */
+  canManageRestriction: boolean;
 };
 
 /**
@@ -177,6 +210,123 @@ function StatusFilterButton({
   );
 }
 
+/**
+ * Nabídka „…" v řádku: čtyři akce z detailu kontaktu, aby se kvůli nim nemuselo
+ * rozklikávat.
+ *
+ * NIC SE TU NEDĚLÁ ZNOVU. Úprava je odkaz na formulář, odhlášení drží
+ * `useUnsubscribeContact`, omezení zpracování `ProcessingRestrictionButton`
+ * (včetně povinného odůvodnění a zápisu do auditu) a mazání `ContactDeleteDialog`
+ * (včetně výčtu následků a nabídky stáhnout data předem). Nabídka jen říká, která
+ * z nich má u tohohle kontaktu smysl, a otevře ji.
+ *
+ * CO NEDÁVÁ SMYSL, SE NENABÍZÍ, stejně jako na Štítcích a stejně jako na detailu
+ * kontaktu: odhlášení už odhlášeného, omezení už omezeného ani cokoli u smazaného
+ * nebo anonymizovaného kontaktu v nabídce není. Zašedlá položka bez vysvětlení je
+ * zakázaná (kritérium 18 části 6) a vysvětlení se do řádku tabulky nevejde.
+ *
+ * Okna kreslí tabulka, ne tahle komponenta: obsah rozbalené nabídky se při výběru
+ * položky odpojí z DOM a odnesl by okno s sebou dřív, než by se stačilo ukázat.
+ */
+function ContactRowMenu({
+  row,
+  basePath,
+  canManageRestriction,
+  onUnsubscribe,
+  onRestrict,
+  onDelete,
+}: {
+  row: ContactRow;
+  basePath: string;
+  canManageRestriction: boolean;
+  onUnsubscribe: (row: ContactRow) => void;
+  onRestrict: (row: ContactRow) => void;
+  onDelete: (row: ContactRow) => void;
+}) {
+  const t = useTranslations('contacts');
+  const router = useRouter();
+
+  const state = describeContactState({
+    status: row.status,
+    processing_restricted: row.processing_restricted,
+    snooze_until: row.snooze_until,
+    anonymized_at: row.anonymized_at,
+    status_changed_at: row.created_at,
+  });
+
+  const canEdit = state.actions.includes('edit');
+  // Tatáž podmínka jako na detailu: kontakt musí být v nějakém seznamu ještě
+  // přihlášený, jinak nemá odhlášení co zavolat a skončilo by chybou ze serveru.
+  const canUnsubscribe =
+    state.actions.includes('unsubscribe') && row.subscribed_list_ids.length > 0;
+  const canRestrict = !state.restricted && !state.readOnly && canManageRestriction;
+  const canDelete = state.actions.includes('delete');
+
+  // Smazaný ani anonymizovaný kontakt nemá v nabídce nic, takže se nekreslí ani
+  // spouštěč. Prázdná nabídka je horší než žádná: slibuje akce, které nemá.
+  if (!canEdit && !canUnsubscribe && !canRestrict && !canDelete) return null;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          variant="ghost"
+          size="row"
+          label={t('list.rowMenu', { email: row.email })}
+          icon={MoreIcon}
+          /*
+           * ČTVEREC JE 34 PX, KLIKACÍ PLOCHA 44 PX.
+           *
+           * 34 px je `--size-control-xs`, tedy ikonová akce v řádku tabulky, a stojí
+           * hned vedle stejně velkého potvrzení ve vedlejším sloupci. Tlačítko o straně
+           * 44 px by řádek natáhlo z 62 na 72 px na nejčastěji otevírané obrazovce
+           * produktu. Plocha se proto roztahuje neviditelným překryvem: ukazatel má
+           * 44 × 44 px podle pravidla, řádek si drží rytmus návrhu.
+           */
+          className="relative after:absolute after:top-1/2 after:left-1/2 after:size-[var(--size-target-min)] after:-translate-x-1/2 after:-translate-y-1/2 after:content-['']"
+          /*
+           * Klávesu tady NIC NEZASTAVUJE, a je to tak správně.
+           *
+           * Chvíli tu stálo `onKeyDown` se `stopPropagation`, protože obsluha kláves
+           * na řádku `DataTable` brala Enter i mezerník i tehdy, když přišly
+           * z tlačítka uvnitř buňky, takže Enter otevřel detail místo nabídky. To
+           * bylo obcházení příčiny na jednom místě. Příčina je od 6. 8. 2026
+           * opravená v `DataTable` (`ROW_CONTROLS`), takže tahle pojistka zmizela;
+           * dvě ochrany nad sebou by jen zakrývaly, kde se to řeší doopravdy.
+           */
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {canEdit ? (
+          <DropdownMenuItem onSelect={() => router.push(`${basePath}/${row.id}/edit`)}>
+            {t('detail.actionEdit')}
+          </DropdownMenuItem>
+        ) : null}
+        {canUnsubscribe ? (
+          <DropdownMenuItem onSelect={() => onUnsubscribe(row)}>
+            {t('detail.actionUnsubscribe')}
+          </DropdownMenuItem>
+        ) : null}
+        {canRestrict ? (
+          <DropdownMenuItem onSelect={() => onRestrict(row)}>
+            {t('restricted.restrictAction')}
+          </DropdownMenuItem>
+        ) : null}
+        {canDelete ? (
+          <>
+            {/* Oddělovač před červenou akcí, stejně jako na Štítcích: mazání nemá
+                stát v jedné řadě s úpravou, ať se netrefí omylem. */}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem tone="danger" onSelect={() => onDelete(row)}>
+              {t('detail.actionDelete')}
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function ContactsTable({
   basePath,
   workspaceId,
@@ -191,6 +341,7 @@ export function ContactsTable({
   lists = [],
   vocativeReview,
   greetingEnabled = true,
+  canManageRestriction,
 }: ContactsTableProps) {
   const t = useTranslations('contacts');
   const format = useFormatter();
@@ -206,8 +357,22 @@ export function ContactsTable({
    * nedosáhne. S předaným `columnSettings` si vlastní tlačítko nekreslí.
    */
   const [columnsOpen, setColumnsOpen] = useState(false);
+  /*
+   * Okna nabídky „…" drží obrazovka, ne řádek.
+   *
+   * Kontakt zůstává nastavený i po zavření okna a maže ho teprve volba jiného
+   * řádku. Vynulovat ho při zavření nejde: mazání i omezení zavírají okno hned
+   * a teprve pak čekají na odpověď serveru, takže by si komponenta odpojila
+   * z DOM vlastní rozdělanou práci. `key` zařídí, že okno otevřené nad jiným
+   * kontaktem začíná s prázdným odůvodněním.
+   */
+  const [restrictTarget, setRestrictTarget] = useState<ContactRow | null>(null);
+  const [restrictOpen, setRestrictOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ContactRow | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const describeChips = useFilterChips();
   const contactExport = useContactExport(workspaceId);
+  const unsubscribe = useUnsubscribeContact(workspaceId);
 
   if (rows.length === 0) {
     return hasAnyFilter(filters) ? (
@@ -230,6 +395,19 @@ export function ContactsTable({
       title: t('list.exportTitle'),
       fileName: t('list.exportFileName'),
       outcome: filtersToAudience(filters),
+    });
+  }
+
+  /**
+   * Stažení dat jednoho kontaktu z okna mazání. Vede přes týž `useContactExport`
+   * jako export seznamu, takže je na obrazovce jediný dialog průběhu. Kontakt se
+   * do publika vyjmenuje adresou, protože id do podmínek publika nepatří.
+   */
+  function exportContact(row: ContactRow) {
+    void contactExport.start({
+      title: t('detail.actionExport'),
+      fileName: row.email,
+      outcome: emailsToAudience([row.email]),
     });
   }
 
@@ -454,9 +632,11 @@ export function ContactsTable({
         }
         onRowActivate={(row) => router.push(`${basePath}/${row.id}`)}
         virtualizeFrom={100}
-        // Osm místo výchozích šesti: tolik sloupců má tabulka v návrhu a žádný z nich
-        // se nesmí schovat za nastavení sloupců, dokud si to uživatel sám nepřeje.
-        defaultVisibleColumns={8}
+        // Devět místo výchozích šesti: osm sloupců návrhu plus nabídka „…" na konci
+        // řádku. Žádný z nich se nesmí schovat za nastavení sloupců, dokud si to
+        // uživatel sám nepřeje, a u nabídky to platí dvojnásob: schovaná nabídka
+        // znamená, že se z řádku nedá udělat vůbec nic.
+        defaultVisibleColumns={9}
         // Kurzorové stránkování bez čísel stránek. Kurzor jde do URL, ne do stavu
         // komponenty: odkaz na stránku se dá poslat dál a zpětné tlačítko funguje.
         pagination={{
@@ -600,9 +780,82 @@ export function ContactsTable({
                 </time>
               ),
             },
+            /*
+             * Nabídka „…" na konci řádku, tvarem shodná se Štítky a seznamem segmentů.
+             *
+             * Řádek zůstává prokliknutelný na detail: nabídka je zkratka pro čtyři akce,
+             * které tam jsou, ne jejich náhrada. `DataTable` cíle uvnitř `button`
+             * a `[role="menuitem"]` z aktivace řádku vyjímá, takže se detail neotevře
+             * ani při otevírání nabídky, ani při volbě položky.
+             */
+            {
+              id: 'actions',
+              // `columns.action` je týž popisek, jaký nad sloupcem s nabídkou mají
+              // Formuláře, Blokované adresy i Vlastní pole. Nový klíč by znamenal
+              // dvě slova pro jednu věc, která se má napříč aplikací číst stejně.
+              header: t('columns.action'),
+              width: 60,
+              cell: (row: ContactRow) => (
+                <span className="flex justify-end">
+                  <ContactRowMenu
+                    row={row}
+                    basePath={basePath}
+                    canManageRestriction={canManageRestriction}
+                    onUnsubscribe={(target) => {
+                      void unsubscribe({
+                        email: target.email,
+                        listIds: target.subscribed_list_ids,
+                      });
+                    }}
+                    onRestrict={(target) => {
+                      setRestrictTarget(target);
+                      setRestrictOpen(true);
+                    }}
+                    onDelete={(target) => {
+                      setDeleteTarget(target);
+                      setDeleteOpen(true);
+                    }}
+                  />
+                </span>
+              ),
+            },
           ] satisfies (DataTableColumn<ContactRow> | null)[]
         ).filter((column) => column !== null)}
       />
+
+      {/* Okno omezení zpracování podle článku 18. Je to TÁŽ komponenta jako na detailu,
+          jen bez vlastního spouštěče, takže povinné odůvodnění ani zápis do auditu nejde
+          z řádku obejít. */}
+      {restrictTarget === null ? null : (
+        <ProcessingRestrictionButton
+          key={restrictTarget.id}
+          workspaceId={workspaceId}
+          contactId={restrictTarget.id}
+          name={restrictTarget.name ?? restrictTarget.email}
+          mode="restrict"
+          appearance="dialog"
+          open={restrictOpen}
+          onOpenChange={setRestrictOpen}
+        />
+      )}
+
+      {deleteTarget === null ? null : (
+        <ContactDeleteDialog
+          key={deleteTarget.id}
+          workspaceId={workspaceId}
+          contactId={deleteTarget.id}
+          name={deleteTarget.name ?? deleteTarget.email}
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          onExport={() => exportContact(deleteTarget)}
+          // Seznam se obnoví na místě. Přenačtení celé stránky by sebralo pozici
+          // ve stránkování i rozbalené filtry a smazaný řádek zmizí i takhle.
+          onDeleted={() => {
+            setDeleteOpen(false);
+            router.refresh();
+          }}
+        />
+      )}
 
       <ContactExportDialog
         state={contactExport.state}

@@ -124,14 +124,30 @@ export async function confirmByRef(
   if (scope === null) return invalid;
 
   /*
-   * Seznam se dohledává PŘED potvrzením. Potvrzení token spotřebuje, takže
-   * potom už z něj seznam nedohledáme, a `ConfirmResult` ho nenese: veřejná
-   * stránka nesmí prozradit, komu která adresa patří.
+   * Seznam A JAZYK KONTAKTU se dohledávají PŘED potvrzením. Potvrzení token
+   * spotřebuje, takže potom už z něj ani seznam, ani kontakt nedohledáme,
+   * a `ConfirmResult` je nenese: veřejná stránka nesmí prozradit, komu která
+   * adresa patří.
+   *
+   * JAZYK JE JAZYK KONTAKTU, ne projektu, přesně jako u GETu (`lookupConfirmation`
+   * o kus výš) a u odhlášení (`readVerifiedToken` v `unsubscribe.ts`). Dřív se tu
+   * vracelo holé `scope.branding`, takže tentýž člověk viděl dvě obrazovky za sebou
+   * ve dvou jazycích: nabídku k potvrzení anglicky a výsledek po kliknutí česky.
    */
-  const listId = await withWorkspace(scope.ctx, async (tx) => {
+  const found = await withWorkspace(scope.ctx, async (tx) => {
     const record = await findConfirmationIn(tx, scope.ctx, parsed.value);
-    return record?.listId ?? null;
+    if (record === null) return null;
+    const { rows } = await tx.execute<{ contact_locale: string }>(sql`
+      SELECT locale AS contact_locale FROM contacts
+       WHERE id = ${record.contactId}::uuid AND workspace_id = ${scope.ctx.workspaceId}::uuid
+    `);
+    return { listId: record.listId, contactLocale: rows[0]?.contact_locale ?? null };
   });
+  const listId = found?.listId ?? null;
+  const branding =
+    found?.contactLocale == null
+      ? scope.branding
+      : { ...scope.branding, locale: found.contactLocale };
 
   const result = await confirmPublicSubscription(scope.ctx, {
     token: parsed.value,
@@ -142,7 +158,7 @@ export async function confirmByRef(
   const redirectUrl =
     result.view === 'done' && listId !== null ? await confirmRedirectUrl(scope.ctx, listId) : null;
 
-  return { view: result.view, listName: result.listName, branding: scope.branding, redirectUrl };
+  return { view: result.view, listName: result.listName, branding, redirectUrl };
 }
 
 /** Vlastní stránka po potvrzení, nebo `null`, když seznam žádnou nemá. */

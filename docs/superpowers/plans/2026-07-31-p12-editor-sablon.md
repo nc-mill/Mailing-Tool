@@ -1,5 +1,12 @@
 # P12 Editor šablon: implementační plán
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P12 (editor šablon) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** editor je v `apps/web/src/features/editor`, **od 4. 8. 2026 se ale přestavuje**, viz `docs/superpowers/plans/2026-08-04-editor-wysiwyg.md`.
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **Pro agentní pracovníky:** POVINNÁ PODŘÍZENÁ DOVEDNOST: použij `superpowers:subagent-driven-development` (doporučeno) nebo `superpowers:executing-plans` a proveď plán úkol po úkolu. Kroky mají zaškrtávací syntaxi (`- [ ]`) kvůli sledování postupu.
 
 **Cíl:** Dodat vlastní tenký editor e-mailových šablon nad blokovým dokumentem z P08: svislý seznam sekcí s přidáváním bloků mezi ně, přesouvání myší i klávesnicí, panel vlastností generovaný z descriptorů, bohatý text s pevným panelem a vkládáním personalizace, náhled pro počítač, mobil, tmavý režim, textovou verzi a zdroj, testovací odeslání a namespace i18n `editor`.

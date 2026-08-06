@@ -289,6 +289,16 @@ describe('reactivation cleanup', () => {
     expect(screen.getByText(/kdo se mezitím sám ozve, z úklidu vypadne/i)).toBeInTheDocument();
   });
 
+  /**
+   * Tlačítko „Zmrazit seznam" nic nedělalo: obrazovka nezná id segmentu, které
+   * `POST /segments/{id}/freeze` vyžaduje. Kliknutí, po kterém si uživatel
+   * myslí, že je množina zmrazená, je horší než žádné tlačítko.
+   */
+  it('does not offer a freeze button it cannot carry out', () => {
+    renderIntl(<CleanupScenario step="freeze" segment={segment} />);
+    expect(screen.queryByRole('button', { name: /zmrazit/i })).toBeNull();
+  });
+
   it('offers three actions described by consequence, defaulting to unsubscribe', () => {
     renderIntl(<CleanupScenario step="action" segment={segment} />);
     expect(screen.getByRole('radio', { name: /odhlásit je z odběru/i })).toBeChecked();

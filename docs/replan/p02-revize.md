@@ -1,5 +1,12 @@
 # Revize plánu P02: kontrakty a golden fixtures
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Revize plánu P02 (kontrakty a fixtures) z prověrky plánů
+> (31. 7. až 1. 8. 2026), tedy kontrola **textu plánu před stavbou**, ne kontrola kódu.
+> **Verdikt typu „plán není proveditelný" se týkal tehdejšího plánu, ne dnešního produktu.** Ten stojí a funguje.
+> Opravy se prováděly podle `docs/superpowers/plans/POSTUP-OPRAV.md`; **stav jednotlivých nálezů neověřen**.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 Recenzovaný soubor: `docs/superpowers/plans/2026-07-31-p02-kontrakty-golden-fixtures.md` (7898 řádků, 21 úkolů)
 Datum: 2026-08-01
 Metoda: čtení plánu plus nezávislé ověření spuštěním proti PostgreSQL 18.4 v Dockeru a přepočet krypto vektorů v Node

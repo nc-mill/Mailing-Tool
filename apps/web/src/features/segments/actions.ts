@@ -36,6 +36,35 @@ export async function recountSegmentAction(input: {
 }
 
 /**
+ * Smazání segmentu.
+ *
+ * ZAVÁDÍ FUNKCI, KTERÁ V PRODUKTU NEBYLA. `DELETE /api/v1/segments/{id}` je
+ * v jádru od začátku (`segments.routes.ts:507`), ale rozhraní ho do 6. 8. 2026
+ * nevolalo odnikud: segment, který si někdo omylem založil, se z aplikace nedal
+ * odstranit vůbec a jediná cesta vedla přes API.
+ *
+ * Je to MĚKKÉ smazání (`deleteSegment` v `segments/service.ts:137` nastaví
+ * `deleted_at`), jenže obnova z koše v API neexistuje, takže se uživateli
+ * v okně neslibuje.
+ *
+ * `workspaceId` je povinný, jinak požadavku chybí hlavička `X-Workspace-Id`,
+ * běží mimo kontext projektu a RLS vrátí 404 na segment, který je na obrazovce.
+ */
+export async function deleteSegmentAction(input: {
+  workspaceId: string;
+  id: string;
+}): Promise<{ status: 'success' } | { status: 'error'; code: string }> {
+  const result = await apiMutate<undefined>(`/api/v1/segments/${input.id}`, {
+    method: 'DELETE',
+    workspaceId: input.workspaceId,
+  });
+  if (!result.ok) return { status: 'error', code: result.problem.code };
+  revalidatePath(SEGMENTS_PATH, 'page');
+  revalidatePath(`${SEGMENTS_PATH}/[id]`, 'page');
+  return { status: 'success' };
+}
+
+/**
  * Založení segmentu z hotového presetu.
  *
  * Tlačítko „Použít" na kartě presetu volalo nepovinnou propu `onUse`, kterou mu

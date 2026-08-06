@@ -1,5 +1,12 @@
 # P07 Kontakty, souhlasy, vokativ a suppression: implementační plán
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P07 (kontakty, souhlasy, vokativ a suppression) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** doména kontaktů v `packages/core/src/contacts` existuje a používá se; oslovení a pátý pád se od 5. 8. 2026 předělávají na vypínatelné.
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **Pro agentní pracovníky:** POVINNÁ PODDOVEDNOST: Použij `superpowers:subagent-driven-development` (doporučeno) nebo `superpowers:executing-plans` a proveď plán úkol po úkolu. Kroky mají zaškrtávací pole (`- [ ]`) kvůli sledování postupu.
 
 **Cíl:** Postavit doménu kontaktů celého produktu Mlain Mailer: kontakty a jejich vlastní pole, štítky, seznamy s dvojím potvrzením, české oslovení včetně vokativu a fronty ke kontrole, souhlasy a jejich historii, suppression list s otisky odolnými proti rotaci klíče, žádosti podle GDPR, retenci, embedovatelné formuláře, příchozí webhooky, veřejné stránky pro příjemce a administrátorské obrazovky.

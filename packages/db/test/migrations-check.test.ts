@@ -97,7 +97,7 @@ describe('scénář 2: databáze z předchozího vydání plus nové migrace', (
 
       await runMigrations({ url, migrationsFolder: dir, ensurePartitions: false });
       // A teď plná sada, tedy jen ta poslední migrace navíc.
-      await expect(runMigrations({ url })).resolves.toBeUndefined();
+      await expect(runMigrations({ url, migrationsFolder: MIGRATIONS })).resolves.toBeUndefined();
 
       const { rows } = await h
         .as('mlain_migrator')
@@ -145,7 +145,9 @@ describe('scénář 3: migrace nad databází s reálnými daty', () => {
       );
 
       // Opakovaný běh nad naplněnou databází musí projít bez chyby.
-      await expect(runMigrations({ url: h.urlFor('mlain_migrator') })).resolves.toBeUndefined();
+      await expect(
+        runMigrations({ url: h.urlFor('mlain_migrator'), migrationsFolder: MIGRATIONS }),
+      ).resolves.toBeUndefined();
 
       const { rows } = await h
         .as('mlain_migrator')

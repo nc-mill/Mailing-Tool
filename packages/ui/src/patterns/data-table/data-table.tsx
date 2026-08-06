@@ -2,7 +2,7 @@
 
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, ArrowUp, SlidersHorizontal, X } from '../../icons';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { IconButton } from '../../components/icon-button';
 import { Checkbox } from '../../components/checkbox';
 import { cn } from '../../lib/cn';
@@ -15,6 +15,19 @@ import { useRowSelection } from './use-row-selection';
 const VIRTUALIZE_FROM = 100;
 const ROW_HEIGHT = 44;
 
+/**
+ * Ovládací prvky UVNITŘ buňky: tlačítko, odkaz, pole, zaškrtávátko, položka nabídky.
+ * Kliknutí ani klávesa, které přišly z nich, řádku nepatří.
+ *
+ * JE TO JEDNA VĚC VE DVOU POLOVINÁCH: `onRowClick` je cesta myší, `onKeyDown` cesta
+ * klávesnicí. **Kdo sáhne na jednu, musí sáhnout i na druhou.** Výčet proto stojí
+ * tady, na jednom místě, a ne dvakrát opsaný uvnitř obsluh. Právě z rozejití těch
+ * dvou cest vznikly obě vady, které tuhle tabulku potkaly: nejdřív fungovala jen
+ * klávesnice a klik neměl obsluhu vůbec, pak měla výjimku jen myš a tlačítko v řádku
+ * nešlo z klávesnice spustit.
+ */
+const ROW_CONTROLS = 'button, a, input, label, [role="checkbox"], [role="menuitem"]';
+
 export type DataTableColumn<Row> = {
   id: string;
   header: string;
@@ -24,6 +37,12 @@ export type DataTableColumn<Row> = {
    * Sloupec mimo ten výčet řazení **vůbec nenabízí**, žádná zašedlá šipka.
    */
   sortable?: boolean;
+  /**
+   * Pevná šířka sloupce v pixelech. Rozhoduje o ní **obrazovka**, ne uživatel:
+   * je to volba návrhu pro sloupec, do kterého se sází odznak nebo datum.
+   * Bez ní se sloupec roztáhne rovným dílem. Uživatelské nastavení přesné
+   * šířky panel sloupců nenabízí a nikdy se neukládá.
+   */
   width?: number;
 };
 
@@ -41,10 +60,9 @@ export type DataTableLabels = {
   sortNotAvailable: string;
   sortedAscending: string;
   sortedDescending: string;
-  /** Nastavení sloupců: viditelnost a šířka (tvrdý požadavek K1). */
+  /** Nastavení sloupců: viditelnost (tvrdý požadavek K1). */
   columnSettings: string;
   columnVisible: (column: string) => string;
-  columnWidth: (column: string) => string;
   /**
    * Popisek křížku, kterým se panel sloupců zavírá. Nepovinný, protože ho
    * dřívější volající nemají; bez něj se křížek nevykreslí. Obrazovka, která
@@ -126,6 +144,9 @@ export function DataTable<Row>({
   // Neřízený stav existuje pořád, jen se nepoužije, když si ho vzala obrazovka.
   const [ownColumnSettingsOpen, setOwnColumnSettingsOpen] = useState(false);
   const columnSettingsOpen = columnSettings?.open ?? ownColumnSettingsOpen;
+  // Předpona `id` zaškrtávátek v panelu. Na stránce může být tabulek víc,
+  // takže se nesmí odvozovat jen od `column.id`.
+  const columnSettingsId = useId();
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
   // Nastavení sloupců je tvrdý požadavek K1. Hook existoval od úkolu 19,
@@ -169,6 +190,24 @@ export function DataTable<Row>({
     const target = event.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
 
+    /*
+     * ENTER A MEZERNÍK PATŘÍ PRVKU V BUŇCE, NE ŘÁDKU.
+     *
+     * Naměřená vada, kvůli které tenhle řádek vznikl: tlačítko potvrzení v seznamu
+     * kontaktů nešlo z klávesnice spustit VŮBEC. `preventDefault()` níž potlačí
+     * i vlastní aktivaci tlačítka, takže Enter kontakt nepotvrdil (0 požadavků na
+     * server, stav beze změny) a místo toho otevřel detail, kdežto mezerník místo
+     * potvrzení přepnul výběr řádku. Myší přitom tlačítko fungovalo, protože druhá
+     * polovina téhle dvojice, `onRowClick`, tutéž výjimku má. Opravila se tehdy
+     * jedna cesta a do druhé se to nezrcadlilo.
+     *
+     * Šipky, `j`, `k` ani `x` výjimku NEMAJÍ, a je to schválně: jsou to zkratky,
+     * které si žádné tlačítko neobsluhuje samo, takže se o ně řádek s nikým nepere.
+     * Pohyb mezi řádky navíc musí fungovat i tehdy, když fokus stojí na tlačítku
+     * uvnitř buňky, jinak by se z něj šipkami nedalo dostat pryč.
+     */
+    const fromRowControl = target.closest(ROW_CONTROLS) !== null;
+
     if (event.key === 'ArrowDown' || event.key === 'j') {
       event.preventDefault();
       focusRow(index + 1);
@@ -179,13 +218,13 @@ export function DataTable<Row>({
       focusRow(index - 1);
       return;
     }
-    if (event.key === 'x' || event.key === ' ') {
+    if (event.key === 'x' || (event.key === ' ' && !fromRowControl)) {
       event.preventDefault();
       if (event.shiftKey) selection.selectRange(getRowId(row));
       else selection.toggle(getRowId(row));
       return;
     }
-    if (event.key === 'Enter' && onRowActivate) {
+    if (event.key === 'Enter' && onRowActivate && !fromRowControl) {
       event.preventDefault();
       onRowActivate(row);
     }
@@ -201,11 +240,14 @@ export function DataTable<Row>({
    * Kliknutí na ovládací prvky UVNITŘ řádku se ignoruje. Bez toho by zaškrtnutí
    * políčka nebo stisk tlačítka v řádku zároveň otevřely detail, takže by výběr
    * několika položek nešel udělat vůbec.
+   *
+   * Druhá polovina je `onKeyDown` výš. Výčet prvků je v `ROW_CONTROLS`, ať se
+   * ty dvě cesty nemají jak rozejít potřetí.
    */
   function onRowClick(event: React.MouseEvent<HTMLDivElement>, index: number, row: Row) {
     if (!onRowActivate) return;
     const target = event.target as HTMLElement;
-    if (target.closest('button, a, input, label, [role="checkbox"], [role="menuitem"]')) return;
+    if (target.closest(ROW_CONTROLS)) return;
     setFocusedIndex(index);
     onRowActivate(row);
   }
@@ -236,48 +278,54 @@ export function DataTable<Row>({
         </div>
       )}
 
+      {/* Panel nastavení sloupců. Nabízí JEN skrývání a zobrazování; přesná
+          šířka v pixelech se tu dřív zadávala u každého sloupce zvlášť a byla
+          zrušena. Zaškrtávátka proto stojí v jedné řadě vedle sebe, ne pod
+          sebou, ať je panel nízký. Zalomení je pojistka pro úzké okno, ne
+          rozvržení: na běžné šířce se vejdou na jeden řádek. */}
       {columnSettingsOpen ? (
-        <div className="flex flex-col gap-2 rounded-[var(--radius-surface)] border border-border bg-surface p-4">
+        <div className="flex items-center gap-[var(--spacing-inline)] rounded-[var(--radius-surface)] border border-border bg-surface p-[var(--spacing-stack)]">
+          <div className="flex flex-1 flex-wrap items-center gap-x-[var(--spacing-gutter)]">
+            {columns.map((column) => {
+              const checkboxId = `${columnSettingsId}-${column.id}`;
+              return (
+                <div
+                  key={column.id}
+                  className="flex min-h-[var(--size-target-min)] items-center gap-[var(--spacing-inline)]"
+                >
+                  {/* `aria-label` nese celou větu („Zobrazit sloupec Jméno"),
+                      viditelný popisek jen název sloupce. Spárování přes
+                      `htmlFor` je tu kvůli klikací ploše: `<button>` je
+                      popisovatelný prvek, takže klik na jméno sloupce
+                      zaškrtávátko přepne. */}
+                  <Checkbox
+                    id={checkboxId}
+                    aria-label={labels.columnVisible(column.header)}
+                    checked={preferences.visible.includes(column.id)}
+                    onCheckedChange={() => preferences.toggleColumn(column.id)}
+                  />
+                  <label htmlFor={checkboxId} className="text-sm text-text">
+                    {column.header}
+                  </label>
+                </div>
+              );
+            })}
+          </div>
           {/* Zavírací křížek. Když spouštěč drží obrazovka, je to jediná cesta,
               jak panel zavřít bez cesty zpátky do hlavičky. */}
           {labels.closeColumnSettings ? (
-            <div className="flex items-center justify-end">
-              <IconButton
-                variant="ghost"
-                size="xs"
-                label={labels.closeColumnSettings}
-                icon={<X aria-hidden className="icon-sm" />}
-                onClick={() =>
-                  columnSettings
-                    ? columnSettings.onOpenChange(false)
-                    : setOwnColumnSettingsOpen(false)
-                }
-              />
-            </div>
+            <IconButton
+              variant="ghost"
+              size="xs"
+              label={labels.closeColumnSettings}
+              icon={<X aria-hidden className="icon-sm" />}
+              onClick={() =>
+                columnSettings
+                  ? columnSettings.onOpenChange(false)
+                  : setOwnColumnSettingsOpen(false)
+              }
+            />
           ) : null}
-          {columns.map((column) => (
-            <div key={column.id} className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2 text-sm text-text">
-                <Checkbox
-                  aria-label={labels.columnVisible(column.header)}
-                  checked={preferences.visible.includes(column.id)}
-                  onCheckedChange={() => preferences.toggleColumn(column.id)}
-                />
-                {column.header}
-              </label>
-              <input
-                type="number"
-                min={80}
-                max={800}
-                aria-label={labels.columnWidth(column.header)}
-                value={preferences.widths[column.id] ?? ''}
-                onChange={(event) =>
-                  preferences.setWidth(column.id, Number(event.target.value) || 0)
-                }
-                className="min-h-[var(--size-target-min)] w-[var(--size-field-narrow)] rounded-[var(--radius-control)] border border-border-strong bg-field px-2 text-ui text-text"
-              />
-            </div>
-          ))}
         </div>
       ) : null}
 
@@ -334,11 +382,7 @@ export function DataTable<Row>({
                   : undefined
               }
               className="meta-caps flex-1 text-text-muted"
-              style={
-                (preferences.widths[column.id] ?? column.width)
-                  ? { width: preferences.widths[column.id] ?? column.width, flex: 'none' }
-                  : undefined
-              }
+              style={column.width ? { width: column.width, flex: 'none' } : undefined}
             >
               {column.sortable && order ? (
                 <button
@@ -427,11 +471,7 @@ export function DataTable<Row>({
                     key={column.id}
                     role="gridcell"
                     className="min-w-0 flex-1 text-ui text-text"
-                    style={
-                      (preferences.widths[column.id] ?? column.width)
-                        ? { width: preferences.widths[column.id] ?? column.width, flex: 'none' }
-                        : undefined
-                    }
+                    style={column.width ? { width: column.width, flex: 'none' } : undefined}
                   >
                     {column.cell(row)}
                   </span>

@@ -1,21 +1,101 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 // Odkazy i router jdou přes `@mlain/i18n/navigation`, ne přímo z Nextu:
 // obálka drží prefix jazyka v adrese.
 import { Link, useRouter } from '@mlain/i18n/navigation';
 import { Badge } from '@mlain/ui/components/badge';
 import { Button } from '@mlain/ui/components/button';
-import { CodeXml, Plus } from '@mlain/ui/icons';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@mlain/ui/components/dropdown-menu';
+import { IconButton } from '@mlain/ui/components/icon-button';
+import { Plus } from '@mlain/ui/icons';
 import { DataTable } from '@mlain/ui/patterns/data-table';
 import { PageHeader } from '@mlain/ui/components/page-header';
 import { Alert, EmptyState } from '@mlain/ui/patterns/states';
-import { CheckIcon, ClockIcon } from '@/lib/ui/status-icons';
+import { CheckIcon, ClockIcon, MoreIcon } from '@/lib/ui/status-icons';
 import { useContactsTableLabels } from '@/features/contacts/table-labels';
-import { createFormAction } from './actions';
+import { createFormAction, deleteFormAction, updateFormAction } from './actions';
 import { CreateFormDialog } from './create-form-dialog';
+import { FormDeleteDialog } from './form-delete-dialog';
+import {
+  DESTRUCTIVE_FORM_ACTIONS,
+  formRowActions,
+  formTargetListHref,
+  type FormRowAction,
+} from './form-state';
 import type { FormView, ListOption } from './types';
+
+/**
+ * Nabídka „…" v řádku formuláře, tvarem shodná s kontakty.
+ *
+ * Do 6. 8. 2026 vedla z řádku jediná cesta, a to „Kód k vložení" ve vlastním
+ * sloupci. Pozastavení formuláře bylo schované v přepínači uvnitř editoru,
+ * takže se muselo dvakrát proklikat, a smazat formulář šlo taky jen odtamtud.
+ *
+ * CO NEDÁVÁ SMYSL, SE NENABÍZÍ, ne zašedle: „Pozastavit" a „Spustit" jsou dvě
+ * různé položky a v nabídce stojí vždycky ta, která stav doopravdy změní.
+ * Rozhoduje `formRowActions` ve sdíleném `form-state.ts`.
+ *
+ * Okno mazání kreslí obrazovka, ne tahle komponenta: obsah rozbalené nabídky se
+ * při volbě položky odpojí z DOM a odnesl by okno s sebou dřív, než by se
+ * ukázalo.
+ */
+function FormRowMenu({
+  form,
+  canEdit,
+  onAction,
+}: {
+  form: FormView;
+  canEdit: boolean;
+  onAction: (action: FormRowAction, form: FormView) => void;
+}) {
+  const tf = useTranslations('forms');
+  const actions = formRowActions(form, { write: canEdit });
+
+  if (actions.length === 0) return null;
+
+  const firstDestructive = actions.findIndex((action) => DESTRUCTIVE_FORM_ACTIONS.includes(action));
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          variant="ghost"
+          size="row"
+          label={tf('table.rowMenu', { name: form.name })}
+          data-testid={`form-row-menu-${form.id}`}
+          icon={MoreIcon}
+          /*
+           * ČTVEREC JE 34 PX, KLIKACÍ PLOCHA 44 PX, stejně jako u kontaktů.
+           * Tlačítko o straně 44 px by řádek natáhlo a rozešlo by se s rytmem
+           * ostatních tabulek; plochu proto roztahuje neviditelný překryv.
+           */
+          className="relative after:absolute after:top-1/2 after:left-1/2 after:size-[var(--size-target-min)] after:-translate-x-1/2 after:-translate-y-1/2 after:content-['']"
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {actions.map((action, index) => (
+          <Fragment key={action}>
+            {index === firstDestructive ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuItem
+              {...(DESTRUCTIVE_FORM_ACTIONS.includes(action) ? ({ tone: 'danger' } as const) : {})}
+              onSelect={() => onAction(action, form)}
+            >
+              {tf(`rowActions.${action}`)}
+            </DropdownMenuItem>
+          </Fragment>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 /**
  * Seznam formulářů projektu.
@@ -55,8 +135,78 @@ export function FormsScreen({
   });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  /*
+   * Formulář, nad kterým je otevřené okno mazání. Drží ho obrazovka, ne řádek:
+   * obsah rozbalené nabídky se při volbě položky odpojí z DOM i s oknem.
+   */
+  const [deleting, setDeleting] = useState<FormView | null>(null);
+  const [, startTransition] = useTransition();
 
   const listNames = new Map(lists.map((list) => [list.id, list.name]));
+  /*
+   * Kořen projektu, tedy `basePath` bez koncového `/forms`. Odkaz na cílový
+   * seznam vede mimo sekci formulářů a stránka posílá jen cestu k té sekci.
+   */
+  const workspaceBase = basePath.replace(/\/forms$/, '');
+
+  /**
+   * Pozastavení a spuštění. Obojí je `PATCH /forms/{id}` s jediným polem
+   * `active`, tedy táž akce, jakou volá přepínač v editoru; potvrzovací okno
+   * nemá: přepnout zpátky jde jedním kliknutím v téže nabídce.
+   *
+   * VÝSLEDEK MUSÍ BÝT VIDĚT, proto `router.refresh()`: řádek se po změně liší
+   * jen odznakem stavu a bez obnovy by zůstal viset na staré hodnotě.
+   */
+  function setActive(form: FormView, active: boolean) {
+    setFailure(null);
+    startTransition(async () => {
+      const result = await updateFormAction({ workspaceId, id: form.id, body: { active } });
+      if (result.status === 'error') {
+        setFailure(result.detail === '' ? tf('editor.failed') : result.detail);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  function remove(form: FormView) {
+    setFailure(null);
+    startTransition(async () => {
+      const result = await deleteFormAction({ workspaceId, id: form.id });
+      if (result.status === 'error') {
+        setFailure(result.detail === '' ? tf('editor.failed') : result.detail);
+        return;
+      }
+      setDeleting(null);
+      router.refresh();
+    });
+  }
+
+  /** Volba z řádkové nabídky. Vratné akce běží rovnou, mazání otevře okno. */
+  function onRowAction(action: FormRowAction, form: FormView) {
+    switch (action) {
+      case 'edit':
+        router.push(`${basePath}/${form.id}`);
+        return;
+      case 'embed':
+        router.push(`${basePath}/${form.id}/embed`);
+        return;
+      case 'pause':
+        setActive(form, false);
+        return;
+      case 'activate':
+        setActive(form, true);
+        return;
+      case 'viewList': {
+        const listId = form.list_ids[0];
+        if (listId !== undefined) router.push(formTargetListHref(workspaceBase, listId));
+        return;
+      }
+      case 'delete':
+        setDeleting(form);
+        return;
+    }
+  }
 
   async function create(body: { name: string; list_ids: string[] }) {
     setFailure(null);
@@ -207,22 +357,38 @@ export function FormsScreen({
             ),
           },
           {
-            id: 'embed',
+            /*
+             * Nabídka „…" na konci řádku. Nahradila samostatný odkaz „Kód
+             * k vložení": ten byl jedinou akcí v řádku, takže se všechno ostatní
+             * muselo hledat uvnitř formuláře. Vložení na web z nabídky nezmizelo,
+             * jen se postavilo vedle úpravy, pozastavení a mazání.
+             */
+            id: 'actions',
             header: t('columns.action'),
+            width: 60,
             cell: (row) => (
-              <Link
-                href={`${basePath}/${row.id}/embed`}
-                className="inline-flex items-center gap-[var(--spacing-inline)] text-ui"
-              >
-                <CodeXml aria-hidden className="icon-sm shrink-0" />
-                {tf('table.embed')}
-              </Link>
+              <span className="flex justify-end">
+                <FormRowMenu form={row} canEdit={canEdit} onAction={onRowAction} />
+              </span>
             ),
           },
         ]}
       />
 
       {dialog}
+
+      {deleting !== null && (
+        <FormDeleteDialog
+          // `key` zařídí, že okno otevřené nad jiným formulářem začíná načisto.
+          key={deleting.id}
+          form={deleting}
+          open
+          onOpenChange={(open) => {
+            if (!open) setDeleting(null);
+          }}
+          onConfirm={() => remove(deleting)}
+        />
+      )}
     </>
   );
 }

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api-client/fetch';
 import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
+import { SettingsProblem } from '@/features/settings/settings-problem';
 import { SendingScreen } from '@/features/sending/sending-screen';
 import type { DomainView, ProviderView } from '@/features/sending/sending-settings';
 import type { GuardLimits, GuardSettings } from '@/features/sending/guard-thresholds';
@@ -32,7 +33,15 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function SendingSettingsPage({ params }: PageProps) {
   const { workspaceSlug } = await params;
   const access = await getWorkspaceAccess(workspaceSlug);
-  if (!access.ok) notFound();
+  /*
+   * 404 JEN Z OPRAVDOVÉ 404, viz komentář u obrazovky předvoleb odesílatele.
+   * Nečlen 404 dostane, vypršelý požadavek dostane chybový blok, ze kterého
+   * jde jít znovu.
+   */
+  if (!access.ok) {
+    if (access.problem.status === 404) notFound();
+    return <SettingsProblem problem={access.problem} />;
+  }
   const workspaceId = access.data.workspace.id;
 
   const [providers, domains, guards, trial] = await Promise.all([
@@ -44,7 +53,23 @@ export default async function SendingSettingsPage({ params }: PageProps) {
     apiFetch<TrialView>('/api/v1/settings/trial', { workspaceId }),
   ]);
 
-  if (!guards.ok || !trial.ok) notFound();
+  /*
+   * Prahy doručitelnosti a zkušební režim jsou POVINNÉ: bez nich by obrazovka
+   * ukázala nastavení, které neodpovídá skutečnosti. Číselníky nad nimi se
+   * naopak degradují na prázdno, protože ty obrazovku jen doplňují.
+   *
+   * Ani povinné čtení ale není důvod tvrdit, že stránka neexistuje. 404 se
+   * vydá jen tehdy, když ji vrátilo API; vypršení a výpadek dostanou blok
+   * s kódem a číslem požadavku.
+   */
+  if (!guards.ok) {
+    if (guards.problem.status === 404) notFound();
+    return <SettingsProblem problem={guards.problem} />;
+  }
+  if (!trial.ok) {
+    if (trial.problem.status === 404) notFound();
+    return <SettingsProblem problem={trial.problem} />;
+  }
 
   return (
     <SendingScreen

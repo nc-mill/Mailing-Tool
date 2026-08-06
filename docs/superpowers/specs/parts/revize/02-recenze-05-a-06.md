@@ -1,5 +1,12 @@
 # Křížová revize částí 5 a 6 z pohledu části 2
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Křížová revize specifikací z 31. 7. 2026: křížová recenze částí 5 a 6 očima části 2.
+> Nálezy se **zapracovaly zpátky do částí v `parts/`** ještě před psaním plánů, takže dokument popisuje
+> tehdejší podobu textů, ne dnešní. Platné znění specifikace je vždycky v `parts/`, ne tady.
+> **Stav jednotlivých nálezů neověřen.**
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 Recenzent: subagent part2-kontakty (vlastník části 2: kontakty, souhlasy, segmenty, import, vokativ, GDPR)
 Datum: 2026-07-31
 Recenzované soubory: `parts/05-tracking.md` (2 749 řádků), `parts/06-ui-ux.md` (3 996 řádků)

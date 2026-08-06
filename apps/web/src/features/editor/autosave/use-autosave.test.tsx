@@ -67,6 +67,94 @@ describe('useAutosave', () => {
     expect(store.getState().document.blocks[0]!.children![0]!.props.level).toBe(1);
   });
 
+  /**
+   * Regrese na druhou smyčku, naměřenou v prohlížeči: po konfliktu jel editor
+   * dokola, čtyři pokusy za pět vteřin, a nic ho nezastavilo. Vadilo to dvakrát.
+   * Uživateli běžela na pozadí smyčka požadavků, které nemohly uspět, a
+   * opakování k tomu vypadalo jako přechodná chyba, kdežto ve skutečnosti se od
+   * té chvíle neuložilo vůbec nic.
+   *
+   * Konflikt se nedá spravit úpravou dokumentu, na rozdíl od odmítnutého
+   * obsahu: server odmítá zastaralý otisk, ne obsah. Další psaní proto nesmí
+   * vyvolat nový pokus.
+   */
+  it('po konfliktu se další pokus nepošle, ani když uživatel píše dál', async () => {
+    let calls = 0;
+    const store = createEditorStore({ document: doc(), designHash: 'h1' });
+    const ports = createFakePorts({
+      save: async () => {
+        calls += 1;
+        return { ok: false, conflict: true, document: doc(), designHash: 'h9' };
+      },
+    });
+    renderHook(() => useAutosave({ store, ports, templateId: 't1' }));
+
+    act(() => {
+      store.patchProps('b_h1', { level: 1 });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    await waitFor(() => expect(store.getState().status).toBe('conflict'));
+    expect(calls).toBe(1);
+
+    // Dvacet vteřin ticha. Tady dřív přibývalo po pokusu každou 1,5 vteřiny.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20000);
+    });
+    expect(calls).toBe(1);
+
+    // Ani psaní na tom nic nemění: otisk je pořád tentýž zastaralý.
+    act(() => {
+      store.patchProps('b_h1', { level: 2 });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(calls).toBe(1);
+  });
+
+  /**
+   * Druhá strana téhož pravidla: zastavení nesmí být doživotní. Jakmile editor
+   * dostane novou verzi, má se ukládání samo rozjet, jinak by se uživatel po
+   * převzetí cizí verze nedostal ke slovu jinak než znovunačtením stránky.
+   */
+  it('po převzetí nové verze se ukládání zase rozjede', async () => {
+    let calls = 0;
+    let conflict = true;
+    const store = createEditorStore({ document: doc(), designHash: 'h1' });
+    const ports = createFakePorts({
+      save: async () => {
+        calls += 1;
+        return conflict
+          ? { ok: false as const, conflict: true as const, document: doc(), designHash: 'h9' }
+          : { ok: true as const, designHash: 'h10', updatedAt: '2026-08-06T10:00:00Z' };
+      },
+    });
+    renderHook(() => useAutosave({ store, ports, templateId: 't1' }));
+
+    act(() => {
+      store.patchProps('b_h1', { level: 1 });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    await waitFor(() => expect(store.getState().status).toBe('conflict'));
+
+    conflict = false;
+    act(() => {
+      store.replaceDocument(doc(), 'h9', { saved: true });
+    });
+    act(() => {
+      store.patchProps('b_h1', { level: 3 });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    await waitFor(() => expect(store.getState().status).toBe('saved'));
+    expect(calls).toBe(2);
+  });
+
   it('po chybě to zkusí znovu a stav je error, ne ticho', async () => {
     const store = createEditorStore({ document: doc(), designHash: 'h1' });
     let calls = 0;

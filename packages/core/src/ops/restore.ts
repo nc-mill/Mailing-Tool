@@ -121,8 +121,18 @@ export async function restoreBackup(input: RestoreInput): Promise<RestoreReport>
   // aplikace, a runner si skládá cestu k adresáři s migracemi přes
   // `new URL('../migrations', import.meta.url)`, což bundler neumí přeložit.
   // Statický import proto shodí CELOU aplikaci na 500, ne jen tenhle příkaz.
-  const { runMigrations } = await import('@mlain/db/migrate');
-  await runMigrations({ url: input.databaseUrl });
+  //
+  // `migrationsFolder` se předává VÝSLOVNĚ. Runner ho vyžaduje, protože si ho
+  // sám odvodit neumí: v zabundlovaném CLI ukazuje `import.meta.url` do
+  // `/app/apps/cli/dist/`, kdežto migrace leží v `/app/packages/db/migrations`.
+  // Bez něj spadl runner na ENOENT, obnova se ukončila UPROSTŘED a nikdy
+  // nedošla k `applyGrants` o pár řádků níž. Obnovená databáze pak odpovídala
+  // `permission denied for table contacts`, a to po havárii.
+  const { resolveMigrationsFolder, runMigrations } = await import('@mlain/db/migrate');
+  await runMigrations({
+    url: input.databaseUrl,
+    migrationsFolder: resolveMigrationsFolder(),
+  });
 
   // ---------------------------------------------------------------------------
   // KROK, BEZ KTERÉHO JE OBNOVA NEPOUŽITELNÁ, a který se přehlédne nejsnáz,

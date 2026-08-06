@@ -22,9 +22,10 @@ const exportStatus = vi
   .fn()
   .mockResolvedValue({ status: 'success', state: 'completed', rowCount: 4 });
 
+const push = vi.fn();
 vi.mock('@mlain/i18n/navigation', () => ({
   Link: ({ children, ...props }: { children: React.ReactNode }) => <a {...props}>{children}</a>,
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+  useRouter: () => ({ push, refresh: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }));
 
 vi.mock('./actions', () => ({
@@ -67,6 +68,7 @@ beforeEach(() => {
   deleteTag.mockClear();
   createExport.mockClear();
   exportStatus.mockClear();
+  push.mockClear();
 });
 
 /** Nabídka na kartě štítku. Akce z ní se nedají zavolat jinudy, tak se otevírá pořád. */
@@ -257,5 +259,32 @@ describe('TagsScreen', () => {
     await openMenu(user, 'VIP');
     expect(await screen.findByRole('menuitem', { name: 'Přejmenovat' })).toBeVisible();
     expect(screen.queryByRole('menuitem', { name: 'Sloučit s jiným štítkem' })).toBeNull();
+  });
+
+  /*
+   * KDYBY TENHLE TEST SPADL: kontakty se štítkem jsou zase dostupné jen tím, že
+   * uživatel uhodne, že název v řádku je odkaz. Kdo si zvykne otevírat „…",
+   * nemá důvod to tušit.
+   */
+  it('nabídka vede na kontakty se štítkem, ne jen název v řádku', async () => {
+    const user = userEvent.setup();
+    renderTags();
+    await openMenu(user, 'VIP');
+    await user.click(await screen.findByRole('menuitem', { name: 'Zobrazit kontakty' }));
+
+    expect(push).toHaveBeenCalledWith('/w/petr/contacts?tag_id=t-1');
+  });
+
+  /*
+   * KDYBY TENHLE TEST SPADL: spouštěč nabídky se zase liší od kontaktů. Do
+   * 6. 8. 2026 tu byl vlastní `button` o straně 44 px, takže táž nabídka měla
+   * na každé obrazovce jiný tvar. Viditelný čtverec je 34 px
+   * (`--size-control-xs` přes `size="row"`), klikací plocha 44 px překryvem.
+   */
+  it('spouštěč má viditelných 34 px a klikací plochu 44 px, stejně jako kontakty', () => {
+    renderTags();
+    const trigger = screen.getByRole('button', { name: 'Další akce se štítkem VIP' });
+    expect(trigger).toHaveClass('size-[var(--size-control-xs)]');
+    expect(trigger).toHaveClass('after:size-[var(--size-target-min)]');
   });
 });

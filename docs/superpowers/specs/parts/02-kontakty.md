@@ -1,5 +1,12 @@
 # Část 2: Kontakty, segmenty a souhlasy
 
+<!-- puvod-dokumentu -->
+> **Platná produktová specifikace, ne historický záznam.** Část 2: kontakty, segmenty a souhlasy ze 31. 7. 2026, dopsaná
+> do rozhodnutě úplného stavu a zmrazená spolu s kontrakty. Pořád je to zdroj pravdy o tom, co produkt má dělat.
+> **Řádek „Stav: koncept" níž už neplatí**, dokument prošel křížovou revizí i narovnáním (viz `parts/STAV.md`).
+> Co se od té doby rozhodlo jinak, přebíjí ji. Pozdější rozhodnutí, která tuhle část přebíjejí: oslovení a pátý pád musí jít celé vypnout (5. 8. 2026) a e-maily seznamů dostaly vlastní plán.
+> **Jak daleko je provedení:** `docs/superpowers/STAV-UKOLU.md`.
+
 Vlastník: subagent part2-kontakty
 Datum: 2026-07-31
 Rozvíjí kapitoly hlavní specifikace: 5, 6.2, 6.3, 9 (GDPR)

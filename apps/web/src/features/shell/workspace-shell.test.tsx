@@ -84,23 +84,35 @@ describe('WorkspaceShell', () => {
     expect(screen.getByRole('menuitem', { name: 'Odhlásit se' })).toBeVisible();
 
     await user.click(screen.getByRole('menuitem', { name: 'Můj profil' }));
-    expect(push).toHaveBeenCalledWith('/settings/profile');
+    // Slug otevřeného projektu jde s sebou v adrese: profil leží mimo skořápku
+    // a sám by nepoznal, kam vede cesta zpět.
+    expect(push).toHaveBeenCalledWith('/settings/profile?from=eshop-kolo');
   });
 
   it('menu se řídí skutečnými oprávněními, ne natvrdo psaným seznamem', () => {
-    // Sekce Nastavení musí být otevřená, jinak se podpoložky nevykreslí.
-    pathname = '/w/eshop-kolo/settings/general';
-
-    // Owner: šest položek, které se pod zástupným seznamem oprávnění
-    // z menu odfiltrovaly, přestože obrazovky existují.
+    /*
+     * Test dřív sahal na podpoložky Nastavení („Odesílání", „Zálohy", …), které
+     * skořápka pod zástupným seznamem oprávnění odfiltrovala. Boční menu je od
+     * 6. 8. 2026 nevykresluje, protože je zdvojovala stránková navigace uvnitř
+     * Nastavení, takže se totéž tvrdí na sekcích PRVNÍ úrovně. Že podpoložky
+     * dostane ten, kdo na ně má oprávnění, hlídá `settings-nav.test.tsx`
+     * a `visible-navigation.test.ts`.
+     *
+     * Sekce se schválně berou i takové, které chtějí něco jiného než tu
+     * nejběžnější trojici: Knihovna médií `assets:read`, Statistiky
+     * `reports:read`. Zástupný seznam měl přesně tenhle tvar, tedy pár
+     * oprávnění navíc chybělo a v menu tiše ubylo.
+     */
     const { unmount } = renderShell();
     for (const label of [
-      'Značka projektu',
-      'Odesílání',
-      'Odesílatelé',
-      'Systémová pošta',
-      'AI asistent',
-      'Zálohy',
+      'Přehled',
+      'Kontakty',
+      'Formuláře',
+      'Kampaně',
+      'Šablony',
+      'Knihovna médií',
+      'Statistiky',
+      'Nastavení',
     ]) {
       expect(screen.getByRole('link', { name: label })).toBeVisible();
     }
@@ -108,10 +120,40 @@ describe('WorkspaceShell', () => {
 
     // Prohlížející je nesmí dostat jen proto, že se opravila skořápka.
     renderShell(ROLE_PERMISSIONS.viewer);
-    for (const label of ['Odesílání', 'Zálohy', 'Klíče k API', 'Členové']) {
+    // Celá sekce Nastavení je prohlížejícímu pryč od 6. 8. 2026, kdy z ní
+    // odešel „Můj účet": na žádnou zbylou podpoložku nemá oprávnění.
+    expect(screen.queryByRole('link', { name: 'Nastavení' })).not.toBeInTheDocument();
+    // Kontrola, že menu nezmizelo celé. Bez ní by řádky výš prošly i tehdy,
+    // kdyby se filtrování rozbilo a prohlížející neviděl vůbec nic.
+    expect(screen.getByRole('link', { name: 'Kontakty' })).toBeVisible();
+  });
+
+  /**
+   * NASTAVENÍ SE V BOČNÍM MENU NEROZBALUJE, rozhodnutí zadavatele ze 6. 8. 2026.
+   *
+   * Stejné položky stály dvakrát vedle sebe: jednou v bočním menu, podruhé ve
+   * stránkové navigaci uvnitř každé obrazovky Nastavení. Zůstala ta stránková.
+   *
+   * Cesta je podstránka Nastavení, aby sekce byla otevřená. Kdyby se test
+   * postavil na Přehledu, prošel by i s vráceným submenu, protože zavřená sekce
+   * podpoložky nevykresluje tak jako tak.
+   */
+  it('Nastavení je v bočním menu obyčejný odkaz, podpoložky duplikuje stránková navigace', () => {
+    pathname = '/w/eshop-kolo/settings/general';
+    renderShell();
+
+    expect(screen.getByRole('link', { name: 'Nastavení' })).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Rozbalit nebo sbalit podpoložky: Nastavení' }),
+    ).not.toBeInTheDocument();
+    for (const label of ['Projekt', 'Značka projektu', 'Odesílání', 'Zálohy', 'Audit log']) {
       expect(screen.queryByRole('link', { name: label })).not.toBeInTheDocument();
     }
-    expect(screen.getByRole('link', { name: 'Můj účet' })).toBeVisible();
+
+    // Kontakty se rozbalují dál, pravidlo se týká jen Nastavení.
+    pathname = '/w/eshop-kolo/contacts';
+    renderShell();
+    expect(screen.getByRole('link', { name: 'Seznamy' })).toBeVisible();
 
     pathname = '/w/eshop-kolo';
   });

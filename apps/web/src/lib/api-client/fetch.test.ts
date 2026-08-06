@@ -81,6 +81,51 @@ describe('apiFetch', () => {
     expect(seen?.get('accept')).toBe('application/json');
   });
 
+  /**
+   * OBRAZOVKA „AKTIVNÍ RELACE" MĚLA U KAŽDÉHO PŘIHLÁŠENÍ „Neznámé zařízení".
+   *
+   * Požadavek na API vzniká uvnitř Server Action, takže ho odesílá `fetch`
+   * v Node a ten se představuje jako `node`. API si k relaci ukládalo přesně
+   * tohle: v databázi leželo `node` u 262 přihlášení. Prohlížeč uživatele se
+   * proto přeposílá stejně jako `Accept-Language`.
+   */
+  it('přeposílá User-Agent prohlížeče, ne toho z Node', async () => {
+    const browser =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15';
+    cookieStore.get.mockReturnValue({ name: 'ml_session', value: 'abc123' });
+    requestHeaders.get.mockImplementation((name: string) =>
+      name === 'user-agent' ? browser : null,
+    );
+    let seen: Headers | undefined;
+    server.use(
+      http.get('http://api.test/api/v1/x', ({ request }) => {
+        seen = request.headers;
+        return HttpResponse.json({});
+      }),
+    );
+
+    await apiFetch('/api/v1/x');
+
+    expect(seen?.get('user-agent')).toBe(browser);
+  });
+
+  it('bez User-Agentu v požadavku hlavičku nevymýšlí', async () => {
+    requestHeaders.get.mockImplementation(() => null);
+    let seen: Headers | undefined;
+    server.use(
+      http.get('http://api.test/api/v1/x', ({ request }) => {
+        seen = request.headers;
+        return HttpResponse.json({});
+      }),
+    );
+
+    await apiFetch('/api/v1/x');
+
+    // Node si svůj `user-agent` nepřidává, takže se sem nedostane nic, co by
+    // se tvářilo jako zařízení uživatele.
+    expect(seen?.get('user-agent')).not.toBe('node');
+  });
+
   it('bez session cookie neposílá hlavičku cookie', async () => {
     cookieStore.get.mockReturnValue(undefined);
     let seen: Headers | undefined;

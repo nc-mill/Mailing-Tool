@@ -1,5 +1,12 @@
 # P01: Kostra monorepa, provoz, konfigurace a CI, implementační plán
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Implementační plán P01 (kostra monorepa, provoz, konfigurace a CI) z 31. 7. 2026, sepsaný před
+> začátkem stavby. Zachycuje, co se tehdy plánovalo, ne dnešní podobu kódu.
+> **Postaveno:** kostra monorepa, Docker image, registry a CLI `mlain` v repozitáři jsou a běží; tři nedodělky u bran vede `docs/superpowers/plans/STAV-IMPLEMENTACE.md`.
+> **Zaškrtávátka nikdo neodškrtával**, prázdné políčko tady tedy neznamená nedodělek.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Postavit prázdné, ale kompletně funkční monorepo Mlain Maileru: pnpm workspace s devíti balíčky a čtyřmi aplikacemi, jednu Docker image se čtyřmi režimy běhu, úplné registry konfigurace, chybových kódů a front, health endpointy s graceful shutdownem, kostru CLI `mlain` a všech šestnáct blokujících CI jobů včetně licenční brány.

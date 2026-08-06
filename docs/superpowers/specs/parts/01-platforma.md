@@ -1,5 +1,12 @@
 # Část 1: Platforma, identita a provoz
 
+<!-- puvod-dokumentu -->
+> **Platná produktová specifikace, ne historický záznam.** Část 1: platforma, identita a provoz ze 31. 7. 2026, dopsaná
+> do rozhodnutě úplného stavu a zmrazená spolu s kontrakty. Pořád je to zdroj pravdy o tom, co produkt má dělat.
+> **Řádek „Stav: koncept" níž už neplatí**, dokument prošel křížovou revizí i narovnáním (viz `parts/STAV.md`).
+> Co se od té doby rozhodlo jinak, přebíjí ji.
+> **Jak daleko je provedení:** `docs/superpowers/STAV-UKOLU.md`.
+
 Vlastník: subagent part1-platforma
 Datum: 2026-07-31
 Rozvíjí kapitoly hlavní specifikace: 3, 4.1, 4.5, 6.1, 9

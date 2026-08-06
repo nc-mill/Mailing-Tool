@@ -1,5 +1,5 @@
 import messages from '@mlain/i18n/messages/cs/editor.json';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
@@ -50,6 +50,9 @@ const base = {
   fieldCatalog: catalog,
   templateKind: 'campaign' as const,
   ports: null,
+  // Skupinová ovládání (vzorník barev, odsazení, sítě) se s popiskem vážou
+  // přes `aria-labelledby`, takže id popisku dostávají z `PropField`.
+  labelId: 'label-1',
 };
 
 describe('ovládací prvky', () => {
@@ -80,7 +83,15 @@ describe('ovládací prvky', () => {
     expect(onChange).toHaveBeenLastCalledWith(120);
   });
 
-  it('barva nabízí role motivu i vlastní odstín', async () => {
+  /**
+   * Stížnost zadavatele z 6. 8. 2026: „Ty barvy nepotřebují mít selectbox.
+   * Stačí, aby tam byly ty čtverečky s barvami a možnost vybrat vlastní."
+   *
+   * Rozbalovací pole tedy zmizelo a obě jeho volby navíc, „Průhledné"
+   * a „Vlastní barva", se přestěhovaly do vzorníku. Test hlídá, že se
+   * přitom neztratily.
+   */
+  it('barva nabízí role motivu bez rozbalovacího pole', async () => {
     const onChange = vi.fn();
     wrap(
       <ColorControl
@@ -91,8 +102,67 @@ describe('ovládací prvky', () => {
         descriptor={{ kind: 'color', key: 'color', label: 'prop.color', allowThemeRef: true }}
       />,
     );
-    await userEvent.selectOptions(screen.getByRole('combobox'), 'brand.primary');
+    expect(screen.queryByRole('combobox')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /Hlavní barva značky/ }));
     expect(onChange).toHaveBeenCalledWith('brand.primary');
+  });
+
+  it('barva umí průhlednou, když ji vlastnost připouští', async () => {
+    const onChange = vi.fn();
+    wrap(
+      <ColorControl
+        {...base}
+        id="c1n"
+        onChange={onChange}
+        value="brand.primary"
+        descriptor={{
+          kind: 'color',
+          key: 'backgroundColor',
+          label: 'prop.backgroundColor',
+          allowThemeRef: true,
+          nullable: true,
+        }}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Průhledné' }));
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it('vlastnost bez průhlednosti vzorek Průhledné nenabízí', () => {
+    wrap(
+      <ColorControl
+        {...base}
+        id="c1x"
+        onChange={vi.fn()}
+        value="brand.primary"
+        descriptor={{ kind: 'color', key: 'color', label: 'prop.color', allowThemeRef: true }}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Průhledné' })).toBeNull();
+  });
+
+  /**
+   * Vlastní odstín se vybírá rovnou systémovým výběrem. Dřív se musel nejdřív
+   * zvolit v nabídce, což hodnotu přepsalo na černou, a teprve pak se vedle
+   * objevilo pole s výběrem barvy.
+   */
+  it('barva umí vlastní odstín a otevře výběr na aktuální barvě', () => {
+    const onChange = vi.fn();
+    wrap(
+      <ColorControl
+        {...base}
+        id="c1c"
+        onChange={onChange}
+        value="text.default"
+        descriptor={{ kind: 'color', key: 'color', label: 'prop.color', allowThemeRef: true }}
+      />,
+    );
+    const picker = screen.getByLabelText('Vlastní barva');
+    // `text.default` výchozího motivu je `#111827`, takže se výběr otevře na něm,
+    // ne na černé.
+    expect(picker).toHaveValue('#111827');
+    fireEvent.change(picker, { target: { value: '#AABBCC' } });
+    expect(onChange).toHaveBeenCalledWith('#aabbcc');
   });
 
   /**
@@ -114,8 +184,10 @@ describe('ovládací prvky', () => {
 
     // Vzorek zvolené role nese barvu z motivu, ne obecnou paletu aplikace.
     // `#2563eb` je `brand.primary` výchozího motivu (`theme/palette.ts`).
-    const swatch = screen.getByTestId('color-swatch-color');
+    const swatch = screen.getByRole('button', { name: /Hlavní barva značky #2563eb/ });
     expect(swatch).toHaveStyle({ backgroundColor: '#2563eb' });
+    // Zvolený vzorek nese stav i mimo barvu, aby se dal přečíst čtečkou.
+    expect(swatch).toHaveAttribute('aria-pressed', 'true');
 
     // Hex je vidět v textu, aby zůstal čitelný i bez rozeznávání barev.
     expect(screen.getByText(/#2563eb/)).toBeInTheDocument();

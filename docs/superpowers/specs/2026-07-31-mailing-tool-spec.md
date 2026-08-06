@@ -1,5 +1,12 @@
 # Specifikace: open-source e-mailingový a customer engagement nástroj
 
+<!-- puvod-dokumentu -->
+> **Platný rozhodovací dokument produktu, ne historický záznam.** Hlavní specifikace z 31. 7. 2026,
+> revize 2. Odpovídá na „co a proč", stavební podrobnosti jsou v `docs/superpowers/specs/parts/`.
+> **Řádek „Stav: návrh k připomínkám, žádný kód se zatím nepíše" níž už neplatí**, produkt je postavený a odesílá.
+> Pozdější rozhodnutí zadavatele ji na jednotlivých místech přebíjejí.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 Název produktu: **Mlain Mailer** (ROZHODNUTO zadavatelem 2026-07-31)
 Repozitář: https://github.com/nc-mill/Mailing-Tool
 Datum: 2026-07-31

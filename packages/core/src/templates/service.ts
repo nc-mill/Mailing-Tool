@@ -4,6 +4,7 @@ import { buildBaseTemplate, type BaseTemplateParams } from '@mlain/emails/base/b
 import { buildRenderSchema } from '@mlain/emails/compile/render-schema';
 import { newBlockId } from '@mlain/emails/document/ids';
 import type { Document } from '@mlain/emails/document/types';
+import { applyWorkspaceBrandTheme } from '../brand/theme';
 import type { FieldCatalog } from '../contacts/fields/catalog';
 // Závory e-mailů seznamu. Vlastní je doména kontaktů, protože jsou to jeho
 // sloupce a jeho rozhodnutí; tahle doména volá jedinou funkci a o rolích
@@ -88,9 +89,34 @@ export async function createTemplate(
       ? input.document
       : buildBaseTemplate(input.baseTemplate, { nextId: newBlockId });
   const kind = input.kind ?? 'campaign';
-  const document: Document = { ...source, meta: { ...source.meta, name: input.name } };
+  const named: Document = { ...source, meta: { ...source.meta, name: input.name } };
 
   return withWorkspace(ctx.ctx, async (tx) => {
+    /*
+     * ZNAČKA PROJEKTU SE DOPLŇUJE TADY, a je to jediné místo pro všechny
+     * uložené dokumenty.
+     *
+     * Tudy vede každé založení šablony: prázdná kampaň, kampaň ze šablony,
+     * nová šablona v knihovně, e-mail formuláře i vlastní znění e-mailu
+     * seznamu. Všechny posílají `POST /api/v1/templates` a všechny dřív
+     * ukládaly `DEFAULT_THEME`, tedy modrou paletu bez ohledu na to, co si
+     * uživatel nastavil v Nastavení → Značka projektu.
+     *
+     * Doplňuje se PO ROLÍCH, ne všechno nebo nic: barva, kterou si autor zvolil
+     * v panelu motivu, zůstává a zbylé role značku dostanou. Rozhoduje o tom
+     * `brandThemeParts`, tedy totéž pravidlo, jakým se řídí převlékání při
+     * uložení značky. Větev `baseTemplate` značku dostala už od
+     * `buildBaseTemplate`, takže jí tudy druhá dávka neprojde.
+     *
+     * DUPLIKÁT SE NEVYJÍMÁ, a je to rozvaha, ne opomenutí. Chvíli tu stál
+     * přepínač `preserveTheme`, aby kopie vyšla stejně jako předloha. Jenže
+     * uložení značky dnes převléká celý projekt (`redressTemplatesToBrand`),
+     * takže předloha je vždycky v aktuálních barvách a doplňovat kopii není
+     * z čeho. Přepínač nemohl změnit výsledek ani u jedné dosažitelné cesty
+     * a mrtvá větev je horší než nic.
+     */
+    const document = await applyWorkspaceBrandTheme(tx, named);
+
     const row = await createTemplateRow(tx, ctx.ctx, {
       name: input.name,
       kind,

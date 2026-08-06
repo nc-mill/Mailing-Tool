@@ -1,5 +1,12 @@
 # Revize plánu P01: kostra monorepa, provoz, konfigurace a CI
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Revize plánu P01 (kostra a CI) z prověrky plánů
+> (31. 7. až 1. 8. 2026), tedy kontrola **textu plánu před stavbou**, ne kontrola kódu.
+> **Verdikt typu „plán není proveditelný" se týkal tehdejšího plánu, ne dnešního produktu.** Ten stojí a funguje.
+> Opravy se prováděly podle `docs/superpowers/plans/POSTUP-OPRAV.md`; **stav jednotlivých nálezů neověřen**.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 Recenzovaný soubor: `docs/superpowers/plans/2026-07-31-p01-kostra-provoz-ci.md` (9720 řádků, 22 úkolů)
 Datum: 2026-08-01
 Metoda: čtení plánu plus ověření spuštěním proti PostgreSQL 18.4 v Dockeru a v Node

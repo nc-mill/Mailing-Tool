@@ -1,5 +1,12 @@
 # Část 6: UI a UX
 
+<!-- puvod-dokumentu -->
+> **Platná produktová specifikace, ne historický záznam.** Část 6: UI a UX ze 31. 7. 2026, dopsaná
+> do rozhodnutě úplného stavu a zmrazená spolu s kontrakty. Pořád je to zdroj pravdy o tom, co produkt má dělat.
+> **Řádek „Stav: koncept" níž už neplatí**, dokument prošel křížovou revizí i narovnáním (viz `parts/STAV.md`).
+> Co se od té doby rozhodlo jinak, přebíjí ji. **Pozor:** vzhled se od 5. 8. 2026 řídí novými návrhy, viz `docs/superpowers/DESIGN-INTEGRACE.md`. Tam, kde se rozcházejí, platí návrhy.
+> **Jak daleko je provedení:** `docs/superpowers/STAV-UKOLU.md`.
+
 Vlastník: part6-uxui
 Datum: 2026-07-31
 Rozvíjí kapitoly hlavní specifikace: průřezově 6.1 až 6.8, 7, 8 (zejména demo skript v kapitole 8)

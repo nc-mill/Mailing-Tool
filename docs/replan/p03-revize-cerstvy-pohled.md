@@ -1,5 +1,12 @@
 # Revize P03: čerstvý pohled
 
+<!-- puvod-dokumentu -->
+> **Historický záznam, ne platné zadání.** Revize plánu P03, úhel čerstvý pohled z prověrky plánů
+> (31. 7. až 1. 8. 2026), tedy kontrola **textu plánu před stavbou**, ne kontrola kódu.
+> **Verdikt typu „plán není proveditelný" se týkal tehdejšího plánu, ne dnešního produktu.** Ten stojí a funguje.
+> Opravy se prováděly podle `docs/superpowers/plans/POSTUP-OPRAV.md`; **stav jednotlivých nálezů neověřen**.
+> **Dnešní stav:** `docs/superpowers/STAV-UKOLU.md` (živý dokument), design `docs/superpowers/DESIGN-INTEGRACE.md`.
+
 Datum: 2026-08-01. Model: opus. Plán: `2026-07-31-p03-databaze-schema-rls.md`, hash `05f14f0`.
 Verdikt: **NALEZENY PROBLÉMY**. 6 kritických, 12 důležitých.
 

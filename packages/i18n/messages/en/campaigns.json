@@ -17,7 +17,26 @@
       "audience": "Audience",
       "sent": "Sent",
       "updated": "Changed"
-    }
+    },
+    "rowMenu": "More actions for campaign {name}"
+  },
+  "rowActions": {
+    "editContent": "Edit content",
+    "rename": "Rename",
+    "duplicate": "Duplicate",
+    "unschedule": "Cancel schedule",
+    "pause": "Pause",
+    "resume": "Resume",
+    "cancel": "Stop sending",
+    "delete": "Delete",
+    "duplicateDone": "Campaign “{name}” was copied and we opened the copy.",
+    "duplicateFailed": "The campaign could not be copied ({detail}).",
+    "unscheduleDone": "The schedule for “{name}” was cancelled, it is a draft again.",
+    "unscheduleFailed": "The schedule could not be cancelled ({detail}).",
+    "pauseDone": "Sending of “{name}” is paused.",
+    "pauseFailed": "Sending could not be paused ({detail}).",
+    "resumeDone": "Sending of “{name}” continues.",
+    "resumeFailed": "Sending could not be resumed ({detail})."
   },
   "new": {
     "stepOf": "Step {current} of {total}",
@@ -43,9 +62,7 @@
     "failed": "We couldn't create the campaign. Try again."
   },
   "delete": {
-    "columnHeader": "Delete",
     "open": "Delete",
-    "rowLabel": "Delete campaign {name}",
     "sectionTitle": "Delete campaign",
     "sectionHint": "The campaign has gone out to nobody, so deleting it loses no sent message and no statistics.",
     "title": "Delete campaign {name}?",
@@ -129,10 +146,13 @@
     "basicsTitle": "Subject and name",
     "name": "Campaign name",
     "nameHint": "Only you see it in the campaign list, recipients never do.",
+    "renameSaved": "Campaign name saved.",
+    "renameFailed": "The name could not be saved, the original one stays. Please try again.",
+    "renameLocked": "A campaign already under way can no longer be renamed. The original name stays.",
     "subject": "Subject",
     "subjectHint": "The first thing a recipient sees in their inbox.",
     "preheader": "Preheader",
-    "preheaderHint": "The text shown right after the subject in the inbox.",
+    "preheaderHint": "Shows in the inbox list next to the subject. It is not visible inside the email.",
     "contentTitle": "Content",
     "content": {
       "present": "The campaign has its own content",
@@ -158,11 +178,15 @@
       "useLibrarySubmit": "Take the content",
       "useLibraryHint": "The content is copied from the template into the campaign. The template does not change and later campaign edits do not reach it.",
       "libraryEmpty": "There is no template in the library yet.",
+      "useLibrarySearch": "Search templates",
+      "useLibrarySearchEmpty": "No template matches what you are looking for.",
+      "useLibraryTruncated": "The menu shows the {count} most recently edited templates. You have more in the library; the rest are on the Templates screen.",
       "loading": "Loading…",
       "loaded": "We loaded the template content into the campaign.",
       "replaced": "We replaced the campaign content with the template content.",
       "loadFailed": "We couldn't load the content. Try again.",
       "confirmTitle": "Replace the campaign content with the template content?",
+      "confirmFromTemplate": "The campaign takes over the content of the template “{name}”.",
       "confirmOverwrite": "The content the campaign has now is discarded and replaced by the template content.",
       "confirmTemplateStays": "The template does not change. Content is copied from it into the campaign, not the other way round.",
       "confirmSubmit": "Replace content",
@@ -239,6 +263,9 @@
     "body": "The campaign is here, we just couldn't tell whether it is ready to send. Usually it's an expired sign-in or an unreachable sending account. Try again, or check the campaign settings.",
     "retry": "Try again",
     "toSettings": "Edit campaign settings"
+  },
+  "loadError": {
+    "entity": "the campaign"
   },
   "preflight": {
     "campaignAudienceEmpty": "The audience is empty. Pick at least one list or segment.",
@@ -877,5 +904,22 @@
       "manage": "Manage senders",
       "failed": "The preset could not be applied. Please try again."
     }
+  },
+  "renameDialog": {
+    "title": "Rename campaign “{name}”",
+    "submit": "Save name",
+    "submitting": "Saving…",
+    "back": "Back"
+  },
+  "cancelDialog": {
+    "title": "Stop sending campaign “{name}”?",
+    "explanation": "The remaining recipients will not get the email.",
+    "numbers": "{sent} sent, {remaining} recipients will not receive the message.",
+    "sentStays": "Messages that already went out cannot be recalled and their results stay in the report.",
+    "irreversible": "A stopped campaign cannot be restarted. To reach the rest, make a copy of the campaign.",
+    "submit": "Stop sending",
+    "submitting": "Stopping…",
+    "back": "Keep sending",
+    "failed": "Sending could not be stopped ({detail})."
   }
 }

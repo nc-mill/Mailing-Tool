@@ -17,12 +17,11 @@ import {
   TriangleAlert,
   UserMinus,
 } from '@mlain/ui/icons';
-import { ConfirmDialog } from '@mlain/ui/patterns/feedback';
 import { ReadOnlyBanner } from '@mlain/ui/patterns/states';
 import { useToast } from '@mlain/ui/patterns/toast';
-import { useConfirmDialogLabels } from '@/lib/feedback/confirm-labels';
-import { deleteContactAction, unsubscribeContactAction } from './actions';
+import { ContactDeleteDialog } from './contact-delete-dialog';
 import { ContactExportDialog, useContactExport } from './contact-export';
+import { useUnsubscribeContact } from './contact-unsubscribe';
 import { emailsToAudience } from './export-audience';
 import {
   cancelSnoozeAction,
@@ -213,9 +212,9 @@ export function ContactDetail({
   const format = useFormatter();
   const router = useRouter();
   const toast = useToast();
-  const confirmLabels = useConfirmDialogLabels();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const contactExport = useContactExport(workspaceId);
+  const unsubscribe = useUnsubscribeContact(workspaceId);
 
   const state = describeContactState(contact);
   const displayName = contact.name ?? contact.email;
@@ -397,19 +396,12 @@ export function ContactDetail({
                   onClick={async () => {
                     // Odhlašuje se ze VŠECH seznamů, ve kterých kontakt ještě je.
                     // Odhlášení je v API operace nad seznamem, ne nad kontaktem.
-                    const result = await unsubscribeContactAction({
-                      workspaceId,
+                    // Hlášku i vrácení s odpočtem drží `useUnsubscribeContact`, protože
+                    // totéž odhlášení nabízí i nabídka „…" v řádku seznamu kontaktů.
+                    await unsubscribe({
                       email: contact.email,
                       listIds: subscribedLists.map((list) => list.id),
                     });
-                    if (result.status === 'success') {
-                      // Ruční odhlášení bývá omyl, proto má vrácení s odpočtem 10 s (6.6 části 6).
-                      toast.undoable({
-                        message: t('detail.unsubscribed'),
-                        onUndo: () => router.refresh(),
-                      });
-                      router.refresh();
-                    }
                   }}
                 />
               </Tooltip>
@@ -697,30 +689,17 @@ export function ContactDetail({
       </div>
 
       {/* Smazání jednoho kontaktu je N2 podle 6.2 části 6: dialog se souhrnem, bez
-          zaškrtávání a bez opisování. Znění je doslovné podle 8.8 části 6. */}
-      <ConfirmDialog
+          zaškrtávání a bez opisování. Znění je doslovné podle 8.8 části 6 a drží ho
+          `ContactDeleteDialog`, protože totéž mazání nabízí i nabídka „…" v řádku
+          seznamu kontaktů. */}
+      <ContactDeleteDialog
+        workspaceId={workspaceId}
+        contactId={contact.id}
+        name={displayName}
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        level="N2"
-        title={t('detail.deleteTitle', { name: displayName })}
-        consequences={[
-          t('detail.deleteConsequenceLists'),
-          t('detail.deleteConsequenceHistory'),
-          t('detail.deleteConsequenceReports'),
-          t('detail.deleteConsequenceSuppression'),
-        ]}
-        extraAction={
-          <Button variant="secondary" onClick={() => startExport()}>
-            {t('detail.deleteExport')}
-          </Button>
-        }
-        confirmLabel={t('detail.deleteConfirm')}
-        cancelLabel={t('detail.deleteCancel')}
-        labels={confirmLabels}
-        onConfirm={async () => {
-          const result = await deleteContactAction({ workspaceId, id: contact.id });
-          if (result.status === 'success') router.push(basePath);
-        }}
+        onExport={() => startExport()}
+        onDeleted={() => router.push(basePath)}
       />
 
       <ContactExportDialog

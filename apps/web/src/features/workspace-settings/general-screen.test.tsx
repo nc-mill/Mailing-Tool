@@ -40,7 +40,21 @@ const redirect = vi.fn();
 vi.mock('@/lib/api-client/mutate', () => ({ apiMutate: (...args: unknown[]) => mutate(...args) }));
 vi.mock('@/lib/api-client/fetch', () => ({ apiFetch: (...args: unknown[]) => fetchApi(...args) }));
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePath(...args) }));
-vi.mock('next/navigation', () => ({ redirect: (...args: unknown[]) => redirect(...args) }));
+/**
+ * Mock musí nést i `permanentRedirect` a navigační háčky, i když je test nevolá.
+ * `createNavigation` z next-intl si je bere UŽ PŘI NAČTENÍ MODULU (od chvíle,
+ * co formulář odkazuje na profil přes `Link` z `@mlain/i18n/navigation`), takže
+ * neúplný mock neshodí jeden případ, ale celý soubor s hláškou o chybějícím
+ * exportu, která na formulář vůbec neukazuje.
+ */
+vi.mock('next/navigation', () => ({
+  redirect: (...args: unknown[]) => redirect(...args),
+  permanentRedirect: (...args: unknown[]) => redirect(...args),
+  usePathname: () => '/',
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+  useParams: () => ({}),
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 const { AddressFormSection } = await import('./address-form-section');
 const { DangerZone } = await import('./danger-zone');

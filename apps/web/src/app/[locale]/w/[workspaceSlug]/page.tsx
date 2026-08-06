@@ -3,6 +3,8 @@ import { DashboardGrid } from '@/features/reports/dashboard/dashboard-grid';
 import { DemoDataBanner, type DemoDataState } from '@/features/onboarding/demo-data-banner';
 import { OnboardingPanel } from '@/features/onboarding/onboarding-panel';
 import { apiFetch } from '@/lib/api-client/fetch';
+import { can } from '@/lib/identity/permissions';
+import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
 
 /**
  * Stránka se NEPŘEDRENDEROVÁVÁ. Proxy razítkuje inline skripty Nextu nonce,
@@ -42,10 +44,23 @@ export default async function WorkspaceDashboardPage({
   //   route:"/api/v1/onboarding", status:404, workspace_id:null
   //
   // Relační cookie přikládá `apiFetch` sám, takže se řeší jen projekt.
-  const [onboarding, demo] = await Promise.all([
+  const [onboarding, demo, access] = await Promise.all([
     apiFetch<{ data: OnboardingState }>('/api/v1/onboarding', { workspaceId: workspaceSlug }),
     apiFetch<{ data: DemoDataState }>('/api/v1/demo-data', { workspaceId: workspaceSlug }),
+    // `getWorkspaceAccess` je `cache()`ovaná a v layoutu už jednou proběhla,
+    // takže tohle není další požadavek. Role odsud rozhoduje, které akce na
+    // Přehledu se nabízejí rovnou a které s vysvětlením, koho požádat.
+    getWorkspaceAccess(workspaceSlug),
   ]);
+
+  // Import a založení kampaně má editor a výš, mazání ukázkových dat taky
+  // (`contacts:import`, `campaigns:write`, `contacts:delete`). Když se role
+  // nepodaří zjistit, akce se nabízejí jako dřív: falešné vysvětlení „nemáte
+  // oprávnění" by bylo horší než odmítnutí, které přijde ze serveru.
+  const role = access.ok ? access.data.role : null;
+  const canImportContacts = role === null || can(role, 'contacts:import');
+  const canCreateCampaign = role === null || can(role, 'campaigns:write');
+  const canRemoveDemoData = role === null || can(role, 'contacts:delete');
 
   // Selhání se LOGUJE, nepřeskakuje se potichu.
   //
@@ -68,8 +83,14 @@ export default async function WorkspaceDashboardPage({
     // jeden pruh, oba, nebo žádný.
     <div className="flex flex-col gap-[var(--spacing-section)]">
       {onboarding.ok && <OnboardingPanel state={onboarding.data.data} slug={workspaceSlug} />}
-      {demo.ok && <DemoDataBanner state={demo.data.data} slug={workspaceSlug} />}
-      <DashboardGrid workspaceSlug={workspaceSlug} />
+      {demo.ok && (
+        <DemoDataBanner state={demo.data.data} slug={workspaceSlug} canRemove={canRemoveDemoData} />
+      )}
+      <DashboardGrid
+        workspaceSlug={workspaceSlug}
+        canImportContacts={canImportContacts}
+        canCreateCampaign={canCreateCampaign}
+      />
     </div>
   );
 }

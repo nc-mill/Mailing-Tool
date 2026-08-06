@@ -7,6 +7,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import { Client } from 'pg';
 import type { TestProject } from 'vitest/node';
 import { runMigrations } from '../src/migrate';
+import { resolveMigrationsFolder } from '../src/migrations-folder';
 
 export const ROLES = [
   'mlain_migrator',
@@ -77,6 +78,7 @@ export default async function setup(project: TestProject) {
   // měsíce a aby šablona zůstala malá.
   await runMigrations({
     url: `postgres://mlain_migrator:mlain_migrator@${host}:${port}/${TEMPLATE_DB}`,
+    migrationsFolder: resolveMigrationsFolder(),
     ensurePartitions: false,
   });
 

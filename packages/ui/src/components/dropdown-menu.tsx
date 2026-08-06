@@ -21,7 +21,11 @@ export function DropdownMenuContent({
         align={align}
         sideOffset={6}
         className={cn(
-          'z-[var(--z-dialog)] min-w-56 rounded-[var(--radius-surface)] border border-border',
+          // `--z-flyout`, ne `--z-dialog`: nabídka se otevírá i z horní lišty
+          // (přepínač projektů, nabídka účtu) a ta má vyšší vrstvu, takže se
+          // nabídce schovávalo horních pár pixelů i s rámečkem. Viz stupnice
+          // vrstev v `tokens.css`.
+          'z-[var(--z-flyout)] min-w-56 rounded-[var(--radius-surface)] border border-border',
           'bg-surface-overlay p-1 text-sm text-text shadow-lg',
           className,
         )}

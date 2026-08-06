@@ -1,7 +1,17 @@
 # Rozhodnutí pro zadavatele
 
-Datum: 2026-07-31
-Zdroj: sedm detailních specifikací v `parts/`, 25 700 řádků
+**Poslední revize: 2026-08-06.** Co je tenhle dokument: sbírka produktových, právních
+a obchodních otázek s doporučením a s tím, jak zadavatel rozhodl. Hledej v něm **proč**
+je něco nastavené tak, jak je. Kapitola 6 je jediná, která popisuje stav; ostatní jsou
+archiv rozhodnutí a jako archiv se nemění.
+
+> **Rozhodnutí platí, ale některá tvrzení o tom, co produkt (ne)umí, jsou z 31. 7. 2026,
+> tedy z doby před implementací.** Kde se to 2026-08-06 ověřilo v kódu, je to u položky
+> napsané. Změny jsou v kapitolách 3b a 6.
+
+Datum původního zápisu: 2026-07-31
+Zdroj: sedm detailních specifikací v `parts/`. Tehdy 25 700 řádků, k 2026-08-06 je to
+28 346 řádků.
 Pro: člověka, který rozhoduje o produktu, ne pro vývojáře
 
 ## Jak tohle číst
@@ -152,7 +162,12 @@ Instalace opravdu do pěti minut běží. **Odeslat první kampaň ale za pět m
 
 **Doporučení:** dát tuhle otázku právníkovi jako první z celého seznamu, protože z odpovědi plyne práce, kterou dnes nikdo nemá zadanou. Vypnout měření otevření per kampaň i globálně produkt umí, per kontakt ne.
 
-### Nenastavená trackovací doména rozbije všechno a nikdo si toho nevšimne
+### Nenastavená trackovací doména rozbije všechno a nikdo si toho nevšimne (VYŘEŠENO)
+
+> **HOTOVO, ověřeno 2026-08-06 v kódu.** `apps/sender/internal/config/load.go` má
+> `TRACKING_DOMAIN` mezi povinnými proměnnými: když chybí, sender se nespustí a napíše,
+> že z ní staví odkazy `/t/o/`, `/t/c/` a `/u/`. Kontroluje se navíc, že je to absolutní
+> URL se schématem http nebo https. Doporučení níž bylo přijato a provedeno.
 
 Když provozovatel nenastaví doménu pro trackovací odkazy, sender vyrobí odkazy bez adresy serveru a **rozbije se každý pixel a každý proklik v kampani. Aplikace přitom nastartuje bez jediné chyby.**
 
@@ -212,7 +227,9 @@ Rozhodnuto zadavatelem 2026-07-31.
 
 **Zodpovědnost zákazníka za souhlasy je obhajitelná, ale jednu díru nezavírá.** U self-hosted nástroje je správcem údajů provozovatel, takže je to správné rozdělení. Zůstává ale technická mezera pojmenovaná v části 5: kdyby právní posouzení došlo k tomu, že měření otevření vyžaduje souhlas, produkt dnes neumí **souhlas s měřením zvlášť u každého kontaktu** a nedokáže u konkrétního příjemce pixel vynechat. Zákazník tedy nese zodpovědnost, ale nemá jak ji naplnit jinak než vypnutím měření pro celou kampaň. Doplnit to je práce na půl dne a dnes ji nikdo nemá zadanou.
 
-**Retence 37 měsíců** je nad původním návrhem 26 a je v povoleném rozsahu. Pokryje tři roky meziročního srovnání s rezervou. Cena je větší databáze a delší doba, po kterou držíme osobní údaje, což patří do dokumentace ke GDPR.
+**Retence 37 měsíců** je nad původním návrhem 26 a je v povoleném rozsahu.
+Ověřeno 2026-08-06: `TRACKING_RETENTION_MONTHS` má v
+`packages/core/src/config/schema-domains.ts` výchozí hodnotu 37 a rozsah 3 až 120. Pokryje tři roky meziročního srovnání s rezervou. Cena je větší databáze a delší doba, po kterou držíme osobní údaje, což patří do dokumentace ke GDPR.
 
 ### Odpovědi na otázky části 6 (UI a UX)
 
@@ -231,6 +248,11 @@ Rozhodnuto zadavatelem 2026-07-31.
 
 **Nový požadavek k ukázkovým datům.** Ukázkové kontakty i ukázkové kampaně musí jít **hromadně označit a smazat**, aby si uživatel mohl projekt úplně vyčistit, až si nástroj osahá. Bez toho zůstane v čerstvé instalaci padesát smyšlených lidí, které bude mazat po jednom. Týká se to částí 2 (kontakty) a 4a (kampaně).
 
+> **HOTOVO, ověřeno 2026-08-06.** `DEMO_CONTACTS` v `packages/core/src/demo/dataset.ts`
+> má přesně padesát položek a hlídá to test „má přesně 50 kontaktů podle rozhodnutí
+> zadavatele". Hromadný úklid je v `packages/core/src/demo/purge.ts`, testy
+> `packages/core/test/demo/purge.db.test.ts` ověřují, že smaže všech padesát.
+
 **K názvu „personalizace".** Autor části 6 navrhoval „doplňovaný údaj" s odůvodněním, že je srozumitelný na první pohled. Zadavatel rozhodl pro **„personalizaci"** a důvod je silnější: je to slovo, které česká cílovka **už zná z Ecomailu**, takže zákazník při přechodu nemusí přeučovat slovník. Srozumitelnost na první pohled se týká jen prvního setkání, shoda s trhem se týká každého dalšího dne.
 
 Důsledek pro slovníček v části 6: „personalizace" se přesouvá ze seznamu **zakázaných** výrazů mezi **závazné**. Alternativy „doplňovaný údaj", „slučovací značka", „merge tag", „placeholder" a „proměnná" zůstávají v rozhraní zakázané, aby se pro jednu věc neobjevily tři názvy.
@@ -238,6 +260,11 @@ Důsledek pro slovníček v části 6: „personalizace" se přesouvá ze seznam
 ### Velikost dávky při odesílání
 
 **Rozhodnuto: výchozí velikost dávky je 100 (místo původních 500) a je nastavitelná.**
+
+> **Ověřeno 2026-08-06:** `SENDER_BATCH_SIZE` má v
+> `packages/core/src/config/schema-platform.ts` výchozí hodnotu 100 a rozsah 1 až 5000.
+> Pozor na záměnu: `IMPORT_BATCH_SIZE` (výchozí 1000) a `CAMPAIGN_MATERIALIZE_BATCH_SIZE`
+> (výchozí 5000) jsou jiné věci a tohle rozhodnutí se jich netýká.
 
 Nastavitelnost patří na **úroveň instalace**, ne jako ovládací prvek v rozhraní kampaně. Je to technický parametr, u kterého uživatel nemá jak poznat, jestli má zvolit sto nebo tři sta, a špatná hodnota se projeví až za provozu.
 
@@ -284,6 +311,11 @@ Cena je zanedbatelná: jedna operace otisku trvá řádově mikrosekundu, takže
 - `closed`: po prvotním nastavení nelze vytvořit žádný další účet
 - `invite`: účty jen přes pozvánku, **doporučený výchozí stav**
 - `open`: veřejná registrace s ověřením e-mailu
+
+> **Ověřeno 2026-08-06:** tři režimy v kódu jsou,
+> `packages/core/src/config/schema-platform.ts` má
+> `SIGNUP_MODE: z.enum(['closed', 'invite', 'open'])`. **Výchozí hodnota je ale `closed`,
+> ne doporučený `invite`.** Neověřeno, jestli to je vědomá změna rozhodnutí, nebo přehlédnutí.
 
 **Retence záznamu o činnosti: rozdělená podle citlivosti.**
 
@@ -462,13 +494,25 @@ Pro úplnost, ať víte, co se rozhodlo bez vás:
 
 ## 6. Co zbývá otevřené
 
-Stav k 2026-07-31 večer. **Produktová rozhodnutí jsou hotová a implementační plány se psát můžou.** Otevřené jsou tři skupiny věcí, z nichž ani jedna psaní plánů nebrání.
+Původní zápis: stav k 2026-07-31 večer. **Produktová rozhodnutí jsou hotová a implementační
+plány se psát můžou.** Otevřené byly tři skupiny věcí, z nichž ani jedna psaní plánů nebránila.
 
-### 6.1 Právník, šest otázek
+**Přepočítáno 2026-08-06.** Z původních tří skupin zbývají dvě: 6.3 se z půlky vyřešila.
+
+### 6.1 Právník, otázky z kapitoly 4
 
 Kapitola 4. **Blokuje spuštění provozu, ne psaní plánů ani kódu.**
 
+> **Kolik jich je, se z dokumentu nedá určit.** Kapitola 4 vypisuje **čtyři** otázky
+> (retence záznamu o činnosti, anonymizace versus mazání, trackovací pixel, fyzická adresa
+> odesílatele), zatímco tenhle nadpis i `parts/STAV.md` dřív mluvily o **šesti**. Chybějící
+> dvě se nedohledaly. Platí ten seznam čtyř, protože je jediný doložený; kdo ví o dalších
+> dvou, ať je do kapitoly 4 dopíše.
+
 Jediná z nich, za kterou visí nezadaná práce, je ta o trackovacím pixelu: kdyby vyšlo, že vyžaduje souhlas, produkt dnes neumí souhlas s měřením zvlášť u každého kontaktu ani vynechat pixel u konkrétního příjemce. Je to práce na půl dne a **nikdo ji nemá zadanou**.
+
+> **Pořád platí, ověřeno 2026-08-06 grepem přes `packages` a `apps`.** Pro souhlas
+> s měřením na úrovni kontaktu není v kódu ani sloupec, ani zapínač.
 
 ### 6.2 Šest empirických ověření, která nikdo nevlastní
 
@@ -510,8 +554,11 @@ Ověření zjistilo, že **identifikátor prohlížeče nerozliší předstíran
 
 ### 6.3 Dvě věci, na které nikdo nezapomněl, ale nikdo je nevlastní
 
-- **Souhlas s měřením per kontakt** (viz 6.1)
-- **Nenastavená trackovací doména** rozbije každý pixel a proklik v kampani, přičemž aplikace nastartuje bez chyby. Oprava je udělat tu proměnnou pro odesílací komponentu povinnou, aby to spadlo při startu. Jednořádková změna.
+- **Souhlas s měřením per kontakt** (viz 6.1). **Otevřené i k 2026-08-06**, v kódu pro to
+  není nic.
+- ~~**Nenastavená trackovací doména**~~ **HOTOVO, ověřeno 2026-08-06.** `TRACKING_DOMAIN`
+  je v `apps/sender/internal/config/load.go` povinná, sender bez ní nenastartuje a chybová
+  hláška vysvětluje proč. Viz kapitola 3b.
 
 ### 6.4 Kde hledat detail
 

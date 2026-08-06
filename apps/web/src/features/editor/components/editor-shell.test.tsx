@@ -1,4 +1,5 @@
 import messages from '@mlain/i18n/messages/cs/editor.json';
+import { TooltipProvider } from '@mlain/ui/components/tooltip';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
@@ -39,10 +40,14 @@ const base = {
   ports: createFakePorts(),
 };
 
+// `Tooltip` mimo `TooltipProvider` vyhodí výjimku. V aplikaci ho dodává
+// skořápka projektu, v testu ho musí dodat obal.
 const wrap = (props: Partial<typeof base> = {}) =>
   render(
     <NextIntlClientProvider locale="cs" messages={{ editor: messages }}>
-      <EditorShell {...base} {...props} />
+      <TooltipProvider>
+        <EditorShell {...base} {...props} />
+      </TooltipProvider>
     </NextIntlClientProvider>,
   );
 
@@ -60,11 +65,22 @@ describe('EditorShell', () => {
     expect(screen.queryByRole('status', { name: /Uloženo/ })).toBeNull();
   });
 
-  it('tlačítko Náhled přepne prostřední panel a Zpět k úpravám ho vrátí', async () => {
+  /*
+   * Tvrzení je totéž: JEDNO tlačítko přepne plátno pryč a tímtéž kliknutím ho
+   * vrátí. Změnil se jen způsob, jak se pozná, ve kterém stavu jsme: popisek
+   * se od 6. 8. 2026 nemění (lámal hlavičku do dvou řádků) a stav nese
+   * `aria-pressed`, jak to pro přepínací tlačítko popisuje WAI-ARIA.
+   */
+  it('tlačítko Náhled přepne prostřední panel a tímtéž kliknutím ho vrátí', async () => {
     wrap();
-    await userEvent.click(screen.getByRole('button', { name: 'Náhled' }));
+    const toggle = screen.getByRole('button', { name: 'Náhled' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+    await userEvent.click(toggle);
     expect(screen.queryByRole('tree')).toBeNull();
-    await userEvent.click(screen.getByRole('button', { name: /Zpět k úpravám/ }));
+    expect(screen.getByRole('button', { name: 'Náhled' })).toHaveAttribute('aria-pressed', 'true');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Náhled' }));
     expect(screen.getByRole('tree')).toBeInTheDocument();
   });
 

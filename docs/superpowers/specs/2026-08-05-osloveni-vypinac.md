@@ -4,6 +4,17 @@ Datum: 5. 8. 2026
 Stav: hotovo. Etapa 1 (mapa) i etapa 2 (implementace) dokončené a ověřené
 v prohlížeči v obou polohách přepínače.
 
+**Revize 6. 8. 2026: potvrzeno proti kódu, dokument platí.** Sloupec
+`workspaces.greeting_enabled` je ve schématu (`packages/db/src/schema/identity.ts:137`)
+i v migraci `0020_workspaces_greeting_enabled.sql`, odvození podle jazyka při
+zakládání projektu je v `identity/workspace-service.ts:207`, příznak
+`deleted: true` u tří polí v `contacts/fields/catalog.ts:164`, `greeting_enabled`
+v odpovědi API i v `apps/web/src/lib/identity/workspace-access.ts:24`, parametr
+`hiddenIds` v `packages/ui/src/patterns/navigation/visible-navigation.ts:25`.
+Nález mimo zadání z kapitoly 2.4 (endpoint `PUT /api/v1/name-overrides` nemá
+v aplikaci žádnou obrazovku) **platí dál**, v `apps/web` se `name-overrides`
+nevyskytuje ani jednou.
+
 Zadání zadavatele doslova: „V angličtině se vůbec neřeší 5. pád a oslovení. Mělo by to být
 možné v nastavení celé vypnout a pak by se to nezobrazovalo nikde. Takže v kontaktech,
 přehledu, detailu, editoru všechny ty možnosti oslovení v 5. pádě. Nech to zmapovat a udělat
@@ -32,9 +43,9 @@ vykání. To je asi taky věc spíš češtiny než angličtiny."
 
 `apps/web/src/app/[locale]/w/[workspaceSlug]/settings/general/page.tsx`
 
-- `AddressFormSection` (`features/workspace-settings/address-form-section.tsx`) — „Oslovení
+- `AddressFormSection` (`features/workspace-settings/address-form-section.tsx`): „Oslovení
   v e-mailech", volba vykání/tykání, potvrzovací dialog s počtem kontaktů k přepočtu.
-- `GreetingLocaleSection` (`features/workspace-settings/greeting-locale-section.tsx`) —
+- `GreetingLocaleSection` (`features/workspace-settings/greeting-locale-section.tsx`):
   „Jazyk oslovení kontaktů", rozpad kontaktů podle jazyka a tlačítko na hromadné sjednocení
   a přepočet.
 - Stránka navíc dělá dva síťové dotazy jen kvůli těmhle dvěma sekcím:
@@ -65,7 +76,7 @@ vykání. To je asi taky věc spíš češtiny než angličtiny."
 
 `contacts/new/page.tsx`, `contacts/[id]/edit/page.tsx`, `features/contacts/contact-form.tsx`
 
-- Panel `data-testid="greeting-preview"` — „Jak ho oslovíme / V e-mailu bude: {greeting}",
+- Panel `data-testid="greeting-preview"`: „Jak ho oslovíme / V e-mailu bude: {greeting}",
   varování o nejistém 5. pádu, o neurčeném rodu a o zamknutém oslovení.
 - Panel se plní živě přes `previewGreetingAction` (`features/contacts/edit-actions.ts`),
   tedy jde i o síťový dotaz na `POST /api/v1/contacts/preview-greeting`.
@@ -119,7 +130,7 @@ Celá obrazovka. Cesty, kterými se na ni dá dostat (všechny je nutné zavří
 
 ### 1.9 Ukázková data
 
-`packages/core/src/demo/dataset.ts` — obě ukázkové šablony začínají
+`packages/core/src/demo/dataset.ts`: obě ukázkové šablony začínají
 `{{ contact.greeting }}`, ukázkové kontakty mají předpočítané „Dobrý den, …".
 
 ### 1.10 Náhledová data
@@ -270,7 +281,7 @@ ne nabídka něčeho nového, takže zůstává.
 Důvod je měřitelný, ne názorový: `workspaces.address_form` má v celém repozitáři jediného
 konzumenta, a tím je `buildGreeting()` v `packages/core/src/contacts/naming/greeting.ts`.
 Ověřeno grepem přes `packages/emails`, `packages/ui`, `apps/sender`, `apps/worker`
-i `packages/core` — mimo skládání oslovení, mimo obrazovku nastavení a mimo přepočtovou
+i `packages/core`: mimo skládání oslovení, mimo obrazovku nastavení a mimo přepočtovou
 frontu se nevyskytuje nikde.
 
 Když se tedy oslovení nikde nezobrazuje ani nevkládá, `address_form` neovlivňuje vůbec
@@ -318,22 +329,22 @@ Sloupec `workspaces.greeting_enabled boolean NOT NULL DEFAULT true`.
 
 ### Databáze
 
-1. `packages/db/src/schema/identity.ts` — `greetingEnabled: boolean().notNull().default(true)`.
+1. `packages/db/src/schema/identity.ts`: `greetingEnabled: boolean().notNull().default(true)`.
 2. `packages/db/migrations/0020_workspaces_greeting_enabled.sql` + záznam v `meta/_journal.json`.
    Ruční SQL, ne `drizzle-kit generate` (migrace od 0007 výš snapshoty nemají).
    V migraci NESMÍ být `now()` mimo `DEFAULT`, `migration-lint` to zakazuje.
 
 ### Jádro
 
-3. `identity/workspace-service.ts` — `PublicWorkspace.greeting_enabled`, `toPublicWorkspace`,
+3. `identity/workspace-service.ts`: `PublicWorkspace.greeting_enabled`, `toPublicWorkspace`,
    `RETURNING` v `restoreWorkspace`, odvození při `createWorkspace`, přijetí v `updateWorkspace`.
-4. `identity/api/workspaces.routes.ts` — schéma odpovědi i těla `PATCH`.
-5. `contacts/fields/catalog.ts` — při vypnutém oslovení `deleted: true` u `greeting`,
+4. `identity/api/workspaces.routes.ts`: schéma odpovědi i těla `PATCH`.
+5. `contacts/fields/catalog.ts`: při vypnutém oslovení `deleted: true` u `greeting`,
    `first_name_vocative`, `last_name_vocative`.
 
 ### Web
 
-6. `lib/identity/workspace-access.ts` — `Workspace.greeting_enabled`.
+6. `lib/identity/workspace-access.ts`: `Workspace.greeting_enabled`.
 7. Nastavení → Obecné: nová sekce s přepínačem; `AddressFormSection` a `GreetingLocaleSection`
    se při vypnutí nevykreslí, včetně dotazů, které je napájejí.
 8. Seznam kontaktů: sloupec, odznak, tlačítko kontroly, dotaz na počty, filtr i jeho odznak.
@@ -363,7 +374,7 @@ Sloupec `workspaces.greeting_enabled boolean NOT NULL DEFAULT true`.
 
 ---
 
-## 9. Co se může rozbít a jak to poznám
+## 9. Co se ukázalo až při implementaci
 
 ## 9a. Co přibylo až při implementaci
 
