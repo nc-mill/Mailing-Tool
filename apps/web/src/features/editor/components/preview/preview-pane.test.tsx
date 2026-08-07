@@ -143,7 +143,11 @@ describe('rám náhledu se řídí profilem šablony', () => {
     await waitFor(() =>
       expect(screen.getByTestId('preview-frame')).toHaveAttribute('data-frame', 'page'),
     );
-    expect(screen.getByTitle('Náhled stránky')).toBeInTheDocument();
+    // `findBy`, ne `getBy`: rám se vykresluje AŽ po dosazení původu stránky,
+    // které `EmailPreview` dělá v efektu (`useEffect(() => setSelfOrigin(...))`).
+    // Titulek tedy vzniká o tik později než `data-frame`, na které čeká `waitFor`
+    // výš. Se synchronním `getBy` test procházel na rychlém stroji a padal na CI.
+    expect(await screen.findByTitle('Náhled stránky')).toBeInTheDocument();
     expect(screen.getByText('Stránka na vaší doméně')).toBeInTheDocument();
   });
 
@@ -152,6 +156,6 @@ describe('rám náhledu se řídí profilem šablony', () => {
     await waitFor(() =>
       expect(screen.getByTestId('preview-frame')).toHaveAttribute('data-frame', 'email'),
     );
-    expect(screen.getByTitle('Náhled e-mailu')).toBeInTheDocument();
+    expect(await screen.findByTitle('Náhled e-mailu')).toBeInTheDocument();
   });
 });
