@@ -63,6 +63,30 @@ if (!webScripts['contracts:generate']) {
   ]);
 }
 
+/*
+ * NEJDŘÍV SE SESTAVÍ ZÁVISLOSTI, teprve pak se generuje.
+ *
+ * Generátor běží NAPŘÍMO, ne přes turbo (důvod je o kus výš: zásah cache dělal
+ * z brány zelenou o ničem). Tím ale obchází i graf závislostí, který by jinak
+ * potřebné balíčky sestavil sám. `@mlain/contracts` a `@mlain/db` vydávají svoje
+ * rozhraní z `dist`, takže na ČISTÉM checkoutu ten adresář neexistuje a import
+ * skončí na `ERR_MODULE_NOT_FOUND: @mlain/contracts/dist/crypto.js`.
+ *
+ * Na vývojářském stroji se to neprojeví: `dist` tam leží po dřívějším buildu.
+ * Právě proto to týden nikdo neviděl, běh CI totiž umíral dřív, na verzi pnpm.
+ *
+ * `^...` je zápis pnpm pro ZÁVISLOSTI balíčku bez něj samotného, takže se
+ * nesestavuje `apps/web` a graf rozhoduje o pořadí, ne tenhle seznam.
+ */
+try {
+  execFileSync('pnpm', ['--filter', '@mlain/web^...', 'run', 'build'], { stdio: 'inherit' });
+} catch {
+  fail([
+    'Sestavení závislostí apps/web selhalo: pnpm --filter @mlain/web^... run build',
+    'Bez `dist` u @mlain/contracts a @mlain/db se generátor nespustí.',
+  ]);
+}
+
 // Čas začátku slouží k důkazu, že soubor opravdu vznikl teď. Sekundu zpět kvůli
 // souborovým systémům se sekundovým rozlišením mtime.
 const startedAt = Date.now() - 1000;

@@ -28,7 +28,15 @@ const BLOCKING_JOBS = [
 const TIMEOUTS: Record<string, number> = {
   lint: 5,
   typecheck: 8,
-  'test-unit': 8,
+  /*
+   * 8 → 20. Jednotková sada narostla a 7. 8. 2026 ji CI zabíjelo na stropu:
+   * job běžel 8 m 16 s a skončil hláškou „exceeded the maximum execution time
+   * of 8m0s", tedy ne pádem testu. Lokálně týž běh trvá přes devět minut.
+   *
+   * Dvacet minut je strop proti zaseknutí, ne očekávaná doba běhu. Kdyby se
+   * sada k té hranici blížila, je to signál ji rozdělit, ne strop zase zvednout.
+   */
+  'test-unit': 20,
   'test-db': 15,
   'test-go': 8,
   'test-go-integration': 12,

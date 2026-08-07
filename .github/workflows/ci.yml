@@ -70,7 +70,7 @@ jobs:
   # ----------------------------------------------------------- 3. test-unit --
   test-unit:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       # Verze pnpm se sem NEPÍŠE. Bere se z `packageManager` v kořenovém
