@@ -7,12 +7,23 @@ const ROOT = path.resolve(import.meta.dirname, '../../..');
 const compose = (): string => fs.readFileSync(path.join(ROOT, 'docker/compose.yml'), 'utf8');
 
 describe('docker/compose.yml', () => {
+  /*
+   * VLASTNÍ ČASOVÝ LIMIT, protože tenhle test spouští DOCKER, ne kód.
+   *
+   * Výchozích pět sekund vitestu je limit pro jednotkový test v paměti. `docker
+   * compose config` musí nastartovat klienta a přečíst soubor, což na studeném
+   * běhu CI trvalo 6,4 s, tedy o vlásek víc. Test pak padal na vypršení limitu,
+   * ne na obsahu compose souboru, a hlásil „Test timed out in 5000ms", což na
+   * vadu v compose vůbec nevypadá.
+   *
+   * Třicet sekund je strop proti zaseknutí, ne očekávaná doba běhu.
+   */
   it('je platný compose soubor', () => {
     execFileSync('docker', ['compose', '-f', path.join(ROOT, 'docker/compose.yml'), 'config'], {
       env: { ...process.env, APP_URL: 'https://x.example', SECRET_KEY: 'k' },
       encoding: 'utf8',
     });
-  });
+  }, 30_000);
 
   it('mountuje /var/lib/postgresql, NE /var/lib/postgresql/data (kritérium 8b)', () => {
     const text = compose();

@@ -389,9 +389,7 @@ describe('FormEditor a stránky pro návštěvníka', () => {
       within(pageRow('thanks')).getByRole('radio', { name: /Přesměrovat na web/ }),
     ).toBeInTheDocument();
     for (const step of ['confirmed', 'already'] as const) {
-      expect(
-        within(pageRow(step)).queryByRole('radio', { name: /Přesměrovat na web/ }),
-      ).toBeNull();
+      expect(within(pageRow(step)).queryByRole('radio', { name: /Přesměrovat na web/ })).toBeNull();
     }
   });
 

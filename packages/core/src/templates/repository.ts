@@ -1,16 +1,4 @@
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  inArray,
-  isNotNull,
-  isNull,
-  lt,
-  ne,
-  or,
-  sql,
-} from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { designHash } from '@mlain/emails/document/canonical';
 import type { Document } from '@mlain/emails/document/types';
 import * as schema from '@mlain/db/schema';
