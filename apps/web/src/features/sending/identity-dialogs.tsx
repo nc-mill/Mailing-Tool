@@ -7,6 +7,7 @@ import { Button } from '@mlain/ui/components/button';
 import { Dialog, DialogBody, DialogFooter, DialogTitle } from '@mlain/ui/components/dialog';
 import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
+import { passwordManagerOptOut } from '@mlain/ui/lib/password-manager';
 import { RadioGroup, RadioGroupItem } from '@mlain/ui/components/radio-group';
 import { Alert } from '@mlain/ui/patterns/states';
 import { CheckIcon, ClockIcon, WarningIcon } from '@/lib/ui/status-icons';
@@ -145,8 +146,13 @@ export function VerifyIdentityDialog({
           </Alert>
 
           <Field label={t('emailLabel')} {...(fieldError === null ? {} : { error: fieldError })}>
+            {/* Ověřovaná adresa odesílatele, ne přihlašovací. Nabídka správce
+                hesel by v dialogu zakryla větu o tom, kdo e-mail posílá.
+                Podrobnosti v `@mlain/ui/lib/password-manager`. */}
             <Input
               type="email"
+              autoComplete="off"
+              {...passwordManagerOptOut}
               data-testid="identity-email"
               value={email}
               onChange={(event) => {
@@ -222,9 +228,13 @@ type MailType = (typeof MAIL_TYPES)[number];
  * a adresu webu; ostatní je nepovinné.
  *
  * Dialog říká PŘEDEM tři věci, které uživatel jinak zjistí až za pochodu:
- * žádost posuzuje člověk a první odpověď přijde do 24 hodin, během posuzování
- * nejde údaje změnit ani podat druhou žádost, a schválení platí JEN PRO REGION,
- * ze kterého se žádalo.
+ * žádost posuzuje člověk, během posuzování nejde údaje změnit ani podat druhou
+ * žádost, a schválení platí JEN PRO REGION, ze kterého se žádalo.
+ *
+ * LHŮTU NEUVÁDÍME, přestože ji Amazon zmiňuje. Jeho 24 hodin je obvyklá doba,
+ * ne zaručená, takže by z naší věty byla lež pokaždé, když posouzení trvá dýl,
+ * a uživatel by nám to právem přičetl. Rozhodnuto 6. 8. 2026; ze stejného
+ * důvodu ji nezmiňuje ani věta o stavu žádosti v `provider-review-status.tsx`.
  */
 export function ProductionAccessDialog({
   providerName,
@@ -376,6 +386,8 @@ export function ProductionAccessDialog({
               >
                 <Input
                   type="email"
+                  autoComplete="off"
+                  {...passwordManagerOptOut}
                   data-testid="production-access-contact"
                   value={contact}
                   onChange={(event) => setContact(event.target.value)}

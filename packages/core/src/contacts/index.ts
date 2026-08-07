@@ -49,6 +49,7 @@ export {
   isGreetingEnabled,
   readContactsSettings,
   readGreetingEnabled,
+  readGreetingSettings,
   type AddressForm,
   type ContactsWorkspaceSettings,
 } from './settings';
@@ -107,6 +108,15 @@ export { severContactLinks } from './jobs/gdpr-sever-links';
 // se výmaz podle článku 17 v režimu anonymize zruší celý, viz gdpr/consents-role.ts.
 export { installConsentEraser } from './gdpr/consents-role-runtime';
 
+// Přednost souhlasů. Vystaveno pro obrazovku úpravy kontaktu, která musí rozhodnout
+// TÝMŽ pravidlem jako server, jinak by uživateli ukázala jiný stav souhlasu, než
+// jaký při odesílání platí.
+//
+// Sem to patří proto, že hlubší cesta ven nevede: `package.json` mapuje exporty
+// jako `"./*": "./src/*/index.ts"`, tedy jen o jednu úroveň. Import
+// `@mlain/core/contacts/repo/consents` se proto NEPŘELOŽÍ, i když ten soubor existuje.
+export { pickEffectiveConsent, type ConsentPrecedenceRow } from './repo/consents';
+
 // Port na zrušení čekajících zpráv. P13 sem při startu procesu zaregistruje svou
 // implementaci; do té doby je volání bez efektu, viz campaigns-port.ts.
 export { registerRevokePendingMessages, type RevokePendingMessagesInput } from './campaigns-port';
@@ -121,6 +131,7 @@ export {
   type FormDefinition,
   type FormField,
 } from './forms/definition';
+export { consentTextToHtml, parseConsentText, type ConsentSegment } from './forms/consent-markup';
 export { buildEmbedSnippets, type EmbedSnippets } from './forms/embed';
 export { issueNonce, issueFormNonce, verifyNonce, elapsedSinceNonce } from './forms/nonce';
 export { PROTECTION_LAYERS, checkProtection, type ProtectionResult } from './forms/protection';
@@ -176,6 +187,18 @@ export {
   type PreferenceAction,
   type PreferencesData,
 } from './public/preferences';
+/**
+ * Navržené veřejné stránky (plán 2026-08-07). Doména rozhodne, KTERÁ stránka to
+ * je a s jakými hodnotami, HTML z ní udělá trasa v `apps/web`, protože jen ona
+ * umí pád vykreslení zachytit a spadnout na vestavěný text.
+ */
+export {
+  ALREADY_SUBSCRIBED_QUERY,
+  loadPublicPageDesign,
+  type PublicPageDesign,
+  type PublicPageQuery,
+} from './public/page-render';
+export { resolvePageTemplateId, type PageSurface } from './public/page-template';
 export { recordSystemLinkVisit } from './public/system-link-visit';
 export { applyReactivation, REACTIVATION_TAG } from './public/reactivation';
 export { loadWebview, type WebviewResult } from './public/webview';

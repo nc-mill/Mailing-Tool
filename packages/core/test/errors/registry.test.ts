@@ -70,16 +70,61 @@ describe('registr chybových kódů', () => {
     // `recipient_suppressed`, `recipient_unknown`, `transactional_data_too_large`,
     // `transactional_variable_unknown`, `sender_identity_not_found`
     // a `sending_not_configured`.
-    expect(PROBLEM_CODES).toHaveLength(135);
+    // 135 → 137 (7. 8.): `signup_closed` a `workspace_create_not_allowed`.
+    // Obojí je odmítnutí, které dřív neexistovalo, protože neexistovala ani ta
+    // pravidla: účet z pozvánky (`POST /invitations/signup`) a omezení zakládání
+    // projektů na nejvyšší roli. Odmítnutí bez vlastního kódu by skončilo jako
+    // obecné „nemáte oprávnění", ze kterého člověk nepozná, co má udělat.
+    expect(PROBLEM_CODES).toHaveLength(137);
     // 19 + `campaign_content_missing` a `campaign_content_empty`: kontrola před
     // odesláním musí rozlišit kampaň bez obsahu od kampaně, ve které není nic
     // než patička. Obojí dřív prošlo a e-mail odešel prázdný.
-    expect(FINDING_CODES).toHaveLength(21);
-    expect(VALIDATION_CODES).toHaveLength(94);
-    expect(MESSAGE_CODES).toHaveLength(34);
+    //
+    // 21 → 30 (a 315 → 324): přibyla devítičlenná rodina `precheck_*` z
+    // `templates/precheck.ts`. Ty kódy produkt vydával už dřív, ale registr o nich
+    // nevěděl, takže uzavřený počet hlídal jen část skutečnosti. Nejsou to kořenové
+    // kódy odpovědi (ty patří do PROBLEM_CODES a mají HTTP status), jsou to položky
+    // pole `findings`, tedy přesně ten druh, pro který FINDING_CODES existuje:
+    // sousedí tu s `campaign_*` a `content_*` nálezy téže předodesílací kontroly.
+    //
+    // 30 → 31 (7. 8.): `workspace_postal_address_missing`. Je to VAROVÁNÍ, ne závora:
+    // poštovní adresa odesílatele je u obchodního sdělení povinná ze zákona, ale
+    // rozhodnutí ji vynechat patří tomu, kdo kampaň posílá, ne nástroji. Tvrdá závora
+    // by zastavila i projekt, který si nástroj teprve zkouší. Ukáže se jen tehdy, když
+    // šablona `{{ workspace.sender_address }}` opravdu obsahuje: kdo si adresu napsal
+    // do patičky ručně, nemá s tím varováním co dělat a naučil by se přehlížet i ostatní.
+    expect(FINDING_CODES).toHaveLength(31);
+    // 94 → 97 (7. 8.): tři kódy validačního profilu `page`, tedy veřejné
+    // stránky navržené v Builderu. Jsou to `content_footer_forbidden_on_page`,
+    // `content_html_forbidden_on_page` a `content_variable_not_on_surface`.
+    // Vydává je validátor dokumentu (`PAGE_ISSUE_CODES` v `@mlain/emails`)
+    // a bez záznamu v registru by odmítnuté uložení stránky skončilo
+    // pětistovkou, protože `ApiError` neregistrovaný kód odmítne vyrobit.
+    // Tři, ne jeden slitý: odstranit patičku, odstranit blok HTML a opravit
+    // personalizaci jsou tři různé práce a uživatel musí poznat, která ho čeká.
+    expect(VALIDATION_CODES).toHaveLength(97);
+    // 34 → 35 (7. 8.): `provider_config_unreadable`. Sender do té doby hlásil chybu
+    // ČTENÍ řádku odesílacího účtu jako `credentials_undecryptable`, takže se vada
+    // vyšetřovala u SECRET_KEY a u rotace klíčů, přestože klíče byly v pořádku.
+    expect(MESSAGE_CODES).toHaveLength(35);
     expect(IMPORT_ROW_CODES).toHaveLength(32);
-    expect(OPERATIONAL_CODES).toHaveLength(24);
-    expect(ALL_REGISTERED_CODES.size).toBe(315);
+    // 24 → 26 (7. 8.): `no_partition_maintenance_yet` a `partition_maintenance_stale`.
+    // Doctor do té doby nepoznal, že úklid oddílů týden neběžel a data leží přes lhůtu:
+    // `mlain partitions` si nikam nezapisoval, že proběhl. Kódy jsou DVA schválně,
+    // stejně jako u zálohy (`no_backup_yet` / `backup_stale`): „ještě nikdy" znamená
+    // nenastavený plánovač hostitele, „přestalo to běžet" znamená selhávající běhy.
+    // Je to jiná práce a jiná věta pro provozovatele, jeden kód by je slil dohromady.
+    // 26 → 29 (7. 8.): `no_backup_verify_yet`, `backup_verify_stale` a `backup_verify_failed`.
+    // Týdenní ověření zálohy je jediná cronová fronta, kterou hlídač ticha ve workeru
+    // nedosáhne: pg-boss maže dokončené úlohy po sedmi dnech, takže delší ticho než týden
+    // se z tabulky úloh doložit nedá a hlídač si ho schválně netvrdí. Audit tenhle strop
+    // nemá, proto to hlídá doktor. Kódy jsou TŘI, ne dva: k dvojici „nikdy" a „přestalo to
+    // běžet" přibývá „běží a NEPROCHÁZÍ", protože úloha zapisuje záznam i u neúspěšného
+    // ověření a podle stáří by taková instalace vypadala v pořádku.
+    expect(OPERATIONAL_CODES).toHaveLength(29);
+    // 332 → 333 (7. 8.): `provider_config_unreadable`, viz komentář u MESSAGE_CODES výš.
+    // 333 → 336 (7. 8.): tři kódy profilu `page`, viz komentář u VALIDATION_CODES výš.
+    expect(ALL_REGISTERED_CODES.size).toBe(336);
   });
 
   it('používá lower_snake_case bez výjimky (konvence 3.11)', () => {
@@ -245,7 +290,7 @@ describe('šestý jmenný prostor, provozní a migrační kódy', () => {
     expect(operationalCode('cli', 'config_invalid').exitCode).toBe(78);
   });
 
-  it('zná všech patnáct nálezů mlain doctor a jednu izolační kontrolu', () => {
+  it('zná všechny nálezy mlain doctor, včetně izolace a údržby oddílů', () => {
     const doctor = OPERATIONAL_CODES.filter((item) => item.scope === 'doctor').map((i) => i.code);
     for (const code of [
       'missing_key_generations',
@@ -264,10 +309,20 @@ describe('šestý jmenný prostor, provozní a migrační kódy', () => {
       'check_failed',
       'system_mail_unavailable',
       'isolation_prerequisites_missing',
+      // Úklid oddílů běží z plánovače hostitele a po úspěšném běhu nezůstane
+      // nic, do čeho by se dalo podívat. Dvojice nálezů kopíruje zálohu:
+      // „ještě nikdy" je jiná práce než „přestalo to běžet".
+      'no_partition_maintenance_yet',
+      'partition_maintenance_stale',
+      // Týdenní ověření zálohy je mimo dosah hlídače ticha ve workeru, protože
+      // pg-boss dokončené úlohy po sedmi dnech maže. Doklad drží audit.
+      'no_backup_verify_yet',
+      'backup_verify_stale',
+      'backup_verify_failed',
     ]) {
       expect(doctor, `nález ${code} chybí`).toContain(code);
     }
-    expect(doctor).toHaveLength(16);
+    expect(doctor).toHaveLength(21);
   });
 
   it('tentýž kód smí být ve víc prostorech, když má v každém význam', () => {

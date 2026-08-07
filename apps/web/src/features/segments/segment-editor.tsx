@@ -110,7 +110,7 @@ export function SegmentEditor({
         }
       />
 
-      <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(380px,1fr))] items-start gap-[var(--spacing-gutter)]">
+      <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(380px,100%),1fr))] items-start gap-[var(--spacing-gutter)]">
         <div className="grid min-w-0 gap-[var(--spacing-gutter)]">
           <Card gap="gutter">
             <Field label={t('name')}>

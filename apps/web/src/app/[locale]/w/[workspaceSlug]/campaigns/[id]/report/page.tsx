@@ -78,7 +78,11 @@ export default async function CampaignReportPage({
       {reach.kind === 'public' ? null : (
         <UnreachableDomainAlert kind={reach.kind} host={reach.host} variant="report" />
       )}
-      <CampaignReport workspaceSlug={workspaceSlug} campaignId={campaignId} />
+      <CampaignReport
+        workspaceId={access.data.workspace.id}
+        workspaceSlug={workspaceSlug}
+        campaignId={campaignId}
+      />
     </div>
   );
 }

@@ -1,5 +1,36 @@
 import { sql } from 'drizzle-orm';
+import { MEASUREMENT_PURPOSE } from '../../contacts/repo/consents';
 import type { Tx } from './tx';
+
+/**
+ * Kontakty z předané množiny, které měření ODMÍTLY.
+ *
+ * Vrací se odmítnutí, ne povolení, a schválně: chybějící řádek znamená
+ * „nevyjádřil se" a to podle `allowsMeasurement` měřit nebrání. Kdyby funkce
+ * vracela povolené, musela by výchozí stav dopočítat sama a byla by z toho
+ * druhá kopie pravidla, tedy přesně to, co se u souhlasů nesmí stát.
+ *
+ * Jeden dotaz na celou dávku, ne dotaz na řádek: `tracking.process_engagement`
+ * zpracovává otevření a prokliky po stovkách a jeden `SELECT` na každý z nich
+ * by z jobu udělal N+1.
+ */
+export async function selectMeasurementWithdrawn(
+  tx: Tx,
+  workspaceId: string,
+  contactIds: readonly string[],
+): Promise<Set<string>> {
+  const unique = [...new Set(contactIds)];
+  if (unique.length === 0) return new Set();
+  const { rows } = await tx.execute<{ contactId: string }>(sql`
+    SELECT contact_id AS "contactId"
+      FROM contact_consent_state
+     WHERE workspace_id = ${workspaceId}
+       AND purpose = ${MEASUREMENT_PURPOSE}
+       AND status = 'withdrawn'
+       AND contact_id = ANY(${sql.param(unique)}::uuid[])
+  `);
+  return new Set(rows.map((row) => row.contactId));
+}
 
 /**
  * Zápis do jednotné časové osy `web_events`.

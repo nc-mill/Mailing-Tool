@@ -42,6 +42,32 @@ describe('deliveredEffective', () => {
       deliveredEffective({ ...emptyCounts(), sent: 1, bouncedHard: 5 }, 'derived_from_sent'),
     ).toBe(0);
   });
+
+  /**
+   * Odmítnutá zpráva má status `sent`, protože se odeslání pokusilo, ale
+   * poskytovatel ji nepřijal. Dokud pro ni nebyl čítač, zůstávala v odeslaných
+   * a od ničeho se neodečítala, takže PLATILA ZA DORUČENOU: kampaň, kterou
+   * poskytovatel celou odmítl, vykazovala stoprocentní doručenost.
+   */
+  it('ČÍSLA: odečítá odmítnuté poskytovatelem, jinak platí za doručené', () => {
+    const counts = { ...emptyCounts(), sent: 100, rejected: 40, bouncedHard: 2 };
+    expect(deliveredEffective(counts, 'derived_from_sent')).toBe(58);
+  });
+
+  it('ČÍSLA: kampaň odmítnutá celá nemá stoprocentní doručenost, ale nulovou', () => {
+    const counts = { ...emptyCounts(), sent: 100, rejected: 100 };
+    expect(deliveredEffective(counts, 'derived_from_sent')).toBe(0);
+  });
+
+  /**
+   * Ve větvi `provider_events` je `delivered` počet potvrzení od poskytovatele
+   * a ten k odmítnuté zprávě potvrzení nepošle, takže se odečítat nesmí.
+   * Bez tohohle tvrzení by se odmítnutí započítalo dvakrát.
+   */
+  it('u provideru s událostmi doručení se odmítnuté NEODEČÍTAJÍ podruhé', () => {
+    const counts = { ...emptyCounts(), sent: 100, delivered: 60, rejected: 40 };
+    expect(deliveredEffective(counts, 'provider_events')).toBe(60);
+  });
 });
 
 describe('computeRates', () => {

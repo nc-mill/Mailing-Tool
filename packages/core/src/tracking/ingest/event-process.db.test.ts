@@ -54,6 +54,38 @@ describe('event.process', () => {
     return Number(rows[0]!.count);
   };
 
+  const countContactEvents = async (): Promise<number> => {
+    const { rows } = await asMigrator().query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM web_events WHERE workspace_id = $1 AND contact_id = $2`,
+      [workspaceId, contactId],
+    );
+    return Number(rows[0]!.count);
+  };
+
+  /**
+   * Odvolání souhlasu s měřením. Zapisuje se do append-only logu i do odvozené
+   * tabulky, tedy přesně tak, jak to dělá `recordConsent`: měření čte odvozenou
+   * tabulku a test se musí ptát na tutéž cestu jako provoz.
+   */
+  const withdrawMeasurement = async (id: string): Promise<void> => {
+    const { rows } = await asMigrator().query<{ id: string }>(
+      `INSERT INTO consents (workspace_id, contact_id, purpose, scope_list_id, status,
+                             legal_basis, source, evidence, recorded_by, occurred_at)
+       VALUES ($1, $2, 'analytics', NULL, 'withdrawn', 'consent', 'admin', '{}'::jsonb,
+               'system', now())
+       RETURNING id`,
+      [workspaceId, id],
+    );
+    await asMigrator().query(
+      `INSERT INTO contact_consent_state (contact_id, workspace_id, purpose, status,
+                                          legal_basis, since, last_consent_id)
+       VALUES ($1, $2, 'analytics', 'withdrawn', 'consent', now(), $3)
+       ON CONFLICT (contact_id, purpose) DO UPDATE
+          SET status = 'withdrawn', last_consent_id = EXCLUDED.last_consent_id`,
+      [id, workspaceId, rows[0]!.id],
+    );
+  };
+
   beforeEach(async () => {
     ({ workspaceId } = await seedCampaign(null));
     const { rows } = await asMigrator().query<{ id: string }>(
@@ -127,6 +159,53 @@ describe('event.process', () => {
     expect(Number(rows[0]!.count)).toBe(0);
     expect(await countEvents()).toBe(1);
     expect(enqueued).toHaveLength(0);
+  });
+
+  /**
+   * Odvolaný souhlas s měřením se chová stejně jako článek 18: událost se
+   * uloží, ale ANONYMNĚ. Zahodit ji celou by z odvolání souhlasu jedné osoby
+   * udělalo díru v návštěvnosti webu, o kterou nikdo nežádal.
+   */
+  it('u kontaktu s odvolaným souhlasem s měřením zůstane událost anonymní', async () => {
+    await asMigrator().query(
+      `INSERT INTO identities (workspace_id, anonymous_id, contact_id) VALUES ($1, $2, $3)`,
+      [workspaceId, anonymousId, contactId],
+    );
+    await withdrawMeasurement(contactId);
+
+    await handleEventProcess(job(), deps());
+
+    expect(await countContactEvents()).toBe(0);
+    expect(await countEvents()).toBe(1);
+    // Bez kontaktu není co přepočítávat a `last_activity_at` se nezvedá.
+    expect(enqueued).toHaveLength(0);
+  });
+
+  it('bez záznamu o souhlasu s měřením se contact_id doplní dál', async () => {
+    await asMigrator().query(
+      `INSERT INTO identities (workspace_id, anonymous_id, contact_id) VALUES ($1, $2, $3)`,
+      [workspaceId, anonymousId, contactId],
+    );
+
+    await handleEventProcess(job(), deps());
+
+    expect(await countContactEvents()).toBe(1);
+  });
+
+  /**
+   * Serverová cesta a import nesou kontakt PŘÍMO v události, takže vyřešením
+   * identity vůbec neprojdou. Bez vlastní kontroly by se jimi dal souhlas
+   * obejít jedním voláním.
+   */
+  it('událost s kontaktem přímo v payloadu se u odvolaného souhlasu neuloží', async () => {
+    await withdrawMeasurement(contactId);
+
+    await handleEventProcess(
+      job({ anonymousId: null, source: 'server', events: [event({ contactId })] }),
+      deps(),
+    );
+
+    expect(await countEvents()).toBe(0);
   });
 
   it('táž událost odeslaná dvakrát vytvoří jeden řádek', async () => {

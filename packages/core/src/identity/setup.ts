@@ -5,6 +5,10 @@ import { withoutContext } from '../tx';
 import { loadConfig, type MlainConfig } from '../config';
 import { ApiError } from '../errors/api-error';
 import { writeAuditLog } from '../audit/write';
+// Import PŘES DOMÉNU uvnitř téhož balíčku, táž hrana jakou používá
+// `workspace-service.ts`. Výchozí seznam musí být JEDNA implementace: dvě by
+// se rozešly a první projekt instalace by se zase choval jinak než ostatní.
+import { insertDefaultList } from '../contacts/lists/default-list';
 import { assertPasswordPolicy, hashPassword } from './password';
 import { IdentityAuditActions } from './audit';
 import { toPublicUser, type PublicUser } from './login';
@@ -139,6 +143,12 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
       });
 
     await tx.insert(schema.memberships).values({ workspaceId, userId, role: 'owner' });
+
+    // Výchozí seznam „Odběratelé", stejný jako u každého dalšího projektu.
+    // Do 7. 8. 2026 ho tahle cesta nezakládala, takže první projekt instalace
+    // začínal BEZ JEDINÉHO SEZNAMU a import, který cílový seznam vyžaduje,
+    // narazil hned na prázdnou nabídku. Rozbor je u `insertDefaultList`.
+    await insertDefaultList(tx, { workspaceId, locale });
 
     await writeAuditLog(tx, {
       action: IdentityAuditActions['workspace.created'],

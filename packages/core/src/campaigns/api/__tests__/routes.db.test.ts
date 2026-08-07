@@ -616,6 +616,70 @@ describe('REST API kampaní', () => {
     expect((await res.json()).code).toBe('provider_sending_paused');
   });
 
+  /**
+   * REGRESE: obnova po pauze neměla vrácení stavu, jaké má odeslání.
+   *
+   * Když se materializace nezařadí, `resumeCampaign` už kampaň přepnul do
+   * `queueing`. Z toho stavu ji nikdo nezvedne: hlídač uzavírá běžící kampaně,
+   * zaseknuté `queueing` neoživuje. Bez vrácení skončila obnova jako 500 a kampaň
+   * zůstala navždy na „připravuje se".
+   *
+   * Selhání zařazení se vyrábí tak, jak k němu dojde v provozu: fronta má politiku
+   * `exclusive` a nad touž kampaní už jedna úloha visí, takže `onMerged: 'fail'`
+   * vyhodí `JobNotEnqueuedError`. Politika se nastavuje jen pro tenhle test,
+   * protože testovací obal zakládá fronty bez ní.
+   */
+  it('POST /resume vrátí kampaň do paused, když se materializace nezařadí', async () => {
+    const id = await seedCampaign(ctx, { status: 'sending' });
+    const pauseReason = {
+      code: 'user',
+      source: 'user',
+      at: '2026-08-01T00:00:00.000Z',
+    };
+    await migratorClient().query(
+      `UPDATE campaigns SET status = 'paused', paused_at = '2026-08-01T00:00:00.000Z',
+          pause_reason = $2::jsonb
+        WHERE id = $1`,
+      [id, JSON.stringify(pauseReason)],
+    );
+    // Nedokončená materializace, aby `resumeCampaign` mířil do `queueing`, ne do `sending`.
+    await migratorClient().query(
+      `INSERT INTO campaign_audience_progress (campaign_id, workspace_id, phase)
+         VALUES ($1, $2, 'collecting')
+       ON CONFLICT (campaign_id) DO UPDATE SET phase = 'collecting'`,
+      [id, ctx.workspaceId],
+    );
+    await migratorClient().query(
+      `UPDATE pgboss.queue SET policy = 'exclusive' WHERE name = 'campaign.materialize'`,
+    );
+    await migratorClient().query(
+      `INSERT INTO pgboss.job (name, data, singleton_key, policy)
+         VALUES ('campaign.materialize', '{}'::jsonb, $1, 'exclusive')`,
+      [`campaign.materialize:${id}`],
+    );
+
+    try {
+      const res = await appFor(ctx.workspace).request(`/campaigns/${id}/resume`, {
+        method: 'POST',
+      });
+      expect(res.status).toBe(503);
+      expect((await res.json()).code).toBe('service_unavailable');
+    } finally {
+      await migratorClient().query(
+        `UPDATE pgboss.queue SET policy = 'standard' WHERE name = 'campaign.materialize'`,
+      );
+    }
+
+    const after = await migratorClient().query<{
+      status: string;
+      paused_at: Date | null;
+      pause_reason: { code?: string } | null;
+    }>(`SELECT status, paused_at, pause_reason FROM campaigns WHERE id = $1`, [id]);
+    expect(after.rows[0]?.status).toBe('paused');
+    expect(after.rows[0]?.pause_reason?.code).toBe('user');
+    expect(after.rows[0]?.paused_at).not.toBeNull();
+  });
+
   it('GET /progress ukazuje čítače a zbývající okno na zrušení', async () => {
     const id = await seedCampaign(ctx, { status: 'sending' });
     await seedOutbox(ctx, { campaignId: id, sent: 1, pending: 2 });

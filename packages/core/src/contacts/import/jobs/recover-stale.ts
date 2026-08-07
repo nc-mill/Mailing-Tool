@@ -1,7 +1,5 @@
-import { sql } from 'drizzle-orm';
-import { ApiError } from '../../../errors/api-error';
+import { listStaleImports } from '../../../platform/maintenance-scan';
 import { importLogger } from '../logging';
-import { withoutContext, type Tx } from '../../../tx';
 
 export type RecoverPayload = { workspaceId: string; importId: string; phase: 'run' };
 
@@ -9,38 +7,37 @@ export type RecoverPayload = { workspaceId: string; importId: string; phase: 'ru
  * Job má retryLimit = 0, takže obnovu řídí importér sám. Jediný signál živosti
  * je `imports.updated_at`, které zapisuje KAŽDÁ checkpointová transakce.
  *
- * Tenhle sken jde napříč projekty a platí pro něj rozhodnutí R18: `imports` má
- * politiku `ws_isolation`, takže bez systémového bypassu vrátí `withoutContext`
- * nula řádků a NEVRÁTÍ chybu. Zaseknuté importy by se nikdy neobnovily, projekt
- * by měl navždy obsazený `singletonKey` a nešel by v něm spustit ani jeden další
- * import, zatímco job by každou hodinu vesele hlásil `{ recovered: 0 }`.
+ * OPRAVA ROZHODNUTÍ R18. Sken jde napříč projekty a běžel pod `withoutContext`,
+ * tedy pod `mlain_app` BEZ nastaveného `mlain.workspace_id`. `imports` má
+ * politiku `ws_isolation`, takže porovnání s NULL vyloučilo všechny řádky.
+ * Ověřeno spuštěním proti běžící databázi: `mlain_migrator` vidí 3 importy,
+ * `mlain_app` bez kontextu 0.
  *
- * Strážce proto ticho odliší od prázdna: když v instanci existují uživatelé,
- * ale `imports` vrací nulu, je to zablokovaný sken, ne prázdná tabulka, a job
- * spadne hlasitě.
+ * Rozhodnutí R18 s tím počítalo a čekalo na politiku `system_bypass`, která
+ * nikdy nevznikla. Dodává ji migrace 0024, a to v tom tvaru, jaký v repozitáři
+ * pro systémové skeny platí: role `mlain_maintenance`, jmenovitá politika
+ * a SLOUPCOVÝ grant, takže tahle role z `imports` přečte jen identifikaci
+ * a řídicí sloupce. `filename` ani `error_summary`, do kterého se ukládají
+ * ukázky hodnot z nahraného CSV, jí databáze nevydá.
+ *
+ * DOPAD BYL TRVALÝ, ne jen kosmetický. Zabitý worker nechá řádek ve stavu
+ * `importing`. Blokuje přitom stav řádku, ne klíč fronty: klíč je ID importu,
+ * takže zamyká jen sám sebe, ale `confirmImport` odmítne další import, dokud
+ * v projektu takový řádek leží (`import_already_running`). Bez funkčního skenu
+ * tedy projekt zůstal bez importů napořád.
+ *
+ * Sken sám i strážce, který ticho odliší od prázdna, leží v
+ * `platform/maintenance-scan.ts`. Je to schválně jediný soubor: výjimka
+ * z izolace projektů je hlavní bezpečnostní vlastnost produktu a musí jít
+ * přečíst celá na jedné obrazovce.
  */
 export async function recoverStaleImports(
   opts: { staleMinutes: number },
   enqueue: (payload: RecoverPayload) => Promise<void>,
 ): Promise<number> {
-  const rows = await withoutContext(async (tx: Tx) => {
-    const { rows: seen } = await tx.execute<{ users: number; imports: number }>(sql`
-      SELECT (SELECT count(*) FROM users)::int AS users,
-             (SELECT count(*) FROM imports)::int AS imports`);
-    const probe = seen[0];
-    if (probe !== undefined && probe.users > 0 && probe.imports === 0) {
-      throw new ApiError('service_unavailable', {
-        params: { code: 'cross_workspace_scan_blocked', table: 'imports' },
-      });
-    }
-    const { rows: stale } = await tx.execute<{ id: string; workspace_id: string }>(sql`
-      SELECT id, workspace_id FROM imports
-       WHERE status = 'importing'
-         AND updated_at < now() - make_interval(mins => ${opts.staleMinutes})`);
-    return stale;
-  });
+  const rows = await listStaleImports(opts.staleMinutes);
   for (const row of rows) {
-    await enqueue({ workspaceId: row.workspace_id, importId: row.id, phase: 'run' });
+    await enqueue({ workspaceId: row.workspaceId, importId: row.importId, phase: 'run' });
   }
   importLogger().info({ recovered: rows.length }, 'stale imports requeued');
   return rows.length;

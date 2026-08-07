@@ -10,6 +10,15 @@ export type RemoveFromListDialogProps = {
   /** Počet označených kontaktů. Musí být v nadpisu, ne jen v liště nad tabulkou. */
   count: number;
   listName: string;
+  /**
+   * Kolik z označených kontaktů po odhlášení nezůstane v ŽÁDNÉM seznamu.
+   *
+   * Zadavatel od produktu čeká, že „seznam musí kontakt nějaký mít". Jádro to
+   * nevynucuje: `lists` je v `ContactUpsertRequest` nepovinné a žádné minimum tam není,
+   * takže kontakt bez jediného seznamu vznikne bez chyby. Akce se proto nezakazuje,
+   * ale říká se nahlas, kolika kontaktů se to týká. Nula větu vynechá.
+   */
+  orphaned?: number;
   onConfirm: () => Promise<void>;
 };
 
@@ -34,6 +43,7 @@ export function RemoveFromListDialog({
   onOpenChange,
   count,
   listName,
+  orphaned = 0,
   onConfirm,
 }: RemoveFromListDialogProps) {
   const t = useTranslations('contacts');
@@ -44,11 +54,16 @@ export function RemoveFromListDialog({
       open={open}
       onOpenChange={onOpenChange}
       level="N2"
+      // Kontakty zůstávají v projektu, mění se jen členství v seznamu.
+      destructive={false}
       title={t('bulk.removeFromListTitle', { count, list: listName })}
       consequences={[
         t('bulk.removeFromListConsequenceSending'),
         t('bulk.removeFromListConsequenceScope'),
         t('bulk.removeFromListConsequenceHistory'),
+        // Věta o kontaktech bez seznamu stojí PŘED obecným „vrátit se dá jen novým
+        // přihlášením", protože je konkrétní a týká se právě téhle akce.
+        ...(orphaned > 0 ? [t('bulk.removeFromListConsequenceOrphaned', { count: orphaned })] : []),
         t('bulk.removeFromListConsequenceBack'),
       ]}
       irreversible={false}

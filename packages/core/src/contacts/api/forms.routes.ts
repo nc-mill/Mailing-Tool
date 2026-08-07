@@ -7,6 +7,7 @@ import { buildEmbedSnippets } from '../forms/embed';
 import { validateFormFields, type FormField } from '../forms/definition';
 import { findTemplateById } from '../../templates/repository';
 import { withWorkspace } from '../../tx';
+import { assertPageTemplateRefs } from './page-refs';
 import { listContactFields } from '../repo/contact-fields';
 import { byId as listById } from '../repo/lists';
 import {
@@ -126,11 +127,25 @@ const FormSchema = z
     redirect_url: z.string().nullable(),
     /** Šablona e-mailu, který přijde po vyplnění. `null` = formulář nic neposílá. */
     delivery_template_id: Uuid.nullable(),
+    /**
+     * Veřejné stránky formuláře: návrhy druhu `page`, které se návštěvníkovi
+     * vykreslí místo vestavěné věty. `null` znamená VESTAVĚNÝ TEXT, tedy dnešní
+     * chování, ne chybějící hodnotu.
+     *
+     * Odkaz je u KAŽDÉHO formuláře zvlášť, i když šablona je sdílená (0.3 plánu):
+     * dva formuláře smějí ukazovat na tutéž stránku i na dvě různé a přehození
+     * u jednoho se druhého nesmí dotknout.
+     */
+    thanks_template_id: Uuid.nullable(),
+    confirmed_template_id: Uuid.nullable(),
+    already_subscribed_template_id: Uuid.nullable(),
     success_message: z.record(z.string(), z.string()),
     active: z.boolean(),
     submission_count: z.number().int(),
     /** Přijatá odeslání za 30 dní. V detailu je vždy, v seznamu se dopočítává hromadně. */
     accepted_30d: z.number().int(),
+    /** Zahozená odeslání za 30 dní po důvodech ochrany. Prázdné, když se nic nezahodilo. */
+    dropped_30d: z.record(z.string(), z.number().int()),
     created_at: IsoDateTime,
     updated_at: IsoDateTime,
   })
@@ -160,6 +175,10 @@ const CreateFormSchema = z
     captcha_provider: z.enum(['none', 'turnstile', 'hcaptcha']).optional(),
     redirect_url: z.url().nullable().optional(),
     delivery_template_id: Uuid.nullable().optional(),
+    /** Odkazy na veřejné stránky, viz `FormSchema`. `null` vrací vestavěný text. */
+    thanks_template_id: Uuid.nullable().optional(),
+    confirmed_template_id: Uuid.nullable().optional(),
+    already_subscribed_template_id: Uuid.nullable().optional(),
     success_message: z.record(z.string(), z.string().max(200)).optional(),
     active: z.boolean().optional(),
     custom_css: z.string().max(20000).nullable().optional(),
@@ -193,7 +212,11 @@ function hostedUrl(ref: string): string {
   return `${loadConfig().APP_URL.replace(/\/$/, '')}/f/${ref}`;
 }
 
-function present(row: FormRow, accepted30d: number): z.infer<typeof FormSchema> {
+function present(
+  row: FormRow,
+  accepted30d: number,
+  dropped30d: Record<string, number> = {},
+): z.infer<typeof FormSchema> {
   const ref = publicFormRef(row);
   return {
     id: row.id,
@@ -213,10 +236,21 @@ function present(row: FormRow, accepted30d: number): z.infer<typeof FormSchema> 
     captcha_provider: row.captchaProvider,
     redirect_url: row.redirectUrl,
     delivery_template_id: row.deliveryTemplateId,
+    thanks_template_id: row.thanksTemplateId,
+    confirmed_template_id: row.confirmedTemplateId,
+    already_subscribed_template_id: row.alreadySubscribedTemplateId,
     success_message: row.successMessage,
     active: row.active,
     submission_count: row.submissionCount,
     accepted_30d: accepted30d,
+    /*
+     * Odeslání, která ochrana ZAHODILA, po důvodech. Navenek je zahození tiché,
+     * aby si robot neodvodil, které pravidlo ho chytlo; tohle je jediné místo,
+     * kde se o nich správce formuláře dozví. U časové pasti (`too_fast`) to není
+     * teorie: správce hesel vyplní pole naráz a chytne se ČLOVĚK, který pak uvidí
+     * poděkování a žádný e-mail nedostane.
+     */
+    dropped_30d: dropped30d,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };
@@ -305,6 +339,23 @@ async function assertReferences(
       ]);
     }
   }
+}
+
+/**
+ * Odkazy na veřejné stránky z těla, pojmenované PŘESNĚ TAK, jak je klient poslal.
+ * Cesta v chybě validace se musí trefit do pole v těle, jinak obrazovka chybu
+ * nepřiřadí k žádnému ovládacímu prvku a uživatel jen uvidí, že se to neuložilo.
+ */
+function pageRefsOf(body: {
+  thanks_template_id?: string | null | undefined;
+  confirmed_template_id?: string | null | undefined;
+  already_subscribed_template_id?: string | null | undefined;
+}): Record<string, string | null | undefined> {
+  return {
+    thanks_template_id: body.thanks_template_id,
+    confirmed_template_id: body.confirmed_template_id,
+    already_subscribed_template_id: body.already_subscribed_template_id,
+  };
 }
 
 const listRoute = createRoute({
@@ -474,6 +525,7 @@ export function registerFormRoutes(app: OpenAPIHono<ContactsEnv>): void {
         ? {}
         : { deliveryTemplateId: body.delivery_template_id }),
     });
+    await assertPageTemplateRefs(ctx, pageRefsOf(body));
 
     const row = await createForm(ctx, {
       name: body.name,
@@ -492,6 +544,15 @@ export function registerFormRoutes(app: OpenAPIHono<ContactsEnv>): void {
       ...(body.delivery_template_id === undefined
         ? {}
         : { delivery_template_id: body.delivery_template_id }),
+      ...(body.thanks_template_id === undefined
+        ? {}
+        : { thanks_template_id: body.thanks_template_id }),
+      ...(body.confirmed_template_id === undefined
+        ? {}
+        : { confirmed_template_id: body.confirmed_template_id }),
+      ...(body.already_subscribed_template_id === undefined
+        ? {}
+        : { already_subscribed_template_id: body.already_subscribed_template_id }),
       ...(body.success_message === undefined ? {} : { success_message: body.success_message }),
       ...(body.active === undefined ? {} : { active: body.active }),
       ...(body.custom_css === undefined ? {} : { custom_css: body.custom_css }),
@@ -507,7 +568,7 @@ export function registerFormRoutes(app: OpenAPIHono<ContactsEnv>): void {
     const row = await findFormById(ctx, c.req.valid('param').id);
     if (row === null) throw new ApiError('not_found');
     const stats = await formSubmissionStats(ctx, row.id);
-    return c.json({ data: present(row, stats.accepted30d) }, 200);
+    return c.json({ data: present(row, stats.accepted30d, stats.dropped30d) }, 200);
   });
 
   app.openapi(patchFormRoute, async (c) => {
@@ -522,6 +583,7 @@ export function registerFormRoutes(app: OpenAPIHono<ContactsEnv>): void {
         ? {}
         : { deliveryTemplateId: body.delivery_template_id }),
     });
+    await assertPageTemplateRefs(ctx, pageRefsOf(body));
 
     const row = await updateForm(ctx, c.req.valid('param').id, {
       ...(body.name === undefined ? {} : { name: body.name }),
@@ -540,13 +602,22 @@ export function registerFormRoutes(app: OpenAPIHono<ContactsEnv>): void {
       ...(body.delivery_template_id === undefined
         ? {}
         : { delivery_template_id: body.delivery_template_id }),
+      ...(body.thanks_template_id === undefined
+        ? {}
+        : { thanks_template_id: body.thanks_template_id }),
+      ...(body.confirmed_template_id === undefined
+        ? {}
+        : { confirmed_template_id: body.confirmed_template_id }),
+      ...(body.already_subscribed_template_id === undefined
+        ? {}
+        : { already_subscribed_template_id: body.already_subscribed_template_id }),
       ...(body.success_message === undefined ? {} : { success_message: body.success_message }),
       ...(body.active === undefined ? {} : { active: body.active }),
       ...(body.custom_css === undefined ? {} : { custom_css: body.custom_css }),
     });
 
     const stats = await formSubmissionStats(ctx, row.id);
-    return c.json({ data: present(row, stats.accepted30d) }, 200);
+    return c.json({ data: present(row, stats.accepted30d, stats.dropped30d) }, 200);
   });
 
   app.openapi(deleteFormRoute, async (c) => {

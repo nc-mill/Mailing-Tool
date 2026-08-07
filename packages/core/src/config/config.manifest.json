@@ -802,6 +802,11 @@
       "hasDefault": true
     },
     {
+      "name": "TRACKING_CONTACT_LOOKUP_TIMEOUT_MS",
+      "optional": true,
+      "hasDefault": true
+    },
+    {
       "name": "TRACKING_DOMAIN",
       "optional": true,
       "hasDefault": true

@@ -68,12 +68,18 @@ export async function compileDocument(doc: Document, ctx: CompileContext): Promi
   });
   if (links.issues.length > 0) return { ok: false, issues: links.issues };
 
-  const trackOpens = ctx.trackOpens && ctx.templateKind !== 'system';
+  // Veřejná stránka se nesleduje: nestojí za ní kampaň, které by se otevření
+  // připsalo, a pixel by byl jen značka, kterou nikdo nezpracuje.
+  const isPage = ctx.templateKind === 'page';
+  const trackOpens = ctx.trackOpens && ctx.templateKind !== 'system' && !isPage;
   // Vynechaná volba znamená ZAPNUTO, viz `CompileContext.preferenceCenterEnabled`.
   const preferenceCenterEnabled = ctx.preferenceCenterEnabled !== false;
 
   const renderedHtml = await renderDocumentHtml({
     normalized,
+    // Obal se volí podle profilu, ne podle volby volajícího: kdyby si ho směl
+    // vybrat, dala by se stránka zkompilovat do e-mailového obalu a naopak.
+    shell: isPage ? 'page' : 'email',
     assets: ctx.assets,
     assetBaseUrl: ctx.assetBaseUrl,
     linkHref: links.hrefFor,

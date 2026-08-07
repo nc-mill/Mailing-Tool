@@ -13,12 +13,14 @@ import { useUnloadGuard } from '../autosave/use-unload-guard';
 import { MAX_BLOCKS } from '../config';
 import type { EditorDocument } from '../model/document-types';
 import type { FieldCatalog } from '../model/field-catalog';
+import type { PageSurface } from '../model/page-surface';
 import type { EditorPorts } from '../ports/types';
 import { createEditorStore } from '../state/editor-store';
 import { EditorHandoffProvider } from '../state/use-handoff';
 import { EditorStoreProvider, useEditorState, useEditorStore } from '../state/use-editor';
 import { Canvas } from './canvas/canvas';
 import type { ValidationProfile } from '@mlain/emails/document/profile';
+import type { SampleGreetingSettings } from '@mlain/emails/preview-data';
 import { EditorDnd } from './canvas/dnd/editor-dnd';
 import { EditorHeader } from './header/editor-header';
 import type { RenameResult } from './header/template-name';
@@ -28,6 +30,8 @@ import { BlockPalette } from './palette/block-palette';
 import { PreviewPane } from './preview/preview-pane';
 import { PropertiesPanel } from './properties/properties-panel';
 import { FieldCatalogProvider } from './richtext/field-labels';
+import { PageSurfaceProvider } from './richtext/page-surface-context';
+import { TemplateProfileProvider } from './richtext/template-profile';
 import { TestSendDialog } from './test-send/test-send-dialog';
 import { AssistantRail } from './assistant/assistant-rail';
 import { isReadOnlyMode, useView } from './view/view-state';
@@ -46,6 +50,24 @@ export type EditorShellProps = {
    * přijme.
    */
   templateKind: ValidationProfile;
+  /**
+   * POVRCH VEŘEJNÉ STRÁNKY, tedy místo, kam se vykreslí: `form_thanks`,
+   * `confirmed`, `already_subscribed` nebo `unsubscribed`.
+   *
+   * Dává smysl JEN u profilu `page` a jinde se neprojeví: e-mail žádný povrch
+   * nemá. Není to druhý druh šablony, všechny čtyři povrchy jsou tentýž
+   * `kind = 'page'` a tentýž profil; liší se pouze tím, co o návštěvníkovi vědí.
+   *
+   * Rozhoduje o DVOU věcech naráz, a to schválně o obou z jednoho zdroje:
+   * co nabídne paletka personalizace a co projde validací. Kdyby to byly dvě
+   * propy, nabídla by paletka dřív nebo později údaj, který uložení odmítne.
+   *
+   * Skládá ho VOLAJÍCÍ, editor si ho nevymýšlí: obrazovka šablony ho vezme
+   * z adresy (`?surface=confirmed`), obrazovka formuláře z toho, který řádek
+   * karty „Stránky pro návštěvníka" uživatel otevřel. Když chybí, bere se
+   * nejužší povrch, viz `DEFAULT_PAGE_SURFACE`.
+   */
+  pageSurface?: PageSurface | undefined;
   document: EditorDocument;
   designHash: string;
   canWriteHtml: boolean;
@@ -94,6 +116,16 @@ export type EditorShellProps = {
    * cesta k zápisu dokumentu.
    */
   chrome?: ReactNode;
+  /**
+   * Nastavení oslovení PROJEKTU: vykání a tykání, oslovení křestním jménem nebo
+   * příjmením a přísnost vokativu.
+   *
+   * Editor sám ho zjistit nemůže (v prohlížeči do databáze nevidí) a bez něj
+   * skládá vzorovou větu podle výchozích hodnot nového projektu. Projekt
+   * přepnutý na tykání tak na plátně sliboval „Dobrý den, Jano" u e-mailu,
+   * který odejde s „Ahoj Jano". Dodává ho stránka z `loadEditorData`.
+   */
+  greeting?: SampleGreetingSettings | undefined;
 };
 
 export function EditorShell(props: EditorShellProps) {
@@ -113,6 +145,7 @@ export function EditorShell(props: EditorShellProps) {
     templateId: props.templateId,
     fieldCatalog: props.fieldCatalog,
     templateKind: props.templateKind,
+    pageSurface: props.pageSurface,
   });
 
   if (props.document.schemaVersion !== 1) {
@@ -129,18 +162,24 @@ export function EditorShell(props: EditorShellProps) {
     <LiveRegionProvider label={t('a11y.announcements')}>
       <EditorStoreProvider value={store}>
         <FieldCatalogProvider value={props.fieldCatalog}>
-          <ViewProvider language={props.document.meta.language}>
-            <EditorBody
-              {...props}
-              mode={mode}
-              onMode={setMode}
-              flush={flush}
-              testSendOpen={testSendOpen}
-              onTestSendOpen={setTestSendOpen}
-              assistantOpen={assistantOpen}
-              onAssistantOpen={setAssistantOpen}
-            />
-          </ViewProvider>
+          <TemplateProfileProvider value={props.templateKind}>
+            {/* Povrch jde dolů kontextem ze stejného důvodu jako profil: paletka
+                personalizace visí na liště nad blokem, tři obaly hluboko. */}
+            <PageSurfaceProvider value={props.pageSurface ?? null}>
+              <ViewProvider language={props.document.meta.language} greeting={props.greeting}>
+                <EditorBody
+                  {...props}
+                  mode={mode}
+                  onMode={setMode}
+                  flush={flush}
+                  testSendOpen={testSendOpen}
+                  onTestSendOpen={setTestSendOpen}
+                  assistantOpen={assistantOpen}
+                  onAssistantOpen={setAssistantOpen}
+                />
+              </ViewProvider>
+            </PageSurfaceProvider>
+          </TemplateProfileProvider>
         </FieldCatalogProvider>
       </EditorStoreProvider>
     </LiveRegionProvider>
@@ -273,6 +312,7 @@ function EditorBody(props: BodyProps) {
           ports={props.ports}
           returnTo={returnTo}
           contentKind={props.contentKind}
+          templateKind={props.templateKind}
           templateName={props.templateName}
           onRename={props.templateName === undefined ? undefined : rename}
           onReturn={returnTo ? () => leaveTo(returnTo.href) : undefined}
@@ -361,7 +401,14 @@ function EditorBody(props: BodyProps) {
                     contentKind={props.contentKind}
                   />
                 </div>
-                {props.assistant ? (
+                {/*
+                  ASISTENT U VEŘEJNÉ STRÁNKY NENÍ. Je vycvičený na e-maily:
+                  navrhuje předměty, preheadery a texty rozesílek, tedy pojmy,
+                  které na stránce neexistují. Rada mimo mísu je horší než žádná,
+                  protože ji člověk musí nejdřív přečíst, aby zjistil, že mu není
+                  k ničemu. Rozhodnutí zadavatele ze 7. 8. 2026.
+                */}
+                {props.assistant && props.templateKind !== 'page' ? (
                   <div className="min-w-0 self-start">
                     <AssistantRail
                       open={props.assistantOpen}

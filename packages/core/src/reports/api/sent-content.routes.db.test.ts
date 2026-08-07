@@ -88,6 +88,43 @@ describe('GET /campaigns/{id}/sent-content', () => {
     expect(body.content_state).toBe('ok');
   });
 
+  /**
+   * Poštovní adresa v patičce se do `messages.render_data` NESNAPSHOTUJE: kořeny
+   * `campaign` a `workspace` jsou konstantní pro celou kampaň a dodává je až
+   * odesílač z hlavičky. Report je proto musí doplnit ze stejného zdroje, jinak
+   * tvrdí, že patička odešla bez adresy, i když ji nesla.
+   */
+  it('doplní poštovní adresu projektu, kterou zpráva v datech nemá', async () => {
+    const ws = await seedWorkspace(db);
+    await db.pool.query(
+      `UPDATE workspaces
+          SET settings = jsonb_build_object('campaigns', jsonb_build_object('postal_address', $2::text))
+        WHERE id = $1`,
+      [ws.workspaceId, 'Kolo Eshop s.r.o., Nádražní 5, 110 00 Praha 1'],
+    );
+    const campaign = await seedCampaign(db, ws.workspaceId, {
+      compiledHtml: FOOTER_HTML,
+      compiledText: FOOTER_TEXT,
+      design: WITH_CONTENT_DESIGN,
+    });
+    const contactId = await seedContact(db, ws.workspaceId, { email: 'jana@example.cz' });
+    await seedMessage(db, {
+      workspaceId: ws.workspaceId,
+      campaignId: campaign.campaignId,
+      contactId,
+      email: 'jana@example.cz',
+      createdAt: campaign.audienceBuiltAt,
+      renderData: { contact: { first_name: 'Jana' } },
+    });
+
+    const body = (await (
+      await appFor(ws.workspaceId).request(`/campaigns/${campaign.campaignId}/sent-content`)
+    ).json()) as Record<string, unknown>;
+
+    expect(body.html as string).toContain('Nádražní 5');
+    expect(body.text as string).toContain('Nádražní 5');
+  });
+
   it('textovou verzi renderuje textovým enginem, tedy bez escapování', async () => {
     const ws = await seedWorkspace(db);
     const campaign = await seedCampaign(db, ws.workspaceId, {

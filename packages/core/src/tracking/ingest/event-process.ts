@@ -1,5 +1,7 @@
+import { allowsMeasurement } from '../../contacts/repo/consents';
 import { createSystemContext } from '../../identity/context';
 import { TtlLru } from '../click/lru';
+import { selectMeasurementWithdrawn } from '../repo/web-events.repo';
 import { applyIdentify, type IdentifyPayload } from '../identity/apply-identify';
 import { enqueueTrackingJob } from '../jobs/enqueue';
 import { trackingLogger } from '../logging';
@@ -146,12 +148,16 @@ export async function handleEventProcess(
         identity !== null &&
         identity.contactId !== null &&
         !identity.processingRestricted &&
-        identity.deletedAt === null
+        identity.deletedAt === null &&
+        allowsMeasurement(identity.measurementConsent)
       ) {
         contactId = identity.contactId;
       }
-      // Omezené zpracování nebo smazaný kontakt: `contact_id` se NEDOPLNÍ
-      // a událost se uloží anonymně (GDPR čl. 18).
+      // Omezené zpracování, smazaný kontakt nebo odvolaný souhlas s měřením:
+      // `contact_id` se NEDOPLNÍ a událost se uloží anonymně. U článku 18 to
+      // plyne z omezení zpracování, u odvolaného měření z toho, že se ten
+      // člověk nechce nechat sledovat adresně. Návštěvnost webu se tím
+      // neztrácí, jen se z ní nestane stopa konkrétní osoby.
     }
 
     // 3. aplikační deduplikace v okně sedmi dní
@@ -162,9 +168,26 @@ export async function handleEventProcess(
     );
     const seen = new Set<string>();
 
+    /**
+     * Kontakt vyjmenovaný PŘÍMO v události. Serverová cesta a import ho nesou
+     * v payloadu, takže vůbec neprojdou vyřešením identity o kus výš, a bez
+     * téhle kontroly by se jimi dal souhlas s měřením obejít jedním voláním.
+     *
+     * Událost se u odvolaného souhlasu ZAHAZUJE, nezanonymizuje. Anonymní ID
+     * u téhle cesty zpravidla není, takže řádek bez kontaktu by neměl subjekt
+     * a porušil by `ck_web_events__subject`; celá dávka by pak spadla na
+     * databázové chybě, což by odvolaný souhlas změnilo v provozní poruchu.
+     */
+    const explicitWithdrawn = await selectMeasurementWithdrawn(
+      tx,
+      data.workspaceId,
+      data.events.map((event) => event.contactId).filter((id): id is string => id != null),
+    );
+
     const rows: IngestedWebEventInsert[] = [];
     for (const event of data.events) {
       if (existing.has(event.id) || seen.has(event.id)) continue;
+      if (event.contactId != null && explicitWithdrawn.has(event.contactId)) continue;
       seen.add(event.id);
 
       const occurredAt = new Date(event.occurredAt);

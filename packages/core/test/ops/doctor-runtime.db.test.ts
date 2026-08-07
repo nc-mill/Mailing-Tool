@@ -112,15 +112,36 @@ describe('workspaceChecks', () => {
     expect(findings[0]?.detail).toContain('nemá ani jeden použitelný odesílací účet');
   });
 
-  it('projekt s účtem typu SES hlásí, že systémovou poštu odeslat neumí', async () => {
+  /**
+   * OTOČENÉ OČEKÁVÁNÍ. Do doplnění větve pro SES tenhle test měřil, že projekt
+   * s jediným účtem typu SES dostane nález „systémovou poštu odeslat neumí".
+   * Dnes odešle, takže by ten nález byl planý poplach přesně u instalace, která
+   * vyšla z průvodce a nic špatně neudělala.
+   */
+  it('projekt s účtem typu SES systémovou poštu nehlásí', async () => {
     await pg.sql(`
       INSERT INTO sending_providers
         (workspace_id, name, type, config_encrypted, config_public, status, is_default)
       SELECT id, 'SES', 'ses', 'enc:test', '{}'::jsonb, 'ready', true FROM workspaces LIMIT 1
     `);
     const findings = await run(workspaceChecks);
+    expect(findings.find((x) => x.id === 'system_mail_unavailable')).toBeUndefined();
+    await pg.sql(`DELETE FROM sending_providers`);
+  });
+
+  /**
+   * Vypnutý účet se nepočítá, i když v projektu je. Je to týž stav jako žádný
+   * účet a nález na něj musí ukázat, jinak zbude jediná stopa v logu.
+   */
+  it('vypnutý účet hlásí jako chybějící', async () => {
+    await pg.sql(`
+      INSERT INTO sending_providers
+        (workspace_id, name, type, config_encrypted, config_public, status, is_default)
+      SELECT id, 'SES', 'ses', 'enc:test', '{}'::jsonb, 'disabled', true FROM workspaces LIMIT 1
+    `);
+    const findings = await run(workspaceChecks);
     const f = findings.find((x) => x.id === 'system_mail_unavailable');
-    expect(f?.detail).toContain('typu ses');
+    expect(f?.detail).toContain('nemá ani jeden použitelný odesílací účet');
     expect(f?.action).toContain('mlain reset-password');
     await pg.sql(`DELETE FROM sending_providers`);
   });

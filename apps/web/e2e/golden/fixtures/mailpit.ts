@@ -58,6 +58,19 @@ export async function messageCount(): Promise<number> {
   return (await json<{ total: number }>('/api/v1/messages?limit=1')).total;
 }
 
+/**
+ * Kolik zpráv s daným předmětem opravdu leží v pasti.
+ *
+ * Je to jediný zdroj pravdy o tom, co odešlo, nezávislý na tom, co si o sobě
+ * myslí report. Report proti němu porovnává vlastní čísla, viz krok 9 zlaté
+ * cesty: dokud se čísla čtou z téže tabulky, ze které se počítají, nemůže
+ * test odhalit, že se odmítnuté zprávy počítají jako doručené.
+ */
+export async function countMessagesWithSubject(subjectContains: string): Promise<number> {
+  const list = await json<{ messages: { Subject: string }[] }>('/api/v1/messages?limit=500');
+  return list.messages.filter((m) => m.Subject.includes(subjectContains)).length;
+}
+
 /** Vytáhne první odkaz, jehož cíl obsahuje daný fragment cesty. */
 export function extractLink(html: string, pathFragment: string): string {
   const matches = [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);

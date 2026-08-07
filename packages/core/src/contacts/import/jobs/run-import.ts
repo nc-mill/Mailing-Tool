@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import { createSystemContext } from '../../../identity/context';
@@ -161,6 +162,10 @@ export const handler = async (job: {
       options: run.options,
       rows: deduped.rows,
       errors: allErrors,
+      // Řádky PŘEČTENÉ ze souboru, tedy vstup téhle dávky před jakýmkoli tříděním.
+      // `processed += pending.length` níž počítá totéž číslo pro živý průběh, takže
+      // se to, co se ukládá, a to, co se posílá na obrazovku, nemůže rozejít.
+      inputRows: pending.length,
       checkpointRow,
       checkpointByte,
       suppressedCount,
@@ -176,6 +181,39 @@ export const handler = async (job: {
   };
 
   const path = join(limits.dataDir, run.storageKey);
+
+  /*
+   * CHYBĚJÍCÍ SOUBOR IMPORT UZAVŘE, NEZKOUŠÍ SE DONEKONEČNA.
+   *
+   * Nahraný soubor se po čase uklízí retencí (`import_files`, 30 dní), kdežto
+   * řádek v `imports` zůstává. Import zaseknutý ve stavu `importing`, jehož
+   * soubor už neexistuje, se tedy NIKDY nemůže povést.
+   *
+   * Bez tohohle bloku to bylo horší než jen zbytečný pokus: `confirmImport`
+   * odmítá KAŽDÝ další import v projektu, dokud takový řádek leží
+   * (`import_already_running`). Obnova zaseknutých importů ho každých deset
+   * minut zařadila znovu, pokaždé spadla na `ENOENT` a projekt zůstal
+   * se zamčeným importováním napořád. Naměřeno 7. 8. na skutečném případu.
+   *
+   * Uzavírá se sem, ne do obnovy: soubor může zmizet i mezi zařazením a během,
+   * a tohle je jediné místo, kterým projdou obě cesty.
+   */
+  if (!existsSync(path)) {
+    importLogger().warn(
+      { importId: job.data.importId, storageKey: run.storageKey },
+      'import closed as failed: uploaded file is gone',
+    );
+    await inWorkspaceTx(ctx, (tx) =>
+      tx.execute(sql`
+        UPDATE imports
+           SET status = 'failed', finished_at = now(), updated_at = now()
+         WHERE id = ${job.data.importId}::uuid
+           AND workspace_id = ${ctx.workspaceId}::uuid
+           AND status = 'importing'`),
+    );
+    return { processed: 0, errorRows: 0 };
+  }
+
   for await (const raw of readRows(path, {
     dialect: run.dialect,
     encoding: run.encoding,

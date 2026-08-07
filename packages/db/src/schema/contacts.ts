@@ -336,6 +336,49 @@ export const lists = pgTable(
      */
     confirmRedirectUrl: text(),
     unsubscribeRedirectUrl: text(),
+    /**
+     * Co udělá kliknutí na odhlašovací odkaz v e-mailu z TOHOHLE seznamu:
+     * odhlásí jen z něj (`list`), nebo ze všeho (`global`)?
+     *
+     * NENÍ TO JEN ROZSAH. Globální odhlášení zakládá záznam do `suppressions`
+     * pro celý projekt (`lists/unsubscribe.ts`), tedy adresu zablokuje napříč
+     * všemi seznamy, kdežto odhlášení ze seznamu ne. Výchozí `list` je dnešní
+     * chování, viz migrace 0027.
+     */
+    unsubscribeScope: text().$type<'list' | 'global'>().notNull().default('list'),
+    /**
+     * Kam poslat člověka, který odešle formulář adresou, která v seznamu už
+     * POTVRZENÁ je. `NULL` znamená „chová se to jako dosud", tedy stejná
+     * děkovací stránka jako u nového zájemce.
+     *
+     * VÝCHOZÍ `NULL` JE BEZPEČNOSTNÍ ROZHODNUTÍ, ne opatrnost: jiná odpověď na
+     * známou adresu prozradí, kdo v databázi je, a odpověď formuláře je jinak
+     * jednotná schválně (`UNIFORM_RESPONSE` ve `forms/submit.ts`, R9).
+     */
+    alreadySubscribedRedirectUrl: text(),
+    /**
+     * Šablony VEŘEJNÝCH STRÁNEK seznamu, tedy `templates.kind = 'page'`. Není to
+     * e-mail: je to dokument, který nahradí obsah stránky, kterou návštěvník
+     * uvidí po potvrzení přihlášení, při opakovaném přihlášení už potvrzenou
+     * adresou a po odhlášení.
+     *
+     * `NULL` znamená VESTAVĚNÝ TEXT, tedy dnešní chování, a je to výchozí stav
+     * i po migraci 0029. Nepoužitelnou hodnotou to nikdy nebude: cizí klíče
+     * `fk_lists__*_template` mají `ON DELETE SET NULL`, takže smazání šablony
+     * seznam vrátí k vestavěnému textu místo toho, aby ho shodilo.
+     *
+     * Děkovací stránka po odeslání formuláře tu sloupec NEMÁ schválně: vlastní
+     * ji formulář (klíč `thanks_template_id` v `forms.definition`) a seznam
+     * o ní nemá co rozhodovat. Naopak stránka po odhlášení je jen tady, protože
+     * se na ni chodí z odkazu v e-mailu a není podle čeho určit formulář.
+     *
+     * Cizí klíče jsou stejně jako u `*_template_id` výš JEN v migraci, ne tady:
+     * `.references(() => templates.id)` by znamenalo import z `content.ts`,
+     * a ten modul importuje kontakty zpátky.
+     */
+    confirmedTemplateId: uuid(),
+    alreadySubscribedTemplateId: uuid(),
+    unsubscribedTemplateId: uuid(),
     confirmationMaxResends: smallint().notNull().default(3),
     isDefault: boolean().notNull().default(false),
     /**
@@ -384,6 +427,11 @@ export const lists = pgTable(
     check(
       'ck_lists__unsubscribe_redirect_url_len',
       sql`${t.unsubscribeRedirectUrl} IS NULL OR char_length(${t.unsubscribeRedirectUrl}) BETWEEN 1 AND 2000`,
+    ),
+    check('ck_lists__unsubscribe_scope', sql`${t.unsubscribeScope} IN ('list','global')`),
+    check(
+      'ck_lists__already_subscribed_redirect_url_len',
+      sql`${t.alreadySubscribedRedirectUrl} IS NULL OR char_length(${t.alreadySubscribedRedirectUrl}) BETWEEN 1 AND 2000`,
     ),
     uniqueIndex('uq_lists__workspace_name')
       .on(t.workspaceId, sql`lower(${t.name})`)

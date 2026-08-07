@@ -1,0 +1,36 @@
+-- mlain:timeout=120
+
+-- ===========================================================================
+-- Čítač odmítnutých zpráv. Bez něj se odmítnutá zpráva počítá jako doručená.
+--
+-- CO BYLO ŠPATNĚ. `ck_message_events__type` zná typ `rejected` (poskytovatel
+-- zprávu odmítl přijmout, viz `reports/event-types.ts`), ale `campaign_stats`
+-- pro něj neměly sloupec. Zdroj dat existoval, cíl ne, takže se událost
+-- nikam nezapsala.
+--
+-- Dopad nese vzorec `deliveredEffective` v `reports/metrics/rates.ts`, který
+-- doručenost odhaduje jako `sent - bounced_hard - bounced_soft - failed`.
+-- Odmítnutá zpráva má status `sent` (odeslání se pokusilo) a od toho výrazu
+-- se neodečítala, takže PLATILA ZA DORUČENOU. Doručenost se tím nafoukla
+-- k sto procentům a míra prokliku, která má doručené ve jmenovateli,
+-- se o tentýž počet podstřelila.
+--
+-- ---------------------------------------------------------------------------
+-- STARÁ DATA
+-- ---------------------------------------------------------------------------
+-- `NOT NULL DEFAULT 0` je tu záměrně a znamená to, že existující řádky vyjdou
+-- jako „nula odmítnutých", ne jako „nevíme". Je to pravdivější než NULL:
+-- dokud sloupec neexistoval, nemohl se z něj nic odečíst, takže se čísla
+-- starých kampaní tímhle přidáním NEZMĚNÍ ani o jedničku. Skutečnou hodnotu
+-- doplní první běh `tracking.refresh_campaign_progress`, který kampaň potká,
+-- a přepočet od nuly (`recomputeCampaignCounts`) ji spočítá stejně, takže
+-- kontrola driftu obě čísla porovnává spočtená týmž způsobem.
+--
+-- PostgreSQL 11 a novější přidání sloupce s nevolatilním DEFAULT nepřepisuje
+-- tabulku, takže je to změna metadat: doba běhu nezávisí na počtu řádků.
+--
+-- `IF NOT EXISTS` je tu proto, že migrace smí doběhnout jen jednou, ale
+-- `mlain doctor` a obnova ze zálohy sahají na schéma taky.
+-- ===========================================================================
+ALTER TABLE campaign_stats
+  ADD COLUMN IF NOT EXISTS rejected bigint NOT NULL DEFAULT 0;

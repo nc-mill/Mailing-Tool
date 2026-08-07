@@ -13,14 +13,34 @@ vi.mock('./actions', () => ({ saveSystemMailSettingsAction: vi.fn() }));
 
 const messages = { settings: csSettings };
 
-const SES: SystemMailStatus = {
+/**
+ * Projekt bez jediného odesílacího účtu.
+ *
+ * DŘÍV TU BYL PROJEKT S ÚČTEM TYPU SES a měřilo se, že mu obrazovka řekne
+ * „systémová pošta nefunguje". Od doplnění větve pro SES je to nepravda: účtem
+ * typu SES pošta odejde, viz fixture `SES` níž. Nefunkční stav zbyl jen tenhle
+ * a chybějící vybraný účet.
+ */
+const NO_ACCOUNT: SystemMailStatus = {
   available: false,
-  reason: 'provider_unsupported',
-  provider_id: '11111111-1111-4111-8111-111111111111',
-  provider_type: 'ses',
+  reason: 'no_account',
+  provider_id: null,
+  provider_type: null,
   from_address: 'mlain@mlain.test',
   from_source: 'app_url',
-  capable_types: ['smtp'],
+  capable_types: ['smtp', 'ses'],
+  settings: { provider_id: null, from_address: null },
+  accounts: [],
+};
+
+const SES: SystemMailStatus = {
+  available: true,
+  reason: null,
+  provider_id: '11111111-1111-4111-8111-111111111111',
+  provider_type: 'ses',
+  from_address: 'mlain@firma.cz',
+  from_source: 'verified_domain',
+  capable_types: ['smtp', 'ses'],
   settings: { provider_id: null, from_address: null },
   accounts: [
     {
@@ -29,8 +49,8 @@ const SES: SystemMailStatus = {
       type: 'ses',
       status: 'ready',
       is_default: true,
-      capable: false,
-      domain: null,
+      capable: true,
+      domain: 'firma.cz',
     },
   ],
 };
@@ -42,7 +62,7 @@ const SMTP: SystemMailStatus = {
   provider_type: 'smtp',
   from_address: 'mlain@firma.cz',
   from_source: 'verified_domain',
-  capable_types: ['smtp'],
+  capable_types: ['smtp', 'ses'],
   settings: { provider_id: null, from_address: null },
   accounts: [
     {
@@ -73,19 +93,17 @@ function renderScreen(status: SystemMailStatus, canConfigure = true) {
 
 describe('SystemMailScreen', () => {
   /**
-   * Jádro celé opravy: instalace s jediným účtem typu SES musí na obrazovce
-   * vidět, že systémová pošta nefunguje, PROČ, a co kvůli tomu nejde. Dřív
-   * o tom nebylo nikde ani slovo a uživatel hledal chybu u sebe.
+   * Jádro celé opravy: projekt, který systémovou poštu odeslat nemá čím, musí
+   * na obrazovce vidět, že nefunguje, PROČ, a co kvůli tomu nejde. Dřív o tom
+   * nebylo nikde ani slovo a uživatel hledal chybu u sebe.
    */
-  it('u účtu SES řekne, že pošta nefunguje, proč a co kvůli tomu nejde', () => {
-    renderScreen(SES);
+  it('bez odesílacího účtu řekne, že pošta nefunguje, proč a co kvůli tomu nejde', () => {
+    renderScreen(NO_ACCOUNT);
     expect(screen.getByText('Systémová pošta nefunguje')).toBeInTheDocument();
     expect(
-      screen.getByText(/Systémovou poštu odsud odešle jen účet typu SMTP/),
+      screen.getByText(/Projekt nemá odesílací účet, kterým by šlo e-mail poslat/),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/známé omezení nástroje, ne chyba vašeho nastavení/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Odejdou účtem typu SES i SMTP/)).toBeInTheDocument();
     expect(screen.getByText(/Pozvánka do projektu e-mailem/)).toBeInTheDocument();
     expect(screen.getByText(/mlain reset-password/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Přejít na Odesílání' })).toHaveAttribute(
@@ -94,8 +112,21 @@ describe('SystemMailScreen', () => {
     );
   });
 
-  it('vždycky ukáže adresu odesílatele i to, odkud se vzala', () => {
+  /**
+   * Druhá strana téže opravy. Instalace po průvodci má typicky jediný účet typu
+   * SES a do doplnění větve pro SES jí obrazovka hlásila, že pošta nefunguje.
+   * Dnes funguje a obrazovka to musí říct, jinak by uživatel hledal náhradní
+   * cestu, kterou nepotřebuje.
+   */
+  it('u účtu typu SES hlásí funkční poštu, ne omezení', () => {
     renderScreen(SES);
+    expect(screen.getByText('Systémová pošta funguje')).toBeInTheDocument();
+    expect(screen.getByText(/Odesílá se účtem Amazon SES typu ses/)).toBeInTheDocument();
+    expect(screen.queryByText(/Co kvůli tomu nejde/)).not.toBeInTheDocument();
+  });
+
+  it('vždycky ukáže adresu odesílatele i to, odkud se vzala', () => {
+    renderScreen(NO_ACCOUNT);
     expect(
       screen.getByText('Systémové e-maily chodí z adresy mlain@mlain.test.'),
     ).toBeInTheDocument();

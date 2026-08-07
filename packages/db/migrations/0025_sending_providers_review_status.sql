@@ -1,0 +1,37 @@
+-- mlain:timeout=120
+
+-- ===========================================================================
+-- `sending_providers.review_status`: stav žádosti o produkční přístup k SES.
+--
+-- CO BYLO ŠPATNĚ. Sloupec nebyl v ŽÁDNÉ migraci, přestože ho kód čte z Amazonu
+-- (`providers/ses/account.ts`, `Details.ReviewDetails.Status`) a vede si ho
+-- v typu `AccountSnapshot`. Zápis se s tím vyrovnal tak, že se za běhu ptal
+-- `information_schema`, jestli sloupec existuje, a když ne, vynechal ho
+-- z `UPDATE` (`providers/repo/provider.ts`). Hodnota se tedy načetla z AWS
+-- a zahodila, bez chyby a bez zápisu do logu.
+--
+-- Obcházení se touhle migrací ruší i v kódu. Dokud v repozitáři zůstane, svádí
+-- k domněnce, že sloupec je volitelný, a příští zápis se podle toho zařídí.
+--
+-- ---------------------------------------------------------------------------
+-- CO SE DO NĚJ ZAPÍŠE
+-- ---------------------------------------------------------------------------
+-- Hodnota přichází z odpovědi SES v2 `GetAccount`, pole
+-- `Details.ReviewDetails.Status`. Dokumentované hodnoty jsou `PENDING`,
+-- `FAILED`, `GRANTED` a `DENIED`; když účet o produkční přístup nikdy nežádal,
+-- pole v odpovědi chybí a `mapAccount` uloží NULL.
+--
+-- CHECK constraint na výčet tu SCHVÁLNĚ NENÍ. Výčet vlastní Amazon, ne tenhle
+-- produkt, a kdyby přibyla šestá hodnota, skončil by celý zápis snímku účtu
+-- na 23514 a s ním i načtení kvót, na kterých stojí automatická pauza kampaně.
+-- Cena za volnost je, že se do sloupce může dostat neznámý řetězec; to je
+-- podstatně levnější než zablokovaný odesílací účet. Délku hlídá `text` bez
+-- limitu záměrně ze stejného důvodu.
+--
+-- Sloupec je NULLABLE bez DEFAULT: NULL znamená „nevíme, Amazon se ještě
+-- neptal nebo účet o přístup nežádal", což je pravdivější než nějaká
+-- vymyšlená výchozí hodnota. Přidání sloupce bez DEFAULT je čistá změna
+-- metadat, tabulku nepřepisuje.
+-- ===========================================================================
+ALTER TABLE sending_providers
+  ADD COLUMN IF NOT EXISTS review_status text;

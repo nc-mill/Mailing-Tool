@@ -33,6 +33,7 @@ describe('@mlain/core/templates', () => {
       'assertSendable',
       'PreSendBlockedError',
       'syncAssetReferences',
+      'clearAssetReferences',
       'loadAssetRefs',
       'assetIdsInDocument',
     ]) {

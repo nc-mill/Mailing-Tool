@@ -46,6 +46,7 @@ export function Sidebar({
   renderLink,
   labels,
   footer,
+  className,
 }: {
   items: VisibleNavigationItem[];
   currentPath: string;
@@ -65,6 +66,14 @@ export function Sidebar({
   labels: SidebarLabels;
   /** Patička menu, například odkaz na zdrojový kód. */
   footer?: React.ReactNode;
+  /**
+   * Třída obalu menu. Skořápka jí řídí, KDE menu stojí, protože totéž menu
+   * se kreslí na dvou místech: v rozvržení stránky na širokém displeji
+   * (a tam se pod 768 px schová) a uvnitř vysouvacího panelu na úzkém
+   * (a tam vyplní panel). Rozměry a přilepení z obalu se dají přebít,
+   * `tailwind-merge` vezme poslední hodnotu ze stejné skupiny.
+   */
+  className?: string;
 }) {
   const isActive = (href: string) => currentPath === href || currentPath.startsWith(`${href}/`);
 
@@ -129,6 +138,7 @@ export function Sidebar({
         'sticky top-[var(--size-topbar)] z-[var(--z-sidebar)] h-[calc(100dvh-var(--size-topbar))] shrink-0',
         'transition-[width] duration-[var(--duration-nav)]',
         collapsed ? 'w-[var(--size-sidebar-collapsed)]' : 'w-[var(--size-sidebar)]',
+        className,
       )}
     >
       <nav

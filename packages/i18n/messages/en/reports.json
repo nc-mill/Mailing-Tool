@@ -170,8 +170,8 @@
       "notComputed": "The summary for this campaign has not been computed yet. The numbers below are zeros from an empty summary, not measurements. The sending progress screen shows how many messages actually went out."
     },
     "actions": {
-      "resendToUnopened": "Resend to people who did not open",
       "resendWarning": "Opens are imprecise, so the audience will include people who did read the e-mail. Consider wording other than „you missed it“.",
+      "duplicateFailed": "The campaign could not be duplicated: {detail}",
       "duplicate": "Duplicate campaign",
       "download": "Download report",
       "segmentFromClicked": "Create a segment from people who clicked",
@@ -212,6 +212,7 @@
     "collapseCluster": "Collapse events",
     "expanded": "Expanded",
     "collapsed": "Collapsed",
+    "eventAnchor": "Permanent link to this event: {what}, {when}",
     "machineOpen": "Automatic download by the mail client, may not mean a real open",
     "sessionGroup": "{pages, plural, =0 {Web visit} one {Web visit, # page} other {Web visit, # pages}}",
     "empty": "No activity recorded for this contact yet.",

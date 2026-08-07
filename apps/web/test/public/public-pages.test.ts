@@ -31,6 +31,7 @@ import {
   contactRow,
   createContact,
   createList,
+  createSenderIdentity,
   expireConfirmation,
   issueConfirmationToken,
   latestConsent,
@@ -277,8 +278,19 @@ describe('POST potvrzuje', () => {
 });
 
 describe('layout veřejných stránek', () => {
+  /**
+   * Test se 7. 8. 2026 OPRAVIL, ne rozšířil: v názvu slíbil „nese jméno odesílatele",
+   * ale ověřoval jméno PROJEKTU, tedy interní popisek do postranního menu. Tím tu
+   * vadu držel na místě. Lidé si projekt pojmenovávají „Petr Osobní mail" nebo
+   * „Klient Novák, faktury" a nepočítají s tím, že to uvidí kdokoli, kdo si otevře
+   * jejich formulář. Nahlásil zadavatel.
+   *
+   * Obě tvrzení jsou tu schválně: kdyby zůstalo jen to kladné, prošlo by i vykreslení,
+   * které ukáže obě jména vedle sebe.
+   */
   it('neobsahuje navigaci do aplikace, nese jméno odesílatele a má noindex', async () => {
     const ctx = await testWorkspace('Firma s.r.o.');
+    await createSenderIdentity(ctx, 'Novinky od Firmy');
     const contactId = await createContact(ctx, { email: 'j@x.cz' });
     const listId = await createList(ctx, { name: 'Newsletter' });
     const ref = buildConfirmationRef({
@@ -290,7 +302,8 @@ describe('layout veřejných stránek', () => {
     const html = await response.text();
 
     expect(html).not.toContain('href="/w/');
-    expect(html).toContain('Firma s.r.o.');
+    expect(html).toContain('Novinky od Firmy');
+    expect(html).not.toContain('Firma s.r.o.');
     expect(html).toContain('noindex');
     expect(response.headers.get('x-robots-tag')).toContain('noindex');
     // Stránka se otevírá na mobilu a na pomalém připojení.

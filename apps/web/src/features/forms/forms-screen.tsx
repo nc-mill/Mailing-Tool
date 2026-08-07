@@ -20,6 +20,7 @@ import { DataTable } from '@mlain/ui/patterns/data-table';
 import { PageHeader } from '@mlain/ui/components/page-header';
 import { Alert, EmptyState } from '@mlain/ui/patterns/states';
 import { CheckIcon, ClockIcon, MoreIcon } from '@/lib/ui/status-icons';
+import { BulkRemovalAction, runBulkRemoval } from '@/lib/ui/bulk-removal';
 import { useContactsTableLabels } from '@/features/contacts/table-labels';
 import { createFormAction, deleteFormAction, updateFormAction } from './actions';
 import { CreateFormDialog } from './create-form-dialog';
@@ -132,6 +133,8 @@ export function FormsScreen({
   const labels = useContactsTableLabels({
     selectRow: t('forms.name'),
     selectAllOnPage: t('forms.title'),
+    // Pruh výběru nesmí nad formuláři mluvit o kontaktech.
+    selectionWording: 'generic',
   });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -141,6 +144,14 @@ export function FormsScreen({
    */
   const [deleting, setDeleting] = useState<FormView | null>(null);
   const [, startTransition] = useTransition();
+  /*
+   * Výběr řádků. `DataTable` kreslí zaškrtávátka VŽDYCKY a vypnout se nedají, takže
+   * je tabulka formulářů měla od začátku, jenže výběr nikam nevedl: pruh nad ní uměl
+   * jedině vybrat všechno a zase to zrušit.
+   */
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  /** `clearToken` pro tabulku: režim „vybráno všech N" bydlí uvnitř ní. */
+  const [clearedSelections, setClearedSelections] = useState(0);
 
   const listNames = new Map(lists.map((list) => [list.id, list.name]));
   /*
@@ -180,6 +191,43 @@ export function FormsScreen({
       setDeleting(null);
       router.refresh();
     });
+  }
+
+  /**
+   * Hromadné smazání označených formulářů.
+   *
+   * SMAZAT JDE KAŽDÝ FORMULÁŘ, žádný stav to neomezuje (`formRowActions` nabízí
+   * mazání vždycky, když má člověk právo zapisovat), takže se tu nic nepřeskakuje.
+   * Volá se `deleteFormAction` po jednom, hromadný endpoint API nemá.
+   *
+   * NENÍ TO POZASTAVENÍ. Následky jsou tytéž jako u jednoho formuláře a jedna z vět
+   * říká výslovně, že na dočasné zastavení je přepínač, ne mazání; při dvanácti
+   * označených řádcích to platí tím spíš.
+   */
+  const selected = forms.filter((row) => selectedIds.includes(row.id));
+
+  async function deleteSelected(): Promise<{ failed: number; detail: string | null }> {
+    setFailure(null);
+    const { failedIds, detail } = await runBulkRemoval(
+      selected.map((row) => row.id),
+      async (id) => {
+        const result = await deleteFormAction({ workspaceId, id });
+        return result.status === 'error'
+          ? { status: 'error' as const, code: result.detail === '' ? result.code : result.detail }
+          : { status: 'success' as const };
+      },
+    );
+    router.refresh();
+    if (failedIds.length === 0) {
+      // Výběr se ruší JEN po úspěchu: po chybě by uživatel přišel o odklikanou práci.
+      setSelectedIds([]);
+      setClearedSelections((count) => count + 1);
+      return { failed: 0, detail: null };
+    }
+    // Ve výběru zůstane jen to, co se smazat nepodařilo.
+    setSelectedIds(failedIds);
+    setClearedSelections((count) => count + 1);
+    return { failed: failedIds.length, detail };
   }
 
   /** Volba z řádkové nabídky. Vratné akce běží rovnou, mazání otevře okno. */
@@ -291,6 +339,43 @@ export function FormsScreen({
         getRowId={(row) => row.id}
         labels={labels}
         count={{ value: forms.length, precision: 'exact' }}
+        selection={{
+          selectedIds: selected.map((row) => row.id),
+          onSelectionChange: setSelectedIds,
+          clearToken: clearedSelections,
+        }}
+        {...(canEdit
+          ? {
+              /*
+               * Bez práva upravovat se pruh nechá bez akcí: mazání je jediná hromadná
+               * akce, kterou formuláře mají, a server by ji stejně odmítl.
+               */
+              bulkActions: (
+                <BulkRemovalAction
+                  testId="forms-bulk"
+                  removable={selected.length}
+                  labels={{
+                    action: tf('editor.bulkDelete', { count: selected.length }),
+                    nothing: tf('editor.bulkDeleteNothing'),
+                    title: tf('editor.bulkDeleteTitle', { count: selected.length }),
+                    // TYTÉŽ VĚTY JAKO U JEDNOHO FORMULÁŘE. Následek se počtem nemění
+                    // a druhý výčet by se s tím prvním dřív nebo později rozešel.
+                    explanation: [
+                      tf('editor.deleteConsequenceForm'),
+                      tf('editor.deleteConsequenceSubmissions'),
+                      tf('editor.deleteConsequenceAlternative'),
+                    ],
+                    submit: tf('editor.bulkDelete', { count: selected.length }),
+                    submitting: tf('editor.bulkDeleteSubmitting'),
+                    cancel: tc('cancel'),
+                    failed: ({ failed, detail }) =>
+                      tf('editor.bulkDeleteFailed', { count: failed, detail: detail ?? '' }),
+                  }}
+                  onConfirm={deleteSelected}
+                />
+              ),
+            }
+          : {})}
         onRowActivate={(row) => router.push(`${basePath}/${row.id}`)}
         pagination={{
           hasMore: false,
@@ -337,11 +422,31 @@ export function FormsScreen({
             header: tf('table.signups'),
             // Věta s číslem je v návrhu SANS 15 px, mono nese až druhořadý údaj
             // pod ní. Tady žádný druhý řádek není, takže zůstává samotná věta.
-            cell: (row) => (
-              <span className="text-ui text-text">
-                {t('forms.signups', { count: row.accepted_30d })}
-              </span>
-            ),
+            cell: (row) => {
+              /*
+               * Zahozená odeslání se hlásí VEDLE počtu přihlášení, ne v něm.
+               *
+               * Ochrana zahazuje TIŠE, aby si robot neodvodil, které pravidlo ho
+               * chytlo. Cena za to padá i na člověka: správce hesel vyplní pole
+               * naráz, časová past (výchozí dvě sekundy) odeslání zahodí, návštěvník
+               * uvidí „Poslali jsme vám e-mail" a žádný nedostane. Tenhle řádek je
+               * jediné místo, kde na to jde přijít, a proto tu je: číslo bez něj
+               * říkalo „čtyři přihlášení" a mlčelo o dalších třech ztracených.
+               */
+              const dropped = Object.values(row.dropped_30d ?? {}).reduce((a, b) => a + b, 0);
+              return (
+                <span className="flex flex-col">
+                  <span className="text-ui text-text">
+                    {t('forms.signups', { count: row.accepted_30d })}
+                  </span>
+                  {dropped > 0 ? (
+                    <span className="font-mono text-meta text-text-muted">
+                      {tf('table.dropped', { count: dropped })}
+                    </span>
+                  ) : null}
+                </span>
+              );
+            },
           },
           {
             id: 'state',

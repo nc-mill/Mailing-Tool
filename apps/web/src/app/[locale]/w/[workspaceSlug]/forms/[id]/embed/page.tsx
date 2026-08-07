@@ -40,10 +40,13 @@ export default async function FormEmbedPage({ params }: PageProps) {
     <EmbedPanel
       formId={id}
       // Jméno formuláře je jen popisek nad kódem, takže selhání detailu obrazovku
-      // neshodí: kód k vložení je tu i tak celý.
+      // neshodí: kód k vložení je tu i tak celý. Ze stejného důvodu jde z detailu
+      // i seznam polí pro náhled: když se nenačte, náhled se vynechá, ale kód zůstane.
       formName={form.ok ? form.data.data.name : ''}
       embed={embed.data}
       basePath={`/w/${workspaceSlug}/forms`}
+      fields={form.ok ? form.data.data.fields : []}
+      consentText={form.ok ? form.data.data.consent_text : null}
     />
   );
 }

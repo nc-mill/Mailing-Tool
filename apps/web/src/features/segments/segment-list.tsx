@@ -52,9 +52,20 @@ const STALE_HOURS = 6;
  * Sloupce tabulky segmentů. Šířky jsou z návrhu: název se roztahuje, počet je
  * úzký a zarovnaný doprava, čas přepočtu má pevných 190 px a poslední sloupec
  * je přesně na ikonové tlačítko.
+ *
+ * POD 768 px JE SLOUPEC JEDINÝ a řádek se kreslí jako KARTA, stejně jako
+ * v `DataTable`. Čtyři sloupce mají dohromady 304 px pevné šířky plus tři
+ * mezery, takže se tabulka nevešla do 343 px rámu a rolovala vodorovně uvnitř
+ * stránky, která roluje svisle (naměřeno 7. 8. 2026: rám 343 px, obsah 720 px).
+ *
+ * Tvar karty je závazný a stejný napříč aplikací: **název má celý první řádek
+ * sám pro sebe** a zalomí se, místo aby se uřízl; pod ním jsou doplňkové údaje
+ * jako dvojice popisek a hodnota; **nabídka „…" je v pravém horním rohu**, mimo
+ * tok, aby vedle názvu nestála; **prázdná hodnota se nekreslí vůbec**, takže
+ * segment bez času přepočtu na kartě nedrží prázdný řádek.
  */
 const COLUMNS =
-  'grid grid-cols-[minmax(0,1fr)_70px_190px_44px] items-center gap-[var(--spacing-stack)] px-[var(--spacing-row-x)]';
+  'grid grid-cols-1 items-start gap-y-1 px-[var(--spacing-row-x)] md:grid-cols-[minmax(0,1fr)_70px_190px_44px] md:items-center md:gap-[var(--spacing-stack)]';
 
 /**
  * Nabídka „…" v řádku segmentu, tvarem shodná s kontakty a kampaněmi.
@@ -287,9 +298,15 @@ export function SegmentList({
         ) : (
           <Card padding="none" gap="none">
             <div className="overflow-x-auto rounded-t-[var(--radius-surface)]">
-              <div className="min-w-[720px]">
+              {/* Minimální šířka platí až od 768 px. Pod ní je řádek dvousloupcový
+                  a do stránky se vejde, takže by ho 720 px jen vytlačilo ven. */}
+              <div className="min-w-0 md:min-w-[720px]">
+                {/* Hlavička sloupců na úzkém displeji NENÍ: řádek se tam láme na
+                    dva, takže by názvy nestály nad ničím a jen by zabraly dva
+                    řádky verzálek. Hodnoty v řádku nesou význam samy (počet je
+                    číslo u názvu, čas přepočtu je celá věta). */}
                 <div
-                  className={`${COLUMNS} rounded-t-[var(--radius-surface)] border-b border-border bg-surface-muted py-3`}
+                  className={`${COLUMNS} max-md:hidden rounded-t-[var(--radius-surface)] border-b border-border bg-surface-muted py-3`}
                 >
                   <span className="meta-caps text-text-muted">{t('columns.name')}</span>
                   <span className="meta-caps text-right text-text-muted">{t('columns.count')}</span>
@@ -311,11 +328,22 @@ export function SegmentList({
                   return (
                     <div
                       key={row.id}
-                      className={`${COLUMNS} border-b border-border py-4 last:border-b-0 hover:bg-surface-muted`}
+                      className={cn(
+                        COLUMNS,
+                        'border-b border-border py-4 last:border-b-0 hover:bg-surface-muted',
+                        // KARTA POD 768 px: místo pro nabídku v pravém horním rohu.
+                        'max-md:relative max-md:pr-[calc(var(--size-target-min)+var(--spacing-inline))]',
+                      )}
                     >
                       <Link
                         href={`/w/${workspaceSlug}/segments/${row.id}`}
-                        className="justify-self-start text-base font-semibold text-text no-underline hover:underline"
+                        className={cn(
+                          'justify-self-start text-base font-semibold text-text no-underline hover:underline',
+                          // Název má na kartě CELÝ PRVNÍ ŘÁDEK sám pro sebe,
+                          // zalomí se a neuřízne, a nese klikací plochu 44 px.
+                          'max-md:flex max-md:min-h-[var(--size-target-min)] max-md:items-center',
+                          'max-md:[overflow-wrap:anywhere]',
+                        )}
                       >
                         {row.name}
                       </Link>
@@ -326,7 +354,7 @@ export function SegmentList({
                         <Button
                           variant="link"
                           size="sm"
-                          className="justify-self-end"
+                          className="justify-self-end max-md:justify-self-start"
                           pending={counting === row.id}
                           pendingLabel={t('count.counting')}
                           onClick={() => void recount(row.id)}
@@ -334,7 +362,15 @@ export function SegmentList({
                           {t('count.action')}
                         </Button>
                       ) : (
-                        <span className="text-right font-mono text-ui text-text">
+                        <span className="text-right font-mono text-ui text-text max-md:flex max-md:items-baseline max-md:gap-2 max-md:text-left">
+                          {/* Popisek se na kartě vypisuje u hodnoty: bez hlavičky
+                              tabulky by u čísla nebylo poznat, co znamená. */}
+                          <span
+                            aria-hidden
+                            className="meta-caps hidden text-text-muted max-md:inline"
+                          >
+                            {t('columns.count')}
+                          </span>
                           {formatCount(row.cachedCount, locale)}
                         </span>
                       )}
@@ -343,6 +379,9 @@ export function SegmentList({
                         data-stale={stale ? 'true' : 'false'}
                         className={cn(
                           'font-mono text-label text-text-muted',
+                          // Segment bez času přepočtu nemá co ukázat, takže
+                          // na kartě nezabere ani řádek.
+                          age === null ? 'max-md:hidden' : '',
                           stale ? 'opacity-70' : undefined,
                         )}
                       >
@@ -361,7 +400,7 @@ export function SegmentList({
                        * ozdoba: bez něj se u zastaralého čísla nedá udělat nic,
                        * a to je přesně chvíle, kdy ho člověk potřebuje nejvíc.
                        */}
-                      <span className="flex justify-end">
+                      <span className="flex justify-end max-md:absolute max-md:top-[var(--spacing-inline)] max-md:right-[var(--spacing-inline)]">
                         <SegmentRowMenu
                           row={row}
                           permissions={permissions}

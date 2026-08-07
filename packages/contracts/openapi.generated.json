@@ -528,6 +528,9 @@
           "greeting_enabled": {
             "type": "boolean"
           },
+          "postal_address": {
+            "type": "string"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -548,6 +551,7 @@
           "timezone",
           "address_form",
           "greeting_enabled",
+          "postal_address",
           "created_at",
           "deleted_at"
         ]
@@ -609,6 +613,10 @@
           },
           "greeting_enabled": {
             "type": "boolean"
+          },
+          "postal_address": {
+            "type": "string",
+            "maxLength": 500
           }
         },
         "additionalProperties": false
@@ -819,6 +827,30 @@
         },
         "required": [
           "token"
+        ],
+        "additionalProperties": false
+      },
+      "InvitationSignupInput": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "token",
+          "password"
         ],
         "additionalProperties": false
       },
@@ -1093,7 +1125,8 @@
               "maxLength": 100
             },
             "minItems": 1,
-            "maxItems": 50
+            "maxItems": 50,
+            "description": "Typy událostí k odběru. Platné hodnoty: brand.extraction_completed, campaign.paused, campaign.resumed, campaign.schedule_delayed, campaign.schedule_missed, campaign.sending_started, campaign.sent, contact.subscribed, contact.suppressed, contact.unsubscribed, domain.verification_changed, message.clicked, message.opened, provider.status_changed. Neznámý typ vrátí 422 s kódem unknown_event_type a seznamem platných hodnot v params.allowed_event_types."
           }
         },
         "required": [
@@ -1121,7 +1154,8 @@
               "maxLength": 100
             },
             "minItems": 1,
-            "maxItems": 50
+            "maxItems": 50,
+            "description": "Typy událostí k odběru. Platné hodnoty: brand.extraction_completed, campaign.paused, campaign.resumed, campaign.schedule_delayed, campaign.schedule_missed, campaign.sending_started, campaign.sent, contact.subscribed, contact.suppressed, contact.unsubscribed, domain.verification_changed, message.clicked, message.opened, provider.status_changed. Neznámý typ vrátí 422 s kódem unknown_event_type a seznamem platných hodnot v params.allowed_event_types."
           }
         },
         "additionalProperties": false
@@ -1313,6 +1347,12 @@
               "string",
               "null"
             ]
+          },
+          "can_cancel": {
+            "type": "boolean"
+          },
+          "stopping": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1326,7 +1366,88 @@
           "started_at",
           "updated_at",
           "finished_at",
-          "note"
+          "note",
+          "can_cancel",
+          "stopping"
+        ]
+      },
+      "WorkerStatus": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "late",
+              "down",
+              "unknown"
+            ]
+          },
+          "last_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "seconds_since_last_seen": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "queue": {
+            "type": "object",
+            "properties": {
+              "waiting": {
+                "type": "integer"
+              },
+              "running": {
+                "type": "integer"
+              },
+              "failed_recent": {
+                "type": "integer"
+              },
+              "failed_window_hours": {
+                "type": "integer"
+              },
+              "dead_letter": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "waiting",
+              "running",
+              "failed_recent",
+              "failed_window_hours",
+              "dead_letter"
+            ]
+          },
+          "queues": {
+            "type": "object",
+            "properties": {
+              "registered": {
+                "type": "integer"
+              },
+              "cron_expected": {
+                "type": "integer"
+              },
+              "cron_scheduled": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "registered",
+              "cron_expected",
+              "cron_scheduled"
+            ]
+          }
+        },
+        "required": [
+          "state",
+          "last_seen_at",
+          "seconds_since_last_seen",
+          "queue",
+          "queues"
         ]
       },
       "SystemMailStatus": {
@@ -2957,6 +3078,40 @@
               "null"
             ]
           },
+          "unsubscribe_scope": {
+            "type": "string",
+            "enum": [
+              "list",
+              "global"
+            ]
+          },
+          "already_subscribed_redirect_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confirmed_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "already_subscribed_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "unsubscribed_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "is_default": {
             "type": "boolean"
           },
@@ -3007,6 +3162,11 @@
           "goodbye_template_id",
           "confirm_redirect_url",
           "unsubscribe_redirect_url",
+          "unsubscribe_scope",
+          "already_subscribed_redirect_url",
+          "confirmed_template_id",
+          "already_subscribed_template_id",
+          "unsubscribed_template_id",
           "is_default",
           "public_visible",
           "public_name",
@@ -3099,6 +3259,42 @@
               "null"
             ],
             "maxLength": 2000
+          },
+          "unsubscribe_scope": {
+            "type": "string",
+            "enum": [
+              "list",
+              "global"
+            ],
+            "default": "list"
+          },
+          "already_subscribed_redirect_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "confirmed_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "already_subscribed_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "unsubscribed_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "is_default": {
             "type": "boolean",
@@ -3321,6 +3517,27 @@
             ],
             "format": "uuid"
           },
+          "thanks_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "confirmed_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "already_subscribed_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "success_message": {
             "type": "object",
             "additionalProperties": {
@@ -3335,6 +3552,12 @@
           },
           "accepted_30d": {
             "type": "integer"
+          },
+          "dropped_30d": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
           },
           "created_at": {
             "$ref": "#/components/schemas/IsoDateTime"
@@ -3361,10 +3584,14 @@
           "captcha_provider",
           "redirect_url",
           "delivery_template_id",
+          "thanks_template_id",
+          "confirmed_template_id",
+          "already_subscribed_template_id",
           "success_message",
           "active",
           "submission_count",
           "accepted_30d",
+          "dropped_30d",
           "created_at",
           "updated_at"
         ]
@@ -3613,6 +3840,27 @@
             "format": "uri"
           },
           "delivery_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "thanks_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "confirmed_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "already_subscribed_template_id": {
             "type": [
               "string",
               "null"
@@ -4396,6 +4644,9 @@
           "counts": {
             "$ref": "#/components/schemas/DemoDataCounts"
           },
+          "impact": {
+            "$ref": "#/components/schemas/DemoDataImpact"
+          },
           "tagId": {
             "type": [
               "string",
@@ -4406,6 +4657,7 @@
         "required": [
           "present",
           "counts",
+          "impact",
           "tagId"
         ]
       },
@@ -4446,6 +4698,26 @@
           "tags",
           "segments",
           "templates",
+          "campaigns"
+        ]
+      },
+      "DemoDataImpact": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "contacts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "campaigns": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "contacts",
           "campaigns"
         ]
       },
@@ -5066,13 +5338,17 @@
           },
           "transactional": {
             "type": "integer"
+          },
+          "page": {
+            "type": "integer"
           }
         },
         "required": [
           "all",
           "campaign",
           "form",
-          "transactional"
+          "transactional",
+          "page"
         ]
       },
       "TemplateFieldUsageResponse": {
@@ -5115,7 +5391,8 @@
             "enum": [
               "campaign",
               "transactional",
-              "system"
+              "system",
+              "page"
             ]
           },
           "document": {
@@ -6549,6 +6826,73 @@
           "sent_at"
         ]
       },
+      "TransactionalStatusResponse": {
+        "type": "object",
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "sent",
+              "failed",
+              "skipped"
+            ],
+            "description": "`queued` je zpráva ve frontě, včetně té, kterou si právě vzal odesílací proces. `sent` znamená předáno provideru, ne doručeno do schránky. `failed` je vyčerpaný pokus o odeslání, `skipped` zpráva, která se nakonec neposlala (například blokovaná adresa)."
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "campaign_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "sent_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attempts": {
+            "type": "integer"
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Kód z uzavřeného registru chyb. Podle něj se dá rozhodovat v kódu."
+          },
+          "provider_message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Identifikátor u odesílajícího providera. Pro dohledání v jeho konzoli."
+          }
+        },
+        "required": [
+          "message_id",
+          "status",
+          "contact_id",
+          "campaign_id",
+          "created_at",
+          "sent_at",
+          "attempts",
+          "error_code",
+          "provider_message_id"
+        ]
+      },
       "TransactionalSendResponse": {
         "type": "object",
         "properties": {
@@ -7830,7 +8174,7 @@
         "tags": [
           "Workspaces"
         ],
-        "summary": "Založení projektu, zakladatel se stává ownerem",
+        "summary": "Založení projektu vlastníkem, zakladatel se stává ownerem nového",
         "parameters": [
           {
             "schema": {
@@ -7875,6 +8219,16 @@
           },
           "401": {
             "description": "unauthenticated (Unauthenticated), session_expired (Session expired)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "workspace_create_not_allowed (Only a project owner can create projects)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -9134,6 +9488,109 @@
         }
       }
     },
+    "/api/v1/invitations/signup": {
+      "post": {
+        "tags": [
+          "Invitations"
+        ],
+        "summary": "Založení účtu z pozvánky a její přijetí",
+        "description": "Pro pozvaného, který v instalaci ještě účet nemá. Adresa se bere z pozvánky, ne z těla požadavku. Neplatný, prošlý i použitý token vrací shodně 404. Odpověď nastaví relační cookie, protože kdo si právě zvolil heslo, nemá se čím přihlašovat znovu.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationSignupInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Účet založen, členství vzniklo, uživatel je přihlášený",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "$ref": "#/components/schemas/User"
+                    },
+                    "workspace": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "slug"
+                      ]
+                    },
+                    "role": {
+                      "$ref": "#/components/schemas/Role"
+                    }
+                  },
+                  "required": [
+                    "user",
+                    "workspace",
+                    "role"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "signup_closed (Sign-up is closed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict (Conflict)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/api-keys": {
       "get": {
         "tags": [
@@ -9967,7 +10424,8 @@
         "tags": [
           "Webhooks"
         ],
-        "summary": "Odeslání testovací události ping",
+        "summary": "Odeslání testovací události na tenhle endpoint",
+        "description": "Vydá událost `webhook.ping` a doručí ji CÍLENĚ na tenhle endpoint, bez ohledu na to, jaké typy odebírá. Podpis, opakování i zápis do logu doručení jsou stejné jako u běžné události. Typ `webhook.ping` se proto nedá odebírat.",
         "security": [
           {
             "bearerAuth": [
@@ -10672,6 +11130,15 @@
             "required": false,
             "name": "running",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "required": false,
+            "name": "before",
+            "in": "query"
           }
         ],
         "responses": {
@@ -10690,11 +11157,22 @@
                     },
                     "running_count": {
                       "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "next_before": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     }
                   },
                   "required": [
                     "data",
-                    "running_count"
+                    "running_count",
+                    "total",
+                    "next_before"
                   ]
                 }
               }
@@ -10722,6 +11200,61 @@
           },
           "422": {
             "description": "validation_failed (Validation failed)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/worker": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Stav workeru a fronty na pozadí",
+        "security": [
+          {
+            "bearerAuth": [
+              "timeline:read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Souhrnný stav zpracování na pozadí",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "worker": {
+                      "$ref": "#/components/schemas/WorkerStatus"
+                    }
+                  },
+                  "required": [
+                    "worker"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -10818,13 +11351,115 @@
         }
       }
     },
+    "/api/v1/jobs/{kind}/{id}/cancel": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Zastavení běžící úlohy",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "kind",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Zrušení přijato, nebo úloha už byla v koncovém stavu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "cancelling",
+                        "already_cancelled",
+                        "already_finished"
+                      ]
+                    },
+                    "job": {
+                      "$ref": "#/components/schemas/Job"
+                    }
+                  },
+                  "required": [
+                    "outcome",
+                    "job"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict (Conflict)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/system-mail/status": {
       "get": {
         "tags": [
           "Platform"
         ],
         "summary": "Stav systémové pošty projektu",
-        "description": "Systémové e-maily (pozvánka, obnova hesla, ověření adresy ve zkušebním režimu) odesílá jen účet typu SMTP: klient SES existuje pouze v odesílací službě napsané v Go. Projekt, který má jen účet typu SES, je odeslat neumí a je to známé omezení produktu, ne chyba nastavení.",
+        "description": "Systémové e-maily (pozvánka, obnova hesla, ověření adresy ve zkušebním režimu) odesílá aplikace sama, mimo rozesílku kampaní, účtem typu SES i SMTP. Projekt bez použitelného odesílacího účtu je odeslat nemá čím; `capable_types` říká, které typy účtů to umí.",
         "security": [
           {
             "bearerAuth": [
@@ -10890,7 +11525,7 @@
           "Platform"
         ],
         "summary": "Nastavení systémové pošty",
-        "description": "Účet, kterým systémová pošta chodí, a adresa odesílatele. `null` u obou znamená „vyber automaticky\", tedy přednostně účet typu SMTP a adresa z ověřené domény.",
+        "description": "Účet, kterým systémová pošta chodí, a adresa odesílatele. `null` u obou znamená „vyber automaticky\", tedy výchozí odesílací účet a adresa z jeho ověřené domény.",
         "security": [
           {
             "bearerAuth": [
@@ -15976,6 +16611,42 @@
                     ],
                     "maxLength": 2000
                   },
+                  "unsubscribe_scope": {
+                    "type": "string",
+                    "enum": [
+                      "list",
+                      "global"
+                    ],
+                    "default": "list"
+                  },
+                  "already_subscribed_redirect_url": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 2000
+                  },
+                  "confirmed_template_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "already_subscribed_template_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "unsubscribed_template_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
                   "public_visible": {
                     "type": "boolean",
                     "default": false
@@ -17588,6 +18259,27 @@
                     "format": "uri"
                   },
                   "delivery_template_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "thanks_template_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "confirmed_template_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "already_subscribed_template_id": {
                     "type": [
                       "string",
                       "null"
@@ -19586,6 +20278,7 @@
           "Name overrides"
         ],
         "summary": "Založení nebo úprava přepisu jména",
+        "description": "Vynechané pole zůstane u existujícího přepisu beze změny. `null` hodnotu vymaže. Rod a vokativ nesmí být prázdné oba naráz; takový přepis se maže celý přes DELETE.",
         "security": [
           {
             "bearerAuth": [
@@ -19622,21 +20315,24 @@
                       "male",
                       "unknown",
                       null
-                    ]
+                    ],
+                    "description": "Vynechané pole zůstane u existujícího přepisu beze změny. `null` hodnotu vymaže. Rod a vokativ nesmí být prázdné oba naráz; takový přepis se maže celý přes DELETE."
                   },
                   "vocative": {
                     "type": [
                       "string",
                       "null"
                     ],
-                    "maxLength": 100
+                    "maxLength": 100,
+                    "description": "Vynechané pole zůstane u existujícího přepisu beze změny. `null` hodnotu vymaže. Rod a vokativ nesmí být prázdné oba naráz; takový přepis se maže celý přes DELETE."
                   },
                   "note": {
                     "type": [
                       "string",
                       "null"
                     ],
-                    "maxLength": 500
+                    "maxLength": 500,
+                    "description": "Vynechané pole zůstane u existujícího přepisu beze změny. `null` hodnotu vymaže. Rod a vokativ nesmí být prázdné oba naráz; takový přepis se maže celý přes DELETE."
                   }
                 },
                 "required": [
@@ -21906,7 +22602,8 @@
               "enum": [
                 "campaign",
                 "transactional",
-                "system"
+                "system",
+                "page"
               ]
             },
             "required": false,
@@ -21919,7 +22616,8 @@
               "enum": [
                 "campaign",
                 "form",
-                "transactional"
+                "transactional",
+                "page"
               ]
             },
             "required": false,
@@ -25335,6 +26033,85 @@
           },
           "404": {
             "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transactional/{id}": {
+      "get": {
+        "tags": [
+          "Transactional"
+        ],
+        "summary": "Stav odeslané transakční zprávy",
+        "description": "Stav zprávy, kterou vrátilo `POST /transactional` jako `message_id`. Odpovídá jen na zprávy s `kind = \"transactional\"`: zprávy kampaní ani testovací odeslání tudy číst NELZE a vypadají jako neexistující. `sent` znamená, že zprávu převzal provider, NE že dorazila do schránky.",
+        "security": [
+          {
+            "bearerAuth": [
+              "transactional:send"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stav zprávy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionalStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated (Unauthenticated)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (Forbidden), insufficient_scope (Insufficient scope)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (Not found)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_failed (Validation failed)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -29355,6 +30132,9 @@
                         "failed": {
                           "type": "number"
                         },
+                        "rejected": {
+                          "type": "number"
+                        },
                         "delivered": {
                           "type": "number"
                         },
@@ -29403,6 +30183,7 @@
                         "sent",
                         "skipped",
                         "failed",
+                        "rejected",
                         "delivered",
                         "delivered_effective",
                         "bounced_hard",

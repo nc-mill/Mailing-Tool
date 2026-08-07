@@ -1,7 +1,7 @@
 // Matchery jest-dom se typují modulovou augmentací, viz komentář v setup-form.test.tsx.
 import '@testing-library/jest-dom/vitest';
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it, vi } from 'vitest';
@@ -162,5 +162,116 @@ describe('WorkspaceShell', () => {
     renderShell();
     expect(screen.queryByRole('button', { name: 'Hledat' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Nápověda' })).not.toBeInTheDocument();
+  });
+
+  /**
+   * Regrese na vodorovné přetečení na úzkém displeji.
+   *
+   * Rozbalené boční menu si bere 236 px. Na displeji 390 px zbylo hlavnímu
+   * sloupci 139 px, do kterých se nevešel ani nadpis stránky, takže stránka
+   * přetékala doprava (naměřeno 7. 8. 2026: `scrollWidth` 558 px na Kontaktech
+   * a 636 px na Nastavení proti `clientWidth` 375 px). Šířku menu jsdom
+   * nespočítá, měří se proto ROZHODNUTÍ: pod 1024 px se menu zabalí na ikony.
+   */
+  it('pod 1024 px se boční menu zabalí samo a tlačítko zabalení zmizí', () => {
+    const listeners = new Set<() => void>();
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(max-width: 1023px)',
+      media: query,
+      addEventListener: (_: string, handler: () => void) => listeners.add(handler),
+      removeEventListener: (_: string, handler: () => void) => listeners.delete(handler),
+    }));
+
+    renderShell();
+
+    // Zabalené menu ukazuje jen ikony, popisek sekce se nevykresluje.
+    expect(screen.queryByText('Kontakty')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Kontakty' })).toBeInTheDocument();
+    // Menu je zabalené z donucení, takže tlačítko zabalení nemá co dělat.
+    expect(screen.queryByRole('button', { name: 'Sbalit menu' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rozbalit menu' })).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * Regrese na skořápku úzkého displeje.
+   *
+   * Zabalené menu si pořád bere 76 px z 375, tedy pětinu telefonu, a hlavnímu
+   * sloupci zbývalo 269 px obsahu: tlačítka pruhu akcí končila za pravým
+   * okrajem a stránka se posouvala do strany (naměřeno 7. 8. 2026 na Přehledu,
+   * Kontaktech i v detailu kontaktu). Pod 768 px proto menu v rozvržení
+   * NENÍ VŮBEC a otevírá se tlačítkem.
+   *
+   * Šířku ani `display` jsdom nespočítá, měří se tedy ROZHODNUTÍ: obal menu
+   * nese `hidden md:block` a v hlavičce stojí tlačítko, které otevře panel
+   * s celou navigací. Že se stránka opravdu přestala posouvat, je změřené
+   * v prohlížeči a zapsané v `HOTOVO.md`.
+   */
+  it('pod 768 px menu v rozvržení není a otevírá se tlačítkem v hlavičce', async () => {
+    const user = userEvent.setup();
+    renderShell();
+
+    const layoutNavigation = screen.getByRole('navigation', { name: 'Hlavní navigace' });
+    expect(layoutNavigation.parentElement).toHaveClass('hidden', 'md:block');
+
+    const toggle = screen.getByRole('button', { name: 'Otevřít hlavní menu' });
+    expect(toggle).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await user.click(toggle);
+
+    // V panelu je menu ROZBALENÉ, s popisky: panel má plnou šířku menu
+    // a na dotykovém displeji není kam najet myší pro bublinu s názvem.
+    const panel = screen.getByRole('dialog');
+    expect(within(panel).getByRole('link', { name: 'Kontakty' })).toBeVisible();
+    expect(within(panel).getByText('Kampaně')).toBeVisible();
+    // Tlačítko zabalení do panelu nepatří, zabalit ho není kam.
+    expect(within(panel).queryByRole('button', { name: 'Sbalit menu' })).not.toBeInTheDocument();
+  });
+
+  it('kliknutí na položku vysouvacího menu panel zavře, jinak by zakryl cílovou stránku', async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderShell();
+
+    await user.click(screen.getByRole('button', { name: 'Otevřít hlavní menu' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // Přechod na jinou stránku. Panel se řídí cestou, ne obsluhou kliknutí:
+    // cesta se změní i po tlačítku Zpět a po přesměrování ze serverové akce.
+    pathname = '/w/eshop-kolo/campaigns';
+    rerender(
+      <NextIntlClientProvider locale="cs" messages={{ common: csCommon }} timeZone="Europe/Prague">
+        <WorkspaceShell
+          workspaces={WORKSPACES}
+          currentWorkspaceId={WORKSPACES[0]!.id}
+          permissions={ROLE_PERMISSIONS.owner}
+          user={{ name: 'Petr Novák', email: 'petr@example.com' }}
+          greetingEnabled
+          createWorkspace={vi.fn()}
+        >
+          <p>Obsah stránky</p>
+        </WorkspaceShell>
+      </NextIntlClientProvider>,
+    );
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    pathname = '/w/eshop-kolo';
+  });
+
+  it('nad 1024 px zůstane menu rozbalené a jde ho zabalit ručně', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+
+    renderShell();
+
+    expect(screen.getByText('Kontakty')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Sbalit menu' })).toBeVisible();
+
+    vi.unstubAllGlobals();
   });
 });

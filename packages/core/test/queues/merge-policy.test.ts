@@ -170,13 +170,21 @@ describe('slučování duplicitních úloh, obě poloviny dohromady', () => {
         'gdpr.sever_links',
         // Producent v repozitáři není vůbec: obsluha existuje, ale nikdo do fronty
         // nezařazuje, takže se tvar klíče nedá ověřit.
+        //
+        // `platform.webhook_deliver` z tohohle seznamu ZMIZELA a je to ta správná
+        // cesta ven: producent vznikl (`fanoutEvent` a `platform.webhook_retry`),
+        // takže si test výš politiku vynutil sám. Přesně tak to má fungovat.
         'consents.rebuild_state',
         'content.process_asset',
         'inbound.process',
-        'platform.webhook_deliver',
         'provider_event.process',
-        'tracking.erase_contact',
-        'tracking.rebuild_engagement',
+        // `tracking.erase_contact` z tohohle seznamu ZMIZELA i s frontou. Nebyla
+        // to fronta bez producenta, byla to druhá cesta k témuž: stopu kontaktu
+        // odpojuje `gdpr.sever_links`, kterou oba producenti výmazu volají.
+        //
+        // `tracking.rebuild_engagement` ZMIZELA taky, a ze stejného rodu důvodů:
+        // rekonstrukci dělá `mlain rebuild-engagement` přímým voláním dávkovače,
+        // takže fronta nebyla odložená funkce, ale nespuštěná druhá cesta.
       ].sort(),
     );
   });

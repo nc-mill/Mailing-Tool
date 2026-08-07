@@ -16,9 +16,25 @@ import (
 
 // Raw je hlavička kampaně tak, jak přijde z databáze.
 type Raw struct {
-	ID                uuid.UUID
-	WorkspaceID       uuid.UUID
-	Status            string
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	Status      string
+	// Název kampaně, název projektu a poštovní adresa odesílatele. Jsou to
+	// hodnoty za merge tagy {{ campaign.name }}, {{ workspace.name }}
+	// a {{ workspace.sender_address }}.
+	//
+	// ČTOU SE TADY, NE Z render_data, a je to záměr. Jsou konstantní pro celou
+	// kampaň, takže snapshot do každé zprávy by u milionové kampaně znamenal
+	// stovky megabajtů navíc ve `messages.render_data`, kde je na zprávu strop
+	// RENDER_DATA_MAX_BYTES. Hlavička se přitom čte jednou na dvojici
+	// (kampaň, revize). Je to tentýž důvod, proč odhlašovací odkaz staví sender
+	// a v render_data není (viz RENDER_DATA_EXCLUDED_FIELDS).
+	Name          string
+	WorkspaceName string
+	// PostalAddress je workspaces.settings.campaigns.postal_address. Prázdná
+	// hodnota je běžný stav projektu, který ji nevyplnil; render z ní udělá
+	// prázdný řetězec a kontrola před odesláním na to upozorní.
+	PostalAddress     string
 	Subject           string
 	Preheader         string
 	FromName          string

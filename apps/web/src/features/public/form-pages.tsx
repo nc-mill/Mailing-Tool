@@ -1,4 +1,9 @@
-import { formFieldName, localizedText, type FormField } from '@mlain/core/contacts';
+import {
+  formFieldName,
+  localizedText,
+  parseConsentText,
+  type FormField,
+} from '@mlain/core/contacts';
 import type { ReactElement } from 'react';
 import type { PublicTranslator } from './i18n';
 
@@ -31,9 +36,10 @@ function inputTypeFor(type: FormField['type']): string {
  * Je to obyčejný formulář: funguje bez JavaScriptu a odeslání vede na 303.
  *
  * NA ROZDÍL OD VKLÁDANÉHO FORMULÁŘE tahle stránka styly mít smí a má: je NAŠE,
- * běží na naší adrese a musí vypadat jako od nás. Sem se taky uplatní
- * `forms.custom_css`. Vkládaný formulář naopak nenese ani jedno pravidlo,
- * viz `features/public/embed-script.ts`.
+ * běží na naší adrese a nikam na cizí web se nevkládá. Styly jsou NAŠE KONSTANTA
+ * z `features/public/styles.ts`; sloupec `forms.custom_css` se sem NEDOSTANE ani
+ * on, protože ho od migrace 0015 nečte nikdo. Vkládaný formulář nenese ani jedno
+ * pravidlo, viz `features/public/embed-script.ts`.
  */
 export function HostedFormPage(props: HostedFormProps): ReactElement {
   const { t } = props;
@@ -93,6 +99,12 @@ export function HostedFormPage(props: HostedFormProps): ReactElement {
           <input type="text" name={props.honeypotField} tabIndex={-1} autoComplete="off" />
         </div>
 
+        {/*
+          Text souhlasu se skládá ze SEGMENTŮ, ne z hotového HTML. Autor formuláře
+          smí vložit odkaz na obchodní podmínky, které leží na webu, kam je formulář
+          vložený; cokoli jiného zůstane textem a React ho sám escapuje. Rozbor
+          i zdůvodnění jsou v `forms/consent-markup.ts`.
+        */}
         {props.consentText === null ? null : (
           <label htmlFor="ml-consent">
             <input
@@ -101,7 +113,20 @@ export function HostedFormPage(props: HostedFormProps): ReactElement {
               name="ml_consent"
               required={props.consentRequired}
             />{' '}
-            {props.consentText}
+            {parseConsentText(props.consentText).map((segment, index) =>
+              segment.kind === 'text' ? (
+                <span key={index}>{segment.value}</span>
+              ) : (
+                <a
+                  key={index}
+                  href={segment.href}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                >
+                  {segment.text}
+                </a>
+              ),
+            )}
           </label>
         )}
 

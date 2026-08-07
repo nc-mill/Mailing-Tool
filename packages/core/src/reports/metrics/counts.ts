@@ -7,6 +7,8 @@ export type StatsCounts = {
   sent: number;
   skipped: number;
   failed: number;
+  /** Poskytovatel zprávu odmítl přijmout. Od odeslaných se ODEČÍTÁ, viz deliveredEffective. */
+  rejected: number;
   delivered: number;
   bouncedHard: number;
   bouncedSoft: number;
@@ -28,6 +30,7 @@ export function emptyCounts(): StatsCounts {
     sent: 0,
     skipped: 0,
     failed: 0,
+    rejected: 0,
     delivered: 0,
     bouncedHard: 0,
     bouncedSoft: 0,
@@ -57,6 +60,7 @@ export function countsFromRow(row: Record<string, unknown> | undefined): StatsCo
     sent: n('sent'),
     skipped: n('skipped'),
     failed: n('failed'),
+    rejected: n('rejected'),
     delivered: n('delivered'),
     bouncedHard: n('bounced_hard'),
     bouncedSoft: n('bounced_soft'),

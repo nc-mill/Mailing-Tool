@@ -107,9 +107,12 @@ describe('průřezová kontrola celé aplikace', () => {
         '/api/v1/docs',
         '/api/v1/invitations',
         '/api/v1/invitations/accept',
+        '/api/v1/invitations/signup',
         '/api/v1/invitations/{id}',
         '/api/v1/jobs',
+        '/api/v1/jobs/worker',
         '/api/v1/jobs/{kind}/{id}',
+        '/api/v1/jobs/{kind}/{id}/cancel',
         '/api/v1/members',
         '/api/v1/members/{user_id}',
         '/api/v1/openapi.json',
@@ -134,11 +137,23 @@ describe('průřezová kontrola celé aplikace', () => {
   // 43 → 46. Přibyl `POST /api/v1/members` (založení člena rovnou s heslem),
   // `GET /api/v1/users/orphaned` a `DELETE /api/v1/users/{user_id}`. Všechno tři
   // opravy téže mezery: účet šlo jedině založit, ne najít a smazat.
-  it('dokument OpenAPI popisuje 46 operací', () => {
+  //
+  // 46 → 47: `POST /api/v1/invitations/signup`. Pozvaný člověk si tou trasou zakládá
+  // účet, když v instalaci ještě žádný nemá. Do té doby mu obrazovka pozvánky nabízela
+  // JEDINĚ přihlášení k účtu, který nemá, takže pozvánky fungovaly výhradně pro lidi
+  // už zavedené a čerstvá instalace neměla jak pustit dovnitř prvního člověka.
+  // Registraci to neotevírá: účet vznikne jen s platným tokenem a na adresu z pozvánky.
+  //
+  // 47 → 49: `GET /api/v1/jobs/worker` a `POST /api/v1/jobs/{kind}/{id}/cancel`.
+  // Obojí je centrum úloh: první říká, jestli worker vůbec žije a co má ve frontě,
+  // druhé umí běžící úlohu zastavit. Do té doby šlo o úlohách jen číst, takže
+  // zaseknutá práce se dala zrušit jedině zásahem do databáze a o mrtvém workeru
+  // se člověk dozvěděl tím, že se prostě nic nedělo. Vyžádal si zadavatel.
+  it('dokument OpenAPI popisuje 49 operací', () => {
     const document = buildOpenApiDocument(app);
     const operations = Object.entries(document.paths ?? {})
       .filter(([path]) => patriCasti1(path))
       .flatMap(([, methods]) => Object.keys(methods as Record<string, unknown>));
-    expect(operations).toHaveLength(46);
+    expect(operations).toHaveLength(49);
   });
 });

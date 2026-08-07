@@ -20,6 +20,7 @@ import {
   reconcileDeliveryCounters,
   reconcileHandoverCounters,
 } from '../repo/counters';
+import { reconcilePending } from '../repo/outbox';
 import { rawSql } from '../repo/raw-sql';
 import { CREDENTIALS_REFRESH_JOB } from '../../sender/jobs/credentials-refresh';
 import { MATERIALIZE_JOB } from './materialize';
@@ -417,20 +418,58 @@ export function systemResumeOnQuotaDeps(): ResumeOnQuotaDeps {
  *
  * Fronta se jmenuje `outbox.*`, takže její obsluha nepatří do rejstříku téhle
  * domény (codegen ji hledá podle adresáře). Továrna tu přesto je, protože
- * `reconcileHandler` bydlí v `campaigns/jobs/reconcile.ts` a chybějící část
- * byla i tady jediná: výčet projektů.
+ * `reconcileHandler` bydlí v `campaigns/jobs/reconcile.ts`.
  *
- * `reconcile` zatím nemá kde vzít samotný úklid: `revokePending` pracuje nad
- * jednou kampaní, ne nad projektem. Tahle továrna proto vzniká AŽ SPOLU s ním
- * a do té doby je poctivější mít frontu vedenou jako nedodanou. Zbytek téhle
- * poznámky je návod, ne omluva: až ten úklid vznikne, doplní se sem funkce
- * `reconcile(workspaceId)` a továrna je hotová.
+ * PŘEDCHOZÍ ZNĚNÍ TÉHLE POZNÁMKY BYLO MYLNÉ a stálo frontu čtyři tisíce pádů.
+ * Tvrdilo, že druhá polovina nejde složit, protože „`revokePending` pracuje nad
+ * KAMPANÍ, ne nad projektem". `revokePending` skutečně chce seznam kontaktů,
+ * jenže rekonciliace ho nepotřebuje: operace nad celým projektem se v tomhle
+ * souboru psaly už tehdy (`revokePendingOutsideTrial`, `reconcileSuppressed`).
+ * Chybějící kus je `reconcilePending` a je to jeden příkaz.
+ *
+ * PROČ ZÁCHYTNÁ CESTA DÁVÁ SMYSL, i když okamžitá cesta po zapojení portu
+ * `revokePendingMessages` funguje. Jsou čtyři případy, kam okamžitá cesta
+ * nedosáhne, a všechny jsou skutečné:
+ *
+ *  - pád procesu mezi materializací a odhlášením,
+ *  - přímý zápis do databáze, import, obnova ze zálohy,
+ *  - kontakt s adresou vedenou jako OTISK pod jiným hlavním e-mailem; okamžitá
+ *    cesta u suppression hledá kontakt porovnáním `contacts.email`,
+ *  - čekající zpráva adresy, ke které už řádek kontaktu neexistuje.
+ *
+ * Je to POJISTKA, ne hlavní cesta. Když nezruší nic, je to správný stav;
+ * `reconcileHandler` hlásí varování teprve tehdy, když něco zrušit musela.
  */
 export type OutboxReconcileScan = Pick<ReconcileDeps, 'listWorkspaces'>;
 
-/** Ta polovina závislostí `outbox.reconcile`, která už dodat jde. */
+/** Ta polovina závislostí `outbox.reconcile`, která byla hotová odjakživa. */
 export function systemReconcileScan(): OutboxReconcileScan {
   return { listWorkspaces: () => listWorkspaceIds() };
+}
+
+/** Celé závislosti `outbox.reconcile`. */
+export function systemReconcileDeps(): ReconcileDeps {
+  const job = 'outbox.reconcile';
+  const log = campaignsLogger();
+
+  return {
+    ...systemReconcileScan(),
+
+    /**
+     * Úklid běží pod `mlain_app` v kontextu jednoho projektu, tedy pod RLS,
+     * přestože výčet projektů přišel z role s výjimkou. Je to týž dvoutakt
+     * jako u ostatních systémových úloh, viz hlavička souboru.
+     *
+     * `reconcilePending`, ne `reconcileSuppressed`: blokované adresy jsou jen
+     * jeden z šesti důvodů, proč už čekající zpráva odejít nesmí. Ostatní pokrývá
+     * `REVOKE_REASON_CASE` v `repo/outbox.ts`.
+     */
+    reconcile: (workspaceId) => reconcilePending(ctxFor(workspaceId, job)),
+
+    log: (level, msg, meta) => {
+      log[level]({ job, ...(meta as Record<string, unknown>) }, msg);
+    },
+  };
 }
 
 /**

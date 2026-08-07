@@ -188,6 +188,76 @@ describe('odstřižení vazeb v cizích doménách', () => {
     expect(event.erased_at).not.toBeNull();
   });
 
+  it('ČLÁNEK 17: e-mail ani otisk prohlížeče nezůstanou ve web_events', async () => {
+    const ctx = await testContext();
+    const contact = await createFullContact(ctx, 'j@x.cz');
+    // Přesně ten tvar, jaký v databázi opravdu leží: událost `identify` nese
+    // v properties traits s e-mailem a jménem plus dva identifikátory osoby,
+    // context nese IP a složky otisku prohlížeče a page historii procházení.
+    // Sloupcový GRANT UPDATE z migrace 0005 na žádný z těch tří sloupců
+    // NESAHAL, takže je výmaz nechával být.
+    await asMigrator().query(
+      `INSERT INTO web_events
+         (id, occurred_at, workspace_id, name, contact_id, source, properties, context, page)
+       VALUES (gen_random_uuid(), now(), $1, 'identify', $2, 'web', $3::jsonb, $4::jsonb, $5::jsonb)`,
+      [
+        ctx.workspaceId,
+        contact.id,
+        JSON.stringify({
+          traits: { email: 'j@x.cz', first_name: 'Jan' },
+          external_id: 'customer_42',
+          signature: 'cIuTWeEV9kUyCck2N8HiPwVnMBu3n8EHzQoXJBTnpm8',
+        }),
+        JSON.stringify({
+          ip: '203.0.113.7',
+          browser: 'Firefox 129',
+          screen: { w: 3440, h: 1440 },
+          timezone: 'Europe/Prague',
+        }),
+        // `search` je tu schválně: dotazový řetězec bere, co do něj zákazník dá,
+        // takže se do historie procházení dostane i adresa samotná.
+        JSON.stringify({
+          url: 'https://obchod.example.cz/kosik?email=j@x.cz',
+          path: '/kosik',
+          search: '?email=j@x.cz',
+          referrer: 'https://obchod.example.cz/produkt/intimni-zdravi',
+          title: 'Košík',
+        }),
+      ],
+    );
+
+    await severContactLinks({ workspaceId: ctx.workspaceId, contactId: contact.id });
+
+    const event = await one<{
+      properties: unknown;
+      context: unknown;
+      page: unknown;
+      erased_at: Date | null;
+    }>(
+      `SELECT properties, context, page, erased_at FROM web_events
+        WHERE workspace_id = $1 AND name = 'identify'`,
+      [ctx.workspaceId],
+    );
+    expect(event.properties).toEqual({});
+    expect(event.context).toEqual({});
+    expect(event.page).toEqual({});
+    expect(event.erased_at).not.toBeNull();
+
+    // Nejtvrdší tvrzení souboru: adresa nesmí zbýt NIKDE v tabulce, ani
+    // zanořená v jsonb, ani schovaná v dotazovém řetězci navštívené adresy.
+    // Kontrola na rovnost `{}` po jednotlivých sloupcích by prošla i tehdy,
+    // kdyby se e-mail přestěhoval do jiného sloupce.
+    const leftovers = await one<{ total: string }>(
+      `SELECT count(*) AS total FROM web_events
+        WHERE workspace_id = $1
+          AND (properties::text LIKE '%j@x.cz%'
+            OR context::text LIKE '%j@x.cz%'
+            OR page::text LIKE '%j@x.cz%')`,
+      [ctx.workspaceId],
+    );
+    expect(Number(leftovers.total)).toBe(0);
+  });
+
   it('ČLÁNEK 17: adresa nezůstane v message_events.recipient ani v engagementu', async () => {
     const ctx = await testContext();
     const contact = await createFullContact(ctx, 'j@x.cz');
@@ -207,6 +277,68 @@ describe('odstřižení vazeb v cizích doménách', () => {
       [ctx.workspaceId, contact.id],
     );
     expect(Number(engagement.total)).toBe(0);
+  });
+
+  /**
+   * NÁLEZ ze 7. 8. 2026. `inbound_deliveries` drží syrovou zprávu od
+   * poskytovatele a `markDelivery` jí při mapování doplní `contact_id`,
+   * takže po výmazu zůstávala adresa v plaintextu a vedla přímo k vymazané
+   * osobě. Retenční cíl ty řádky sice po 30 dnech maže, ale lhůta je
+   * nastavení projektu a dá se prodloužit i vypnout; výmaz podle článku 17
+   * se na ni spoléhat nesmí.
+   */
+  it('ČLÁNEK 17: adresa nezůstane v příchozím doručení od poskytovatele', async () => {
+    const ctx = await testContext();
+    const contact = await createFullContact(ctx, 'j@x.cz');
+
+    const endpoint = await asMigrator().query<{ id: string }>(
+      `INSERT INTO inbound_endpoints (workspace_id, name, slug, signature_mode, mapping)
+       VALUES ($1, 'E-shop', $2, 'none', '{}'::jsonb) RETURNING id`,
+      [ctx.workspaceId, `vymaz${Date.now()}${process.pid}`.slice(0, 32).padEnd(24, '0')],
+    );
+    await asMigrator().query(
+      `INSERT INTO inbound_deliveries
+         (workspace_id, endpoint_id, status, contact_id, payload, headers)
+       VALUES ($1, $2, 'processed', $3, $4::jsonb, $5::jsonb)`,
+      [
+        ctx.workspaceId,
+        endpoint.rows[0]!.id,
+        contact.id,
+        JSON.stringify({
+          type: 'bounce',
+          recipient: 'j@x.cz',
+          diagnostic: 'smtp; 550 5.1.1 user unknown j@x.cz',
+        }),
+        JSON.stringify({ 'x-forwarded-for': '203.0.113.7', from: 'j@x.cz' }),
+      ],
+    );
+
+    await severContactLinks({ workspaceId: ctx.workspaceId, contactId: contact.id });
+
+    const delivery = await one<{
+      contact_id: string | null;
+      payload: unknown;
+      headers: unknown;
+      status: string;
+    }>(
+      `SELECT contact_id, payload, headers, status FROM inbound_deliveries
+        WHERE workspace_id = $1`,
+      [ctx.workspaceId],
+    );
+    expect(delivery.contact_id).toBeNull();
+    expect(delivery.payload).toEqual({});
+    expect(delivery.headers).toEqual({});
+    // Řádek zůstává a diagnostika s ním: „kolik odrazů z tohohle endpointu"
+    // odpovídá dál, mizí jen osoba.
+    expect(delivery.status).toBe('processed');
+
+    const leftovers = await one<{ total: string }>(
+      `SELECT count(*) AS total FROM inbound_deliveries
+        WHERE workspace_id = $1
+          AND (payload::text LIKE '%j@x.cz%' OR headers::text LIKE '%j@x.cz%')`,
+      [ctx.workspaceId],
+    );
+    expect(Number(leftovers.total)).toBe(0);
   });
 
   it('je idempotentní', async () => {

@@ -63,11 +63,21 @@ const listRoute = createRoute({
   },
 });
 
+/**
+ * Vynechané pole a pole poslané jako `null` znamenají u upsertu každé něco jiného.
+ * Bez toho rozdílu nešla hodnota z přepisu odstranit vůbec, protože zápis
+ * vynechání i `null` sléval do „nech, jak bylo".
+ */
+const NULLABLE_FIELD_HINT =
+  'Vynechané pole zůstane u existujícího přepisu beze změny. `null` hodnotu vymaže. ' +
+  'Rod a vokativ nesmí být prázdné oba naráz; takový přepis se maže celý přes DELETE.';
+
 const createOverrideRoute = createRoute({
   method: 'post',
   path: '/name-overrides',
   tags: [TAG],
   summary: 'Založení nebo úprava přepisu jména',
+  description: NULLABLE_FIELD_HINT,
   security: [{ bearerAuth: ['contacts:write'] }],
   request: {
     body: {
@@ -78,9 +88,23 @@ const createOverrideRoute = createRoute({
               kind: z.enum(['first', 'last']).default('first'),
               /** Jméno v libovolném tvaru, klíč se z něj počítá na serveru. */
               name: z.string().min(1).max(100),
-              gender: z.enum(['female', 'male', 'unknown']).nullable().optional(),
-              vocative: z.string().max(100).nullable().optional(),
-              note: z.string().max(500).nullable().optional(),
+              gender: z
+                .enum(['female', 'male', 'unknown'])
+                .nullable()
+                .optional()
+                .openapi({ description: NULLABLE_FIELD_HINT }),
+              vocative: z
+                .string()
+                .max(100)
+                .nullable()
+                .optional()
+                .openapi({ description: NULLABLE_FIELD_HINT }),
+              note: z
+                .string()
+                .max(500)
+                .nullable()
+                .optional()
+                .openapi({ description: NULLABLE_FIELD_HINT }),
             })
             .strict(),
         },

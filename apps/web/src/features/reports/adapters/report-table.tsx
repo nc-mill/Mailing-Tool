@@ -56,6 +56,13 @@ export function ReportTable<T>(props: ReportTableProps<T>) {
       getRowId={props.rowKey}
       labels={props.labels}
       count={props.count}
+      /*
+       * BEZ VÝBĚRU. Příjemci reportu jsou ČTENÍ doručení jedné rozesílky: nemají
+       * jedinou řádkovou akci a API nad příjemci žádnou hromadnou operaci nezná,
+       * takže zaškrtnout deset řádků vedlo k tomu, že se s nimi nedalo udělat nic.
+       * Rozhraní tím slibovalo schopnost, kterou nemá.
+       */
+      selectable={false}
       cursorInvalid={props.cursorInvalid ?? false}
       pagination={{
         hasMore: props.hasMore,

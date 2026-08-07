@@ -43,6 +43,12 @@ export type BatchInput = {
   rows: ProcessedOkRow[];
   /** Chybné i varovné řádky v jednom seznamu, rozlišené polem severity. */
   errors: ErrRow[];
+  /**
+   * Kolik ŘÁDKŮ SOUBORU tahle dávka spotřebovala. Nedá se dopočítat z `rows`
+   * a `errors`: jeden řádek může být v obou (zapsaný kontakt s varováním) a řádek
+   * na potlačené adrese není ani v jednom. Viz zdůvodnění u `processed_rows`.
+   */
+  inputRows: number;
   checkpointRow: number;
   checkpointByte: number;
   suppressedCount: number;
@@ -58,8 +64,10 @@ export type BatchResult = { created: number; updated: number };
  *
  * Zápis `updated_at` v checkpointu není kosmetika: je to jediný signál živosti
  * importu a stojí na něm obnova po pádu. Bez něj by zabitý worker nechal import
- * navždy ve stavu `importing` a `singletonKey` by projektu zablokoval i všechny
- * další importy.
+ * navždy ve stavu `importing` a `confirmImport` by pak v projektu odmítl každý
+ * další import s `import_already_running`. (Kdyby měla fronta klíč projektu, což
+ * registr kdysi sliboval, byl by ten zámek navíc i ve frontě a nešla by ani
+ * obnova; proto je klíčem ID importu.)
  */
 export async function writeBatch(ctx: WorkspaceContext, input: BatchInput): Promise<BatchResult> {
   const options = input.options ?? defaultOptions();
@@ -143,15 +151,31 @@ export async function writeBatch(ctx: WorkspaceContext, input: BatchInput): Prom
     const summary: Record<string, number> = {};
     for (const e of errors) summary[e.errorCode] = (summary[e.errorCode] ?? 0) + 1;
 
-    // 3. Checkpoint. Ve STEJNÉ transakci jako body 1 a 2.
+    /*
+     * 3. Checkpoint. Ve STEJNÉ transakci jako body 1 a 2.
+     *
+     * POČET ZPRACOVANÝCH ŘÁDKŮ SE BERE ZE VSTUPU DÁVKY, ne jako součet zapsaných
+     * a chybných. Do 7. 8. 2026 tu stálo `rows.length + errors.length` a počítalo
+     * tytéž řádky vícekrát: `errors` nese i VAROVÁNÍ patřící k řádkům, které jsou
+     * zároveň mezi zapsanými, takže kontakt s jedním varováním se započítal dvakrát
+     * a se dvěma třikrát. Naměřeno na třech dokončených importech: 25 z 20, 4 ze 3
+     * a 2 z 1, pokaždé s NULOU chyb. Uživatel viděl „25 z 20", což je nesmysl na
+     * první pohled, a rozdíl nebyl konstantní, takže to nevypadalo na obvyklou
+     * záměnu hlavičky za datový řádek.
+     *
+     * Řádek na potlačené adrese se naopak nezapočítal VŮBEC: není ani mezi zapsanými,
+     * ani mezi chybnými. U souboru s potlačenými adresami se proto průběh zasekl
+     * pod sto procenty.
+     *
+     * Komentář na tomhle místě před tou vadou přesně varoval a kód dělal to, před
+     * čím varoval. Jediné spolehlivé číslo je počet řádků, které dávka přečetla ze
+     * souboru, a ten zná jen volající.
+     */
     await tx.execute(sql`
       UPDATE imports SET
         checkpoint_row = ${input.checkpointRow},
         checkpoint_byte = ${input.checkpointByte},
-        -- Zpracované řádky se počítají ze VSTUPU dávky. Varování, které vzniklo až
-        -- při zápisu, patří k řádku, který je mezi zapsanými už započítaný, takže by
-        -- se tady přičetl podruhé a průběh by přeskočil přes sto procent.
-        processed_rows  = processed_rows + ${input.rows.length + input.errors.length},
+        processed_rows  = processed_rows + ${input.inputRows},
         created_rows    = created_rows + ${created},
         updated_rows    = updated_rows + ${updated},
         error_rows      = error_rows + ${errorRows},

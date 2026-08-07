@@ -13,9 +13,15 @@ import {
   type SectionBlock,
   type SocialBlock,
 } from './types';
+import { PAGE_ISSUE_CODES, type TemplateKind } from './profile';
 import { pointerToDotted, richTextFieldsOf, walkBlocks, walkRichText } from './walk';
 
-export type StructureContext = { templateKind: 'campaign' | 'transactional' | 'system' };
+/**
+ * `templateKind` je ve skutečnosti PROFIL, ne řádek: volající sem posílá
+ * `validationProfileFor(row.kind)`. Typ se proto bere z `./profile`, aby nový
+ * profil nešel přidat na jednom místě a zapomenout na druhém.
+ */
+export type StructureContext = { templateKind: TemplateKind };
 
 /**
  * Vyhrazené řetězce (4.1.5 plus raw slot z rozhodnutí D3).
@@ -51,9 +57,15 @@ const issue = (
  * Důvod je věcný, ne pohodlnost: transakční odkaz bývá jednorázový a kdyby šel
  * přes `/t/c/`, bezpečnostní skener v poštovní schránce by ho otevřel a token
  * spotřeboval dřív než člověk.
+ *
+ * U profilu `page` je důvod jiný, ale výsledek stejný: veřejnou stránku si
+ * návštěvník otevře v prohlížeči, žádná kampaň za ní nestojí a značka odkazu
+ * by neměla ke které kampani patřit. Kdyby se stránka tvářila, že odkazy
+ * sleduje, hlásila by `liquid_in_trackable_href` u každého tlačítka
+ * s proměnnou, tedy vymyšlenou chybu nad odkazem, který nikam sledovat nejde.
  */
 function tracksLinks(kind: StructureContext['templateKind']): boolean {
-  return kind !== 'transactional';
+  return kind !== 'transactional' && kind !== 'page';
 }
 
 export function checkStructure(doc: Document, ctx: StructureContext): Issue[] {
@@ -96,6 +108,24 @@ export function checkStructure(doc: Document, ctx: StructureContext): Issue[] {
     // S10
     if (block.type === 'html' && ctx.templateKind === 'system') {
       issues.push(issue('content_raw_html_forbidden', 'error', pointer));
+    }
+
+    // S17: patička na veřejné stránce. Je to blok postavený kolem odhlašovacího
+    // odkazu, adresy odesílatele a odkazu „Zobrazit v prohlížeči", tedy kolem
+    // tří věcí, které mají smysl jen v e-mailu. Odhlášení má na webu vlastní
+    // stránku, takže odkaz v patičce by vedl z odhlášení zpátky na odhlášení.
+    if (block.type === 'footer' && ctx.templateKind === 'page') {
+      issues.push(issue(PAGE_ISSUE_CODES.footerForbidden, 'error', pointer));
+    }
+
+    // S18: syrové HTML na veřejné stránce, samostatný kód a samostatný důvod.
+    // V kampani je HTML povolené, protože e-mail čte příjemce ve svém klientu,
+    // který skripty stejně nespustí. Stránka běží NA NAŠÍ DOMÉNĚ, takže vložený
+    // obsah může předstírat cokoli: přihlašovací pole, cizí značku, jinou cenu.
+    // Přísná politika obsahu zastaví skript, ale ne podvodný text ani
+    // `javascript:` v odkazu, a autorem nemusí být majitel projektu.
+    if (block.type === 'html' && ctx.templateKind === 'page') {
+      issues.push(issue(PAGE_ISSUE_CODES.htmlForbidden, 'error', pointer));
     }
 
     // S5. Přímo v sekci je dostupná šířka celá vnitřní šířka sekce,

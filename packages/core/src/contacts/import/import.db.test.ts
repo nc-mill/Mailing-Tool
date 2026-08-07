@@ -131,6 +131,8 @@ type ImportSnapshot = {
   checkpoint_row: number;
   checkpoint_byte: number;
   processed_rows: number;
+  /** Řádky na blokovaných adresách. Do průběhu se počítají, mezi zapsané ne. */
+  suppressed_rows: number;
   created_rows: number;
   updated_rows: number;
   error_rows: number;
@@ -158,7 +160,8 @@ async function createImportRow(target: WorkspaceContext): Promise<string> {
 async function readImport(target: WorkspaceContext, importId: string): Promise<ImportSnapshot> {
   const { rows } = await withWorkspace(target, (tx) =>
     tx.execute<ImportSnapshot>(sql`
-      SELECT checkpoint_row, checkpoint_byte, processed_rows, created_rows, updated_rows,
+      SELECT checkpoint_row, checkpoint_byte, processed_rows, suppressed_rows,
+             created_rows, updated_rows,
              error_rows, warning_rows, stored_error_count, error_summary, storage_key, updated_at
         FROM imports WHERE id = ${importId}::uuid`),
   );
@@ -225,7 +228,18 @@ const err = (rowNumber: number, errorCode: string, severity: 'error' | 'warning'
   raw: 'x',
 });
 
-const base = { mode: 'update' as const, errors: [], suppressedCount: 0, maxStoredErrors: 10_000 };
+/*
+ * `inputRows: 0` je ZÁMĚRNÁ výchozí hodnota pro volání, která ověřují ZÁPIS kontaktů,
+ * ne počítadlo průběhu. Kdo měří `processed_rows`, musí si ho přepsat skutečným počtem
+ * přečtených řádků; nula tam pak spadne hned, což je lepší než ticho.
+ */
+const base = {
+  mode: 'update' as const,
+  errors: [],
+  suppressedCount: 0,
+  maxStoredErrors: 10_000,
+  inputRows: 0,
+};
 
 // --- pomocníci k volbám importu ----------------------------------------------
 
@@ -345,6 +359,7 @@ describe('batch write', () => {
       ...base,
       importId,
       rows: [ok('a@x.cz', 1), ok('b@x.cz', 2)],
+      inputRows: 2,
       checkpointRow: 2,
       checkpointByte: 120,
     });
@@ -889,34 +904,47 @@ describe('import service', () => {
 // --- obnova po pádu a retence ------------------------------------------------
 
 /**
- * NÁLEZ PROTI P03, ŽIVÝ. Rozhodnutí R18 plánu počítá s politikou `system_bypass`
- * nad `imports`, aby šel udělat sken napříč projekty. Migrace ji dnes nemají
- * (`grep -r system_bypass packages/db` nic nenajde), takže `withoutContext`
- * vrátí nula řádků a NEVRÁTÍ chybu.
+ * NÁLEZ PROTI P03, UZAVŘENÝ. Rozhodnutí R18 počítalo s politikou nad `imports`,
+ * aby šel udělat sken napříč projekty, a žádná migrace ji nedodala. Sken proto
+ * běžel pod `withoutContext`, tedy pod `mlain_app` bez kontextu projektu, kde
+ * `ws_isolation` vyloučí všechny řádky. Zaseknuté importy se neobnovily
+ * a projekt měl navždy obsazený stav `importing`, takže v něm `confirmImport`
+ * odmítal každý další import.
  *
- * Právě proto má sken strážce: kdyby ho neměl, job by každou hodinu hlásil
- * `{ recovered: 0 }`, zaseknuté importy by se nikdy neobnovily a projekt by měl
- * navždy obsazený `singletonKey`. Test proto ověřuje, že sken selže HLASITĚ,
- * a druhý test ověřuje samotný predikát zastaralosti pod kontextem projektu,
- * kde ho RLS neschová. Až P03 politiku dodá, první test se změní na
- * „requeues a stale import" a druhý zůstane.
+ * Politiku a SLOUPCOVÝ grant pod rolí `mlain_maintenance` dodává migrace 0024,
+ * sken se přestěhoval do `platform/maintenance-scan.ts`. Test se proto změnil
+ * přesně tak, jak ta poznámka předpovídala: z „selže hlasitě" na „obnoví
+ * zaseknutý import".
+ *
+ * Ptá se DAT, ne strážce: dva projekty, v každém zaseknutý import, čekám obojí.
+ * Kdyby se ptal jen strážce, ověřoval by tutéž úvahu, ze které strážce vznikl.
  */
 describe('crash recovery', () => {
-  it('fails loudly instead of reporting zero while the cross workspace scan is blocked', async () => {
-    const own = await testContext();
-    const id = await createImportRow(own);
-    await setImportState(own, id, {
+  it('requeues stale imports across workspaces, never reports a silent zero', async () => {
+    const a = await testContext();
+    const b = await testContext();
+    const staleA = await createImportRow(a);
+    const staleB = await createImportRow(b);
+    await setImportState(a, staleA, {
       status: 'importing',
       updatedAtMinutesAgo: 30,
       checkpointRow: 4,
     });
-    expect(
-      await codeOf(
-        recoverStaleImports({ staleMinutes: 10 }, async () => {
-          /* zařazení se v tomhle stavu vůbec nedostane ke slovu */
-        }),
-      ),
-    ).toBe('cross_workspace_scan_blocked');
+    await setImportState(b, staleB, { status: 'importing', updatedAtMinutesAgo: 30 });
+    // Čerstvý import v jednom z projektů: sken ho vzít NESMÍ, jinak by obnova
+    // sahala na import, který právě běží.
+    const fresh = await createImportRow(a);
+    await setImportState(a, fresh, { status: 'importing', updatedAtMinutesAgo: 1 });
+
+    const requeued: string[] = [];
+    const count = await recoverStaleImports({ staleMinutes: 10 }, async (payload) => {
+      requeued.push(payload.importId);
+    });
+
+    expect(requeued).toContain(staleA);
+    expect(requeued).toContain(staleB);
+    expect(requeued).not.toContain(fresh);
+    expect(count).toBeGreaterThanOrEqual(2);
   });
 
   it('selects the stale import and leaves the fresh one alone', async () => {
@@ -1209,5 +1237,69 @@ describe('contact export', () => {
       data: { workspaceId: exportCtx.workspaceId, exportId: created.id },
     });
     expect(out.rowCount).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * POČÍTADLO PRŮBĚHU. Číslo „X z Y" je jediné, co o běžícím importu člověk vidí,
+ * takže nesmyslná hodnota je vada, i když se kontakty zapíšou správně.
+ *
+ * Do 7. 8. 2026 se počítalo jako `rows.length + errors.length`. Naměřeno na třech
+ * dokončených importech ve vývojové databázi: 25 z 20, 4 ze 3 a 2 z 1, všude s nulou
+ * chyb. Rozdíl nebyl konstantní, takže to nevypadalo na záměnu hlavičky za řádek.
+ */
+describe('processed_rows: počítadlo průběhu', () => {
+  it('řádek se zapsaným kontaktem A VAROVÁNÍM se počítá JEDNOU', async () => {
+    const importId = await createImportRow(ctx);
+    await writeBatch(ctx, {
+      ...base,
+      importId,
+      // Jeden přečtený řádek, který se zapsal a zároveň nese varování.
+      rows: [ok('v@x.cz', 1)],
+      errors: [err(1, 'gender_unknown', 'warning')],
+      inputRows: 1,
+      checkpointRow: 1,
+      checkpointByte: 10,
+    });
+    const row = await readImport(ctx, importId);
+    expect(Number(row.processed_rows)).toBe(1);
+    // Varování se přitom NEZTRATÍ, jen se nepřičte do průběhu.
+    expect(Number(row.warning_rows)).toBe(1);
+  });
+
+  it('řádek na POTLAČENÉ adrese se do průběhu započítá, i když se nezapsal', async () => {
+    const importId = await createImportRow(ctx);
+    await writeBatch(ctx, {
+      ...base,
+      importId,
+      rows: [],
+      errors: [],
+      // Přečtený řádek, který skončil na blokovaných adresách: není ani mezi
+      // zapsanými, ani mezi chybnými, a přesto ze souboru zmizel.
+      inputRows: 1,
+      suppressedCount: 1,
+      checkpointRow: 1,
+      checkpointByte: 10,
+    });
+    const row = await readImport(ctx, importId);
+    expect(Number(row.processed_rows)).toBe(1);
+    expect(Number(row.suppressed_rows)).toBe(1);
+  });
+
+  it('průběh nikdy nepřeskočí přes celkový počet řádků souboru', async () => {
+    const importId = await createImportRow(ctx);
+    // Dvacet přečtených řádků, z toho pět s varováním. Přesně ten tvar, který
+    // ve vývojové databázi hlásil „25 z 20".
+    await writeBatch(ctx, {
+      ...base,
+      importId,
+      rows: Array.from({ length: 20 }, (_, i) => ok(`p${i}@x.cz`, i + 1)),
+      errors: Array.from({ length: 5 }, (_, i) => err(i + 1, 'gender_unknown', 'warning')),
+      inputRows: 20,
+      checkpointRow: 20,
+      checkpointByte: 400,
+    });
+    const row = await readImport(ctx, importId);
+    expect(Number(row.processed_rows)).toBe(20);
   });
 });

@@ -10,11 +10,13 @@ import { Card } from '@mlain/ui/components/card';
 import { cn } from '@mlain/ui/lib/cn';
 import { useToast } from '@mlain/ui/patterns/toast';
 import { removeDemoDataAction } from './actions';
-import { DemoDataDialog, type DemoCounts } from './demo-data-dialog';
+import { DemoDataDialog, type DemoCounts, type DemoImpact } from './demo-data-dialog';
 
 export type DemoDataState = {
   present: boolean;
   counts: DemoCounts | null;
+  /** Co úklid rozváže mimo ukázkovou sadu. Viz `readDemoImpact` v jádře. */
+  impact?: DemoImpact | null;
   /**
    * Identifikátor štítku „Ukázková data". Tabulka kontaktů filtruje podle
    * `tag_id`, ne podle jména štítku (viz `features/contacts/filters.ts`),
@@ -145,6 +147,7 @@ export function DemoDataBanner({
       <DemoDataDialog
         open={dialogOpen}
         counts={counts}
+        impact={state.impact}
         onCancel={() => setDialogOpen(false)}
         onConfirm={async () => {
           setDialogOpen(false);

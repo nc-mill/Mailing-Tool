@@ -61,6 +61,8 @@ export function SendDialog({
       open={open}
       onOpenChange={onOpenChange}
       level="N2"
+      // Nejvyšší vnější dopad, jaký v nástroji je: pošta odejde ven k lidem.
+      destructive
       irreversible
       title={t('send.confirmTitle', { name: campaignName })}
       consequences={consequences}

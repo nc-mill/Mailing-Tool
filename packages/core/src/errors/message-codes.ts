@@ -28,6 +28,20 @@ export const MESSAGE_CODES: readonly MessageCodeEntry[] = [
   { code: 'smtp_insecure_auth_refused', class: 'fatal', source: 'spec' },
   { code: 'credentials_undecryptable', class: 'fatal', source: 'spec' },
   { code: 'contract_mismatch', class: 'fatal', source: 'spec' },
+  /**
+   * Řádek odesílacího účtu nešel z databáze PŘEČÍST.
+   *
+   * Vznikl 7. 8. 2026, protože sender do té doby hlásil i tuhle příčinu jako
+   * `credentials_undecryptable`, tedy „nesouhlasí SECRET_KEY". Nejde o odstín:
+   * chybný kód posílá toho, kdo vadu vyšetřuje, ke klíčům a k rotaci, zatímco
+   * příčina je v databázi a klíče jsou v pořádku.
+   *
+   * Třída je `fatal` stejně jako u dešifrování: zpráva se vrací na `pending`
+   * a kampaň se pozastaví teprve po vyčerpání pokusů. Označit zprávy za
+   * `failed` kvůli chybě čtení by znamenalo milion nenávratně zkažených zpráv
+   * místo minuty zpoždění.
+   */
+  { code: 'provider_config_unreadable', class: 'fatal', source: 'derived' },
   { code: 'liquid_escaped_entity_in_construct', class: 'fatal', source: 'spec' },
   { code: 'message_rejected', class: 'permanent', source: 'spec' },
   { code: 'smtp_recipient_rejected', class: 'permanent', source: 'spec' },

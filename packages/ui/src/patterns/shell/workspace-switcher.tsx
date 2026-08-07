@@ -55,7 +55,7 @@ export function WorkspaceSwitcher({
         // viditelný název přebil.
         aria-label={current ? undefined : labels.switcher}
         className={cn(
-          'flex min-h-[var(--size-control-sm)] items-center gap-[var(--spacing-inline)]',
+          'flex min-h-[var(--size-control-sm)] min-w-0 items-center gap-[var(--spacing-inline)]',
           'rounded-[var(--radius-control)] border border-border px-3 font-mono text-meta text-text',
           'hover:border-border-strong hover:bg-surface-muted',
         )}
@@ -70,9 +70,14 @@ export function WorkspaceSwitcher({
           className="inline-block size-2.5 rounded-xs"
           style={{ backgroundColor: workspaceAccent(currentId) }}
         />
-        {current ? labels.current(current.name) : labels.switcher}
+        {/* Název se na úzkém displeji zkrátí třemi tečkami. Bez `min-w-0`
+            a `truncate` roste tlačítko s délkou názvu projektu a odtlačí
+            zbytek hlavičky za pravý okraj. */}
+        <span className="min-w-0 truncate">
+          {current ? labels.current(current.name) : labels.switcher}
+        </span>
         {current ? <span className="sr-only">{labels.switcher}</span> : null}
-        <ChevronDown aria-hidden className="icon-xs text-text-muted" />
+        <ChevronDown aria-hidden className="icon-xs shrink-0 text-text-muted" />
       </DropdownMenuTrigger>
       <DropdownMenuContent>
         {workspaces.map((workspace) => (

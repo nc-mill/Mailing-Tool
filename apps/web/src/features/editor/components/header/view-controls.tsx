@@ -2,6 +2,7 @@
 
 import { Button } from '@mlain/ui/components/button';
 import { Input } from '@mlain/ui/components/input';
+import { passwordManagerOptOut } from '@mlain/ui/lib/password-manager';
 import { Popover, PopoverContent, PopoverTrigger } from '@mlain/ui/components/popover';
 import { Switch } from '@mlain/ui/components/switch';
 import { Tooltip } from '@mlain/ui/components/tooltip';
@@ -203,7 +204,24 @@ function AudienceMenu({ ports }: { ports?: EditorPorts | undefined }) {
         <Button
           variant="secondary"
           size="sm"
-          className="gap-1.5"
+          /*
+            KLIKACÍ PLOCHA 44 px PŘES NEVIDITELNÝ PŘEKRYV, viditelně zůstává 36.
+
+            `size="sm"` je 36 px (`--size-control-sm`), tedy pod prahem WCAG 2.5.8.
+            Zvětšit samotné tlačítko nejde: stojí v jedné řadě s přepínačem režimů
+            a s přepínačem tmavého režimu, a o osm pixelů vyšší ovladač by z řady
+            vyčníval. Překryv se proto roztáhne jen na výšku a přes celou šířku
+            tlačítka, takže se cíl zvětší, ale nakreslený rámeček zůstane stejný.
+
+            Je to týž vzor jako u ikonových tlačítek v tabulkách
+            (`contacts-table.tsx`, `campaign-list.tsx`), jen tam je překryv čtverec,
+            protože tam je i tlačítko čtverec.
+          */
+          className={[
+            'relative gap-1.5',
+            "after:absolute after:inset-x-0 after:top-1/2 after:content-['']",
+            'after:h-[var(--size-target-min)] after:-translate-y-1/2',
+          ].join(' ')}
           aria-label={t('preview.viewAsCurrent', { value: current })}
         >
           <UserRound aria-hidden className="icon-sm" />
@@ -220,8 +238,14 @@ function AudienceMenu({ ports }: { ports?: EditorPorts | undefined }) {
           <p className="text-sm text-text" data-testid="view-as-current">
             {t('preview.viewAsCurrent', { value: current })}
           </p>
+          {/* Hledá se kontakt do náhledu, nepřihlašuje. Nabídka správce hesel by
+              v úzké nabídce zakryla nalezené kontakty a zavřít by nešla, protože
+              kliknutí mimo zavře celou nabídku. Podrobnosti
+              v `@mlain/ui/lib/password-manager`. */}
           <Input
             className="w-full"
+            autoComplete="off"
+            {...passwordManagerOptOut}
             value={query}
             placeholder={t('preview.searchContact')}
             aria-label={t('preview.searchContact')}

@@ -296,6 +296,43 @@ export async function acceptInvitationAction(
   return redirect({ href: `/w/${result.data.workspace.slug}`, locale: await currentLocale() });
 }
 
+const InvitationSignupSchema = z.object({
+  token: z.string().min(1, 'token_required'),
+  name: z.string().trim().min(1, 'name_required'),
+  password: z.string().min(12, 'password_too_short').max(256, 'password_too_long'),
+});
+
+/**
+ * Založení účtu z pozvánky. E-mail se ZÁMĚRNĚ neposílá: adresu určuje pozvánka,
+ * jinak by si držitel cizího tokenu založil účet na svou adresu.
+ *
+ * Po úspěchu se nikam nepřihlašuje znovu. Odpověď nese relační cookie, takže
+ * přesměrování do projektu vede rovnou dovnitř.
+ */
+export async function invitationSignupAction(
+  _previous: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const values = submitted(formData, ['name']);
+  const password = text(formData, 'password');
+  const parsed = InvitationSignupSchema.safeParse({
+    token: text(formData, 'token'),
+    name: text(formData, 'name'),
+    password,
+  });
+  if (!parsed.success) {
+    const problem = validationProblem('/api/v1/invitations/signup', issuesOf(parsed.error));
+    return localizedFailure(problem, values, password.length);
+  }
+
+  const result = await apiMutate<{ workspace: { slug: string } }>('/api/v1/invitations/signup', {
+    method: 'POST',
+    body: parsed.data,
+  });
+  if (!result.ok) return localizedFailure(result.problem, values, password.length);
+  return redirect({ href: `/w/${result.data.workspace.slug}`, locale: await currentLocale() });
+}
+
 const CreateWorkspaceSchema = z.object({
   name: z.string().trim().min(1, 'workspace_name_required'),
 });

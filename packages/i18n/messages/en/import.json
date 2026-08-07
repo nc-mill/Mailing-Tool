@@ -219,7 +219,7 @@
     "declarationLink": "What this means",
     "declarationEvidence": "It is stored as evidence, including the date and my name.",
     "duplicateErrorUnavailable": "For a file this size we cannot reliably spot a second occurrence of the same address, so we do not offer this option.",
-    "submit": "Import {count, plural, =0 {no contacts} one {# contact} few {# contacts} many {# contacts} other {# contacts}}",
+    "submit": "Import {count, plural, =0 {contacts} one {# contact} few {# contacts} many {# contacts} other {# contacts}}",
     "listHint": "Required. A contact with no list has nothing to receive and nothing to unsubscribe from, so we always file it somewhere.",
     "listPlaceholder": "Pick a list",
     "listRequired": "Pick the list these contacts belong to, or create a new one right here.",
@@ -249,7 +249,8 @@
     "cancelConfirmTitle": "Cancel the import?",
     "cancelConfirmBody": "The {done} contacts already processed stay in the database. The remaining {rest} will not be imported. You will be able to continue where we stopped.",
     "cancelConfirm": "Cancel import",
-    "cancelDismiss": "Keep it running"
+    "cancelDismiss": "Keep it running",
+    "unreadable": "The import progress cannot be loaded, so the numbers below may be out of date. The import itself is unaffected and keeps running on the server. Refresh the page; if it persists, you will find the import state in the job centre."
   },
   "result": {
     "completed": "Imported {count, plural, =0 {no contacts} one {# contact} few {# contacts} many {# contacts} other {# contacts}}",
@@ -281,6 +282,7 @@
     "showImported": "Show the imported contacts",
     "reviewVocative": "Review",
     "resume": "Continue from row {row}",
+    "resumeFailed": "We couldn't continue the import. We delete uploaded files after 30 days, so older imports can no longer be resumed: upload the file again.",
     "uploadAnother": "Upload another file",
     "supportDetails": "Details for technical support"
   },
@@ -394,5 +396,10 @@
     "noNameAll": "Do not use the name anywhere",
     "lockNote": "Once you confirm or correct something, we never change it on our own again.",
     "empty": "The queue is empty. Every greeting is either confirmed or certain."
+  },
+  "startFailed": {
+    "title": "The import did not start",
+    "alreadyRunning": "Another import is already running in this project and a second one cannot start. Wait for it to finish, or stop it in the job centre, then try again. The settings you filled in are saved.",
+    "other": "The server refused the import and did not queue it. Please try again. Technical code: {code}"
   }
 }

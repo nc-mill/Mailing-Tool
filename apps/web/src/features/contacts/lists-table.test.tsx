@@ -245,3 +245,83 @@ describe('nabídka „…" v řádku seznamu', () => {
     );
   });
 });
+
+/**
+ * HROMADNÁ ARCHIVACE Z PRUHU VÝBĚRU.
+ *
+ * KDYBY TENHLE BLOK SPADL: zaškrtávátka v tabulce seznamů zase nikam nevedou.
+ * `DataTable` je kreslí vždycky a vypnout se nedají, takže pruh nad tabulkou
+ * nabízel jedině „Vybrat všech N" a „Zrušit výběr". Je to týž nález, jaký
+ * zadavatel 7. 8. 2026 popsal u kampaní.
+ *
+ * Nejcennější případ je ten druhý: archivovaný seznam se archivovat podruhé nedá,
+ * takže se přeskakuje. Tichý částečný úspěch, tedy „označím dva, archivuje se
+ * jeden a nikdo neřekne proč", je nepřijatelný.
+ */
+describe('hromadná archivace seznamů', () => {
+  const ARCHIVED: ListRow = { ...LIST, id: 'l-2', name: 'Staré akce', archived: true };
+
+  async function selectRow(user: ReturnType<typeof userEvent.setup>, index: number) {
+    // Popisek řádkového zaškrtávátka je u seznamů `lists.name`, tedy „Název",
+    // a hlavičkové má „Seznamy", takže se nepletou.
+    const boxes = screen.getAllByRole('checkbox', { name: 'Název' });
+    const box = boxes[index];
+    if (box === undefined) throw new Error(`Řádek ${index} nemá zaškrtávátko.`);
+    await user.click(box);
+  }
+
+  it('výběr vede k akci, ne jen k počtu', async () => {
+    const user = userEvent.setup();
+    renderTable([LIST, ARCHIVED]);
+
+    await selectRow(user, 0);
+
+    expect(screen.getByTestId('selection-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('lists-bulk-delete')).toHaveTextContent('Archivovat 1 seznam');
+  });
+
+  it('archivovaný seznam se přeskočí a okno to řekne nahlas', async () => {
+    const user = userEvent.setup();
+    renderTable([LIST, ARCHIVED]);
+
+    await selectRow(user, 0);
+    await selectRow(user, 1);
+
+    // Označené jsou dva, archivovat jde jeden.
+    expect(screen.getByTestId('lists-bulk-delete')).toHaveTextContent('Archivovat 1 seznam');
+
+    await user.click(screen.getByTestId('lists-bulk-delete'));
+    expect(screen.getByTestId('lists-bulk-skipped')).toHaveTextContent('je už archivovaný');
+
+    await user.click(screen.getByTestId('lists-bulk-submit'));
+
+    await waitFor(() => expect(archiveListAction).toHaveBeenCalledTimes(1));
+    expect(archiveListAction).toHaveBeenCalledWith({ workspaceId: 'ws-1', id: 'l-1' });
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+
+  it('nezdar výběr nezruší a pojmenuje se počtem', async () => {
+    archiveListAction.mockResolvedValue({ status: 'error', code: 'conflict' });
+    const user = userEvent.setup();
+    renderTable([LIST, ARCHIVED]);
+
+    await selectRow(user, 0);
+    await user.click(screen.getByTestId('lists-bulk-delete'));
+    await user.click(screen.getByTestId('lists-bulk-submit'));
+
+    const error = await screen.findByTestId('lists-bulk-error');
+    expect(error).toHaveTextContent('conflict');
+    // Odklikaná práce se po chybě neztrácí.
+    expect(screen.getByTestId('lists-bulk-delete')).toBeInTheDocument();
+  });
+
+  it('bez práva zapisovat pruh akci nenabízí', async () => {
+    const user = userEvent.setup();
+    renderTable([LIST], { write: false, readContacts: true });
+
+    await selectRow(user, 0);
+
+    expect(screen.getByTestId('selection-bar')).toBeInTheDocument();
+    expect(screen.queryByTestId('lists-bulk-delete')).toBeNull();
+  });
+});

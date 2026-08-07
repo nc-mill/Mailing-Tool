@@ -11,8 +11,21 @@ import {
   updateEndpoint,
 } from '../webhooks/endpoint-service';
 import { enableEndpoint } from '../webhooks/disable';
-import { emitWebhookEvent } from '../webhooks/emit';
+import { deliverEventToEndpoint, emitWebhookEvent } from '../webhooks/emit';
 import { retryDelivery } from '../webhooks/delivery-query';
+import { WEBHOOK_EVENT_TYPES } from '../webhooks/event-catalog';
+
+/**
+ * Popis pole `event_types` v kontraktu.
+ *
+ * Typem zůstává `string`, NE `enum`, a je to rozhodnutí. Enum by zod odmítl
+ * dřív, než se požadavek dostane do `endpoint-service.ts`, a klient by místo
+ * hlášky se seznamem platných typů a návrhem opravy překlepu dostal jen
+ * obecné „invalid enum value". Uzavřenost drží kontrola v doméně, kontrakt
+ * jen říká, co je platné. Druhý důvod: uložený typ mimo katalog musí jít
+ * poslat zpátky v PATCH téhož endpointu, což enum v kontraktu vylučuje.
+ */
+const EVENT_TYPES_DESCRIPTION = `Typy událostí k odběru. Platné hodnoty: ${WEBHOOK_EVENT_TYPES.join(', ')}. Neznámý typ vrátí 422 s kódem unknown_event_type a seznamem platných hodnot v params.allowed_event_types.`;
 
 export const WebhookEndpointSchema = z
   .object({
@@ -51,7 +64,11 @@ export const CreateWebhookEndpointInput = z
   .object({
     url: z.url(),
     description: z.string().max(500).optional(),
-    event_types: z.array(z.string().min(1).max(100)).min(1).max(50),
+    event_types: z
+      .array(z.string().min(1).max(100))
+      .min(1)
+      .max(50)
+      .openapi({ description: EVENT_TYPES_DESCRIPTION }),
   })
   .strict()
   .openapi('CreateWebhookEndpointInput');
@@ -60,7 +77,12 @@ export const UpdateWebhookEndpointInput = z
   .object({
     url: z.url().optional(),
     description: z.string().max(500).optional(),
-    event_types: z.array(z.string().min(1).max(100)).min(1).max(50).optional(),
+    event_types: z
+      .array(z.string().min(1).max(100))
+      .min(1)
+      .max(50)
+      .optional()
+      .openapi({ description: EVENT_TYPES_DESCRIPTION }),
   })
   .strict()
   .openapi('UpdateWebhookEndpointInput');
@@ -192,7 +214,11 @@ const testRouteDef = createRoute({
   method: 'post',
   path: '/api/v1/webhook-endpoints/{id}/test',
   tags: ['Webhooks'],
-  summary: 'Odeslání testovací události ping',
+  summary: 'Odeslání testovací události na tenhle endpoint',
+  description:
+    'Vydá událost `webhook.ping` a doručí ji CÍLENĚ na tenhle endpoint, bez ohledu na to, ' +
+    'jaké typy odebírá. Podpis, opakování i zápis do logu doručení jsou stejné jako ' +
+    'u běžné události. Typ `webhook.ping` se proto nedá odebírat.',
   security: [{ bearerAuth: ['webhooks:write'] }],
   request: {
     params: z.object({ id: z.uuid() }),
@@ -283,13 +309,33 @@ export function registerWebhookEndpointRoutes(app: OpenAPIHono<ApiEnv>): void {
     assertPermission(ctx, 'webhooks:write');
     const id = c.req.valid('param').id;
     const eventId = await withWorkspace(ctx, async (tx) => {
+      // 404 dřív, než se cokoli zapíše: cizí ani smazaný endpoint testovat nejde.
       await getEndpoint(tx, ctx, id);
-      return emitWebhookEvent(tx, {
+      const eventId = await emitWebhookEvent(tx, {
         workspaceId: ctx.workspaceId,
-        type: 'ping',
+        // Literál, ne konstanta z katalogu. Hlídací test `event-catalog.test.ts`
+        // odvozuje seznam vydávaných typů skenem zdrojů a vidí jedině literál;
+        // pod konstantou by tenhle typ z jeho pohledu zmizel.
+        type: 'webhook.ping',
         occurredAt: new Date(),
         data: { endpoint_id: id },
       });
+      /*
+       * CÍLENĚ, MIMO FAN-OUT. Tlačítko míří na KONKRÉTNÍ endpoint, takže se
+       * nemá ptát, co ten endpoint odebírá.
+       *
+       * Do 7. 8. se tu událost jen zapsala do `webhook_events` a tím to skončilo:
+       * úlohu `platform.webhook_fanout` nezařazoval nikdo (na rozdíl od ostatních
+       * producentů, třeba `tracking/jobs/process-engagement.ts`), takže řádek
+       * jen ležel a doručení nevzniklo ANI JEDNO. Odpověď 202 přitom tvrdila
+       * „zařazeno k doručení". Zaškrtnutí typu by to nespravilo, protože se
+       * nezařazovalo vůbec nic.
+       *
+       * Podpis, opakování i zápis do logu doručení jsou stejné jako u fan-outu,
+       * je to tentýž kus kódu (`enqueueDelivery` v `emit.ts`).
+       */
+      await deliverEventToEndpoint(tx, ctx, { eventId, endpointId: id });
+      return eventId;
     });
     return c.json({ event_id: eventId }, 202);
   });

@@ -6,6 +6,7 @@ import { seedWorkspaceForCoreTests } from '../../identity/test-helpers';
 import type { WorkspaceContext } from '../../identity/types';
 import { startPgHarness, type PgHarness } from '../../test-support/pg-harness';
 import { closePools, withWorkspace } from '../../tx';
+import { eq } from 'drizzle-orm';
 import * as schema from '@mlain/db/schema';
 import { registerTemplateRoutes } from './templates.routes';
 import { validationHook, type TemplatesEnv } from './index';
@@ -307,6 +308,57 @@ describe('REST API šablon', () => {
     const noName = await preview({ type: 'sample', variant: 'no_name' });
     expect(noName.html).not.toContain('Přemyslav-Řehoř');
     expect(noName.html).toContain('zákazníku');
+  });
+
+  /**
+   * NÁHLED MUSÍ ZNÍT JAKO ODESLANÝ E-MAIL, i ve vzorové větě.
+   *
+   * Vzorová data se do 7. 8. 2026 skládala s výchozím vykáním, protože jim
+   * volající předával jen jazyk. Projekt přepnutý na tykání tedy v náhledu
+   * viděl „Dobrý den, Přemyslave-Řehoři" u e-mailu, který odejde s „Ahoj".
+   * U skutečného kontaktu vada nebyla, bere se jeho uložený sloupec.
+   */
+  it('vzorové oslovení v náhledu zná nastavení projektu', async () => {
+    const { ws, app } = await freshApp();
+    await withWorkspace(ws.ctx, (tx) =>
+      tx
+        .update(schema.workspaces)
+        .set({ addressForm: 'informal' })
+        .where(eq(schema.workspaces.id, ws.workspaceId)),
+    );
+
+    const withGreeting = design({
+      blocks: [
+        {
+          id: 'b_000000000001',
+          type: 'section',
+          props: blockDefaults('section'),
+          children: [
+            {
+              id: 'b_000000000002',
+              type: 'text',
+              props: {
+                ...blockDefaults('text'),
+                content: [{ t: 'p', children: [{ t: 'var', expr: 'contact.greeting' }] }],
+              },
+            },
+            footer,
+          ],
+        },
+      ],
+    });
+    const created = await createTemplateVia(app, { name: 'Tykani', document: withGreeting });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+
+    const response = await app.request(`/templates/${String(created.body.id)}/preview`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ preview_data: { type: 'sample', variant: 'default' } }),
+    });
+    const parsed = (await response.json()) as { html: string };
+    expect(response.status, JSON.stringify(parsed)).toBe(200);
+    expect(parsed.html).toContain('Ahoj Přemyslave-Řehoři');
+    expect(parsed.html).not.toContain('Dobrý den');
   });
 
   it('náhled pro konkrétní kontakt bere jeho skutečná data', async () => {
@@ -700,7 +752,7 @@ describe('kategorie v API šablon', () => {
       category: string;
       usage: { forms: Array<{ name: string }>; lists: Array<{ name: string; role: string }> };
     }>;
-    counts: { all: number; campaign: number; form: number; transactional: number };
+    counts: { all: number; campaign: number; form: number; transactional: number; page: number };
   };
 
   /**
@@ -771,7 +823,7 @@ describe('kategorie v API šablon', () => {
     expect(forms.items.map((item) => item.id)).toEqual([ids.formEmail]);
     // Počty se filtrem NEMĚNÍ, jinak by přepínače po prvním kliknutí ukazovaly
     // všude nulu a nedalo by se poznat, kam se vyplatí přepnout.
-    expect(forms.counts).toEqual({ all: 3, campaign: 1, form: 1, transactional: 1 });
+    expect(forms.counts).toEqual({ all: 3, campaign: 1, form: 1, transactional: 1, page: 0 });
 
     const campaigns = await list(app, '&category=campaign');
     expect(campaigns.items.map((item) => item.id)).toEqual([ids.campaign]);

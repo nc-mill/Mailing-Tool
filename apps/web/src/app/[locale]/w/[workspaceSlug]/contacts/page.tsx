@@ -6,7 +6,11 @@ import { readCursor } from '@/lib/api-client/cursor';
 import { getWorkspaceAccess, hasPermission } from '@/lib/identity/workspace-access';
 import { ContactsProblem } from '@/features/contacts/contacts-problem';
 import { ContactsTable, type ContactRow } from '@/features/contacts/contacts-table';
-import { filtersToQuery, readContactFilters } from '@/features/contacts/filters';
+import {
+  filtersToQuery,
+  readContactFilters,
+  unconfirmedCountFilters,
+} from '@/features/contacts/filters';
 
 /**
  * Stránka závisí na přihlášeném uživateli, takže se NEPŘEDRENDEROVÁVÁ.
@@ -124,9 +128,11 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
   // Projekt, který oslovení neřeší, ten pátý požadavek NEDĚLÁ. Odkaz, který by
   // z něj vznikl, by mířil na skrytou obrazovku.
   //
-  // Šestý je počet nepotvrzených kontaktů do meta řádku pod názvem obrazovky. Je
-  // ZÁMĚRNĚ MIMO AKTUÁLNÍ FILTR: má říct, kolik jich v projektu čeká celkem, tedy
-  // i tehdy, když je zrovna vidět jeden seznam. Filtrovaný počet už stojí vedle něj.
+  // Šestý je počet nepotvrzených kontaktů do meta řádku pod názvem obrazovky. POČÍTÁ SE
+  // V ROZSAHU AKTUÁLNÍHO FILTRU a se zapnutým filtrem stavu se neptá vůbec; proč, stojí
+  // u `unconfirmedCountFilters`.
+  const unconfirmedFilters = unconfirmedCountFilters(filters);
+
   const [page, count, lists, tags, review, unconfirmed] = await Promise.all([
     apiFetch<ContactPage>('/api/v1/contacts', {
       workspaceId,
@@ -136,7 +142,12 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
       workspaceId,
       searchParams: filtersToQuery(filters, {}),
     }),
-    apiFetch<{ data: { id: string; name: string }[] }>('/api/v1/lists', { workspaceId }),
+    // Dvě stě, ne výchozích padesát: seznamy jsou od téhle chvíle nabídkou filtru nad
+    // tabulkou, takže padesátý první seznam by ve výběru chyběl, aniž by to bylo poznat.
+    apiFetch<{ data: { id: string; name: string }[] }>('/api/v1/lists', {
+      workspaceId,
+      searchParams: { limit: 200 },
+    }),
     apiFetch<{ data: { id: string; name: string }[] }>('/api/v1/tags', {
       workspaceId,
       searchParams: { limit: 200 },
@@ -146,10 +157,12 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
           workspaceId,
         })
       : null,
-    apiFetch<{ count: number; precision: 'exact' | 'estimated' }>('/api/v1/contacts/count', {
-      workspaceId,
-      searchParams: { status: 'unconfirmed' },
-    }),
+    unconfirmedFilters === null
+      ? null
+      : apiFetch<{ count: number; precision: 'exact' | 'estimated' }>('/api/v1/contacts/count', {
+          workspaceId,
+          searchParams: filtersToQuery(unconfirmedFilters, {}),
+        }),
   ]);
 
   if (!page.ok) return <ContactsProblem problem={page.problem} />;
@@ -173,7 +186,7 @@ export default async function ContactsPage({ params, searchParams }: PageProps) 
       total={count.ok ? { count: count.data.count, precision: count.data.precision } : null}
       // Když se počet nepodaří zjistit, prop se vynechá a meta řádek o nepotvrzených
       // mlčí. Nula by tvrdila, že žádný nečeká, což o neznámém čísle nevíme.
-      {...(unconfirmed.ok ? { unconfirmed: unconfirmed.data.count } : {})}
+      {...(unconfirmed?.ok ? { unconfirmed: unconfirmed.data.count } : {})}
       filters={filters}
       names={names}
       tags={tagList}

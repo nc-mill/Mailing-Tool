@@ -36,7 +36,7 @@ export function HeadlineTiles({ payload }: { payload: StatsPayload }) {
   const tiles = headlineTiles(payload);
 
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-[var(--spacing-gutter)]">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(240px,100%),1fr))] gap-[var(--spacing-gutter)]">
       {tiles.map((tile) => {
         const Icon = TILE_ICON[tile.key];
         /*

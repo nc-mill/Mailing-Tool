@@ -23,6 +23,7 @@ beforeEach(() => {
 const present = {
   present: true,
   counts: { contacts: 50, lists: 3, tags: 4, segments: 2, templates: 2, campaigns: 1 },
+  impact: { contacts: 0, campaigns: 0 },
   tagId: '019fbf80-a544-7b74-bfb8-ad00553ac1b9',
 };
 
@@ -70,7 +71,71 @@ describe('DemoDataBanner', () => {
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent(/50 kontaktů/);
     expect(dialog).toHaveTextContent(/1 kampaň/);
-    expect(dialog).toHaveTextContent(/Na nic ostatního v projektu se nesáhne/);
+    expect(dialog).toHaveTextContent(
+      /Vaše vlastní kontakty, seznamy, šablony ani kampaně se nemažou/,
+    );
+  });
+
+  /**
+   * Úklid maže i ukázkovou položku, kterou uživatel mezitím přepsal
+   * (`purgeDemoData` jde podle manifestu, ne podle značky). Původní věta
+   * „Na nic ostatního v projektu se nesáhne" o tom mlčela a čtenáře utvrzovala
+   * v opaku. Tahle věta musí v okně stát VŽDY, i když jinak není co ztratit.
+   */
+  it('okno vždy řekne, že úpravy ukázkových položek zmizí s nimi', async () => {
+    renderWithProviders(<DemoDataBanner state={present} slug="e-shop" />);
+    await userEvent.click(screen.getByRole('button', { name: /^Odstranit$/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(/Co jste dopsali do ukázkových položek, zmizí s nimi/);
+    expect(dialog).toHaveTextContent(/upravená ukázková šablona se mažou taky/);
+  });
+
+  /**
+   * `list_subscriptions` a `contact_tags` visí na seznamu a štítku kaskádou,
+   * `campaigns.template_id` se nuluje. Vlastní kontakt ani kampaň sice
+   * nezmizí, ale vazbu ztratí, a okno o tom musí říct číslo.
+   */
+  it('při skutečném dopadu jmenuje čísla vlastních kontaktů i kampaní', async () => {
+    renderWithProviders(
+      <DemoDataBanner
+        state={{ ...present, impact: { contacts: 12, campaigns: 2 } }}
+        slug="e-shop"
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^Odstranit$/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(/u 12 vašich vlastních kontaktů/);
+    expect(dialog).toHaveTextContent(/2 vaše vlastní kampaně přijdou o vazbu/);
+  });
+
+  it('bez dopadu se věty o vlastních položkách nevykreslí vůbec', async () => {
+    renderWithProviders(<DemoDataBanner state={present} slug="e-shop" />);
+    await userEvent.click(screen.getByRole('button', { name: /^Odstranit$/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).not.toHaveTextContent(/vašich vlastních kontaktů/);
+    expect(dialog).not.toHaveTextContent(/vlastních kampaní přijde/);
+  });
+
+  /**
+   * Starší odpověď API pole `impact` nemá. Věta se pak nesmí vykreslit s nulou,
+   * protože nula, kterou nikdo nespočítal, je tvrzení, ne mlčení.
+   */
+  it('bez pole impact okno nespadne a dopad neuvádí', async () => {
+    // Klíč se ODEBÍRÁ, nenastavuje se na `undefined`. Repozitář jede na
+    // `exactOptionalPropertyTypes`, takže `impact: undefined` NENÍ totéž jako
+    // chybějící `impact` a typová kontrola ho odmítne. Test navíc má měřit
+    // starší odpověď API, a ta to pole nemá vůbec, ne prázdné.
+    const bezDopadu: Omit<typeof present, 'impact'> = { ...present };
+    // `Omit` klíč z TYPU odebere, ale hodnota po spreadu v objektu zůstane,
+    // takže se musí smazat i za běhu. Přiřazení `undefined` by nestačilo:
+    // repozitář jede na `exactOptionalPropertyTypes` a test má měřit starší
+    // odpověď API, která to pole nemá vůbec, ne prázdné.
+    delete (bezDopadu as { impact?: unknown }).impact;
+    renderWithProviders(<DemoDataBanner state={bezDopadu} slug="e-shop" />);
+    await userEvent.click(screen.getByRole('button', { name: /^Odstranit$/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(/50 kontaktů/);
+    expect(dialog).not.toHaveTextContent(/vlastních kontaktů/);
   });
 
   it('dialog nemá zaškrtávací políčko ani opisování, protože je to úroveň N2', async () => {

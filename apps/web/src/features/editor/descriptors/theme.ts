@@ -101,6 +101,37 @@ export const THEME_GROUPS: PropGroup[] = [
           { value: 'off', label: 'value.darkMode.off' },
         ],
       },
+      /*
+        PLOCHY PRO TMAVÝ REŽIM. Bez nich přebíjel tmavý režim zvolené pozadí
+        natvrdo: emitter vydá `.ml-canvas{background-color:#0b0f19!important}`
+        z výchozí tmavé palety (`head-css.ts`), takže barva zvolená výš byla
+        v tmavém režimu nevidět a uživatel neměl kde s tím co udělat.
+        Mechanismus přitom existoval celou dobu (`theme.darkMode.colors`),
+        jen ho nikdo nenabízel.
+
+        PŘEDPONA `dark:` NENÍ CESTA V MOTIVU. Jméno role tečku obsahuje, takže
+        cestou s tečkou by z `darkMode.colors.surface.canvas` vznikly zanořené
+        úrovně. Předponu rozebírá `colorTarget` v `theme-panel.tsx`, což je
+        jediné místo, které o cíli zápisu rozhoduje.
+
+        Ukazují se JEN u strategie `auto`. Při `off` se tmavá paleta nevydá
+        vůbec, takže by to byla pole, která nic nedělají.
+      */
+      {
+        kind: 'color',
+        key: 'dark:surface.canvas',
+        label: 'prop.darkCanvasBackground',
+        allowThemeRef: true,
+        scheme: 'dark',
+        hint: 'hint.darkSurface',
+      },
+      {
+        kind: 'color',
+        key: 'dark:surface.content',
+        label: 'prop.darkContentBackground',
+        allowThemeRef: true,
+        scheme: 'dark',
+      },
     ],
   },
 ];

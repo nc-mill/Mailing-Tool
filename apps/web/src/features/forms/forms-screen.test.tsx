@@ -48,12 +48,17 @@ const FORM: FormView = {
   list_ids: ['list-1'],
   double_opt_in: true,
   consent_text: null,
+  consent_required: true,
   redirect_url: null,
+  thanks_template_id: null,
+  confirmed_template_id: null,
+  already_subscribed_template_id: null,
   success_message: {},
   active: true,
   delivery_template_id: null,
   submission_count: 12,
   accepted_30d: 4,
+  dropped_30d: {},
   created_at: '2026-07-31T10:15:30.000Z',
 };
 
@@ -311,5 +316,117 @@ describe('nabídka „…" v řádku formuláře', () => {
     expect(await screen.findByTestId('forms-error')).toHaveTextContent(
       'Formulář zrovna zpracovává přihlášení.',
     );
+  });
+});
+
+/**
+ * HROMADNÉ MAZÁNÍ Z PRUHU VÝBĚRU.
+ *
+ * KDYBY TENHLE BLOK SPADL: zaškrtávátka v tabulce formulářů zase nikam nevedou.
+ * `DataTable` je kreslí vždycky a vypnout se nedají, takže pruh nad tabulkou
+ * nabízel jedině „Vybrat všech N" a „Zrušit výběr". Je to týž nález, jaký
+ * zadavatel 7. 8. 2026 popsal u kampaní.
+ */
+describe('hromadné mazání formulářů', () => {
+  const SECOND: FormView = { ...FORM, id: 'form-2', name: 'Patička webu', active: false };
+
+  async function selectRow(user: ReturnType<typeof userEvent.setup>, index: number) {
+    // Popisek řádkového zaškrtávátka je u formulářů `forms.name`, tedy „Název";
+    // hlavičkové má „Formuláře", takže se nepletou.
+    const boxes = screen.getAllByRole('checkbox', { name: 'Název' });
+    const box = boxes[index];
+    if (box === undefined) throw new Error(`Řádek ${index} nemá zaškrtávátko.`);
+    await user.click(box);
+  }
+
+  it('výběr vede k akci, ne jen k počtu', async () => {
+    const user = userEvent.setup();
+    renderScreen([FORM, SECOND]);
+
+    await selectRow(user, 0);
+
+    expect(screen.getByTestId('selection-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('forms-bulk-delete')).toHaveTextContent('Smazat 1 formulář');
+  });
+
+  it('potvrzení smaže všechny označené a seznam se obnoví', async () => {
+    const user = userEvent.setup();
+    renderScreen([FORM, SECOND]);
+
+    await selectRow(user, 0);
+    await selectRow(user, 1);
+    expect(screen.getByTestId('forms-bulk-delete')).toHaveTextContent('Smazat 2 formuláře');
+
+    await user.click(screen.getByTestId('forms-bulk-delete'));
+    // Okno říká i to, že na dočasné zastavení je přepínač, ne mazání.
+    expect(screen.getByText(/Formulář sbírá přihlášení/)).toBeInTheDocument();
+    await user.click(screen.getByTestId('forms-bulk-submit'));
+
+    await waitFor(() => expect(deleteForm).toHaveBeenCalledTimes(2));
+    expect(deleteForm).toHaveBeenCalledWith({ workspaceId: 'ws-1', id: 'form-1' });
+    expect(deleteForm).toHaveBeenCalledWith({ workspaceId: 'ws-1', id: 'form-2' });
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+
+  it('nezdar výběr nezruší a pojmenuje se počtem', async () => {
+    deleteForm.mockResolvedValue({ status: 'error', code: 'conflict', detail: '' });
+    const user = userEvent.setup();
+    renderScreen([FORM]);
+
+    await selectRow(user, 0);
+    await user.click(screen.getByTestId('forms-bulk-delete'));
+    await user.click(screen.getByTestId('forms-bulk-submit'));
+
+    const error = await screen.findByTestId('forms-bulk-error');
+    expect(error).toHaveTextContent('conflict');
+    // Odklikaná práce se po chybě neztrácí.
+    expect(screen.getByTestId('forms-bulk-delete')).toBeInTheDocument();
+  });
+
+  it('bez práva upravovat pruh akci nenabízí', async () => {
+    const user = userEvent.setup();
+    renderScreen([FORM], false);
+
+    await selectRow(user, 0);
+
+    expect(screen.getByTestId('selection-bar')).toBeInTheDocument();
+    expect(screen.queryByTestId('forms-bulk-delete')).toBeNull();
+  });
+});
+
+/**
+ * ZAHOZENÁ ODESLÁNÍ MUSÍ BÝT VIDĚT.
+ *
+ * Ochrana formuláře zahazuje TIŠE, aby si robot neodvodil, které pravidlo ho chytlo.
+ * Tu cenu ale platí i člověk: správce hesel vyplní pole naráz, časová past (výchozí
+ * dvě sekundy) odeslání zahodí a návštěvník uvidí „Poslali jsme vám e-mail s odkazem",
+ * přestože žádný nedostane. Nedozví se to nikdo, protože i produkt to považuje za
+ * vyřízené. Naměřeno 7. 8. 2026 na běžící instalaci: řádky `dropped`
+ * v `form_submissions` a v `contacts` nic.
+ *
+ * Tenhle sloupec je jediné místo, kde na to jde přijít.
+ */
+describe('FormsScreen: zahozená odeslání', () => {
+  it('ukáže počet zahozených vedle počtu přihlášení', () => {
+    renderScreen([{ ...FORM, accepted_30d: 4, dropped_30d: { too_fast: 3 } }]);
+    expect(screen.getByText(/3 odeslání zahozena ochranou/)).toBeInTheDocument();
+  });
+
+  it('zahozená se do počtu přihlášení NEPŘIČÍTAJÍ', () => {
+    renderScreen([{ ...FORM, accepted_30d: 4, dropped_30d: { too_fast: 3 } }]);
+    // Kdyby se sčítala, stálo by tu sedm a formulář by vypadal úspěšněji, než je.
+    expect(screen.getByText(/^4 /)).toBeInTheDocument();
+  });
+
+  it('bez zahozených se nic navíc nekreslí', () => {
+    renderScreen([{ ...FORM, accepted_30d: 4, dropped_30d: {} }]);
+    expect(screen.queryByText(/zahoz/i)).toBeNull();
+  });
+
+  it('sečte důvody dohromady, protože správce zajímá ztráta, ne rozbor', () => {
+    renderScreen([
+      { ...FORM, accepted_30d: 0, dropped_30d: { too_fast: 2, honeypot: 1, missing_nonce: 4 } },
+    ]);
+    expect(screen.getByText(/7 odeslání zahozeno ochranou/)).toBeInTheDocument();
   });
 });

@@ -23,7 +23,28 @@ services:
       MIGRATE_ON_START: "false"
       APP_URL: ${APP_URL:?APP_URL je povinná}
       DATABASE_URL: ${DATABASE_URL:-postgres://mlain_app:mlain@postgres:5432/mlain}
+      # ČTYŘI PŘIPOJENÍ, NE JEDNO. Worker je jediný proces, který pouští úlohy
+      # na pozadí, takže potřebuje VŠECHNY vyhrazené role. Do 7. 8. 2026 tu byl
+      # jenom `DATABASE_URL` a rozdělený režim tím tiše přicházel o tři věci
+      # naráz; v MODE=all se to neprojevilo, protože tam všechno běží
+      # v kontejneru `app`, který proměnné má.
+      #
+      # mlain_migrator: noční záloha (`platform.backup`, pod aplikační rolí by
+      # `pg_dump` narazil na row level security) a údržba oddílů
+      # (`platform.maintain_partitions`, odpojení oddílu je DDL). Bez ní obě
+      # úlohy každou noc skončí chybou a instalace nemá ani zálohu, ani retenci
+      # odeslané pošty.
+      DATABASE_URL_MIGRATOR: ${DATABASE_URL_MIGRATOR:-postgres://mlain_migrator:${POSTGRES_PASSWORD:-mlain}@postgres:5432/mlain}
+      # mlain_maintenance: úlohy, které čtou napříč projekty. Bez ní se
+      # NAPLÁNOVANÁ KAMPAŇ NEODEŠLE a smazané projekty se neuklidí.
+      DATABASE_URL_MAINTENANCE: ${DATABASE_URL_MAINTENANCE:-postgres://mlain_maintenance:mlain@postgres:5432/mlain}
+      # mlain_gdpr: výmaz osobních údajů podle článku 17. Souhlasy smí smazat
+      # jedině tahle role; bez ní se `gdpr.erase` v režimu anonymize ZRUŠÍ CELÝ
+      # a žádost subjektu zůstane nevyřízená, přestože jí běží zákonná lhůta.
+      DATABASE_URL_GDPR: ${DATABASE_URL_GDPR:-postgres://mlain_gdpr:mlain@postgres:5432/mlain}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY je povinná}
+      DEFAULT_LOCALE: ${DEFAULT_LOCALE:-cs}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       WORKER_HEALTH_PORT: 3001
     volumes:
       - ./data:/data

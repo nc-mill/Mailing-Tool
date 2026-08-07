@@ -346,12 +346,28 @@ export const NAVIGATION: NavigationItem[] = [
         permission: 'providers:read',
         mvp0: true,
       },
+      // Odkryto 7. 8. 2026, kdy obrazovka `settings/fields` doopravdy vznikla.
+      // Do té doby byla položka schválně skrytá; komponenta tabulky, serverové
+      // akce i `revalidatePath` na tuhle cestu ale existovaly celou dobu, takže
+      // vlastní pole šlo založit jedině oklikou ze stavitele polí formuláře.
       {
         id: 'settings-fields',
         labelKey: 'common.nav.settingsFields',
         path: '/settings/fields',
         permission: 'contacts:write',
-        mvp0: false,
+        mvp0: true,
+      },
+      // Slovník přepisů rodu a pátého pádu. Stojí VEDLE vlastních polí, protože
+      // je to týž druh věci: projektový číselník, do kterého se uživatel vrací.
+      // Do 7. 8. 2026 obrazovku neměl vůbec, takže se do slovníku dalo jen
+      // zapisovat (z fronty kontroly oslovení) a překlep v něm byl trvalý.
+      // Oprávnění je `contacts:write`, protože obrazovka zakládá a maže.
+      {
+        id: 'settings-name-overrides',
+        labelKey: 'common.nav.settingsNameOverrides',
+        path: '/settings/name-overrides',
+        permission: 'contacts:write',
+        mvp0: true,
       },
       {
         id: 'settings-members',

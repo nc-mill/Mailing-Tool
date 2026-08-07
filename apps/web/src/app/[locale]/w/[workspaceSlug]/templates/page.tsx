@@ -79,7 +79,7 @@ export default async function TemplatesPage({
   const templates = response.ok ? response.data.items : [];
   const counts: TemplateCategoryCounts = response.ok
     ? response.data.counts
-    : { all: 0, campaign: 0, form: 0, transactional: 0 };
+    : { all: 0, campaign: 0, form: 0, transactional: 0, page: 0 };
 
   const undoId = typeof query.undo === 'string' ? query.undo : undefined;
   const undoName = typeof query.undo_name === 'string' ? query.undo_name : undefined;

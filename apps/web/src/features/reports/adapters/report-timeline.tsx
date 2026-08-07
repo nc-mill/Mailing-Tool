@@ -4,6 +4,7 @@ import {
   Timeline,
   type TimelineEvent,
   type TimelineGender,
+  type TimelineIcon,
   type TimelineLabels,
 } from '@mlain/ui/patterns/timeline';
 
@@ -16,7 +17,11 @@ export type TimelineEntry = {
   occurredAt: string;
   type: string;
   title: string;
-  icon: 'mail' | 'open' | 'click' | 'web' | 'contact' | 'consent' | 'problem' | 'generic';
+  /**
+   * Výčet se sem NEOPISUJE, bere se z komponenty časové osy. Dvě kopie téhož
+   * seznamu by znamenaly, že přidaná ikona projde tady a spadne až tam.
+   */
+  icon: TimelineIcon;
   reliability?: 'confirmed' | 'machine';
   detail?: Record<string, unknown>;
 };
@@ -57,13 +62,24 @@ export function ReportTimeline(props: ReportTimelineProps) {
   // z API, a druhý řádek se skládá právě z `detail`, které do věty nepatří.
   const byId = new Map(props.entries.map((entry) => [entry.id, entry]));
 
+  /*
+   * IKONA A VĚTA JDOU POJMENOVANÝMI POLI, ne v `payload`.
+   *
+   * Do 7. 8. 2026 se ikona ukládala do `payload.icon` a komponenta ji nikdy
+   * nepřečetla, takže se u každé události kreslila ikona řetězu. `payload` je
+   * `Record<string, unknown>`, tedy volný pytel: vložit do něj jde cokoli a na
+   * druhém konci nikdo nepozná, že to nikdo nevybírá, takže na to neupozornila
+   * ani typová kontrola. `title` zůstává i v `payload`, protože z něj skládá
+   * větu `renderSentence`; pojmenované pole je pro `aria-label` kotvy.
+   */
   const events: TimelineEvent[] = props.entries.map((entry) => ({
     id: entry.id,
     type: entry.type,
     occurredAt: new Date(entry.occurredAt),
+    icon: entry.icon,
+    title: entry.title,
     payload: {
       title: entry.title,
-      icon: entry.icon,
       ...(entry.reliability ? { reliability: entry.reliability } : {}),
       ...(entry.detail ? { detail: entry.detail } : {}),
     },

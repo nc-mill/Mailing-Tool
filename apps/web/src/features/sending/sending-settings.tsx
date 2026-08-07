@@ -10,6 +10,7 @@ import { Alert, EmptyState } from '@mlain/ui/patterns/states';
 import { CheckIcon, ClockIcon, SlashIcon, WarningIcon } from '@/lib/ui/status-icons';
 import { GuardThresholds, type GuardLimits, type GuardSettings } from './guard-thresholds';
 import { ProviderRegionFacts, type RegionFacts } from './provider-region-panel';
+import { PRODUCTION_ACCESS_REQUEST_HIDDEN, ProviderReviewStatus } from './provider-review-status';
 
 type ProviderActionResult =
   { status: 'success'; detail?: string } | { status: 'error'; code?: string };
@@ -57,6 +58,18 @@ export type ProviderView = {
   } | null;
   /** `false` = Amazon drží účet v testovacím režimu. `null` = nevíme. */
   production_access?: boolean | null;
+  /**
+   * Stav žádosti o produkční přístup: `PENDING`, `GRANTED`, `DENIED`, `FAILED`
+   * nebo `null`, když účet o přístup nikdy nežádal.
+   *
+   * Odpovídá na otázku, kterou `production_access` sám odpovědět NEUMÍ.
+   * `production_access === false` znamená jen „účet je v testovacím režimu",
+   * což platí stejně pro toho, kdo o přístup nikdy nepožádal, pro toho, komu se
+   * žádost posuzuje, i pro toho, komu ji Amazon zamítl. Dokud tohle pole
+   * chybělo, nabízela obrazovka všem třem tentýž formulář a druhé odeslání
+   * skončilo chybou od Amazonu místo vysvětlení předem.
+   */
+  review_status?: string | null;
 };
 
 /**
@@ -418,16 +431,39 @@ export function SendingSettings({
                     {/* Žádost o produkční přístup má smysl jen tehdy, když účet
                         v testovacím režimu PROKAZATELNĚ je. U `null`, tedy
                         „nevíme", se nenabízí: bylo by to tvrzení o stavu, který
-                        jsme si nepřečetli. */}
-                    {onRequestProductionAccess && isSes && facts.sandbox === true && (
-                      <Button
-                        data-testid={`production-access-${p.id}`}
-                        onClick={() => onRequestProductionAccess(p.id)}
-                      >
-                        {t('sending.productionAccess.open')}
-                      </Button>
-                    )}
+                        jsme si nepřečetli.
+
+                        Druhá podmínka je stav žádosti. U `PENDING` se tlačítko
+                        SKRÝVÁ, ne zašeďuje: odeslat ho stejně nejde, Amazon
+                        druhou žádost odmítne (`ConflictException`, u nás
+                        `production_access_review_in_progress`), takže zašedlé
+                        pole by slibovalo akci, která neexistuje. U `GRANTED`
+                        není o co žádat. U `DENIED` a `FAILED` se nabízí dál,
+                        protože novou žádost Amazon přijme. */}
+                    {onRequestProductionAccess &&
+                      isSes &&
+                      facts.sandbox === true &&
+                      !PRODUCTION_ACCESS_REQUEST_HIDDEN.has(p.review_status ?? '') && (
+                        <Button
+                          data-testid={`production-access-${p.id}`}
+                          onClick={() => onRequestProductionAccess(p.id)}
+                        >
+                          {t('sending.productionAccess.open')}
+                        </Button>
+                      )}
                   </div>
+
+                  {/* Jak to se žádostí o produkční přístup stojí. Bez téhle věty
+                      říká obrazovka u všech tří případů („nežádali jste",
+                      „posuzuje se", „zamítli") totéž, protože všechny tři mají
+                      `production_access === false`. */}
+                  {isSes && (
+                    <ProviderReviewStatus
+                      reviewStatus={p.review_status ?? null}
+                      sandbox={facts.sandbox}
+                      testId={`provider-review-status-${p.id}`}
+                    />
+                  )}
 
                   {/* V jakém regionu účet je a co v něm má Amazon ověřené.
                       Stojí NAD výsledkem testu i nad seznamem překážek, protože

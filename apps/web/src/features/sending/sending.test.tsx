@@ -1446,6 +1446,76 @@ describe('region účtu na obrazovce odesílání', () => {
     expect(screen.queryByTestId('production-access-p3')).not.toBeInTheDocument();
     expect(screen.queryByTestId('production-access-p4')).not.toBeInTheDocument();
   });
+
+  /*
+   * STAV ŽÁDOSTI O PRODUKČNÍ PŘÍSTUP.
+   *
+   * `production_access === false` je na otázku „jak to stojí" NEDOSTATEČNÁ
+   * odpověď: platí stejně pro toho, kdo nikdy nežádal, pro toho, komu se žádost
+   * posuzuje, i pro toho, komu ji Amazon zamítl. Dokud to obrazovka nerozlišila,
+   * nabízela všem třem tentýž formulář a druhé odeslání skončilo chybou od
+   * Amazonu místo vysvětlení předem.
+   */
+  it('u každého stavu žádosti řekne, jak to stojí', () => {
+    renderWithProviders(
+      <SendingSettings
+        providers={[
+          { ...ses, id: 'p1', production_access: false, review_status: null },
+          { ...ses, id: 'p2', production_access: false, review_status: 'PENDING' },
+          { ...ses, id: 'p3', production_access: false, review_status: 'DENIED' },
+          { ...ses, id: 'p4', production_access: false, review_status: 'FAILED' },
+          { ...ses, id: 'p5', production_access: true, review_status: 'GRANTED' },
+        ]}
+        domains={[]}
+        guards={{}}
+        limits={limits}
+        basePath="/w/eshop"
+      />,
+    );
+    expect(screen.getByTestId('provider-review-status-p1')).toHaveTextContent(/zatím nežádali/);
+    expect(screen.getByTestId('provider-review-status-p2')).toHaveTextContent(/posuzuje/);
+    expect(screen.getByTestId('provider-review-status-p3')).toHaveTextContent(/zamítl/);
+    expect(screen.getByTestId('provider-review-status-p4')).toHaveTextContent(/nedorazila/);
+    expect(screen.getByTestId('provider-review-status-p5')).toHaveTextContent(/udělil/);
+  });
+
+  /*
+   * U posuzované žádosti se tlačítko SKRÝVÁ, ne zašeďuje. Odeslat ji stejně
+   * nejde, Amazon druhou odmítne (`ConflictException`), takže zašedlé pole by
+   * slibovalo akci, která neexistuje. U zamítnuté a neodeslané se nabízí dál,
+   * protože novou žádost Amazon přijme.
+   */
+  it('u posuzované žádosti se formulář nenabízí, u zamítnuté a neodeslané ano', () => {
+    const onRequestProductionAccess = vi.fn();
+    renderWithProviders(
+      <SendingSettings
+        providers={[
+          { ...ses, id: 'p1', production_access: false, review_status: null },
+          { ...ses, id: 'p2', production_access: false, review_status: 'PENDING' },
+          { ...ses, id: 'p3', production_access: false, review_status: 'DENIED' },
+          { ...ses, id: 'p4', production_access: false, review_status: 'FAILED' },
+        ]}
+        domains={[]}
+        guards={{}}
+        limits={limits}
+        basePath="/w/eshop"
+        onRequestProductionAccess={onRequestProductionAccess}
+      />,
+    );
+    expect(screen.getByTestId('production-access-p1')).toBeInTheDocument();
+    expect(screen.queryByTestId('production-access-p2')).not.toBeInTheDocument();
+    expect(screen.getByTestId('production-access-p3')).toBeInTheDocument();
+    expect(screen.getByTestId('production-access-p4')).toBeInTheDocument();
+  });
+
+  /*
+   * Amazon smí výčet rozšířit. Neznámý stav se NEPŘEKLÁDÁ na nejbližší známý:
+   * radši o něm mlčíme, než abychom uživateli napsali nepravdu.
+   */
+  it('o neznámém stavu mlčí, místo aby si domýšlel', () => {
+    renderList({ ...ses, production_access: false, review_status: 'SOMETHING_NEW' });
+    expect(screen.queryByTestId('provider-review-status-p1')).not.toBeInTheDocument();
+  });
 });
 
 /**
@@ -1543,13 +1613,16 @@ describe('dialog žádosti o produkční přístup', () => {
     return { onSubmit };
   }
 
-  it('řekne předem, co bude Amazon chtít vědět a jak dlouho to potrvá', () => {
+  it('řekne předem, co bude Amazon chtít vědět a co se bude dít', () => {
     renderProduction();
     const expectations = screen.getByTestId('production-access-expectations');
     expect(expectations).toHaveTextContent(/marketingovou, nebo transakční/);
     expect(expectations).toHaveTextContent(/adresu vašeho webu/);
-    expect(expectations).toHaveTextContent(/24 hodin/);
+    expect(expectations).toHaveTextContent(/posuzuje člověk z podpory AWS/);
     expect(expectations).toHaveTextContent(/nejde údaje změnit ani podat druhou žádost/);
+    // Lhůtu NESLIBUJEME. Amazon uvádí 24 hodin jako obvyklé, ne zaručené, takže
+    // by z naší věty byla lež pokaždé, když posouzení trvá dýl.
+    expect(expectations).not.toHaveTextContent(/24 hodin/);
   });
 
   it('upozorní, že schválení platí jen pro region účtu', () => {

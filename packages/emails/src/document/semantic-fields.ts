@@ -3,6 +3,7 @@ import { rootsForTemplateKind } from '@mlain/contracts/liquid/grammar';
 import type { FieldCatalog, FieldCatalogType } from '../external/field-catalog';
 import { fromLiquidIssue, type Issue } from '../issue';
 import { toCatalogPath, toLiquidRoots } from '../paths';
+import type { TemplateKind } from './profile';
 import { contrastRatio } from '../theme/palette';
 import { resolveTheme } from '../theme/resolve';
 import type {
@@ -17,7 +18,8 @@ import type {
 import { pointerToDotted, richTextFieldsOf, walkBlocks, walkRichText } from './walk';
 
 export type FieldContext = {
-  templateKind: 'campaign' | 'transactional' | 'system';
+  /** Ve skutečnosti PROFIL, ne řádek. Viz `StructureContext` a `./profile`. */
+  templateKind: TemplateKind;
   fields: FieldCatalog;
   assetIds: Set<string>;
   /** Odhad velikosti HTML. Přesné číslo zná až renderer, tohle je vstup pro pravidlo S9. */
@@ -44,9 +46,26 @@ const issue = (
   params?: Record<string, string | number>,
 ): Issue => ({ code, severity, pointer, path: pointerToDotted(pointer), params });
 
+/**
+ * Druh šablony tak, jak mu rozumí gramatika Liquidu v kontraktech.
+ *
+ * Kontrakt zná tři druhy a je ZMRAZENÝ, takže profil `page` v něm není. Mapuje
+ * se na `transactional`, protože potřebuje TOTÉŽ: kořen `data`, kterým dostane
+ * název formuláře a seznamu (`{{ data.list_name }}`). Kdyby se mapoval na
+ * `campaign`, validátor by `data` odmítl jako neznámý kořen a stránka by
+ * o formuláři, ze kterého přišla, nesměla napsat ani slovo.
+ *
+ * Které klíče v `data` na kterém povrchu opravdu jsou, hlídá `page-surfaces.ts`.
+ * Tahle funkce řeší jen gramatiku, ne dostupnost hodnoty.
+ */
+function liquidKindFor(kind: TemplateKind): 'campaign' | 'transactional' | 'system' {
+  return kind === 'page' ? 'transactional' : kind;
+}
+
 export function checkFields(doc: Document, ctx: FieldContext): Issue[] {
   const issues: Issue[] = [];
   const theme = resolveTheme(doc.theme);
+  const liquidKind = liquidKindFor(ctx.templateKind);
   const liquidContext: LiquidContext = {
     // `level: "authored"` je povinné. Autorská gramatika zakazuje argumenty
     // filtrů i kořen `_present`; kompilovanou úroveň kontroluje až invariant I1.
@@ -57,8 +76,8 @@ export function checkFields(doc: Document, ctx: FieldContext): Issue[] {
     // Seznam kořenů se odvozuje od druhu šablony, protože `data` smí použít
     // jedině transakční šablona. Kampaň dostane `liquid_unknown_root`, což je
     // přesně to, co se má stát: hodnotu by jí nikdo nedodal.
-    roots: rootsForTemplateKind(ctx.templateKind),
-    template_kind: ctx.templateKind,
+    roots: rootsForTemplateKind(liquidKind),
+    template_kind: liquidKind,
   };
   let hasUnsubscribe = false;
 
@@ -153,8 +172,11 @@ export function checkFields(doc: Document, ctx: FieldContext): Issue[] {
     }
   }
 
-  // S4
-  if (!hasUnsubscribe) {
+  // S4. Veřejná stránka se přeskakuje CELÁ, nestačí snížit na varování:
+  // odhlašovací odkaz je pravidlo kampaně (zákonná povinnost obchodního
+  // sdělení), kdežto na stránku po odhlášení se chodí právě z něj. Trvalé
+  // varování nad každou stránkou by uživatele učilo hlášky přehlížet.
+  if (!hasUnsubscribe && ctx.templateKind !== 'page') {
     issues.push(
       issue(
         'content_missing_unsubscribe',

@@ -10,8 +10,9 @@ import { diffForAudit } from '../audit/redact';
 // uvnitř téhož balíčku, tedy táž hrana, jakou už používají `ai/repo.ts`,
 // `segments` i `templates`. Vlastní zapisovač do `pgboss.job` by byl druhá
 // implementace téhož a nesl by konfiguraci fronty odjinud než z registru.
-import { DEFAULT_CONFIRMATION_MODE } from '../contacts/constants';
+import { insertDefaultList } from '../contacts/lists/default-list';
 import { enqueue as enqueueContactsJob } from '../contacts/jobs/enqueue';
+import { recordPendingLocaleAlign } from '../contacts/locale-align-pending';
 // Táž hrana přes doménu. Seznam jazyků s 5. pádem se sem NEOPISUJE: kdyby
 // existoval na dvou místech, rozešel by se a nikdo by si toho nevšiml.
 import { localeHasVocative } from '../contacts/naming/vocative';
@@ -46,9 +47,30 @@ export type PublicWorkspace = {
    * byl ovládací prvek bez následku.
    */
   greeting_enabled: boolean;
+  /**
+   * Poštovní adresa odesílatele, tedy hodnota za `{{ workspace.sender_address }}`
+   * ve výchozí patičce e-mailu.
+   *
+   * Je to vlastnost FIRMY, ne jednotlivé kampaně, a obchodní sdělení ji podle
+   * zákona nést musí. Bydlí proto na projektu, v
+   * `workspaces.settings.campaigns.postal_address`, kde ji zná i odesílač
+   * (`StmtCampaignHeader`) a kontrola před odesláním. Prázdná hodnota je
+   * legitimní stav projektu, který se teprve rozkoukává; upozorní na ni
+   * kontrolní seznam, odeslání neblokuje.
+   */
+  postal_address: string;
   created_at: string;
   deleted_at: string | null;
 };
+
+/** `workspaces.settings.campaigns.postal_address` z uloženého jsonb. */
+export function postalAddressOf(settings: unknown): string {
+  if (settings === null || typeof settings !== 'object') return '';
+  const campaigns = (settings as Record<string, unknown>)['campaigns'];
+  if (campaigns === null || typeof campaigns !== 'object') return '';
+  const value = (campaigns as Record<string, unknown>)['postal_address'];
+  return typeof value === 'string' ? value : '';
+}
 
 function toPublicWorkspace(row: {
   id: string;
@@ -58,6 +80,7 @@ function toPublicWorkspace(row: {
   timezone: string;
   addressForm: string;
   greetingEnabled: boolean;
+  settings?: unknown;
   createdAt: Date;
   deletedAt: Date | null;
 }): PublicWorkspace {
@@ -69,6 +92,7 @@ function toPublicWorkspace(row: {
     timezone: row.timezone,
     address_form: row.addressForm as 'formal' | 'informal',
     greeting_enabled: row.greetingEnabled,
+    postal_address: postalAddressOf(row.settings),
     created_at: new Date(row.createdAt).toISOString(),
     deleted_at: row.deletedAt ? new Date(row.deletedAt).toISOString() : null,
   };
@@ -129,6 +153,10 @@ export async function listWorkspaces(
         timezone: schema.workspaces.timezone,
         addressForm: schema.workspaces.addressForm,
         greetingEnabled: schema.workspaces.greetingEnabled,
+        // Poštovní adresa je uvnitř `settings`, takže se výběr sloupců nesmí
+        // obejít bez něj: přepínač projektů by pak u téhož projektu vracel
+        // prázdnou adresu, kdežto detail vyplněnou.
+        settings: schema.workspaces.settings,
         createdAt: schema.workspaces.createdAt,
         deletedAt: schema.workspaces.deletedAt,
         role: schema.memberships.role,
@@ -148,6 +176,59 @@ export async function listWorkspaces(
       .orderBy(schema.workspaces.name),
   );
   return rows.map((r) => ({ ...toPublicWorkspace(r), role: r.role as Role }));
+}
+
+/**
+ * Je ten člověk vlastníkem aspoň jednoho živého projektu?
+ *
+ * Odpověď rozhoduje o tom, jestli smí založit další projekt (rozhodnutí
+ * zadavatele ze 7. 8. 2026). Role v tomhle produktu žijí VŽDY uvnitř projektu,
+ * žádná role instalace neexistuje: `users` sloupec s rolí nemá a `ROLE_ORDER`
+ * v `permissions.ts` je `viewer, editor, admin, owner`. Nejvyšší role je proto
+ * `owner`, a „smí zakládat projekty" znamená „je někde vlastníkem".
+ *
+ * Měkce smazané projekty se NEPOČÍTAJÍ, stejně jako je nepočítá `listWorkspaces`.
+ * Kdo si projekt smazal, má na jeho obnovu 30 dní (`restoreWorkspace`), takže
+ * v pasti nezůstane; počítat smazaný projekt jako doklad vlastnictví by naopak
+ * znamenalo, že se právo zakládat projekty dá držet u projektu, který už nikdo
+ * nevidí.
+ *
+ * Pořadí argumentů v `eq` uvnitř spojení je záměrné, stejně jako v
+ * `listWorkspaces`: je to spojení sloupce se sloupcem, ne filtr podle projektu,
+ * a opačné pořadí by disciplinární test v `scope.test.ts` označil za ruční
+ * obcházení `wsEq`.
+ */
+export async function ownsAnyWorkspace(userId: string): Promise<boolean> {
+  const rows = await withUser(userId, (tx) =>
+    tx
+      .select({ id: schema.workspaces.id })
+      .from(schema.workspaces)
+      .innerJoin(
+        schema.memberships,
+        and(
+          eq(schema.workspaces.id, schema.memberships.workspaceId),
+          eq(schema.memberships.userId, userId),
+          eq(schema.memberships.role, 'owner'),
+        ),
+      )
+      .where(isNull(schema.workspaces.deletedAt))
+      .limit(1),
+  );
+  return rows.length > 0;
+}
+
+/**
+ * Závora pro `POST /api/v1/workspaces`.
+ *
+ * Sedí v API, ne v `createWorkspace`, a je to vědomé. `createWorkspace` zakládá
+ * projekt i tomu, kdo ještě žádný nemá, a přesně to potřebuje instalace
+ * (`setup.ts` má vlastní cestu) a testovací příprava. Kdyby závora byla uvnitř
+ * služby, první projekt by nešlo založit vůbec: zakladatel v tu chvíli nikde
+ * vlastníkem není.
+ */
+export async function assertMayCreateWorkspace(userId: string): Promise<void> {
+  if (await ownsAnyWorkspace(userId)) return;
+  throw new ApiError('workspace_create_not_allowed', { params: { requiredRole: 'owner' } });
 }
 
 export async function createWorkspace(
@@ -210,39 +291,12 @@ export async function createWorkspace(
         .returning();
       await tx.insert(schema.memberships).values({ workspaceId, userId, role: 'owner' });
 
-      /*
-       * VÝCHOZÍ SEZNAM „ODBĚRATELÉ". Rozhodnutí zadavatele z 5. 8. 2026.
-       *
-       * Bez něj začíná každý projekt bez jediného seznamu, a seznam je přitom
-       * to, kam kontakt musí patřit, aby mu šlo poslat kampaň. Sloupec
-       * `lists.is_default`, `setDefault()` i `getDefault()` existovaly už dřív
-       * a NIKDO je nepoužíval: výchozí seznam nikdy nevznikl, takže se
-       * `getDefault()` nedalo na co zeptat.
-       *
-       * `opt_in = 'double'` je bezpečná výchozí volba: seznam je nositelem
-       * oprávnění k rozesílce a přepnout ho na jeden krok jde jedním kliknutím.
-       *
-       * VE STEJNÉ TRANSAKCI, ne zvlášť. Kontext `mlain.workspace_id` je nastavený
-       * o pár řádků výš, takže `ws_isolation` na `lists` zápis pustí. Samostatná
-       * transakce potom by znamenala projekt, který při chybě zůstane bez
-       * výchozího seznamu, a nikdo by to nedohledal.
-       *
-       * Jméno se řídí jazykem projektu, ne jazykem uživatele: seznam vidí celý
-       * tým a přejmenovat ho jde na jeho detailu. Bere se `locale` spočítané
-       * nahoře, u vkládání projektu, aby obojí nemohlo vyjít jinak.
-       */
-      await tx.insert(schema.lists).values({
-        workspaceId,
-        name: locale.toLowerCase().startsWith('cs') ? 'Odběratelé' : 'Subscribers',
-        optIn: 'double',
-        // Doménová výchozí hodnota, ne ta z DDL. `lists.confirmation_mode` má
-        // v DDL `two_step` jako pojistku pro zápis mimo doménu, kdežto seznam
-        // založený produktem dostává `one_step` (rozhodnutí R2 plánu). Bez
-        // tohohle řádku by se výchozí seznam choval jinak než každý další,
-        // který si uživatel založí sám, a nikdo by nevěděl proč.
-        confirmationMode: DEFAULT_CONFIRMATION_MODE,
-        isDefault: true,
-      });
+      // Výchozí seznam „Odběratelé". Rozbor je u `insertDefaultList`, kterou
+      // volá i průvodce prvním spuštěním: obě cesty musí založit TOTÉŽ, jinak
+      // se první projekt instalace chová jinak než každý další.
+      // Bere se `locale` spočítané nahoře, u vkládání projektu, aby obojí
+      // nemohlo vyjít jinak.
+      await insertDefaultList(tx, { workspaceId, locale });
 
       await writeAuditLog(tx, {
         action: IdentityAuditActions['workspace.created'],
@@ -278,6 +332,7 @@ export async function updateWorkspace(
     timezone?: string | undefined;
     address_form?: string | undefined;
     greeting_enabled?: boolean | undefined;
+    postal_address?: string | undefined;
   },
   actorLabel: string,
 ): Promise<PublicWorkspace> {
@@ -297,6 +352,24 @@ export async function updateWorkspace(
   // aby se zapnutím zpátky nic neztratilo: sloupce kontaktů se počítají pořád,
   // skrývá se jen rozhraní. Zařadit přepočet by tu bylo jen dvojí práce.
   if (input.greeting_enabled !== undefined) patch.greetingEnabled = input.greeting_enabled;
+  /*
+   * Poštovní adresa je JEDINÝ klíč uvnitř `settings`, takže se zapisuje SLOUČENÍM,
+   * ne přepsáním celého sloupce: vedle ní tam bydlí zkušební režim, ověřené adresy
+   * a prahy doručitelnosti a `SET settings = '{...}'` by je zahodil.
+   *
+   * `jsonb_set` sám by nestačil. Když klíč `campaigns` v uloženém jsonb ještě
+   * neexistuje, `jsonb_set(..., '{campaigns,postal_address}', ..., true)` mezičlen
+   * NEDOPLNÍ a vrátí původní hodnotu beze změny; uživatel by adresu uložil a ona by
+   * zmizela bez jediné chyby. Operátor `||` slučuje po jedné úrovni, proto je
+   * vnořený dvakrát.
+   */
+  if (input.postal_address !== undefined) {
+    patch.settings = sql`coalesce(${schema.workspaces.settings}, '{}'::jsonb) || jsonb_build_object(
+      'campaigns',
+      coalesce(${schema.workspaces.settings} -> 'campaigns', '{}'::jsonb)
+        || jsonb_build_object('postal_address', ${input.postal_address}::text)
+    )`;
+  }
 
   let row: typeof schema.workspaces.$inferSelect | undefined;
   try {
@@ -340,12 +413,22 @@ export async function updateWorkspace(
   // projektu) je výslovná volba a ta se nepřepisuje. Kdo potřebuje srovnat i ty,
   // má na to hromadnou akci v nastavení, která `from` neuvádí.
   if (before.locale !== after.locale) {
+    // POŽADAVEK SE ZAPISUJE I DO PROJEKTU, ne jen do nákladu úlohy, a je to
+    // oprava tiché ztráty dat. Fronta slučuje a zahazuje ten NOVĚJŠÍ požadavek,
+    // takže by přežila úloha se směrem z okamžiku prvního přepnutí: kdo přepnul
+    // na angličtinu a hned zpátky na češtinu, srovnal by si tím kontakty na
+    // angličtinu nad českým projektem. Zapsaný požadavek zahození přežije,
+    // rozvaha je v `contacts/locale-align-pending.ts`.
+    await recordPendingLocaleAlign(tx, ctx.workspaceId, before.locale);
     await enqueueContactsJob(
       tx,
       'contacts.recompute_greeting',
       {
         workspaceId: ctx.workspaceId,
-        alignLocale: { to: after.locale, from: before.locale },
+        // Cílový jazyk v nákladu NENÍ. Běh si ho přečte ze sloupce
+        // `workspaces.locale`, až na něj přijde řada; viz `alignLocale`
+        // v `contacts/jobs/recompute-greeting.ts`.
+        alignLocale: { from: before.locale },
       },
       { singletonKey: ctx.workspaceId },
     );
@@ -472,7 +555,7 @@ export async function restoreWorkspace(
       UPDATE workspaces SET deleted_at = NULL, updated_at = now()
        WHERE id = ${workspaceId}::uuid
        RETURNING id::text AS id, name, slug, locale, timezone, address_form,
-                 greeting_enabled, created_at, deleted_at
+                 greeting_enabled, settings, created_at, deleted_at
     `);
     if (restored.length === 0) throw new ApiError('not_found');
 
@@ -493,6 +576,7 @@ export async function restoreWorkspace(
       timezone: row.timezone as string,
       address_form: row.address_form as 'formal' | 'informal',
       greeting_enabled: row.greeting_enabled as boolean,
+      postal_address: postalAddressOf(row.settings),
       created_at: new Date(row.created_at as Date).toISOString(),
       deleted_at: null,
     };

@@ -2,18 +2,53 @@
 
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, ArrowUp, SlidersHorizontal, X } from '../../icons';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { IconButton } from '../../components/icon-button';
 import { Checkbox } from '../../components/checkbox';
 import { cn } from '../../lib/cn';
+import { mobileRoles, type DataTableMobileRole } from './mobile-roles';
 import { PaginationFooter, type CountInfo } from './pagination-footer';
 import { SelectionBar } from './selection-bar';
 import { useColumnPreferences } from './use-column-preferences';
-import { useRowSelection } from './use-row-selection';
+import { useRowSelection, type SelectionMode } from './use-row-selection';
 
 /** Mez ze specifikace 14.2. Pod ní se virtualizace nevyplatí. */
 const VIRTUALIZE_FROM = 100;
 const ROW_HEIGHT = 44;
+
+/**
+ * Šířka, pod kterou se řádek kreslí jako karta. Musí sedět s variantou
+ * `max-md:` v třídách níž; `md` je v Tailwindu 768 px.
+ */
+const CARD_MODE = '(max-width: 767px)';
+
+/**
+ * Kreslí se řádky jako karty?
+ *
+ * Samotné rozvržení karty umí CSS (`max-md:`) a JavaScript na ně nesahá.
+ * Tenhle hook existuje kvůli JEDINÉ věci, kterou CSS neumí: VIRTUALIZACE.
+ * Virtualizovaný řádek dostává pevnou výšku 44 px a absolutní pozici, kdežto
+ * karta má tři řádky textu a měří přes sto pixelů. Karty by se proto překryly
+ * a text by ležel přes text. Přesně to je „nepoužitelné", co je vidět na
+ * obrazovce, ne chyba měření.
+ *
+ * Na serveru vrací `false`, takže se první vykreslení chová jako širší displej.
+ * Je to bezpečná strana: rozvržení se po připojení srovná, kdežto opačná volba
+ * by na monitoru krátce ukázala karty.
+ */
+function useCardMode(): boolean {
+  const [cardMode, setCardMode] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia(CARD_MODE);
+    const update = (event: MediaQueryList | MediaQueryListEvent) => setCardMode(event.matches);
+    update(query);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+
+  return cardMode;
+}
 
 /**
  * Ovládací prvky UVNITŘ buňky: tlačítko, odkaz, pole, zaškrtávátko, položka nabídky.
@@ -42,8 +77,17 @@ export type DataTableColumn<Row> = {
    * je to volba návrhu pro sloupec, do kterého se sází odznak nebo datum.
    * Bez ní se sloupec roztáhne rovným dílem. Uživatelské nastavení přesné
    * šířky panel sloupců nenabízí a nikdy se neukládá.
+   *
+   * POD 768 px SE NEUPLATNÍ. Řádek je tam karta, ne mřížka, takže pevná šířka
+   * sloupce nemá co držet a jen by kartu roztáhla ven ze stránky.
    */
   width?: number;
+  /**
+   * Role sloupce na kartě pod 768 px. Bez ní rozhodne `mobileRoles`.
+   * Nastav ji tam, kde výchozí pravidlo („první sloupec je hlavní údaj")
+   * nesedí, ne u každého sloupce.
+   */
+  mobile?: DataTableMobileRole;
 };
 
 export type DataTableLabels = {
@@ -87,6 +131,7 @@ export function DataTable<Row>({
   bulkActions,
   onRowActivate,
   selection: selectionProp,
+  selectable = true,
   emptyState,
   defaultVisibleColumns,
   virtualizeFrom = VIRTUALIZE_FROM,
@@ -112,8 +157,47 @@ export function DataTable<Row>({
   filterDescription?: string;
   bulkActions?: React.ReactNode;
   onRowActivate?: (row: Row) => void;
-  /** Když je zadaný, výběr drží obrazovka. Jinak si ho tabulka řídí sama. */
-  selection?: { selectedIds: string[]; onSelectionChange: (next: string[]) => void };
+  /**
+   * Když je zadaný, výběr drží obrazovka. Jinak si ho tabulka řídí sama.
+   *
+   * `clearToken` je způsob, jak výběr uklidit i tehdy, když je rozšířený na „vše
+   * odpovídající filtru": ten režim bydlí uvnitř tabulky a vynulování pole
+   * `selectedIds` ho nezruší. Podrobně u `useRowSelection`.
+   */
+  selection?: {
+    selectedIds: string[];
+    onSelectionChange: (next: string[]) => void;
+    /**
+     * Režim výběru pro obrazovku. **Kdo ho nepřevezme, tomu tabulka odkaz
+     * „Vybrat všech N" vůbec nenabídne**, protože by slíbil rozsah, na který
+     * hromadné akce nedosáhnou.
+     *
+     * Obrazovka podle něj skládá rozsah akce: `rows` znamená výčet zaškrtnutých
+     * identifikátorů, `allMatchingFilter` tentýž filtr, jaký je v adrese. Předat
+     * ho smí jen ta, jejíž akce filtr opravdu umí; u kontaktů to je hromadné
+     * smazání a export, u ostatních tabulek se to musí ověřit proti API.
+     */
+    onModeChange?: ((mode: SelectionMode) => void) | undefined;
+    clearToken?: unknown;
+  };
+  /**
+   * Kreslí se sloupec se zaškrtávátky? Výchozí `true`, aby se stávající tabulky
+   * nemusely měnit.
+   *
+   * Existuje proto, že do 7. 8. 2026 se výběr kreslil BEZ JAKÉKOLI PODMÍNKY, takže
+   * ho měla i obrazovka, nad kterou žádná hromadná akce není a vzniknout nemůže.
+   * Zaškrtnout deset řádků a zjistit, že se s nimi nedá udělat nic, je horší než
+   * nemít výběr vůbec: rozhraní slíbí schopnost, kterou nemá.
+   *
+   * Vypíná se tam, kde je tabulka ČTENÍ, ne pracovní plocha. První takový případ
+   * jsou příjemci reportu kampaně (doručení jedné rozesílky; API nad příjemci
+   * žádnou hromadnou operaci nezná) a Centrum úloh, kde by hromadná akce ani
+   * dávat smysl nemohla, protože zastavit jde u každého druhu něco jiného.
+   *
+   * S `selectable={false}` mizí sloupec, hlavičkové „Označit všechny na stránce"
+   * i pruh výběru. `selection` se pak ignoruje.
+   */
+  selectable?: boolean;
   /** Co se ukáže místo mřížky, když nejsou žádné řádky. */
   emptyState?: React.ReactNode;
   /** Kolik sloupců je vidět, dokud si uživatel nevybere. Výchozí je 6. */
@@ -139,6 +223,8 @@ export function DataTable<Row>({
     pageIds,
     selectedIds: selectionProp?.selectedIds,
     onSelectionChange: selectionProp?.onSelectionChange,
+    onModeChange: selectionProp?.onModeChange,
+    clearToken: selectionProp?.clearToken,
   });
   const [focusedIndex, setFocusedIndex] = useState(0);
   // Neřízený stav existuje pořád, jen se nepoužije, když si ho vzala obrazovka.
@@ -159,10 +245,31 @@ export function DataTable<Row>({
 
   const visibleColumns = columns.filter((column) => preferences.visible.includes(column.id));
 
+  /**
+   * POD 768 px JE ŘÁDEK KARTA, ne mřížka, a je to jediné rozvržení, které se
+   * na telefonu dá přečíst.
+   *
+   * Naměřeno 7. 8. 2026 na 390 px: rám tabulky má 343 px, kdežto obsah řádku
+   * Kontaktů 755 px (deset sloupců), Šablon 900 px, Segmentů 720 px. Sloupce
+   * se nemají kam zúžit, takže se text vrství přes sebe a tabulka roluje
+   * vodorovně uvnitř stránky, která roluje svisle. Vodorovný posuv s ukotveným
+   * prvním sloupcem to nespraví: po odečtení zaškrtávátka a ukotveného e-mailu
+   * zbývá na osm sloupců 240 px, tedy 30 px na sloupec.
+   *
+   * Karta srovnávání sloupců mezi řádky ZTRÁCÍ, a je to vědomá cena. Na telefonu
+   * se čtou jednotlivé záznamy, na monitoru se porovnávají sloupce, a tabulka
+   * nad 768 px zůstává beze změny.
+   */
+  const roles = mobileRoles(visibleColumns);
+  const cardMode = useCardMode();
+
   // Virtualizace se zapíná od sta řádků (14.2). `aria-rowcount`
   // a `aria-rowindex` se počítají z dat, ne z vykreslených uzlů,
   // takže se virtualizací nemění.
-  const virtualized = rows.length >= virtualizeFrom;
+  //
+  // NA KARTÁCH SE NEZAPÍNÁ VŮBEC: počítá s pevnou výškou řádku 44 px, kdežto
+  // karta má tři řádky textu. Řádky by se překryly a text by ležel přes text.
+  const virtualized = rows.length >= virtualizeFrom && !cardMode;
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => bodyRef.current,
@@ -255,6 +362,22 @@ export function DataTable<Row>({
   const sortDirection = order?.value.endsWith('.desc') ? 'desc' : 'asc';
   const sortColumn = order?.value.split('.')[0];
 
+  /*
+   * SMÍ SE NABÍDNOUT „VYBRAT VŠECH N"? Dvě podmínky, obě nutné.
+   *
+   * ZA PRVÉ MUSÍ EXISTOVAT DALŠÍ STRÁNKA. Tabulka bez stránkování ukazuje všechno
+   * naráz, takže „vybrat všech 9" nabízí právě těch devět řádků, které uživatel
+   * vidí a nejspíš už zaškrtl; odkaz, po jehož stisku se nic nezmění, je lež.
+   * Týká se to kampaní, seznamů, štítků i formulářů, tedy většiny tabulek v aplikaci.
+   *
+   * ZA DRUHÉ MUSÍ OBRAZOVKA REŽIM PŘEVZÍT. Bez `onModeChange` zůstane rozšířený
+   * výběr jen uvnitř tabulky: pruh napíše „Vybráno všech 12 480", ale hromadná
+   * akce pod ním dostane dvacet zaškrtnutých identifikátorů. Přesně tak se to
+   * chovalo do 7. 8. 2026 na všech obrazovkách.
+   */
+  const canSelectAllMatching =
+    (pagination.hasMore || pagination.canGoBack) && selectionProp?.onModeChange !== undefined;
+
   return (
     <div className="flex flex-col gap-3">
       {cursorInvalid ? (
@@ -329,20 +452,27 @@ export function DataTable<Row>({
         </div>
       ) : null}
 
-      <SelectionBar
-        mode={selection.mode}
-        count={selection.count}
-        total={count.value}
-        labels={labels}
-        onSelectAllMatching={() =>
-          selection.selectAllMatchingFilter({
-            total: count.value,
-            filter: filterDescription ?? '',
-          })
-        }
-        onClear={selection.clear}
-        actions={bulkActions}
-      />
+      {/* Bez výběru se pruh nekreslí vůbec. Kdyby zůstal, hlásil by „Nevybráno nic"
+          nad tabulkou, ve které se vybírat nedá. */}
+      {selectable ? (
+        <SelectionBar
+          mode={selection.mode}
+          count={selection.count}
+          total={count.value}
+          labels={labels}
+          onSelectAllMatching={
+            canSelectAllMatching
+              ? () =>
+                  selection.selectAllMatchingFilter({
+                    total: count.value,
+                    filter: filterDescription ?? '',
+                  })
+              : undefined
+          }
+          onClear={selection.clear}
+          actions={bulkActions}
+        />
+      ) : null}
 
       {rows.length === 0 && emptyState ? emptyState : null}
 
@@ -360,16 +490,34 @@ export function DataTable<Row>({
           role="row"
           aria-rowindex={1}
           data-testid="data-table-head"
-          className="sticky top-0 z-[var(--z-sticky)] flex items-center gap-[var(--spacing-stack)] border-b border-border bg-surface-muted px-[var(--spacing-row-x)] py-3"
+          className={cn(
+            'sticky top-0 z-[var(--z-sticky)] flex items-center gap-[var(--spacing-stack)]',
+            'border-b border-border bg-surface-muted px-[var(--spacing-row-x)] py-3',
+            // Na kartách se hlavička láme: zbydou v ní jen zaškrtávátko
+            // s popiskem a tlačítka řazení, tedy to, co se jinak nedá udělat.
+            'max-md:flex-wrap max-md:gap-y-1',
+          )}
         >
-          <span role="columnheader" className="flex w-8 items-center">
-            <Checkbox
-              aria-label={labels.selectAllOnPage}
-              dense
-              checked={selection.allOnPageSelected}
-              onCheckedChange={() => selection.toggleAllOnPage()}
-            />
-          </span>
+          {selectable ? (
+            <span role="columnheader" className="flex w-8 items-center max-md:w-auto max-md:gap-2">
+              <Checkbox
+                aria-label={labels.selectAllOnPage}
+                dense
+                checked={selection.allOnPageSelected}
+                onCheckedChange={() => selection.toggleAllOnPage()}
+              />
+              {/* Na kartách stojí u zaškrtávátka jeho jméno. Bez hlavičky tabulky
+                  by to bylo osamocené zaškrtávátko, u kterého není poznat,
+                  co zaškrtne. Na mřížce ho nese sloupec, takže se skrývá.
+
+                  NENÍ to `meta-caps` jako ostatní hlavičky: verzálky se lámou
+                  do dvou řádků a celá věta („Vybrat všechny kontakty na této
+                  stránce") pak nad tabulkou křičí víc než její obsah. */}
+              <span aria-hidden className="hidden text-sm text-text-muted max-md:inline">
+                {labels.selectAllOnPage}
+              </span>
+            </span>
+          ) : null}
           {visibleColumns.map((column) => (
             <span
               key={column.id}
@@ -381,8 +529,22 @@ export function DataTable<Row>({
                     : 'descending'
                   : undefined
               }
-              className="meta-caps flex-1 text-text-muted"
-              style={column.width ? { width: column.width, flex: 'none' } : undefined}
+              className={cn(
+                'meta-caps flex-1 text-text-muted',
+                // NÁZVY SLOUPCŮ SE NA KARTÁCH SKRÝVAJÍ `sr-only`, ne `hidden`.
+                // Karta má název u každé hodnoty, takže vidět být nemusí, ale
+                // `display: none` by je vzalo i z přístupnostního stromu
+                // a čtečka by v mřížce ztratila hlavičky sloupců.
+                //
+                // VÝJIMKA JE ŘAZENÍ: tlačítko řazení je jediná cesta, jak
+                // tabulku seřadit, a `sr-only` prvek se nedá stisknout prstem.
+                // Řaditelné sloupce proto na kartách zůstávají vidět a lámou
+                // se do řádku pod zaškrtávátkem.
+                column.sortable && order ? 'max-md:flex-none' : 'max-md:sr-only',
+              )}
+              // Pevná šířka sloupce na kartách NEPLATÍ. Je to vnitřní styl,
+              // takže ji třídou přebít nejde a musí se vynechat rovnou.
+              style={!cardMode && column.width ? { width: column.width, flex: 'none' } : undefined}
             >
               {column.sortable && order ? (
                 <button
@@ -447,35 +609,146 @@ export function DataTable<Row>({
                 className={cn(
                   'flex items-center gap-[var(--spacing-stack)] border-b border-border last:border-b-0',
                   'px-[var(--spacing-row-x)] py-[var(--spacing-row-y)]',
+                  // KARTA. První řádek nese SÁM identifikátor, doplňkové údaje
+                  // jsou pod ním jako dvojice popisek a hodnota. Zalomení dělá
+                  // `flex-wrap`, pořadí `order` u buněk níž; DOM zůstává stejný,
+                  // aby si čtečka i pohyb klávesnicí zachovaly pořadí sloupců.
+                  'max-md:flex-wrap max-md:items-start max-md:gap-y-1.5 max-md:py-[var(--spacing-stack)]',
+                  // MÍSTO PRO NABÍDKU V PRAVÉM HORNÍM ROHU. Nabídka je na kartě
+                  // mimo tok (`absolute` níž), aby vedle identifikátoru nestálo
+                  // nic a přesto byla vždycky na stejném místě. Vnitřní okraj
+                  // vpravo je to jediné, co jí drží místo, jinak by pod ni
+                  // dlouhá adresa podtekla.
+                  'max-md:relative max-md:pr-[calc(var(--size-target-min)+var(--spacing-inline))]',
                   selection.isSelected(id)
                     ? 'bg-accent-surface'
                     : 'bg-surface hover:bg-surface-muted',
                 )}
               >
-                <span role="gridcell" className="flex w-8 items-center">
-                  <Checkbox
-                    aria-label={labels.selectRow}
-                    dense
-                    checked={selection.isSelected(id)}
-                    onClick={(event) => {
-                      if (event.shiftKey) {
-                        event.preventDefault();
-                        selection.selectRange(id);
-                      }
-                    }}
-                    onCheckedChange={() => selection.toggle(id)}
-                  />
-                </span>
-                {visibleColumns.map((column) => (
+                {selectable ? (
                   <span
-                    key={column.id}
                     role="gridcell"
-                    className="min-w-0 flex-1 text-ui text-text"
-                    style={column.width ? { width: column.width, flex: 'none' } : undefined}
+                    className="flex w-8 items-center max-md:self-start max-md:pt-1"
                   >
-                    {column.cell(row)}
+                    <Checkbox
+                      aria-label={labels.selectRow}
+                      dense
+                      checked={selection.isSelected(id)}
+                      onClick={(event) => {
+                        if (event.shiftKey) {
+                          event.preventDefault();
+                          selection.selectRange(id);
+                        }
+                      }}
+                      onCheckedChange={() => selection.toggle(id)}
+                    />
                   </span>
-                ))}
+                ) : null}
+                {visibleColumns.map((column) => {
+                  const role = roles[column.id] ?? 'hidden';
+                  const content = column.cell(row);
+                  /*
+                   * PRÁZDNÁ HODNOTA SE NA KARTĚ NEKRESLÍ VŮBEC, ani jako
+                   * popisek s prázdnem za ním. Kontakt bez jména měl na kartě
+                   * řádek „JMÉNO" a za ním nic, což vypadá jako chybějící
+                   * data, ne jako nevyplněný údaj. Karta se má u takového
+                   * kontaktu smrsknout.
+                   *
+                   * Poznáme jen prázdnotu, kterou vidět je: `null`, `undefined`
+                   * a prázdný řetězec, tedy přesně to, co buňka vrací, když
+                   * hodnota chybí. Element, který se vykreslí naprázdno, poznat
+                   * nejde a je to v pořádku: takový sloupec by měl vracet
+                   * `null`, ne prázdný `<span>`.
+                   */
+                  const emptyOnCard =
+                    content === null ||
+                    content === undefined ||
+                    content === false ||
+                    (typeof content === 'string' && content.trim() === '');
+                  return (
+                    <span
+                      key={column.id}
+                      role="gridcell"
+                      className={cn(
+                        'min-w-0 flex-1 text-ui text-text',
+                        role === 'primary' &&
+                          cn(
+                            // IDENTIFIKÁTOR MÁ NA KARTĚ CELÝ PRVNÍ ŘÁDEK SÁM PRO
+                            // SEBE. Vedle něj nestojí ani odznak stavu, ani
+                            // nabídka: je to údaj, podle kterého člověk řádek
+                            // hledá, a všechno ostatní ho jen zužuje.
+                            'max-md:order-1 max-md:basis-full',
+                            'max-md:flex max-md:min-h-[var(--size-target-min)] max-md:items-center',
+                            'max-md:text-base max-md:font-semibold',
+                            // NIKDY SE NEUŘÍZNE TŘEMI TEČKAMI, zalomí se.
+                            // Zkrácená adresa je k nepoznání od jiné adresy
+                            // téhož zákazníka, a přesně podle ní člověk řádek
+                            // hledá. `anywhere` je u adres nutné: nemají mezeru,
+                            // takže se běžným zalomením nezlomí vůbec.
+                            'max-md:[overflow-wrap:anywhere]',
+                            // Zkrácení si nese sama buňka od obrazovky
+                            // (`truncate` na odkazu), takže se ruší i uvnitř.
+                            // Bez tohohle by pravidlo výš platilo jen na obal
+                            // a text by se pořád uřízl.
+                            '[&_*]:max-md:overflow-visible [&_*]:max-md:whitespace-normal',
+                            '[&_*]:max-md:[overflow-wrap:anywhere] [&_*]:max-md:max-w-full',
+                            // Klikací plocha odkazu uvnitř: výška řádku textu
+                            // je 22 px, tedy polovina toho, do čeho se dá
+                            // trefit prstem.
+                            '[&>a]:max-md:flex [&>a]:max-md:min-h-[var(--size-target-min)] [&>a]:max-md:items-center',
+                            '[&>button]:max-md:flex [&>button]:max-md:min-h-[var(--size-target-min)] [&>button]:max-md:items-center',
+                          ),
+                        // NABÍDKA JE V PRAVÉM HORNÍM ROHU KARTY a je mimo tok,
+                        // aby vedle identifikátoru nestála. Je to jediná cesta
+                        // k akcím řádku, takže musí být vždycky na témž místě
+                        // a nesmí ji odsunout obsah.
+                        role === 'actions' &&
+                          cn(
+                            'max-md:absolute max-md:top-[var(--spacing-inline)] max-md:right-[var(--spacing-inline)]',
+                            'max-md:order-2 max-md:w-auto max-md:flex-none',
+                          ),
+                        // Doplňkový údaj má na kartě vlastní řádek a před
+                        // hodnotou název sloupce. `basis-full` je to, co ho
+                        // pod první řádek zalomí. Odznak stavu je taky doplňkový
+                        // údaj, takže stojí AŽ ZA identifikátorem, ne vedle něj.
+                        role === 'secondary' &&
+                          'max-md:order-3 max-md:flex max-md:basis-full max-md:items-baseline max-md:gap-2',
+                        // Skrytý sloupec se z karty ODSTRANÍ, neschová se
+                        // `sr-only`. V buňce může být tlačítko (potvrzení,
+                        // odznak s akcí) a `sr-only` prvek zůstává zaostřitelný:
+                        // uživatel s klávesnicí by tabuloval do ovládání,
+                        // které není vidět. Údaj zůstává dostupný v detailu
+                        // záznamu a v nastavení sloupců nad tabulkou.
+                        role === 'hidden' && 'max-md:hidden',
+                        // Prázdný doplňkový údaj z karty mizí i s popiskem.
+                        role === 'secondary' && emptyOnCard && 'max-md:hidden',
+                        // Totéž pro prázdnotu, kterou React poznat nemůže:
+                        // buňka často vrací `<span>{row.name ?? ''}</span>`,
+                        // tedy element, který se vykreslí naprázdno. Rozhodne
+                        // o tom až prohlížeč, takže to musí umět CSS.
+                        role === 'secondary' && '[&:has(>*:last-child:empty)]:max-md:hidden',
+                      )}
+                      style={
+                        !cardMode && column.width
+                          ? { width: column.width, flex: 'none' }
+                          : undefined
+                      }
+                    >
+                      {role === 'secondary' && !emptyOnCard ? (
+                        // `aria-hidden`, protože tentýž název nese `columnheader`
+                        // v hlavičce, kterou čtečka pořád vidí (je `sr-only`,
+                        // ne `hidden`). Bez toho by se přečetl dvakrát.
+                        <span
+                          aria-hidden
+                          className="meta-caps hidden shrink-0 text-text-muted max-md:inline"
+                        >
+                          {column.header}
+                        </span>
+                      ) : null}
+                      {content}
+                    </span>
+                  );
+                })}
               </div>
             );
           })}

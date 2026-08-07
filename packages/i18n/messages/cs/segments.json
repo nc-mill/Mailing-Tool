@@ -32,7 +32,7 @@
   "neverCounted": "Ještě jsme nepočítali",
   "recount": "Přepočítat",
   "estimated": "Přibližně {count} kontaktů.",
-  "countExactly": "Spočítat přesně",
+  "estimatedWhy": "Přesné číslo by trvalo dýl, než je pro náhled povolené, tak je tenhle počet odhad. Po uložení se segment přepočítá na pozadí s delším limitem.",
   "notNullHint": "Kontakty, které pole vůbec nemají, sem nespadnou. Použijte podmínku „je prázdné\".",
   "addEmptyCondition": "Přidat i kontakty bez vyplněného pole",
   "builder": {
@@ -252,30 +252,6 @@
     "useCancel": "Zrušit",
     "useFailed": "Segment se nepodařilo založit. Technický detail: {detail}",
     "nameMissing": "Zadejte název segmentu."
-  },
-  "freeze": {
-    "action": "Zmrazit seznam",
-    "explanation": "Seznam zmrazíme, aby se během kampaně neměnil. Kdo se mezitím sám ozve, z úklidu vypadne.",
-    "done": "Zmrazeno, segment má {count} kontaktů."
-  },
-  "cleanup": {
-    "title": "Co uděláme s těmi, kdo se neozvou?",
-    "unsubscribe": "Odhlásit je z odběru",
-    "unsubscribeHint": "Zůstanou v databázi, ale kampaně jim už neposíláme.",
-    "tagOnly": "Jen je označit štítkem",
-    "tagOnlyHint": "Nic se nezmění, jen si je odložíme na později.",
-    "delete": "Smazat je",
-    "deleteHint": "Nenávratně. Může jen vlastník projektu.",
-    "delayDays": "Za kolik dní",
-    "countdown": "Za {days, plural, =0 {dnešek} one {# den} few {# dny} many {# dne} other {# dní}} se rozhodne o {count} kontaktech.",
-    "warning": "Za {days} dní odhlásíme {count} kontaktů.",
-    "confirmTitle": "Za {days, plural, =0 {dnešek} one {# den} few {# dny} many {# dne} other {# dní}} odhlásíme {count} kontaktů",
-    "confirmBody": "Reaktivační kampaň {campaign} odešla {sentAt} na {sent} lidí. Do dneška se ozvalo {responded}. Zbývajících {count} odhlásíme {when}. Odhlášení nejde vzít zpět. Kdo se bude chtít vrátit, musí se přihlásit znovu sám.",
-    "download": "Stáhnout těch {count} kontaktů",
-    "review": "Zkontrolovat",
-    "postpone": "Odložit o 14 dní",
-    "abort": "Zrušit úklid",
-    "typeName": "Pro potvrzení opište název segmentu"
   },
   "audience": {
     "title": "Publikum kampaně",

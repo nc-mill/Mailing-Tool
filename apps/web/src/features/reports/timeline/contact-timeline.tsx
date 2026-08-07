@@ -174,6 +174,10 @@ export function ContactTimeline({ contactId }: { contactId: string }) {
     collapseCluster: t('timeline.collapseCluster'),
     expanded: t('timeline.expanded'),
     collapsed: t('timeline.collapsed'),
+    // Jméno trvalé kotvy pro čtečku. Do 7. 8. 2026 tam byl identifikátor
+    // z databáze, který čtečka hláskovala po znacích.
+    eventAnchor: ({ what, when }: { what: string; when: string }) =>
+      t('timeline.eventAnchor', { what, when }),
   };
 
   /**

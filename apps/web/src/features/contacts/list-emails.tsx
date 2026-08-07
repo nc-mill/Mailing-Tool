@@ -27,6 +27,19 @@ import {
  * POTVRZOVACÍ E-MAIL NEMÁ VYPÍNAČ a je to schválně: na seznamu s dvojím
  * potvrzením je to jediná cesta, jak přihlášení dokončit. Kdo ho posílat
  * nechce, přepne seznam na jeden krok, což je o kus výš na téže obrazovce.
+ *
+ * PROTIMLUV, KTERÝ TU BYL DO 7. 8. 2026. Karta tvrdila „nejde vypnout"
+ * i u seznamu s jednoduchým přihlášením („Přihlásit rovnou"), kde se
+ * potvrzovací e-mail při běžném přihlášení VŮBEC NEPOSÍLÁ. Uživatel tak četl
+ * na jedné obrazovce dvě věty, které si odporují, a nemohl z ní poznat, co se
+ * doopravdy stane. Zdrojem pravdy je nastavení `opt_in`, proto ho karta dostává
+ * z nadřazené obrazovky a mění se rovnou s přepnutím, bez znovunačtení.
+ *
+ * NA JEDNODUCHÉM PŘIHLÁŠENÍ SE ALE NEŘÍKÁ „NEPOSÍLÁ SE NIKDY", protože by to
+ * byla nepravda. Stavový automat (`lists/state-machine.ts`) pošle potvrzení
+ * i na single opt-in seznamu ve dvou případech: vrací se někdo, kdo se dřív
+ * odhlásil, a vypršel potvrzovací odkaz. Obojí je ochrana příjemce a vypnout to
+ * nejde, takže to karta říká rovnou.
  */
 
 export type ListEmailKind = 'confirmation' | 'welcome' | 'goodbye';
@@ -52,6 +65,7 @@ export function ListEmails({
   listName,
   language,
   templatesPath,
+  optIn,
   emails,
 }: {
   workspaceId: string;
@@ -59,6 +73,13 @@ export function ListEmails({
   listName: string;
   language: 'cs' | 'en';
   templatesPath: string;
+  /**
+   * Způsob přihlášení do seznamu. Rozhoduje o tom, co karta o potvrzovacím
+   * e-mailu tvrdí, viz hlavička souboru. Předává se ŽIVÁ hodnota ze stavu
+   * nadřazené obrazovky, ne ta z posledního načtení: přepnutí přepínače o kus
+   * výš musí být na kartě vidět hned.
+   */
+  optIn: 'single' | 'double';
   emails: ListEmailState[];
 }) {
   const t = useTranslations('contacts');
@@ -139,15 +160,21 @@ export function ListEmails({
         >
           <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
             <h3 className="text-base font-semibold text-text">{t(`lists.email_${email.kind}`)}</h3>
-            {/* Potvrzovací e-mail vypínač nemá a mít nesmí. Odznak to říká na
-                první pohled, aby se vypínač nehledal. */}
+            {/* Potvrzovací e-mail vypínač nemá a mít nesmí. Odznak říká, co
+                se s ním doopravdy děje, aby se vypínač nehledal. Na jednoduchém
+                přihlášení je to jiná věta, protože jde o jiný stav: e-mail se
+                při běžném přihlášení neposílá. */}
             {email.kind === 'confirmation' ? (
-              <Badge tone="success" className="ml-auto">
-                {t('lists.emailCannotDisable')}
+              <Badge tone={optIn === 'single' ? 'neutral' : 'success'} className="ml-auto">
+                {optIn === 'single' ? t('lists.emailOnlyOnReturn') : t('lists.emailCannotDisable')}
               </Badge>
             ) : null}
           </div>
-          <p className="text-meta text-text-muted">{t(`lists.email_${email.kind}_hint`)}</p>
+          <p className="text-meta text-text-muted">
+            {email.kind === 'confirmation' && optIn === 'single'
+              ? t('lists.email_confirmation_hint_single')
+              : t(`lists.email_${email.kind}_hint`)}
+          </p>
 
           {email.kind === 'confirmation' ? null : (
             <div className="flex items-center gap-3">

@@ -16,6 +16,16 @@
  * nezpracuje. Alternativa, tedy přijímat neověřené zprávy, by znamenala, že
  * kdokoliv na světě může projektu zapsat odraz na libovolnou adresu a tím ji
  * dostat na seznam blokovaných.
+ *
+ * POŽADAVEK PRO TOHO, KDO DODĚLÁ ZPRACOVÁNÍ (riziko RZ3 plánu systémové pošty):
+ * událost, ke které se nenajde zpráva, se musí ZAHODIT, ne shodit dávku. Od
+ * doplnění odesílání systémové pošty přes SES odchází z instalace pošta, která
+ * v `messages` řádek NEMÁ a mít nebude (`contact_id` je NOT NULL a příjemce není
+ * kontakt). Odraz nebo stížnost na pozvánku tedy přijde přes SNS a nespáruje se
+ * s ničím. Systémová cesta proto ani neposílá message tagy `ml_msg` a `ml_mday`
+ * (`platform/system-mail-ses.ts`), takže taková událost nenese žádný identifikátor
+ * a od neznámé zprávy se nedá odlišit. Dnes to nemá jak spadnout, protože
+ * `setSnsWebhookDeps` nikdo nevolá a fronta `provider_event.process` obsluhu nemá.
  */
 
 export type SnsVerdict = { ok: true } | { ok: false; reason: string; accept?: boolean };

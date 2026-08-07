@@ -10,7 +10,15 @@ export function Dialog({
   open,
   onOpenChange,
   children,
-  /** Destruktivní dialog nejde zavřít kliknutím mimo (pravidlo 5.3). Esc funguje vždy. */
+  /**
+   * Destruktivní dialog nejde zavřít kliknutím mimo (pravidlo 5.3: „zavírá se
+   * tlačítkem, Esc, kliknutím mimo (jen u nedestruktivních)"). Esc funguje vždy.
+   *
+   * Příznak NEDĚLÁ nic vizuálního: žádnou ikonu, žádný červený rámeček, žádné
+   * zvláštní ohlášení čtečce. Že je akce nebezpečná, říká nadpis, výčet
+   * následků a věta o nevratnosti, ne barva okna (princip P4). Rozlišení
+   * barvou nese jediné místo, potvrzovací tlačítko v `ConfirmDialog`.
+   */
   destructive = false,
   className,
 }: {

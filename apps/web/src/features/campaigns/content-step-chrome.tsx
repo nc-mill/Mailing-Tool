@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@mlain/ui/components/dropdown-menu';
 import { Input } from '@mlain/ui/components/input';
+import { passwordManagerOptOut } from '@mlain/ui/lib/password-manager';
 import { Label } from '@mlain/ui/components/label';
 import { PageHeader } from '@mlain/ui/components/page-header';
 import { Copy, Save, Search } from '@mlain/ui/icons';
@@ -365,8 +366,14 @@ export function CampaignContentChrome({
                               aria-hidden
                               className="icon-sm pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-text-muted"
                             />
+                            {/* Do hledání v knihovně nepatří uložené heslo.
+                                Nabídka správce hesel by zakryla první nalezené
+                                šablony. Podrobnosti
+                                v `@mlain/ui/lib/password-manager`. */}
                             <Input
                               ref={searchRef}
+                              autoComplete="off"
+                              {...passwordManagerOptOut}
                               value={query}
                               onChange={(event) => setQuery(event.target.value)}
                               aria-label={tContent('useLibrarySearch')}
@@ -494,6 +501,8 @@ export function CampaignContentChrome({
             if (!open) setChosen(null);
           }}
           level="N2"
+          // Rozepsaný obsah kampaně se přepíše šablonou a zpátky ho nic nevrátí.
+          destructive
           irreversible
           title={tContent('confirmTitle')}
           consequences={[

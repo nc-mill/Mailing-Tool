@@ -106,17 +106,47 @@ se to až ve chvíli, kdy je potřeba.
 Po ověření nesmí zůstat žádná databáze `ml_verify_%`. Když zůstane, ověření
 spadlo uprostřed a je to nález, ne kosmetika.
 
-> **Nález k 2026-08-06, ODVOZENÝ ZE ZDROJOVÉHO KÓDU, ne ověřený spuštěním.**
-> **Nespoléhejte se na nedělní automatické ověření.** Úloha
-> `platform.backup_verify` volá `verifyBackup()` bez cesty k migracím
-> (`packages/core/src/ops/jobs/backup-jobs.ts`), takže se použije výchozí
-> odvození vůči zabundlovanému workeru (`/app/apps/worker/dist/main.js`) a
-> ukáže na `/app/apps/worker/migrations`, kde nic není. Ruční
-> `mlain backup verify` tímhle netrpí, cestu si předává sám
-> (`apps/cli/src/migrations-folder.ts`).
+> **Nález z 6. 8. 2026 je OPRAVENÝ, tenhle odstavec ho drží jen jako historii.**
+> Znělo to tak, že se na nedělní ověření nedá spoléhat, protože úloha volala
+> `verifyBackup()` bez cesty k migracím a padala na ENOENT. Cesta dnes není
+> volitelný vstup od volajícího: skládá ji `resolveMigrationsFolder()`
+> a `runMigrations` ji vyžaduje (`packages/core/src/ops/backup-verify.ts`),
+> takže obě cesty, ruční příkaz i nedělní úloha, používají tutéž.
 >
-> Prakticky: **jednou za čas si zálohu ověřte ručně.** Jestli nedělní úloha
-> běží, se pozná v `audit_log` u akce `backup.verified`.
+> **Co ověřené NENÍ:** že se ta cesta správně odvodí v sestaveném produkčním
+> obrazu. To se dá vyzkoušet jedině proti němu, ne testem. Do té doby platí:
+> **jednou za čas si zálohu ověřte ručně** a podívejte se na nálezy doktoru
+> z kapitoly 6.1, protože ty tenhle případ chytí (`backup_verify_failed`,
+> respektive `no_backup_verify_yet`).
+
+### 6.1 Jak se pozná, že ověřování běží
+
+Od 7. 8. 2026 se na to nemusíte ptát sami, dívá se na to `mlain doctor`:
+
+| Nález | Kdy | Co s tím |
+|---|---|---|
+| `no_backup_verify_yet` | instalace zálohuje **přes dva týdny** a v auditu není jediný záznam `backup.verified` | neběží worker, nebo mu chybí `DATABASE_URL_MIGRATOR`; ověřte ručně |
+| `backup_verify_stale` | poslední ověření je starší než **dva týdny** | podívejte se do logu workeru, proč `platform.backup_verify` selhala |
+| `backup_verify_failed` | poslední ověření má v metadatech `ok: false` | z poslední zálohy se **nepodařilo obnovit**; důvody jsou v metadatech pod `problems` |
+
+Všechno jsou to **varování**, takže `mlain doctor` kvůli nim skončí nulou;
+nenulový kód dostanete s `--strict`.
+
+Tři nálezy, ne dva, a je to podstatné: úloha zapisuje auditní záznam **i tehdy,
+když ověření neprošlo**. Instalace, které se ověření každou neděli nepovede, má
+tedy záznam čerstvý a podle stáří by vypadala v pořádku. Přesně tenhle případ
+nastane u nálezu z předchozího odstavce, tedy u chybějící cesty k migracím.
+
+Instalace, která ještě nikdy nezálohovala, tenhle nález **nedostane**: patří
+`no_backup_yet` z kontroly úložiště, a dvě věty o jednom problému znamenají, že
+se přestanou číst obě. Stejně tak mlčí čerstvá instalace, protože ověření tiká
+v neděli a šest dní po nasazení je „ještě se neověřovalo" správný stav.
+
+> **Proč to nehlídá hlídač ticha ve workeru.** `apps/worker/src/cron-watch.ts`
+> pozná frontu, do které se přestalo tikat, jenže jen potud, pokud je to vidět
+> v tabulce úloh. pg-boss maže dokončené úlohy po sedmi dnech a tahle fronta
+> tiká **týdně**, takže delší ticho než týden se z tabulky doložit nedá.
+> V auditu ten strop není: `AUDIT_RETENTION_MONTHS` drží záznamy měsíce.
 
 ## 7. Obnova a její čtyři brány
 

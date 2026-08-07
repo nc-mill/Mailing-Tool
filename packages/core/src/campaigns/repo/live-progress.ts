@@ -153,3 +153,22 @@ export async function readLiveDelivery(
     };
   });
 }
+
+/**
+ * Čas HODIN DATABÁZE.
+ *
+ * Existuje proto, že uzávěrky v tomhle projektu píše databáze (`SET release_at = now()`),
+ * kdežto vyhodnocuje je aplikace. Dokud se porovnávaly s `new Date()`, míchaly se dvoje
+ * hodiny: Postgres běží v kontejneru a jeho čas se od hostitele odchyluje o desítky
+ * milisekund. U okna na vzetí odeslání zpět to stačilo na to, aby se hned po „Odeslat teď"
+ * ukázala zbývající sekunda, kterou už server odmítal.
+ *
+ * Je to JEDEN dotaz bez tabulky, takže se dá pověsit vedle ostatních čtení do `Promise.all`
+ * a odezvu neprodlouží.
+ */
+export async function databaseNow(ctx: WorkspaceContext): Promise<Date> {
+  return withWorkspace(ctx, async (tx) => {
+    const { rows } = await tx.execute<{ now: string }>(rawSql(`SELECT now() AS now`, []));
+    return new Date(rows[0]!.now);
+  });
+}

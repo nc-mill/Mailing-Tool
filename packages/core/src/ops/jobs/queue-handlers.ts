@@ -1,8 +1,8 @@
 import { loadConfig } from '../../config/index';
-import { once, perJob } from '../../queues';
+import { once } from '../../queues';
 import { keyringEnvFromConfig } from '../keyring';
-import { rebuildEngagement } from '../rebuild-engagement';
 import { backupJob, backupVerifyJob, type BackupJobContext } from './backup-jobs';
+import { partitionMaintenanceJob } from './partition-jobs';
 
 /**
  * Rejstřík obsluh provozní domény, který hledá codegen workeru (rozhodnutí D4).
@@ -59,52 +59,19 @@ function backupContext(): BackupJobContext {
   };
 }
 
-/**
- * Náklad `tracking.rebuild_engagement`.
+/*
+ * OBSLUHA `tracking.rebuild_engagement` TU UŽ NENÍ, a odešla i s frontou.
  *
- * Registr front deklaruje pole `workspace_id` a `batch_size`, doménové joby
- * kontaktů a kampaní ale posílají `workspaceId`. Producent téhle fronty
- * v repozitáři zatím není (přepočet se dnes spouští jen z CLI `mlain`), takže
- * se přijímají OBA tvary. Je to levnější než čekat, až se první skutečná úloha
- * rozejde s registrem a přepočet tiše spadne na `undefined` v UUID.
- */
-type RebuildEngagementPayload = {
-  workspace_id?: string;
-  workspaceId?: string;
-  batch_size?: number;
-  batchSize?: number;
-};
-
-function requireWorkspaceId(payload: RebuildEngagementPayload): string {
-  const workspaceId = payload.workspace_id ?? payload.workspaceId;
-  if (typeof workspaceId !== 'string' || workspaceId.length === 0) {
-    throw new Error(
-      'Fronta tracking.rebuild_engagement dostala náklad bez workspace_id. ' +
-        'Přepočet běží nad jedním projektem a bez něj by pod aplikační rolí zpracoval ' +
-        'nula kontaktů a ohlásil hotovo.',
-    );
-  }
-  return workspaceId;
-}
-
-/**
- * Připojení pro přepočet zapojení.
+ * Rekonstrukci `contact_engagement` dělá příkaz `mlain rebuild-engagement`, který
+ * volá `ops/rebuild-engagement.ts` přímo. Obsluha vedle něj byla cesta, kterou
+ * nikdo nikdy nespustil, a bylo to na ní vidět: přijímala náklad ve dvou tvarech
+ * (`workspace_id` i `workspaceId`) naslepo, protože se nedalo ověřit, který z nich
+ * by producent posílal. Kontrolu na chybějící `DATABASE_URL_MIGRATOR` má CLI
+ * vlastní (`apps/cli/src/commands/rebuild-engagement.ts`) a vrací u ní exit kód,
+ * ne výjimku, takže se odstraněním téhle nic neztratilo.
  *
- * MUSÍ to být migrátorské URL. `contacts`, `contact_engagement`
- * i `message_engagement` mají `ws_isolation`, takže pod `mlain_app` by přepočet
- * prošel, zpracoval nula kontaktů a ohlásil hotovo. Chybějící proměnná se proto
- * hlásí výjimkou, ne tichým během.
+ * Důvod a podmínky případného návratu jsou u náhrobku v registru front.
  */
-function requireAdminUrl(): string {
-  const url = loadConfig().DATABASE_URL_MIGRATOR;
-  if (url === undefined || url.length === 0) {
-    throw new Error(
-      'Přepočet zapojení vyžaduje DATABASE_URL_MIGRATOR. Pod aplikační rolí platí row ' +
-        'level security, přepočet by zpracoval nula kontaktů a ohlásil hotovo.',
-    );
-  }
-  return url;
-}
 
 export const handlers = {
   /**
@@ -124,14 +91,23 @@ export const handlers = {
   'platform.backup_verify': once(async () => {
     await backupVerifyJob(backupContext());
   }),
-
-  'tracking.rebuild_engagement': perJob<RebuildEngagementPayload>(async (job) => {
-    await rebuildEngagement({
-      adminUrl: requireAdminUrl(),
-      workspaceId: requireWorkspaceId(job.data),
-      ...((job.data.batch_size ?? job.data.batchSize)
-        ? { batchSize: (job.data.batch_size ?? job.data.batchSize) as number }
-        : {}),
+  /**
+   * Údržba oddílů, tedy retence odeslané pošty a zakládání oddílů dopředu.
+   * Zdůvodnění, proč to od 7. 8. 2026 dělá worker a ne jenom plánovač
+   * hostitele, je v `partition-jobs.ts`.
+   *
+   * `once` ze stejného důvodu jako u zálohy: dávka dvou tiků znamená dvě
+   * zmeškané noci, ne dvakrát tolik práce. Druhý průchod by nenašel nic,
+   * protože první už oddíly založil i zahodil.
+   *
+   * Konfigurace se čte při KAŽDÉM běhu, ne při načtení modulu. `loadConfig()`
+   * na úrovni modulu by shodila každý jednotkový test, který se souboru jen
+   * dotkne.
+   */
+  'platform.maintain_partitions': once(async () => {
+    const config = loadConfig();
+    await partitionMaintenanceJob({
+      config: { DATABASE_URL_MIGRATOR: config.DATABASE_URL_MIGRATOR },
     });
   }),
 } as const;

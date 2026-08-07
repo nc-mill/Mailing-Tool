@@ -34,6 +34,11 @@ export function EditorHeader(props: {
   /** Obsah kampaně se v hlavičce jmenuje obsahem kampaně, ne šablonou. */
   contentKind?: 'template' | 'campaign' | undefined;
   /**
+   * Profil kontroly. Hlavička ho potřebuje kvůli jediné věci: veřejná stránka
+   * se NEODESÍLÁ, takže na ní nesmí být tlačítko „Poslat test".
+   */
+  templateKind?: string | undefined;
+  /**
    * Název šablony k úpravě. Nepovinný SCHVÁLNĚ: pole se ukáže jen tam, kde
    * přejmenování něco znamená, tedy u šablony, kterou uživatel vidí v knihovně.
    * Kdo prop nepošle, dostane hlavičku beze změny. Důvod je u `templateName`
@@ -194,15 +199,24 @@ export function EditorHeader(props: {
           vyhrazená hlavní akci obrazovky se jménem. U editoru uvnitř kampaně
           je hlavní akcí „Pokračovat", takže tam se nic neztrácí.
         */}
-        <Tooltip content={t('header.testSend')}>
-          <IconButton
-            variant="solid"
-            label={t('header.testSend')}
-            data-testid="editor-test-send"
-            icon={<MailCheck aria-hidden className="icon-md" />}
-            onClick={props.onTestSend}
-          />
-        </Tooltip>
+        {/*
+          ZKUŠEBNÍ ODESLÁNÍ JEN U E-MAILU. Veřejná stránka se neodesílá nikam:
+          otevírá se v prohlížeči z odkazu, takže „Poslat test" na ní slibuje
+          akci, která nemůže nastat. Nahlásil zadavatel 7. 8. 2026 spolu
+          s e-mailovými chybami v panelu nálezů; je to táž vada, tedy editor
+          stránky, který se tváří jako editor e-mailu.
+        */}
+        {props.templateKind === 'page' ? null : (
+          <Tooltip content={t('header.testSend')}>
+            <IconButton
+              variant="solid"
+              label={t('header.testSend')}
+              data-testid="editor-test-send"
+              icon={<MailCheck aria-hidden className="icon-md" />}
+              onClick={props.onTestSend}
+            />
+          </Tooltip>
+        )}
         {/*
           NÁVRAT DO KAMPANĚ STOJÍ AŽ NAKONEC, tedy úplně vpravo. Editor sám
           o kampaních nic neví a vědět nemá: dostane jen adresu, kam se po

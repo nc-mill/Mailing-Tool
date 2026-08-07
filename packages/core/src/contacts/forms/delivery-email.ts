@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import * as schema from '@mlain/db/schema';
 import { prepareRenderData } from '@mlain/contracts/liquid/prepare-render-data';
 import { hasContentBlocks } from '@mlain/emails/document/content-stats';
@@ -9,6 +9,10 @@ import type { WorkspaceContext } from '../../identity/types';
 import { compileTemplate } from '../../templates/compile';
 import { findTemplateById, validationProfileFor } from '../../templates/repository';
 import { contactPreviewData } from '../../templates/api/preview-data';
+import {
+  resolveSenderIdentity,
+  type ResolvedSenderIdentity,
+} from '../../sender-identities/resolve';
 import { withWorkspace, type Tx } from '../../tx';
 import { getFieldCatalog } from '../fields/catalog';
 import type { FormRow } from '../repo/forms';
@@ -114,7 +118,7 @@ export async function sendFormDeliveryEmail(
     // tuhle kontrolu nikdo jiný neudělá.
     if (!hasContentBlocks(document)) return 'template_empty';
 
-    const identity = await senderIdentity(tx, ctx);
+    const identity = await resolveSenderIdentity(tx, ctx);
     if (identity === null) return 'sending_not_configured';
 
     const compiled = await compileTemplate({
@@ -179,54 +183,6 @@ function subjectFor(fallback: string, document: Document): string {
   return (fromDocument !== '' ? fromDocument : fallback).slice(0, 400);
 }
 
-type SenderIdentity = {
-  providerId: string;
-  senderDomainId: string | null;
-  fromName: string;
-  fromEmail: string;
-  replyTo: string | null;
-};
-
-/**
- * Odesílací identita skryté kampaně. Bere se z POSLEDNÍ kampaně projektu, která
- * ji má vyplněnou, přesně jako u testovacího odeslání: projekt nemá nikde uloženou
- * výchozí identitu a vymýšlet lokální část adresy by znamenalo poslat e-mail
- * z adresy, kterou nikdo nezaložil.
- *
- * Vrací `null` místo výjimky, protože „projekt ještě nemá nastavené odesílání"
- * je stav, ne porucha, a přihlášení z formuláře kvůli němu nesmí spadnout.
- */
-async function senderIdentity(tx: Tx, ctx: WorkspaceContext): Promise<SenderIdentity | null> {
-  const [row] = await tx
-    .select({
-      providerId: schema.campaigns.providerId,
-      senderDomainId: schema.campaigns.senderDomainId,
-      fromName: schema.campaigns.fromName,
-      fromEmail: schema.campaigns.fromEmail,
-      replyTo: schema.campaigns.replyTo,
-    })
-    .from(schema.campaigns)
-    .where(
-      and(
-        wsEq(ctx, schema.campaigns),
-        isNull(schema.campaigns.deletedAt),
-        eq(schema.campaigns.kind, 'campaign'),
-        isNotNull(schema.campaigns.providerId),
-        ne(schema.campaigns.fromEmail, ''),
-      ),
-    )
-    .orderBy(desc(schema.campaigns.updatedAt))
-    .limit(1);
-  if (!row?.providerId) return null;
-  return {
-    providerId: row.providerId,
-    senderDomainId: row.senderDomainId,
-    fromName: row.fromName,
-    fromEmail: row.fromEmail,
-    replyTo: row.replyTo,
-  };
-}
-
 /**
  * Skrytá kampaň je JEDNA NA FORMULÁŘ a přepisuje se při každém odeslání.
  *
@@ -250,7 +206,7 @@ async function upsertSystemCampaign(
     html: string;
     text: string;
     compileMeta: unknown;
-    identity: SenderIdentity;
+    identity: ResolvedSenderIdentity;
     now: Date;
   },
 ): Promise<string> {

@@ -1,5 +1,6 @@
 import base from './packages/config/eslint/index.js';
 import noRawFetchInBrand from './packages/core/eslint-rules/no-raw-fetch-in-brand.cjs';
+import noDisabledPrimaryAction from './packages/ui/eslint-rules/no-disabled-primary-action.cjs';
 
 /**
  * Kritérium 56 plánu P15: v `packages/core/src/brand` a `packages/core/src/templates`
@@ -50,5 +51,26 @@ export default [
     files: ['packages/core/src/brand/**/*.ts', 'packages/core/src/templates/**/*.ts'],
     plugins: { mlain: { rules: { 'no-raw-fetch-in-brand': noRawFetchInBrand } } },
     rules: { 'mlain/no-raw-fetch-in-brand': 'error' },
+  },
+  {
+    /**
+     * Princip P5 a kritérium 18: primární ani destruktivní akce nesmí být mrtvá.
+     * Místo `disabled` patří `unavailableReason`, které tlačítko nechá funkční
+     * a vysvětlí, proč akci teď neprovede.
+     *
+     * PRAVIDLO EXISTOVALO I S TESTEM, ALE NIKDY SE NESPUSTILO: `packages/ui`
+     * ho vydává v `eslint-rules/index.cjs`, jenže žádná konfigurace ho
+     * nezaregistrovala, takže lint zeleně přecházel i zašedlé hlavní akce.
+     * Připojuje se tady ze stejného důvodu jako pravidlo nad ním: `@mlain/config`
+     * má v `PACKAGE_GRAPH` prázdný seznam závislostí, takže by import
+     * z `packages/ui` shodil `import/no-restricted-paths` na tomtéž běhu.
+     *
+     * Kontroluje se JEN `.tsx`: `disabled` je atribut prvku, mimo JSX se
+     * vyskytnout nemůže.
+     */
+    name: 'mlain/no-disabled-primary-action',
+    files: ['apps/web/src/**/*.tsx', 'packages/ui/src/**/*.tsx'],
+    plugins: { mlain: { rules: { 'no-disabled-primary-action': noDisabledPrimaryAction } } },
+    rules: { 'mlain/no-disabled-primary-action': 'error' },
   },
 ];

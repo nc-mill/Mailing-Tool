@@ -7,6 +7,7 @@ import { Button } from '@mlain/ui/components/button';
 import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Checkbox } from '@mlain/ui/components/checkbox';
 import { Input } from '@mlain/ui/components/input';
+import { passwordManagerOptOut } from '@mlain/ui/lib/password-manager';
 import { Label } from '@mlain/ui/components/label';
 import { PageHeader } from '@mlain/ui/components/page-header';
 import { Users } from '@mlain/ui/icons';
@@ -21,7 +22,9 @@ import { firstErrorField, type FieldErrors } from '@/lib/errors/field-errors';
 import { IDLE, type ActionState } from '@/lib/feedback/action-result';
 import { SettingsProblem } from '@/features/settings/settings-problem';
 import { NO_SELECTION } from './no-selection';
-import { unscheduleCampaignAction } from './actions';
+import { renameCampaignAction, unscheduleCampaignAction } from './actions';
+import { CampaignNameField } from './campaign-name-field';
+import { canRenameCampaign } from './campaign-rename';
 import { SenderIdentityPicker, type SenderIdentityOption } from './sender-identity-picker';
 import { encodeSenderIdentityFingerprints } from './sender-fingerprint';
 import {
@@ -476,6 +479,12 @@ export function CampaignSettingsForm({
   const formRef = useRef<HTMLFormElement>(null);
   /** Adresa kroku obsahu, na kterou se čeká na potvrzení odchodu bez uložení. */
   const [leavingTo, setLeavingTo] = useState<string | null>(null);
+  /*
+   * Jméno kampaně drží stav, protože se ukládá mimo formulář a mimo serverovou
+   * akci. Bez něj by hlavička po přejmenování ukazovala nové jméno, ale
+   * drobečky pod ní staré, dokud by se stránka nenačetla znovu.
+   */
+  const [name, setName] = useState(campaign.name);
   // Prázdno je JEDEN sdílený objekt, ne `{}` při každém vykreslení. Nový objekt
   // by vypadal jako nová chyba a odvozování kroku níž by se zacyklilo.
   const fieldErrors = state.status === 'error' ? state.fieldErrors : NO_FIELD_ERRORS;
@@ -608,14 +617,50 @@ export function CampaignSettingsForm({
     return (
       <section aria-labelledby="campaign-settings-title" className="flex flex-col">
         <PageHeader
-          title={<span id="campaign-settings-title">{campaign.name}</span>}
+          /*
+            JMÉNO SE UPRAVUJE I TADY, protože přejmenovat se smí ŠIRŠÍ množina
+            stavů, než upravovat obsah.
+
+            Naplánovaná kampaň má obsah zamčený (`canEdit` je `false`, sem se
+            proto dostane), ale `PATCH /campaigns/{id}` u ní `name` pouští
+            (`EDITABLE_WHILE_SCHEDULED`) a krok 1 pole nabízí. Do téhle větve
+            pole nedopadlo a dvě obrazovky téže kampaně se tím lišily v tom, co
+            se na nich dá udělat: v kroku 1 šlo přejmenovat, v kroku 2 ne.
+
+            Rozhoduje `canRenameCampaign`, ne `canEdit`. U stavu, kde
+            přejmenovat opravdu nejde, vydá `CampaignNameField` holý text, což
+            je pořád lepší než pole, které při odchodu z něj vyhodí
+            `campaign_locked`.
+          */
+          title={
+            <span id="campaign-settings-title">
+              <CampaignNameField
+                name={name}
+                canRename={canRenameCampaign(campaign.status)}
+                onRename={async (next) => {
+                  const result = await renameCampaignAction({
+                    workspaceId,
+                    campaignId: campaign.id,
+                    name: next,
+                  });
+                  if (result.status === 'success') setName(next);
+                  return result;
+                }}
+              />
+            </span>
+          }
           eyebrow={t('title')}
-          breadcrumbs={<CampaignBreadcrumbs basePath={basePath} campaignName={campaign.name} />}
+          breadcrumbs={<CampaignBreadcrumbs basePath={basePath} campaignName={name} />}
         />
         <div className="flex flex-col gap-[var(--spacing-gutter)]">
           <ReadOnlyBanner reason={scheduled ? t('lockedScheduled') : t('locked')} />
           <Card gap="gutter">
-            <ReadOnlyValue label={t('name')} value={campaign.name} />
+            {/*
+              ŘÁDEK „NÁZEV KAMPANĚ" TU UŽ NENÍ. Jméno stojí v hlavičce a u části
+              stavů se v ní dá rovnou přepsat; opsané o kus níž by po
+              přejmenování ukazovalo starou hodnotu, dokud se stránka nenačte
+              znovu. Je to totéž uspořádání jako u kampaně, která se dodělává.
+            */}
             <ReadOnlyValue label={t('subject')} value={campaign.subject} />
             <ReadOnlyValue label={t('preheader')} value={campaign.preheader} />
             {/*
@@ -713,7 +758,7 @@ export function CampaignSettingsForm({
    * odsunula všechno vedle sebe a sloupce by se rozjely.
    */
   const SETTINGS_LAYOUT =
-    'grid grid-cols-[repeat(auto-fit,minmax(380px,1fr))] items-start gap-[var(--spacing-gutter)]';
+    'grid grid-cols-[repeat(auto-fit,minmax(min(380px,100%),1fr))] items-start gap-[var(--spacing-gutter)]';
   const COLUMN = 'flex min-w-0 flex-col gap-[var(--spacing-gutter)]';
 
   /** Úvodní věta kroku. Každý krok má vlastní, jinak by lhala dvěma třetinám. */
@@ -756,13 +801,44 @@ export function CampaignSettingsForm({
         kde v kampani uživatel je.
       */}
       <PageHeader
-        title={<span id="campaign-settings-title">{campaign.name}</span>}
+        /*
+          JMÉNO SE UPRAVUJE V HLAVIČCE, ne polem uvnitř formuláře.
+
+          Dřív mělo jméno pole v kartě „Předmět a název" a ukládalo se hromadnou
+          akcí spolu se vším ostatním. U čerstvé kampaně se tím uložení jména
+          nedalo dokončit: validace celého formuláře spadla na prázdném předmětu
+          a prázdném publiku, tedy na věcech, se kterými přejmenování nemá nic
+          společného, a jméno zůstalo neuložené.
+
+          Je to TÁŽ komponenta a TÁŽ akce jako v hlavičce kroku 1
+          (`content-step-chrome.tsx`), takže míst, která jméno ukládají, ubylo
+          ze dvou na jedno, ne přibylo. `PATCH` s jediným klíčem `name` navíc
+          projde i u naplánované kampaně, kde by celý formulář narazil na
+          `campaign_locked`.
+        */
+        title={
+          <span id="campaign-settings-title">
+            <CampaignNameField
+              name={name}
+              canRename={canRenameCampaign(campaign.status)}
+              onRename={async (next) => {
+                const result = await renameCampaignAction({
+                  workspaceId,
+                  campaignId: campaign.id,
+                  name: next,
+                });
+                if (result.status === 'success') setName(next);
+                return result;
+              }}
+            />
+          </span>
+        }
         eyebrow={
           <span role="status" aria-live="polite">
             {tNew('stepOf', { current: stepIndex + 1, total: CAMPAIGN_STEPS.length })}
           </span>
         }
-        breadcrumbs={<CampaignBreadcrumbs basePath={basePath} campaignName={campaign.name} />}
+        breadcrumbs={<CampaignBreadcrumbs basePath={basePath} campaignName={name} />}
       />
 
       <div className="flex flex-col gap-[var(--spacing-gutter)]">
@@ -873,17 +949,12 @@ export function CampaignSettingsForm({
                 <FieldError name="preheader" errors={fieldErrors} />
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="name">{t('name')}</Label>
-                <Input
-                  id="name"
-                  name="name"
-                  defaultValue={campaign.name}
-                  {...fieldAria('name', fieldErrors)}
-                />
-                <p className="text-meta text-text-muted">{t('nameHint')}</p>
-                <FieldError name="name" errors={fieldErrors} />
-              </div>
+              {/*
+                POLE „NÁZEV KAMPANĚ" TU UŽ NENÍ. Přejmenovat jde v hlavičce
+                obrazovky, kde je jméno napsané, a ukládá se samostatnou akcí,
+                takže se nedá zastavit chybějícím předmětem ani publikem.
+                Zdůvodnění je u hlavičky výš.
+              */}
             </Card>
 
             {/*
@@ -940,7 +1011,7 @@ export function CampaignSettingsForm({
               řádku hlásila něco, co ten řádek sám nezpůsobil. */}
                 <div
                   data-testid="audience-include"
-                  className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-[var(--spacing-gutter)]"
+                  className="grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-[var(--spacing-gutter)]"
                 >
                   <OptionGroup
                     legend={t('includeLists')}
@@ -982,7 +1053,7 @@ export function CampaignSettingsForm({
                 </div>
                 <div
                   data-testid="audience-exclude"
-                  className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-[var(--spacing-gutter)]"
+                  className="grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-[var(--spacing-gutter)]"
                 >
                   <OptionGroup
                     legend={t('excludeLists')}
@@ -1079,11 +1150,16 @@ export function CampaignSettingsForm({
 
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="from_email">{t('fromEmail')}</Label>
+                  {/* Adresa ODESÍLATELE kampaně, ne přihlašovací. Nabídka správce
+                      hesel by zakryla nápovědu pod polem. Podrobnosti
+                      v `@mlain/ui/lib/password-manager`. */}
                   <Input
                     key={`from-email-${senderKey}`}
                     id="from_email"
                     name="from_email"
                     type="email"
+                    autoComplete="off"
+                    {...passwordManagerOptOut}
                     defaultValue={campaign.from_email}
                     {...fieldAria('from_email', fieldErrors)}
                   />
@@ -1098,6 +1174,8 @@ export function CampaignSettingsForm({
                     id="reply_to"
                     name="reply_to"
                     type="email"
+                    autoComplete="off"
+                    {...passwordManagerOptOut}
                     defaultValue={campaign.reply_to ?? ''}
                     {...fieldAria('reply_to', fieldErrors)}
                   />
@@ -1210,6 +1288,8 @@ export function CampaignSettingsForm({
           // N2, ne N1: N1 se podle design systému neptá vůbec a rozepsaný text
           // se po odchodu vzít zpět nedá.
           level="N2"
+          // Rozepsané změny se odchodem zahodí a zpět je nedostaneme.
+          destructive
           title={t('leaveTitle')}
           consequences={[t('leaveConsequence')]}
           confirmLabel={t('leaveSubmit')}

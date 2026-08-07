@@ -244,8 +244,8 @@ async function readTotals(tx: Tx, ctx: WorkspaceContext, from: Date, to: Date): 
    */
   const { rows } = await tx.execute<Record<string, unknown>>(sql`
     SELECT p.type AS provider_type,
-           s.sent, s.delivered, s.failed, s.bounced_hard, s.bounced_soft, s.complained,
-           s.opens_unique, s.opens_unique_apple, s.clicks_unique_human
+           s.sent, s.delivered, s.failed, s.rejected, s.bounced_hard, s.bounced_soft,
+           s.complained, s.opens_unique, s.opens_unique_apple, s.clicks_unique_human
       FROM campaigns c
       LEFT JOIN campaign_stats s ON s.campaign_id = c.id AND s.workspace_id = c.workspace_id
       LEFT JOIN sending_providers p ON p.id = c.provider_id AND p.workspace_id = c.workspace_id
@@ -403,7 +403,8 @@ async function readRecentCampaigns(
            -- complained tu není zbytečně: rozhoduje o tom, jestli o osudu
            -- zpráv vůbec něco víme (isDeliveredKnown). Kampaň, ze které
            -- přišly jen stížnosti, doručenost měřenou má.
-           s.complained, s.failed, s.opens_unique, s.opens_unique_apple, s.unsubscribed
+           s.complained, s.failed, s.rejected, s.opens_unique, s.opens_unique_apple,
+           s.unsubscribed
       FROM campaigns c
       LEFT JOIN campaign_stats s ON s.campaign_id = c.id AND s.workspace_id = c.workspace_id
       LEFT JOIN sending_providers p ON p.id = c.provider_id AND p.workspace_id = c.workspace_id

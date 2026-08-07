@@ -6,6 +6,7 @@ import { confirmPublicSubscription } from '../lists/confirm-service';
 import type { ConfirmView, ConfirmationMode } from '../lists/confirm';
 import { encodePublicRef, decodePublicRef } from './ids';
 import { anonymousBranding, publicScope, type PublicBranding } from './context';
+import { loadPublicPageDesign, type PublicPageDesign } from './page-render';
 
 /**
  * Data potvrzovací stránky `/s/c/{ref}`.
@@ -99,6 +100,21 @@ export type ConfirmOutcome = {
    * přihlášený není, a nikdy by se to nedozvěděl.
    */
   redirectUrl: string | null;
+  /**
+   * Navržená stránka po potvrzení (povrch `confirmed`), nebo `null` ve významu
+   * vestavěný text.
+   *
+   * SKLÁDÁ SE AŽ ZA POTVRZENÍM a nikdy ho nesmí zvrátit. Návrh je vzhled,
+   * potvrzení je vedlejší účinek s důkazní hodnotou; kdyby se stránka hledala
+   * dřív a její čtení selhalo, člověk by odešel s pocitem, že přihlášení
+   * nefunguje, a klikl by na odkaz znovu. `loadPublicPageDesign` proto výjimku
+   * nepropouští a vrací `null`.
+   *
+   * Stejně jako `redirectUrl` jen u výsledku `done`, a ne současně s ním:
+   * přesměrování na cizí web má přednost, protože je to starší a výslovnější
+   * volba autora.
+   */
+  pageDesign: PublicPageDesign | null;
 };
 
 /**
@@ -117,6 +133,7 @@ export async function confirmByRef(
     listName: null,
     branding: anonymousBranding(),
     redirectUrl: null,
+    pageDesign: null,
   };
   if (parsed === null) return invalid;
 
@@ -141,7 +158,15 @@ export async function confirmByRef(
       SELECT locale AS contact_locale FROM contacts
        WHERE id = ${record.contactId}::uuid AND workspace_id = ${scope.ctx.workspaceId}::uuid
     `);
-    return { listId: record.listId, contactLocale: rows[0]?.contact_locale ?? null };
+    return {
+      listId: record.listId,
+      // Kontakt se drží jen tady uvnitř: ven z `confirmByRef` se nevrací,
+      // protože veřejná stránka nesmí prozradit, komu která adresa patří.
+      // Potřebuje ho ale překlad povrchu na šablonu, který přes `source_ref`
+      // přihlášení hledá formulář, ze kterého se člověk přihlásil.
+      contactId: record.contactId,
+      contactLocale: rows[0]?.contact_locale ?? null,
+    };
   });
   const listId = found?.listId ?? null;
   const branding =
@@ -158,7 +183,25 @@ export async function confirmByRef(
   const redirectUrl =
     result.view === 'done' && listId !== null ? await confirmRedirectUrl(scope.ctx, listId) : null;
 
-  return { view: result.view, listName: result.listName, branding, redirectUrl };
+  /*
+   * Návrh stránky se hledá AŽ TEĎ, tedy po zápisu potvrzení a jen u úspěchu.
+   * Pořadí je závazné: potvrzení už proběhlo ve vlastní transakci, takže ani
+   * pád téhle části s ním nehne. Kdyby se hledal dřív, dostal by vzhled
+   * možnost zvrátit vedlejší účinek, kvůli kterému celá trasa existuje.
+   */
+  const pageDesign =
+    result.view === 'done' && redirectUrl === null && listId !== null && found !== null
+      ? await loadPublicPageDesign({
+          ctx: scope.ctx,
+          surface: 'confirmed',
+          branding,
+          listId,
+          contactId: found.contactId,
+          listName: result.listName,
+        })
+      : null;
+
+  return { view: result.view, listName: result.listName, branding, redirectUrl, pageDesign };
 }
 
 /** Vlastní stránka po potvrzení, nebo `null`, když seznam žádnou nemá. */

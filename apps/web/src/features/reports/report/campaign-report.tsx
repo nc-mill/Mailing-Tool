@@ -35,9 +35,17 @@ import { WebActivityPanel } from './web-activity-panel';
 import { mergeLiveSnapshot, type OpensMode, type StatsPayload } from './report-model';
 
 export function CampaignReport({
+  workspaceId,
   workspaceSlug,
   campaignId,
 }: {
+  /*
+   * Projekt se sem předává ID i jménem v adrese, protože každé slouží k něčemu
+   * jinému: ze jména se skládají odkazy, ID chtějí serverové akce (duplikace
+   * kampaně v nabídce dalších kroků). Dopočítat jedno z druhého by znamenalo
+   * další dotaz na server v komponentě, která běží v prohlížeči.
+   */
+  workspaceId: string;
   workspaceSlug: string;
   campaignId: string;
 }) {
@@ -324,7 +332,7 @@ export function CampaignReport({
          * odpovídá na tutéž otázku „kam lidé klikali"; jako vlastní panel,
          * protože se to nesmí sečíst s mírou prokliku.
          */}
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[var(--spacing-gutter)]">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-[var(--spacing-gutter)]">
           <LinksTable links={links} disabled={!payload.track_clicks} />
           <SystemLinksPanel clicks={systemLinks} />
         </div>
@@ -370,7 +378,11 @@ export function CampaignReport({
         <WebActivityPanel campaignId={campaignId} workspaceSlug={workspaceSlug} />
         <SentPreview campaignId={campaignId} />
         <DiagnosticsPanel payload={payload} />
-        <FollowUpActions workspaceSlug={workspaceSlug} campaignId={campaignId} />
+        <FollowUpActions
+          workspaceId={workspaceId}
+          workspaceSlug={workspaceSlug}
+          campaignId={campaignId}
+        />
       </div>
     </div>
   );

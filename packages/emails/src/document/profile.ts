@@ -1,8 +1,31 @@
 /** Technická klasifikace řádku `templates.kind`. */
-export type TemplateKind = 'campaign' | 'transactional' | 'system';
+export type TemplateKind = 'campaign' | 'transactional' | 'system' | 'page';
 
 /** Sada pravidel, podle které se dokument kontroluje a kompiluje. */
-export type ValidationProfile = 'campaign' | 'transactional';
+export type ValidationProfile = 'campaign' | 'transactional' | 'page';
+
+/**
+ * Kódy nálezů, které vydává JEN profil `page`.
+ *
+ * Bydlí pohromadě a v tomhle balíčku schválně. Zákazy vyhodnocuje validátor
+ * dokumentu, který nesmí sahat na databázi ani na překlady, a kdyby si každé
+ * pravidlo psalo řetězec u sebe, překlep by se poznal až tím, že editor ukáže
+ * holý kód místo věty. Kdo kódy zobrazuje (katalog chyb v jádře, seznam kódů
+ * v editoru, překladové katalogy), bere je odsud, ne z paměti.
+ *
+ * Zákazy mají KAŽDÝ SVŮJ KÓD, ne jeden společný „na stránce to nesmí být":
+ * uživatel, kterému editor odmítne uložit stránku, potřebuje vědět, jestli
+ * odstranit patičku nebo blok HTML, a jsou to dva různé důvody (patička na
+ * veřejné stránce nedává smysl, HTML je bezpečnostní rozhodnutí).
+ */
+export const PAGE_ISSUE_CODES = {
+  /** Blok patičky s odhlašovacím odkazem v dokumentu stránky. */
+  footerForbidden: 'content_footer_forbidden_on_page',
+  /** Blok syrového HTML v dokumentu stránky. */
+  htmlForbidden: 'content_html_forbidden_on_page',
+  /** Proměnná, kterou povrch stránky nedodá, takže by se vykreslila jako prázdno. */
+  variableNotOnSurface: 'content_variable_not_on_surface',
+} as const;
 
 /**
  * Profil, podle kterého se dokument kontroluje a kompiluje.
@@ -29,7 +52,20 @@ export type ValidationProfile = 'campaign' | 'transactional';
  * klientská validace jela vždy jako `campaign`, takže uživatel v editoru
  * neuložil obsah, který server přijme. `packages/emails` je bez IO a validaci
  * dokumentu vlastní, takže je to jediné místo, kam mapování patří.
+ *
+ * `'page'` je VEŘEJNÁ STRÁNKA, ne e-mail (děkovací stránka formuláře, stránka
+ * po potvrzení přihlášení a spol.). Vlastní profil má proto, že pravidla kampaně
+ * na ni nesedí a mapovat ji na `campaign` by dopadlo takhle:
+ *
+ * - chybějící odhlašovací odkaz by byl CHYBA, takže by se nedala uložit stránka,
+ *   na kterou se z odhlášení vůbec nechodí,
+ * - prošel by blok patičky a blok syrového HTML, přestože stránka běží na NAŠÍ
+ *   doméně a vložený obsah v ní může předstírat cizí značku nebo přihlašovací
+ *   pole; autorem přitom nemusí být majitel projektu, stačí člen s právem
+ *   upravovat formuláře.
  */
 export function validationProfileFor(kind: TemplateKind): ValidationProfile {
-  return kind === 'transactional' ? 'transactional' : 'campaign';
+  if (kind === 'transactional') return 'transactional';
+  if (kind === 'page') return 'page';
+  return 'campaign';
 }

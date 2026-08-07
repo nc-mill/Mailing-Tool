@@ -9,6 +9,7 @@ import { IdentityAuditActions } from '../../identity/audit';
 import { wsEq } from '../../identity/scope';
 import type { WorkspaceContext } from '../../identity/types';
 import { assertUrlAllowed, SsrfBlockedError, WEBHOOK_SSRF_POLICY } from '../../net/ssrf';
+import { rejectUnknownEventTypes } from './event-catalog';
 import { generateWebhookSecret } from './signature';
 
 /** 3.8, tabulka limitů. */
@@ -72,6 +73,17 @@ function assertTargetAllowed(url: string): void {
   }
 }
 
+/**
+ * Kontrola odebíraných typů proti katalogu. Pravidla i s důvody drží
+ * `rejectUnknownEventTypes` v `event-catalog.ts`, tady se z nálezu jen dělá
+ * chyba API.
+ */
+function assertEventTypesKnown(types: readonly string[], alreadyStored: readonly string[]): void {
+  const rejection = rejectUnknownEventTypes(types, alreadyStored);
+  if (rejection === null) return;
+  throw validationFailed(rejection.issues, { params: rejection.params });
+}
+
 export async function listEndpoints(
   tx: Tx,
   ctx: WorkspaceContext,
@@ -124,6 +136,8 @@ export async function createEndpoint(
       },
     ]);
   }
+
+  assertEventTypesKnown(input.event_types, []);
 
   const existing = await tx
     .select({ id: schema.webhookEndpoints.id })
@@ -198,6 +212,9 @@ export async function updateEndpoint(
       },
     ]);
   }
+  if (input.event_types !== undefined) {
+    assertEventTypesKnown(input.event_types, before.event_types);
+  }
 
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (input.url !== undefined) patch.url = input.url;
@@ -270,6 +287,10 @@ export async function deleteEndpoint(
 
 /**
  * Aktivní endpointy projektu, které odebírají daný typ události.
+ *
+ * PROTI KATALOGU SE TU NEKONTROLUJE NIC a je to schválně, viz
+ * `assertEventTypesKnown`. Porovnání řetězců je jediné, co uložený odběr
+ * přežije i po přejmenování nebo zrušení typu.
  *
  * ODCHYLKA OD PLÁNU: plán bral `workspaceId: string`. Pravidlo z 3.6 zní, že
  * žádná exportovaná funkce mimo `packages/core/src/tx` workspace jako řetězec

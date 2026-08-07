@@ -108,7 +108,7 @@ describe('registr RLS proti skutečnému stavu', () => {
     }
   });
 
-  it('celkem existuje 90 politik', async () => {
+  it('celkem existuje 92 politik', async () => {
     const { rows } = await h
       .as('mlain_migrator')
       .query<{ n: number }>(
@@ -120,6 +120,9 @@ describe('registr RLS proti skutečnému stavu', () => {
     // politice, kterou někdo přidá bez záznamu v registru.
     // 88 → 90: migrace 0011 přidala `asset_public_lookup` na `assets`
     // a migrace 0013 `ws_isolation` na `sender_identities`.
-    expect(rows[0].n).toBe(90);
+    // 90 → 92: migrace 0024 přidala `maintenance_scan` na `imports`
+    // a `segments`, aby obnova zaseknutých importů a plánovač přepočtu
+    // segmentů vůbec něco viděly.
+    expect(rows[0].n).toBe(92);
   });
 });

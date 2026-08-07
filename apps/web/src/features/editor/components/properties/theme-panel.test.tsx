@@ -1,9 +1,10 @@
 import messages from '@mlain/i18n/messages/cs/editor.json';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it } from 'vitest';
-import type { EditorDocument } from '../../model/document-types';
+import { resolveTheme } from '@mlain/emails/theme/resolve';
+import { themeWithDefaults, type EditorDocument } from '../../model/document-types';
 import { createEditorStore } from '../../state/editor-store';
 import { EditorStoreProvider } from '../../state/use-editor';
 import { ThemePanel } from './theme-panel';
@@ -77,21 +78,108 @@ describe('ThemePanel', () => {
    * jenže je nečetl nikdo, takže volba v panelu nezměnila ani plátno, ani
    * odeslaný e-mail. Tenhle test hlídá, že panel píše do role, ne vedle ní.
    */
-  it('pozadí plátna zapíše barvu do role surface.canvas', async () => {
+  it('pozadí plátna zapíše volbu do role surface.canvas', async () => {
     const store = setup();
     const palette = screen.getByTestId('color-palette-surface.canvas');
     await userEvent.click(within(palette).getByRole('button', { name: /^Hlavní barva značky / }));
     const theme = store.getState().document.theme;
-    expect(theme.colors['surface.canvas']).toMatch(/^#[0-9a-f]{6}$/);
+    expect(theme.colors['surface.canvas']).toBe('brand.primary');
     expect(theme).not.toHaveProperty('canvasBackground');
   });
 
-  it('do role se ukládá odstín, ne název role', async () => {
+  /**
+   * VOLBA ROLE JE VAZBA, NE ZMRAZENÝ ODSTÍN.
+   *
+   * Panel dřív odkaz na roli rozřešil na odstín hned při volbě, takže „pozadí
+   * plátna = hlavní barva značky" po změně značky projektu zůstalo staré.
+   * Uživatel volbou řekl vazbu, ne barvu, a tenhle test hlídá oba směry:
+   * role se přebarví, vlastní odstín zůstane.
+   */
+  it('role se po změně značky přebarví, vlastní odstín zůstane', async () => {
     const store = setup();
-    const palette = screen.getByTestId('color-palette-surface.content');
-    await userEvent.click(within(palette).getByRole('button', { name: /^Hlavní barva značky / }));
-    // `resolveTheme` by název role vydal beze změny a do e-mailu by šlo
-    // „brand.primary" místo barvy.
-    expect(store.getState().document.theme.colors['surface.content']).not.toBe('brand.primary');
+    await userEvent.click(
+      within(screen.getByTestId('color-palette-surface.canvas')).getByRole('button', {
+        name: /^Hlavní barva značky /,
+      }),
+    );
+    // `input type="color"` se psát nedá, hodnotu do něj dosazuje systémový výběr.
+    fireEvent.change(
+      within(screen.getByTestId('color-palette-surface.content')).getByLabelText('Vlastní barva'),
+      { target: { value: '#123456' } },
+    );
+
+    const before = resolveTheme(themeWithDefaults(store.getState().document.theme));
+    expect(before.light.roles['surface.canvas']).toBe(before.light.roles['brand.primary']);
+    expect(before.light.roles['surface.content']).toBe('#123456');
+
+    // Přesně to, co s dokumentem udělá převlečení do nové značky projektu.
+    store.patchTheme({
+      colors: { ...store.getState().document.theme.colors, 'brand.primary': '#ff0000' },
+    });
+
+    const after = resolveTheme(themeWithDefaults(store.getState().document.theme));
+    expect(after.light.roles['surface.canvas']).toBe('#ff0000');
+    expect(after.light.roles['surface.content']).toBe('#123456');
+  });
+
+  /**
+   * TMAVÝ REŽIM UŽ NEPŘEBÍJÍ ZVOLENÉ POZADÍ BEZ MOŽNOSTI ZÁSAHU.
+   *
+   * Emitter vydá u strategie `auto` pravidlo `.ml-canvas{...!important}` z tmavé
+   * palety, takže barva zvolená ve světlé mapě je v tmavém režimu nevidět.
+   * Mechanismus na tmavou variantu (`theme.darkMode.colors`) existoval, jen ho
+   * panel nenabízel. Tyhle tři testy hlídají všechny tři poloviny opravy: že se
+   * pole nabízí, že píše do tmavé mapy (a ne do světlé) a že vzorník kreslí
+   * tmavé odstíny.
+   */
+  const enableDarkMode = async () =>
+    userEvent.selectOptions(screen.getByLabelText(/Tmavý režim/), 'auto');
+
+  it('plochy tmavého režimu se nabízejí jen u zapnutého tmavého režimu', async () => {
+    setup();
+    // Výchozí dokument tu tmavý režim zapnutý nemá, pole tedy nesvítí naprázdno.
+    expect(screen.queryByTestId('color-palette-dark:surface.canvas')).toBeNull();
+    await enableDarkMode();
+    expect(screen.getByTestId('color-palette-dark:surface.canvas')).toBeInTheDocument();
+    expect(screen.getByTestId('color-palette-dark:surface.content')).toBeInTheDocument();
+  });
+
+  it('volba tmavé plochy jde do darkMode.colors, světlou nechá být', async () => {
+    const store = setup();
+    await enableDarkMode();
+    fireEvent.change(
+      within(screen.getByTestId('color-palette-dark:surface.canvas')).getByLabelText(
+        'Vlastní barva',
+      ),
+      { target: { value: '#102030' } },
+    );
+
+    const theme = store.getState().document.theme;
+    expect(theme.darkMode?.colors['surface.canvas']).toBe('#102030');
+    // Strategie se zápisem barvy neztratila a světlá mapa zůstala nedotčená.
+    expect(theme.darkMode?.strategy).toBe('auto');
+    expect(theme.colors?.['surface.canvas']).toBeUndefined();
+
+    const resolved = resolveTheme(themeWithDefaults(theme));
+    expect(resolved.dark.roles['surface.canvas']).toBe('#102030');
+    expect(resolved.light.roles['surface.canvas']).not.toBe('#102030');
+  });
+
+  /**
+   * Vzorník tmavého pole musí kreslit TMAVÉ odstíny. Se světlými by uživatel
+   * klikl na téměř bílé plátno a příjemce by dostal skoro černé, tedy vzorek by
+   * ukazoval jinou barvu, než jakou volba nastaví.
+   */
+  it('vzorník tmavé plochy ukazuje tmavé odstíny, ne světlé', async () => {
+    setup();
+    await enableDarkMode();
+    const resolved = resolveTheme(themeWithDefaults({ contentWidth: 600 } as never));
+
+    const swatch = within(screen.getByTestId('color-palette-dark:surface.canvas')).getByRole(
+      'button',
+      { name: /^Plátno / },
+    );
+    expect(swatch.getAttribute('aria-label')).toContain(resolved.dark.roles['surface.canvas']);
+    expect(swatch.getAttribute('aria-label')).not.toContain(resolved.light.roles['surface.canvas']);
   });
 });

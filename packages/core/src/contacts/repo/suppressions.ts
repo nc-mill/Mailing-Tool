@@ -293,6 +293,7 @@ export async function addSuppression(
         contactIds: [contactId],
         listId: null,
         reason: 'suppressed',
+        tx,
       });
     }
 

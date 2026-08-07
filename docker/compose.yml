@@ -1,5 +1,15 @@
 name: mlain
 
+# PRAVIDELNOU PRÁCI DĚLÁ WORKER, NE PLÁNOVAČ HOSTITELE. V tomhle souboru
+# schválně není žádný kontejner s cronem a nemá přibýt: všechna opakovaná práce
+# (noční úklidy, zálohy, retence odeslané pošty, plánované kampaně) jede jako
+# cronová fronta pg-bossu uvnitř workeru. Je to jediný mechanismus, který
+# funguje na všech třech způsobech nasazení, tedy i na PaaS, kde k hostiteli
+# přístup není. Do 7. 8. 2026 z toho vypadávala údržba oddílů, u které jediný
+# návod znělo „založte si cron na hostiteli"; dodávaná instalace ji proto
+# nespouštěla vůbec a `messages.render_data` v ní leželo přes lhůtu.
+# Viz `docs/operations/partitions-retention.md`.
+
 services:
   app:
     image: ghcr.io/nc-mill/mlain:1.0.0 # nikdy :latest v produkci

@@ -179,6 +179,8 @@ export function ConfirmContactButton({
           // N2: jedno okno se souhrnem následků, bez zaškrtávání a bez opisování textu.
           // Zadavatel chce jedno potvrzení, ne překážkovou dráhu.
           level="N2"
+          // Změna stavu souhlasu, dá se vrátit. Nic se nemaže a nic neodchází ven.
+          destructive={false}
           title={t('confirmState.dialogTitle')}
           consequences={[
             t('confirmState.dialogWhyComplained'),

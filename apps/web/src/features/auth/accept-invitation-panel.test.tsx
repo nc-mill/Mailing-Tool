@@ -12,7 +12,7 @@ const messages = { auth: csAuth };
 function renderPanel(view: InvitationView) {
   return render(
     <NextIntlClientProvider locale="cs" messages={messages} timeZone="Europe/Prague">
-      <AcceptInvitationPanel view={view} action={vi.fn()} token="TOKEN" />
+      <AcceptInvitationPanel view={view} action={vi.fn()} signupAction={vi.fn()} token="TOKEN" />
     </NextIntlClientProvider>,
   );
 }
@@ -27,10 +27,33 @@ describe('AcceptInvitationPanel', () => {
     );
   });
 
-  it('nepřihlášeného pošle na přihlášení s návratem zpět', () => {
-    renderPanel({ kind: 'signedOut' });
+  /**
+   * Do 7. 8. 2026 tady byl JEN odkaz na přihlášení, a byla to slepá ulička:
+   * pozvaný člověk účet nemá, takže se nemá čím přihlásit, a založit si ho
+   * nikde nemohl. Odkaz zůstává pro toho, kdo účet má; formulář je pro toho,
+   * kdo ho nemá, a je to hlavní obsah obrazovky.
+   */
+  it('nepřihlášenému nabídne založení účtu i přihlášení', () => {
+    const { container } = renderPanel({ kind: 'signedOut' });
+
+    expect(screen.getByRole('heading', { name: 'Založte si účet' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Založit účet a přijmout pozvánku' }),
+    ).toBeInTheDocument();
+    expect(container.querySelector('input[name="token"]')).toHaveValue('TOKEN');
+
     const link = screen.getByRole('link', { name: 'Přihlásit se a přijmout' });
     expect(link).toHaveAttribute('href', '/login?next=%2Finvitations%2Faccept%3Ftoken%3DTOKEN');
+  });
+
+  /**
+   * Adresa nového účtu se bere z pozvánky. Pole pro e-mail by z ní udělalo
+   * údaj od návštěvníka, takže by si držitel cizího odkazu založil účet na
+   * svou adresu. Test hlídá, že to pole nikdo nedoplní „pro pohodlí".
+   */
+  it('nepřihlášenému nenabídne pole pro e-mail', () => {
+    const { container } = renderPanel({ kind: 'signedOut' });
+    expect(container.querySelector('input[name="email"]')).toBeNull();
   });
 
   it('přihlášenému ukáže projekt, roli a tlačítko přijmout', () => {

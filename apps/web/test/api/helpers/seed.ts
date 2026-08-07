@@ -91,9 +91,10 @@ export async function seedOwnerWithWorkspace(
  *
  * Existuje kvůli systémové poště: `POST /api/v1/invitations` odmítne založit
  * pozvánku v projektu, který ji nemá jak odeslat, a vrátí 503
- * `system_mail_unavailable`. Účet typu SES by nestačil, systémovou poštu odsud
- * odešle jen SMTP. Šifrovaná konfigurace je zástupná, protože samotné odesílání
- * si testy nahrazují přes `setSystemMailer`; výběr účtu se do ní nedívá.
+ * `system_mail_unavailable`. Typ účtu je tu SMTP jen proto, že testy pozvánek
+ * nepotřebují víc; systémovou poštu odešle i účet typu SES. Šifrovaná konfigurace
+ * je zástupná, protože samotné odesílání si testy nahrazují přes `setSystemMailer`;
+ * výběr účtu se do ní nedívá.
  */
 export async function seedSmtpAccount(userId: string, workspaceId: string): Promise<void> {
   // Kontext projektu je povinný: `sending_providers` má politiku `ws_isolation`

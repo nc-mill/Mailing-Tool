@@ -60,8 +60,9 @@ export const EMBED_INVALID_ATTRIBUTE = 'data-ml-invalid';
  *      že ho nemohou ani ostylovat: CSS webu se dovnitř nedostane. Formulář se proto
  *      vykresluje přímo do `<div data-ml-form>`, tedy do světa hostitelské stránky.
  *   2. ŽÁDNÁ ZNAČKA `<style>` a žádné vlastní CSS z nastavení formuláře. Sloupec
- *      `forms.custom_css` se sem NEPŘEDÁVÁ; platí jen pro naši hostovanou stránku
- *      `/f/{ref}`, která je naše a vypadat nějak musí.
+ *      `forms.custom_css` se sem NEPŘEDÁVÁ. Od migrace 0015 ho nečte ani hostovaná
+ *      stránka `/f/{ref}`: ta má vlastní konstantu v `features/public/styles.ts`.
+ *      Sloupec zůstal jen jako uložená data uživatelů, do žádného výstupu nejde.
  *   3. ŽÁDNÝ ATRIBUT `style`, s jedinou výjimkou níž.
  *
  * Místo stylů nese skript ÚCHYTY z `EMBED_CLASSES` a stavy v `data-` atributech.

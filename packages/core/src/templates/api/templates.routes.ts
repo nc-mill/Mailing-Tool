@@ -45,7 +45,7 @@ import {
 import { sendTemplateTest, TestSendError, TEST_SEND_MAX_RECIPIENTS } from '../test-send';
 import { validateTemplateDocument } from '../validate';
 import { createVersion, listVersions, type VersionRow } from '../versions';
-import { contactPreviewData, sampleFor, type PreviewDataInput } from './preview-data';
+import { contactPreviewData, samplePreviewData, type PreviewDataInput } from './preview-data';
 import {
   CompileRequest,
   CompileResponse,
@@ -300,8 +300,13 @@ function translateTestSendError(error: unknown): never {
           {
             path: '',
             code: 'test_sending_not_configured',
+            // Hláška radila „nejdřív založte kampaň", což bylo od 7. 8. 2026
+            // špatné doporučení: odesílatel se od té doby bere i z připojeného
+            // účtu s ověřenou adresou, tedy z kroku, který panel prvních kroků
+            // nabízí DŘÍV než kampaň. Posílat uživatele zpátky na kampaň by
+            // znamenalo poslat ho oklikou, kterou už nepotřebuje.
             message:
-              'Projekt nemá nastavené odesílání. Nejdřív založte kampaň s odesílacím účtem a adresou odesílatele.',
+              'Projekt nemá nastavené odesílání. Připojte odesílací účet a ověřte adresu odesílatele v Nastavení → Odesílání.',
           },
         ],
       });
@@ -928,7 +933,12 @@ export function registerTemplateRoutes(app: OpenAPIHono<TemplatesEnv>): void {
         if (!found) throw new ApiError('not_found');
         return found as unknown as Record<string, unknown>;
       }
-      return sampleFor(language, input.variant) as unknown as Record<string, unknown>;
+      // Ukázková data se SKUTEČNÝM projektem: zkušební odeslání jinak ukazuje
+      // vyplněnou poštovní adresu i projektu, který žádnou nemá.
+      return (await samplePreviewData(tx, ctx, language, input.variant)) as unknown as Record<
+        string,
+        unknown
+      >;
     });
 
     try {
@@ -980,6 +990,34 @@ export function registerTemplateRoutes(app: OpenAPIHono<TemplatesEnv>): void {
     > = compiled.ok
       ? compiled.meta
       : { htmlBytes: 0, links: [], assetIds: [], warnings: [], hasUnsubscribeLink: false };
+
+    /*
+     * VEŘEJNÁ STRÁNKA PŘEDODESÍLACÍ KONTROLOU NEPROCHÁZÍ. Nikdy se neodesílá.
+     *
+     * `preSendCheck` odpovídá na otázku „smí tenhle e-mail ven", takže nad
+     * stránkou vyrábí nálezy o něčem, co neexistuje: „E-mail nemá odkaz na
+     * odhlášení" (stránka odhlašovací odkaz nemá kde mít) a „Adresa aplikace
+     * není veřejná, takže odkazy v e-mailu by příjemcům nefungovaly" (stránka
+     * se otevírá z prohlížeče, ne ze schránky). Autor pak v editoru viděl dvě
+     * červené chyby, které nešly opravit, protože se netýkaly jeho práce.
+     * Nahlásil zadavatel 7. 8. 2026 snímkem panelu nálezů.
+     *
+     * Kontrola DOKUMENTU (`validation.issues`) běží dál, jen se k ní nepřilepí
+     * odesílací pravidla. Nálezy stránky, tedy zakázaná patička, zakázané syrové
+     * HTML a nedostupná personalizace, vydává profil `page` a ty jsou správně.
+     */
+    if (validationProfileFor(row.kind as TemplateKind) === 'page') {
+      const pageFindings = validation.issues.map((issue) => ({
+        code: issue.code,
+        severity: issue.severity,
+        message: resolveDetail(issue.code, config().DEFAULT_LOCALE),
+        ...(issue.params === undefined ? {} : { params: issue.params }),
+      }));
+      const blocking = pageFindings.some((finding) => finding.severity === 'error');
+      return blocking
+        ? c.json({ findings: pageFindings }, 409)
+        : c.json({ findings: pageFindings }, 200);
+    }
 
     const check = preSendCheck({
       compileMeta: meta,
@@ -1058,7 +1096,10 @@ export function registerTemplateRoutes(app: OpenAPIHono<TemplatesEnv>): void {
       }
       return {
         compiled: result,
-        data: sampleFor(language, input.variant) as unknown as Record<string, unknown>,
+        data: (await samplePreviewData(tx, ctx, language, input.variant)) as unknown as Record<
+          string,
+          unknown
+        >,
       };
     });
 

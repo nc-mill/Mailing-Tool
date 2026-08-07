@@ -1030,6 +1030,7 @@ export async function restrictProcessing(
       contactIds: [contactId],
       listId: null,
       reason: 'processing_restricted',
+      tx,
     });
 
     await writeAudit(tx, ctx, {

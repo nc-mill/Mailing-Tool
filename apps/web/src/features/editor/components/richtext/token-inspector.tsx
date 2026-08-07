@@ -32,6 +32,14 @@ export function TokenInspector(props: {
   attrs: { expr: string; fallback: string | null; dateFormat: string | null };
   fieldCatalog: FieldCatalog;
   onChange: (patch: Record<string, unknown>) => void;
+  /**
+   * Věta, kterou oslovení vydá. Skládá ji `buildGreeting`, tedy tentýž kód,
+   * jaký ji složí při odeslání. `null` znamená „není odkud vzít", ne „prázdná":
+   * v takovém případě se místo příkladu neukáže nic, protože vymyšlený příklad
+   * je horší než žádný. Přichází propou, ne z kontextu, aby šla komponenta
+   * vykreslit i v testech a mimo skořápku editoru.
+   */
+  greetingExample?: string | null;
 }) {
   const t = useTranslations('editor');
   const [invalid, setInvalid] = useState(false);
@@ -65,9 +73,20 @@ export function TokenInspector(props: {
           přesně z ní si uživatel skládal „Dobrý den, " + jméno a dostával 1. pád
           u kontaktů v jazyce bez vokativu a visící čárku u kontaktů bez jména. */}
       {guidance === 'greeting' ? (
-        <p data-testid="token-greeting-hint" className="text-meta text-text-muted">
-          {t('token.greetingHint')}
-        </p>
+        <>
+          {/* Věta stojí NAD vysvětlením a je zvýrazněná: uživatel sem chodí
+              s otázkou „jak to bude vypadat", ne „co to je". Bublina se otevírá
+              i klávesnicí (spouštěč je tlačítko), takže věta není dostupná
+              jen myší přes bublinu po najetí. */}
+          {props.greetingExample == null ? null : (
+            <p data-testid="token-greeting-example" className="text-ui text-text italic">
+              {t('token.greetingExample', { example: props.greetingExample })}
+            </p>
+          )}
+          <p data-testid="token-greeting-hint" className="text-meta text-text-muted">
+            {t('token.greetingHint')}
+          </p>
+        </>
       ) : null}
       {guidance === 'nameFragment' && greetingOffered ? (
         <p data-testid="token-fragment-warning" className="text-meta text-warning-text">

@@ -16,5 +16,12 @@ export const OPS_AUDIT_ACTIONS = defineAuditActions([
   'backup.verified',
   'backup.restored',
   'credentials.rotated',
+  // Údržba oddílů, tedy `mlain partitions`. Bez tohohle záznamu neexistoval
+  // v celé instalaci žádný doklad o tom, že úklid odeslané pošty proběhl:
+  // příkaz se pouští z plánovače hostitele, jeho výpis nikde nezůstane
+  // a po úspěšném běhu nezbude nic, do čeho by se dalo podívat. Provozovatel
+  // tedy nepoznal, že mu retence týden neběžela a data leží přes lhůtu.
+  // Na tenhle záznam se dívá `mlain doctor` (nález partition_maintenance_stale).
+  'partition.maintained',
   'user.password_reset_from_cli',
 ]);

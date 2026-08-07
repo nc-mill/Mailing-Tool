@@ -39,6 +39,28 @@ import (
 // vracejí do fronty a kampaň se pozastaví jako provider_unavailable.
 var ErrProviderNotSending = errors.New("provider_not_sending")
 
+// ErrProviderContractMismatch znamená, že typ účtu v databázi nesouhlasí
+// s typem v šifrované obálce. Katalog na to má vlastní kód, tak ho zpráva
+// dostane; dřív se i tohle hlásilo jako nedešifrovatelná konfigurace.
+var ErrProviderContractMismatch = errors.New(errcatalog.ContractMismatch)
+
+// providerErrorCode přiřazuje selhání načtení odesílacího účtu kód z katalogu.
+//
+// Existuje proto, že dřív dostalo KAŽDÉ takové selhání kód
+// credentials_undecryptable, tedy „nejde dešifrovat, nesouhlasí SECRET_KEY".
+// Byla to nepravda u dvou ze tří příčin a stála vyšetřování u klíčů, které byly
+// celou dobu v pořádku. Kód smí tvrdit jen to, co se opravdu stalo.
+func providerErrorCode(err error) string {
+	switch {
+	case errors.Is(err, outbox.ErrProviderRowUnreadable):
+		return errcatalog.ProviderConfigUnreadable
+	case errors.Is(err, ErrProviderContractMismatch):
+		return errcatalog.ContractMismatch
+	default:
+		return errcatalog.CredentialsUndecryptable
+	}
+}
+
 // App je celý běžící sender.
 type App struct {
 	cfg  *config.Config
@@ -232,8 +254,8 @@ func (a *App) loadProvider(ctx context.Context, providerID uuid.UUID) (*provider
 	// Křížová kontrola dvou zdrojů pravdy. Rozchod je tichá chyba: sender by
 	// postavil klienta jiného typu, než jaký má provider podle databáze.
 	if row.Type != "" && row.Type != string(cfg.Kind) {
-		return nil, fmt.Errorf("%s: typ providera v databázi je %q, v obálce %q",
-			errcatalog.ContractMismatch, row.Type, cfg.Kind)
+		return nil, fmt.Errorf("%w: typ providera v databázi je %q, v obálce %q",
+			ErrProviderContractMismatch, row.Type, cfg.Kind)
 	}
 	quota := cfg.MaxSendRate
 	if row.QuotaMaxSendRate != nil {
@@ -655,17 +677,39 @@ func (a *App) resolveProvider(ctx context.Context, h *campaign.Header, msg outbo
 	}
 	a.credFails.Store(msg.CampaignID, count)
 
-	detail := outbox.FormatErrorDetail(err.Error(), "konfiguraci providera nejde dešifrovat",
+	// Kód se odvozuje z toho, co se opravdu stalo. Zacházení je u všech tří
+	// příčin stejné (varianta D3d a pozastavení po vyčerpání pokusů), ale
+	// POJMENOVÁNÍ ne: kdo chybu vyšetřuje, musí z kódu poznat, kam se má dívat.
+	code := providerErrorCode(err)
+	log.Error("odesílací účet nejde načíst",
+		"code", code, "error", err.Error(), "vysvětlení", errcatalog.Explain(code))
+	detail := outbox.FormatErrorDetail(err.Error(), providerFailureMessage(code),
 		int(msg.Attempts)+1, a.cfg.SenderID)
-	if _, werr := a.store.RecordFatal(ctx, msg.Key, errcatalog.CredentialsUndecryptable, detail); werr != nil {
+	if _, werr := a.store.RecordFatal(ctx, msg.Key, code, detail); werr != nil {
 		a.metrics.DBErrors.WithLabelValues("result_fatal").Inc()
 	}
 	if count >= a.cfg.CredentialsMaxRetries {
-		a.pause(ctx, msg.CampaignID, outbox.PauseCredentialsUndecryptable, detail, log)
-		a.metrics.CircuitBreakerTrip.WithLabelValues(outbox.PauseCredentialsUndecryptable).Inc()
+		pauseCode := errcatalog.PauseCode(code)
+		a.pause(ctx, msg.CampaignID, pauseCode, detail, log)
+		a.metrics.CircuitBreakerTrip.WithLabelValues(pauseCode).Inc()
 		a.credFails.Delete(msg.CampaignID)
 	}
 	return nil, err
+}
+
+// providerFailureMessage je věta, která se zapisuje do messages.error_detail
+// vedle technické podrobnosti. Musí odpovídat kódu: věta „konfiguraci providera
+// nejde dešifrovat" u chyby čtení z databáze je nepravda, kterou si přečte
+// každý, kdo se na řádek podívá.
+func providerFailureMessage(code string) string {
+	switch code {
+	case errcatalog.ProviderConfigUnreadable:
+		return "řádek odesílacího účtu nejde přečíst z databáze"
+	case errcatalog.ContractMismatch:
+		return "typ odesílacího účtu nesouhlasí se šifrovanou konfigurací"
+	default:
+		return "konfiguraci providera nejde dešifrovat"
+	}
 }
 
 func (a *App) finishRenderFailure(ctx context.Context, msg outbox.Message, err error, log *slog.Logger) {

@@ -1,6 +1,10 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+// Nabídku typů drží katalog v jádře, aby se nemohla rozejít s tím, co produkt
+// doopravdy vydává. Import je tady, ve SERVEROVÉ komponentě, ne ve formuláři:
+// formulář je klientský a katalog do klientského balíku nepatří.
+import { WEBHOOK_EVENT_TYPES } from '@mlain/core/platform/webhooks/event-catalog';
 import {
   enableWebhookFormAction,
   retryDeliveryFormAction,
@@ -9,7 +13,6 @@ import { DeliveriesTable, type DeliveryRow } from '@/features/webhooks/deliverie
 import { DisabledBanner } from '@/features/webhooks/disabled-banner';
 import { TestWebhookPanel } from '@/features/webhooks/test-webhook-panel';
 import { WebhookForm } from '@/features/webhooks/webhook-form';
-import { MVP0_EVENT_TYPES } from '@/features/webhooks/event-types';
 import type { WebhookRow } from '@/features/webhooks/webhooks-table';
 import {
   SettingsPageShell,
@@ -153,7 +156,7 @@ export default async function WebhookDetailPage({
               workspaceId={workspaceId}
               slug={workspaceSlug}
               endpoint={detail}
-              availableEventTypes={MVP0_EVENT_TYPES}
+              availableEventTypes={WEBHOOK_EVENT_TYPES}
             />
           </SettingsSection>
         ) : null}

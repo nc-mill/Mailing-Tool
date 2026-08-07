@@ -21,6 +21,7 @@ const document = (): EditorDocument =>
         children: [
           { id: 'b_sp1', type: 'spacer', props: { height: 24, heightMobile: null } },
           { id: 'b_html', type: 'html', props: { code: '' } },
+          { id: 'b_btn1', type: 'button', props: {} },
         ],
       },
     ],
@@ -108,5 +109,27 @@ describe('PropertiesPanel', () => {
     expect(screen.getByTestId('prop-height')).toBeInTheDocument();
     expect(screen.queryByTestId('prop-padding')).toBeNull();
     expect(screen.queryByTestId('prop-heightMobile')).toBeNull();
+  });
+
+  /**
+   * JEDNO JMÉNO SKUPINY, JEDEN NADPIS.
+   *
+   * `button.ts` má vlastní skupinu `group.layout` a k tomu si přibírá společné
+   * `contentGroups()`, které nese `group.layout` taky. Panel proto u tlačítka
+   * kreslil nadpis „Rozvržení" DVAKRÁT a vlastnosti téhož druhu rozdělil do dvou
+   * hromádek pod stejným jménem: v první zarovnání a šířka, ve druhé odsazení
+   * a pozadí. Uživatel nemá z čeho poznat, proč ta hranice mezi nimi je.
+   *
+   * Zadavatel to nahlásil jako hlášku Reactu o shodných klíčích. Ta byla jen
+   * PŘÍZNAK: kdyby se opravil klíč, hláška zmizí a dvojí nadpis zůstane.
+   * Test proto měří NADPISY V PANELU, ne klíče, aby ho oprava klíče neošálila.
+   */
+  it('tlačítko má nadpis Rozvržení jen jednou, i když skupinu nese descriptor i společná část', () => {
+    setup('b_btn1');
+    expect(screen.getAllByText('Rozvržení')).toHaveLength(1);
+    // Obě poloviny slité skupiny musí zůstat dostupné, jinak by sloučení
+    // vlastnosti nespojilo, ale zahodilo.
+    expect(screen.getByTestId('prop-fullWidth')).toBeInTheDocument();
+    expect(screen.getByTestId('prop-padding')).toBeInTheDocument();
   });
 });

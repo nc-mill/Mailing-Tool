@@ -144,6 +144,10 @@
     "localeUiLink": "Change the interface language in My account",
     "timezone": "Project time zone",
     "timezoneHint": "Campaigns are scheduled and reports are counted in this zone.",
+    "postalAddress": "Sender postal address",
+    "postalAddressHint": "Printed in the email footer. Commercial messages are required by law to carry it. Write it the way it should appear, several lines are fine.",
+    "postalAddressPlaceholder": "Kolo Eshop Ltd.\n5 Station Street\n110 00 Prague 1",
+    "postalAddressEmpty": "Not filled in, the footer goes out without an address",
     "greetingEnabled": {
       "label": "Greetings and the vocative case",
       "hint": "Declining names makes sense in Czech and Slovak. Other languages have no vocative case, so the whole area only takes up space.",
@@ -320,18 +324,18 @@
     "failTitle": "System email does not work",
     "reason": {
       "no_account": "The project has no sending account that could send email.",
-      "provider_unsupported": "The project would send through the account {account} of type {type}. Only an SMTP account can send system email from here.",
+      "provider_unsupported": "The project would send through the account {account} of type {type}, which cannot send system email. Pick a different account below.",
       "selected_account_missing": "The account chosen for system email is no longer in the project, or it is switched off."
     },
     "limitationTitle": "Why this happens",
-    "limitationBody": "System email is composed and sent by the application itself. Only the campaign sending service, written in Go, has an Amazon SES client, so the application cannot send through an SES account. This is a known limitation of the tool, not a mistake in your setup.",
+    "limitationBody": "System email is composed and sent by the application itself, outside campaign sending. It goes out through an SES or an SMTP account, but it does need a usable one: a project with no sending account, or with an account you picked that has since disappeared, has nothing to send through.",
     "blockedTitle": "What this blocks",
     "blocked1": "Inviting someone to the project by email. Instead, create the member directly with a password under Settings, Team.",
     "blocked2": "Recovering a forgotten password. Instead, run mlain reset-password with the user's address on the server.",
     "blocked3": "Verifying an address in trial mode, so trial mode cannot be completed.",
     "blocked4": "The notice about a disabled webhook. That one is only undelivered, the webhook is disabled either way.",
     "fixTitle": "How to fix it",
-    "fixBody": "Add an SMTP account under Settings, Sending. Campaigns can keep going through SES, system email will take the SMTP account.",
+    "fixBody": "Add a sending account, SES or SMTP, under Settings, Sending. System email takes the default one, campaigns keep going unchanged.",
     "fixLink": "Go to Sending",
     "fromTitle": "Sender address",
     "fromCurrent": "System email is sent from {address}.",
@@ -343,7 +347,7 @@
     "form": {
       "title": "Settings",
       "account": "Account for system email",
-      "accountAuto": "Choose automatically, SMTP first",
+      "accountAuto": "Choose automatically, the default account first",
       "accountHint": "Which sending account system email goes out through.",
       "accountIncapable": "{name}, type {type}, cannot send system email",
       "accountCapable": "{name}, type {type}",
@@ -471,6 +475,42 @@
       "submitting": "Creating the webhook",
       "saveSubmit": "Save changes",
       "duplicateNote": "Delivery is at least once. If we restart a worker mid-send, an event can arrive twice. Tell them apart by the ML-Event-Id header."
+    },
+    "eventGroups": {
+      "brand": "Brand",
+      "campaign": "Campaigns",
+      "contact": "Contacts",
+      "domain": "Domains",
+      "message": "Messages",
+      "provider": "Sending accounts"
+    },
+    "events": {
+      "brand": {
+        "extraction_completed": "Brand extraction from the website finished."
+      },
+      "campaign": {
+        "paused": "A campaign paused itself.",
+        "resumed": "A paused campaign carried on.",
+        "schedule_delayed": "A scheduled campaign started later than planned.",
+        "schedule_missed": "A campaign missed its scheduled time.",
+        "sending_started": "A campaign started sending.",
+        "sent": "A campaign finished sending."
+      },
+      "contact": {
+        "subscribed": "A contact joined a list.",
+        "suppressed": "An address went on the suppression list.",
+        "unsubscribed": "A contact unsubscribed."
+      },
+      "domain": {
+        "verification_changed": "Domain verification changed state."
+      },
+      "message": {
+        "clicked": "A recipient clicked a link in a message.",
+        "opened": "A recipient opened a message."
+      },
+      "provider": {
+        "status_changed": "A sending account changed state."
+      }
     },
     "secret": {
       "title": "The webhook is ready",
@@ -685,7 +725,7 @@
     },
     "systemMailUnavailable": {
       "title": "This installation has no way to send system email",
-      "body": "Only an SMTP account can send it, because the Amazon SES client lives solely in the campaign sending service. You can see the state and the fix under Settings, System email. Trying again will not help, what is missing is configuration, not a connection."
+      "body": "The project has no usable sending account for system email to go out through. You can see the state and the fix under Settings, System email. Trying again will not help, what is missing is configuration, not a connection."
     },
     "dependencyTimeout": {
       "title": "The server took too long",

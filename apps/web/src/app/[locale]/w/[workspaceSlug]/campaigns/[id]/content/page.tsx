@@ -190,6 +190,10 @@ export default async function CampaignContentPage({ params }: PageProps) {
       document={data.document}
       designHash={data.designHash}
       fieldCatalog={data.fieldCatalog}
+      // Vzorová věta na plátně se skládá podle nastavení PROJEKTU, ne podle
+      // výchozích hodnot. Bez toho editor v projektu s tykáním sliboval
+      // „Dobrý den, Jano" u e-mailu, který odejde s „Ahoj Jano".
+      greeting={data.greeting}
       contentKind="campaign"
       /*
        * Hlavní akce editoru vede na DALŠÍ KROK, ne „zpět do kampaně": kampaň

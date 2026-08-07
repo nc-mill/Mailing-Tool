@@ -22,6 +22,12 @@ export type Workspace = {
    * takže je to nula požadavků navíc na kterékoli obrazovce.
    */
   greeting_enabled: boolean;
+  /**
+   * Poštovní adresa odesílatele do patičky e-mailu, hodnota za
+   * `{{ workspace.sender_address }}`. Prázdný řetězec znamená nevyplněno
+   * a kontrolní seznam před odesláním na to upozorní.
+   */
+  postal_address: string;
   created_at: string;
 };
 

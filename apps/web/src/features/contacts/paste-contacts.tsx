@@ -172,6 +172,8 @@ export function PasteContacts({
 
   const listWrapperRef = useRef<HTMLDivElement>(null);
   const newListRef = useRef<HTMLInputElement>(null);
+  /** Kam se vrací fokus, když se kliklo na uložení dávky, která uložit nejde. */
+  const textRef = useRef<HTMLTextAreaElement>(null);
 
   const parsed: PasteResult = useMemo(() => parsePastedContacts(text), [text]);
   const tooMany = parsed.rows.length > PASTE_MAX_ROWS;
@@ -437,11 +439,12 @@ export function PasteContacts({
       />
 
       <div className="flex flex-col gap-[var(--spacing-gutter)]">
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] items-start gap-[var(--spacing-gutter)]">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(360px,100%),1fr))] items-start gap-[var(--spacing-gutter)]">
           <div className="grid gap-[var(--spacing-gutter)]">
             <Card gap="gutter">
               <Field label={t('paste.fieldLabel')} hint={t('paste.fieldHint')}>
                 <Textarea
+                  ref={textRef}
                   rows={14}
                   className="font-mono"
                   spellCheck={false}
@@ -736,29 +739,59 @@ export function PasteContacts({
 
           {listError === null ? null : <Alert tone="error">{listError}</Alert>}
 
-          <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
+          {/*
+            KAM DÁVKA PŮJDE, JE VLASTNOST CELÉ DÁVKY, ne popiska tlačítka. Věta
+            stála v řádku za tlačítkem „Zrušit" a četla se jako jeho vysvětlení,
+            přestože se zrušením nemá nic společného. Teď je nad tlačítky, na
+            vlastním řádku a s cílovým stavem přihlášení, stejně jako v kroku
+            Volby u importu ze souboru.
+          */}
+          {selectedList === undefined ? null : (
+            <p className="text-meta text-text-muted">
+              {t(
+                subscriptionStatus === 'confirmed'
+                  ? 'paste.submitTargetConfirmed'
+                  : 'paste.submitTargetPending',
+                { list: selectedList.name },
+              )}
+            </p>
+          )}
+
+          {/*
+            Důvod nedostupnosti patří POD tlačítka, ne mezi ně. `Button` ho
+            vykresluje jako svého sourozence hned za sebou, takže se v pružném
+            řádku postavil mezi „Uložit" a „Zrušit". `order-last` s `basis-full`
+            ho pošle na vlastní řádek pod celou dvojici; svislý odstup dělá `gap`,
+            proto se ruší vlastní `mt`.
+          */}
+          <div className="flex flex-wrap items-center gap-[var(--spacing-stack)] [&>span]:order-last [&>span]:mt-0 [&>span]:basis-full">
             <Button
               variant="primary"
               pending={busy}
               pendingLabel={
                 phase.kind === 'running' ? t('paste.runningTitle') : t('paste.submitting')
               }
-              {...(canSave ? {} : { unavailableReason: t('paste.unavailable') })}
+              {...(canSave
+                ? {}
+                : {
+                    // Důvod je KONKRÉTNÍ. Jedna věta o obojím naráz nutila člověka
+                    // zjišťovat, která půlka se týká jeho textu.
+                    unavailableReason: tooMany
+                      ? t('paste.unavailableTooMany', { limit: PASTE_MAX_ROWS })
+                      : t('paste.unavailableEmpty'),
+                    // Fokus jde tam, kde se to napravuje, tedy do textového pole.
+                    onUnavailable: () => textRef.current?.focus(),
+                  })}
               onClick={() => void save()}
             >
               {t('paste.submit', { count: parsed.rows.length })}
             </Button>
-            <Button variant="secondary" onClick={() => router.push(basePath)}>
+            {/* Ústup je odkaz, ne druhé tlačítko: stejně jako u založení kontaktu
+                a seznamu. Dvě stejně velká tlačítka vedle sebe dělala z odchodu
+                rovnocennou nabídku k uložení. */}
+            <Link href={basePath} className="text-ui">
               {t('paste.cancel')}
-            </Button>
-            {/* Cílový seznam je vidět u tlačítka, protože výchozí bývá předvybraný. */}
-            {listId === null ? null : (
-              <p className="text-sm text-text-muted">
-                {t('paste.submitTarget', {
-                  list: available.find((list) => list.id === listId)?.name ?? '',
-                })}
-              </p>
-            )}
+            </Link>
           </div>
         </Card>
       </div>

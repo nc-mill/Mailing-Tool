@@ -5,6 +5,7 @@ import {
   Clock,
   Ellipsis,
   FileText,
+  Globe,
   LoaderCircle,
   Mail,
   Monitor,
@@ -55,6 +56,13 @@ export const MoreIcon = <Ellipsis aria-hidden className="icon-sm" />;
 
 /** Odznak „transakční e-mail" v knihovně šablon. */
 export const MailIcon = <Mail aria-hidden className="icon-sm" />;
+
+/**
+ * Veřejná stránka. Zeměkoule, ne obálka: je to jediný druh šablony, který se
+ * NEODESÍLÁ, ale otevírá v prohlížeči, a odznak je jediné místo v knihovně,
+ * kde ten rozdíl jde ukázat na první pohled.
+ */
+export const PageIcon = <Globe aria-hidden className="icon-sm" />;
 
 /** Zablokovaná adresa, na kterou se neodesílá. */
 export const BlockedIcon = <Ban aria-hidden className="icon-sm" />;

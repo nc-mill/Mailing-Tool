@@ -5,6 +5,7 @@ import { problemResponse, type ApiEnv } from '../../identity/api/schemas';
 import { assertPermission } from '../../identity/permissions';
 import { withWorkspace } from '../../tx';
 import { DEMO_CONTACTS } from '../dataset';
+import { readDemoImpact } from '../impact';
 import { purgeDemoData } from '../purge';
 import { DemoAlreadySeededError, readDemoManifest, readDemoTagId, seedDemoData } from '../seed';
 
@@ -21,10 +22,24 @@ const CountsSchema = z
   })
   .openapi('DemoDataCounts');
 
+/**
+ * Co úklid udělá s věcmi MIMO ukázkovou sadu. Není to součást `counts`
+ * schválně: `counts` popisuje, co se smaže, kdežto tohle popisuje, co se
+ * smazáním rozváže, a smísit obojí do jednoho čísla by bylo zavádějící.
+ * Podrobnosti u `readDemoImpact`.
+ */
+const ImpactSchema = z
+  .object({
+    contacts: z.number().int().nonnegative(),
+    campaigns: z.number().int().nonnegative(),
+  })
+  .openapi('DemoDataImpact');
+
 const StateSchema = z
   .object({
     present: z.boolean(),
     counts: CountsSchema.nullable(),
+    impact: ImpactSchema.nullable(),
     /** Štítek pro hromadný výběr v tabulce kontaktů, která filtruje podle `tag_id`. */
     tagId: z.string().nullable(),
   })
@@ -108,18 +123,26 @@ export function registerDemoDataRoutes(app: OpenAPIHono<ApiEnv>): void {
   app.openapi(stateRoute, async (c) => {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'contacts:read');
-    const { manifest, tagId } = await withWorkspace(ctx, async (tx) => ({
-      manifest: await readDemoManifest(tx, ctx.workspaceId),
-      tagId: await readDemoTagId(tx, ctx.workspaceId),
-    }));
+    // Dopad se počítá jen tehdy, když sada v projektu opravdu je. Bez manifestu
+    // by dva poddotazy běžely nad každým vykreslením Přehledu pro nic.
+    const { manifest, tagId, impact } = await withWorkspace(ctx, async (tx) => {
+      const found = await readDemoManifest(tx, ctx.workspaceId);
+      if (found === null) return { manifest: null, tagId: null, impact: null };
+      return {
+        manifest: found,
+        tagId: await readDemoTagId(tx, ctx.workspaceId),
+        impact: await readDemoImpact(tx, ctx.workspaceId, found),
+      };
+    });
     if (manifest === null) {
-      return c.json({ data: { present: false, counts: null, tagId: null } }, 200);
+      return c.json({ data: { present: false, counts: null, impact: null, tagId: null } }, 200);
     }
     return c.json(
       {
         data: {
           present: true,
           tagId,
+          impact,
           counts: {
             contacts: manifest.contactIds.length,
             lists: manifest.listIds.length,
@@ -145,7 +168,7 @@ export function registerDemoDataRoutes(app: OpenAPIHono<ApiEnv>): void {
       // Celý seed uvnitř JEDNÉ transakce s kontextem projektu. Bez obálky by
       // první INSERT skončil na WITH CHECK politiky ws_isolation.
       const manifest = await withWorkspace(ctx, (tx) =>
-        seedDemoData(tx, { workspaceId: ctx.workspaceId, now: new Date(), fields }),
+        seedDemoData(tx, { workspaceId: ctx.workspaceId, now: new Date(), fields, ctx }),
       );
       return c.json({ data: { contacts: manifest.contactIds.length } }, 201);
     } catch (err) {

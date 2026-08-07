@@ -154,6 +154,26 @@ function hasUnsubscribeLink(html: string | null): boolean {
   return html.includes('unsubscribe_url') || html.includes('/u/') || html.includes('{{ml_unsub');
 }
 
+/**
+ * VAROVÁNÍ, NE ZÁVORA, a je to vědomé rozhodnutí.
+ *
+ * Poštovní adresu odesílatele musí obchodní sdělení nést, takže prázdná adresa
+ * v patičce je právní riziko a tiše projít nesmí. Tvrdá závora by ale zastavila
+ * i každý projekt, který si nástroj teprve zkouší a adresu nikdy nevyplnil,
+ * a to na místě, kde s tím uživatel nepočítá. Blokující položky v tomhle
+ * seznamu jsou navíc věci, které odeslání znemožňují technicky (prázdné
+ * publikum, nezkompilovaná šablona); tahle ho znemožňuje právně a rozhodnutí
+ * patří člověku, který kampaň posílá. Stejnou váhu tu má chybějící DMARC.
+ *
+ * Podmínkou je, že šablona merge tag SKUTEČNĚ POUŽÍVÁ. Kdo si adresu do patičky
+ * napsal ručně, dostal by jinak varování, se kterým nemá co dělat, a naučil by
+ * se přehlížet i ta ostatní. Kontroluje se `compiled_html`, tedy zdroj před
+ * interpolací, stejně jako u odhlašovacího odkazu o pár řádků výš.
+ */
+function usesSenderAddress(html: string | null): boolean {
+  return html !== null && html.includes('workspace.sender_address');
+}
+
 export async function runCampaignPreflight(
   ctx: WorkspaceContext,
   campaign: CampaignRowFull,
@@ -221,6 +241,13 @@ export async function runCampaignPreflight(
     findings.push({ code: 'campaign_not_compiled', severity: 'error' });
   } else if (!hasUnsubscribeLink(campaign.compiled_html)) {
     findings.push({ code: 'campaign_no_unsubscribe', severity: 'error' });
+  }
+
+  if (
+    usesSenderAddress(campaign.compiled_html) &&
+    (settings.campaigns.postal_address ?? '').trim() === ''
+  ) {
+    findings.push({ code: 'workspace_postal_address_missing', severity: 'warning' });
   }
 
   let quotaRemaining: number | null = null;

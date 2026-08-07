@@ -200,6 +200,7 @@ async function refreshDeliveryCountersIn(
 ): Promise<void> {
   const { rows } = await tx.execute<{
     delivered: string;
+    rejected: string;
     bouncedHard: string;
     bouncedSoft: string;
     complained: string;
@@ -207,6 +208,9 @@ async function refreshDeliveryCountersIn(
     clicksScanner: string;
   }>(sql`
     SELECT count(DISTINCT message_id) FILTER (WHERE type = 'delivered')    AS "delivered",
+           -- Odmítnutí poskytovatelem. Počítá se stejně jako odrazy, tedy
+           -- count(DISTINCT message_id), protože i odmítnutí umí přijít víckrát.
+           count(DISTINCT message_id) FILTER (WHERE type = 'rejected')     AS "rejected",
            count(DISTINCT message_id) FILTER (WHERE type = 'bounced_hard') AS "bouncedHard",
            count(DISTINCT message_id) FILTER (WHERE type = 'bounced_soft') AS "bouncedSoft",
            count(DISTINCT message_id) FILTER (WHERE type = 'complained')   AS "complained",
@@ -237,14 +241,16 @@ async function refreshDeliveryCountersIn(
 
   await tx.execute(sql`
     INSERT INTO campaign_stats (
-      workspace_id, campaign_id, delivered, bounced_hard, bounced_soft,
+      workspace_id, campaign_id, delivered, rejected, bounced_hard, bounced_soft,
       complained, unsubscribed, clicks_scanner, updated_at, version)
     VALUES (
       ${workspaceId}::uuid, ${campaignId}::uuid, ${Number(row.delivered)},
+      ${Number(row.rejected)},
       ${Number(row.bouncedHard)}, ${Number(row.bouncedSoft)}, ${Number(row.complained)},
       ${Number(row.unsubscribed)}, ${Number(row.clicksScanner)}, now(), 1)
     ON CONFLICT (campaign_id) DO UPDATE SET
       delivered      = excluded.delivered,
+      rejected       = excluded.rejected,
       bounced_hard   = excluded.bounced_hard,
       bounced_soft   = excluded.bounced_soft,
       complained     = excluded.complained,

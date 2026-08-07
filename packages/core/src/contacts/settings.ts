@@ -128,3 +128,37 @@ export async function readGreetingEnabled(tx: Tx, ctx: WorkspaceContext): Promis
 export async function isGreetingEnabled(ctx: WorkspaceContext): Promise<boolean> {
   return withWorkspace(ctx, (tx) => readGreetingEnabled(tx, ctx));
 }
+
+/**
+ * VŠECHNO, CO ROZHODUJE O ZNĚNÍ OSLOVENÍ, na jednom místě.
+ *
+ * Tvarově je to vstup `buildGreeting` bez údajů o kontaktu, takže se výsledek
+ * dá předat rovnou skladateli i vzorovým datům náhledu
+ * (`@mlain/emails/preview-data`). Typ se odsud nepřebírá z `@mlain/emails`
+ * schválně: doména kontaktů na balíčku e-mailů nestojí a strukturální shoda
+ * stačí.
+ *
+ * Trojice se čte DVĚMA dotazy, protože bydlí na dvou místech: vykání a tykání
+ * je sloupec `workspaces.address_form` (vlastní ho doména identity), zbytek je
+ * větev `settings.contacts`. Přepočet oslovení má vlastní kopii téhle úvahy
+ * (`jobs/recompute-greeting.ts`), protože si k tomu bere ještě jazyk projektu
+ * a nemá smysl kvůli tomu chodit do databáze třikrát.
+ */
+export async function readGreetingSettings(
+  tx: Tx,
+  ctx: WorkspaceContext,
+): Promise<{
+  addressForm: AddressForm;
+  salutationBy: 'first_name' | 'surname';
+  vocativePolicy: 'strict' | 'balanced';
+}> {
+  const settings = await readContactsSettings(tx, ctx);
+  const { rows } = await tx.execute<{ address_form: AddressForm }>(sql`
+    SELECT address_form FROM workspaces WHERE id = ${ctx.workspaceId}::uuid
+  `);
+  return {
+    addressForm: rows[0]?.address_form ?? 'formal',
+    salutationBy: settings.salutation_by,
+    vocativePolicy: settings.vocative_policy,
+  };
+}

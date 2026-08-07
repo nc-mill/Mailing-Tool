@@ -168,6 +168,10 @@ export function SessionsSectionView({
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         level="N2"
+        // Červená kvůli druhému následku: rozepsané formuláře na ostatních
+        // zařízeních se ztratí a zpátky je nic nedostane. Samotné odhlášení by
+        // červenou nechtělo, ztráta rozepsané práce ano.
+        destructive
         title={t('profile.sessions.logoutAllDialogTitle')}
         consequences={[
           t('profile.sessions.logoutAllConsequence', { count: rows.length }),

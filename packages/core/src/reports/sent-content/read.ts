@@ -2,6 +2,7 @@ import { createHtmlEngine, createTextEngine } from '@mlain/contracts/liquid/engi
 import { contentStateOf, type ContentState } from '@mlain/emails/document/content-stats';
 import { sql } from 'drizzle-orm';
 import type { Tx, WorkspaceContext } from '../../tx';
+import { readCampaignRootsSource, withCampaignRoots } from '../../campaigns/render-roots';
 import { notFound } from '../errors';
 
 /**
@@ -145,8 +146,18 @@ export async function readSentContent(
    * `render_data` se BERE, JAK JE. Zapsal ji outbox při skládání dávky včetně
    * `_context` a `_present`, takže se druhá příprava nedělá a dělat nesmí:
    * podruhé připravená data nejsou totéž co jednou připravená (viz webview).
+   *
+   * Kořeny `campaign` a `workspace` jsou výjimka a doplňují se, protože v
+   * render_data nikdy nebyly: dodává je odesílač z hlavičky kampaně. Bez toho
+   * by sekce „Co se doopravdy rozeslalo" tvrdila, že patička odešla bez
+   * poštovní adresy, i když ji nesla.
    */
-  const data = { ...message?.render_data, ...systemUrls() };
+  const rootsSource = await readCampaignRootsSource(tx, ctx, campaignId);
+  const withUrls = { ...message?.render_data, ...systemUrls() };
+  const { data, roots } =
+    rootsSource === null
+      ? { data: withUrls, roots: null }
+      : await withCampaignRoots(withUrls, rootsSource);
 
   const html = await createHtmlEngine().parseAndRender(campaign.compiled_html, data);
   /*
@@ -159,5 +170,14 @@ export async function readSentContent(
       ? null
       : await createTextEngine().parseAndRender(campaign.compiled_text, data);
 
-  return { ...base, html, text, personalizedFor: message?.email ?? null };
+  // Předmět se ukazuje VYRENDEROVANÝ, ze stejného důvodu jako tělo: u
+  // personalizovaného předmětu by řádek jinak nesl `Ahoj {{ contact.first_name }}`,
+  // tedy něco, co žádnému příjemci nedošlo.
+  return {
+    ...base,
+    ...(roots === null ? {} : { subject: roots.campaign.subject }),
+    html,
+    text,
+    personalizedFor: message?.email ?? null,
+  };
 }

@@ -119,10 +119,17 @@ export function SettingsSection({
  *
  * Používá se tam, kde sekce nese víc krátkých karet vedle sebe. Obrazovka
  * s jednou širokou tabulkou zůstává v `SettingsStack`.
+ *
+ * MINIMUM SLOUPCE JE `min(360px, 100%)`, ne holých 360 px, a je to oprava
+ * vodorovného přetečení. `minmax(360px, 1fr)` je TVRDÉ minimum: když je sloupec
+ * užší než 360 px, mřížka se nezúží, jen přeteče ven ze stránky. Na displeji
+ * 390 px má hlavní sloupec 269 px, takže karta začínala 91 px za pravým okrajem
+ * (naměřeno 7. 8. 2026 na Nastavení: `scrollWidth` 451 px proti 375 px).
+ * `min(...)` z minima udělá „360 px, pokud se vejde, jinak celá šířka".
  */
 export function SettingsColumns({ children }: { children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] items-start gap-[var(--spacing-gutter)]">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(360px,100%),1fr))] items-start gap-[var(--spacing-gutter)]">
       {children}
     </div>
   );

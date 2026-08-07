@@ -144,6 +144,10 @@
     "localeUiLink": "Přepnout jazyk rozhraní v Můj účet",
     "timezone": "Časová zóna projektu",
     "timezoneHint": "V téhle zóně se plánují kampaně a počítají reporty.",
+    "postalAddress": "Poštovní adresa odesílatele",
+    "postalAddressHint": "Sází se do patičky e-mailů. Obchodní sdělení ji musí obsahovat, jinak porušujete zákon. Napište ji tak, jak má být v e-mailu, klidně na víc řádků.",
+    "postalAddressPlaceholder": "Kolo Eshop s.r.o.\nNádražní 5\n110 00 Praha 1",
+    "postalAddressEmpty": "Nevyplněno, patička odchází bez adresy",
     "greetingEnabled": {
       "label": "Oslovení a 5. pád",
       "hint": "Skloňování jmen dává smysl v češtině a slovenštině. V ostatních jazycích se 5. pád nepoužívá a celá agenda jen zabírá místo.",
@@ -320,18 +324,18 @@
     "failTitle": "Systémová pošta nefunguje",
     "reason": {
       "no_account": "Projekt nemá odesílací účet, kterým by šlo e-mail poslat.",
-      "provider_unsupported": "Projekt by odeslal účtem {account} typu {type}. Systémovou poštu odsud odešle jen účet typu SMTP.",
+      "provider_unsupported": "Projekt by odeslal účtem {account} typu {type}, kterým systémová pošta odejít neumí. Vyberte níž jiný účet.",
       "selected_account_missing": "Účet vybraný pro systémovou poštu v projektu už není, nebo je vypnutý."
     },
     "limitationTitle": "Proč to tak je",
-    "limitationBody": "Systémové e-maily skládá a odesílá aplikace sama. Klienta pro Amazon SES má jen odesílací služba kampaní, napsaná v Go, takže aplikace účtem typu SES odeslat neumí. Je to známé omezení nástroje, ne chyba vašeho nastavení.",
+    "limitationBody": "Systémové e-maily skládá a odesílá aplikace sama, mimo rozesílku kampaní. Odejdou účtem typu SES i SMTP, ale nějaký použitelný účet mít musí: projekt bez odesílacího účtu, nebo s účtem, který jste vybrali a mezitím zmizel, nemá čím poslat.",
     "blockedTitle": "Co kvůli tomu nejde",
     "blocked1": "Pozvánka do projektu e-mailem. Náhrada: v Nastavení, Tým založte člena rovnou s heslem.",
     "blocked2": "Obnova zapomenutého hesla. Náhrada: na serveru příkaz mlain reset-password s adresou uživatele.",
     "blocked3": "Ověření adresy ve zkušebním režimu, takže zkušební režim nejde dokončit.",
     "blocked4": "Upozornění na vypnutý webhook. To se jen nedoručí, webhook se vypne tak jako tak.",
     "fixTitle": "Jak to spravit",
-    "fixBody": "Přidejte v Nastavení, Odesílání účet typu SMTP. Kampaně můžou dál chodit přes SES, systémová pošta si vezme ten účet SMTP.",
+    "fixBody": "Přidejte v Nastavení, Odesílání odesílací účet, typu SES nebo SMTP. Systémová pošta si vezme ten výchozí, kampaně chodí dál beze změny.",
     "fixLink": "Přejít na Odesílání",
     "fromTitle": "Adresa odesílatele",
     "fromCurrent": "Systémové e-maily chodí z adresy {address}.",
@@ -343,7 +347,7 @@
     "form": {
       "title": "Nastavení",
       "account": "Účet pro systémovou poštu",
-      "accountAuto": "Vybrat automaticky, přednost má SMTP",
+      "accountAuto": "Vybrat automaticky, přednost má výchozí účet",
       "accountHint": "Kterým odesílacím účtem systémové e-maily odejdou.",
       "accountIncapable": "{name}, typ {type}, systémovou poštu neumí",
       "accountCapable": "{name}, typ {type}",
@@ -471,6 +475,42 @@
       "submitting": "Vytváříme webhook",
       "saveSubmit": "Uložit změny",
       "duplicateNote": "Doručení je nejméně jednou. Když restartujeme worker uprostřed odesílání, událost může dorazit dvakrát. Rozlišujte ji podle hlavičky ML-Event-Id."
+    },
+    "eventGroups": {
+      "brand": "Značka",
+      "campaign": "Kampaně",
+      "contact": "Kontakty",
+      "domain": "Domény",
+      "message": "Zprávy",
+      "provider": "Odesílací účty"
+    },
+    "events": {
+      "brand": {
+        "extraction_completed": "Rozbor značky z webu doběhl."
+      },
+      "campaign": {
+        "paused": "Kampaň se sama pozastavila.",
+        "resumed": "Pozastavená kampaň se rozjela dál.",
+        "schedule_delayed": "Naplánovaná kampaň se rozjela později, než měla.",
+        "schedule_missed": "Naplánovaný termín kampaně propadl.",
+        "sending_started": "Kampaň začala odesílat.",
+        "sent": "Kampaň doodesílala."
+      },
+      "contact": {
+        "subscribed": "Kontakt se přihlásil k odběru seznamu.",
+        "suppressed": "Adresu jsme zařadili na blokační seznam.",
+        "unsubscribed": "Kontakt se odhlásil."
+      },
+      "domain": {
+        "verification_changed": "Ověření domény změnilo stav."
+      },
+      "message": {
+        "clicked": "Příjemce klikl na odkaz ve zprávě.",
+        "opened": "Příjemce otevřel zprávu."
+      },
+      "provider": {
+        "status_changed": "Odesílací účet změnil stav."
+      }
     },
     "secret": {
       "title": "Webhook je vytvořený",
@@ -685,7 +725,7 @@
     },
     "systemMailUnavailable": {
       "title": "Systémovou poštu nemá instalace jak odeslat",
-      "body": "Odesílá ji jen účet typu SMTP, protože klient Amazon SES má pouze odesílací služba kampaní. Stav a nápravu najdete v Nastavení, Systémová pošta. Opakování pokusu nepomůže, chybí nastavení, ne spojení."
+      "body": "Projekt nemá použitelný odesílací účet, kterým by systémová pošta odešla. Stav a nápravu najdete v Nastavení, Systémová pošta. Opakování pokusu nepomůže, chybí nastavení, ne spojení."
     },
     "dependencyTimeout": {
       "title": "Server odpovídal moc dlouho",

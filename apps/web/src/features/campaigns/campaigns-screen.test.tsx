@@ -172,6 +172,115 @@ describe('mazání kampaně ze seznamu', () => {
   });
 });
 
+/**
+ * HROMADNÉ MAZÁNÍ Z PRUHU VÝBĚRU.
+ *
+ * Nález zadavatele: „Multivýběr. Nemůžu s nimi nic dělat. Třeba je smazat, pokud
+ * jsou rozepsané. Jediné, co tam je, je vybrat všech 12, ale to mi je k prdu."
+ * Zaškrtávátka kreslí `DataTable` vždycky, ale seznam kampaní si výběr nebral ven,
+ * takže pruh nabízel jedině vybrat všechno a výběr zrušit.
+ *
+ * Hlídá se hlavně to, co je na hromadném mazání nebezpečné: výběr může obsahovat
+ * kampaně, které smazat nejde, a tichý částečný úspěch je nepřijatelný.
+ */
+describe('hromadné mazání ze seznamu', () => {
+  /** Zaškrtne řádek podle pořadí v tabulce. Popisek mají všechny řádky stejný. */
+  async function selectRow(index: number) {
+    const boxes = screen.getAllByRole('checkbox', { name: 'Označit řádek' });
+    const box = boxes[index];
+    if (box === undefined) throw new Error(`řádek ${index} v tabulce není`);
+    await userEvent.click(box);
+  }
+
+  it('výběr vede k akci, ne jen k počtu', async () => {
+    renderScreen('data');
+    await selectRow(0);
+
+    // Pruh výběru s akcí, ne bez ní. Tohle je celý nález.
+    expect(screen.getByTestId('selection-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('campaigns-bulk-delete')).toHaveTextContent('Smazat 1 kampaň');
+  });
+
+  it('tlačítko počítá jen kampaně, které jádro smazat nechá', async () => {
+    renderScreen('data');
+    await selectRow(0);
+    await selectRow(1);
+
+    // Označené jsou dvě, ale odeslanou kampaň smazat nelze, takže tlačítko slibuje jednu.
+    expect(screen.getByTestId('campaigns-bulk-delete')).toHaveTextContent('Smazat 1 kampaň');
+
+    await userEvent.click(screen.getByTestId('campaigns-bulk-delete'));
+    // A dialog to řekne nahlas, aby po akci nikdo nehledal, kam se zbytek poděl.
+    expect(screen.getByTestId('bulk-delete-campaigns-skipped')).toHaveTextContent(
+      '1 další označená kampaň zůstane',
+    );
+  });
+
+  it('maže se jen to, co jde, a odeslaná kampaň zůstane ve výběru', async () => {
+    renderScreen('data');
+    await selectRow(0);
+    await selectRow(1);
+
+    await userEvent.click(screen.getByTestId('campaigns-bulk-delete'));
+    await userEvent.click(screen.getByTestId('bulk-delete-campaigns-submit'));
+
+    await waitFor(() => expect(remove).toHaveBeenCalledTimes(1));
+    expect(remove).toHaveBeenCalledWith({ workspaceId: 'ws-1', campaignId: 'camp-1' });
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+
+    // Výběr se po úspěchu uklidil, ale nesmazatelná kampaň v něm zůstala:
+    // je to jediné, s čím se dá dál něco dělat.
+    await waitFor(() => expect(screen.queryByTestId('campaigns-bulk-delete')).toBeNull());
+    expect(screen.getByTestId('campaigns-bulk-nothing')).toHaveTextContent(
+      'Z označených kampaní nejde smazat žádná',
+    );
+  });
+
+  it('výběr samotné odeslané kampaně nabídne vysvětlení, ne zašedlé tlačítko', async () => {
+    renderScreen('data');
+    await selectRow(1);
+
+    expect(screen.queryByTestId('campaigns-bulk-delete')).toBeNull();
+    expect(screen.getByTestId('campaigns-bulk-nothing')).toBeInTheDocument();
+  });
+
+  /*
+   * ODKAZ „VYBRAT VŠECH N" SE TU NENABÍZÍ, A JE TO SPRÁVNĚ.
+   *
+   * Seznam kampaní se nestránkuje, takže by odkaz sliboval rozšíření výběru na řádky,
+   * které jsou všechny na obrazovce a dají se zaškrtnout hlavičkou. Do 7. 8. 2026 tu
+   * odkaz stál a vedl do prázdna: přepnul režim UVNITŘ `DataTable`, pruh napsal
+   * „Vybráno všech 9" a akce pod ním dál pracovala se zaškrtnutými řádky. Přesně
+   * na tohle si zadavatel stěžoval („vybrat všech 12, ale to mi je k prdu").
+   */
+  it('nenabízí vybrat všech N, protože je celá tabulka na jedné stránce', async () => {
+    renderScreen('data');
+    await selectRow(0);
+
+    expect(screen.getByTestId('selection-bar')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Vybrat všech/ })).toBeNull();
+  });
+
+  it('nezdar u serveru výběr nezruší a pojmenuje se počtem', async () => {
+    remove.mockResolvedValueOnce({
+      status: 'error',
+      code: 'conflict',
+      campaignStatus: 'scheduled',
+      detail: 'Kampaň je naplánovaná.',
+    });
+    renderScreen('data');
+    await selectRow(0);
+
+    await userEvent.click(screen.getByTestId('campaigns-bulk-delete'));
+    await userEvent.click(screen.getByTestId('bulk-delete-campaigns-submit'));
+
+    const error = await screen.findByTestId('bulk-delete-campaigns-error');
+    expect(error).toHaveTextContent('Kampaň je naplánovaná.');
+    // Odklikaná práce se po chybě neztrácí.
+    expect(screen.getByTestId('campaigns-bulk-delete')).toBeInTheDocument();
+  });
+});
+
 describe('duplikace kampaně ze seznamu', () => {
   /*
    * Duplikaci nabízí KAŽDÝ stav včetně odeslaného. U odeslané kampaně je to

@@ -61,7 +61,10 @@
     "dialogTitle": "Odstranit ukázková data?",
     "dialogContacts": "{contacts, plural, =0 {žádný kontakt} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}, {lists, plural, =0 {žádný seznam} one {# seznam} few {# seznamy} many {# seznamu} other {# seznamů}} a {tags, plural, =0 {žádný štítek} one {# štítek} few {# štítky} many {# štítku} other {# štítků}}.",
     "dialogContent": "{segments, plural, =0 {žádný segment} one {# segment} few {# segmenty} many {# segmentu} other {# segmentů}}, {templates, plural, =0 {žádná šablona} one {# šablona} few {# šablony} many {# šablony} other {# šablon}} a {campaigns, plural, =0 {žádná kampaň} one {# kampaň} few {# kampaně} many {# kampaně} other {# kampaní}} i s reportem.",
-    "dialogSafety": "Na nic ostatního v projektu se nesáhne.",
+    "dialogSafety": "Vaše vlastní kontakty, seznamy, šablony ani kampaně se nemažou.",
+    "dialogEdits": "Co jste dopsali do ukázkových položek, zmizí s nimi: přepsaný ukázkový kontakt i upravená ukázková šablona se mažou taky.",
+    "dialogImpactContacts": "Ukázkové seznamy a štítek zmizí i {contacts, plural, =0 {u žádného vašeho vlastního kontaktu} one {u # vašeho vlastního kontaktu} few {u # vašich vlastních kontaktů} many {u # vašeho vlastního kontaktu} other {u # vašich vlastních kontaktů}}. Kontakty samotné zůstávají, jen se z ukázkových seznamů odhlásí a přijdou o štítek.",
+    "dialogImpactCampaigns": "{campaigns, plural, =0 {Žádná vaše vlastní kampaň nepřijde} one {# vaše vlastní kampaň přijde} few {# vaše vlastní kampaně přijdou} many {# vaší vlastní kampaně přijde} other {# vašich vlastních kampaní přijde}} o vazbu na ukázkovou šablonu nebo na odhlašovací seznam. Obsah kampaně zůstává.",
     "dialogAgain": "Ukázková data si můžete kdykoli nahrát znovu.",
     "dialogConfirm": "Odstranit ukázková data",
     "dialogCancel": "Nechat je tu"

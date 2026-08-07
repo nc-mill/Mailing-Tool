@@ -5,6 +5,7 @@ import { getFormatter, getTranslations } from 'next-intl/server';
 import { getProvider } from '@mlain/core/ai';
 import { AiAssistantPanel } from '@/features/ai/assistant-panel';
 import { validationProfileFor, type TemplateKind } from '@mlain/emails/document/profile';
+import { PAGE_SURFACES } from '@mlain/emails/document/page-surfaces';
 import { loadEditorData } from '@/features/editor/ports/server-ports';
 import { TemplateDetailActions } from '@/features/templates/template-detail-actions';
 import {
@@ -150,6 +151,27 @@ export default async function TemplateEditorPage({
     : undefined;
 
   /*
+   * POVRCH VEŘEJNÉ STRÁNKY, tedy pro které místo se návrh dělá.
+   *
+   * Všechny čtyři povrchy jsou tentýž `kind = 'page'` a tentýž validační profil.
+   * Liší se JEN tím, co o návštěvníkovi vědí: děkovací stránka a „už jste
+   * přihlášeni" jsou cíl přesměrování bez tokenu, kdežto stránka po potvrzení
+   * a po odhlášení se otevírají z odkazu v e-mailu a kontakt znají. Editor tedy
+   * potřebuje vědět, kam se návrh vykreslí, aby paletka personalizace nenabídla
+   * údaj, který se u návštěvníka vykreslí jako prázdno.
+   *
+   * Adresu skládá strana formulářů a seznamů (`?surface=confirmed`), editor si
+   * ji nevymýšlí. Je to týž vzor jako `return_to` u kampaní o kus výš.
+   *
+   * NEZNÁMÁ HODNOTA SE ZAHAZUJE a editor pak použije nejužší povrch. Přepsat
+   * cizí řetězec rovnou do kontroly by znamenalo, že překlep v adrese rozhodne
+   * o tom, co se nabídne; nejužší volba je jediná, u které se chyba projeví
+   * hláškou v editoru, ne prázdným místem u návštěvníka.
+   */
+  const surfaceParam = typeof query.surface === 'string' ? query.surface : undefined;
+  const pageSurface = PAGE_SURFACES.find((value) => value === surfaceParam);
+
+  /*
    * SMAZÁNÍ PATŘÍ JEN K SAMOSTATNÉ ŠABLONĚ.
    *
    * Když se sem uživatel proklikl z kampaně (`returnTo`), je pod editorem
@@ -174,6 +196,7 @@ export default async function TemplateEditorPage({
        * tak v editoru neuložil obsah, který server přijme.
        */
       templateKind={validationProfileFor(data.kind as TemplateKind)}
+      {...(pageSurface === undefined ? {} : { pageSurface })}
       {...(returnTo === undefined ? {} : { returnTo })}
       // Obsah kampaně se v editoru nesmí tvářit jako obecná šablona. Poznáme
       // to podle toho, že se sem uživatel proklikl z kampaně.
@@ -203,6 +226,10 @@ export default async function TemplateEditorPage({
       document={data.document}
       designHash={data.designHash}
       fieldCatalog={data.fieldCatalog}
+      // Vzorová věta na plátně se skládá podle nastavení PROJEKTU, ne podle
+      // výchozích hodnot. Bez toho editor v projektu s tykáním sliboval
+      // „Dobrý den, Jano" u e-mailu, který odejde s „Ahoj Jano".
+      greeting={data.greeting}
       // ODCHYLKA OD PLÁNU: oprávnění `templates:write_html` v registru P04
       // **není** (jsou tam jen `templates:read` a `templates:write`). Editor ho
       // nesmí zavést sám, protože registr oprávnění vlastní P04, takže se

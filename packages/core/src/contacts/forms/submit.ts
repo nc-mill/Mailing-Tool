@@ -9,8 +9,11 @@ import { storeIpEnabled } from '../privacy';
 import { listContactFields } from '../repo/contact-fields';
 import { recordConsent } from '../repo/consents';
 import { assertActiveForm, publicFormRef, recordSubmission, type PublicForm } from '../repo/forms';
+import { byId as listById } from '../repo/lists';
 import { writeContact } from '../repo/contacts';
 import { checkSingleSuppression } from '../repo/suppressions';
+import { ALREADY_SUBSCRIBED_QUERY } from '../public/page-render';
+import { resolvePageTemplateId } from '../public/page-template';
 import { addTagsToContact } from '../repo/tags';
 import { readContactsSettings } from '../settings';
 import { formFieldName } from './definition';
@@ -87,15 +90,26 @@ export async function submitForm(
   const active = assertActiveForm(form);
   const ctx = active.ctx;
 
-  const redirect = (): SubmitResult => ({
+  /**
+   * Kam po odeslání. `alreadySubscribed` je vlastní stránka seznamu pro toho,
+   * kdo v něm už potvrzený je (`lists.already_subscribed_redirect_url`).
+   *
+   * PLATÍ JEN PRO ODPOVĚĎ 303, tedy pro hostovanou stránku a pro čistě HTML
+   * formulář. Vkládaný skript posílá JSON, dostane 200 a vypíše svou hlášku;
+   * chová se tak i dnešní `redirectUrl` samotného formuláře, takže to není
+   * nová výjimka, ale tatáž hranice. Kdyby se skript měl přesměrovat, musel by
+   * adresu dostat v těle, a to je právě ten rozdíl v odpovědi, kvůli kterému
+   * je celá funkce vypnutá, dokud si ji správce nezapne.
+   */
+  const redirect = (alreadySubscribed?: string | null): SubmitResult => ({
     status: 303,
     response: UNIFORM_RESPONSE,
-    location: active.redirectUrl ?? `/f/${publicFormRef(active)}/thanks`,
+    location: alreadySubscribed ?? active.redirectUrl ?? `/f/${publicFormRef(active)}/thanks`,
   });
-  const finish = (): SubmitResult =>
+  const finish = (alreadySubscribed?: string | null): SubmitResult =>
     input.contentType === 'application/json'
       ? { status: 200, response: UNIFORM_RESPONSE }
-      : redirect();
+      : redirect(alreadySubscribed);
 
   // 1. Pět vrstev ochrany. Tiché zahození vypadá navenek jako úspěch.
   const keyring = deps.keyring ?? keyringFromEnv();
@@ -164,6 +178,13 @@ export async function submitForm(
   //     výsledek k nerozeznání od úspěchu (rozhodnutí R9).
   let contactId: string | null = null;
   let suppressed = false;
+  /**
+   * Seznamy, ve kterých byla adresa už POTVRZENÁ, tedy odeslání pro ně nic
+   * nezměnilo a žádný e-mail z nich neodejde (stavový automat u `confirmed`
+   * nedělá nic, viz `lists/state-machine.ts`). Podle toho se vybírá vlastní
+   * stránka „už jste přihlášeni".
+   */
+  const alreadyConfirmedListIds: string[] = [];
 
   if (active.listIds.length === 0) {
     // Formulář bez seznamu jen zakládá kontakt. `writeContact` má tutéž bránu
@@ -203,6 +224,7 @@ export async function submitForm(
       if (result.outcome === 'blocked_complaint' || result.outcome === 'blocked_suppressed') {
         suppressed = true;
       }
+      if (result.outcome === 'already_confirmed') alreadyConfirmedListIds.push(listId);
     }
   }
 
@@ -276,8 +298,77 @@ export async function submitForm(
     await deliverFormEmail(ctx, active, contactId, validation.email);
   }
 
-  // 11. Odpověď, vždy stejná.
-  return finish();
+  // 11. Odpověď. Stejná pro všechny, jen s jednou výjimkou, kterou si správce
+  //     musí sám zapnout, viz `alreadySubscribedPage`.
+  return finish(await alreadySubscribedPage(ctx, active, alreadyConfirmedListIds));
+}
+
+/**
+ * Vlastní stránka pro toho, kdo v seznamu už potvrzený je, nebo `null`.
+ *
+ * PROČ VŮBEC. Dnes dostane takový člověk tutéž děkovací stránku jako nový
+ * zájemce, tedy typicky text „podívejte se do e-mailu a potvrďte přihlášení".
+ * Žádný e-mail mu ale nepřijde, protože potvrzenému se nic neposílá, takže mu
+ * produkt řekne nepravdu a on ji nemá jak prohlédnout. Vlastní stránka je
+ * jediné místo, kde mu jde říct „vy už jste přihlášeni, nic dělat nemusíte".
+ *
+ * DVĚ PODMÍNKY, obě nutné:
+ *
+ *  1. VŠECHNY seznamy formuláře hlásí `already_confirmed`. Když formulář
+ *     přihlašuje do dvou seznamů a člověk je zatím jen v jednom, tak se
+ *     odesláním něco doopravdy stalo a „už jste přihlášeni" by byla nepravda.
+ *  2. Seznam má vyplněnou adresu. `NULL` je výchozí a znamená dnešní chování.
+ *
+ * PROLAMUJE TO JEDNOTNOU ODPOVĚĎ (R9) A JE TO VĚDOMÉ. Jiná odpověď na známou
+ * adresu prozradí, že ta adresa v databázi je. Proto se to nezapíná samo, proto
+ * je výchozí `NULL` a proto na ten následek upozorňuje rozhraní u toho pole.
+ * Adresa neznámá i adresa blokovaná dál dostanou přesně tutéž odpověď jako nový
+ * zájemce, takže se rozdíl týká jen potvrzených.
+ */
+async function alreadySubscribedPage(
+  ctx: PublicForm['ctx'],
+  form: PublicForm,
+  alreadyConfirmedListIds: readonly string[],
+): Promise<string | null> {
+  if (form.listIds.length === 0) return null;
+  if (alreadyConfirmedListIds.length !== form.listIds.length) return null;
+
+  // Seznamy se čtou v pořadí, v jakém je má formulář: první vyplněná adresa
+  // vyhrává. Hádat mezi dvěma vyplněnými by znamenalo pravidlo, které by nikdo
+  // nečekal, a pořadí formuláře je jediné, které uživatel sám určil.
+  for (const listId of form.listIds) {
+    const list = await listById(ctx, listId);
+    const url = list?.alreadySubscribedRedirectUrl ?? null;
+    if (url !== null) return url;
+  }
+
+  /*
+   * NAVRŽENÁ STRÁNKA „už jste přihlášeni" (plán 2026-08-07, povrch
+   * `already_subscribed`). Je to třetí možnost vedle dnešního přesměrování
+   * na cizí web a vedle vestavěné děkovací věty.
+   *
+   * Adresa vede na naši děkovací trasu s parametrem, protože stránku vykresluje
+   * `/f/{slug}/thanks`; sama by tu větev nepoznala, odeslání formuláře je
+   * jediné místo, které ví, že adresa je ve všech seznamech už potvrzená.
+   *
+   * JEDNOTNÁ ODPOVĚĎ (R9) TÍM NESLÁBNE VÍC, NEŽ UŽ SLÁBNE. Parametr se přidá
+   * výhradně tehdy, když si autor stránku sám nastavil, tedy za týchž dvou
+   * podmínek jako přesměrování o kus výš. Bez nastavené stránky je odpověď
+   * bajtově táž jako pro neznámou adresu.
+   */
+  for (const listId of form.listIds) {
+    const templateId = await withWorkspace(ctx, (tx) =>
+      resolvePageTemplateId(tx, ctx, {
+        surface: 'already_subscribed',
+        formId: form.id,
+        listId,
+      }),
+    );
+    if (templateId !== null) {
+      return `/f/${publicFormRef(form)}/thanks?${ALREADY_SUBSCRIBED_QUERY}=1`;
+    }
+  }
+  return null;
 }
 
 /**

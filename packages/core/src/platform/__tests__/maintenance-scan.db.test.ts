@@ -123,6 +123,55 @@ describe('výjimka z izolace projektů pro mlain_maintenance', () => {
     }
   });
 
+  /**
+   * `imports` a `segments` přibyly migrací 0024 a mají grant SLOUPCOVÝ, ne na
+   * celou tabulku. Rozdíl je podstatný: sken z nich potřebuje identifikaci
+   * a pár řídicích sloupců, kdežto `imports.error_summary` nese UKÁZKY HODNOT
+   * z nahraného CSV, tedy potenciálně e-maily a jména kontaktů,
+   * `imports.filename` bývá jméno člověka nebo firmy a `segments.definition`
+   * je práce uživatele.
+   *
+   * Kdyby grant vznikl na celou tabulku, tenhle test spadne. Je to jediné
+   * místo, které ten rozdíl hlídá, protože v běžném provozu se na ty sloupce
+   * nikdo pod touhle rolí nezeptá a chyba by nebyla vidět.
+   */
+  it('z imports a segments přečte JEN identifikaci, ne obsah', async () => {
+    const allowed: Array<[string, string]> = [
+      ['imports', 'SELECT id, workspace_id, status, updated_at FROM imports LIMIT 1'],
+      ['segments', 'SELECT id, workspace_id, deleted_at, kind, cached_at FROM segments LIMIT 1'],
+    ];
+    for (const [table, query] of allowed) {
+      await expect(
+        maintenance.query(query),
+        `${table} musí jít přečíst ve sloupcích, které sken potřebuje`,
+      ).resolves.toBeTruthy();
+    }
+
+    const forbiddenColumns: Array<[string, string]> = [
+      ['imports.filename', 'SELECT filename FROM imports'],
+      ['imports.error_summary', 'SELECT error_summary FROM imports'],
+      ['imports.mapping', 'SELECT mapping FROM imports'],
+      ['segments.definition', 'SELECT definition FROM segments'],
+      ['segments.name', 'SELECT name FROM segments'],
+    ];
+    for (const [label, query] of forbiddenColumns) {
+      await expect(
+        maintenance.query(query),
+        `${label} nesmí být pro mlain_maintenance čitelný`,
+      ).rejects.toMatchObject({ code: '42501' });
+    }
+  });
+
+  it('do imports ani segments nesmí zapisovat', async () => {
+    await expect(maintenance.query(`UPDATE imports SET status = 'failed'`)).rejects.toMatchObject({
+      code: '42501',
+    });
+    await expect(maintenance.query(`UPDATE segments SET cached_at = now()`)).rejects.toMatchObject({
+      code: '42501',
+    });
+    await expect(maintenance.query(`DELETE FROM imports`)).rejects.toMatchObject({ code: '42501' });
+  });
+
   it('do workspaces ani campaigns nesmí zapisovat', async () => {
     await expect(
       maintenance.query(`UPDATE workspaces SET name = 'zmena' WHERE id = $1`, [a.workspaceId]),

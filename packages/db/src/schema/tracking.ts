@@ -243,6 +243,10 @@ export const campaignStats = pgTable(
     sent: bigint({ mode: 'number' }).notNull().default(0),
     failed: bigint({ mode: 'number' }).notNull().default(0),
     skipped: bigint({ mode: 'number' }).notNull().default(0),
+    // Poskytovatel zprávu odmítl přijmout (typ `rejected`). Musí mít vlastní
+    // čítač, jinak ji `deliveredEffective` od odeslaných neodečte a odmítnutá
+    // zpráva projde reportem jako doručená.
+    rejected: bigint({ mode: 'number' }).notNull().default(0),
     delivered: bigint({ mode: 'number' }).notNull().default(0),
     bouncedHard: bigint({ mode: 'number' }).notNull().default(0),
     bouncedSoft: bigint({ mode: 'number' }).notNull().default(0),

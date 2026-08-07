@@ -18,8 +18,18 @@ export type RecentCampaignRow = {
 /** Kolik kampaní se vejde do dlaždice. Zbytek je za odkazem „Všechny kampaně". */
 const VISIBLE_ROWS = 5;
 
-/** Mřížka řádku. Stejná v hlavičce i v řádcích, jinak by sloupce neseděly pod sebou. */
-const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_90px_90px_130px] gap-[var(--spacing-stack)]';
+/**
+ * Mřížka řádku. Stejná v hlavičce i v řádcích, jinak by sloupce neseděly pod sebou.
+ *
+ * NA ÚZKÉM DISPLEJI JSOU SLOUPCE DVA, ne čtyři, a řádek se zalomí na dva.
+ * Pevné 90 + 90 + 130 px se dvěma mezerami je 340 px, kdežto karta má na
+ * telefonu 283 px vnitřní šířky, takže poslední sloupec končil 26 px za pravým
+ * okrajem stránky a Přehled se posouval do strany (naměřeno 7. 8. 2026 na
+ * 390 px). Pořadí prvků se nemění, jen se přelijí: název a odesláno na první
+ * řádek, prokliky a stav na druhý. Od 640 px výš platí původní čtyři sloupce.
+ */
+const ROW_GRID =
+  'grid grid-cols-[minmax(0,1fr)_auto] gap-x-[var(--spacing-stack)] gap-y-1 sm:grid-cols-[minmax(0,1fr)_90px_90px_130px] sm:gap-[var(--spacing-stack)]';
 
 /**
  * Iniciály kampaně. Dvě písmena z prvních dvou slov názvu, verzálkami.

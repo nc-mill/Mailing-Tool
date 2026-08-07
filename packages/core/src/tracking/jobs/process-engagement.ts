@@ -19,7 +19,11 @@ import {
   type EngagementDelta,
   type LinkStatsDeltaRow,
 } from '../repo/engagement.repo';
-import { insertWebEvents, type WebEventInsert } from '../repo/web-events.repo';
+import {
+  insertWebEvents,
+  selectMeasurementWithdrawn,
+  type WebEventInsert,
+} from '../repo/web-events.repo';
 import { enqueueTrackingJob } from './enqueue';
 
 export const PROCESS_ENGAGEMENT_QUEUE = 'tracking.process_engagement';
@@ -331,8 +335,36 @@ export async function handleProcessEngagement(data: ProcessEngagementJobData): P
   await withTrackingTx(
     { workspaceId: data.workspaceId, job: PROCESS_ENGAGEMENT_QUEUE },
     async (tx) => {
-      await insertWebEvents(tx, data.workspaceId, timelineRows);
+      /**
+       * SOUHLAS S MĚŘENÍM PLATÍ I NA OTEVŘENÍ A PROKLIKY.
+       *
+       * Bez tohohle kroku by přepínač na detailu kontaktu lhal na téže
+       * obrazovce, na které stojí: vypnuté měření by zastavilo webové události,
+       * ale do časové osy o kus vedle by dál přibývala „Otevřel e-mail".
+       *
+       * ZAHAZUJE SE JEN OSOBNÍ ATRIBUCE, ne měření kampaně. `message_events`,
+       * statistika kampaně, míra otevření i klasifikace zůstávají: to je
+       * souhrn o zásilce, ne profil člověka, a řídí ho `campaigns.track_opens`
+       * s `track_clicks`. Kdyby se odečítalo i odtud, jeden odvolaný souhlas
+       * by měnil čísla už odeslané kampaně a report by přestal sedět sám se
+       * sebou.
+       */
+      const withdrawn = await selectMeasurementWithdrawn(
+        tx,
+        data.workspaceId,
+        [
+          ...timelineRows.map((row) => row.contactId),
+          ...contactRollups.map((rollup) => rollup.contactId),
+        ].filter((id): id is string => id !== null),
+      );
+
+      await insertWebEvents(
+        tx,
+        data.workspaceId,
+        timelineRows.filter((row) => row.contactId === null || !withdrawn.has(row.contactId)),
+      );
       for (const rollup of contactRollups) {
+        if (withdrawn.has(rollup.contactId)) continue;
         await applyContactEngagementDelta(tx, {
           workspaceId: data.workspaceId,
           contactId: rollup.contactId,

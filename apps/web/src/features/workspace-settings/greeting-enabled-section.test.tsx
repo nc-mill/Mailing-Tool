@@ -24,6 +24,7 @@ const WORKSPACE = {
   timezone: 'Europe/Prague',
   address_form: 'formal' as const,
   greeting_enabled: true,
+  postal_address: 'Kolo Eshop s.r.o., Nádražní 5, 110 00 Praha 1',
   created_at: '2026-01-01T00:00:00.000Z',
 };
 

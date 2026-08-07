@@ -6,6 +6,7 @@ import {
   databaseCheck,
   schemaCheck,
 } from '@mlain/core/health';
+import { isolationCheck } from '@mlain/core/tx/isolation-guard';
 import { EXPECTED_SCHEMA_VERSION, getConfig } from '@/lib/runtime';
 
 export const runtime = 'nodejs';
@@ -41,6 +42,9 @@ export async function GET(): Promise<Response> {
     }),
     dataDirCheck(config.DATA_DIR),
     aiKeyLeakCheck(),
+    // Izolace projektů. `warn` readiness nesráží, ale zůstane v odpovědi vidět,
+    // takže se chybějící izolace dá najít i bez čtení logu ze startu.
+    isolationCheck(),
   ]);
 
   return Response.json(

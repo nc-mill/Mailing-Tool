@@ -1,9 +1,15 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Queryable } from '@mlain/db';
-import { retentionTargets, runPartitionMaintenance } from './partition-retention';
+import {
+  partitionMaintenanceMetadata,
+  recordPartitionMaintenance,
+  retentionTargets,
+  runPartitionMaintenance,
+  type RetentionReport,
+} from './partition-retention';
 
 let tmp: string;
 /**
@@ -66,12 +72,17 @@ describe('retenční cíle', () => {
 
   it('uklízí jen tabulky, které mají vlastní konfigurační proměnnou', () => {
     // Tabulka bez proměnné by se mazala podle čísla, které nikde není napsané.
-    // audit_log a inbound_deliveries mají vlastní úklid po řádcích, zbytek
-    // lhůtu nemá vůbec.
+    // `inbound_deliveries` má projektovou retenci po řádcích, zbytek lhůtu nemá.
+    //
+    // `audit_log` je tu od 7. 8. 2026. Do té doby ho měla uklízet fronta
+    // `platform.cleanup_audit_log` mazáním řádků, jenže aplikační role má na
+    // auditu odebrané `DELETE`, takže ta úloha padala každou noc a neuklidila
+    // nikdy nic. Právo se nevrací, uklízí se zahozením oddílu pod migrátorem.
     expect(retentionTargets(NOW, baseEnv()).map((t) => t.table)).toEqual([
       'messages',
       'message_events',
       'web_events',
+      'audit_log',
     ]);
   });
 
@@ -136,7 +147,7 @@ describe('běh údržby oddílů', () => {
     for (const target of report.targets) expect(target.dropped).toEqual([]);
   });
 
-  it('hlásí všechny tři cíle i s proměnnou a hranicí', async () => {
+  it('hlásí všechny čtyři cíle i s proměnnou a hranicí', async () => {
     const { client } = recordingClient();
     const report = await runPartitionMaintenance({
       client,
@@ -148,9 +159,86 @@ describe('běh údržby oddílů', () => {
       'messages',
       'message_events',
       'web_events',
+      'audit_log',
     ]);
     const messages = report.targets[0]!;
     expect(messages.setting).toBe('MESSAGE_RETENTION_DAYS');
     expect(messages.cutoff.toISOString()).toBe('2026-05-07T12:00:00.000Z');
+    const audit = report.targets[3]!;
+    expect(audit.setting).toBe('AUDIT_RETENTION_MONTHS');
+  });
+});
+
+describe('záznam o proběhlé údržbě', () => {
+  const report = (over: Partial<RetentionReport> = {}): RetentionReport => ({
+    dryRun: false,
+    created: ['messages_2026_09', 'messages_2026_10'],
+    targets: [
+      {
+        table: 'messages',
+        setting: 'MESSAGE_RETENTION_DAYS',
+        window: '90 dní',
+        cutoff: NOW,
+        decisions: [],
+        dropped: ['messages_2026_01'],
+      },
+      {
+        table: 'message_events',
+        setting: 'MESSAGE_EVENT_RETENTION_DAYS',
+        window: '90 dní',
+        cutoff: NOW,
+        decisions: [],
+        dropped: [],
+      },
+    ],
+    ...over,
+  });
+
+  it('nese počty, ne jména oddílů', () => {
+    // Metadata jsou to jediné, co po běhu zůstane, a musí odpovědět na otázku
+    // „běželo to a udělalo to něco", ne vypsat obsah databáze.
+    expect(partitionMaintenanceMetadata(report())).toEqual({
+      created: 2,
+      dropped: 1,
+      tables: { messages: 1, message_events: 0 },
+    });
+  });
+
+  it('běh, který nic nezahodil, se zapíše taky', () => {
+    // Nula zahozených oddílů je běžný a správný výsledek. Kdyby se zapisovaly
+    // jen běhy, které něco smazaly, vypadala by správně fungující instalace
+    // stejně jako instalace, kde úklid vůbec neběží.
+    const empty = report({ created: [], targets: [] });
+    expect(partitionMaintenanceMetadata(empty)).toEqual({ created: 0, dropped: 0, tables: {} });
+  });
+
+  it('zapíše globální systémový záznam s auditní akcí partition.maintained', async () => {
+    // Parametr je typovaný výslovně: `vi.fn(async () => ...)` odvodí funkci bez
+    // argumentů a `.mock.calls` pak skončí jako pole prázdných n-tic, na kterých
+    // typová kontrola spadne při přístupu na index (TS2493).
+    const values = vi.fn(async (_row: Record<string, unknown>) => undefined);
+    const tx = { insert: vi.fn(() => ({ values })) };
+    await recordPartitionMaintenance(tx as never, report());
+    const written = values.mock.calls[0]?.[0];
+    expect(written).toMatchObject({
+      action: 'partition.maintained',
+      workspaceId: null,
+      actorType: 'system',
+      actorLabel: 'mlain partitions',
+      targetType: 'partitions',
+    });
+  });
+
+  /**
+   * Past, kvůli které tenhle test existuje: záznam o běhu nanečisto by
+   * v `mlain doctor` vypadal jako doklad o proběhlém úklidu, tedy by uklidnil
+   * přesně v okamžiku, kdy data leží přes lhůtu.
+   */
+  it('běh nanečisto do auditu zapsat odmítne', async () => {
+    const tx = { insert: vi.fn() };
+    await expect(recordPartitionMaintenance(tx as never, report({ dryRun: true }))).rejects.toThrow(
+      /nanečisto/,
+    );
+    expect(tx.insert).not.toHaveBeenCalled();
   });
 });

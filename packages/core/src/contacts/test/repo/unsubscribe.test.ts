@@ -82,12 +82,16 @@ describe('rozsah odhlášení', () => {
     const { contact, list } = await confirmedSubscription(ctx, 'j@x.cz', 'Newsletter');
     await unsubscribe(ctx, { contactId: contact.id, listId: list.id, reason: 'link' });
 
-    expect(revoke).toHaveBeenCalledWith({
-      workspaceId: ctx.workspaceId,
-      contactIds: [contact.id],
-      listId: list.id,
-      reason: 'unsubscribed',
-    });
+    // `tx` je transakce odhlášení a předává se schválně, aby zrušení proběhlo
+    // v NÍ. Porovnává se proto podmnožina, ne celý objekt; hlídaná věc je listId.
+    expect(revoke).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: ctx.workspaceId,
+        contactIds: [contact.id],
+        listId: list.id,
+        reason: 'unsubscribed',
+      }),
+    );
   });
 
   it('KRITÉRIUM 79: globální odhlášení předá listId null EXPLICITNĚ', async () => {

@@ -44,7 +44,13 @@ export function AppShell({
           id="main"
           tabIndex={-1}
           className={cn(
-            'min-w-0 flex-1 p-[var(--spacing-page)] pb-20',
+            'min-w-0 flex-1 pb-20',
+            // VNITŘNÍ OKRAJ SE NA ÚZKÉM DISPLEJI STAHUJE. Pevných 40 px na
+            // obou stranách je 80 px z 375 px, tedy pětina šířky na prázdno,
+            // a hlavnímu sloupci zbývalo vedle bočního menu 139 px, do kterých
+            // se nevešel ani nadpis stránky. Naměřeno 7. 8. 2026 na Kontaktech
+            // i na Nastavení, tedy na obrazovce bez tabulky.
+            'p-[var(--spacing-stack)] sm:p-[var(--spacing-page)]',
             wide ? 'max-w-[var(--container-screen-wide)]' : 'max-w-[var(--container-screen)]',
           )}
         >

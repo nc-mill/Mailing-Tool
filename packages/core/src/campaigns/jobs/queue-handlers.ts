@@ -1,11 +1,13 @@
-import { needsDependencies, once, perJob } from '../../queues';
+import { once, perJob } from '../../queues';
 import { materializeDeps } from './deps';
 import { materializeHandler, type MaterializeJobPayload } from './materialize';
+import { reconcileHandler } from './reconcile';
 import { resumeOnQuotaHandler } from './resume-on-quota';
 import { schedulerHandler } from './scheduler';
 import { stallWatchHandler } from './stall-watch';
 import { watchdogHandler } from './watchdog';
 import {
+  systemReconcileDeps,
   systemResumeOnQuotaDeps,
   systemSchedulerDeps,
   systemStallWatchDeps,
@@ -31,10 +33,11 @@ import {
  * Hlídá to test `__tests__/queue-handlers.test.ts`, který codegen doopravdy
  * spustí a v jeho výstupu hledá `@mlain/core/campaigns/jobs`.
  *
- * V mapě jsou proto jen fronty s prefixem `campaign.`. Ostatní fronty téhle
- * domény (`outbox.*`, `provider.*`, `domain.recheck`, `provider_event.*`,
- * `deliverability.rollup`, `retention.drop_message_partitions`) obsluhu nemají
- * a jsou i s důvodem vedené v `apps/worker/test/handler-coverage.test.ts`.
+ * V mapě jsou kromě front s prefixem `campaign.` i obě fronty `outbox.*`,
+ * protože jejich obsluhy bydlí v tomhle adresáři. Zbylé fronty téhle domény
+ * (`provider.*`, `domain.recheck`, `provider_event.*`, `deliverability.rollup`,
+ * `retention.drop_message_partitions`) obsluhu nemají a jsou i s důvodem
+ * vedené v `apps/worker/test/handler-coverage.test.ts`.
  *
  * Fronty samotné zakládá P01 dopředu, tady se k nim jen připojují obsluhy.
  */
@@ -63,9 +66,10 @@ import {
  *    `ws_isolation_self`, `ws_member_visibility` a `ws_insert_bootstrap`;
  *    `withoutContext` nesplní ani jednu, a ticho je horší než chyba.
  *
- *    Nezapojená zůstává `outbox.reconcile` (viz níž) a `domain.recheck`, jejíž
- *    sken `listDueDomains` sice hotový je, ale obsluha patří do jiného
- *    adresáře, takže ji tenhle rejstřík stejně nevezme.
+ *    `outbox.reconcile` na tomhle seznamu už NENÍ: chyběl jí `reconcile`,
+ *    a ten je `reconcilePending`, jeden příkaz nad celým projektem. Nezapojená zůstává `domain.recheck`, jejíž sken `listDueDomains`
+ *    sice hotový je, ale obsluha patří do jiného adresáře, takže ji tenhle
+ *    rejstřík stejně nevezme.
  *
  * 2. `provider.refresh_quota` má náklad s `workspaceId`, takže na výčet projektů
  *    nenaráží. Naráží na `ProviderSignals`: `deriveProviderStatus` chce osm
@@ -118,14 +122,17 @@ export const handlers = {
    * `handler-coverage.test.ts`, takže se cronový tik každou minutu zařadil do
    * fronty, ze které nikdo nečetl, a nikde se to neprojevilo.
    *
-   * DŮVOD SE ZMĚNIL a stojí za to ho číst pozorně. Výčet projektů už chybějící
-   * není, `systemReconcileScan()` ho pod rolí `mlain_maintenance` umí. Chybí
-   * DRUHÁ polovina: `reconcile(workspaceId)`. Ta se nedá složit, protože
-   * `revokePending` pracuje nad KAMPANÍ, ne nad projektem, takže mezi „mám ID
-   * projektu" a „mám co odsouhlasit" zeje krok, který nikdo nenapsal. Doplnit
-   * ho znamená rozhodnout, které kampaně projektu se rekonciliují a v jakém
-   * pořadí, a to je návrh, ne dopsání továrny.
+   * Obsluha je teď složená celá, viz `systemReconcileDeps()`. Předchozí znění
+   * téhle poznámky tvrdilo, že druhou polovinu složit nejde, protože
+   * `revokePending` pracuje nad kampaní; to byl omyl. Chybějící kus je
+   * `reconcilePending`, jeden příkaz nad celým projektem. Zdůvodnění, proč
+   * záchytná cesta dává smysl i po zapojení té okamžité, je u té továrny.
+   *
+   * `once`, ne `perJob`, ze stejného důvodu jako u skenů výš: cron s prázdným
+   * nákladem, takže víc úloh v dávce znamená víc tiků, ne víc práce.
    */
+  'outbox.reconcile': once(() => reconcileHandler(systemReconcileDeps())),
+
   /**
    * Hlídač zaseknutých dávek. Prefix `outbox.` je tu ze stejného důvodu jako
    * u `outbox.reconcile` níž: obsluha bydlí v `campaigns/jobs/stall-watch.ts`,
@@ -140,10 +147,4 @@ export const handlers = {
    * dotaz nad `messages` v kontextu jednoho projektu.
    */
   'outbox.stall_watch': once(() => stallWatchHandler(systemStallWatchDeps())),
-
-  'outbox.reconcile': needsDependencies(
-    'outbox.reconcile',
-    'ReconcileDeps.reconcile(workspaceId); sken projektů už hotový je ' +
-      '(systemReconcileScan), ale revokePending pracuje nad kampaní, ne nad projektem',
-  ),
 } as const;

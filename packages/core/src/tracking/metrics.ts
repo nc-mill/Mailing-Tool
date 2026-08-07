@@ -161,7 +161,18 @@ export function recordTokenInvalid(code: TokenErrorCode): void {
 // kontakt z tokenu mezitím zmizel, a bez labelu by takový případ v metrice
 // nebyl vidět vůbec.
 export type IdentityBindResult =
-  'created' | 'bound' | 'unchanged' | 'rebound' | 'restricted' | 'shared' | 'contact_not_found';
+  | 'created'
+  | 'bound'
+  | 'unchanged'
+  | 'rebound'
+  | 'restricted'
+  // Odvolaný souhlas s měřením má vlastní hodnotu, ne `restricted`: obojí vazbu
+  // odmítne, ale je to jiný důvod a v grafu se musí dát odlišit. Bez toho by
+  // provozovatel viděl růst „omezené zpracování" a hledal by žádosti podle
+  // článku 18, které nikdo nepodal.
+  | 'measurement_withdrawn'
+  | 'shared'
+  | 'contact_not_found';
 
 export function recordIdentityBind(result: IdentityBindResult): void {
   trackingMetrics.identityBind.inc({ result });

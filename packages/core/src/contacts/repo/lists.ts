@@ -30,6 +30,27 @@ export type CreateListInput = {
   /** Kam po potvrzení a po odhlášení. `NULL` znamená „zůstane naše stránka". */
   confirmRedirectUrl?: string | null;
   unsubscribeRedirectUrl?: string | null;
+  /**
+   * Odhlásí kliknutí na odkaz jen z tohohle seznamu, nebo ze všeho? Výchozí
+   * `list` je dnešní chování. `global` navíc zakládá blokaci adresy pro celý
+   * projekt, viz `lists/unsubscribe.ts` a migrace 0027.
+   */
+  unsubscribeScope?: 'list' | 'global';
+  /** Vlastní stránka pro toho, kdo v seznamu už potvrzený je. `NULL` = jako dosud. */
+  alreadySubscribedRedirectUrl?: string | null;
+  /**
+   * Návrhy veřejných stránek seznamu, tedy odkazy na `templates` s `kind = 'page'`
+   * (migrace 0029). `NULL` znamená VESTAVĚNÝ TEXT, což je dnešní chování.
+   *
+   * Je to jiná odpověď na tutéž otázku jako `*_redirect_url` o pár řádků výš:
+   * co uvidí návštěvník po tomhle kroku. Stránka po odhlášení je JEN tady,
+   * protože se na ni chodí z odkazu v e-mailu a formulář se z toho odvodit nedá.
+   * U potvrzení a u „už jste přihlášeni" má naopak přednost formulář, ze kterého
+   * přihlášení přišlo; seznam je až druhá volba, viz `public/page-template.ts`.
+   */
+  confirmedTemplateId?: string | null;
+  alreadySubscribedTemplateId?: string | null;
+  unsubscribedTemplateId?: string | null;
   isDefault?: boolean;
   /** Nabízet ve veřejném centru předvoleb k přihlášení? Výchozí je NE, viz migrace 0014. */
   publicVisible?: boolean;
@@ -133,6 +154,17 @@ export async function create(ctx: WorkspaceContext, input: CreateListInput): Pro
         sendGoodbye: input.sendGoodbye ?? false,
         confirmRedirectUrl: emptyToNull(input.confirmRedirectUrl) ?? null,
         unsubscribeRedirectUrl: emptyToNull(input.unsubscribeRedirectUrl) ?? null,
+        // Výchozí je odhlášení JEN z tohohle seznamu. Je to dnešní chování
+        // a zároveň to opatrnější z obou: globální navíc blokuje adresu pro
+        // celý projekt, takže se na něj přepíná vědomě.
+        unsubscribeScope: input.unsubscribeScope ?? 'list',
+        alreadySubscribedRedirectUrl: emptyToNull(input.alreadySubscribedRedirectUrl) ?? null,
+        // Bez návrhu, tedy vestavěný text. `emptyToNull` tu není potřeba:
+        // jsou to uuid sloupce, ne text, takže prázdný řetězec by neprošel
+        // ani do databáze.
+        confirmedTemplateId: input.confirmedTemplateId ?? null,
+        alreadySubscribedTemplateId: input.alreadySubscribedTemplateId ?? null,
+        unsubscribedTemplateId: input.unsubscribedTemplateId ?? null,
         isDefault: input.isDefault ?? false,
         // Bezpečná výchozí hodnota: nový seznam se veřejně NENABÍZÍ, dokud to
         // správce nezapne. Zdůvodnění je v migraci 0014.
@@ -251,6 +283,9 @@ export async function update(
         ...(patch.unsubscribeRedirectUrl === undefined
           ? {}
           : { unsubscribeRedirectUrl: emptyToNull(patch.unsubscribeRedirectUrl) }),
+        ...(patch.alreadySubscribedRedirectUrl === undefined
+          ? {}
+          : { alreadySubscribedRedirectUrl: emptyToNull(patch.alreadySubscribedRedirectUrl) }),
         updatedAt: new Date(),
       })
       .where(and(eq(lists.workspaceId, ctx.workspaceId), eq(lists.id, id)))
@@ -267,6 +302,22 @@ export async function update(
         targetType: 'list',
         targetId: id,
         metadata: { from: current.publicVisible, to: patch.publicVisible },
+      });
+    }
+
+    // Rozsah odhlášení do auditu patří ze stejného důvodu jako opt_in: přepnutí
+    // na 'global' znamená, že se každému, kdo klikne na odhlašovací odkaz,
+    // navíc zablokuje adresa pro CELÝ projekt. Kdo tu změnu udělal a kdy, musí
+    // jít dohledat i za rok, protože se to pozná až na poklesu doručených.
+    if (
+      patch.unsubscribeScope !== undefined &&
+      patch.unsubscribeScope !== current.unsubscribeScope
+    ) {
+      await writeAudit(tx, ctx, {
+        action: 'list.unsubscribe_scope_changed',
+        targetType: 'list',
+        targetId: id,
+        metadata: { from: current.unsubscribeScope, to: patch.unsubscribeScope },
       });
     }
 

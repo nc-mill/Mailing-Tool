@@ -28,6 +28,10 @@ describe('mlain dispatcher', () => {
       // Dřív úklid neexistoval: dvě retenční fronty byly v registru bez
       // obsluhy, protože odpojení oddílu je DDL a worker na ně nemá práva.
       'partitions',
+      // Přepočet stavu souhlasů. Obsluha fronty `consents.rebuild_state` existovala,
+      // ale vedl k ní jedině ruční INSERT do tabulky úloh pg-bossu, takže nástroj
+      // na obnovu byl v praxi nedosažitelný právě po obnově ze zálohy.
+      'rebuild-consents',
       'rebuild-engagement',
       // Jednorázové převlečení uložených e-mailů do barev značky. Bez příkazu
       // by instalace, která značku má a od upgradu ji znovu neuloží, zůstala

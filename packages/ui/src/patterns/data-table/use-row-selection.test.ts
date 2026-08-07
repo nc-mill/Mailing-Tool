@@ -99,4 +99,50 @@ describe('useRowSelection', () => {
     act(() => result.current.toggle('d'));
     expect(onSelectionChange).toHaveBeenCalledWith(['b', 'd']);
   });
+
+  /*
+   * Úklid zvenčí. Řízený režim pouští ven jen `selectedIds`, kdežto režim výběru
+   * bydlí uvnitř hooku, takže obrazovka po hromadné akci sama neuklidí: vynuluje si
+   * pole a pruh nad tabulkou zůstane viset, protože počet se v režimu „vše
+   * odpovídající filtru" bere z celkového čísla. Přesně tohle hlásil uživatel
+   * po hromadném smazání.
+   */
+  it('změna clearToken zruší i režim „vše odpovídající filtru"', () => {
+    const { result, rerender } = renderHook(
+      ({ token }: { token: number }) =>
+        useRowSelection({ pageIds: page1, selectedIds: ['b'], clearToken: token }),
+      { initialProps: { token: 0 } },
+    );
+    act(() => result.current.selectAllMatchingFilter({ total: 12480, filter: 'seznam Novinky' }));
+    expect(result.current.mode).toBe('allMatchingFilter');
+    expect(result.current.count).toBe(12480);
+
+    rerender({ token: 1 });
+
+    expect(result.current.mode).toBe('rows');
+    expect(result.current.filterDescription).toBeUndefined();
+  });
+
+  it('neřízenému výběru clearToken vynuluje i pole', () => {
+    const { result, rerender } = renderHook(
+      ({ token }: { token: number }) => useRowSelection({ pageIds: page1, clearToken: token }),
+      { initialProps: { token: 0 } },
+    );
+    act(() => result.current.toggle('a'));
+    expect(result.current.selectedIds).toEqual(['a']);
+
+    rerender({ token: 1 });
+
+    expect(result.current.selectedIds).toEqual([]);
+  });
+
+  it('beze změny tokenu se výběr neuklízí, jinak by nešlo nic vybrat', () => {
+    const { result, rerender } = renderHook(
+      ({ token }: { token: number }) => useRowSelection({ pageIds: page1, clearToken: token }),
+      { initialProps: { token: 7 } },
+    );
+    act(() => result.current.toggle('a'));
+    rerender({ token: 7 });
+    expect(result.current.selectedIds).toEqual(['a']);
+  });
 });

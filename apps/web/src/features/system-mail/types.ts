@@ -15,7 +15,7 @@ export type SystemMailAccount = {
   type: string;
   status: string;
   is_default: boolean;
-  /** Umí tímhle účtem systémová pošta odejít? Dnes jen účty typu SMTP. */
+  /** Umí tímhle účtem systémová pošta odejít? Viz `capable_types`. */
   capable: boolean;
   domain: string | null;
 };

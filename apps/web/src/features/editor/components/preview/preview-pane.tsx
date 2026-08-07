@@ -2,9 +2,10 @@
 
 import { EmailPreview } from '@mlain/ui/patterns/email-preview';
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { PREVIEW_WIDTHS } from '../../config';
 import type { EditorPorts } from '../../ports/types';
+import { useTemplateProfile } from '../richtext/template-profile';
 import { useView } from '../view/view-state';
 
 /**
@@ -39,6 +40,39 @@ export function explainPreviewLinks(value: string, sentence: string): string {
   return value.split(PREVIEW_LINK_PLACEHOLDER).join(sentence);
 }
 
+/**
+ * Rám PROHLÍŽEČE kolem náhledu veřejné stránky.
+ *
+ * Rám e-mailového klienta na stránku nesedí a není to kosmetika: náhled má
+ * uživateli říct, kde ten obsah skončí, a stránka skončí na webu, ne ve
+ * schránce. Přepínač mobil a počítač zůstává beze změny, protože šířka je
+ * u stránky pořád ta hlavní otázka.
+ *
+ * V liště NENÍ žádná adresa. Skutečnou by editor musel vymyslet (slug formuláře
+ * ani token návštěvníka v tuhle chvíli nezná) a vymyšlená adresa v náhledu je
+ * horší než žádná: uživatel by si ji zkusil otevřít. Stojí tam proto věta
+ * o tom, čí ta doména bude.
+ */
+function BrowserFrame(props: { children: ReactNode; caption: string }) {
+  return (
+    <div className="flex flex-col rounded-[var(--radius-surface)] border border-border bg-surface">
+      <div className="flex items-center gap-[var(--spacing-inline)] border-b border-border px-3 py-2">
+        {/* Tři tečky jsou čistá ozdoba, proto `aria-hidden`: čtečka by z nich
+            nic nevytěžila a jméno rámu nese titulek uvnitř. */}
+        <span aria-hidden className="flex gap-1">
+          <span className="size-2 rounded-full bg-border-strong" />
+          <span className="size-2 rounded-full bg-border-strong" />
+          <span className="size-2 rounded-full bg-border-strong" />
+        </span>
+        <span className="flex-1 truncate rounded-[var(--radius-control)] bg-surface-muted px-2 py-1 text-meta text-text-muted">
+          {props.caption}
+        </span>
+      </div>
+      <div className="flex justify-center p-[var(--spacing-card-tight)]">{props.children}</div>
+    </div>
+  );
+}
+
 export function PreviewPane(props: {
   templateId: string;
   ports: EditorPorts;
@@ -46,6 +80,10 @@ export function PreviewPane(props: {
 }) {
   const t = useTranslations('editor');
   const view = useView();
+  // Profil rozhoduje o RÁMU náhledu. Veřejná stránka se kreslí v prohlížeči,
+  // e-mail v klientu; obojí uvnitř téhož izolovaného rámce, takže se liší jen
+  // obal, ne to, co se vykresluje.
+  const isPage = useTemplateProfile() === 'page';
   const [result, setResult] = useState<{ html: string; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,13 +145,28 @@ export function PreviewPane(props: {
           </div>
         ) : null}
         {result && (view.mode === 'desktop' || view.mode === 'mobile') ? (
-          <div data-testid="preview-frame" data-width={width}>
-            <EmailPreview
-              html={html}
-              width={width}
-              dark={view.dark}
-              title={t('preview.frameTitle')}
-            />
+          <div
+            data-testid="preview-frame"
+            data-width={width}
+            data-frame={isPage ? 'page' : 'email'}
+          >
+            {isPage ? (
+              <BrowserFrame caption={t('preview.pageAddress')}>
+                <EmailPreview
+                  html={html}
+                  width={width}
+                  dark={view.dark}
+                  title={t('preview.pageFrameTitle')}
+                />
+              </BrowserFrame>
+            ) : (
+              <EmailPreview
+                html={html}
+                width={width}
+                dark={view.dark}
+                title={t('preview.frameTitle')}
+              />
+            )}
           </div>
         ) : null}
       </div>

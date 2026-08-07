@@ -1,10 +1,10 @@
 import type { QueueHandler } from '../../queues';
-import { handler as cleanupAuditLog } from './cleanup_audit_log';
 import { handler as cleanupIdempotency } from './cleanup_idempotency';
 import { handler as cleanupSessions } from './cleanup_sessions';
 import { handler as purgeWorkspaces } from './purge_workspaces';
 import { handler as webhookDeliver, type DeliverJobData } from './webhook_deliver';
 import { handler as webhookFanout, type FanoutJobData } from './webhook_fanout';
+import { handler as webhookRetry } from './webhook_retry';
 
 /**
  * ODCHYLKA OD PLÁNU, vynucená skutečným tvarem repozitáře.
@@ -38,8 +38,11 @@ function once(run: () => Promise<unknown>): QueueHandler {
 export const handlers: Record<string, QueueHandler> = {
   'platform.webhook_fanout': perJob<FanoutJobData>(webhookFanout),
   'platform.webhook_deliver': perJob<DeliverJobData>(webhookDeliver),
+  // `once`, ne `perJob`: cron s prázdným nákladem, takže víc úloh v dávce
+  // znamená víc tiků, ne víc práce. Potřebuje DATABASE_URL_MAINTENANCE, protože
+  // seznam projektů jde napříč projekty.
+  'platform.webhook_retry': once(webhookRetry),
   'platform.cleanup_sessions': once(cleanupSessions),
   'platform.cleanup_idempotency': once(cleanupIdempotency),
-  'platform.cleanup_audit_log': once(cleanupAuditLog),
   'platform.purge_workspaces': once(purgeWorkspaces),
 };

@@ -270,7 +270,7 @@ export function CampaignTrend({ workspaceSlug }: { workspaceSlug: string }) {
   const rows = trendRows(usable);
 
   const tiles = (
-    <div className="mb-[var(--spacing-gutter)] grid grid-cols-[repeat(auto-fit,minmax(230px,1fr))] gap-[var(--spacing-gutter)]">
+    <div className="mb-[var(--spacing-gutter)] grid grid-cols-[repeat(auto-fit,minmax(min(230px,100%),1fr))] gap-[var(--spacing-gutter)]">
       <Tile
         label={t('dashboard.sent')}
         icon={<Send aria-hidden className="icon-md" />}

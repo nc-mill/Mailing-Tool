@@ -18,6 +18,8 @@ import { Plus } from '@mlain/ui/icons';
 import { DataTable } from '@mlain/ui/patterns/data-table';
 import { Alert, EmptyState } from '@mlain/ui/patterns/states';
 import { MoreIcon } from '@/lib/ui/status-icons';
+import { BulkRemovalAction, runBulkRemoval } from '@/lib/ui/bulk-removal';
+import { archiveListAction } from './actions';
 import { setDefaultListAction } from './list-email-actions';
 import { ListArchiveDialog } from './list-archive-dialog';
 import { ListConfirmPendingDialog } from './list-confirm-pending-dialog';
@@ -130,6 +132,8 @@ export function ListsTable({
   const labels = useContactsTableLabels({
     selectRow: t('lists.name'),
     selectAllOnPage: t('lists.title'),
+    // Pruh výběru nesmí nad seznamy mluvit o kontaktech.
+    selectionWording: 'generic',
   });
   /*
    * Okna drží tabulka, ne řádek: obsah rozbalené nabídky se při volbě položky
@@ -140,6 +144,49 @@ export function ListsTable({
   const [notice, setNotice] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+  /*
+   * Výběr řádků. `DataTable` kreslí zaškrtávátka VŽDYCKY a vypnout se nedají, takže
+   * tabulka seznamů je měla od začátku, jenže výběr nikam nevedl.
+   */
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  /** `clearToken` pro tabulku: režim „vybráno všech N" bydlí uvnitř ní. */
+  const [clearedSelections, setClearedSelections] = useState(0);
+
+  const selected = lists.filter((row) => selectedIds.includes(row.id));
+  /*
+   * ARCHIVOVAT JDE JEN ŽIVÝ SEZNAM. Archivovaný se archivovat podruhé nedá
+   * (`listRowActions` mu tu položku ani nenabízí a jádro ho odmítne přes
+   * `requireLive`), takže se přeskočí a řekne se to nahlas. Bez toho by uživatel
+   * označil dvanáct seznamů, archivovalo by se pět a nikdo by mu neřekl proč.
+   */
+  const archivable = selected.filter((row) => !row.archived);
+  const skipped = selected.length - archivable.length;
+
+  /**
+   * Hromadná archivace označených seznamů.
+   *
+   * Volá se `archiveListAction` po jednom, hromadný endpoint API nemá. Chyba u jednoho
+   * seznamu zbytek NEZASTAVÍ: zastavit se v půlce by nechalo výběr ve stavu, který
+   * uživatel nemá jak přečíst.
+   */
+  async function archiveSelected(): Promise<{ failed: number; detail: string | null }> {
+    const { failedIds, detail } = await runBulkRemoval(
+      archivable.map((row) => row.id),
+      (id) => archiveListAction({ workspaceId, id }),
+    );
+    router.refresh();
+    if (failedIds.length === 0) {
+      setNotice(t('lists.bulkArchiveDone', { count: archivable.length }));
+      // Výběr se ruší JEN po úspěchu. Zůstávají v něm seznamy, které se
+      // archivovat ani nezkoušely, protože archivované už jsou.
+      setSelectedIds(selected.filter((row) => row.archived).map((row) => row.id));
+      setClearedSelections((count) => count + 1);
+      return { failed: 0, detail: null };
+    }
+    setSelectedIds([...failedIds, ...selected.filter((row) => row.archived).map((row) => row.id)]);
+    setClearedSelections((count) => count + 1);
+    return { failed: failedIds.length, detail };
+  }
 
   /**
    * Nastavení výchozího seznamu. Potvrzovat se nemá co: přepnout jde kdykoli
@@ -244,6 +291,54 @@ export function ListsTable({
         getRowId={(row) => row.id}
         labels={labels}
         count={{ value: lists.length, precision: 'exact' }}
+        selection={{
+          selectedIds: selected.map((row) => row.id),
+          onSelectionChange: setSelectedIds,
+          clearToken: clearedSelections,
+        }}
+        {...(permissions.write
+          ? {
+              /*
+               * Bez práva zapisovat se pruh nechá bez akcí: archivace je jediná
+               * hromadná akce, kterou seznamy mají, a nabízet ji tomu, komu ji
+               * server odmítne, nemá smysl.
+               */
+              bulkActions: (
+                <BulkRemovalAction
+                  testId="lists-bulk"
+                  removable={archivable.length}
+                  labels={{
+                    action: t('lists.bulkArchive', { count: archivable.length }),
+                    nothing: t('lists.bulkArchiveNothing'),
+                    title: t('lists.bulkArchiveTitle', { count: archivable.length }),
+                    /*
+                     * TYTÉŽ VĚTY JAKO U JEDNOHO SEZNAMU, a to schválně: následek se
+                     * počtem nemění a druhý výčet by se s tím prvním dřív nebo později
+                     * rozešel. Věta o výchozím seznamu se přidává jen tehdy, když je
+                     * výchozí seznam doopravdy mezi označenými.
+                     */
+                    explanation: [
+                      t('lists.archiveConsequenceMenus'),
+                      t('lists.archiveConsequenceSignups'),
+                      t('lists.archiveConsequenceHistory'),
+                      ...(archivable.some((row) => row.is_default)
+                        ? [t('lists.archiveConsequenceDefault')]
+                        : []),
+                    ],
+                    ...(skipped > 0
+                      ? { skipped: t('lists.bulkArchiveSkipped', { count: skipped }) }
+                      : {}),
+                    submit: t('lists.bulkArchive', { count: archivable.length }),
+                    submitting: t('lists.bulkArchiveSubmitting'),
+                    cancel: t('lists.archiveCancel'),
+                    failed: ({ failed, detail }) =>
+                      t('lists.bulkArchiveFailed', { count: failed, detail: detail ?? '' }),
+                  }}
+                  onConfirm={archiveSelected}
+                />
+              ),
+            }
+          : {})}
         onRowActivate={(row) => router.push(`${basePath}/${row.id}`)}
         pagination={{
           hasMore: false,

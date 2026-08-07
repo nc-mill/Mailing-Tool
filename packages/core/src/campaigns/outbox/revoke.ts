@@ -1,4 +1,4 @@
-import type { WorkspaceContext } from '../../tx';
+import type { Tx, WorkspaceContext } from '../../tx';
 import { revokePending, type RevokeReason } from '../repo/outbox';
 
 export type RevokeInput = {
@@ -17,6 +17,8 @@ export type RevokeInput = {
    */
   listId: string | null;
   reason: RevokeReason;
+  /** Transakce volajiciho, viz `revokePending`. Bez ni si zruseni otevre vlastni. */
+  tx?: Tx | undefined;
 };
 
 export async function revokePendingMessages(
@@ -30,5 +32,6 @@ export async function revokePendingMessages(
     emails: input.emails,
     listId: input.listId,
     reason: input.reason,
+    tx: input.tx,
   });
 }

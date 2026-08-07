@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { ApiError } from '../../errors/api-error';
+import { allowsMeasurement } from '../../contacts/repo/consents';
 import { trackingLogger } from '../logging';
 import { trackingMetrics } from '../metrics';
 import {
@@ -32,7 +33,13 @@ import { withTrackingTx } from '../repo/tx';
  */
 
 export type MergeStatus =
-  'completed' | 'truncated' | 'skipped_restricted' | 'skipped_conflict' | 'skipped_reverted';
+  | 'completed'
+  | 'truncated'
+  | 'skipped_restricted'
+  /** Kontakt odvolal souhlas s měřením, historie se mu nedoplní. */
+  | 'skipped_measurement_withdrawn'
+  | 'skipped_conflict'
+  | 'skipped_reverted';
 
 export type RunMergeInput = {
   workspaceId: string;
@@ -99,6 +106,20 @@ async function prepareMerge(input: RunMergeInput): Promise<PreparedMerge> {
         return {
           kind: 'done',
           result: { mergeId: null, status: 'skipped_restricted', eventsTotal: 0 },
+        };
+      }
+
+      /**
+       * 0b. Souhlas s měřením se kontroluje ZNOVU ze stejného důvodu jako
+       * omezení: mezi vazbou a během jobu mohl člověk měření odmítnout.
+       * Doplnit mu `contact_id` do už uložených anonymních událostí by bylo
+       * zpětné pojmenování stopy, kterou si výslovně nepřál mít pojmenovanou,
+       * a udělalo by se to o minuty později, než odmítnutí zaznělo.
+       */
+      if (!allowsMeasurement(guard.measurementConsent)) {
+        return {
+          kind: 'done',
+          result: { mergeId: null, status: 'skipped_measurement_withdrawn', eventsTotal: 0 },
         };
       }
 

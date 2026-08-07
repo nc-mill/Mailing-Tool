@@ -14,6 +14,17 @@ export type VerifiedPublicToken = {
   scope: PublicScope;
   data: UnsubscribeTokenData;
   listName: string | null;
+  /**
+   * SKUTEČNÝ rozsah odhlášení, tedy co se stane po kliknutí. Skládá se ze dvou
+   * věcí: z tokenu (nese seznam, nebo ne) a z nastavení toho seznamu
+   * (`lists.unsubscribe_scope`). Seznam přepnutý na `global` odhlašuje ze všeho,
+   * i když token seznam nese.
+   *
+   * DRŽÍ SE NA JEDNOM MÍSTĚ SCHVÁLNĚ. Text stránky a skutečný dopad se nesmí
+   * rozejít, a rozešly by se v tu chvíli, kdy by si každý volající počítal
+   * rozsah po svém. Stránka i zápis proto čtou tuhle jednu hodnotu.
+   */
+  effectiveScope: UnsubscribeScope;
 };
 
 export type PublicTokenResult =
@@ -46,20 +57,46 @@ export async function readVerifiedToken(
   // Jméno se čte v PODOBĚ PRO PŘÍJEMCE, tedy `public_name`, a teprve když chybí,
   // sáhne se na pracovní `name`. Interní pojmenování („Novinky od 4. srpna 2026")
   // je poznámka správce, ne text pro toho, kdo se odhlašuje. Viz `list-label.ts`.
-  const listName =
+  //
+  // TÝMŽ DOTAZEM se čte i `unsubscribe_scope`, protože obojí patří k témuž seznamu
+  // a druhý dotaz by znamenal druhé místo, kde se dá zapomenout na archivovaný
+  // nebo smazaný řádek.
+  const listInfo =
     verified.data.listId === null
       ? null
       : await withWorkspace(contact.scope.ctx, async (tx) => {
-          const { rows } = await tx.execute<{ name: string; public_name: string | null }>(sql`
-            SELECT name, public_name FROM lists
+          const { rows } = await tx.execute<{
+            name: string;
+            public_name: string | null;
+            unsubscribe_scope: string;
+          }>(sql`
+            SELECT name, public_name, unsubscribe_scope FROM lists
              WHERE id = ${verified.data.listId}::uuid
                AND workspace_id = ${contact.scope.ctx.workspaceId}::uuid
           `);
           const row = rows[0];
           return row === undefined
             ? null
-            : publicListLabel({ name: row.name, publicName: row.public_name });
+            : {
+                label: publicListLabel({ name: row.name, publicName: row.public_name }),
+                scope: row.unsubscribe_scope === 'global' ? ('global' as const) : ('list' as const),
+              };
         });
+
+  /*
+   * ROZSAH SE POČÍTÁ JEDNOU, TADY.
+   *
+   * Token bez seznamu odhlašuje ze všeho, to platí dál. Token se seznamem
+   * odhlašuje z toho seznamu, POKUD si seznam nenastavil `unsubscribe_scope`
+   * na `global`; pak jedno kliknutí odhlásí ze všeho a adresu navíc zablokuje
+   * pro celý projekt.
+   *
+   * Seznam, který se nenajde (smazaný mezitím), spadá na `list`. Je to
+   * opatrnější z obou možností: neznámé nastavení nesmí vést k blokaci adresy
+   * pro celý projekt.
+   */
+  const effectiveScope: UnsubscribeScope =
+    verified.data.listId === null ? 'global' : (listInfo?.scope ?? 'list');
 
   return {
     ok: true,
@@ -70,12 +107,26 @@ export async function readVerifiedToken(
         branding: { ...contact.scope.branding, locale: contact.contactLocale },
       },
       data: verified.data,
-      listName,
+      listName: listInfo?.label ?? null,
+      effectiveScope,
     },
   };
 }
 
 export type UnsubscribeScope = 'list' | 'global';
+
+/**
+ * Seznam, ze kterého se odhlašuje, nebo `null` pro odhlášení ze všeho.
+ *
+ * JEDINÉ MÍSTO, KDE SE ROZSAH PŘEKLÁDÁ NA `listId`. Zápis, přesměrování i text
+ * stránky se pak nemají jak rozejít, protože všechny vycházejí z téhož výpočtu:
+ * `effectiveScope` z tokenu (token bez seznamu, nebo seznam přepnutý na
+ * `global`) a volba „nechci od vás už nic" z těla požadavku.
+ */
+function scopedListId(token: VerifiedPublicToken, forceGlobal: boolean): string | null {
+  if (forceGlobal || token.effectiveScope === 'global') return null;
+  return token.data.listId;
+}
 
 /**
  * Vlastní stránka, na kterou se má člověk po odhlášení poslat, nebo `null`.
@@ -92,7 +143,7 @@ export async function unsubscribeRedirectFor(
   token: VerifiedPublicToken,
   options: { forceGlobal?: boolean } = {},
 ): Promise<string | null> {
-  const listId = options.forceGlobal === true ? null : token.data.listId;
+  const listId = scopedListId(token, options.forceGlobal === true);
   if (listId === null) return null;
   return withWorkspace(token.scope.ctx, async (tx) => {
     const { rows } = await tx.execute<{ url: string | null }>(sql`
@@ -106,15 +157,16 @@ export async function unsubscribeRedirectFor(
 /**
  * Odhlášení z veřejné stránky i z one-click POSTu.
  *
- * Rozsah rozhoduje VÝHRADNĚ přítomnost `listId` v tokenu, nikdy tělo požadavku, aby
- * text stránky a skutečný dopad nešly rozejít. Volba „Nechci od vás už nic" je jediná
- * výjimka a předává se jako `forceGlobal`.
+ * Rozsah rozhoduje `token.effectiveScope`, nikdy tělo požadavku, aby text stránky
+ * a skutečný dopad nešly rozejít. Do `effectiveScope` se skládá přítomnost `listId`
+ * v tokenu a nastavení seznamu `unsubscribe_scope`, viz `readVerifiedToken`.
+ * Volba „Nechci od vás už nic" je jediná výjimka a předává se jako `forceGlobal`.
  */
 export async function unsubscribeByToken(
   token: VerifiedPublicToken,
   input: { reason: 'link' | 'one_click' | 'preference_center'; forceGlobal?: boolean },
 ): Promise<{ scope: UnsubscribeScope }> {
-  const listId = input.forceGlobal === true ? null : token.data.listId;
+  const listId = scopedListId(token, input.forceGlobal === true);
 
   /**
    * KAMPAŇ SE ODHLÁŠENÍ MUSÍ PŘIPSAT.

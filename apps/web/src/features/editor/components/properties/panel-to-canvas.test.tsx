@@ -162,8 +162,14 @@ describe('změna v panelu se hned promítne do plátna', () => {
 
     // #2563eb je `brand.primary` z výchozí palety (`theme/palette.ts`).
     expect(surface.style.backgroundColor).toBe('rgb(37, 99, 235)');
-    // A do dokumentu se uložil ODSTÍN v roli, ne název role a ne pole vedle ní.
-    expect(store.getState().document.theme.colors['surface.canvas']).toBe('#2563eb');
+    /*
+     * A do dokumentu se uložila VAZBA na roli, ne zmrazený odstín. Dokud se
+     * ukládal odstín, po změně značky projektu zůstalo pozadí staré, přestože
+     * uživatel volbou řekl „ať je to hlavní barva značky", ne „ať je to modrá".
+     * Rozvazuje to `resolveTheme` až při vykreslení, takže do e-mailu odchází
+     * pořád hex, což měří řádek nad tímhle.
+     */
+    expect(store.getState().document.theme.colors['surface.canvas']).toBe('brand.primary');
   });
 
   it('pozadí obsahu z panelu Motiv se promítne do plochy sekce', async () => {
@@ -171,7 +177,7 @@ describe('změna v panelu se hned promítne do plátna', () => {
     const palette = screen.getByTestId('color-palette-surface.content');
     await userEvent.click(within(palette).getByRole('button', { name: /^Hlavní barva značky/ }));
 
-    expect(store.getState().document.theme.colors['surface.content']).toBe('#2563eb');
+    expect(store.getState().document.theme.colors['surface.content']).toBe('brand.primary');
     expect(markup('b_s1')).toContain('rgb(37, 99, 235)');
   });
 });

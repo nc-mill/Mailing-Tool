@@ -31,7 +31,7 @@ export default async function FormDetailPage({ params }: PageProps) {
   }
   const workspaceId = access.data.workspace.id;
 
-  const [form, lists, templates, contactFields] = await Promise.all([
+  const [form, lists, templates, pages, contactFields] = await Promise.all([
     apiFetch<{ data: FormView }>(`/api/v1/forms/${id}`, { workspaceId }),
     apiFetch<{ data: ListOption[] }>('/api/v1/lists', { workspaceId }),
     /*
@@ -59,9 +59,20 @@ export default async function FormDetailPage({ params }: PageProps) {
      * pro rozbalovací nabídku a projekt s víc šablonami potřebuje hledání, ne
      * delší seznam.
      */
-    apiFetch<{ items: TemplateOption[] }>('/api/v1/templates', {
+    apiFetch<{ items: (TemplateOption & { category?: string })[] }>('/api/v1/templates', {
       workspaceId,
       searchParams: { limit: 100, view: 'summary' },
+    }),
+    /*
+     * Knihovna veřejných stránek, tedy šablony druhu `page`.
+     *
+     * VLASTNÍ POŽADAVEK, ne filtr nad předchozím výpisem. Je to sice zúžení
+     * téhož výpisu, ale zúžení na serveru: nabídka stránek se tím nemůže
+     * rozejít s tím, co jádro za stránku považuje.
+     */
+    apiFetch<{ items: TemplateOption[] }>('/api/v1/templates', {
+      workspaceId,
+      searchParams: { limit: 100, view: 'summary', kind: 'page' },
     }),
     // Katalog vlastních polí kontaktu. Stavitel z něj nabízí cíle a nová pole
     // se do něj zakládají rovnou z formuláře.
@@ -79,7 +90,19 @@ export default async function FormDetailPage({ params }: PageProps) {
       lists={lists.ok ? lists.data.data : []}
       // Selhání výpisu šablon obrazovku neshodí: nastavení formuláře má smysl
       // i bez nabídky e-mailů, jen v ní nepůjde jiný vybrat.
-      templates={templates.ok ? templates.data.items : []}
+      /*
+       * VEŘEJNÉ STRÁNKY SE Z NABÍDKY E-MAILU VYŘAZUJÍ TADY, u volajícího.
+       *
+       * Do 7. 8. 2026 je schovával výchozí výpis šablon, což chránilo tuhle
+       * nabídku, ale zároveň způsobilo, že se nově založená stránka vůbec
+       * neobjevila v knihovně a nešla najít ani smazat. Skrývat celou kategorii
+       * všem kvůli jedné nabídce byla špatná výměna; kdo potřebuje zúžení, řekne
+       * si o něj sám, a je to vidět na místě, kde na tom záleží.
+       */
+      templates={
+        templates.ok ? templates.data.items.filter((item) => item.category !== 'page') : []
+      }
+      pages={pages.ok ? pages.data.items : []}
       contactFields={
         contactFields.ok
           ? contactFields.data.data.filter((field) => field.archived_at === null)

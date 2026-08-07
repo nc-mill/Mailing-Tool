@@ -99,4 +99,50 @@ describe('StepProgress', () => {
     await vi.advanceTimersByTimeAsync(15_000);
     expect(onDone).not.toHaveBeenCalled();
   });
+  /**
+   * NEČITELNÝ PRŮBĚH SE PŘIZNÁ, NEZAMRZNE.
+   *
+   * Dokud se odpověď brala, jak přišla, dosadila cizí nebo chybová odpověď do
+   * počítadla `undefined` a stav `undefined`. Navenek to vypadalo jako import,
+   * který se rozjel a stojí: obrazovka ukazovala „0 z N" a k tomu větu, že
+   * import běží na serveru. Konec se navíc nemohl poznat nikdy, protože se
+   * porovnával stav, který v odpovědi nebyl. Nahlášeno 7. 8. 2026 jako průběh
+   * zamrzlý na nule u importu, který byl dávno dokončený.
+   */
+  it('cizí odpověď při dotazování NEZAMRZNE na nule, ale řekne se o tom', async () => {
+    const onDone = vi.fn();
+    // Odpověď bez `checkpoint_row` i `status`: takhle vypadá chybové tělo API
+    // nebo přihlašovací stránka po vypršení relace.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ json: async () => ({ error: 'nope' }) }));
+
+    renderIntl(<StepProgress importId={IMPORT_ID} workspaceId={WORKSPACE_ID} onDone={onDone} />);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      FakeEventSource.instances.at(-1)?.emit('error');
+    }
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(await screen.findByText(/Průběh importu se nedaří načíst/)).toBeInTheDocument();
+    // A hlavně: obrazovka přestane tvrdit, že import běží. To tvrzení v tu chvíli
+    // nikdo neověřil a právě ono dělalo ze zamrzlé obrazovky přesvědčivou lež.
+    expect(screen.queryByText(/běží na serveru/i)).toBeNull();
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('po obnovení čitelné odpovědi se hlášení zase schová', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ json: async () => ({ error: 'nope' }) })
+      .mockResolvedValue({ json: async () => importRow('importing') });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderIntl(<StepProgress importId={IMPORT_ID} workspaceId={WORKSPACE_ID} />);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      FakeEventSource.instances.at(-1)?.emit('error');
+    }
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(await screen.findByText(/Průběh importu se nedaří načíst/)).toBeInTheDocument();
+
+    await vi.advanceTimersByTimeAsync(5000);
+    await waitFor(() => expect(screen.queryByText(/Průběh importu se nedaří načíst/)).toBeNull());
+  });
 });

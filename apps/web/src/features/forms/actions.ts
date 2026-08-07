@@ -72,9 +72,14 @@ export async function updateFormAction(input: {
     list_ids: string[];
     double_opt_in: boolean;
     consent_text: string | null;
+    consent_required: boolean;
     active: boolean;
     delivery_template_id: string | null;
     redirect_url: string | null;
+    /** Odkazy na veřejné stránky. `null` vrací krok na vestavěný text. */
+    thanks_template_id: string | null;
+    confirmed_template_id: string | null;
+    already_subscribed_template_id: string | null;
     success_message: Record<string, string>;
   }>;
 }): Promise<FormActionResult> {
@@ -115,6 +120,54 @@ export async function createDeliveryTemplateAction(input: {
     method: 'PATCH',
     workspaceId: input.workspaceId,
     body: { delivery_template_id: created.data.id },
+  });
+  if (!linked.ok) return toFailure(linked.problem);
+
+  // Vrací se identifikátor ŠABLONY, ne formuláře: volající s ním rovnou otevírá editor.
+  return done(created.data.id);
+}
+
+/** Který krok formuláře stránka obsluhuje. Klíče jsou z `forms.design.pages`. */
+export type FormPageField =
+  'thanks_template_id' | 'confirmed_template_id' | 'already_subscribed_template_id';
+
+/**
+ * Založení veřejné stránky k formuláři a její rovnou navázání.
+ *
+ * JEDNA AKCE, ne dvě, ze stejného důvodu jako u e-mailu: uživatel klikne
+ * „Vytvořit stránku" a čeká, že bude hotovo. Kdyby se šablona jen založila,
+ * skončil by v editoru s návrhem, který formulář nikde nepoužívá.
+ *
+ * `kind: 'page'`, ne `'transactional'`. Veřejná stránka má vlastní validační
+ * profil: zakazuje blok syrového HTML (běží na NAŠÍ doméně) a patičku
+ * s odhlašovacím odkazem, který by na stránce vedl do prázdna.
+ *
+ * `clearRedirect` existuje proto, že trojice voleb je JEDNA volba. Připojená
+ * stránka a přesměrování na cizí web si odporují: kdyby zůstalo obojí, veřejná
+ * trasa pošle 303 a navržená stránka se nikdy nevykreslí.
+ */
+export async function createFormPageAction(input: {
+  workspaceId: string;
+  formId: string;
+  field: FormPageField;
+  name: string;
+  document: unknown;
+  clearRedirect: boolean;
+}): Promise<FormActionResult> {
+  const created = await apiMutate<{ id: string }>('/api/v1/templates', {
+    method: 'POST',
+    workspaceId: input.workspaceId,
+    body: { name: input.name, kind: 'page', document: input.document },
+  });
+  if (!created.ok) return toFailure(created.problem);
+
+  const linked = await apiMutate<{ data: FormView }>(`/api/v1/forms/${input.formId}`, {
+    method: 'PATCH',
+    workspaceId: input.workspaceId,
+    body: {
+      [input.field]: created.data.id,
+      ...(input.clearRedirect ? { redirect_url: null } : {}),
+    },
   });
   if (!linked.ok) return toFailure(linked.problem);
 

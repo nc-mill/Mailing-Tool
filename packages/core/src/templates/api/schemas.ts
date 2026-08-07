@@ -26,14 +26,19 @@ export const TemplateDocument = z
   .record(z.string(), z.unknown())
   .openapi('TemplateDocument', { description: 'Blokový dokument šablony, schéma verze 1.' });
 
-export const TemplateKindSchema = z.enum(['campaign', 'transactional', 'system']);
+export const TemplateKindSchema = z.enum(['campaign', 'transactional', 'system', 'page']);
 
 /**
  * Kategorie knihovny, tedy to, podle čeho filtruje uživatel. Není to `kind`:
  * `form` vzniká z vazby `forms.delivery_template_id`, ne ze sloupce. Důvod
  * je rozepsaný u `TemplateCategory` v `templates/repository.ts`.
+ *
+ * `page` je jediná kategorie, která se `kind` kryje jedna ku jedné, a je to
+ * záměr: veřejná stránka není použití e-mailu, je to jiný druh dokumentu.
+ * Kdo si o stránky neřekne (`?category=page` nebo `?kind=page`), nedostane je,
+ * takže se nemůžou objevit v nabídce obsahu kampaně ani e-mailu formuláře.
  */
-export const TemplateCategorySchema = z.enum(['campaign', 'form', 'transactional']);
+export const TemplateCategorySchema = z.enum(['campaign', 'form', 'transactional', 'page']);
 
 /**
  * Kde je šablona zapojená. Kampaně tu SCHVÁLNĚ nejsou: kampaň si obsah
@@ -51,10 +56,17 @@ export const TemplateUsageSchema = z
 
 export const TemplateCategoryCountsSchema = z
   .object({
+    /** Součet E-MAILOVÝCH kategorií. Stránky v něm nejsou, viz `page` níž. */
     all: z.number().int(),
     campaign: z.number().int(),
     form: z.number().int(),
     transactional: z.number().int(),
+    /**
+     * Kolik je v projektu veřejných stránek. Stojí VEDLE `all`, ne v něm:
+     * výchozí výpis knihovny stránky nevrací, takže by číslo nad přepínačem
+     * „Vše" slibovalo víc položek, než kolik jich pod ním je.
+     */
+    page: z.number().int(),
   })
   .openapi('TemplateCategoryCounts');
 

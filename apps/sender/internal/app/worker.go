@@ -4,6 +4,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -189,28 +190,41 @@ func (r *Renderer) Render(h *campaign.Header, msg outbox.Message) (*Rendered, er
 			data["webview_url"] = r.urls.Webview(tok)
 		}
 	}
-	bindings := liquidx.WithBlankBindings(data, h.BlankPaths)
 
 	// 5. Interpolace.
 	eng, err := r.engine(h.Raw.Timezone)
 	if err != nil {
 		return nil, &RenderError{Code: errcatalog.RenderFailed, Message: err.Error()}
 	}
-	out.HTML, err = renderOne(eng, htmlSrc, bindings)
-	if err != nil {
-		return nil, err
-	}
-	out.Text, err = renderOne(eng, textSrc, bindings)
-	if err != nil {
-		return nil, err
-	}
+
+	// PŘEDMĚT A PREHEADER SE RENDERUJÍ PRVNÍ, protože jejich hotová podoba je
+	// zároveň hodnotou {{ campaign.subject }} a {{ campaign.preheader }} v těle.
+	// Předmět bývá personalizovaný („Ahoj {{ contact.first_name }}"), takže
+	// dosadit do těla jeho ZDROJ by znamenalo poslat příjemci syrový Liquid.
+	//
+	// Sám na sebe merge tag v předmětu nedosáhne: při jeho renderu je hodnota
+	// ještě prázdná. Sebeodkaz nedává smysl a rekurze v Liquidu nemá konec.
+	setCampaignRoots(h, data, "", "")
+	bindings := liquidx.WithBlankBindings(data, h.BlankPaths)
 	out.Subject, err = renderOne(eng, h.SubjectSource, bindings)
 	if err != nil {
 		return nil, err
 	}
 	// Preheader se interpoluje jen kvůli diagnostice. Do těla se NEZAPISUJE,
 	// protože je už zapečený v html jako první skrytý blok.
-	if _, err := renderOne(eng, h.PreheaderSource, bindings); err != nil {
+	preheader, err := renderOne(eng, h.PreheaderSource, bindings)
+	if err != nil {
+		return nil, err
+	}
+
+	setCampaignRoots(h, data, out.Subject, preheader)
+	bindings = liquidx.WithBlankBindings(data, h.BlankPaths)
+	out.HTML, err = renderOne(eng, htmlSrc, bindings)
+	if err != nil {
+		return nil, err
+	}
+	out.Text, err = renderOne(eng, textSrc, bindings)
+	if err != nil {
 		return nil, err
 	}
 
@@ -221,6 +235,59 @@ func (r *Renderer) Render(h *campaign.Header, msg outbox.Message) (*Rendered, er
 		}
 	}
 	return out, nil
+}
+
+// setCampaignRoots doplní do dat kořeny `campaign` a `workspace`.
+//
+// PROČ TO DĚLÁ SENDER A NE MATERIALIZACE. Obě čtveřice hodnot jsou konstantní
+// pro celou kampaň, kdežto `render_data` je na zprávu a má strop na velikost.
+// Snapshot názvu kampaně, předmětu, názvu projektu a poštovní adresy do každé
+// zprávy by u milionové kampaně přidal stovky megabajtů kvůli údaji, který se
+// v rámci kampaně nemění. Je to tentýž důvod, proč sender staví odhlašovací
+// odkaz a v render_data není.
+//
+// Hodnoty z render_data se PŘEPISUJÍ, a to schválně. Transakční cesta i e-maily
+// seznamu si do render_data ukládají celý vzorek z `contactPreviewData`, tedy
+// i ukázkové „Demo s.r.o., Na Příkopě 1". Tady vyhrává skutečná hodnota projektu;
+// bez toho by ukázková adresa odešla skutečnému příjemci.
+func setCampaignRoots(h *campaign.Header, data map[string]any, subject, preheader string) {
+	data["campaign"] = map[string]any{
+		"name":      h.Raw.Name,
+		"subject":   subject,
+		"preheader": preheader,
+	}
+	data["workspace"] = map[string]any{
+		"name":           h.Raw.WorkspaceName,
+		"sender_address": h.Raw.PostalAddress,
+	}
+	refreshPresence(data)
+}
+
+// refreshPresence přepočítá mapu `_present` pro kořeny, které dodává sender.
+//
+// Mapu plní `prepareRenderData` na straně aplikace při materializaci, jenže tam
+// kořeny `campaign` a `workspace` v datech NEJSOU, takže by každý blok podmíněný
+// vyplněností třeba poštovní adresy vyšel jako nepravda a v odeslaném e-mailu by
+// se TIŠE SKRYL. Přepočítat se dá jen tady, kde jsou hodnoty poprvé k dispozici.
+//
+// Ostatních klíčů (`contact__*`) se to netýká: ty jsou spočítané ze snapshotu,
+// který je pro danou zprávu závazný, a druhý výpočet by je jen mohl rozejít.
+func refreshPresence(data map[string]any) {
+	present, ok := data["_present"].(map[string]any)
+	if !ok {
+		return
+	}
+	for key := range present {
+		root, rest, found := strings.Cut(key, "__")
+		if !found || (root != "campaign" && root != "workspace") {
+			continue
+		}
+		// Klíč mapy je cesta s tečkami nahrazenými dvěma podtržítky
+		// (`emitter/visibility-tags.ts`). Oba kořeny jsou dvouúrovňové,
+		// takže zpětný převod je jediné nahrazení.
+		path := root + "." + strings.ReplaceAll(rest, "__", ".")
+		present[key] = !liquidx.IsBlank(liquidx.LookupPath(data, path))
+	}
 }
 
 func renderOne(eng *liquidx.Engine, src string, bindings map[string]any) (string, error) {

@@ -104,6 +104,8 @@ export function RotateKeyDialogView({
         open={confirming}
         onOpenChange={setConfirming}
         level="N3"
+        // Starý klíč po rotaci přestane platit a rozbije integrace mimo nástroj.
+        destructive
         title={t('apiKeys.rotate.dialogTitle', { name: apiKey.name })}
         consequences={[
           t('apiKeys.rotate.consequence1'),

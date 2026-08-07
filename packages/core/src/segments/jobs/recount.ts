@@ -1,9 +1,9 @@
-import { and, eq, isNull, lt, or, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { segments } from '@mlain/db/schema';
-import { ApiError } from '../../errors/api-error';
 import { createSystemContext } from '../../identity/context';
+import { listStaleSegments } from '../../platform/maintenance-scan';
 import { segmentsLogger } from '../logging';
-import { pgErrorCode, withWorkspace, withoutContext, type Tx } from '../../tx';
+import { pgErrorCode, withWorkspace, type Tx } from '../../tx';
 import { recountSegment } from '../service';
 
 export type RecountPayload = { workspaceId: string; segmentId: string };
@@ -42,63 +42,31 @@ export const handler = async (job: {
 };
 
 /**
- * Odliší „není co přepočítat" od „nevidím na nic".
- *
- * Ptá se na dvě čísla ve stejné transakci. `users` je v `TABLES_WITHOUT_RLS`,
- * takže se čte vždycky a říká, jestli je instalace vůbec používaná. `segments`
- * je pod RLS a bez systémového bypassu vrací nulu. Když má instalace uživatele,
- * ale plánovač nevidí ANI JEDEN segment, je to skoro jistě chybějící bypass,
- * ne prázdná databáze, a job musí spadnout, ne reportovat úspěch.
- */
-async function assertCrossWorkspaceVisibility(tx: Tx): Promise<void> {
-  const { rows } = await tx.execute<{ users: number; segments: number }>(sql`
-    SELECT (SELECT count(*) FROM users)::int AS users,
-           (SELECT count(*) FROM segments)::int AS segments
-  `);
-  const seen = rows[0];
-  if (seen && seen.users > 0 && seen.segments === 0) {
-    throw new ApiError('service_unavailable', {
-      params: {
-        code: 'cross_workspace_scan_blocked',
-        table: 'segments',
-        users: seen.users,
-      },
-    });
-  }
-}
-
-/**
  * Hodinový cron: segmenty s `cached_at` starším než 6 hodin, napříč projekty.
  *
- * POZOR, tohle je jediné místo celého plánu, které sahá mimo jeden projekt,
- * a je to zároveň místo, kde se nejsnáz vyrobí trvale tichá porucha.
- * `segments` má politiku `ws_isolation` a `withoutContext` žádný kontext
- * nenastavuje, takže `current_setting('mlain.workspace_id', true)` je NULL,
- * porovnání s NULL je NULL, tedy nepravda, tedy ŽÁDNÉ ŘÁDKY. A hlavně:
- * ŽÁDNÁ CHYBA. Bez systémového bypassu by tenhle cron roky hlásil
- * `{ scheduled: 0 }`, index `idx_segments__stale` by zůstal nepoužitý
- * a nikdo by si toho nevšiml, protože nula zastaralých segmentů je
- * naprosto věrohodná hodnota. Do dodání politiky `system_bypass` drží
- * hranici strážce výš.
+ * OPRAVA. Tenhle sken běžel pod `withoutContext`, tedy pod `mlain_app` BEZ
+ * nastaveného `mlain.workspace_id`. `segments` má politiku `ws_isolation`,
+ * takže `current_setting('mlain.workspace_id', true)` je NULL, porovnání s NULL
+ * je NULL, tedy nepravda, tedy ŽÁDNÉ ŘÁDKY. Bez systémového bypassu by tenhle
+ * cron roky hlásil `{ scheduled: 0 }`, index `idx_segments__stale` by zůstal
+ * nepoužitý a nikdo by si toho nevšiml, protože nula zastaralých segmentů je
+ * naprosto věrohodná hodnota. Do dodání bypassu držel hranici strážce, který
+ * job shodil hlasitě.
+ *
+ * Politiku i grant dodává migrace 0024 pod rolí `mlain_maintenance`, sken sám
+ * i strážce leží v `platform/maintenance-scan.ts`. Ten soubor je schválně
+ * JEDINÉ místo aplikace, které čte napříč projekty.
+ *
+ * Hranici stáří počítá tenhle modul a předává ji skenu hotovou. Sken si ji
+ * nevyrábí z `now()` ze stejného důvodu, z jakého lhůtu na obnovu projektu
+ * vlastní úloha a ne politika: konstanta se smí změnit.
  */
 export const scheduleStale = async (
   enqueue: (p: RecountPayload) => Promise<void>,
 ): Promise<number> => {
   const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000);
-  const rows = await withoutContext(async (tx: Tx) => {
-    await assertCrossWorkspaceVisibility(tx);
-    return tx
-      .select({ id: segments.id, workspaceId: segments.workspaceId })
-      .from(segments)
-      .where(
-        and(
-          isNull(segments.deletedAt),
-          eq(segments.kind, 'dynamic'),
-          or(isNull(segments.cachedAt), lt(segments.cachedAt, cutoff)),
-        ),
-      );
-  });
-  for (const row of rows) await enqueue({ workspaceId: row.workspaceId, segmentId: row.id });
+  const rows = await listStaleSegments(cutoff);
+  for (const row of rows) await enqueue({ workspaceId: row.workspaceId, segmentId: row.segmentId });
   segmentsLogger().info({ scheduled: rows.length }, 'segments.recount scheduled');
   return rows.length;
 };

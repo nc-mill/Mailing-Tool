@@ -48,12 +48,26 @@ export type { RotateReport } from './rotate-credentials';
 export { MIN_PASSWORD_LENGTH, resetPassword, UserNotFoundError } from './reset-password';
 export { rebuildEngagement } from './rebuild-engagement';
 /**
+ * Přepočet stavu souhlasů z append-only logu. Bez příkazu byla obsluha fronty
+ * `consents.rebuild_state` nedosažitelná: vedl k ní jedině ruční INSERT do
+ * tabulky úloh pg-bossu, a to zrovna po obnově ze zálohy.
+ */
+export { rebuildConsents, type RebuildConsentsReport } from './rebuild-consents';
+/**
  * Jednorázové převlečení uložených e-mailů do barev značky. Pro instalace,
  * které značku mají a od upgradu ji znovu neuloží; jinak to dělá samo uložení.
  */
 export { redressAllWorkspacesToBrand, type RedressBrandReport } from './redress-brand';
-export { retentionTargets, runPartitionMaintenance } from './partition-retention';
+export {
+  maintainPartitions,
+  partitionMaintenanceMetadata,
+  recordPartitionMaintenance,
+  retentionTargets,
+  runPartitionMaintenance,
+} from './partition-retention';
 export type {
+  MaintainPartitionsInput,
+  MaintainPartitionsResult,
   RetentionReport,
   RetentionTarget,
   RunInput as PartitionMaintenanceInput,

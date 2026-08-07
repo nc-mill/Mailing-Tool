@@ -90,7 +90,7 @@ export function buildApp(): OpenAPIHono<ApiEnv> {
   registerAuditRoutes(app);
   registerJobRoutes(app);
   // Stav systémové pošty. Obrazovky se podle něj rozhodují, jestli vůbec nabízet
-  // pozvánku e-mailem: odeslat ji umí jen účet typu SMTP.
+  // pozvánku e-mailem: bez použitelného odesílacího účtu neodejde.
   registerSystemMailRoutes(app);
   // Import a export kontaktů (P11) se registrují PŘED doménou kontaktů, a to
   // je podstatné, ne kosmetické.

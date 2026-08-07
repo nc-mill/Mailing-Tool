@@ -6,6 +6,7 @@ import { Card } from '@mlain/ui/components/card';
 import { Checkbox } from '@mlain/ui/components/checkbox';
 import { PageHeader } from '@mlain/ui/components/page-header';
 import { Search, Upload } from '@mlain/ui/icons';
+import { passwordManagerOptOut } from '@mlain/ui/lib/password-manager';
 import { Alert, EmptyState } from '@mlain/ui/patterns/states';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -272,10 +273,18 @@ export function AssetsLibrary({
             vlastní `input` bez rámečku uvnitř, aby lupa a text seděly v jednom
             poli a ne vedle sebe. */}
         <div className="flex flex-wrap items-center gap-[var(--spacing-stack)]">
-          <div className="flex h-[var(--size-control)] min-w-[280px] items-center gap-[var(--spacing-inline)] rounded-[var(--radius-control)] border border-border-strong bg-field px-3.5">
+          {/* MINIMÁLNÍ ŠÍŘKA PLATÍ AŽ OD 640 px. Pevných 280 px je na displeji
+              375 px víc, než kolik hlavnímu sloupci vedle bočního menu vůbec
+              zbude, takže pole začínalo za pravým okrajem a stránka přetékala
+              vodorovně. Pod tou hranicí se pole roztáhne na to, co je k mání. */}
+          <div className="flex h-[var(--size-control)] w-full items-center gap-[var(--spacing-inline)] rounded-[var(--radius-control)] border border-border-strong bg-field px-3.5 sm:w-auto sm:min-w-[280px]">
             <Search aria-hidden className="icon-sm text-text-muted" />
             <input
               type="search"
+              // Do hledání nepatří uložené heslo. Bez těchhle značek nad pole
+              // vyskočí nabídka správce hesel a zakryje mřížku náhledů.
+              // Proč jich je šest, vysvětluje `@mlain/ui/lib/password-manager`.
+              {...passwordManagerOptOut}
               value={query}
               aria-label={t('search.label')}
               placeholder={t('search.placeholder')}
@@ -328,7 +337,10 @@ export function AssetsLibrary({
             // Dlaždice jsou širší než dlaždice s číslem na Přehledu (230 px):
             // pod náhledem stojí dva odznaky vedle sebe a v užší dlaždici by se
             // lámaly pod sebe na každé z nich.
-            className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-[var(--spacing-gutter)]"
+            // Minimum sloupce je `min(260px, 100%)`: holých 260 px je TVRDÉ
+            // minimum a na užším sloupci mřížka přeteče ven ze stránky místo
+            // toho, aby se zúžila.
+            className="grid grid-cols-[repeat(auto-fill,minmax(min(260px,100%),1fr))] gap-[var(--spacing-gutter)]"
           >
             {assets.map((asset) => (
               <AssetTile

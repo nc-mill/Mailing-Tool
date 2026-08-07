@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { pickEffectiveConsent, type ConsentPrecedenceRow } from '@mlain/core/contacts';
 import { apiFetch } from '@/lib/api-client/fetch';
 import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
 import { ContactsProblem } from '@/features/contacts/contacts-problem';
@@ -11,6 +12,12 @@ import { saveContactAction } from '@/features/contacts/edit-actions';
 export const dynamic = 'force-dynamic';
 
 type PageProps = { params: Promise<{ locale: string; workspaceSlug: string; id: string }> };
+
+/**
+ * Řádek historie souhlasů z API. Tvar je záměrně ten, který bere
+ * `pickEffectiveConsent`, aby se odpověď nemusela nikam překlápět.
+ */
+type ConsentApiRow = ConsentPrecedenceRow;
 
 type ContactApiDetail = {
   id: string;
@@ -64,17 +71,47 @@ export default async function EditContactPage({ params }: PageProps) {
   }
   const workspaceId = access.data.workspace.id;
 
-  const [contact, fields, tags, lists] = await Promise.all([
+  const [contact, fields, tags, lists, consents] = await Promise.all([
     apiFetch<{ data: ContactApiDetail }>(`/api/v1/contacts/${id}`, { workspaceId }),
     apiFetch<{ data: ContactFieldApi[] }>('/api/v1/contact-fields', { workspaceId }),
     apiFetch<{ data: { id: string; name: string }[] }>('/api/v1/tags', {
       workspaceId,
       searchParams: { limit: 200 },
     }),
-    apiFetch<{ data: { id: string; name: string; opt_in: 'single' | 'double' }[] }>(
-      '/api/v1/lists',
-      { workspaceId },
-    ),
+    /*
+     * `send_welcome` se čte schválně, stejně jako `opt_in`. Na seznamu s jedním
+     * krokem se kontakt po zaškrtnutí přihlásí ROVNOU a potvrzovací e-mail
+     * neodejde; místo něj odejde uvítací, ale jedině když ho seznam má zapnutý.
+     * Bez tohohle příznaku formulář nemá jak poznat, jestli vůbec něco odejde,
+     * a sliboval e-mail, který nikdy nedorazil.
+     */
+    apiFetch<{
+      data: {
+        id: string;
+        name: string;
+        opt_in: 'single' | 'double';
+        send_welcome: boolean;
+        /*
+         * `send_goodbye` se čte ze stejného důvodu jako `send_welcome`, jen
+         * na druhou stranu: ODŠKRTNUTÍ seznamu kontakt odhlásí a odhlášení
+         * pošle rozloučení, pokud ho seznam má zapnuté (`unsubscribe.ts`).
+         * Formulář o tom do 7. 8. 2026 mlčel, takže odchozí e-mail vyrobilo
+         * kliknutí, po kterém uživatel čekal jen tichou změnu.
+         */
+        send_goodbye: boolean;
+      }[];
+    }>('/api/v1/lists', { workspaceId }),
+    /*
+     * Historie souhlasů, od nejnovějšího. Formulář z ní pozná, jestli po
+     * zaškrtnutí seznamu s dvojím potvrzením odejde POTVRZOVACÍ e-mail, nebo
+     * uvítací: kontakt s doloženým souhlasem se přihlásí rovnou
+     * (`state-machine.ts`, větev `existingConsent`).
+     *
+     * Rozhoduje o tom `pickEffectiveConsent` z `@mlain/core`, tedy TÁŽ funkce,
+     * kterou se ptá server. Opsané pravidlo by se rozešlo na něčem, co je vidět
+     * až v doručené poště příjemce.
+     */
+    apiFetch<{ data: ConsentApiRow[] }>(`/api/v1/contacts/${id}/consents`, { workspaceId }),
   ]);
 
   if (!contact.ok) {
@@ -97,7 +134,23 @@ export default async function EditContactPage({ params }: PageProps) {
   const subscribed = new Set(
     payload.lists.filter((list) => list.status !== 'unsubscribed').map((list) => list.list_id),
   );
+  /*
+   * Odhlášené seznamy se drží zvlášť, ne jen jako „nezaškrtnuté". Zaškrtávátko
+   * vypadá stejně jako u seznamu, ve kterém kontakt nikdy nebyl, ale následek je
+   * jiný: návrat po odhlášení jde vždycky přes potvrzovací e-mail, i na seznamu
+   * s jedním krokem (`state-machine.ts`, větev `from === 'unsubscribed'`).
+   */
+  const unsubscribed = new Set(
+    payload.lists.filter((list) => list.status === 'unsubscribed').map((list) => list.list_id),
+  );
   const listCatalog = lists.ok ? lists.data.data : [];
+  /*
+   * Když se historie souhlasů nenačte, bere se jako prázdná, tedy „souhlas
+   * nemáme". Formulář pak slíbí potvrzovací e-mail, což je běžná cesta a to
+   * horší z obou omylů to není: slíbit potvrzení a poslat uvítání je matoucí,
+   * ale mlčet o odchozím e-mailu úplně je horší.
+   */
+  const consentLog = consents.ok ? consents.data.data : [];
 
   return (
     <ContactForm
@@ -133,6 +186,10 @@ export default async function EditContactPage({ params }: PageProps) {
           name: list.name,
           selected: subscribed.has(list.id),
           double_opt_in: list.opt_in === 'double',
+          send_welcome: list.send_welcome,
+          send_goodbye: list.send_goodbye,
+          previously_unsubscribed: unsubscribed.has(list.id),
+          has_effective_consent: pickEffectiveConsent(consentLog, { listId: list.id }) !== null,
         })),
       }}
     />

@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DataTable, type DataTableColumn } from './data-table';
+import type { SelectionMode } from './use-row-selection';
 
 type Contact = { id: string; email: string; name: string };
 
@@ -48,6 +50,29 @@ function base(overrides: Partial<React.ComponentProps<typeof DataTable<Contact>>
     order: { value: 'email.asc', onChange: vi.fn() },
     ...overrides,
   };
+}
+
+/**
+ * Tabulka s výběrem, který drží obrazovka. Odkaz „Vybrat všech N" se nabízí JEN takové:
+ * bez `onModeChange` by rozšíření výběru zůstalo uvnitř tabulky a hromadné akce pod
+ * pruhem by o něm nevěděly.
+ */
+function Controlled({
+  onModeChange = vi.fn(),
+  overrides,
+}: {
+  onModeChange?: (mode: SelectionMode) => void;
+  overrides?: Partial<React.ComponentProps<typeof DataTable<Contact>>>;
+}) {
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  return (
+    <DataTable
+      {...base({
+        selection: { selectedIds, onSelectionChange: setSelectedIds, onModeChange },
+        ...overrides,
+      })}
+    />
+  );
 }
 
 describe('DataTable', () => {
@@ -108,13 +133,65 @@ describe('DataTable', () => {
 
   it('po výběru na stránce nabídne výběr všeho podle filtru', async () => {
     const user = userEvent.setup();
-    render(<DataTable {...base()} />);
+    render(<Controlled />);
     await user.click(screen.getByRole('checkbox', { name: 'Označit všechny řádky na stránce' }));
 
     expect(screen.getByText('Vybráno 5 kontaktů na této stránce')).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Vybrat všech 12480 odpovídajících filtru' }),
     ).toBeVisible();
+  });
+
+  /*
+   * VADA A: ODKAZ SLIBOVAL NĚCO, CO U NESTRÁNKOVANÉ TABULKY NEEXISTUJE.
+   *
+   * Kampaně, seznamy, štítky ani formuláře se nestránkují, takže „Vybrat všech 9"
+   * nabízelo právě těch devět řádků, které uživatel vidí a zaškrtl. Doslova z provozu:
+   * „Jediné, co tam je, je vybrat všech 12, ale to mi je k prdu."
+   */
+  it('nestránkovaná tabulka výběr všeho vůbec nenabízí', async () => {
+    const user = userEvent.setup();
+    render(
+      <Controlled
+        overrides={{
+          pagination: { hasMore: false, canGoBack: false, onPrevious: vi.fn(), onNext: vi.fn() },
+        }}
+      />,
+    );
+    await user.click(screen.getByRole('checkbox', { name: 'Označit všechny řádky na stránce' }));
+
+    expect(screen.getByText('Vybráno 5 kontaktů na této stránce')).toBeVisible();
+    expect(screen.queryByRole('button', { name: /Vybrat všech/ })).toBeNull();
+  });
+
+  /*
+   * VADA B: REŽIM NETEKL VEN, takže pruh psal „Vybráno všech 12 480" a tlačítko pod ním
+   * pracovalo s pěti zaškrtnutými řádky. Tabulka, jejíž obrazovka režim nepřevezme,
+   * proto rozšíření výběru nenabízí vůbec, místo aby ho nabídla nanečisto.
+   */
+  it('bez převzetí režimu obrazovkou se výběr všeho nenabízí', async () => {
+    const user = userEvent.setup();
+    render(<DataTable {...base()} />);
+    await user.click(screen.getByRole('checkbox', { name: 'Označit všechny řádky na stránce' }));
+
+    expect(screen.getByText('Vybráno 5 kontaktů na této stránce')).toBeVisible();
+    expect(screen.queryByRole('button', { name: /Vybrat všech/ })).toBeNull();
+  });
+
+  it('rozšíření výběru na celý filtr i návrat zpátky se ohlásí ven', async () => {
+    const user = userEvent.setup();
+    const onModeChange = vi.fn();
+    render(<Controlled onModeChange={onModeChange} />);
+    await user.click(screen.getByRole('checkbox', { name: 'Označit všechny řádky na stránce' }));
+    expect(onModeChange).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /Vybrat všech/ }));
+    expect(onModeChange).toHaveBeenLastCalledWith('allMatchingFilter');
+
+    // Zaškrtnutí jednoho řádku je návrat k výběru na stránce. Kdyby se ven nehlásil,
+    // spustila by obrazovka nad jedním řádkem akci nad celým filtrem.
+    await user.click(within(screen.getAllByRole('row')[1]!).getByRole('checkbox'));
+    expect(onModeChange).toHaveBeenLastCalledWith('rows');
   });
 
   it('neplatný kurzor vysvětlí a ukáže první stránku, ne prázdno ani chybu', () => {
@@ -270,5 +347,51 @@ describe('DataTable: otevření řádku myší', () => {
     await userEvent.keyboard('{Enter}');
 
     expect(onRowActivate.mock.calls[0]?.[0]).toEqual(klikem);
+  });
+});
+
+/**
+ * VYPNUTELNÝ VÝBĚR.
+ *
+ * Do 7. 8. 2026 se sloupec se zaškrtávátky kreslil BEZ JAKÉKOLI PODMÍNKY, takže ho
+ * měla i obrazovka, nad kterou žádná hromadná akce není a vzniknout nemůže (příjemci
+ * reportu kampaně, Centrum úloh). Zaškrtnout deset řádků a zjistit, že se s nimi nedá
+ * udělat nic, je horší než nemít výběr vůbec.
+ *
+ * Výchozí hodnota je `true`, aby stávající tabulky zůstaly beze změny; první test
+ * hlídá právě to, protože tichá změna výchozího chování by výběr sebrala všem.
+ */
+describe('DataTable: selectable', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('bez propy výběr ZŮSTÁVÁ, aby se stávající tabulky nemusely měnit', () => {
+    render(<DataTable {...base()} />);
+    expect(screen.getAllByRole('checkbox', { name: 'Označit řádek' }).length).toBeGreaterThan(0);
+  });
+
+  it('selectable={false} sebere zaškrtávátka řádků', () => {
+    render(<DataTable {...base({ selectable: false })} />);
+    expect(screen.queryByRole('checkbox', { name: 'Označit řádek' })).toBeNull();
+  });
+
+  it('selectable={false} sebere i hlavičkové označení celé stránky', () => {
+    render(<DataTable {...base({ selectable: false })} />);
+    expect(screen.queryByRole('checkbox', { name: 'Označit všechny řádky na stránce' })).toBeNull();
+  });
+
+  /**
+   * Pruh výběru musí zmizet taky. Kdyby zůstal, hlásil by „Nevybráno nic" nad
+   * tabulkou, ve které se vybírat nedá, což je zmatek navíc, ne informace.
+   */
+  it('selectable={false} sebere pruh výběru', () => {
+    render(<DataTable {...base({ selectable: false })} />);
+    expect(screen.queryByText(/Nevybráno nic/i)).toBeNull();
+  });
+
+  it('řádky a sloupce zůstanou, tabulka se čte dál', () => {
+    render(<DataTable {...base({ selectable: false })} />);
+    expect(screen.getAllByRole('row').length).toBeGreaterThan(1);
   });
 });

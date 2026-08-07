@@ -100,7 +100,7 @@ describe('recomputeCampaignCounts', () => {
     expect(drift.differences).toContainEqual({ key: 'opensUnique', stored: 99, recomputed: 2 });
   });
 
-  it('spočítá doručení, oba odrazy a stížnost pod jmény ze schématu (R19)', async () => {
+  it('spočítá doručení, odmítnutí, oba odrazy a stížnost pod jmény ze schématu (R19)', async () => {
     const ws = await seedWorkspace(db);
     const campaign = await seedCampaign(db, ws.workspaceId);
     const plan: Array<[string, string]> = [
@@ -108,6 +108,7 @@ describe('recomputeCampaignCounts', () => {
       ['bounced_hard', 'b@example.cz'],
       ['bounced_soft', 'c@example.cz'],
       ['complained', 'd@example.cz'],
+      ['rejected', 'e@example.cz'],
     ];
     for (const [type, email] of plan) {
       const contact = await seedContact(db, ws.workspaceId, { email });
@@ -139,6 +140,9 @@ describe('recomputeCampaignCounts', () => {
     expect(counts.bouncedHard).toBe(1);
     expect(counts.bouncedSoft).toBe(1);
     expect(counts.complained).toBe(1);
+    // `rejected` dřív neměl v campaign_stats sloupec, takže se odmítnutá zpráva
+    // nezapsala nikam a od odeslaných se neodečetla: platila za doručenou.
+    expect(counts.rejected).toBe(1);
   });
 
   it('u správně vedené agregace nehlásí žádný rozdíl', async () => {
@@ -151,6 +155,7 @@ describe('recomputeCampaignCounts', () => {
       sent: counts.sent,
       failed: counts.failed,
       skipped: counts.skipped,
+      rejected: counts.rejected,
       delivered: counts.delivered,
       bounced_hard: counts.bouncedHard,
       bounced_soft: counts.bouncedSoft,

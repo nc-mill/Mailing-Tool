@@ -165,26 +165,32 @@ describe('campaign.scheduler se skutečnými závislostmi', () => {
   });
 
   /**
-   * NÁLEZ, ne popis žádaného stavu. Plánovač tiká každých 30 sekund a kampaň
-   * zůstává ve `scheduled`, dokud ji nepřevezme materializace, takže ji další
-   * tik najde znovu. `singletonKey` se posílá (v tvaru z `MATERIALIZE_JOB`,
-   * shodném s registrem), jenže pg-boss ho respektuje jen u fronty s politikou
-   * `singleton` nebo `short`, a `queueOptions` ve workeru žádnou politiku
-   * nenastavuje. Duplicitní úloha proto vznikne.
+   * TA SPRÁVNÁ CHVÍLE NASTALA 7. 8. Předchozí znění tohohle testu bylo NÁLEZ,
+   * ne popis žádaného stavu, a jeho komentář končil slovy: „kdyby někdo politiku
+   * fronty doplnit, test spadne a bude to ta správná chvíle tenhle komentář
+   * smazat". Spadl přesně na tom.
    *
-   * Škoda je nulová a je to vidět v druhé polovině testu: převzetí kampaně je
-   * jediný `UPDATE` s podmínkou na výchozí stav, takže druhá úloha nic
-   * nepřevezme. Tvrzení je tu schválně naopak, než by se čekalo: kdyby někdo
-   * politiku fronty doplnil, test spadne a bude to ta správná chvíle tenhle
-   * komentář smazat.
+   * Co se změnilo: testovací prostředí zakládalo fronty BEZ politiky slučování,
+   * kdežto provoz je zakládá s politikou z registru. Obě strany se srovnaly
+   * (`queueCreatePlan`), takže `campaign.materialize` má i v testu `exclusive`
+   * a druhý tik plánovače se sloučí s prvním.
+   *
+   * Tvrzení se proto OTOČILO a je ostřejší než dřív. Nestačí, že je úloha jen
+   * jedna: druhá polovina původního testu se drží celá, protože chrání jinou
+   * vlastnost. Převzetí kampaně je jediný `UPDATE` s podmínkou na výchozí stav,
+   * takže i kdyby se slučování zase rozbilo, druhá úloha nic nepřevezme.
+   * Dvě nezávislé pojistky nad týmž rizikem, každá měřená zvlášť.
    */
-  it('druhý běh zařadí kampaň znovu, ale převzít ji jde jen jednou', async () => {
+  it('druhý tik plánovače se sloučí s prvním a převzít kampaň jde stejně jen jednou', async () => {
     const id = await seedCampaign(ctx, { status: 'scheduled', scheduledMinutesAgo: 2 });
 
     await schedulerHandler(systemSchedulerDeps());
     await schedulerHandler(systemSchedulerDeps());
 
-    expect(await enqueuedFor('campaign.materialize', id)).toBe(2);
+    // Plánovač tiká každých 30 sekund a kampaň zůstává ve `scheduled`, dokud ji
+    // nepřevezme materializace, takže ji každý další tik najde znovu. Bez
+    // slučování by se za minutu sešly dvě materializace nad týmž outboxem.
+    expect(await enqueuedFor('campaign.materialize', id)).toBe(1);
 
     expect((await startMaterialization(ctx.workspace, id, 0)).claimed).toBe(true);
     expect((await startMaterialization(ctx.workspace, id, 0)).claimed).toBe(false);

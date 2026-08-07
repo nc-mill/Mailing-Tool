@@ -83,6 +83,13 @@ vi.mock('./greeting-actions', () => ({
   clearGreetingAction: (input: unknown) => clearGreetingAction(input),
 }));
 
+// Totéž pro souhlas s měřením: akce sahá na `@/lib/api-client/mutate`.
+const setMeasurementConsentAction = vi.fn().mockResolvedValue({ status: 'success' });
+
+vi.mock('./measurement-consent-actions', () => ({
+  setMeasurementConsentAction: (input: unknown) => setMeasurementConsentAction(input),
+}));
+
 const base: ContactDetailData = {
   id: 'c-1',
   email: 'jana@firma.cz',
@@ -110,6 +117,8 @@ const base: ContactDetailData = {
   source: 'Import',
   subscribed_at: '2026-06-12T14:20:00.000Z',
   consent_summary: 'formulář na webu, 12. 6. 2026 14:20',
+  // Výchozí stav v produktu: o měření se ten člověk nikdy nevyjádřil.
+  measurement_consent: 'not_recorded',
 };
 
 beforeEach(() => {
@@ -597,5 +606,72 @@ describe('akce detailu kontaktu opravdu volají server', () => {
     renderDetail();
     await user.click(screen.getByRole('button', { name: 'Upravit kontakt' }));
     expect(push).toHaveBeenCalledWith('/w/eshop/contacts/c-1/edit');
+  });
+
+  describe('souhlas s měřením', () => {
+    /**
+     * Nevyjádřený souhlas se NESMÍ vydávat za udělený. Karta má tři stavy,
+     * protože „nikdo se nevyjádřil" je skutečný stav evidence: dnes ho má
+     * v produktu každý kontakt.
+     */
+    it('u nevyjádřeného souhlasu netvrdí souhlas ani odmítnutí', () => {
+      renderDetail({ measurement_consent: 'not_recorded' });
+      expect(screen.getByTestId('measurement-state')).toHaveTextContent(
+        'Kontakt se k měření nevyjádřil',
+      );
+      expect(screen.getByTestId('measurement-consent')).toHaveTextContent(
+        'V evidenci není souhlas ani odmítnutí',
+      );
+    });
+
+    it('vedle stavu vysvětlí, co se stane po vypnutí', () => {
+      renderDetail({ measurement_consent: 'granted' });
+      const card = screen.getByTestId('measurement-consent');
+      expect(card).toHaveTextContent('Otevření a prokliky e-mailů se zapisují do jeho časové osy');
+      expect(screen.getByTestId('measurement-withdraw')).toHaveTextContent('Vypnout měření');
+    });
+
+    it('vypnutí zapíše odvolání souhlasu pro účel měření', async () => {
+      const user = userEvent.setup();
+      renderDetail({ measurement_consent: 'granted' });
+
+      await user.click(screen.getByTestId('measurement-withdraw'));
+      expect(setMeasurementConsentAction).toHaveBeenCalledWith({
+        workspaceId: 'w-1',
+        id: 'c-1',
+        status: 'withdrawn',
+      });
+    });
+
+    /**
+     * U odvolaného souhlasu musí být z obrazovky poznat, že se dosud naměřené
+     * události nemažou. Bez té věty si uživatel myslí, že vypnutím data smazal,
+     * a na skutečné mazání pak nikdo nesáhne.
+     */
+    it('u odvolaného souhlasu nabízí cestu zpět a nelže o minulosti', async () => {
+      const user = userEvent.setup();
+      renderDetail({ measurement_consent: 'withdrawn' });
+
+      const card = screen.getByTestId('measurement-consent');
+      expect(card).toHaveTextContent('Dosud naměřené události zůstávají');
+      await user.click(screen.getByTestId('measurement-grant'));
+      expect(setMeasurementConsentAction).toHaveBeenCalledWith({
+        workspaceId: 'w-1',
+        id: 'c-1',
+        status: 'granted',
+      });
+    });
+
+    /**
+     * Anonymizovaný kontakt: stav zůstává vidět, měnit ho nejde. Skrýt celou
+     * kartu by znamenalo, že u kontaktů, kde se to hodí vědět nejvíc, není
+     * poznat, jestli si měření přáli.
+     */
+    it('u anonymizovaného kontaktu stav ukáže, ale měnit ho nedovolí', () => {
+      renderDetail({ anonymized_at: '2026-07-01T00:00:00.000Z' });
+      expect(screen.getByTestId('measurement-consent')).toBeInTheDocument();
+      expect(screen.queryByTestId('measurement-withdraw')).toBeNull();
+      expect(screen.queryByTestId('measurement-grant')).toBeNull();
+    });
   });
 });

@@ -748,9 +748,28 @@ Instalace bez jediného uživatele zobrazí průvodce na `/setup`. Endpoint `POS
 
 | Hodnota | Chování |
 |---|---|
-| `closed` (výchozí) | registrace zakázaná, účty zakládá owner pozvánkou |
-| `invite` | registrace jen s platným tokenem pozvánky |
-| `open` | veřejná registrace, vyžaduje ověření e-mailu před prvním přihlášením |
+| `closed` | registrace zakázaná, účty zakládá owner rukou v Nastavení, Členové |
+| `invite` (výchozí) | účet vznikne jen s platným tokenem pozvánky, na adresu z pozvánky |
+
+> **Upřesněno 7. 8. 2026 podle skutečného stavu kódu.** Výchozí hodnota byla do té
+> doby `closed`, což odporovalo rozhodnutí zadavatele z 31. 7. („invite: doporučený
+> výchozí stav"), a hlavně: **zakládání účtu z pozvánky vůbec neexistovalo**, takže
+> `SIGNUP_MODE` neřídil nic. Pozvaný člověk bez účtu dostal e-mail, klikl na odkaz
+> a obrazovka mu nabídla jedině přihlášení k účtu, který nemá. Cestu doplňuje
+> `POST /api/v1/invitations/signup` (`packages/core/src/identity/signup.ts`).
+> Řádek `closed` popisuje, co se stane u instalace, která si ho vědomě nastaví:
+> odkaz z pozvánky pozvanému řekne, že si účet založit nemůže, místo aby ho poslal
+> na přihlášení.
+>
+> **Hodnota `open` z enumu 7. 8. 2026 ZMIZELA.** Veřejnou registraci
+> neimplementovala ani jedna trasa a chovala se přesně jako `invite`, protože token
+> pozvánky se vyžadoval tak jako tak. Nastavení, které nedělá to, co říká jeho
+> jméno, je u otázky „kdo si smí založit účet" nebezpečnější než chybějící
+> nastavení: operátor si myslel, že registraci otevřel. Instalace s
+> `SIGNUP_MODE=open` teď skončí hlasitou chybou konfigurace. Dopsat veřejnou
+> registraci je samostatné zadání s bezpečnostními dopady (ověření adresy, brzdy
+> proti zakládání účtů ve velkém, vyzrazení registrované adresy a vazba na to, kdo
+> smí zakládat projekty).
 
 ### 3.2 Sessions (otázka 4)
 
@@ -2778,7 +2797,7 @@ Legenda sloupce "Kdo": W = web, K = worker, S = sender.
 | `DEFAULT_LOCALE` | string | ne | `cs` | W K | musí být v `SUPPORTED_LOCALES` |
 | `SUPPORTED_LOCALES` | seznam | ne | `cs,en` | W K | musí existovat katalog pro každý |
 | `DEFAULT_TIMEZONE` | string | ne | `Europe/Prague` | W K | platná IANA zóna |
-| `SIGNUP_MODE` | enum | ne | `closed` | W | `closed`, `invite`, `open` |
+| `SIGNUP_MODE` | enum | ne | `invite` | W | `closed`, `invite` |
 | `SESSION_ABSOLUTE_TTL_DAYS` | int | ne | 30 | W | 1 až 365 |
 | `SESSION_IDLE_TTL_DAYS` | int | ne | 14 | W | 1 až `SESSION_ABSOLUTE_TTL_DAYS` |
 | `MIGRATE_ON_START` | bool | ne | `true` | W | při `false` se jen ověří shoda verze |

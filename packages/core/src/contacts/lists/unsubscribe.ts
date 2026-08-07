@@ -186,6 +186,7 @@ async function unsubscribeIn(
       contactIds: [input.contactId],
       listId: input.listId,
       reason: 'unsubscribed',
+      tx,
     });
 
     await emitWebhookEvent(tx, {

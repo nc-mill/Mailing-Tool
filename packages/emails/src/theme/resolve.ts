@@ -1,4 +1,4 @@
-import type { ColorRef, HexColor, Theme, ThemeColorRole } from '../document/types';
+import type { ColorRef, HexColor, RoleColorMap, Theme, ThemeColorRole } from '../document/types';
 import { DEFAULT_DARK, DEFAULT_LIGHT, FONT_STACKS } from './palette';
 
 export type ResolvedScheme = {
@@ -25,11 +25,49 @@ export type ResolvedTheme = {
   };
 };
 
-function scheme(
+/**
+ * Rolí je deset, takže víc než deset skoků znamená kruh. Pojistka je tu i tak:
+ * počet rolí smí verze schématu zvětšit, kdežto tenhle cyklus musí skončit vždy.
+ */
+const ALIAS_LIMIT = 10;
+
+/**
+ * Rozváže jednu roli až na odstín.
+ *
+ * Motiv smí místo odstínu nést JMÉNO JINÉ ROLE („pozadí plátna = hlavní barva
+ * značky"). Je to vazba, ne kopie: po změně značky se přebarví i to, co na ni
+ * ukazuje. Do e-mailu ale žádné jméno role odejít nesmí, jinak by se v HTML
+ * objevil text `brand.primary` místo barvy.
+ *
+ * KRUH SE NEDÁ VYLOUČIT vstupem: dokument přichází ze souboru a schéma sousedské
+ * odkazy nekontroluje, takže „plátno ukazuje na obsah, obsah na plátno" musí
+ * projít. Skončí to výchozím odstínem té role, ne zacyklením ani prázdnou
+ * barvou. Totéž u role, která ukazuje na sebe.
+ */
+function resolveRole(
   base: Record<ThemeColorRole, HexColor>,
-  overrides: Partial<Record<ThemeColorRole, HexColor>>,
-): ResolvedScheme {
-  const roles = { ...base, ...overrides } as Record<ThemeColorRole, HexColor>;
+  raw: Record<ThemeColorRole, ColorRef>,
+  role: ThemeColorRole,
+): HexColor {
+  const seen = new Set<ThemeColorRole>([role]);
+  let current: ColorRef | undefined = raw[role];
+  for (let step = 0; step < ALIAS_LIMIT; step += 1) {
+    if (current === undefined) break;
+    if (current.startsWith('#')) return current as HexColor;
+    const next = current as ThemeColorRole;
+    if (seen.has(next)) break;
+    seen.add(next);
+    current = raw[next];
+  }
+  return base[role];
+}
+
+function scheme(base: Record<ThemeColorRole, HexColor>, overrides: RoleColorMap): ResolvedScheme {
+  const raw = { ...base, ...overrides } as Record<ThemeColorRole, ColorRef>;
+  const roles = {} as Record<ThemeColorRole, HexColor>;
+  for (const role of Object.keys(raw) as ThemeColorRole[]) {
+    roles[role] = resolveRole(base, raw, role);
+  }
   return {
     roles,
     color: (ref: ColorRef): HexColor =>

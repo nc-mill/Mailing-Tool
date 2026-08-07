@@ -85,7 +85,7 @@ export function CreateKeyPanel({
           {/* Oprávnění je přes čtyřicet. Mřížka se řídí šířkou karty, ne pevným
               počtem sloupců: `sm:grid-cols-2` dělalo dva dlouhé sloupce i tam,
               kde se vešly čtyři. Řádek má 44 px, protože je to klikací plocha. */}
-          <div className="mt-[var(--spacing-hairline)] grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-x-[var(--spacing-gutter)]">
+          <div className="mt-[var(--spacing-hairline)] grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-x-[var(--spacing-gutter)]">
             {availableScopes.map((scope) => (
               <label
                 key={scope}

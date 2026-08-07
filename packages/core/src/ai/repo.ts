@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import * as schema from '@mlain/db/schema';
 import type { WorkspaceContext } from '../identity/types';
 import { listContactFields } from '../contacts/repo/contact-fields';
@@ -481,6 +481,26 @@ export async function getConversation(
     .orderBy(asc(messages.seq));
 
   return { ...conversation, messages: messageRows };
+}
+
+/**
+ * Retence konverzací: smaže všechny, které se déle než do `cutoff` nehnuly.
+ *
+ * Rozhoduje `updated_at`, NE `created_at`, a je to podstatný rozdíl. Konverzace
+ * si člověk otevře jednou a vrací se k ní týdny; podle data založení by se
+ * smazala i ta, ve které se psalo včera. Index `idx_ai_conversations__ws_updated`
+ * je přesně na tenhle dotaz.
+ *
+ * Zprávy se mažou kaskádou přes `ai_messages.conversation_id`, takže se tu
+ * neuklízejí zvlášť. Rozsah projektu vybírá RLS, ne tenhle dotaz, stejně jako
+ * u ostatních funkcí v tomhle souboru.
+ */
+export async function deleteConversationsOlderThan(tx: Tx, cutoff: Date): Promise<number> {
+  const rows = await tx
+    .delete(schema.aiConversations)
+    .where(lt(schema.aiConversations.updatedAt, cutoff))
+    .returning({ id: schema.aiConversations.id });
+  return rows.length;
 }
 
 export async function deleteConversation(tx: Tx, conversationId: string): Promise<boolean> {

@@ -69,6 +69,10 @@ export const CONTEXT_FREE_PREFIXES = [
   '/api/v1/openapi.json',
   '/api/v1/docs',
   '/api/v1/invitations/accept',
+  // Založení účtu z pozvánky. Volá ho člověk, který v instalaci ještě žádný
+  // účet nemá, takže relaci ani členství mít odkud nemůže. Adresu i projekt
+  // určuje POZVÁNKA, ne tělo požadavku, viz `identity/signup.ts`.
+  '/api/v1/invitations/signup',
 ];
 
 const WORKSPACE_COLLECTION_PATHS = new Set(['/api/v1/workspaces']);

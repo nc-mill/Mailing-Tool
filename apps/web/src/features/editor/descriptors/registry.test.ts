@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { CONTENT_TYPES } from '../model/document-types';
-import { BLOCK_DESCRIPTORS, descriptorFor, PALETTE } from './registry';
+import { BLOCK_DESCRIPTORS, descriptorFor, PALETTE, paletteFor } from './registry';
+
+const typesIn = (groups: ReturnType<typeof paletteFor>): string[] =>
+  groups.flatMap((group) => group.entries.map((entry) => entry.type));
 
 describe('registry', () => {
   it('má descriptor pro každý známý typ bloku kromě repeat', () => {
@@ -35,6 +38,35 @@ describe('registry', () => {
   it('patička nemá skupinu podmínky zobrazení, pravidlo S14', () => {
     const keys = BLOCK_DESCRIPTORS.footer!.groups.flatMap((g) => g.props.map((p) => p.key));
     expect(keys).not.toContain('visibleWhen');
+  });
+
+  it('paleta veřejné stránky nenabídne patičku ani syrové HTML', () => {
+    // Patička s odhlašovacím odkazem nemá na stránce koho odhlašovat.
+    // Blok HTML je bezpečnostní rozhodnutí: stránka běží na naší doméně,
+    // takže vložený obsah v ní může předstírat cizí značku (plán, oddíl 4.4).
+    const types = typesIn(paletteFor('page'));
+    expect(types).not.toContain('footer');
+    expect(types).not.toContain('html');
+  });
+
+  it('paleta veřejné stránky nabídne všechny ostatní bloky', () => {
+    // Druhá půlka zákazu: zúžení se nesmí zvrhnout v „na stránce skoro nic".
+    const types = typesIn(paletteFor('page'));
+    for (const type of ['heading', 'text', 'button', 'image', 'divider', 'spacer', 'social']) {
+      expect(types, type).toContain(type);
+    }
+    expect(types).toContain('section');
+    expect(types.filter((type) => type === 'columns')).toHaveLength(2);
+  });
+
+  it('paleta kampaně a transakční šablony se nezměnila ani o položku', () => {
+    // Ochrana proti tomu, aby zúžení stránky mlčky ubralo bloky i e-mailům.
+    // Porovnává se totožnost objektu, ne obsah: kdyby se paleta pro e-mail
+    // začala skládat znovu, prošel by tenhle případ i s odebranou položkou.
+    expect(paletteFor('campaign')).toBe(PALETTE);
+    expect(paletteFor('transactional')).toBe(PALETTE);
+    expect(typesIn(paletteFor('campaign'))).toContain('footer');
+    expect(typesIn(paletteFor('campaign'))).toContain('html');
   });
 
   it('blok html má vlastnost chráněnou oprávněním', () => {

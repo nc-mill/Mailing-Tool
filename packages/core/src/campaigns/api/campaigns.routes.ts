@@ -20,7 +20,7 @@ import { assertCompilationCurrent, compileCampaign } from '../compile-service';
 import { applyTemplateToCampaign } from '../template-apply';
 import { buildPauseReason } from '../pause-reason';
 import { startMaterialization } from '../repo/audience-progress';
-import { readLiveDelivery, readLiveHandover } from '../repo/live-progress';
+import { databaseNow, readLiveDelivery, readLiveHandover } from '../repo/live-progress';
 import { readSentPreview, transitionStatus } from '../repo/campaign';
 import { MATERIALIZE_JOB } from '../jobs/materialize';
 import {
@@ -920,22 +920,51 @@ export function registerCampaignRoutes(app: OpenAPIHono<CampaignsEnv>): void {
     if (!r.resumed) {
       throw new ApiError('invalid_state_transition', { params: { status: campaign.status } });
     }
-    // Po pauze během materializace se kampaň vrací do queueing a job musí navázat
-    // od kurzoru; bez nového zařazení by kampaň zůstala stát s hotovým publikem.
+    /*
+     * Po pauze během materializace se kampaň vrací do queueing a job musí navázat
+     * od kurzoru; bez nového zařazení by kampaň zůstala stát s hotovým publikem.
+     *
+     * Vrácení stavu je TÝŽ vzorec jako u odeslání výš a ze stejného důvodu: `queueing`
+     * je stav, ze kterého kampaň nikdo nezvedne. Hlídač (`campaign.watchdog`) uzavírá
+     * běžící kampaně, zaseknuté `queueing` neoživuje, takže by kampaň po neúspěšném
+     * zařazení zůstala navždy na „připravuje se". Dřívější znění chybu jen nechalo
+     * propadnout jako 500 a kampaň v `queueing` nechalo.
+     *
+     * Vrací se i `paused_at` a `pause_reason`, které `resumeCampaign` vynuloval, jinak
+     * by kampaň skončila jako pozastavená bez důvodu a obrazovka by neměla co ukázat.
+     */
     if (r.status === 'queueing') {
-      await enqueueInWorkspace(
-        ctx,
-        MATERIALIZE_JOB.queue,
-        { campaignId: campaign.id, workspaceId: ctx.workspaceId },
-        {
-          singletonKey: MATERIALIZE_JOB.singletonKey(campaign.id),
-          // `fail` ze stejného důvodu jako u odeslání: bez nového zařazení zůstane
-          // kampaň stát s hotovým publikem a nikdo ji nerozjede. Se `drop` by se to
-          // stalo TIŠE. Chyba tady propadne jako 500 a kampaň zůstane v `queueing`,
-          // což není hezké, ale je to vidět; tichá varianta vidět není.
-          onMerged: 'fail',
-        },
-      );
+      try {
+        await enqueueInWorkspace(
+          ctx,
+          MATERIALIZE_JOB.queue,
+          { campaignId: campaign.id, workspaceId: ctx.workspaceId },
+          {
+            singletonKey: MATERIALIZE_JOB.singletonKey(campaign.id),
+            // `fail` ze stejného důvodu jako u odeslání: bez nového zařazení zůstane
+            // kampaň stát s hotovým publikem a nikdo ji nerozjede. Se `drop` by se to
+            // stalo TIŠE a blok níž by se k slovu nedostal.
+            onMerged: 'fail',
+          },
+        );
+      } catch (err) {
+        await transitionStatus(ctx, {
+          campaignId: campaign.id,
+          to: 'paused',
+          from: ['queueing'],
+          set: {
+            paused_at: campaign.paused_at,
+            pause_reason:
+              campaign.pause_reason === null || campaign.pause_reason === undefined
+                ? null
+                : JSON.stringify(campaign.pause_reason),
+          },
+        });
+        throw new ApiError('service_unavailable', {
+          params: { reason: 'campaign_materialize_not_queued' },
+          cause: err,
+        });
+      }
     }
     return c.json(present(await load(ctx, campaign.id)), 200);
   });
@@ -1008,15 +1037,33 @@ export function registerCampaignRoutes(app: OpenAPIHono<CampaignsEnv>): void {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'campaigns:read');
     const campaign = await load(ctx, c.req.valid('param').id);
-    const now = new Date();
 
-    const [handover, delivery] = await Promise.all([
+    /*
+     * ČAS SE BERE Z DATABÁZE, ne z `new Date()`, a je to oprava, ne úklid.
+     *
+     * `release_at` zapisuje `releaseCampaignNow` příkazem `SET release_at = now()`,
+     * tedy hodinami databáze. Porovnávat ho s hodinami aplikačního procesu znamená
+     * míchat DVA ZDROJE ČASU, a ty se rozcházejí vždycky: databáze běží v kontejneru
+     * a jeho hodiny se od hostitele odchylují o desítky milisekund, po uspání stroje
+     * i o víc.
+     *
+     * Následek byl vidět: hned po „Odeslat teď" hlásil průběh `undo_remaining_seconds: 1`
+     * místo nuly, protože uzávěrka vyšla o pár milisekund do budoucnosti a `Math.ceil`
+     * z toho udělal celou sekundu. Uživateli tím na okamžik blikne nabídka vzít odeslání
+     * zpět, kterou už server odmítne (`campaign_undo_window_expired`). Naměřeno 7. 8. 2026
+     * jako nahodile padající test, který v izolaci procházel.
+     *
+     * Dotaz jde v témž `Promise.all`, takže odezvu neprodlužuje.
+     */
+    const [handover, delivery, dbNow] = await Promise.all([
       readLiveHandover(ctx, {
         campaignId: campaign.id,
         audienceBuiltAt: campaign.audience_built_at,
       }),
       readLiveDelivery(ctx, campaign.id),
+      databaseNow(ctx),
     ]);
+    const now = dbNow;
 
     const c8 = withPending({
       total: handover.total,

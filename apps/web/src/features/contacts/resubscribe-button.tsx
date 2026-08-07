@@ -92,6 +92,8 @@ export function ResubscribeButton({
         open={open}
         onOpenChange={setOpen}
         level="N2"
+        // Změna stavu kontaktu, dá se vrátit odhlášením. Samo o sobě nic neposílá.
+        destructive={false}
         title={t('statusAction.resubscribeTitle')}
         consequences={[
           t('statusAction.resubscribeWhy'),

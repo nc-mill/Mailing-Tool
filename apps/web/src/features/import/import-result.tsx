@@ -7,6 +7,7 @@ import { RefreshCw } from '@mlain/ui/icons';
 import { Alert } from '@mlain/ui/patterns/states';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { formatCount, WARNING_CODES } from './labels';
 import type { ImportResultStatus } from './result-status';
 import { StepProgress } from './step-progress';
@@ -55,6 +56,43 @@ export function ImportResult({
   const t = useTranslations('import');
   const router = useRouter();
   const n = (value: number) => formatCount(value, locale);
+  const [resuming, setResuming] = useState(false);
+  const [resumeFailed, setResumeFailed] = useState(false);
+
+  /**
+   * POKRAČOVÁNÍ ZRUŠENÉHO IMPORTU. Tlačítko tady stálo od začátku, jen NEMĚLO
+   * OBSLUHU: kliknutí neudělalo vůbec nic, takže schopnost, kterou API umí
+   * (`POST /contacts/imports/{id}/resume`), z rozhraní nešla použít a přitom
+   * vypadala, že jde.
+   *
+   * Pokračování zakládá NOVÝ import se stejným souborem, mapováním a
+   * checkpointem, ve stavu `previewing`. Sám se nerozjede a je to správně:
+   * mezi zrušením a pokračováním mohl uživatel změnit názor na volby, takže
+   * ho průvodce vezme do kroku Mapování a spustí se až kliknutím na
+   * „Naimportovat". Řádky do checkpointu se přeskočí, nezapíšou se podruhé.
+   */
+  async function resume(): Promise<void> {
+    // Bez reference na projekt nemá požadavek podle čeho sestavit kontext.
+    // Tlačítko se v takovém případě nevykresluje, tohle je jen pojistka.
+    if (workspaceId === undefined) return;
+    setResuming(true);
+    setResumeFailed(false);
+    try {
+      const res = await fetch(`/api/v1/contacts/imports/${row.id}/resume`, {
+        method: 'POST',
+        headers: { 'X-Workspace-Id': workspaceId, accept: 'application/json' },
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const body = (await res.json()) as { id?: string };
+      if (typeof body.id !== 'string') throw new Error('odpověď bez identifikátoru importu');
+      router.push(`/w/${workspaceSlug}/contacts/import?import=${body.id}&step=mapping`);
+    } catch {
+      // Nejčastější příčina je vypršelý soubor: nahraný CSV se po 30 dnech maže
+      // (`import_files`), takže od starého importu už není z čeho pokračovat.
+      setResumeFailed(true);
+      setResuming(false);
+    }
+  }
 
   /**
    * Běžící import: ukáže se PRŮBĚH, tentýž, jaký ukazuje poslední krok průvodce.
@@ -142,7 +180,7 @@ export function ImportResult({
             se porovnávají mezi sebou a v řádku textu zanikají. Popisek je mono
             verzálkami nad číslem, stejně jako na Přehledu. */}
         {row.status !== 'failed' ? (
-          <dl className="grid grid-cols-[repeat(auto-fit,minmax(230px,1fr))] gap-[var(--spacing-gutter)]">
+          <dl className="grid grid-cols-[repeat(auto-fit,minmax(min(230px,100%),1fr))] gap-[var(--spacing-gutter)]">
             {(
               [
                 ['created', row.createdRows, 'plain'],
@@ -196,8 +234,11 @@ export function ImportResult({
             </a>
           ) : null}
 
-          {row.status === 'cancelled' ? (
-            <Button variant="secondary" size="sm">
+          {/* Bez reference na projekt se pokračování zavolat nedá, takže se
+              tlačítko nevykreslí vůbec. Zašedlé tlačítko bez vysvětlení je
+              v tomhle projektu vada, a mrtvé tlačítko byla přesně tahle. */}
+          {row.status === 'cancelled' && workspaceId !== undefined ? (
+            <Button variant="secondary" size="sm" pending={resuming} onClick={() => void resume()}>
               {t('result.resume', { row: n(row.checkpointRow + 1) })}
             </Button>
           ) : null}
@@ -221,6 +262,15 @@ export function ImportResult({
             {t('result.uploadAnother')}
           </a>
         </div>
+
+        {/* Neúspěch pokračování se píše VEDLE tlačítka a zůstane, ne toast:
+            nejčastější příčinou je vypršelý soubor, a to je věta, kterou si
+            uživatel potřebuje přečíst do konce. */}
+        {resumeFailed ? (
+          <Alert tone="error">
+            <p>{t('result.resumeFailed')}</p>
+          </Alert>
+        ) : null}
       </div>
     </>
   );

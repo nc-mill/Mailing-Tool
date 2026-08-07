@@ -6,7 +6,20 @@
  * kódu chybí český a anglický text. Neznámý kód editor nezahodí: podle
  * kritéria 76 zobrazí `detail` ze serveru a `request_id`.
  */
+import { PAGE_ISSUE_CODES } from '@mlain/emails/document/profile';
+
 export const ISSUE_CODES = [
+  /*
+   * Kódy profilu `page` se BEROU, neopisují.
+   *
+   * Vlastní je `PAGE_ISSUE_CODES` v `@mlain/emails/document/profile`, protože
+   * je vydává validátor dokumentu. Kdyby se sem napsaly jako literály, překlep
+   * by se poznal až tím, že pruh nálezů ukáže uživateli holý kód místo věty:
+   * `KNOWN` v `issue-bar.tsx` se skládá právě z tohohle seznamu.
+   */
+  PAGE_ISSUE_CODES.footerForbidden,
+  PAGE_ISSUE_CODES.htmlForbidden,
+  PAGE_ISSUE_CODES.variableNotOnSurface,
   'content_asset_not_found',
   'content_condition_field_unknown',
   'content_condition_on_unsubscribe',

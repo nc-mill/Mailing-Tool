@@ -301,12 +301,29 @@ export type AssetUsage = { type: string; id: string; name: string };
  * Kde se asset používá. Vstup pro odpověď API (`used_by`) i pro rozhodnutí,
  * jestli se smí smazat.
  *
- * `LEFT JOIN` na obě tabulky, ne `INNER`: reference na smazanou šablonu už
- * v `asset_references` být nemá (maže se kaskádou), ale kdyby vznikla,
- * `INNER JOIN` by ji ZAHODIL a odpověď by tvrdila, že se asset nikde
- * nepoužívá, přestože `reference_count` je nenulový. To je přesně ten rozpor,
- * kvůli kterému existuje noční `content.verify_asset_refcounts`, a schovat ho
- * před uživatelem by znamenalo, že se o něm nikdo nedozví.
+ * ŽÁDNÁ KASKÁDA TU NENÍ, a je to důležité. `asset_references.ref_id` je
+ * polymorfní, ukazuje střídavě na šablonu, na verzi šablony, na kampaň
+ * a na profil značky, takže na něm NEMŮŽE být cizí klíč a databáze osiřelou
+ * referenci nikdy nesebere sama. Drží to výhradně aplikace
+ * (`syncAssetReferences` a `clearAssetReferences`). Kdo si tady přečte, že se
+ * to „maže kaskádou", vynechá úklid v nové mazací cestě a vyrobí přesně ten
+ * odpad, který má tenhle dotaz jen ukázat.
+ *
+ * `LEFT JOIN` na obě tabulky, ne `INNER`: osiřelá reference vzniknout může
+ * (nová mazací cesta, ruční zásah do dat) a `INNER JOIN` by ji ZAHODIL, takže
+ * by odpověď tvrdila, že se asset nikde nepoužívá, přestože `reference_count`
+ * je nenulový. To je přesně ten rozpor, kvůli kterému existuje noční
+ * `content.verify_asset_refcounts`, a schovat ho před uživatelem by znamenalo,
+ * že se o něm nikdo nedozví.
+ *
+ * JMÉNO SE DOHLEDÁVÁ PRO VŠECHNY ČTYŘI DRUHY VLASTNÍKA, ne jen pro šablonu
+ * a kampaň. Verze šablony (`template_version`) vzniká úplně běžně, protože
+ * smazání šablony odkazy verzí schválně NECHÁVÁ; než se dohledávala, ukazovalo
+ * rozhraní u takového obrázku „použito v:" a za tím nic. Verze se pojmenuje
+ * svou šablonou, což je jediné jméno, které pro ni uživatel zná.
+ *
+ * Prázdné jméno tak zbývá jedině u reference, jejíž vlastník už neexistuje.
+ * To je příznak odpadu v datech, ne stav, který by měl v rozhraní nastávat.
  */
 export async function assetUsage(
   tx: Tx,
@@ -316,10 +333,13 @@ export async function assetUsage(
   const { rows } = await tx.execute<{ type: string; id: string; name: string | null }>(sql`
     SELECT r.ref_type AS type,
            r.ref_id   AS id,
-           COALESCE(t.name, c.name) AS name
+           COALESCE(t.name, c.name, vt.name, b.name) AS name
       FROM asset_references r
       LEFT JOIN templates t ON t.id = r.ref_id AND t.workspace_id = r.workspace_id
       LEFT JOIN campaigns c ON c.id = r.ref_id AND c.workspace_id = r.workspace_id
+      LEFT JOIN template_versions v ON v.id = r.ref_id AND v.workspace_id = r.workspace_id
+      LEFT JOIN templates vt ON vt.id = v.template_id AND vt.workspace_id = v.workspace_id
+      LEFT JOIN brand_profiles b ON b.id = r.ref_id AND b.workspace_id = r.workspace_id
      WHERE r.workspace_id = ${ctx.workspaceId}::uuid
        AND r.asset_id = ${assetId}::uuid
      ORDER BY r.ref_type, r.ref_id

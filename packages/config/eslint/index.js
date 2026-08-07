@@ -30,7 +30,24 @@ export function restrictedPathZones() {
 
 export default [
   {
-    ignores: ['**/dist/**', '**/.next/**', '**/.turbo/**', '**/coverage/**', '**/node_modules/**'],
+    /*
+     * Výstupy nástrojů, ne zdrojový kód. Reporty Playwrightu sem přibyly proto,
+     * že v nich leží zabalený prohlížeč trasování, tedy stovky kilobajtů cizího
+     * minifikovaného javascriptu. Lint na nich hlásil 3939 chyb, což je 99,9 %
+     * všech chyb celého repozitáře, a skutečné nálezy v našem kódu se v tom
+     * ztratily. Adresáře jsou zároveň v `.gitignore`, takže se lintovaly jen
+     * na stroji, kde zrovna běžely testy prohlížečem.
+     */
+    ignores: [
+      '**/dist/**',
+      '**/.next/**',
+      '**/.turbo/**',
+      '**/coverage/**',
+      '**/node_modules/**',
+      '**/playwright-report*/**',
+      '**/test-results/**',
+      '**/.playwright-mcp/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

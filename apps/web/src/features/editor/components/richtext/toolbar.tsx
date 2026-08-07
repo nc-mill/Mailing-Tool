@@ -119,6 +119,33 @@ export function RichTextToolbar(props: {
       {linkDraft !== null ? (
         <form
           className="flex gap-1 border-t border-border p-1"
+          /*
+           * ESC ZAVÍRÁ JEN TENHLE ŘÁDEK, ne psaní celého textu.
+           *
+           * Naměřená vada: Esc v poli pro adresu ukončil psaní celého odstavce.
+           * Plátno má na Esc dva kroky (opustit psaní, pak odznačit blok)
+           * a událost z tohohle pole k němu probublává, přičemž první krok se
+           * na cíl neptal.
+           *
+           * ZASTAVUJE SE TO TADY, `stopPropagation`, ne výjimkou na plátně.
+           * Zkusil jsem to napřed tam a naměřil jsem v prohlížeči regresi:
+           * s výjimkou pro vlastní obsluhu potřeboval odchod z psaní TŘI stisky
+           * místo jednoho, protože Tiptap na Escape nejdřív jen odebere fokus
+           * z `contenteditable` a psaní ukončí až druhý stisk, který na plátno
+           * dojde z obalu bloku. Dvoukrokový Escape na plátně tak zůstává celý
+           * beze změny; zavřít řádek s odkazem je práce toho, komu řádek patří.
+           *
+           * Odkaz se přitom NENASTAVUJE ani neruší: Esc je návrat z rozepsané
+           * změny, ne její potvrzení. Fokus se vrací do textu, jinak by po
+           * zavření řádku zůstal na zmizelém poli a spadl na `<body>`.
+           */
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            event.stopPropagation();
+            setLinkDraft(null);
+            editor.chain().focus().run();
+          }}
           onSubmit={(event) => {
             event.preventDefault();
             if (validateHref(linkDraft) !== 'ok') return;

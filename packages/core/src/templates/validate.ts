@@ -3,11 +3,18 @@ import { DocumentSchemaTooNewError, loadDocument } from '@mlain/emails/document/
 import { validateDocumentSchema } from '@mlain/emails/document/schema';
 import { checkSemantics } from '@mlain/emails/document/semantic';
 import type { Document } from '@mlain/emails/document/types';
+import type { ValidationProfile } from '@mlain/emails/document/profile';
 import type { Issue } from '@mlain/emails/issue';
 import type { FieldCatalog } from '../contacts/fields/catalog';
 
 export type ValidateContext = {
-  templateKind: 'campaign' | 'transactional' | 'system';
+  /**
+   * Je to PROFIL, ne `templates.kind`, i když se to jmenuje stejně jako sloupec.
+   * Volající sem posílá výsledek `validationProfileFor`, takže sem `system`
+   * nikdy nedorazí a `page` (veřejná stránka) ano. Typ je proto ten z emitoru,
+   * ne ručně opsaný výčet: druhá kopie by se při přidání profilu rozešla.
+   */
+  templateKind: ValidationProfile;
   fields: FieldCatalog;
   assetIds: Set<string>;
 };

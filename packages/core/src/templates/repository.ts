@@ -1,4 +1,16 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { designHash } from '@mlain/emails/document/canonical';
 import type { Document } from '@mlain/emails/document/types';
 import * as schema from '@mlain/db/schema';
@@ -6,7 +18,7 @@ import { wsEq } from '../identity/scope';
 import type { WorkspaceContext } from '../identity/types';
 import type { Tx } from '../tx';
 
-export type TemplateKind = 'campaign' | 'transactional' | 'system';
+export type TemplateKind = 'campaign' | 'transactional' | 'system' | 'page';
 
 /**
  * Kategorie, kterou vidí uživatel v knihovně. NENÍ to `templates.kind`, i když
@@ -25,6 +37,13 @@ export type TemplateKind = 'campaign' | 'transactional' | 'system';
  * - `transactional` … zbylé transakční, dnes hlavně potvrzení přihlášení
  *                     a uvítací e-mail seznamu (`lists.confirmation_template_id`,
  *                     `lists.welcome_template_id`)
+ * - `page`          … VEŘEJNÁ STRÁNKA, `kind = 'page'`. Není to e-mail
+ *                     a nesmí se s ním míchat, viz níž.
+ *
+ * `page` JE VÝJIMKA Z PRAVIDLA „kategorie není kind": tady kategorie odpovídá
+ * sloupci jedna ku jedné a je to záměr. Stránka není použití e-mailu, je to
+ * jiný druh dokumentu s jinou paletou bloků a jiným vykreslením, takže
+ * o jejím zařazení nemá vazba co rozhodovat.
  *
  * PROČ NENÍ `form` ČTVRTÁ HODNOTA `kind`: nebyla by to pravda o řádku, ale
  * o vazbě, a ta se mění bez šablony. Kdo smaže formulář, jeho e-mail přestane
@@ -36,7 +55,7 @@ export type TemplateKind = 'campaign' | 'transactional' | 'system';
  * kontroly dokumentu, takže šablona s profilem kampaně nesmí skončit mezi
  * transakčními, ani kdyby na ni omylem ukazoval formulář.
  */
-export type TemplateCategory = 'campaign' | 'form' | 'transactional';
+export type TemplateCategory = 'campaign' | 'form' | 'transactional' | 'page';
 
 /**
  * „Ukazuje na tuhle šablonu nějaký formulář?" jako podmínka do SQL.
@@ -57,6 +76,10 @@ const usedByForm = sql`exists (
 /** Podmínka jedné kategorie. Kategorie jsou navzájem výlučné, součet dá celek. */
 function categoryCondition(category: TemplateCategory) {
   if (category === 'campaign') return eq(schema.templates.kind, 'campaign');
+  // Stránka stojí VÝHRADNĚ na sloupci. Vazba na formulář ji nesmí ovlivnit:
+  // stránka k formuláři patřit může (`forms.definition.thanks_template_id`),
+  // ale e-mailem z formuláře se tím nestane.
+  if (category === 'page') return eq(schema.templates.kind, 'page');
   if (category === 'form') return and(eq(schema.templates.kind, 'transactional'), usedByForm)!;
   return and(eq(schema.templates.kind, 'transactional'), sql`not ${usedByForm}`)!;
 }
@@ -74,8 +97,13 @@ function categoryCondition(category: TemplateCategory) {
  * Systémový profil `@mlain/emails` zůstává nevyužitý. Je to vědomé: žádný
  * řádek `templates` s obsahem systémového e-mailu dnes nevzniká a až vzniknou,
  * dostanou vlastní hodnotu `kind`, ne tuhle.
+ *
+ * Profil `page` (veřejná stránka) tudy chodí stejně jako ostatní. Zákazy, které
+ * z něj plynou, tedy patičku s odhlašovacím odkazem a blok syrového HTML,
+ * vyhodnocuje validátor dokumentu v emitoru, ne tahle vrstva.
  */
 export { validationProfileFor } from '@mlain/emails/document/profile';
+export type { ValidationProfile } from '@mlain/emails/document/profile';
 
 export type TemplateRow = typeof schema.templates.$inferSelect;
 
@@ -184,19 +212,24 @@ function listConditions(ctx: WorkspaceContext, options: ListTemplatesOptions) {
     );
   }
   /*
-   * Bez výslovného filtru se PRACOVNÍ OBSAHY KAMPANÍ nevypisují.
+   * Bez výslovného filtru se nevypisují PRACOVNÍ OBSAHY KAMPANÍ.
    *
    * `kind = 'system'` je řádek, který si vyrobila aplikace jako plátno pro
    * editor obsahu kampaně. Do knihovny šablon nepatří: uživatel ho nezaložil
    * a otevřít ho samostatně nedává smysl, protože bez své kampaně nic neznamená.
    *
-   * Vylučuje se TADY, v jediné podmínce obou výpisů, ne v každé obrazovce
-   * zvlášť. Filtr rozprostřený po volajících stačí v jednom místě vynechat
-   * a pomocný řádek je zpátky v knihovně; tady se na něj nedá zapomenout.
-   * Týž důvod, proč `campaigns.kind` filtruje sloupcem a ne jménem.
+   * VEŘEJNÉ STRÁNKY SE VYPISUJÍ, a je to oprava ze 7. 8. 2026. Původně tu byly
+   * vyloučené spolu se systémovými řádky, aby je žádná rozbalovací nabídka
+   * nemohla nabídnout jako e-mail. Znělo to obezřetně a byla to vada: stránka
+   * po založení ZMIZELA z knihovny, takže ji nešlo najít, upravit ani smazat.
+   * Nahlásil to zadavatel snímkem knihovny, kde stránky nebyly ani vidět, ani
+   * podle čeho filtrovat.
    *
-   * Kdo si o systémové řádky výslovně řekne (`?kind=system`), dostane je.
-   * Filtr není zákaz, je to výchozí stav.
+   * Poučení je obecnější než ten jeden filtr: **výchozí stav, který tiše skrývá
+   * celou kategorii, ochrání volající, ale okrade uživatele.** Kdo obsah vybírá
+   * do e-mailu, si o zúžení řekne sám (`?kind=…`, `?category=…`, nebo si výpis
+   * profiltruje podle `category`, kterou souhrn vrací); knihovna má naopak
+   * ukázat všechno, co v ní leží, protože jinak lže i číslo nad ní.
    */
   if (options.kind) conditions.push(eq(schema.templates.kind, options.kind));
   else conditions.push(ne(schema.templates.kind, 'system'));
@@ -281,12 +314,22 @@ export async function listTemplateSummaries(
   return paginate(rows, options.limit);
 }
 
-/** Kolik šablon je v které kategorii. Klíč `all` je součet, ne další kategorie. */
+/**
+ * Kolik šablon je v které kategorii.
+ *
+ * `all` je součet E-MAILOVÝCH kategorií (`campaign + form + transactional`),
+ * ne úplně všeho. Stránky do něj schválně nespadají a `page` stojí vedle:
+ * výchozí výpis knihovny je nevrací (viz `listConditions`), takže kdyby se
+ * do `all` započítaly, ukazovalo by číslo nad přepínačem „Vše" víc položek,
+ * než kolik jich pod ním je. Číslo u přepínače musí platit o tom, co ten
+ * přepínač zobrazí.
+ */
 export type TemplateCategoryCounts = {
   all: number;
   campaign: number;
   form: number;
   transactional: number;
+  page: number;
 };
 
 /**
@@ -306,6 +349,9 @@ export async function countTemplatesByCategory(
 ): Promise<TemplateCategoryCounts> {
   const [row] = await tx
     .select({
+      // `all` počítá VŠECHNO, co knihovna vypisuje, tedy včetně veřejných
+      // stránek. Do 7. 8. 2026 je odečítal, takže hlavička hlásila „11 šablon"
+      // nad seznamem, ve kterém jich bylo víc a nešly zobrazit.
       all: sql<number>`count(*)::int`,
       campaign: sql<number>`(count(*) filter (where ${schema.templates.kind} = 'campaign'))::int`,
       form: sql<number>`(count(*) filter (
@@ -314,6 +360,7 @@ export async function countTemplatesByCategory(
       transactional: sql<number>`(count(*) filter (
         where ${schema.templates.kind} = 'transactional' and not ${usedByForm}
       ))::int`,
+      page: sql<number>`(count(*) filter (where ${schema.templates.kind} = 'page'))::int`,
     })
     .from(schema.templates)
     .where(
@@ -325,7 +372,7 @@ export async function countTemplatesByCategory(
         ne(schema.templates.kind, 'system'),
       ),
     );
-  return row ?? { all: 0, campaign: 0, form: 0, transactional: 0 };
+  return row ?? { all: 0, campaign: 0, form: 0, transactional: 0, page: 0 };
 }
 
 /**
@@ -425,8 +472,13 @@ export async function loadTemplateUsage(
  * Pracovní obsah kampaně (`kind = 'system'`) spadne do `campaign`, a je to
  * záměr: do knihovny se nedostane, a kdo si o něj výslovně řekne (`?kind=system`),
  * dostane kategorii shodnou s profilem, kterým se ten dokument kontroluje.
+ *
+ * Stránka se naproti tomu do `campaign` spadnout NESMÍ, i kdyby na ni ukazoval
+ * formulář. Kategorie je to, podle čeho rozhraní rozhoduje, kam řádek nabídnout,
+ * a stránka mezi obsahy kampaně ani mezi e-maily formuláře nepatří.
  */
 export function categoryOf(kind: TemplateKind, usage: TemplateUsage): TemplateCategory {
+  if (kind === 'page') return 'page';
   if (kind !== 'transactional') return 'campaign';
   return usage.forms.length > 0 ? 'form' : 'transactional';
 }

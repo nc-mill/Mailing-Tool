@@ -12,10 +12,11 @@ import {
   DropdownMenuTrigger,
 } from '@mlain/ui/components/dropdown-menu';
 import { IconButton } from '@mlain/ui/components/icon-button';
+import { cn } from '@mlain/ui/lib/cn';
 import { Alert, FilteredEmptyState } from '@mlain/ui/patterns/states';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Fragment, useState, useTransition } from 'react';
-import { FormIcon, MailIcon, MoreIcon } from '@/lib/ui/status-icons';
+import { FormIcon, MailIcon, MoreIcon, PageIcon } from '@/lib/ui/status-icons';
 import { duplicateTemplateAction, restoreTemplateAction } from './actions';
 import {
   TemplateDeleteDialog,
@@ -49,9 +50,20 @@ export type TemplateListItem = {
  * Sloupce výpisu. Šířky drží rytmus výpisu kampaní z návrhu: název se
  * roztahuje, kategorie má pevný sloupec na odznak, zapojení dostane zbytek,
  * datum je úzké a poslední sloupec je přesně na ikonové tlačítko.
+ *
+ * POD 768 px JE SLOUPEC JEDINÝ a řádek se kreslí jako KARTA. Pět sloupců má
+ * dohromady 434 px pevné šířky plus čtyři mezery, takže se řádek nevešel do
+ * 343px rámu a knihovna rolovala vodorovně uvnitř stránky, která roluje svisle
+ * (naměřeno 7. 8. 2026: rám 343 px, obsah 900 px).
+ *
+ * Tvar karty je závazný a stejný napříč aplikací: **název má celý první řádek
+ * sám pro sebe** a zalomí se, místo aby se uřízl; pod ním jsou doplňkové údaje;
+ * **nabídka „…" je v pravém horním rohu**, mimo tok, aby vedle názvu nestála;
+ * **prázdná hodnota se nekreslí vůbec**, takže obyčejná kampaňová šablona
+ * nedrží na kartě prázdný řádek po odznaku ani po zapojení.
  */
 const COLUMNS =
-  'grid grid-cols-[minmax(0,1.5fr)_190px_minmax(0,1.3fr)_110px_44px] items-center gap-[var(--spacing-stack)] px-[var(--spacing-row-x)]';
+  'grid grid-cols-1 items-start gap-y-1 px-[var(--spacing-row-x)] md:grid-cols-[minmax(0,1.5fr)_190px_minmax(0,1.3fr)_110px_44px] md:items-center md:gap-[var(--spacing-stack)]';
 
 /**
  * Nabídka „…" v řádku knihovny, tvarem shodná s kontakty, kampaněmi i segmenty.
@@ -303,11 +315,19 @@ export function TemplateLibrary({
 
       {visible.length === 0 ? null : (
         <Card padding="none" gap="none">
-          {/* Užší okno seznam nezalamuje, posouvá ho: sloupce mají smysl jen vedle sebe. */}
+          {/* Užší okno seznam nezalamuje, posouvá ho: sloupce mají smysl jen vedle
+              sebe. POD 768 px to ale neplatí, tam se řádek láme do tří řádků
+              (viz `COLUMNS`), takže minimální šířka platí až od `md`; jinak by
+              knihovnu vytlačila ven ze stránky. */}
           <div className="overflow-x-auto rounded-t-[var(--radius-surface)]">
-            <div className="min-w-[900px]">
+            <div className="min-w-0 md:min-w-[900px]">
+              {/* Hlavička sloupců na úzkém displeji NENÍ. Řádek se tam láme na
+                  tři, takže by názvy sloupců nestály nad ničím a jen by nad
+                  seznamem zabraly dva řádky verzálek. Není to mřížka s rolí
+                  `grid`, takže čtečka o hlavičky nepřijde: každá hodnota nese
+                  význam sama, nebo ho má napsaný ve větě vedle sebe. */}
               <div
-                className={`${COLUMNS} rounded-t-[var(--radius-surface)] border-b border-border bg-surface-muted py-3`}
+                className={`${COLUMNS} max-md:hidden rounded-t-[var(--radius-surface)] border-b border-border bg-surface-muted py-3`}
               >
                 <span className="meta-caps text-text-muted">{t('list.columns.name')}</span>
                 <span className="meta-caps text-text-muted">{t('list.columns.category')}</span>
@@ -327,13 +347,25 @@ export function TemplateLibrary({
                 return (
                   <div
                     key={template.id}
-                    className={`${COLUMNS} border-b border-border py-[var(--spacing-row-y)] last:border-b-0 hover:bg-surface-muted`}
+                    className={cn(
+                      COLUMNS,
+                      'border-b border-border py-[var(--spacing-row-y)] last:border-b-0 hover:bg-surface-muted',
+                      // KARTA POD 768 px: místo pro nabídku v pravém horním rohu.
+                      'max-md:relative max-md:pr-[calc(var(--size-target-min)+var(--spacing-inline))]',
+                    )}
                     data-testid="template-item"
                     data-category={template.category}
                   >
                     <Link
                       href={`/w/${workspaceSlug}/templates/${template.id}`}
-                      className="justify-self-start text-base font-semibold text-text no-underline hover:underline"
+                      className={cn(
+                        'justify-self-start text-base font-semibold text-text no-underline hover:underline',
+                        // Název má na kartě CELÝ PRVNÍ ŘÁDEK sám pro sebe,
+                        // zalomí se místo uříznutí a nese klikací plochu 44 px:
+                        // výška odkazu je jinak jen výška řádku textu.
+                        'max-md:flex max-md:min-h-[var(--size-target-min)] max-md:items-center',
+                        'max-md:[overflow-wrap:anywhere]',
+                      )}
                     >
                       {template.name}
                     </Link>
@@ -344,8 +376,24 @@ export function TemplateLibrary({
                       přesně ty, které by si uživatel spletl s volnou předlohou.
                       Prázdná buňka je tedy odpověď „nic zvláštního", ne chybějící údaj.
                     */}
-                    <span>
-                      {template.category === 'campaign' ? null : template.category === 'form' ? (
+                    {/* Doplňkové buňky zabírají na úzkém displeji CELOU ŠÍŘKU.
+                        Druhý sloupec je tam široký jen na nabídku (44 px), takže
+                        buňka, která by v něm skončila, se do něj nevejde a řádek
+                        přeteče. Naměřeno: rám 343 px, obsah 352 px. */}
+                    {/* Prázdná hodnota se na kartě nekreslí vůbec: obyčejná
+                        kampaňová šablona odznak nemá a `empty:hidden` jí ušetří
+                        prázdný řádek. Na mřížce zůstává prázdná buňka, protože
+                        tam drží sloupec. */}
+                    <span className="max-md:min-w-0 max-md:empty:hidden">
+                      {template.category === 'campaign' ? null : template.category === 'page' ? (
+                        /* Veřejná stránka se od e-mailů liší nejvíc, proto vlastní
+                           odznak i ikona. Bez něj by v knihovně splynula
+                           s transakčním e-mailem, což je přesně ta záměna,
+                           kterou celý druh `page` má vyloučit. */
+                        <Badge tone="strong" icon={PageIcon}>
+                          {t('list.category.badgePage')}
+                        </Badge>
+                      ) : template.category === 'form' ? (
                         <Badge tone="accent" icon={FormIcon}>
                           {t('list.category.badgeForm')}
                         </Badge>
@@ -356,7 +404,7 @@ export function TemplateLibrary({
                       )}
                     </span>
 
-                    <span className="grid gap-0.5">
+                    <span className="grid gap-0.5 max-md:min-w-0 max-md:empty:hidden">
                       {lines.length === 0 ? null : (
                         <>
                           {lines.map((line) => (
@@ -398,7 +446,10 @@ export function TemplateLibrary({
                       v nabídce zůstávají: obojí je u živě rozesílané předlohy
                       právě to, co člověk potřebuje.
                     */}
-                    <span className="flex justify-end">
+                    {/* Na úzkém displeji stojí nabídka NAHOŘE VPRAVO vedle názvu,
+                        ne na posledním řádku: je to jediná cesta k akcím řádku
+                        a patří tam, kam palec dosáhne první. */}
+                    <span className="flex justify-end max-md:absolute max-md:top-[var(--spacing-inline)] max-md:right-[var(--spacing-inline)]">
                       <TemplateRowMenu
                         template={template}
                         canWrite={canWrite}

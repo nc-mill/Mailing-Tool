@@ -1,4 +1,9 @@
 import { sql } from 'drizzle-orm';
+import {
+  MEASUREMENT_PURPOSE,
+  toMeasurementConsent,
+  type MeasurementConsent,
+} from '../../contacts/repo/consents';
 import type { Tx } from '../repo/tx';
 import type { EventSource } from '../types';
 
@@ -130,6 +135,8 @@ export type ResolvedIdentity = {
   contactId: string | null;
   processingRestricted: boolean;
   deletedAt: Date | null;
+  /** Souhlas kontaktu s měřením chování. U nenavázané identity `not_recorded`. */
+  measurementConsent: MeasurementConsent;
 };
 
 export async function resolveIdentity(
@@ -137,15 +144,29 @@ export async function resolveIdentity(
   workspaceId: string,
   anonymousId: string,
 ): Promise<ResolvedIdentity | null> {
-  const { rows } = await tx.execute<ResolvedIdentity>(sql`
+  const { rows } = await tx.execute<
+    Omit<ResolvedIdentity, 'measurementConsent'> & { measurementStatus: string | null }
+  >(sql`
     SELECT i.contact_id AS "contactId",
            COALESCE(c.processing_restricted, false) AS "processingRestricted",
-           c.deleted_at AS "deletedAt"
+           c.deleted_at AS "deletedAt",
+           s.status AS "measurementStatus"
       FROM identities i
       LEFT JOIN contacts c ON c.id = i.contact_id
+      LEFT JOIN contact_consent_state s
+             ON s.contact_id = c.id
+            AND s.workspace_id = c.workspace_id
+            AND s.purpose = ${MEASUREMENT_PURPOSE}
      WHERE i.workspace_id = ${workspaceId} AND i.anonymous_id = ${anonymousId}
   `);
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (row === undefined) return null;
+  return {
+    contactId: row.contactId,
+    processingRestricted: row.processingRestricted,
+    deletedAt: row.deletedAt,
+    measurementConsent: toMeasurementConsent(row.measurementStatus),
+  };
 }
 
 /**

@@ -244,20 +244,20 @@
       }
     },
     "roleColorMap": {
-      "$comment": "Částečná mapa. Neuvedená role bere výchozí hodnotu z rendereru (3.1.4).",
+      "$comment": "Částečná mapa. Neuvedená role bere výchozí hodnotu z rendereru (3.1.4). Hodnotou smí být i jméno jiné role, což je VAZBA, ne kopie odstínu: pozadí plátna nastavené na brand.primary se přebarví s každou změnou značky. Rozvazuje to resolveTheme, do e-mailu odchází vždycky hex. Případný kruh mezi rolemi končí výchozím odstínem, ne chybou.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "brand.primary": { "$ref": "#/$defs/hexColor" },
-        "brand.secondary": { "$ref": "#/$defs/hexColor" },
-        "brand.accent": { "$ref": "#/$defs/hexColor" },
-        "text.default": { "$ref": "#/$defs/hexColor" },
-        "text.muted": { "$ref": "#/$defs/hexColor" },
-        "text.inverted": { "$ref": "#/$defs/hexColor" },
-        "surface.canvas": { "$ref": "#/$defs/hexColor" },
-        "surface.content": { "$ref": "#/$defs/hexColor" },
-        "surface.subtle": { "$ref": "#/$defs/hexColor" },
-        "link.default": { "$ref": "#/$defs/hexColor" }
+        "brand.primary": { "$ref": "#/$defs/colorRef" },
+        "brand.secondary": { "$ref": "#/$defs/colorRef" },
+        "brand.accent": { "$ref": "#/$defs/colorRef" },
+        "text.default": { "$ref": "#/$defs/colorRef" },
+        "text.muted": { "$ref": "#/$defs/colorRef" },
+        "text.inverted": { "$ref": "#/$defs/colorRef" },
+        "surface.canvas": { "$ref": "#/$defs/colorRef" },
+        "surface.content": { "$ref": "#/$defs/colorRef" },
+        "surface.subtle": { "$ref": "#/$defs/colorRef" },
+        "link.default": { "$ref": "#/$defs/colorRef" }
       }
     },
     "fontStackId": {

@@ -91,6 +91,8 @@ export type ConfirmDialogContract = {
   confirmPhraseLabel?: string;
   onConfirmPhraseChange?: (value: string) => void;
   extraAction?: ReactNode;
+  /** Povinné: barva potvrzení se nesmí dát přehlédnout, viz `ConfirmDialog`. */
+  destructive: boolean;
   irreversible?: boolean;
   onConfirm: () => void | Promise<void>;
   onCancel?: () => void;

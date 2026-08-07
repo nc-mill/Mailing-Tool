@@ -2,7 +2,12 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { handlerModulePath, missingDependenciesOf, queue } from '../../../queues';
+import {
+  handlerModulePath,
+  missingDependenciesOf,
+  needsDependencies,
+  queue,
+} from '../../../queues';
 import { handlers } from '../queue-handlers';
 
 const ROOT = path.resolve(import.meta.dirname, '../../../../../..');
@@ -56,20 +61,32 @@ describe('registrace obsluh domény kampaní pro codegen workeru', () => {
   });
 
   /**
-   * Obsluha bez zapojených závislostí musí SPADNOUT, a to hlasitě. Kdyby se
-   * fronta jen vynechala, nebyl by rozdíl mezi „na obsluhu se zapomnělo"
-   * a „obsluha existuje, ale nemá kdo dodat její závislosti".
+   * V téhle mapě UŽ ŽÁDNÁ nezapojená fronta není. `outbox.reconcile` byla
+   * poslední a padala každou minutu, protože se o ní tvrdilo, že se složit
+   * nedá; složit šla, chybějícím kusem byl `reconcilePending`.
+   *
+   * Mechanismus značky se přesto ověřuje dál, jen na vzorku vyrobeném tady.
+   * Bez toho by `toBeUndefined()` v testu o kus níž procházelo i tehdy, kdyby
+   * `missingDependenciesOf` vracelo `undefined` vždycky.
    */
-  it('nezapojené fronty hlásí chybějící závislost, ne ticho', async () => {
-    const handler = handlers['outbox.reconcile'];
-    await expect(handler([{ id: 'j1', name: 'outbox.reconcile', data: {} }])).rejects.toThrow(
+  it('značka chybějících závislostí drží: náhradní obsluha shodí úlohu hlasitě', async () => {
+    const nedodana = needsDependencies('outbox.priklad', 'PrikladDeps.neco');
+    await expect(nedodana([{ id: 'j1', name: 'outbox.priklad', data: {} }])).rejects.toThrow(
       /nemá zapojené závislosti/,
     );
+    expect(missingDependenciesOf(nedodana)).toMatch(/PrikladDeps/);
+  });
 
-    // Kontrolní vzorek pro test o kus níž: značka se na náhradní obsluhu
-    // DOOPRAVDY věší. Bez tohohle řádku by `toBeUndefined()` u zapojených front
-    // procházelo i tehdy, kdyby `missingDependenciesOf` vracelo undefined vždy.
-    expect(missingDependenciesOf(handler)).toMatch(/reconcile/);
+  /**
+   * `outbox.reconcile` je záchytná cesta nad rušením pošty blokovaných adres.
+   * Ptáme se na značku, ne jen na `toBeTypeOf('function')`: náhradní obsluha
+   * je taky funkce, jen každou úlohu shodí, a přesně tak fronta čtyři dny
+   * padala každou minutu, aniž by to kdokoli poznal.
+   */
+  it('outbox.reconcile má skutečné závislosti, ne náhradní obsluhu', () => {
+    const handler = handlers['outbox.reconcile'];
+    expect(handler).toBeTypeOf('function');
+    expect(missingDependenciesOf(handler)).toBeUndefined();
   });
 
   /**

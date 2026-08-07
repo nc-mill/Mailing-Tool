@@ -106,6 +106,8 @@ export function CredentialsSection({
             if (!open) setDeleting(null);
           }}
           level="N2"
+          // Uložený klíč zmizí a znovu se dá jen vypsat od poskytovatele.
+          destructive
           title={t('credentials.deleteConfirm', { label: deleting.label })}
           consequences={[]}
           confirmLabel={t('credentials.delete')}

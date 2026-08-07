@@ -141,4 +141,29 @@ export const trackingShape = {
   TRACKING_PROPERTIES_MAX_DEPTH: envInt(1, 10).default(3),
   TRACKING_PROPERTIES_MAX_STRING: envInt(64, 16384).default(1024),
   TRACKING_IMPORT_BATCH_MAX_EVENTS: envInt(1, 5000).default(1000),
+  /**
+   * Strop pro dohledání kontaktu při prokliku. Když se do něj dohledání nevejde,
+   * přesměrování odejde BEZ `ml_token`, tedy bez propojení návštěvy webu
+   * s konkrétním příjemcem. Ztráta identity u jednoho kliku je menší škoda než
+   * člověk čekající na stránku, ale jen dokud je strop nastavený na skutečné
+   * chování databáze.
+   *
+   * VÝCHOZÍCH 250 ms MÍSTO PŮVODNÍCH 30 ms, a je to oprava podle měření, ne
+   * zpřesnění. Strop nekryje jen samotný dotaz: `lookupMessage` otevírá vlastní
+   * transakci se `SET LOCAL` kontextem, při minutí pouští dotazy dva (rovnost
+   * a okno jedné sekundy), a hlavně do něj spadá i VYZVEDNUTÍ SPOJENÍ z bazénu.
+   * Když v bazénu volné spojení není, součástí stropu je navázání nového,
+   * u spravované databáze včetně TLS.
+   *
+   * Naměřeno 7. 8. 2026 proti PostgreSQL 18 v kontejneru NA TÉMŽE STROJI, tedy
+   * v nejpříznivější možné variantě: studené volání, které otevírá spojení,
+   * vyšlo ve třech bězích na 26, 33 a 42 ms, takže původní strop 30 ms
+   * podstřeloval už na localhostu. Teplé minutí mělo p95 kolem 13 ms a maximum
+   * 42 ms. Se skutečnou databází na síti by 30 ms neuspělo prakticky nikdy,
+   * takže první proklik po vyprázdnění bazénu chodil bez identifikace.
+   *
+   * Vyšší strop nezdržuje běžný proklik: je to mez, ne čekání. Teplá trefa má
+   * medián kolem 2 ms a odpovídá se hned, jak dotaz doběhne.
+   */
+  TRACKING_CONTACT_LOOKUP_TIMEOUT_MS: envInt(10, 5000).default(250),
 };

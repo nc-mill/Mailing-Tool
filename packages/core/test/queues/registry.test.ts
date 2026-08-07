@@ -76,31 +76,35 @@ describe('registr front pg-boss', () => {
     }
   });
 
-  it('nemá jedinou frontu na práci s oddíly, tu dělá CLI pod migrátorem', () => {
+  it('má na práci s oddíly JEDINOU frontu, a ta nesmí běžet pod aplikační rolí', () => {
     // Tenhle test dřív hlídal pořadí trojice „zakládání → retence → přepočet
-    // oken" přes časy v cronu. Dvě ze tří front z registru odešly a s nimi
-    // i smysl toho hlídání.
-    //
-    // Společný důvod: práce s oddílem je DDL (`CREATE TABLE ... PARTITION OF`,
-    // `ALTER TABLE ... DETACH PARTITION`) a worker běží pod `mlain_app`, která
-    // schéma nevlastní. Obsluha proto ani jedné z nich nikdy nevznikla a vzniknout
+    // oken" přes časy v cronu. Všechny tři fronty odešly a s nimi i smysl toho
+    // hlídání: práce s oddílem je DDL (`CREATE TABLE ... PARTITION OF`,
+    // `ALTER TABLE ... DETACH PARTITION`) a aplikační role `mlain_app` schéma
+    // nevlastní, takže obsluha ani jedné z nich nikdy nevznikla a vzniknout
     // nemohla; v registru jen vypadaly jako běžící údržba.
     //
-    // Pořadí „nejdřív založit, pak uklidit" nezmizelo, přestěhovalo se z časů
-    // v cronu do JEDNOHO příkazu, kde ho drží pořadí volání
-    // (`runPartitionMaintenance`) a hlídá test v `ops/partition-retention.test.ts`.
-    // To je silnější záruka než dva cronové časy patnáct minut od sebe, které
-    // se míjely, jakmile se první úloha protáhla.
+    // 7. 8. 2026 se JEDNA z nich vrátila, protože náhrada za ně, tedy
+    // `mlain partitions` z plánovače hostitele, se v dodávané instalaci
+    // nespouštěla nikde. Vrátila se s obsluhou, která si otvírá vlastní
+    // spojení pod migrátorem, takže původní důvod zrušení odpadl.
     //
-    // Test je obrácený schválně: brání tomu, aby tyhle fronty někdo za rok
-    // založil znovu, protože „chybí přece úklid oddílů".
-    for (const name of [
-      'platform.maintain_partitions',
-      'retention.drop_message_partitions',
-      'tracking.enforce_retention',
-    ]) {
+    // Test tedy hlídá dvě věci naráz. Za prvé, že na tuhle práci je JEDNA
+    // fronta, ne zase tři: dva úklidy téhož ze dvou míst by znamenaly dvě
+    // různá pravidla. Za druhé, že pořadí „nejdřív založit, pak uklidit"
+    // zůstává uvnitř jedné úlohy (`runPartitionMaintenance`), ne rozdělené do
+    // dvou cronových časů patnáct minut od sebe, které se míjely, jakmile se
+    // první úloha protáhla.
+    for (const name of ['retention.drop_message_partitions', 'tracking.enforce_retention']) {
       expect(queueNames(), `fronta ${name} se vrátila do registru`).not.toContain(name);
     }
+    expect(queueNames()).toContain('platform.maintain_partitions');
+    const entry = QUEUE_REGISTRY.find((q) => q.name === 'platform.maintain_partitions')!;
+    // `exclusive` je podmínka, ne styl: dva souběžné běhy by odpojovaly týž
+    // oddíl a druhý by skončil chybou nad polovičním stavem katalogu.
+    expect(entry.policy).toBe('exclusive');
+    // Před zálohou ve 3:00, aby dump nezastihl tabulku uprostřed odpojování.
+    expect(entry.cron).toBe('5 2 * * *');
   });
 
   it('pokrývá všech šest domén', () => {
@@ -120,20 +124,20 @@ describe('registr front pg-boss', () => {
   });
 
   it('zná fronty, které si vyžádaly plány P07, P10 a P16', () => {
-    // Všechny čtyři doménové plány implementují nebo volají, ale v registru
-    // chyběly. Fronta bez záznamu tady znamená, že se v úkolu 14 nezaloží
-    // a doménový plán dostane při prvním boss.send chybu o neexistující frontě.
-    for (const name of [
-      'contacts.cleanup_pending',
-      'consents.rebuild_state',
-      'retention.run',
-      'tracking.rebuild_engagement',
-    ]) {
+    // Doménové plány je implementují nebo volají, ale v registru chyběly. Fronta
+    // bez záznamu tady znamená, že se v úkolu 14 nezaloží a doménový plán dostane
+    // při prvním boss.send chybu o neexistující frontě.
+    //
+    // `tracking.rebuild_engagement` z výčtu ZMIZELA i s frontou: P16 ji z CLI
+    // nevolá, `mlain rebuild-engagement` sahá na dávkovač ops/rebuild-engagement.ts
+    // přímo. Tvrzení „P16 ji volá", kvůli kterému se sem kdysi dostala, tedy
+    // nikdy neplatilo.
+    for (const name of ['contacts.cleanup_pending', 'consents.rebuild_state', 'retention.run']) {
       expect(queueNames(), `fronta ${name} chybí`).toContain(name);
     }
   });
 
-  it('má právě šedesát dva front (registr je uzavřený, uzávěr S8)', () => {
+  it('má právě padesát devět front (registr je uzavřený, uzávěr S8)', () => {
     // Exaktní číslo je záměr. Doménový plán frontu nezakládá, takže každá změna
     // téhle hodnoty musí projít změnou plánu P01, ne commitem z jiné větve.
     //
@@ -149,6 +153,47 @@ describe('registr front pg-boss', () => {
     // stály jako fronty, které se tváří, že něco dělají. Práci převzal příkaz
     // `mlain partitions` pod migrátorskou rolí, pouštěný z plánovače hostitele
     // (`packages/core/src/ops/partition-retention.ts`).
+    //
+    // 59 → 60: přibyla `platform.webhook_retry`. Není to nová funkce, je to druhá
+    // polovina opravy nálezu, že odchozí webhooky neodejdou vůbec. Doručovací fronta
+    // má schválně `retryLimit: 0`, protože odstupy mezi pokusy předepisuje kontrakt
+    // vlastní tabulkou, ne pg-boss; bez skenu podle `next_attempt_at` by tedy první
+    // neúspěch byl zároveň poslední a ruční opakování z obrazovky by nedělalo nic.
+    //
+    // 60 → 59: odešla `tracking.erase_contact`. Neměla producenta ani obsluhu
+    // a nebyla to odložená funkce, byla to druhá cesta k témuž: stopu kontaktu
+    // ve `web_events` i `message_engagement` odpojuje `gdpr.sever_links`, kterou
+    // volají oba producenti výmazu. Dvě cesty k výmazu podle článku 17 znamenají
+    // dva výklady toho, co znamená vymazat kontakt.
+    //
+    // 59 → 58: odešla `tracking.rebuild_engagement`. Rekonstrukci dělá příkaz
+    // `mlain rebuild-engagement` přímým voláním dávkovače; fronta vedle něj byla
+    // cesta, kterou nikdo nikdy nespustil, což bylo vidět na její obsluze
+    // přijímající náklad ve dvou tvarech naslepo. Rozhodnutí zadavatele.
+    //
+    // 58 → 59 (7. 8.): VRÁTILA SE `platform.maintain_partitions`, jediná fronta, která
+    // se kdy vrátila ze seznamu zrušených. Zrušit ji bylo správně (obsluha pod aplikační
+    // rolí DDL neumí), jenže náhrada, tedy `mlain partitions` z plánovače hostitele, se
+    // v dodávané instalaci nespouštěla NIKDE: compose žádný plánovač nemá a na PaaS ho
+    // nejde doplnit. Obsluha si teď otvírá vlastní spojení pod migrátorem, přesně jako
+    // `platform.backup`, takže aplikační role žádné právo na DDL nedostává.
+    //
+    // 59 → 60 (7. 8.): přibyla `contacts.recover_stale_imports`. Není to nová schopnost,
+    // je to ZAPOJENÍ existující: `recoverStaleImportsJob` měl obsluhu, vlastní test
+    // i migraci 0024 s grantem a politikou pro sken napříč projekty, ale nevolal ho nikdo,
+    // protože fronta v registru nebyla. Následek nebyl kosmetický: `confirmImport` odmítne
+    // KAŽDÝ další import v projektu, dokud v něm leží řádek ve stavu `importing`, takže
+    // zabitý worker uprostřed importu zamkl projektu importování natrvalo a ven vedl
+    // jedině ruční zásah do databáze. Ve vývojové instalaci se to 7. 8. stalo.
+    //
+    // 60 → 59 (7. 8.): odešla `platform.cleanup_audit_log`. Nebyla to úspora, byla to
+    // oprava fronty, která NEUSPĚLA ANI JEDNOU za celou dobu své existence: mazala
+    // `DELETE FROM audit_log` pod aplikační rolí, jenže migrace 0005, 0009, 0022 i 0026
+    // dělají `REVOKE UPDATE, DELETE ON audit_log FROM mlain_app`, takže každý běh skončil
+    // na `permission denied` (SQLSTATE 42501). To odebrání práva není překážka, je to ta
+    // vlastnost, kvůli které je audit k něčemu: záznam, který smí aplikace smazat, není
+    // důkaz. Retenci proto převzala údržba oddílů, která ODPOJUJE celý oddíl pod
+    // migrátorem (`ops/partition-retention.ts`), takže se maže bez práva mazat řádky.
     expect(QUEUE_REGISTRY).toHaveLength(59);
   });
 });

@@ -33,6 +33,12 @@ const en: Catalog = {
   last_owner_cannot_be_removed: 'A project must always have exactly one owner.',
   setup_already_completed: 'The installation has already been set up.',
   already_member: 'This user is already a member of the project.',
+  signup_closed:
+    'This installation does not let invited people create their own account (SIGNUP_MODE=closed). ' +
+    'Ask an administrator to create the account for you in Settings, Members.',
+  workspace_create_not_allowed:
+    'Only the owner of an existing project can create a new one. Ask a project owner to create ' +
+    'the project and invite you to it in Settings, Members.',
   webhook_endpoint_disabled: 'The webhook endpoint is disabled and does not accept deliveries.',
   gone: 'The resource has been permanently removed.',
   endpoint_removed: 'This API endpoint has been removed.',
@@ -52,7 +58,7 @@ const en: Catalog = {
   migration_failed: 'The database update failed and the application runs in limited mode.',
   system_mail_unavailable:
     'This installation cannot send system e-mail, so invitations, password resets and address ' +
-    'verification will not be delivered. Add an SMTP sending account in Settings, System e-mail.',
+    'verification will not be delivered. Add a sending account, SES or SMTP, in Settings, Sending.',
   dependency_timeout: 'A dependency did not respond in time.',
 
   // --- Kampaně a odesílání, část 4a -----------------------------------------
@@ -66,6 +72,8 @@ const en: Catalog = {
   campaign_not_compiled: 'The campaign template has not been compiled yet.',
   campaign_subject_missing: 'The campaign has no subject line.',
   campaign_no_unsubscribe: 'The template does not contain an unsubscribe link.',
+  workspace_postal_address_missing:
+    'The project has no sender postal address, so the email footer goes out without one.',
   campaign_unknown_merge_field: 'The template references a field that does not exist.',
   campaign_schedule_too_soon: 'The scheduled time is too close to now.',
   campaign_schedule_too_far: 'The scheduled time is too far in the future.',
@@ -116,8 +124,12 @@ const en: Catalog = {
    * Blokující nálezy předodesílací kontroly. V katalogu chyběly, takže
    * `resolveDetail` vracela holý kód a editor psal uživateli do panelu
    * „precheck_app_url_not_public". Doplněno ve chvíli, kdy se ty nálezy
-   * v editoru poprvé skutečně ukázaly; do REGISTRU kódů nepatří, protože
-   * to nejsou kořenové kódy odpovědi, ale položky pole `findings`.
+   * v editoru poprvé skutečně ukázaly.
+   *
+   * OPRAVENO: dřív tu stálo, že do REGISTRU kódů nepatří. Do `PROBLEM_CODES`
+   * opravdu ne, protože to nejsou kořenové kódy odpovědi a nemají HTTP status,
+   * jenže registr má šest druhů a jeden z nich, `FINDING_CODES`, je právě pro
+   * položky pole `findings`. Všech devět kódů `precheck_*` v něm od té doby je.
    */
   precheck_template_invalid: 'The template has errors that prevent sending.',
   precheck_missing_unsubscribe: 'The email has no unsubscribe link.',
@@ -203,6 +215,12 @@ const cs: Catalog = {
   last_owner_cannot_be_removed: 'Projekt musí mít vždy právě jednoho vlastníka.',
   setup_already_completed: 'Instalace už je nastavená.',
   already_member: 'Tenhle uživatel už je členem projektu.',
+  signup_closed:
+    'Tahle instalace nedovoluje pozvaným zakládat si účet (SIGNUP_MODE=closed). ' +
+    'Požádejte správce, ať vám účet založí v Nastavení, Členové.',
+  workspace_create_not_allowed:
+    'Nový projekt smí založit jen vlastník některého existujícího projektu. Požádejte vlastníka, ' +
+    'ať projekt založí a pozve vás do něj v Nastavení, Členové.',
   webhook_endpoint_disabled: 'Webhook endpoint je vypnutý a doručování nepřijímá.',
   gone: 'Záznam byl trvale odstraněný.',
   endpoint_removed: 'Tenhle endpoint API byl zrušený.',
@@ -222,7 +240,7 @@ const cs: Catalog = {
   migration_failed: 'Aktualizace databáze se nezdařila. Aplikace běží v omezeném režimu.',
   system_mail_unavailable:
     'Instalace nemá čím odeslat systémový e-mail, takže pozvánka, obnova hesla ani ověření ' +
-    'adresy nedorazí. Přidejte v Nastavení, Systémová pošta odesílací účet typu SMTP.',
+    'adresy nedorazí. Přidejte v Nastavení, Odesílání odesílací účet, typu SES nebo SMTP.',
   dependency_timeout: 'Závislá služba neodpověděla včas.',
 
   // --- Kampaně a odesílání, část 4a -----------------------------------------
@@ -235,6 +253,8 @@ const cs: Catalog = {
   campaign_not_compiled: 'Šablona kampaně ještě není zkompilovaná.',
   campaign_subject_missing: 'Kampaň nemá vyplněný předmět.',
   campaign_no_unsubscribe: 'Šablona neobsahuje odhlašovací odkaz.',
+  workspace_postal_address_missing:
+    'Projekt nemá vyplněnou poštovní adresu odesílatele, patička odejde bez ní.',
   campaign_unknown_merge_field: 'Šablona odkazuje na pole, které neexistuje.',
   campaign_schedule_too_soon: 'Naplánovaný čas je příliš blízko.',
   campaign_schedule_too_far: 'Naplánovaný čas je příliš daleko v budoucnosti.',

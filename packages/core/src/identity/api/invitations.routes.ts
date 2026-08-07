@@ -10,8 +10,16 @@ import {
   listInvitations,
   revokeInvitation,
 } from '../invitation-service';
+import { signupFromInvitation } from '../signup';
+import { isSecureCookieContext, serializeSessionCookie, sessionMaxAgeSeconds } from '../session';
 import { requireSession } from './auth.routes';
-import { problemResponse, RoleSchema, IdempotencyHeaderSchema, type ApiEnv } from './schemas';
+import {
+  problemResponse,
+  PublicUserSchema,
+  RoleSchema,
+  IdempotencyHeaderSchema,
+  type ApiEnv,
+} from './schemas';
 
 export const InvitationSchema = z
   .object({
@@ -32,6 +40,19 @@ export const AcceptInvitationInput = z
   .object({ token: z.string().min(1).max(200) })
   .strict()
   .openapi('AcceptInvitationInput');
+
+/**
+ * E-mail se ZÁMĚRNĚ nepřijímá. Adresa nového účtu se bere z pozvánky, takže si
+ * s cizím tokenem nikdo nezaloží účet na svou adresu ani na adresu smyšlenou.
+ */
+export const InvitationSignupInputSchema = z
+  .object({
+    token: z.string().min(1).max(200),
+    password: z.string().min(1).max(256),
+    name: z.string().max(200).optional(),
+  })
+  .strict()
+  .openapi('InvitationSignupInput');
 
 const listRoute = createRoute({
   method: 'get',
@@ -116,6 +137,37 @@ const acceptRouteDef = createRoute({
   },
 });
 
+const signupRouteDef = createRoute({
+  method: 'post',
+  path: '/api/v1/invitations/signup',
+  tags: ['Invitations'],
+  summary: 'Založení účtu z pozvánky a její přijetí',
+  description:
+    'Pro pozvaného, který v instalaci ještě účet nemá. Adresa se bere z pozvánky, ne z těla ' +
+    'požadavku. Neplatný, prošlý i použitý token vrací shodně 404. Odpověď nastaví relační ' +
+    'cookie, protože kdo si právě zvolil heslo, nemá se čím přihlašovat znovu.',
+  request: { body: { content: { 'application/json': { schema: InvitationSignupInputSchema } } } },
+  responses: {
+    201: {
+      description: 'Účet založen, členství vzniklo, uživatel je přihlášený',
+      content: {
+        'application/json': {
+          schema: z.object({
+            user: PublicUserSchema,
+            workspace: z.object({ id: z.uuid(), name: z.string(), slug: z.string() }),
+            role: RoleSchema,
+          }),
+        },
+      },
+    },
+    // SIGNUP_MODE=closed. Účty v takové instalaci zakládá výhradně správce.
+    403: problemResponse('signup_closed'),
+    404: problemResponse('not_found'),
+    409: problemResponse('conflict'),
+    422: problemResponse('validation_failed'),
+  },
+});
+
 export function registerInvitationRoutes(app: OpenAPIHono<ApiEnv>): void {
   app.openapi(listRoute, async (c) => {
     const { ctx } = c.get('auth');
@@ -157,5 +209,33 @@ export function registerInvitationRoutes(app: OpenAPIHono<ApiEnv>): void {
       token: c.req.valid('json').token,
     });
     return c.json(result, 200);
+  });
+
+  app.openapi(signupRouteDef, async (c) => {
+    const input = c.req.valid('json');
+    const result = await signupFromInvitation({
+      token: input.token,
+      password: input.password,
+      name: input.name,
+      ip: c.get('clientIp'),
+      userAgent: c.req.header('User-Agent') ?? '',
+      requestId: c.get('requestId'),
+    });
+
+    // Stejně jako u průvodce prvním spuštěním: kdo si právě nastavil heslo,
+    // nemá se čím přihlašovat, takže by ho odpověď bez cookie poslala rovnou
+    // na přihlašovací formulář.
+    c.header(
+      'Set-Cookie',
+      serializeSessionCookie(result.token, {
+        secure: isSecureCookieContext(),
+        maxAgeSeconds: sessionMaxAgeSeconds(),
+      }),
+    );
+    c.set('actorType', 'user');
+    c.set('actorId', result.user.id);
+
+    // Relační token do těla NEPATŘÍ, patří výhradně do cookie s `HttpOnly`.
+    return c.json({ user: result.user, workspace: result.workspace, role: result.role }, 201);
   });
 }

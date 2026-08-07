@@ -80,9 +80,30 @@ export function PropertiesPanel(props: {
    * u tlačítka i odkaz a u patičky přepínače odkazů, a ty na plátně nejsou.
    * Skupina, ze které tím nezbude nic, se přeskočí.
    */
-  const visibleGroups = descriptor.groups
+  const namedGroups = descriptor.groups
     .map((group) => ({ ...group, props: group.props.filter((prop) => prop.kind !== 'richtext') }))
     .filter((group) => group.props.length > 0);
+
+  /*
+   * SKUPINY SE SLUČUJÍ PODLE JMÉNA, a není to umlčení hlášky z konzole.
+   *
+   * Tlačítko má vlastní skupinu `group.layout` (`descriptors/button.ts`) a k tomu
+   * si přibírá společné `contentGroups()`, které nese `group.layout` taky. V panelu
+   * se tím nadpis „Rozvržení" objevil DVAKRÁT a vlastnosti téhož druhu se rozpadly
+   * do dvou hromádek pod stejným jménem: v jedné zarovnání, ve druhé odsazení,
+   * bez jakéhokoli klíče, podle kterého by uživatel poznal, proč tam ta hranice je.
+   * React na to upozornil hláškou o shodných klíčích, ale ta byla PŘÍZNAK.
+   * Kdyby se opravil jen klíč, dvojí nadpis zůstane a vada bude neviditelná.
+   *
+   * Slučuje se v pořadí PRVNÍHO výskytu, aby pořadí skupin v panelu zůstalo,
+   * na jaké je uživatel zvyklý, a připojuje se na konec té první.
+   */
+  const visibleGroups = namedGroups.reduce<typeof namedGroups>((groups, group) => {
+    const existing = groups.find((candidate) => candidate.label === group.label);
+    if (!existing) return [...groups, { ...group, props: [...group.props] }];
+    existing.props.push(...group.props);
+    return groups;
+  }, []);
 
   return (
     <Card

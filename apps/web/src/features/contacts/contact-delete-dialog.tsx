@@ -53,6 +53,7 @@ export function ContactDeleteDialog({
       open={open}
       onOpenChange={onOpenChange}
       level="N2"
+      destructive
       title={t('detail.deleteTitle', { name })}
       consequences={[
         t('detail.deleteConsequenceLists'),

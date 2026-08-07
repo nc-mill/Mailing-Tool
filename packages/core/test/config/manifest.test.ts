@@ -10,10 +10,12 @@ describe('manifest konfigurace', () => {
     expect(committed).toBe(`${JSON.stringify(buildConfigManifest(), null, 2)}\n`);
   });
 
-  it('obsahuje právě 182 proměnných', () => {
+  it('obsahuje právě 183 proměnných', () => {
     // 180 + LOGIN_THROTTLING_DISABLED (vypínač brzd přihlašování pro vývoj)
     // + DATABASE_URL_GDPR (připojení pod rolí mlain_gdpr, bez kterého nedoběhne
-    // výmaz podle článku 17).
-    expect(buildConfigManifest().variables.length).toBe(182);
+    // výmaz podle článku 17)
+    // + TRACKING_CONTACT_LOOKUP_TIMEOUT_MS (strop dohledání kontaktu při
+    // prokliku, dřív napsaný natvrdo na 30 ms, což měření neuneslo).
+    expect(buildConfigManifest().variables.length).toBe(183);
   });
 });

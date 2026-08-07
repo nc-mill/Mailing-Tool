@@ -156,30 +156,122 @@ export async function setDefaultListAction(input: {
 }
 
 /**
- * Kam poslat člověka po potvrzení přihlášení a po odhlášení ze seznamu.
+ * Kroky, u kterých seznam rozhoduje, co návštěvník uvidí. Jsou to povrchy
+ * z oddílu 3 plánu `2026-08-07-designovatelne-verejne-stranky.md`.
  *
- * Prázdné pole se posílá jako `null`, ne jako prázdný řetězec: „nevyplněno"
- * a „prázdná adresa" jsou dvě různé věci a omezení
- * `ck_lists__confirm_redirect_url_len` prázdný řetězec zakazuje.
- *
- * `null` znamená „zůstane naše stránka", což je pro většinu projektů správně:
- * naše stránka říká, co se právě stalo, a nabídne opravu, kdyby to bylo omylem.
+ * Děkovací stránka formuláře tu SCHVÁLNĚ NENÍ: chodí se na ni bez tokenu hned
+ * po odeslání, takže se v tu chvíli neví, o který seznam jde, a vlastní ji
+ * výhradně formulář.
  */
-export async function saveListRedirectsAction(input: {
+export type ListPageSurface = 'confirmed' | 'already_subscribed' | 'unsubscribed';
+
+/** Návrh stránky podle kroku. Sloupce přibyly migrací 0029. */
+const PAGE_TEMPLATE_FIELD: Record<ListPageSurface, string> = {
+  confirmed: 'confirmed_template_id',
+  already_subscribed: 'already_subscribed_template_id',
+  unsubscribed: 'unsubscribed_template_id',
+};
+
+/** Přesměrování téhož kroku. Sloupce existují od začátku, jen se jinak jmenují. */
+const PAGE_REDIRECT_FIELD: Record<ListPageSurface, string> = {
+  confirmed: 'confirm_redirect_url',
+  already_subscribed: 'already_subscribed_redirect_url',
+  unsubscribed: 'unsubscribe_redirect_url',
+};
+
+/**
+ * Co uvidí návštěvník po jednom kroku: vestavěný text, vlastní stránka, nebo
+ * přesměrování na cizí web.
+ *
+ * UKLÁDÁ SE CELÁ TROJICE NARÁZ, ne jen zvolená polovina. Vlastní stránka
+ * a přesměrování si odporují: kdyby v datech zůstalo obojí, veřejná trasa pošle
+ * 303 na cizí web a navržená stránka se nikdy nevykreslí. Proto zápis vždycky
+ * vynuluje tu druhou možnost, i když se jí uživatel netkl.
+ *
+ * Prázdná adresa se posílá jako `null`, ne jako prázdný řetězec: „nevyplněno"
+ * a „prázdná adresa" jsou dvě různé věci a `ck_lists__confirm_redirect_url_len`
+ * prázdný řetězec zakazuje.
+ */
+export async function saveListPageChoiceAction(input: {
   workspaceId: string;
   listId: string;
-  confirmRedirectUrl: string;
-  unsubscribeRedirectUrl: string;
+  surface: ListPageSurface;
+  templateId: string | null;
+  redirectUrl: string | null;
 }): Promise<ListEmailResult> {
+  const url = input.redirectUrl?.trim() ?? '';
   const result = await apiMutate<unknown>(`/api/v1/lists/${input.listId}`, {
     method: 'PATCH',
     workspaceId: input.workspaceId,
     body: {
-      confirm_redirect_url:
-        input.confirmRedirectUrl.trim() === '' ? null : input.confirmRedirectUrl.trim(),
-      unsubscribe_redirect_url:
-        input.unsubscribeRedirectUrl.trim() === '' ? null : input.unsubscribeRedirectUrl.trim(),
+      [PAGE_TEMPLATE_FIELD[input.surface]]: input.templateId,
+      [PAGE_REDIRECT_FIELD[input.surface]]: url === '' ? null : url,
     },
+  });
+  if (!result.ok) {
+    return { status: 'error', code: result.problem.code, detail: result.problem.detail };
+  }
+  return done();
+}
+
+/**
+ * Založení veřejné stránky k seznamu a její rovnou navázání.
+ *
+ * JEDNA AKCE, ne dvě, ze stejného důvodu jako u e-mailů seznamu a u formuláře.
+ * `kind: 'page'` má vlastní validační profil: zakazuje blok syrového HTML
+ * (stránka běží na NAŠÍ doméně) i patičku s odhlašovacím odkazem.
+ *
+ * Zápis rovnou nuluje přesměrování téhož kroku, viz `saveListPageChoiceAction`.
+ */
+export async function createListPageAction(input: {
+  workspaceId: string;
+  listId: string;
+  surface: ListPageSurface;
+  name: string;
+  document: unknown;
+}): Promise<ListEmailResult> {
+  const created = await apiMutate<{ id: string }>('/api/v1/templates', {
+    method: 'POST',
+    workspaceId: input.workspaceId,
+    body: { name: input.name, kind: 'page', document: input.document },
+  });
+  if (!created.ok) {
+    return { status: 'error', code: created.problem.code, detail: created.problem.detail };
+  }
+
+  const linked = await apiMutate<unknown>(`/api/v1/lists/${input.listId}`, {
+    method: 'PATCH',
+    workspaceId: input.workspaceId,
+    body: {
+      [PAGE_TEMPLATE_FIELD[input.surface]]: created.data.id,
+      [PAGE_REDIRECT_FIELD[input.surface]]: null,
+    },
+  });
+  if (!linked.ok) {
+    return { status: 'error', code: linked.problem.code, detail: linked.problem.detail };
+  }
+
+  // Vrací se identifikátor ŠABLONY, ne seznamu: volající s ním rovnou otevírá editor.
+  return done(created.data.id);
+}
+
+/**
+ * Rozsah odhlášení ze seznamu.
+ *
+ * NENÍ TO JEN ROZSAH. `global` znamená, že kliknutí na odhlašovací odkaz navíc
+ * zablokuje adresu pro CELÝ projekt (`suppressions`), takže se z ní nikdy nic
+ * nepošle, ani z jiného seznamu, ani transakčně. Proto je to vlastní akce
+ * s vlastní odezvou a proto to rozhraní u té volby říká doslova.
+ */
+export async function saveListUnsubscribeScopeAction(input: {
+  workspaceId: string;
+  listId: string;
+  unsubscribeScope: 'list' | 'global';
+}): Promise<ListEmailResult> {
+  const result = await apiMutate<unknown>(`/api/v1/lists/${input.listId}`, {
+    method: 'PATCH',
+    workspaceId: input.workspaceId,
+    body: { unsubscribe_scope: input.unsubscribeScope },
   });
   if (!result.ok) {
     return { status: 'error', code: result.problem.code, detail: result.problem.detail };

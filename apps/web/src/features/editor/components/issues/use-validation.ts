@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { ValidationProfile } from '@mlain/emails/document/profile';
 import type { EditorDocument, EditorIssue } from '../../model/document-types';
 import type { FieldCatalog } from '../../model/field-catalog';
+import type { PageSurface } from '../../model/page-surface';
 import { referencedAssetIds, validateDocumentClient } from '../../model/validate-client';
 import type { EditorPorts } from '../../ports/types';
 import type { EditorStore } from '../../state/editor-store';
@@ -85,8 +86,17 @@ export function useValidation(input: {
    * šablony existují.
    */
   templateKind: ValidationProfile;
+  /**
+   * Povrch veřejné stránky. Mimo profil `page` nemá význam a neprojeví se.
+   *
+   * Bez něj by editor u stránky mlčel nad personalizací, kterou povrch nedodá,
+   * a návštěvník by na jejím místě viděl prázdno. Tichý prázdný řetězec je
+   * horší než odmítnuté uložení (plán, oddíl 4.3).
+   */
+  pageSurface?: PageSurface | null | undefined;
 }) {
   const { fieldCatalog, store, templateKind } = input;
+  const pageSurface = input.pageSurface ?? null;
 
   /** Poslední nálezy ze serveru a dokument, o kterém platily. */
   const server = useRef<Source>({ issues: [], document: null });
@@ -149,6 +159,7 @@ export function useValidation(input: {
             validateDocumentClient(state.document, fieldCatalog, {
               assetIds: referencedAssetIds(state.document),
               templateKind,
+              pageSurface,
             }),
           ),
           document: state.document,
@@ -156,9 +167,13 @@ export function useValidation(input: {
       }
       publish();
     };
+    // Vstupy validace (katalog, profil, povrch) se změnily, takže uložený
+    // výsledek už neplatí, i když je dokument bajtově týž. Bez tohohle řádku
+    // by ho podmínka výš prohlásila za aktuální a přepočet by se přeskočil.
+    client.current = { issues: client.current.issues, document: null };
     recompute();
     return store.subscribe(recompute);
-  }, [fieldCatalog, publish, store, templateKind]);
+  }, [fieldCatalog, pageSurface, publish, store, templateKind]);
 
   /** První běh serverové validace hned po otevření editoru. */
   useEffect(() => {

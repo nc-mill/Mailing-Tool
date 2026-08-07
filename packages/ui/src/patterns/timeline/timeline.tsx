@@ -1,12 +1,41 @@
 'use client';
 
-import { Link } from '../../icons';
+import {
+  Globe,
+  Info,
+  Link,
+  Mail,
+  MailOpen,
+  MousePointerClick,
+  ShieldCheck,
+  TriangleAlert,
+  UserRound,
+  type LucideIcon,
+} from '../../icons';
 import { useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import { clusterEvents } from './cluster-events';
 import { groupByDay } from './day-groups';
 import { useAnchoredBatches } from './use-anchored-batches';
-import type { TimelineEvent } from './types';
+import type { TimelineEvent, TimelineIcon } from './types';
+
+/**
+ * Význam události na kresbu. Jediné místo, kde se to rozhoduje.
+ *
+ * Do 7. 8. 2026 tahle tabulka neexistovala a komponenta kreslila u KAŽDÉ události
+ * ikonu řetězu, tedy kotvu odkazu. Uživatel se pak ptal, co ta ikona dělá: nešlo
+ * z ní poznat, jestli šlo o odeslaný e-mail, proklik nebo odvolaný souhlas.
+ */
+const ICONS: Record<TimelineIcon, LucideIcon> = {
+  mail: Mail,
+  open: MailOpen,
+  click: MousePointerClick,
+  web: Globe,
+  contact: UserRound,
+  consent: ShieldCheck,
+  problem: TriangleAlert,
+  generic: Info,
+};
 
 export type TimelineGender = 'female' | 'male' | 'other';
 
@@ -18,6 +47,17 @@ export type TimelineLabels = {
   collapseCluster: string;
   expanded: string;
   collapsed: string;
+  /**
+   * Jméno trvalé kotvy pro čtečku a hlasové ovládání.
+   *
+   * Do 7. 8. 2026 tu bylo doslova `#event-019fdb…`, tedy identifikátor z databáze.
+   * Čtečka ho hláskovala po znacích a hlasovým ovládáním se odkaz nedal vyvolat
+   * vůbec, protože jeho jméno nešlo vyslovit.
+   *
+   * `what` je věta o události, `when` datum a čas. Skládá je katalog jako jednu
+   * ICU zprávu, ne kód zřetězením.
+   */
+  eventAnchor: (input: { what: string; when: string }) => string;
 };
 
 const CLUSTER_WINDOW_MS = 5 * 60 * 1000;
@@ -91,6 +131,7 @@ export function Timeline({
   }
 
   function renderEvent(event: TimelineEvent) {
+    const EventIcon = ICONS[event.icon ?? 'generic'];
     return (
       <li
         key={event.id}
@@ -98,8 +139,16 @@ export function Timeline({
         data-testid={`timeline-item-${event.id}`}
         className={cn(
           'grid items-center gap-[var(--spacing-stack)]',
-          'grid-cols-[minmax(var(--size-timeline-time),auto)_minmax(0,1fr)_var(--size-timeline-anchor)]',
+          'grid-cols-[minmax(var(--size-timeline-time),auto)_auto_minmax(0,1fr)_var(--size-timeline-anchor)]',
           'border-t border-border py-[var(--spacing-row-y)]',
+          // Doskok na kotvu musí být VIDĚT. Bez tohohle prohlížeč posunul stránku
+          // na řádek, u kterého člověk často už stál, nic se nezměnilo a odkaz
+          // vypadal jako rozbité tlačítko. Žlutá plocha je tatáž, jakou nese
+          // vybraný řádek tabulky, tedy jediná identitní barva systému.
+          'target:bg-accent-surface',
+          // Odsazení platí VŽDY, ne jen v cíli: bez něj by řádek doskočil pod
+          // lepivý nadpis dne a schoval se přesně ten, na který se míří.
+          '[scroll-margin-block-start:var(--spacing-page)]',
         )}
       >
         <time
@@ -108,6 +157,14 @@ export function Timeline({
         >
           {formatTime(event.occurredAt)}
         </time>
+        {/* Ikona nese význam události, ale NIKDY ho nenese sama: vedle ní stojí
+            celá věta, takže je pro čtečku skrytá. */}
+        <EventIcon
+          aria-hidden
+          data-testid={`timeline-icon-${event.id}`}
+          data-icon={event.icon ?? 'generic'}
+          className="icon-sm text-text-muted"
+        />
         <span className="grid min-w-0 gap-0.5">
           <span className="text-ui text-text">{renderSentence({ event, gender })}</span>
           {renderMeta ? (
@@ -116,10 +173,21 @@ export function Timeline({
         </span>
         {/* Trvalá kotva: odkaz jde poslat kolegovi a otevře se na téhle položce.
             Rámeček naskočí až při najetí, aby padesát řádků pod sebou
-            nevypadalo jako sloupec tlačítek. */}
+            nevypadalo jako sloupec tlačítek.
+
+            ZŮSTÁVÁ TO ODKAZ, ne tlačítko „zkopírovat adresu". Zvažovalo se to
+            7. 8. 2026 a rozhodlo se proti: kopírování do schránky po kliknutí
+            přepisuje schránku bez vyzvání, rozchází se s tím, co člověk od
+            podtrženého odkazu čeká, a zabilo by nativní „Kopírovat adresu
+            odkazu" z pravého tlačítka i otevření do nového panelu. Účel kotvy
+            se projeví i tak: adresa naskočí do řádku prohlížeče a cílová
+            událost se zvýrazní (`target:` výš). */}
         <a
           href={`#event-${event.id}`}
-          aria-label={`#event-${event.id}`}
+          aria-label={labels.eventAnchor({
+            what: event.title ?? '',
+            when: `${formatDate(event.occurredAt)} ${formatTime(event.occurredAt)}`,
+          })}
           className={cn(
             'flex size-[var(--size-control-2xs)] items-center justify-center justify-self-center',
             'rounded-[var(--radius-control)] border border-transparent text-text-muted no-underline',

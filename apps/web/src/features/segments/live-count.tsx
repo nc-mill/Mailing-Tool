@@ -260,13 +260,23 @@ export function LiveCount({
               >
                 {t('estimated', { count: formatCount(state.count, locale) })}
               </p>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="mt-[var(--spacing-inline)] self-start"
-              >
-                {t('countExactly')}
-              </Button>
+              {/* Tady bývalo tlačítko „Spočítat přesně" BEZ OBSLUHY. Odstraněné,
+                  ne zapojené, a jsou pro to dva důvody.
+
+                  Zapojit ho nejde: odhad vzniká právě tehdy, když přesné
+                  počítání zabije `statement_timeout`, a `POST /segments/preview`
+                  nemá čím delší strop vyžádat. Strop je nastavení instalace
+                  (`SEGMENT_PREVIEW_TIMEOUT_MS`, výchozí 3 s, nejvýš 30 s), tedy
+                  věc provozovatele, ne tlačítka na obrazovce.
+
+                  A i kdyby přijímal, slib „přesně" by neplatil: s delším stropem
+                  může počítání dopadnout stejně a uživatel by dostal podruhé
+                  odhad od tlačítka, které slíbilo přesné číslo. To je horší než
+                  tlačítko chybějící.
+
+                  Místo něj stojí věta, PROČ je číslo přibližné. Odhad bez
+                  vysvětlení vypadá jako vada, vysvětlený je informace. */}
+              <p className="text-ui text-text-muted">{t('estimatedWhy')}</p>
             </>
           ) : (
             // Předchozí číslo se při přepočtu ZTMAVÍ, nezmizí. Prázdné místo

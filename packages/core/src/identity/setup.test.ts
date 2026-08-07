@@ -22,6 +22,10 @@ async function resetInstallation(): Promise<void> {
   await asMigrator(async (db) => {
     await db.query(`DELETE FROM audit_log`);
     await db.query(`DELETE FROM memberships`);
+    // Výchozí seznam zakládá `runSetup` od 7. 8. 2026 a drží ho cizí klíč
+    // na projekt, takže bez tohohle řádku by `DELETE FROM workspaces` skončil
+    // na 23503 a úklid by tiše přestal fungovat.
+    await db.query(`DELETE FROM lists`);
     await db.query(`DELETE FROM workspaces`);
     await db.query(`DELETE FROM users`);
     await db.query(`UPDATE system_settings SET setup_completed_at = NULL WHERE id = true`);
@@ -82,6 +86,43 @@ describe('runSetup', () => {
     });
     expect(rows).toHaveLength(1);
     expect(rows[0]!.role).toBe('owner');
+  });
+
+  /**
+   * První projekt instalace se musí chovat jako každý další.
+   *
+   * Do 7. 8. 2026 zakládal výchozí seznam jen `createWorkspace`, kdežto
+   * průvodce prvním spuštěním ne. Naměřeno na čisté instalaci: `lists` mělo
+   * nula řádků. Import cílový seznam VYŽADUJE, takže úplně první věc, kterou
+   * nový uživatel dělá, narazila na prázdnou nabídku.
+   */
+  it('založí výchozí seznam „Odběratelé", stejně jako každý další projekt', async () => {
+    await runSetup(input);
+    const rows = await asMigrator(async (db) => {
+      const r = await db.query<{
+        name: string;
+        opt_in: string;
+        confirmation_mode: string;
+        is_default: boolean;
+      }>(`SELECT name, opt_in, confirmation_mode, is_default FROM lists`);
+      return r.rows;
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      name: 'Odběratelé',
+      opt_in: 'double',
+      confirmation_mode: 'one_step',
+      is_default: true,
+    });
+  });
+
+  it('název výchozího seznamu se řídí jazykem projektu', async () => {
+    await runSetup({ ...input, locale: 'en' });
+    const rows = await asMigrator(async (db) => {
+      const r = await db.query<{ name: string }>(`SELECT name FROM lists`);
+      return r.rows;
+    });
+    expect(rows[0]!.name).toBe('Subscribers');
   });
 
   it('slug se odvodí z názvu a je URL bezpečný', async () => {

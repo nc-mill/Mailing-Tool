@@ -7,6 +7,7 @@ import { runPartitionsCommand } from './commands/partitions';
 import { runBackupCommand } from './commands/backup';
 import { runDoctorCommand } from './commands/doctor';
 import { runGenkeyCommand } from './commands/genkey';
+import { runRebuildConsentsCommand } from './commands/rebuild-consents';
 import { runRebuildEngagementCommand } from './commands/rebuild-engagement';
 import { runRedressBrandCommand } from './commands/redress-brand';
 import { runResetPasswordCommand } from './commands/reset-password';
@@ -121,6 +122,9 @@ export async function dispatch(argv: readonly string[], streams: CliStreams): Pr
     }
     case 'reset-password': {
       return runResetPasswordCommand(streams, rest, env);
+    }
+    case 'rebuild-consents': {
+      return runRebuildConsentsCommand(streams, rest, env);
     }
     case 'rebuild-engagement': {
       return runRebuildEngagementCommand(streams, rest, env);

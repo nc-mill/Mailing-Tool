@@ -22,7 +22,7 @@
     "redirectUrl": "Přesměrovat po odeslání",
     "redirectUrlHint": "Celá adresa včetně https://. Když ji vyplníte, člověk skončí na vaší stránce místo na naší. Prázdné znamená, že zůstane u nás.",
     "consent": "Text souhlasu u zaškrtávacího políčka",
-    "consentHint": "Uloží se ke každému přihlášení jako doklad, s čím člověk souhlasil. Prázdné pole znamená, že se souhlas nezaznamenává.",
+    "consentHint": "Zobrazí se na formuláři jako zaškrtávací políčko a uloží se ke každému přihlášení jako doklad, s čím člověk souhlasil. Prázdné pole znamená, že se políčko nezobrazí a souhlas nezaznamenává. Odkaz na obchodní podmínky zapište jako [text odkazu](https://vasweb.cz/podminky).",
     "fields": "Pole formuláře",
     "fieldsHint": "Tohle formulář sbírá. Skladbu polí zatím měníte přes API.",
     "fieldRequired": "povinné",
@@ -36,14 +36,23 @@
     "deleteConsequenceAlternative": "Když chcete formulář jen dočasně zastavit, vypněte přepínač Formulář sbírá přihlášení.",
     "deleteConfirm": "Smazat formulář",
     "deletePending": "Mažeme formulář…",
-    "notYetTyped": "Nejdřív opište název formuláře."
+    "notYetTyped": "Nejdřív opište název formuláře.",
+    "bulkDelete": "{count, plural, =0 {Smazat formuláře} one {Smazat # formulář} few {Smazat # formuláře} many {Smazat # formuláře} other {Smazat # formulářů}}",
+    "bulkDeleteTitle": "{count, plural, =0 {Smazat formuláře?} one {Smazat # formulář?} few {Smazat # formuláře?} many {Smazat # formuláře?} other {Smazat # formulářů?}}",
+    "bulkDeleteNothing": "Z označených formulářů nejde smazat žádný.",
+    "bulkDeleteSubmitting": "Mažeme formuláře…",
+    "bulkDeleteDone": "{count, plural, =0 {Nesmazán žádný formulář.} one {Smazán # formulář.} few {Smazány # formuláře.} many {Smazáno # formuláře.} other {Smazáno # formulářů.}}",
+    "bulkDeleteFailed": "{count, plural, =0 {Žádný formulář se nepodařilo smazat} one {# formulář se nepodařilo smazat} few {# formuláře se nepodařilo smazat} many {# formuláře se nepodařilo smazat} other {# formulářů se nepodařilo smazat}}: {detail}",
+    "consentRequired": "Souhlas je povinný.",
+    "consentRequiredHint": "Bez zaškrtnutí formulář nepůjde odeslat. Vypněte, když je políčko jen doplňkové a přihlášení má platit i bez něj."
   },
   "table": {
     "openDetail": "Otevřít formulář {name}",
     "embed": "Kód k vložení",
     "created": "Vytvořen",
     "signups": "Přihlášení",
-    "rowMenu": "Další akce s formulářem {name}"
+    "rowMenu": "Další akce s formulářem {name}",
+    "dropped": "{count, plural, =0 {Nic nezahozeno} one {# odeslání zahozeno ochranou} few {# odeslání zahozena ochranou} many {# odeslání zahozeno ochranou} other {# odeslání zahozeno ochranou}}"
   },
   "rowActions": {
     "edit": "Upravit",
@@ -63,7 +72,9 @@
     "stylingStates": "Stav formuláře je v atributu data-ml-state (idle, sending, done, error). Pole s chybou má data-ml-invalid=\"true\".",
     "stylingSample": "Ukázkové CSS k zkopírování",
     "stylingHosted": "Hotová stránka na naší adrese je výjimka: ta je naše, takže styly má.",
-    "variantIframeNoJs": "Rámeček funguje i na webu s vypnutým JavaScriptem: uvnitř běží naše stránka. Vzhled formuláře uvnitř rámečku si ale web určit nemůže, na to je varianta se skriptem."
+    "variantIframeNoJs": "Rámeček funguje i na webu s vypnutým JavaScriptem: uvnitř běží naše stránka. Vzhled formuláře uvnitř rámečku si ale web určit nemůže, na to je varianta se skriptem.",
+    "testOpenHosted": "Otevřít naši hostovanou stránku",
+    "testHostedNote": "Hostovaná stránka má náš vzhled. Vložený formulář žádné CSS nenese, vzhled mu dá až web, kam ho vložíte."
   },
   "email": {
     "title": "E-mail, který člověku přijde",
@@ -80,6 +91,34 @@
     "sendingWarning": "Projekt zatím nemá odeslanou žádnou kampaň, ze které se bere odesílací účet. Dokud ji nemá, e-mail z formuláře neodejde.",
     "confirmVsWelcome": "Tohle je uvítací e-mail, tedy ten s odkazem ke stažení. Potvrzovací e-mail, který jen ověřuje adresu, skládáme my a nastavit se nedá: kdyby se v něm dal přepsat potvrzovací odkaz, přihlášení by tiše přestalo fungovat.",
     "sharedWithList": "E-mail patří tomuhle formuláři, ne seznamu. Jiný formulář do stejného seznamu tedy může posílat jiný soubor."
+  },
+  "pages": {
+    "title": "Stránky pro návštěvníka",
+    "lead": "Co člověk uvidí po odeslání formuláře a po kliknutí na potvrzovací odkaz. U každého kroku si vyberete jednu ze tří možností.",
+    "modeDefault": "Výchozí text",
+    "modeDefaultHint": "Ukáže se naše vestavěná věta. Nemusíte nastavovat nic.",
+    "modePage": "Vlastní stránka",
+    "modePageHint": "Člověk zůstane u nás a uvidí návrh, který si sestavíte v editoru.",
+    "modeRedirect": "Přesměrovat na web",
+    "modeRedirectHint": "Člověk skončí na vaší adrese. U nás neuvidí nic.",
+    "redirectOnList": "Přesměrování se u tohohle kroku nastavuje na seznamu, protože se na tu stránku chodí z odkazu v e-mailu, ne z formuláře.",
+    "select": "Která stránka se ukáže",
+    "selectNone": "Zatím žádná stránka",
+    "empty": "V projektu zatím žádná stránka není. Založte ji tlačítkem níž, předvyplníme ji dnešním textem.",
+    "edit": "Upravit",
+    "create": "Vytvořit stránku",
+    "creating": "Zakládáme stránku…",
+    "createFailed": "Stránku se nepodařilo založit.",
+    "redirectUrl": "Adresa, kam člověka poslat",
+    "redirectUrlHint": "Celá adresa včetně https://.",
+    "redirectInvalid": "Adresa musí být celá, včetně https://. Jinak by člověk skončil na naší neexistující stránce.",
+    "newName": "{title} · {owner}",
+    "thanks": "Po odeslání formuláře",
+    "thanksHint": "Stránka, na kterou člověk skočí hned po odeslání. O tom, kdo je, v tu chvíli nevíme nic, takže se na ní nedají použít údaje kontaktu.",
+    "confirmed": "Po potvrzení přihlášení",
+    "confirmedHint": "Stránka po kliknutí na odkaz v potvrzovacím e-mailu. Nastavení tady má přednost před stejným nastavením na seznamu.",
+    "alreadySubscribed": "Když už je přihlášený",
+    "alreadySubscribedHint": "Stránka pro toho, kdo v seznamu už potvrzený je. Nastavení tady má přednost před stejným nastavením na seznamu."
   },
   "fields": {
     "title": "Co formulář sbírá",

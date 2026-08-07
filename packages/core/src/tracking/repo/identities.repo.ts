@@ -1,4 +1,9 @@
 import { sql } from 'drizzle-orm';
+import {
+  MEASUREMENT_PURPOSE,
+  toMeasurementConsent,
+  type MeasurementConsent,
+} from '../../contacts/repo/consents';
 import type { Tx } from './tx';
 
 /**
@@ -16,27 +21,58 @@ export type ContactGuardRow = {
   id: string;
   processingRestricted: boolean;
   deletedAt: Date | null;
+  /** Souhlas s měřením chování, viz `allowsMeasurement` v doméně kontaktů. */
+  measurementConsent: MeasurementConsent;
 };
 
 /**
- * Krok 0 vazby i slučování: omezení zpracování podle článku 18 GDPR.
+ * Krok 0 vazby i slučování: omezení zpracování podle článku 18 GDPR
+ * a souhlas s měřením chování.
  *
  * Kontakt s uplatněným omezením se nemaže, ale nesmí se zpracovávat. Doplnit mu
  * `contact_id` do historických událostí a přepsat `last_activity_at` je
  * zpracování osobních údajů v přímém rozporu s omezením, takže se kontrola
  * dělá ZNOVU i v jobu: mezi vazbou a během jobu mohlo omezení přibýt.
+ *
+ * Souhlas s měřením se čte TÍMŽ dotazem, ne druhým kolem do databáze. Vazba je
+ * na horké cestě prokliku a druhý `SELECT` na řádek, který se stejně spojuje
+ * přes `contact_id`, by byl round trip navíc za nic. O tom, co se z hodnoty
+ * vyvodí, rozhoduje `allowsMeasurement`, ne tenhle dotaz.
+ *
+ * Stav se čte z odvozené `contact_consent_state`, ne z append-only logu:
+ * měření je účel bez rozsahu na seznam, takže pravidlo přednosti podle rozsahu
+ * (`pickEffectiveConsent`) tu nemá co rozhodovat a odvozená tabulka je přesně
+ * to, k čemu je.
  */
 export async function selectContactGuard(
   tx: Tx,
   workspaceId: string,
   contactId: string,
 ): Promise<ContactGuardRow | null> {
-  const { rows } = await tx.execute<ContactGuardRow>(sql`
-    SELECT id, processing_restricted AS "processingRestricted", deleted_at AS "deletedAt"
-      FROM contacts
-     WHERE id = ${contactId} AND workspace_id = ${workspaceId}
+  const { rows } = await tx.execute<
+    Omit<ContactGuardRow, 'measurementConsent'> & {
+      measurementStatus: string | null;
+    }
+  >(sql`
+    SELECT c.id,
+           c.processing_restricted AS "processingRestricted",
+           c.deleted_at            AS "deletedAt",
+           s.status                AS "measurementStatus"
+      FROM contacts c
+      LEFT JOIN contact_consent_state s
+             ON s.contact_id = c.id
+            AND s.workspace_id = c.workspace_id
+            AND s.purpose = ${MEASUREMENT_PURPOSE}
+     WHERE c.id = ${contactId} AND c.workspace_id = ${workspaceId}
   `);
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (row === undefined) return null;
+  return {
+    id: row.id,
+    processingRestricted: row.processingRestricted,
+    deletedAt: row.deletedAt,
+    measurementConsent: toMeasurementConsent(row.measurementStatus),
+  };
 }
 
 export type IdentityRow = {

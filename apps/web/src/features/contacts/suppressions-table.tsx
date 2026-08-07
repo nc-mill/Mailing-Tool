@@ -8,6 +8,7 @@ import { Button } from '@mlain/ui/components/button';
 import { Dialog, DialogBody, DialogFooter, DialogTitle } from '@mlain/ui/components/dialog';
 import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
+import { passwordManagerOptOut } from '@mlain/ui/lib/password-manager';
 import { PageHeader } from '@mlain/ui/components/page-header';
 import { Plus } from '@mlain/ui/icons';
 // K1 z 13.1 části 6: kurzorové stránkování bez čísel stránek, výběr přežije přestránkování.
@@ -85,6 +86,9 @@ export function SuppressionsTable({
   const labels = useContactsTableLabels({
     selectRow: t('suppressions.selectRow', { email: '' }).trim(),
     selectAllOnPage: t('suppressions.selectPage'),
+    // Blokovaná adresa není kontakt: bývá to adresa, ke které žádný kontakt
+    // v projektu není. Pruh výběru o kontaktech mluvit nesmí.
+    selectionWording: 'generic',
   });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   /**
@@ -135,8 +139,13 @@ export function SuppressionsTable({
         {/* `Field` místo ručně spárovaného `Label` a `Input`: dodá vazbu popisku,
             `aria-describedby` k nápovědě i jednotné odsazení. */}
         <Field label={t('suppressions.addEmail')}>
+          {/* Blokovaná adresa, ne přihlašovací. Nabídka správce hesel by sem
+              tlačila adresu přihlášeného uživatele a zakrývala dialog.
+              Podrobnosti v `@mlain/ui/lib/password-manager`. */}
           <Input
             type="email"
+            autoComplete="off"
+            {...passwordManagerOptOut}
             value={addEmail}
             onChange={(event) => setAddEmail(event.target.value)}
           />
@@ -368,6 +377,9 @@ export function SuppressionsTable({
         open={removing !== null}
         onOpenChange={(open) => setRemoving(open ? removing : null)}
         level="N2"
+        // Vnější dopad 2 podle 6.1: adresa přestane být chráněná a pošta jí
+        // zase začne chodit. Ochrana se ruší směrem ven, ne dovnitř nástroje.
+        destructive
         title={
           removing?.kind === 'bulk'
             ? t('suppressions.bulkRemoveTitle', { count: summary.removable })

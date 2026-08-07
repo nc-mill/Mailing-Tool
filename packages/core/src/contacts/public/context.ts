@@ -12,6 +12,23 @@ import { withWorkspace } from '../../tx';
  * ne člověku, a na sdíleném počítači je úplně mimo.
  */
 export type PublicBranding = {
+  /**
+   * Jméno ODESÍLATELE, tedy `sender_identities.from_name`. NIKDY `workspaces.name`.
+   *
+   * Je v tom skutečný rozdíl, ne slovíčkaření. Jméno projektu si člověk zakládá pro
+   * sebe do postranního menu („Petr Osobní mail", „Klient Novák, faktury") a čeká, že
+   * ho nikdo cizí neuvidí. Jméno odesílatele je naopak to, co příjemci UŽ VIDÍ ve
+   * schránce v poli Od, takže na veřejné stránce nic neprozradí a navíc ji spojí
+   * s e-mailem, kvůli kterému na ni člověk klikl.
+   *
+   * Do 7. 8. 2026 se sem bralo `workspaces.name` a svítilo na děkovací stránce
+   * formuláře, na odhlašovací stránce i v titulku okna. Nahlásil to zadavatel větou
+   * „to je moje osobní věc a ne že to budu zobrazovat na webu formuláře".
+   *
+   * Když projekt identitu odesílatele ještě nemá, zůstává prázdné a stránka
+   * jméno nekreslí vůbec. Prázdno je tu správně: vymyslet náhradu by znamenalo
+   * vrátit se k tomu, co se právě opravilo.
+   */
   senderName: string;
   locale: string;
   brandColor: string | null;
@@ -48,9 +65,21 @@ export async function publicScope(
 ): Promise<PublicScope | null> {
   const ctx = createSystemContext(workspaceRef, job);
   const branding = await withWorkspace(ctx, async (tx) => {
-    const { rows } = await tx.execute<{ name: string; locale: string; settings: unknown }>(sql`
-      SELECT name, locale, settings FROM workspaces
-       WHERE id = ${ctx.workspaceId}::uuid AND deleted_at IS NULL
+    const { rows } = await tx.execute<{
+      from_name: string | null;
+      locale: string;
+      settings: unknown;
+    }>(sql`
+      SELECT si.from_name, w.locale, w.settings
+        FROM workspaces w
+        LEFT JOIN LATERAL (
+          SELECT s.from_name
+            FROM sender_identities s
+           WHERE s.workspace_id = w.id
+           ORDER BY s.is_default DESC, s.created_at ASC
+           LIMIT 1
+        ) si ON true
+       WHERE w.id = ${ctx.workspaceId}::uuid AND w.deleted_at IS NULL
     `);
     return rows[0] ?? null;
   });
@@ -70,7 +99,7 @@ export async function publicScope(
   return {
     ctx,
     branding: {
-      senderName: branding.name,
+      senderName: branding.from_name ?? '',
       locale: contactLocale ?? branding.locale ?? FALLBACK_BRANDING.locale,
       brandColor: typeof color === 'string' ? color : null,
     },

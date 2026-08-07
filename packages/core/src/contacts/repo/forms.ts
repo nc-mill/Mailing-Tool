@@ -40,6 +40,18 @@ export type FormRow = {
   active: boolean;
   /** Šablona e-mailu, který přijde po vyplnění. NULL = formulář nic neposílá. */
   deliveryTemplateId: string | null;
+  /**
+   * Veřejné stránky formuláře, tedy odkazy na `templates` s `kind = 'page'`.
+   * NULL u kteréhokoliv z nich znamená VESTAVĚNÝ TEXT, což je dnešní chování.
+   *
+   * Nejsou to sloupce, ale klíče v jsonb (`forms.design.pages`, viz `pagesOf`),
+   * takže je nemůže hlídat cizí klíč. Platnost proto ověřuje doména při čtení
+   * v `contacts/public/page-template.ts`: smazaná ani neplatná šablona nesmí
+   * shodit přihlášení, protože v tu chvíli je člověk už v databázi.
+   */
+  thanksTemplateId: string | null;
+  confirmedTemplateId: string | null;
+  alreadySubscribedTemplateId: string | null;
   /** Počítadlo přijatých odeslání. Zvyšuje ho `recordSubmission`, nikdy se nesnižuje. */
   submissionCount: number;
   createdAt: string;
@@ -52,6 +64,7 @@ type RawFormRow = {
   name: string;
   slug: string;
   fields: unknown;
+  design: unknown;
   custom_css: string | null;
   list_ids: string[];
   tag_ids: string[];
@@ -82,6 +95,62 @@ function toIsoString(value: Date | string): string {
   return (value instanceof Date ? value : new Date(value)).toISOString();
 }
 
+/**
+ * Klíč v `forms.design`, pod kterým bydlí odkazy na veřejné stránky formuláře.
+ *
+ * PROČ V `design` A NE VE VLASTNÍCH SLOUPCÍCH. Plán mluví o „třech volitelných
+ * klíčích v `forms.definition`, ne o sloupcích", a rozhodující je ten důvod:
+ * odkaz bez cizího klíče, jehož platnost ověřuje doména při čtení. Tabulka
+ * `forms` žádný sloupec `definition` nemá, jediné volné jsonb, které k definici
+ * formuláře patří, je `design`. Vlastní sloupce by ten záměr obrátily: buď by
+ * dostaly cizí klíč (a smazání stránky by pak muselo řešit `ON DELETE SET NULL`
+ * u formuláře), nebo by to byly uuid sloupce bez klíče, což je horší než jsonb,
+ * protože to vypadá jako hlídaný odkaz a není.
+ *
+ * VLASTNÍ PODKLÍČ, ne tři klíče volně v `design`. Zbytek `design` je vzhled
+ * formuláře a ten si vlastní jiná obrazovka; vyhrazený `pages` drží obojí od
+ * sebe, takže se navzájem nepřepíšou.
+ */
+const PAGES_KEY = 'pages';
+
+type FormPages = Pick<
+  FormRow,
+  'thanksTemplateId' | 'confirmedTemplateId' | 'alreadySubscribedTemplateId'
+>;
+
+/**
+ * Odkazy na stránky z uloženého `design`. Cokoliv, co není uuid v řetězci,
+ * je `null`: jsonb žádný tvar nevynucuje, takže sem může přijít i číslo nebo
+ * objekt a doména by na tom až za běhu spadla.
+ */
+function pagesOf(design: unknown): FormPages {
+  const bag =
+    design !== null && typeof design === 'object' ? (design as Record<string, unknown>) : {};
+  const pages =
+    bag[PAGES_KEY] !== null && typeof bag[PAGES_KEY] === 'object'
+      ? (bag[PAGES_KEY] as Record<string, unknown>)
+      : {};
+  const at = (key: string): string | null => (typeof pages[key] === 'string' ? pages[key] : null);
+  return {
+    thanksTemplateId: at('thanks_template_id'),
+    confirmedTemplateId: at('confirmed_template_id'),
+    alreadySubscribedTemplateId: at('already_subscribed_template_id'),
+  };
+}
+
+/** Opačný směr: definice do jsonb, se zachováním zbytku `design`. */
+function designWithPages(design: unknown, definition: FormDefinition): Record<string, unknown> {
+  const bag = design !== null && typeof design === 'object' ? { ...(design as object) } : {};
+  return {
+    ...bag,
+    [PAGES_KEY]: {
+      thanks_template_id: definition.thanks_template_id,
+      confirmed_template_id: definition.confirmed_template_id,
+      already_subscribed_template_id: definition.already_subscribed_template_id,
+    },
+  };
+}
+
 function toRow(raw: RawFormRow): FormRow {
   return {
     id: raw.id,
@@ -104,6 +173,7 @@ function toRow(raw: RawFormRow): FormRow {
     successMessage: (raw.success_message ?? {}) as Record<string, string>,
     active: raw.active,
     deliveryTemplateId: raw.delivery_template_id,
+    ...pagesOf(raw.design),
     // bigint vydává ovladač jako řetězec, aby nepřišel o přesnost. Počet odeslání
     // se vejde do bezpečného rozsahu čísla, tak se převádí tady a ne u každého volajícího.
     submissionCount: Number(raw.submission_count ?? 0),
@@ -114,7 +184,7 @@ function toRow(raw: RawFormRow): FormRow {
 
 /** Sloupce, které umí `toRow`. Drží se pohromadě, aby se SELECT a RETURNING nerozešly. */
 const FORM_COLUMNS = sql`
-  id, workspace_id, name, slug, fields, custom_css, list_ids, tag_ids, double_opt_in,
+  id, workspace_id, name, slug, fields, design, custom_css, list_ids, tag_ids, double_opt_in,
   consent_text, consent_required, legal_basis, honeypot_field, min_fill_seconds,
   allowed_origins, captcha_provider, redirect_url, success_message, active,
   delivery_template_id, submission_count, created_at, updated_at
@@ -135,7 +205,8 @@ export async function createForm(
                          captcha_config, redirect_url, success_message, active,
                          delivery_template_id)
       VALUES (${ctx.workspaceId}::uuid, ${definition.name}, ${generateFormSlug()},
-              ${JSON.stringify(definition.fields)}::jsonb, ${JSON.stringify(definition.design)}::jsonb,
+              ${JSON.stringify(definition.fields)}::jsonb,
+              ${JSON.stringify(designWithPages(definition.design, definition))}::jsonb,
               ${definition.custom_css}, ${sql.param(definition.list_ids)}::uuid[], ${sql.param(definition.tag_ids)}::uuid[],
               ${definition.double_opt_in}, ${definition.consent_text}, ${definition.consent_required},
               ${definition.legal_basis}, ${definition.honeypot_field}, ${definition.min_fill_seconds},
@@ -255,8 +326,11 @@ export async function updateForm(
     const definition = FormDefinitionSchema.parse({
       name: current.name,
       fields: current.fields,
-      // `design` a `captcha_config` se přes API neupravují a v `FormRow` nejsou.
-      // Do zápisu se proto neberou z načteného řádku, ale nechávají se v databázi být.
+      // `captcha_config` se přes API neupravuje a v `FormRow` není, takže se do
+      // zápisu nebere a nechává se v databázi být. `design` se od zavedení
+      // veřejných stránek čte (bydlí v něm podklíč `pages`), ale vzhled se přes
+      // tuhle cestu pořád neupravuje: do zápisu jde původní jsonb s vyměněným
+      // `pages`, viz `designWithPages` níž.
       custom_css: current.customCss,
       list_ids: current.listIds,
       tag_ids: current.tagIds,
@@ -270,6 +344,9 @@ export async function updateForm(
       captcha_provider: current.captchaProvider,
       redirect_url: current.redirectUrl,
       delivery_template_id: current.deliveryTemplateId,
+      thanks_template_id: current.thanksTemplateId,
+      confirmed_template_id: current.confirmedTemplateId,
+      already_subscribed_template_id: current.alreadySubscribedTemplateId,
       success_message: current.successMessage,
       active: current.active,
       ...patch,
@@ -279,6 +356,7 @@ export async function updateForm(
       UPDATE forms
          SET name = ${definition.name},
              fields = ${JSON.stringify(definition.fields)}::jsonb,
+             design = ${JSON.stringify(designWithPages(raw.design, definition))}::jsonb,
              custom_css = ${definition.custom_css},
              list_ids = ${sql.param(definition.list_ids)}::uuid[],
              tag_ids = ${sql.param(definition.tag_ids)}::uuid[],
@@ -352,11 +430,27 @@ export type FormSubmissionStats = {
   firstAcceptedAt: string | null;
   lastAcceptedAt: string | null;
   accepted30d: number;
+  /**
+   * Odeslání ZAHOZENÁ ochranou za posledních 30 dní, po důvodech.
+   *
+   * Zahození je navenek TICHÉ, a to je schválně: robot se nesmí dozvědět, které
+   * pravidlo ho chytlo, jinak si ho obejde. Cena za to je ale nesena i tehdy, když
+   * se chytne ČLOVĚK: návštěvník uvidí „Poslali jsme vám e-mail" a žádný nedostane,
+   * a nedozví se to nikdo, protože i produkt to považuje za vyřízené.
+   *
+   * Nejsnáz se to stane u časové pasti (`too_fast`, výchozí dvě sekundy): správce
+   * hesel vyplní pole naráz a člověk stiskne odeslat dřív. Tohle číslo je jediné
+   * místo, kde na to jde přijít, proto se počítá po důvodech, ne v jednom součtu.
+   * Naměřeno 7. 8. 2026 na běžící instalaci: řádky `dropped` v `form_submissions`
+   * a v `contacts` nic.
+   *
+   * Do „přihlášení celkem" se NEZAPOČÍTÁVÁ. Jsou to nepřijatá odeslání, ne kontakty.
+   */
+  dropped30d: Record<string, number>;
 };
 
 /**
- * Statistika odeslání pro jeden formulář. Počítá se jen z přijatých: zahozené pokusy
- * robotů nejsou přihlášení a v obrazovce by z nich bylo falešné „funguje to".
+ * Statistika odeslání pro jeden formulář: přijatá zvlášť, zahozená zvlášť.
  */
 export async function formSubmissionStats(
   ctx: WorkspaceContext,
@@ -368,19 +462,35 @@ export async function formSubmissionStats(
       last_at: Date | string | null;
       accepted_30d: string | number;
     }>(sql`
-      SELECT min(created_at) AS first_at,
-             max(created_at) AS last_at,
-             count(*) FILTER (WHERE created_at >= now() - interval '30 days') AS accepted_30d
+      SELECT min(created_at) FILTER (WHERE status = 'accepted') AS first_at,
+             max(created_at) FILTER (WHERE status = 'accepted') AS last_at,
+             count(*) FILTER (
+               WHERE status = 'accepted' AND created_at >= now() - interval '30 days'
+             ) AS accepted_30d
         FROM form_submissions
        WHERE workspace_id = ${ctx.workspaceId}::uuid
          AND form_id = ${formId}::uuid
-         AND status = 'accepted'
+    `);
+    // Zahozená po důvodech. Druhý dotaz, ne další FILTER: důvodů je otevřený
+    // seznam (`PROTECTION_LAYERS` se rozšiřuje) a vypisovat je do sloupců by
+    // znamenalo měnit dotaz při každé nové vrstvě ochrany.
+    const { rows: dropped } = await tx.execute<{ error_code: string | null; count: string }>(sql`
+      SELECT error_code, count(*) AS count
+        FROM form_submissions
+       WHERE workspace_id = ${ctx.workspaceId}::uuid
+         AND form_id = ${formId}::uuid
+         AND status = 'dropped'
+         AND created_at >= now() - interval '30 days'
+       GROUP BY error_code
     `);
     const row = rows[0];
+    const dropped30d: Record<string, number> = {};
+    for (const d of dropped) dropped30d[d.error_code ?? 'unknown'] = Number(d.count);
     return {
       firstAcceptedAt: row?.first_at == null ? null : toIsoString(row.first_at),
       lastAcceptedAt: row?.last_at == null ? null : toIsoString(row.last_at),
       accepted30d: Number(row?.accepted_30d ?? 0),
+      dropped30d,
     };
   });
 }

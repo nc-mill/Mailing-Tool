@@ -11,9 +11,9 @@ import { getSystemMailStatus, updateSystemMailSettings } from '../system-mail-co
  * Existuje proto, aby obrazovka nemusela nabízet akci, kterou instalace neumí
  * provést, a aby uživatel na jednom místě viděl, ČÍM se systémová pošta odesílá,
  * Z JAKÉ adresy a CO chybí, když nefunguje. Pozvánka do projektu, obnova hesla
- * i ověření adresy ve zkušebním režimu jdou systémovým e-mailem, a ten odsud
- * odešle jen účet typu SMTP. Bez tohohle dotazu se to uživatel dozvěděl až
- * z chyby po odeslání, nebo, u obnovy hesla, vůbec.
+ * i ověření adresy ve zkušebním režimu jdou systémovým e-mailem, a ten potřebuje
+ * použitelný odesílací účet projektu. Bez tohohle dotazu se to uživatel dozvěděl
+ * až z chyby po odeslání, nebo, u obnovy hesla, vůbec.
  */
 
 export const SystemMailAccountSchema = z
@@ -63,9 +63,9 @@ const statusRoute = createRoute({
   tags: ['Platform'],
   summary: 'Stav systémové pošty projektu',
   description:
-    'Systémové e-maily (pozvánka, obnova hesla, ověření adresy ve zkušebním režimu) odesílá jen ' +
-    'účet typu SMTP: klient SES existuje pouze v odesílací službě napsané v Go. Projekt, který má ' +
-    'jen účet typu SES, je odeslat neumí a je to známé omezení produktu, ne chyba nastavení.',
+    'Systémové e-maily (pozvánka, obnova hesla, ověření adresy ve zkušebním režimu) odesílá ' +
+    'aplikace sama, mimo rozesílku kampaní, účtem typu SES i SMTP. Projekt bez použitelného ' +
+    'odesílacího účtu je odeslat nemá čím; `capable_types` říká, které typy účtů to umí.',
   security: [{ bearerAuth: ['providers:read'] }],
   responses: {
     200: {
@@ -87,7 +87,7 @@ const updateRoute = createRoute({
   summary: 'Nastavení systémové pošty',
   description:
     'Účet, kterým systémová pošta chodí, a adresa odesílatele. `null` u obou znamená ' +
-    '„vyber automaticky", tedy přednostně účet typu SMTP a adresa z ověřené domény.',
+    '„vyber automaticky", tedy výchozí odesílací účet a adresa z jeho ověřené domény.',
   security: [{ bearerAuth: ['providers:write'] }],
   request: {
     body: { content: { 'application/json': { schema: UpdateSystemMailSettingsInput } } },

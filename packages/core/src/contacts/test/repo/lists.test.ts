@@ -110,6 +110,54 @@ describe('lists.update', () => {
     await listsRepo.update(ws.ctx, a.id, { description: 'nový popis' });
     expect(await ws.auditActions()).not.toContain('list.opt_in_changed');
   });
+
+  /**
+   * Rozsah odhlášení a vlastní stránka pro už přihlášeného, migrace 0027.
+   *
+   * Výchozí rozsah MUSÍ být 'list', tedy dnešní chování. Kdyby nový seznam
+   * vznikal s 'global', odhlásilo by první kliknutí na odkaz člověka ze všeho
+   * a navíc by mu zablokovalo adresu pro celý projekt, aniž by o to kdokoli
+   * požádal.
+   */
+  it('nový seznam odhlašuje jen ze sebe a vlastní stránku pro přihlášeného nemá', async () => {
+    const a = await listsRepo.create(ws.ctx, { name: 'A' });
+    expect(a.unsubscribeScope).toBe('list');
+    expect(a.alreadySubscribedRedirectUrl).toBeNull();
+  });
+
+  it('změna rozsahu odhlášení se zapíše do auditu, protože blokuje adresy', async () => {
+    const a = await listsRepo.create(ws.ctx, { name: 'A' });
+    const updated = await listsRepo.update(ws.ctx, a.id, { unsubscribeScope: 'global' });
+    expect(updated.unsubscribeScope).toBe('global');
+    expect(await ws.auditActions()).toContain('list.unsubscribe_scope_changed');
+  });
+
+  it('zápis téhož rozsahu audit nezapíše', async () => {
+    const a = await listsRepo.create(ws.ctx, { name: 'A' });
+    await listsRepo.update(ws.ctx, a.id, { unsubscribeScope: 'list' });
+    expect(await ws.auditActions()).not.toContain('list.unsubscribe_scope_changed');
+  });
+
+  /**
+   * Prázdné pole z formuláře je „nevyplněno", ne prázdná adresa:
+   * `ck_lists__already_subscribed_redirect_url_len` prázdný řetězec zakazuje,
+   * takže bez překladu na NULL by uložení skončilo pětistovkou na 23514.
+   */
+  it('prázdná adresa vlastní stránky se ukládá jako NULL, ne jako prázdný řetězec', async () => {
+    const a = await listsRepo.create(ws.ctx, {
+      name: 'A',
+      alreadySubscribedRedirectUrl: '   ',
+    });
+    expect(a.alreadySubscribedRedirectUrl).toBeNull();
+
+    const filled = await listsRepo.update(ws.ctx, a.id, {
+      alreadySubscribedRedirectUrl: 'https://example.cz/uz-jste-u-nas',
+    });
+    expect(filled.alreadySubscribedRedirectUrl).toBe('https://example.cz/uz-jste-u-nas');
+
+    const cleared = await listsRepo.update(ws.ctx, a.id, { alreadySubscribedRedirectUrl: '' });
+    expect(cleared.alreadySubscribedRedirectUrl).toBeNull();
+  });
 });
 
 describe('lists.stats', () => {

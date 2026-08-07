@@ -31,11 +31,23 @@ ORDER BY c.scheduled_at NULLS FIRST, c.id`
 // compile_meta je nepovinný sloupec. Sender z něj čte clickMarkerCount pro kontrolu
 // V4. Když sloupec ve schématu chybí, sender ho pozná při startu a kontrolu vypne,
 // viz CampaignHeaderStatement níž.
+//
+// c.name, w.name a poštovní adresa z w.settings jsou hodnoty za merge tagy
+// {{ campaign.name }}, {{ workspace.name }} a {{ workspace.sender_address }}.
+// Tahají se TADY, protože jsou konstantní pro celou kampaň: snapshot do
+// render_data každé zprávy by u milionové kampaně přidal stovky megabajtů,
+// kdežto hlavička se čte jednou na dvojici (kampaň, revize). Projekt už je
+// v dotazu připojený kvůli w.deleted_at, takže to nestojí ani join navíc.
+//
+// #>> vrací text, nebo NULL, když klíč chybí. Chybějící poštovní adresa je běžný
+// stav projektu, který ji nevyplnil, a sender ji nesmí odmítnout: hlídá ji
+// kontrola před odesláním, ne odesílání samo.
 const StmtCampaignHeader = `
 SELECT c.id, c.workspace_id, c.status, c.subject, c.preheader,
        c.from_name, c.from_email, c.reply_to,
        c.compiled_html, c.compiled_text, c.revision,
        c.provider_id, c.track_opens, c.track_clicks, c.unsubscribe_list_id,
+       c.name, w.name, w.settings #>> '{campaigns,postal_address}',
        c.compile_meta
 FROM campaigns c
 JOIN workspaces w ON w.id = c.workspace_id
@@ -49,6 +61,7 @@ SELECT c.id, c.workspace_id, c.status, c.subject, c.preheader,
        c.from_name, c.from_email, c.reply_to,
        c.compiled_html, c.compiled_text, c.revision,
        c.provider_id, c.track_opens, c.track_clicks, c.unsubscribe_list_id,
+       c.name, w.name, w.settings #>> '{campaigns,postal_address}',
        NULL::jsonb
 FROM campaigns c
 JOIN workspaces w ON w.id = c.workspace_id

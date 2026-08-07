@@ -21,9 +21,26 @@ export const VERIFIED_OPEN_MIN_DENOMINATOR = 50;
 /** Pod tímhle počtem doručených se místo procent ukazují absolutní počty (3.11.4). */
 export const SMALL_SAMPLE_THRESHOLD = 200;
 
+/**
+ * Kolik zpráv se doopravdy doručilo.
+ *
+ * `rejected` se ODEČÍTÁ a je to oprava, ne zpřesnění. Odmítnutá zpráva má status
+ * `sent`, protože se odeslání pokusilo, ale poskytovatel ji nepřijal, takže ji
+ * nikdo nedostal. Dokud pro ni nebyl čítač, zůstávala v odeslaných a od ničeho
+ * se neodečítala, tedy PLATILA ZA DORUČENOU: doručenost se tím hnala k sto
+ * procentům a míra prokliku, která má doručené ve jmenovateli, se o tentýž
+ * počet podstřelovala.
+ *
+ * Ve větvi `provider_events` se nic odečítat nemusí. Tam je `delivered` počet
+ * potvrzení od poskytovatele, a poskytovatel potvrzení o doručení k odmítnuté
+ * zprávě z definice nepošle.
+ */
 export function deliveredEffective(counts: StatsCounts, source: DeliveredSource): number {
   if (source === 'provider_events') return counts.delivered;
-  return Math.max(counts.sent - counts.bouncedHard - counts.bouncedSoft - counts.failed, 0);
+  return Math.max(
+    counts.sent - counts.bouncedHard - counts.bouncedSoft - counts.failed - counts.rejected,
+    0,
+  );
 }
 
 /** Počet příjemců, u kterých měření otevření prokazatelně funguje. */

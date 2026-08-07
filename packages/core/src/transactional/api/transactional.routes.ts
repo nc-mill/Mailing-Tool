@@ -4,6 +4,7 @@ import { ApiError } from '../../errors/api-error';
 import { problemResponse, type ApiEnv } from '../../identity/api/schemas';
 import { assertPermission } from '../../identity/permissions';
 import { sendTransactional, TransactionalSendError, TRANSACTIONAL_DATA_MAX_BYTES } from '../send';
+import { findTransactionalStatus } from '../status';
 
 const TAG = 'Transactional';
 
@@ -134,7 +135,94 @@ const sendRoute = createRoute({
   },
 });
 
+const TransactionalStatusResponse = z
+  .object({
+    message_id: z.uuid(),
+    status: z.enum(['queued', 'sent', 'failed', 'skipped']).openapi({
+      description:
+        '`queued` je zpráva ve frontě, včetně té, kterou si právě vzal odesílací ' +
+        'proces. `sent` znamená předáno provideru, ne doručeno do schránky. ' +
+        '`failed` je vyčerpaný pokus o odeslání, `skipped` zpráva, která se ' +
+        'nakonec neposlala (například blokovaná adresa).',
+    }),
+    contact_id: z.uuid(),
+    campaign_id: z.uuid().nullable(),
+    created_at: z.string(),
+    sent_at: z.string().nullable(),
+    attempts: z.number().int(),
+    error_code: z.string().nullable().openapi({
+      description: 'Kód z uzavřeného registru chyb. Podle něj se dá rozhodovat v kódu.',
+    }),
+    provider_message_id: z.string().nullable().openapi({
+      description: 'Identifikátor u odesílajícího providera. Pro dohledání v jeho konzoli.',
+    }),
+  })
+  .openapi('TransactionalStatusResponse');
+
+/**
+ * Dohledání stavu odeslané transakční zprávy.
+ *
+ * PROČ `transactional:send` A NE VLASTNÍ ČTECÍ OPRÁVNĚNÍ. Klíč, který zprávu
+ * poslal, se musí umět zeptat, jak dopadla; to je táž operace rozdělená na dva
+ * kroky, ne druhá pravomoc. Nové oprávnění `transactional:read` by navíc
+ * znamenalo, že už vydané klíče dostanou na tuhle cestu 403, tedy že se slib
+ * „stav se dá dohledat" splní jen novým klíčům. Průzkum
+ * (`docs/superpowers/specs/2026-08-05-transakcni-maily-pruzkum.md`) tady počítá
+ * se stejným scopem.
+ *
+ * NENÍ TO CESTA K DORUČENÍ. `sent` znamená „provider zprávu převzal". Jestli
+ * dopadla do schránky, odrazila se nebo si na ni někdo stěžoval, tahle tabulka
+ * neví; to nese `message_events` a chodilo by to odchozími webhooky, které pro
+ * doručení, odraz a stížnost zatím NEEXISTUJÍ (posílají se jen `message.opened`
+ * a `message.clicked`). Popis to říká schválně, aby si na to nikdo nepostavil
+ * potvrzování objednávek.
+ */
+const statusRoute = createRoute({
+  method: 'get',
+  path: '/transactional/{id}',
+  tags: [TAG],
+  summary: 'Stav odeslané transakční zprávy',
+  description:
+    'Stav zprávy, kterou vrátilo `POST /transactional` jako `message_id`. ' +
+    'Odpovídá jen na zprávy s `kind = "transactional"`: zprávy kampaní ani ' +
+    'testovací odeslání tudy číst NELZE a vypadají jako neexistující. ' +
+    '`sent` znamená, že zprávu převzal provider, NE že dorazila do schránky.',
+  security: [{ bearerAuth: ['transactional:send'] }],
+  request: { params: z.object({ id: z.uuid() }) },
+  responses: {
+    200: {
+      description: 'Stav zprávy',
+      content: { 'application/json': { schema: TransactionalStatusResponse } },
+    },
+    401: problemResponse('unauthenticated'),
+    403: problemResponse('forbidden', 'insufficient_scope'),
+    404: problemResponse('not_found'),
+    422: problemResponse('validation_failed'),
+  },
+});
+
 export function registerTransactionalRoutes(app: OpenAPIHono<ApiEnv>): void {
+  app.openapi(statusRoute, async (c) => {
+    const { ctx } = c.get('auth');
+    assertPermission(ctx, 'transactional:send');
+    const status = await findTransactionalStatus(ctx, c.req.valid('param').id);
+    if (status === null) throw new ApiError('not_found');
+    return c.json(
+      {
+        message_id: status.messageId,
+        status: status.status,
+        contact_id: status.contactId,
+        campaign_id: status.campaignId,
+        created_at: status.createdAt.toISOString(),
+        sent_at: status.sentAt === null ? null : status.sentAt.toISOString(),
+        attempts: status.attempts,
+        error_code: status.errorCode,
+        provider_message_id: status.providerMessageId,
+      },
+      200,
+    );
+  });
+
   app.openapi(sendRoute, async (c) => {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'transactional:send');

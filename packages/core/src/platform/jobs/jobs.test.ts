@@ -6,7 +6,6 @@ import { sql } from 'drizzle-orm';
 import { QUEUE_REGISTRY } from '../../queues';
 import { startPgHarness, type PgHarness } from '../../test-support/pg-harness';
 import { closePools, withoutContext } from '../../tx';
-import * as cleanupAuditLogModule from './cleanup_audit_log';
 import * as cleanupIdempotencyModule from './cleanup_idempotency';
 import * as cleanupSessionsModule from './cleanup_sessions';
 import * as purgeWorkspacesModule from './purge_workspaces';
@@ -33,6 +32,20 @@ const JOBS_DIR = fileURLToPath(new URL('./', import.meta.url));
 const NOT_OWNED_BY_P04: Record<string, string> = {
   'platform.backup': 'P16',
   'platform.backup_verify': 'P16',
+  /*
+   * Jméno fronty říká `platform.`, ale obsluha bydlí v `ops/jobs/partition-jobs.ts`,
+   * a je to správně: o umístění rozhoduje DOMÉNA, která tu práci vlastní, ne prefix
+   * jména fronty. Táž odchylka je zdůvodněná i u `outbox.reconcile` a `outbox.stall_watch`,
+   * jejichž obsluhy leží v `campaigns/jobs/`.
+   *
+   * Fronta se do registru VRÁTILA 7. 8. 2026 jako jediná, která se kdy vrátila ze seznamu
+   * zrušených. Zrušit ji bylo tehdy správně (obsluha pod aplikační rolí neumí měnit schéma),
+   * jenže náhrada, tedy `mlain partitions` z plánovače hostitele, se v dodávané instalaci
+   * nespouštěla NIKDE: compose žádný plánovač nemá a na PaaS ho nejde doplnit. Obsluha si
+   * teď otvírá vlastní spojení pod migrátorem, přesně jako `platform.backup`, takže
+   * aplikační role žádné nové právo nedostává.
+   */
+  'platform.maintain_partitions': 'ops (P01, obsluha v ops/jobs/partition-jobs.ts)',
 };
 
 let harness: PgHarness;
@@ -90,7 +103,6 @@ describe('konvenční cesty handlerů', () => {
       webhook_deliver: webhookDeliver,
       cleanup_sessions: cleanupSessionsModule,
       cleanup_idempotency: cleanupIdempotencyModule,
-      cleanup_audit_log: cleanupAuditLogModule,
       purge_workspaces: purgeWorkspacesModule,
     };
     for (const [action, module] of Object.entries(modules)) {

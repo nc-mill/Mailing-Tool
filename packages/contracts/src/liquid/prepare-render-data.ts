@@ -36,8 +36,16 @@ export function prepareRenderData(raw: RenderData, schema: PreparedDataSchema): 
   return prepared;
 }
 
-/** Chybějící klíč je nil, tedy nepravda, takže by podmíněný blok zmizel všem. */
-function isPresent(value: unknown): boolean {
+/**
+ * Chybějící klíč je nil, tedy nepravda, takže by podmíněný blok zmizel všem.
+ *
+ * VYVÁŽÍ SE, protože mapu `_present` musí umět dopočítat i ten, kdo hodnotu
+ * dostane až po materializaci: kořeny `campaign` a `workspace` dodává odesílač
+ * z hlavičky kampaně a webová podoba zprávy je dopočítává stejně. Druhá
+ * definice téhož pravidla by znamenala, že se podmíněný blok v e-mailu
+ * a v prohlížeči chová jinak.
+ */
+export function isPresent(value: unknown): boolean {
   if (value === null || value === undefined || value === false) return false;
   if (typeof value === 'string') return value.trim() !== '';
   if (Array.isArray(value)) return value.length > 0;

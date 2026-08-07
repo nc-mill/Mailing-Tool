@@ -15,6 +15,21 @@ import type { DataTableLabels } from '@mlain/ui/patterns/data-table';
 export function useContactsTableLabels(namespaceKeys: {
   selectRow: string;
   selectAllOnPage: string;
+  /**
+   * Jak má pruh výběru pojmenovat, co je vybrané.
+   *
+   * `'contacts'` je výchozí a mluví o kontaktech („Vybrán 1 kontakt na této
+   * stránce"). `'generic'` bere věty z `common.table`, které žádné podstatné
+   * jméno nemají („Vybráno na této stránce: 1").
+   *
+   * PROČ TO TU JE. Tenhle hook si berou i obrazovky, které s kontakty nemají nic
+   * společného: Seznamy, Formuláře, Vlastní pole, Přepisy jmen a Blokované adresy.
+   * Do 7. 8. 2026 jim tedy pruh nad tabulkou hlásil „Vybrány 2 kontakty na této
+   * stránce" a hned vedle stálo tlačítko „Smazat 2 formuláře". Obecné znění
+   * v `common.table` se toho dne zkrátilo právě proto, jenže sem nedosáhlo:
+   * tyhle obrazovky si berou znění z `contacts.selection`.
+   */
+  selectionWording?: 'contacts' | 'generic';
 }): DataTableLabels {
   const t = useTranslations('contacts');
   // Zavření panelu sloupců je obecná akce, ne pojem kontaktů, takže má klíč
@@ -33,9 +48,17 @@ export function useContactsTableLabels(namespaceKeys: {
       estimated
         ? t('list.shown', { shown: format.number(shown), total: format.number(total) })
         : t('list.shownExact', { shown: format.number(shown), total: format.number(total) }),
-    selectedOnPage: (count) => t('selection.pageOnly', { count }),
-    selectAllMatching: (total) => t('selection.selectAllMatching', { total }),
-    selectedAllMatching: (total) => t('selection.allMatching', { total }),
+    ...(namespaceKeys.selectionWording === 'generic'
+      ? {
+          selectedOnPage: (count: number) => tCommon('table.selectedOnPage', { count }),
+          selectAllMatching: (total: number) => tCommon('table.selectAllMatching', { total }),
+          selectedAllMatching: (total: number) => tCommon('table.selectedAllMatching', { total }),
+        }
+      : {
+          selectedOnPage: (count: number) => t('selection.pageOnly', { count }),
+          selectAllMatching: (total: number) => t('selection.selectAllMatching', { total }),
+          selectedAllMatching: (total: number) => t('selection.allMatching', { total }),
+        }),
     clearSelection: t('selection.clear'),
     cursorInvalid: t('list.staleCursor'),
     sortNotAvailable: t('list.sortNotAvailable'),

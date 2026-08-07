@@ -89,6 +89,56 @@ export const OPERATIONAL_CODES: readonly OperationalCodeEntry[] = [
     owner: 'P16',
     source: 'spec',
   },
+  // Údržba oddílů se pouští z plánovače hostitele, ne z workeru (odpojení
+  // oddílu je DDL). Po úspěšném běhu nezbude nic, do čeho by se dalo podívat,
+  // takže se nedalo poznat, že plánovač nikdo nenastavil nebo že týden neběžel
+  // a odeslaná pošta leží přes lhůtu. Dvojice nálezů je záměrná a kopíruje
+  // zálohu: „ještě nikdy" je jiná práce než „přestalo to běžet".
+  {
+    code: 'no_partition_maintenance_yet',
+    scope: 'doctor',
+    severity: 'warning',
+    owner: 'P16',
+    source: 'derived',
+  },
+  {
+    code: 'partition_maintenance_stale',
+    scope: 'doctor',
+    severity: 'warning',
+    owner: 'P16',
+    source: 'derived',
+  },
+  // Ověřování zálohy tiká TÝDNĚ, takže ho hlídač ticha ve workeru pokrýt nemůže:
+  // pg-boss maže dokončené úlohy po sedmi dnech, a z chybějícího řádku se ticho
+  // delší než týden doložit nedá. Audit ten problém nemá, `backup.verified`
+  // v něm leží měsíce. Dvojice nálezů je opět záměrná: „nikdy se neověřovalo"
+  // znamená nezapojenou úlohu, „přestalo se ověřovat" znamená selhávající běhy.
+  {
+    code: 'no_backup_verify_yet',
+    scope: 'doctor',
+    severity: 'warning',
+    owner: 'P16',
+    source: 'derived',
+  },
+  {
+    code: 'backup_verify_stale',
+    scope: 'doctor',
+    severity: 'warning',
+    owner: 'P16',
+    source: 'derived',
+  },
+  // TŘETÍ KÓD, a není to nadbytek. `platform.backup_verify` zapíše auditní
+  // záznam i tehdy, když ověření NEPROŠLO (`ok: false`), takže instalace, které
+  // se ověření každou neděli nepovede, má záznam čerstvý a podle stáří by
+  // vypadala v pořádku. Klid odvozený z pravidelně nastávající poruchy je to
+  // nejhorší, co může diagnostika říct.
+  {
+    code: 'backup_verify_failed',
+    scope: 'doctor',
+    severity: 'warning',
+    owner: 'P16',
+    source: 'derived',
+  },
   { code: 'trial_mode_enabled', scope: 'doctor', severity: 'info', owner: 'P16', source: 'spec' },
   { code: 'demo_data_present', scope: 'doctor', severity: 'info', owner: 'P16', source: 'spec' },
   { code: 'check_failed', scope: 'doctor', severity: 'warning', owner: 'P16', source: 'spec' },

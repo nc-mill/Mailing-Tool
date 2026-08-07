@@ -275,6 +275,7 @@
     "campaignContentMissing": "The campaign has no content yet. Create it in the Content step, or take a finished template from the library.",
     "campaignContentEmpty": "The email is empty: there is nothing in it but the footer with the unsubscribe link. Open the editor and add text, an image or a button.",
     "campaignNoUnsubscribe": "The template has no unsubscribe link. The campaign can't be sent without it.",
+    "workspacePostalAddressMissing": "The footer carries the sender postal address tag, but no address is set for this project, so the email goes out with a blank line. Commercial messages are required to carry it. Fill it in under Settings, Project.",
     "campaignUnknownMergeField": "The template uses fields that don't exist: {fields}.",
     "campaignAudienceTooLarge": "The audience has more than {max} recipients. Split the campaign.",
     "campaignAudienceOnlySample": "The audience contains only sample contacts. They will not receive anything.",
@@ -553,7 +554,7 @@
         "sandboxTitle": "A new SES account runs in test mode at Amazon",
         "sandboxText": "Every new SES account starts in test mode at Amazon. While it lasts, you may only send to addresses and domains verified in SES itself, at most 200 messages per 24 hours and at a rate of one message per second. This is by far the most common reason a first campaign fails to go out.",
         "sandboxHowTitle": "How to switch test mode at Amazon off",
-        "sandboxHowText": "In the SES console open the Account dashboard and choose Request production access. Amazon asks who you send to and what, how people get onto your list and how you handle unsubscribes. Answer truthfully and specifically. A reply usually arrives within 24 hours. Test mode is decided per region, so after switching regions you have to ask again.",
+        "sandboxHowText": "In the SES console open the Account dashboard and choose Request production access. Amazon asks who you send to and what, how people get onto your list and how you handle unsubscribes. Answer truthfully and specifically. Test mode is decided per region, so after switching regions you have to ask again.",
         "linksTitle": "Official Amazon documentation",
         "linkNewWindow": "opens in a new window",
         "linkSetup": "Setting up Amazon SES from scratch",
@@ -702,7 +703,7 @@
       "wantsMailType": "whether you send marketing or transactional mail,",
       "wantsWebsite": "your website address, so it knows what will be sent,",
       "wantsContact": "optionally another contact address it can reach you at.",
-      "review": "The request is reviewed by a person from AWS support. The first answer comes within 24 hours.",
+      "review": "The request is reviewed by a person from AWS support.",
       "noEditsDuringReview": "Until the review is finished you cannot change the details or submit a second request.",
       "mailTypeLabel": "Type of mail",
       "mailTypeMarketing": "Marketing",
@@ -718,10 +719,17 @@
       "submitting": "Submitting…",
       "cancel": "Cancel",
       "close": "Close",
-      "sent": "The request is in. Amazon is reviewing it now and sends the answer to the account contact address, usually within 24 hours.",
+      "sent": "The request is in. Amazon is reviewing it now and will send the answer to the account contact address.",
       "required": "This field needs to be filled in.",
       "failed": "We could not submit the request.",
-      "alreadyUnderReview": "Amazon is already reviewing one of your requests. You cannot submit another until that one is finished."
+      "alreadyUnderReview": "Amazon is already reviewing one of your requests. You cannot submit another until that one is finished.",
+      "reviewStatus": {
+        "none": "The account is in test mode and only delivers to verified addresses. You have not asked for production access yet.",
+        "pending": "Amazon is reviewing your request for production access. Until it decides, you cannot submit a new one or change the details.",
+        "granted": "Amazon granted production access.",
+        "denied": "Amazon rejected the request. It will accept a new one once you add what was missing; the reason went to the account contact address.",
+        "failed": "The request never reached Amazon, and it happened on their side. Try submitting it again."
+      }
     },
     "editDialog": {
       "open": "Edit",
@@ -921,5 +929,16 @@
     "submitting": "Stopping…",
     "back": "Keep sending",
     "failed": "Sending could not be stopped ({detail})."
+  },
+  "bulk": {
+    "delete": "{count, plural, =0 {Delete campaigns} one {Delete # campaign} other {Delete # campaigns}}",
+    "deleteSubmit": "{count, plural, =0 {Delete campaigns} one {Delete # campaign} other {Delete # campaigns}}",
+    "deleteTitle": "{count, plural, =0 {Delete campaigns?} one {Delete # campaign?} other {Delete # campaigns?}}",
+    "deleteSkipped": "{count, plural, =0 {No other selected campaign stays} one {# more selected campaign stays, it cannot be deleted} other {# more selected campaigns stay, they cannot be deleted}}: only a campaign that went out to nobody and is not scheduled can be deleted.",
+    "nothingDeletable": "None of the selected campaigns can be deleted. Only a campaign that went out to nobody and is not scheduled can be deleted.",
+    "deleteDone": "{count, plural, =0 {No campaign deleted.} one {# campaign deleted.} other {# campaigns deleted.}}",
+    "deletePartial": "Deleted {done} of {total} campaigns. The rest stays selected.",
+    "deleteFailed": "{count, plural, =0 {No campaign could be deleted.} one {# campaign could not be deleted.} other {# campaigns could not be deleted.}}",
+    "deleteFailedDetail": "{count, plural, =0 {No campaign could be deleted} one {# campaign could not be deleted} other {# campaigns could not be deleted}}: {detail}"
   }
 }

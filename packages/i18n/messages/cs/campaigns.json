@@ -275,6 +275,7 @@
     "campaignContentMissing": "Kampaň zatím nemá obsah. Vytvořte ho v kroku Obsah, nebo převezměte hotovou šablonu z knihovny.",
     "campaignContentEmpty": "E-mail je prázdný: kromě patičky s odhlašovacím odkazem v něm nic není. Otevřete editor a přidejte text, obrázek nebo tlačítko.",
     "campaignNoUnsubscribe": "V šabloně chybí odkaz na odhlášení. Bez něj kampaň odeslat nelze.",
+    "workspacePostalAddressMissing": "V patičce je značka s poštovní adresou odesílatele, ale adresa není v projektu vyplněná, takže v e-mailu zůstane prázdné místo. Obchodní sdělení ji musí obsahovat. Doplňte ji v Nastavení, sekce Projekt.",
     "campaignUnknownMergeField": "Šablona používá pole, která neexistují: {fields}.",
     "campaignAudienceTooLarge": "Publikum má víc než {max} příjemců. Rozdělte kampaň.",
     "campaignAudienceOnlySample": "Publikum obsahuje jen ukázkové kontakty. Těm se nic neodešle.",
@@ -553,7 +554,7 @@
         "sandboxTitle": "Nový účet SES běží v testovacím režimu u Amazonu",
         "sandboxText": "Každý nový účet SES začíná v testovacím režimu u Amazonu. Dokud v něm jste, smíte posílat jen na adresy a domény ověřené přímo v SES, nejvýš 200 zpráv za 24 hodin a rychlostí jedna zpráva za sekundu. Tohle je zdaleka nejčastější důvod, proč se první kampaň neodešle.",
         "sandboxHowTitle": "Jak testovací režim u Amazonu vypnout",
-        "sandboxHowText": "V konzoli SES otevřete Account dashboard a zvolte Request production access. Amazon se zeptá, komu a co posíláte, jak lidi do seznamu získáváte a jak řešíte odhlášení. Odpovězte pravdivě a konkrétně. Vyjádření obvykle přijde do 24 hodin. Testovací režim se posuzuje pro každý region zvlášť, takže po změně regionu žádáte znovu.",
+        "sandboxHowText": "V konzoli SES otevřete Account dashboard a zvolte Request production access. Amazon se zeptá, komu a co posíláte, jak lidi do seznamu získáváte a jak řešíte odhlášení. Odpovězte pravdivě a konkrétně. Testovací režim se posuzuje pro každý region zvlášť, takže po změně regionu žádáte znovu.",
         "linksTitle": "Oficiální dokumentace Amazonu",
         "linkNewWindow": "otevře se v novém okně",
         "linkSetup": "Nastavení Amazon SES od začátku",
@@ -702,7 +703,7 @@
       "wantsMailType": "jestli posíláte marketingovou, nebo transakční poštu,",
       "wantsWebsite": "adresu vašeho webu, aby věděl, co se bude rozesílat,",
       "wantsContact": "nepovinně další kontaktní adresu, na kterou se vám může ozvat.",
-      "review": "Žádost posuzuje člověk z podpory AWS. První odpověď posílá do 24 hodin.",
+      "review": "Žádost posuzuje člověk z podpory AWS.",
       "noEditsDuringReview": "Než posouzení dokončí, nejde údaje změnit ani podat druhou žádost.",
       "mailTypeLabel": "Druh pošty",
       "mailTypeMarketing": "Marketingová",
@@ -718,10 +719,17 @@
       "submitting": "Odesíláme…",
       "cancel": "Zrušit",
       "close": "Zavřít",
-      "sent": "Žádost odešla. Amazon ji teď posuzuje a odpověď posílá na kontaktní adresu účtu, obvykle do 24 hodin.",
+      "sent": "Žádost odešla. Amazon ji teď posuzuje a odpověď pošle na kontaktní adresu účtu.",
       "required": "Tohle pole je potřeba vyplnit.",
       "failed": "Žádost se nepodařilo odeslat.",
-      "alreadyUnderReview": "Amazon už jednu vaši žádost posuzuje. Než ji dokončí, další podat nejde."
+      "alreadyUnderReview": "Amazon už jednu vaši žádost posuzuje. Než ji dokončí, další podat nejde.",
+      "reviewStatus": {
+        "none": "Účet je v testovacím režimu, doručí jen na ověřené adresy. O produkční přístup jste zatím nežádali.",
+        "pending": "Žádost o produkční přístup Amazon posuzuje. Do rozhodnutí nejde podat novou ani změnit údaje.",
+        "granted": "Produkční přístup Amazon udělil.",
+        "denied": "Amazon žádost zamítl. Novou přijme, až doplníte, co mu chybělo; důvod poslal na kontaktní adresu účtu.",
+        "failed": "Žádost k Amazonu nedorazila, stalo se to na jeho straně. Zkuste ji podat znovu."
+      }
     },
     "editDialog": {
       "open": "Upravit",
@@ -921,5 +929,16 @@
     "submitting": "Ruším…",
     "back": "Nechat běžet",
     "failed": "Rozesílku se nepodařilo zrušit ({detail})."
+  },
+  "bulk": {
+    "delete": "{count, plural, =0 {Smazat kampaně} one {Smazat # kampaň} few {Smazat # kampaně} many {Smazat # kampaně} other {Smazat # kampaní}}",
+    "deleteSubmit": "{count, plural, =0 {Smazat kampaně} one {Smazat # kampaň} few {Smazat # kampaně} many {Smazat # kampaně} other {Smazat # kampaní}}",
+    "deleteTitle": "{count, plural, =0 {Smazat kampaně?} one {Smazat # kampaň?} few {Smazat # kampaně?} many {Smazat # kampaně?} other {Smazat # kampaní?}}",
+    "deleteSkipped": "{count, plural, =0 {Žádná další označená kampaň nezůstane} one {# další označená kampaň zůstane, smazat ji nejde} few {# další označené kampaně zůstanou, smazat je nejde} many {# dalších označených kampaní zůstane, smazat je nejde} other {# dalších označených kampaní zůstane, smazat je nejde}}: smazat jde jen kampaň, která nikomu neodešla a není naplánovaná.",
+    "nothingDeletable": "Z označených kampaní nejde smazat žádná. Smazat jde jen kampaň, která nikomu neodešla a není naplánovaná.",
+    "deleteDone": "{count, plural, =0 {Nesmazána žádná kampaň.} one {Smazána # kampaň.} few {Smazány # kampaně.} many {Smazáno # kampaně.} other {Smazáno # kampaní.}}",
+    "deletePartial": "Smazáno {done} kampaní z {total}. Zbytek zůstal označený.",
+    "deleteFailed": "{count, plural, =0 {Žádnou kampaň se nepodařilo smazat.} one {# kampaň se nepodařilo smazat.} few {# kampaně se nepodařilo smazat.} many {# kampaně se nepodařilo smazat.} other {# kampaní se nepodařilo smazat.}}",
+    "deleteFailedDetail": "{count, plural, =0 {Žádnou kampaň se nepodařilo smazat} one {# kampaň se nepodařilo smazat} few {# kampaně se nepodařilo smazat} many {# kampaně se nepodařilo smazat} other {# kampaní se nepodařilo smazat}}: {detail}"
   }
 }

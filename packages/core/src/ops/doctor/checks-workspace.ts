@@ -67,12 +67,15 @@ const checkDemoData: DoctorCheck = async (ctx) => {
 /**
  * Umí projekt odeslat systémový e-mail?
  *
- * PROČ TAHLE KONTROLA EXISTUJE. Systémovou poštu odsud pošle jen účet typu SMTP,
- * protože klient SES žije v senderu v Go a v TypeScriptu žádný není. Instalace
- * s jediným účtem typu SES tedy neodešle pozvánku, obnovu hesla ani ověření adresy
- * ve zkušebním režimu, a dosud se to dalo zjistit VÝHRADNĚ z řádku `system_mail_failed`
- * v logu aplikace. Provozovatel se to tak dozvěděl teprve tehdy, když někdo zapomněl
- * heslo, což je nejhorší možný okamžik: bez pošty se do instalace nedostane zpátky.
+ * PROČ TAHLE KONTROLA EXISTUJE. Projekt bez použitelného odesílacího účtu
+ * neodešle pozvánku, obnovu hesla ani ověření adresy ve zkušebním režimu, a dosud
+ * se to dalo zjistit VÝHRADNĚ z řádku `system_mail_failed` v logu aplikace.
+ * Provozovatel se to tak dozvěděl teprve tehdy, když někdo zapomněl heslo, což je
+ * nejhorší možný okamžik: bez pošty se do instalace nedostane zpátky.
+ *
+ * ZÁVADNÝ STAV SE ZÚŽIL. Do doplnění větve pro SES sem spadal i projekt, který má
+ * jen účet typu SES; ten dnes odešle. Zbývají dva stavy: projekt nemá žádný
+ * použitelný účet, nebo mu zmizel ten, který si vybral v nastavení.
  *
  * Závažnost je `warning`, ne `critical`: instalace funguje dál, jen jí chybí cesta
  * pro poštu o účtech. Náprava je uvedená v `action`, včetně příkazu, kterým se dá
@@ -112,9 +115,7 @@ const checkSystemMail: DoctorCheck = async (ctx) => {
         ? `Projekt ${ws.name} má pro systémovou poštu vybraný odesílací účet, který už neexistuje nebo je vypnutý.`
         : ws.type === null
           ? `Projekt ${ws.name} nemá ani jeden použitelný odesílací účet.`
-          : `Projekt ${ws.name} má odesílací účet typu ${ws.type}, kterým systémová pošta odejít neumí. ` +
-            'Systémové e-maily odsud odesílá jen účet typu SMTP; klient SES je v odesílací službě ' +
-            'napsané v Go a aplikace ho nemá.';
+          : `Projekt ${ws.name} má odesílací účet typu ${ws.type}, kterým systémová pošta odejít neumí.`;
     findings.push({
       id: 'system_mail_unavailable',
       severity: 'warning',
@@ -124,9 +125,9 @@ const checkSystemMail: DoctorCheck = async (ctx) => {
         'adresy ve zkušebním režimu.',
       action:
         'Stav a nastavení najdete v Nastavení → Systémová pošta. Přidejte v Nastavení → Odesílání ' +
-        'účet typu SMTP; použije se přednostně pro systémovou poštu, kampaně můžou dál chodit přes ' +
-        'SES. Než to uděláte, zakládejte členy v Nastavení → Tým rovnou s heslem a hesla obnovujte ' +
-        'příkazem mlain reset-password <e-mail>.',
+        'odesílací účet, typu SES nebo SMTP; systémová pošta odejde oběma. Než to uděláte, ' +
+        'zakládejte členy v Nastavení → Tým rovnou s heslem a hesla obnovujte příkazem ' +
+        'mlain reset-password <e-mail>.',
     });
   }
   return findings;

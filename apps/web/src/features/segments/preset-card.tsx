@@ -131,7 +131,7 @@ export function PresetGrid({
         </h2>
         <span className="font-mono text-meta text-text-muted">{t('presets.editableHint')}</span>
       </div>
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-[var(--spacing-gutter)]">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(280px,100%),1fr))] gap-[var(--spacing-gutter)]">
         {presets.map((preset) => (
           <PresetCard
             key={preset.key}

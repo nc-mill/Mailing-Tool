@@ -1,6 +1,15 @@
 import { expect, type Page } from '@playwright/test';
 
 /**
+ * Text, který scénář do šablony napíše.
+ *
+ * Věta začíná „Dobrý den", protože právě na ni se pak ptá kontrola doručené
+ * zprávy: je to nejlevnější doklad, že obsah šablony opravdu doputoval až
+ * do e-mailu, který dostal příjemce.
+ */
+const TEMPLATE_BODY = 'Dobrý den, posíláme novinky z našeho e-shopu.';
+
+/**
  * Knihovna šablon a editor, srovnané podle SKUTEČNÉHO produktu.
  *
  * Plán čekal galerii startovních šablon a formulář: kliknout „Univerzální
@@ -10,7 +19,7 @@ import { expect, type Page } from '@playwright/test';
  *
  *   complementary "Bloky": Nadpis | Text | Obrázek | Tlačítko | Oddělovač |
  *                          Mezera | Sociální sítě | Vlastní HTML | Patička
- *   tree "Obsah e-mailu": Sekce > Nadpis, Text, Oddělovač, Mezera
+ *   tree "Obsah e-mailu": Sekce > Patička (nová šablona je jinak PRÁZDNÁ)
  *   complementary "Vlastnosti vybraného bloku": Motiv, E-mail, Písmo, Tmavý režim
  *   complementary "AI asistent"
  *   button "Náhled" | button "Poslat test"
@@ -76,7 +85,40 @@ export class TemplatePage {
      * najde v seznamu šablon. Ukládání obsahu ověřuje `saveDesign` v jednotkových
      * testech portů, ne tenhle krok.
      */
+    await this.writeBody();
     return 'Nová šablona';
+  }
+
+  /**
+   * Napíše do šablony text.
+   *
+   * MUSÍ TO UDĚLAT SCÉNÁŘ. Nová šablona vzniká PRÁZDNÁ: v dokumentu je jedna
+   * sekce a v ní jediný blok, patička (ověřeno výpisem `templates.design`
+   * z běžící instalace). Prázdný e-mail se ale neodesílá, a je to správně:
+   * zkušební odeslání odmítne `test_template_empty` s větou „E-mail je zatím
+   * prázdný: kromě patičky v něm není žádný obsah." Dřívější znění tenhle krok
+   * nemělo a spoléhalo na startovní šablonu s obsahem, která v produktu není.
+   *
+   * Psaní textu do e-mailu je navíc přesně ten krok zlaté cesty, který se
+   * jmenuje „vytvoření šablony". Bez něj by se přeskočil.
+   */
+  private async writeBody(): Promise<void> {
+    await this.page
+      .getByRole('complementary', { name: 'Bloky' })
+      .getByRole('button', { name: 'Text', exact: true })
+      .click();
+
+    // Vložený blok je prázdný odstavec a editor na něj posadí kurzor. Text se
+    // píše do pole s přístupným jménem „Text bloku" (`role="textbox"`, který
+    // ProseMirroru dodává `rich-text-field.tsx`).
+    const body = this.page.getByRole('textbox', { name: 'Text bloku' }).first();
+    await expect(body).toBeVisible();
+    await body.click();
+    await body.pressSequentially(TEMPLATE_BODY);
+
+    // Editor ukládá průběžně. Čeká se na jeho vlastní hlášení, ne na pauzu:
+    // bez uloženého obsahu by kampaň převzala prázdný dokument.
+    await expect(this.page.getByText(/Uloženo/).first()).toBeVisible({ timeout: 30_000 });
   }
 
   /** Otevře poslední založenou šablonu ze seznamu. */

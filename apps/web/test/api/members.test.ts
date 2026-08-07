@@ -340,7 +340,7 @@ describe('systémová pošta blokuje pozvánku, ne založení člena', () => {
     expect(system_mail.reason).toBe('no_account');
     expect(system_mail.from_source).toBe('app_url');
     expect(system_mail.from_address).toMatch(/^mlain@/);
-    expect(system_mail.capable_types).toEqual(['smtp']);
+    expect(system_mail.capable_types).toEqual(['smtp', 'ses']);
   });
 
   it('pozvánka v projektu bez pošty vrací 503 a nezaloží se', async () => {

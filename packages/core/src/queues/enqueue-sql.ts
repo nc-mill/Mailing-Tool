@@ -78,11 +78,12 @@ export type JobInsert = {
    * Přebití politiky opakování z registru. Bez nich se berou hodnoty z `QueueEntry`.
    *
    * NENÍ TO KOSMETIKA A NESMÍ SE TO ODSTRANIT. Doména kontaktů má vlastní výčet
-   * `CONTACTS_QUEUES` a ten se se sdíleným registrem u DESETI front rozchází.
-   * Nejostřejší případ je `gdpr.erase`: doména mu dává `retryLimit: 0`, sdílený
-   * registr `3`. Kdyby tenhle soubor hodnoty z registru vnutil, změnil by se
-   * počet pokusů u anonymizace podle článku 17, a to je změna chování, o kterou
-   * nikdo nežádal a která by se schovala v úpravě o slučování.
+   * `CONTACTS_QUEUES` a ten se se sdíleným registrem u ČTYŘ front rozchází
+   * v počtu pokusů (expirace se srovnala a `gdpr.erase` taky, viz hlavička
+   * `contacts/queues.ts`). Nejostřejší případ je `contacts.bulk_delete`: doména mu
+   * dává `retryLimit: 0`, sdílený registr `3`. Kdyby tenhle soubor hodnoty z registru
+   * vnutil, začalo by se hromadné mazání kontaktů po selhání opakovat, a to je změna
+   * chování, o kterou nikdo nežádal a která by se schovala v úpravě o slučování.
    *
    * Import je používá z jiného důvodu: rozpracovaný běh se po pádu NESMÍ spustit
    * znovu od začátku, jinak by naimportoval už zapsané řádky podruhé.
@@ -154,12 +155,35 @@ export function jobInsert(input: JobInsert): SQL {
   const entry = queue(input.name);
   const schema = sql.identifier(input.schema);
 
-  // `dead_letter` se ZÁMĚRNĚ nevyplňuje: sloupec má cizí klíč na `queue.name`,
-  // takže hodnota `<fronta>.dlq` by zápis shodila všude, kde dead letter frontu
-  // nikdo nezaložil. Přiřazení dead letter fronty patří k založení fronty.
+  /*
+   * `dead_letter` SE ČTE Z FRONTY TÝMŽ PODDOTAZEM JAKO `policy`, a je to oprava
+   * vady, kterou tenhle komentář dřív popisoval jako záměr.
+   *
+   * Stálo tu, že se sloupec nevyplňuje schválně, protože má cizí klíč na
+   * `queue.name` a hodnota `<fronta>.dlq` by zápis shodila všude, kde dead
+   * letter frontu nikdo nezaložil. To je pravda o KONSTANTĚ opsané z registru,
+   * ne o poddotazu. Důsledek ale byl, že fronta pro selhané úlohy nefungovala
+   * ANI JEDNOU: pg-boss totiž neroutuje podle fronty, ale podle sloupce
+   * `dead_letter` NA ŘÁDKU ÚLOHY. V `plans.js` to dělá CTE `dlq_jobs`:
+   *
+   *   INSERT INTO job (name, ...) SELECT r.dead_letter, ... FROM results r
+   *
+   * a distribuovaná cesta v `manager.js` totéž přes `if (job.dead_letter)`.
+   * Náš INSERT nechával sloupec na NULL, takže se po vyčerpání pokusů úloha
+   * uložila jako `failed` a NIKAM se nepřeposlala, ačkoli 47 front v registru
+   * dead letter frontu má a `registerQueues` ji poctivě zakládá. Selhaná práce
+   * neměla kam spadnout.
+   *
+   * Poddotaz ten cizí klíč neporušuje, a to je celý vtip: čte hodnotu, která
+   * v `queue` UŽ JE, tedy buď `<fronta>.dlq` (fronta existuje, jinak by ji
+   * `queue.dead_letter` nemohl mít) nebo NULL u front bez dead letter fronty.
+   * Nemůže vzniknout jméno, které v `queue` není. Je to tentýž důvod, proč se
+   * poddotazem čte i politika: jedna pravda, a to ta, kterou používá databáze.
+   */
   return sql`
     INSERT INTO ${schema}.job
-      (name, data, singleton_key, retry_limit, retry_backoff, expire_seconds, start_after, policy)
+      (name, data, singleton_key, retry_limit, retry_backoff, expire_seconds, start_after,
+       policy, dead_letter)
     VALUES (
       ${input.name},
       ${JSON.stringify(input.payload)}::jsonb,
@@ -168,7 +192,8 @@ export function jobInsert(input: JobInsert): SQL {
       ${input.retryBackoff ?? entry.retryBackoff},
       ${input.expireInSeconds ?? entry.expireInSeconds},
       now() + make_interval(secs => ${input.startAfterSeconds ?? 0}),
-      (SELECT policy FROM ${schema}.queue WHERE name = ${input.name})
+      (SELECT policy FROM ${schema}.queue WHERE name = ${input.name}),
+      (SELECT dead_letter FROM ${schema}.queue WHERE name = ${input.name})
     )
     ON CONFLICT DO NOTHING
     RETURNING id

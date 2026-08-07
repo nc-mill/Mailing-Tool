@@ -31,6 +31,42 @@ export const SMTP = {
   fromAddress: 'newsletter@firma.cz',
 } as const;
 
+/**
+ * Poštovní adresa odesílatele.
+ *
+ * Obchodní sdělení ji podle zákona nést musí a do patičky ji sází merge tag
+ * `{{ workspace.sender_address }}`. Průvodce prvním spuštěním pole nemá, takže
+ * ji zlatá cesta vyplňuje v nastavení projektu; bez toho by kontrola patičky
+ * měřila jen to, že ji uživatel nezadal.
+ *
+ * JEDNOŘÁDKOVÁ schválně. V nastavení je to víceřádkové pole, ale v HTML se
+ * odřádkování mění na `<br>` a v textové verzi zůstává, takže víceřádková
+ * hodnota by z kontroly udělala hádanku o bílých znacích místo kontroly
+ * přítomnosti adresy.
+ */
+export const POSTAL_ADDRESS = 'Kolo Eshop s.r.o., Nádražní 5, 110 00 Praha 1';
+
+/**
+ * Seznam odběratelů, do kterého vede formulář i import.
+ *
+ * ZAKLÁDÁ HO SCÉNÁŘ, ačkoli by ho měl mít projekt sám. `createWorkspace`
+ * v `identity/workspace-service.ts` zakládá výchozí seznam „Odběratelé"
+ * u každého projektu, ale průvodce prvním spuštěním (`identity/setup.ts`) ne,
+ * takže první projekt instalace je bez seznamu. Jméno je stejné jako to,
+ * které by dal produkt, aby se scénář nemusel měnit, až se to spraví.
+ *
+ * Seznam je od 7. 8. u importu POVINNÝ: krok Volby nepustí dál bez cíle,
+ * protože kontakt bez seznamu nemá co dostat a nemá se z čeho odhlásit.
+ */
+export const SUBSCRIBERS_LIST = 'Odběratelé';
+
+/** Formulář, kterým do produktu chodí skuteční odběratelé. */
+export const SIGNUP = {
+  formName: 'Přihlášení z patičky webu',
+  /** Předmět výchozího potvrzovacího e-mailu (`contacts/lists/default-emails.ts`). */
+  confirmationSubject: 'Potvrďte prosím přihlášení k odběru',
+} as const;
+
 export const CAMPAIGN = {
   name: 'Zlatá cesta: první kampaň',
   subject: 'Vítejte u nás',

@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PasteContacts, mappingForHeader } from './paste-contacts';
+import { PASTE_MAX_ROWS } from './paste-parser';
 import { renderWithProviders } from './test-utils';
 
 const push = vi.fn();
@@ -338,6 +339,60 @@ describe('obrazovka vložení kontaktů textem', () => {
 
     expect(screen.getByText(/aspoň jeden řádek s platnou adresou/i)).toBeInTheDocument();
     expect(calls).toHaveLength(0);
+    // Důvod sám o sobě nestačí: opravuje se ve vloženém textu, takže tam musí
+    // skončit i kurzor.
+    expect(screen.getByLabelText(/kontakty/i)).toHaveFocus();
+  });
+
+  it('u dávky nad limitem mluví o limitu, ne o chybějící adrese', async () => {
+    const { calls } = stubApi();
+    renderScreen();
+    const rows: string[] = [];
+    for (let index = 0; index <= PASTE_MAX_ROWS; index += 1) {
+      rows.push(`clovek${index}@example.com`);
+    }
+    await type(rows.join('\n'));
+
+    const save = screen.getByRole('button', { name: /uložit/i });
+    await userEvent.click(save);
+
+    // Jedna věta o obojím naráz nutila člověka zjišťovat, která půlka se týká
+    // jeho textu. Platných adres je tu deset tisíc, chybí jen místo v dávce.
+    // Čte se DŮVOD U TLAČÍTKA, ne libovolná shoda na stránce: tutéž radu má
+    // i výstraha v souhrnu.
+    const reason = document.getElementById(save.getAttribute('aria-describedby') ?? '');
+    expect(reason?.textContent).toMatch(/Rozdělte text na víc dávek/);
+    expect(reason?.textContent).not.toMatch(/platnou adresou/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('věta o cílovém seznamu stojí nad tlačítky, ne mezi nimi', () => {
+    // ROZVRŽENÍ JE SOUČÁST SDĚLENÍ. Věta o zařazení do seznamu stála v řádku za
+    // tlačítkem „Zrušit" a četla se jako jeho vysvětlení, přestože popisuje celou
+    // dávku. Důvod nedostupnosti zase stál MEZI tlačítky.
+    renderScreen();
+
+    const target = screen.getByText(/zařadíme do seznamu Zákazníci/i);
+    const save = screen.getByRole('button', { name: /uložit kontakty/i });
+    const cancel = screen.getByRole('link', { name: /zrušit/i });
+
+    expect(target.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(target.parentElement).not.toBe(save.parentElement);
+    // Ústup je odkaz vedle hlavní akce, ne druhé stejně velké tlačítko.
+    expect(cancel.parentElement).toBe(save.parentElement);
+    // Důvod nedostupnosti dostane vlastní řádek pod dvojicí, ne místo mezi nimi.
+    expect(save.parentElement?.className).toContain('[&>span]:basis-full');
+  });
+
+  it('řekne, co se s kontakty stane podle zvoleného stavu přihlášení', async () => {
+    renderScreen();
+
+    expect(screen.getByText(/jako přihlášené k odběru/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('radio', { name: /čeká na potvrzení/i }));
+
+    expect(screen.getByText(/počkáme, až přihlášení potvrdí/i)).toBeInTheDocument();
+    expect(screen.queryByText(/jako přihlášené k odběru/i)).not.toBeInTheDocument();
   });
 
   it('běžící zpracování ukazuje jako průběh, ne jako selhání, a odejde až na konci', async () => {

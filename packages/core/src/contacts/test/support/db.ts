@@ -78,6 +78,14 @@ export function asMigrator(): Pool {
   return migratorPool;
 }
 
+/**
+ * Připojovací řetězec migrátora. Potřebují ho provozní příkazy z `@mlain/core/ops`,
+ * které si otevírají VLASTNÍ spojení (`withAdminTx`), takže jim hotový pool nestačí.
+ */
+export function migratorUrl(): string {
+  return h().migratorUrl;
+}
+
 /** Pool pod aplikační rolí, tedy pod tou, pod kterou běží produkce. */
 export function asAppRole(): Pool {
   h();

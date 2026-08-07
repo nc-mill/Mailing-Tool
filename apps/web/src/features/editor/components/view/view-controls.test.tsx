@@ -67,7 +67,14 @@ const document = (): EditorDocument =>
 
 // `Tooltip` v hlavičce potřebuje `TooltipProvider`; v aplikaci ho dodává
 // skořápka projektu, tady obal testu.
-function shell(assistant?: React.ReactNode) {
+function shell(
+  assistant?: React.ReactNode,
+  greeting?: {
+    addressForm: 'formal' | 'informal';
+    salutationBy: 'first_name' | 'surname';
+    vocativePolicy: 'strict' | 'balanced';
+  },
+) {
   render(
     <NextIntlClientProvider locale="cs" messages={{ editor: messages }}>
       <TooltipProvider>
@@ -80,6 +87,7 @@ function shell(assistant?: React.ReactNode) {
           fieldCatalog={catalog}
           ports={createFakePorts()}
           templateKind="campaign"
+          {...(greeting === undefined ? {} : { greeting })}
           {...(assistant === undefined ? {} : { assistant })}
         />
       </TooltipProvider>
@@ -187,6 +195,22 @@ describe('ovladače zobrazení v hlavičce editoru', () => {
     expect(trigger).toHaveAttribute('aria-label', 'Zobrazit jako: Značky');
   });
 
+  /*
+   * WCAG 2.5.8. Naměřeno v prohlížeči: samotné tlačítko je 36 px vysoké
+   * (`size="sm"`, tedy `--size-control-sm`), kdežto přepínač režimů vedle něj má
+   * 44. Vyšší tlačítko by z řady ovladačů vyčnívalo, takže se zvětšuje jen CÍL,
+   * neviditelným překryvem přes celou šířku tlačítka. Roste jen na výšku:
+   * vodorovně sousedí s dalšími ovladači a širší cíl by jim ukrajoval z jejich.
+   */
+  it('klikací plocha spouštěče je 44 px, i když je tlačítko 36 px vysoké', () => {
+    shell();
+    const trigger = screen.getByRole('button', { name: /Zobrazit jako/ });
+    expect(trigger).toHaveClass('relative');
+    expect(trigger.className).toContain('after:h-[var(--size-target-min)]');
+    expect(trigger.className).toContain('after:-translate-y-1/2');
+    expect(trigger.className).toContain('after:inset-x-0');
+  });
+
   it('rozbalená nabídka ukáže současnou volbu řádkem i zaškrtnutím', async () => {
     shell();
     await userEvent.click(screen.getByRole('button', { name: /Zobrazit jako/ }));
@@ -233,6 +257,43 @@ describe('ovladače zobrazení v hlavičce editoru', () => {
     expect(dark).toContain(hexToRgb(expected));
   });
 
+  /**
+   * Nález z provozu: „Když tam vložím Oslovení, tak vlastně nevím, jak vypadá.
+   * Je tam v šabloně mailu napsáno jen ‚Oslovení'. Ale bude to vypadat jak?
+   * Dobrý den Honzo? Nebo Krásný den Honzo?"
+   *
+   * Věta musí být vidět BEZ přepínání zobrazení, tedy i v režimu „Značky", ve
+   * kterém se na plátně kreslí štítky. Bublina po najetí i `aria-label` ji nesou,
+   * takže se ke stejné informaci dostane myš, klávesnice i čtečka.
+   */
+  it('u vloženého oslovení je vidět, jakou větu vyrobí, i bez přepnutí zobrazení', async () => {
+    shell();
+    const token = screen.getByTestId('token');
+    // Štítek zůstává krátký, aby neroztahoval sazbu odstavce.
+    expect(token).toHaveTextContent('Oslovení');
+    // Věta je v bublině a v přístupném jméně, a je to věta ze vzorových dat,
+    // která skládá `buildGreeting`, ne vymyšlený příklad.
+    expect(token.getAttribute('title')).toContain('Dobrý den, Přemyslave-Řehoři');
+    expect(token.getAttribute('aria-label')).toContain('Dobrý den, Přemyslave-Řehoři');
+  });
+
+  /**
+   * PŘÍKLAD MUSÍ ZNÍT JAKO ODESLANÝ E-MAIL. Editor skládal vzorovou větu podle
+   * výchozího vykání, protože nastavení projektu do prohlížeče nedostal, takže
+   * projekt s tykáním sliboval „Dobrý den, Přemyslave-Řehoři" u e-mailu, který
+   * odejde s „Ahoj Přemyslave-Řehoři".
+   */
+  it('příklad oslovení se řídí nastavením projektu, ne výchozím vykáním', () => {
+    shell(undefined, {
+      addressForm: 'informal',
+      salutationBy: 'first_name',
+      vocativePolicy: 'strict',
+    });
+    const token = screen.getByTestId('token');
+    expect(token.getAttribute('title')).toContain('Ahoj Přemyslave-Řehoři');
+    expect(token.getAttribute('title')).not.toContain('Dobrý den');
+  });
+
   it('volba Vzorová data dosadí do značky hodnotu, ne popisek pole', async () => {
     shell();
     expect(screen.getByTestId('token')).toHaveTextContent('Oslovení');
@@ -243,11 +304,23 @@ describe('ovladače zobrazení v hlavičce editoru', () => {
     expect(screen.getByTestId('token').textContent).not.toContain('{{');
   });
 
-  it('Kontakt bez jména ukáže díru tam, kde jméno chybí', async () => {
+  /**
+   * OPRAVENO 7. 8. 2026. Test dřív žádal, aby oslovení u kontaktu bez jména
+   * zůstalo prázdné, a vzorová data mu vyhověla natvrdo psaným prázdným
+   * řetězcem. Byla to ale nepravda: `buildGreeting` na kontaktu bez jména
+   * skládá neutrální „Dobrý den" BEZ čárky a přesně to příjemce dostane.
+   * Náhled tedy ukazoval díru u e-mailu, který ve skutečnosti pozdraví.
+   *
+   * Díra u téhle volby patří polím, která opravdu prázdná jsou (jméno, vlastní
+   * atributy), ne hotové větě, která si s prázdným jménem poradí.
+   */
+  it('Kontakt bez jména ukáže neutrální pozdrav, ne díru', async () => {
     shell();
     await userEvent.click(screen.getByRole('button', { name: /Zobrazit jako/ }));
     await userEvent.click(await screen.findByRole('button', { name: 'Kontakt bez jména' }));
-    await waitFor(() => expect(screen.getByTestId('token')).toHaveTextContent(''));
+    await waitFor(() => expect(screen.getByTestId('token')).toHaveTextContent('Dobrý den'));
+    // Bez čárky a bez jména: visící čárka je samostatné akceptační kritérium.
+    expect(screen.getByTestId('token').textContent?.trim()).toBe('Dobrý den');
   });
 
   it('Textová verze needituje: plátno zmizí a jedno kliknutí ho vrátí', async () => {

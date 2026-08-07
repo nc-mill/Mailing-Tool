@@ -170,8 +170,8 @@
       "notComputed": "Souhrn téhle kampaně se ještě nespočítal. Čísla níž jsou nuly z prázdného souhrnu, ne naměřené hodnoty. Kolik zpráv opravdu odešlo, ukazuje průběh odesílání."
     },
     "actions": {
-      "resendToUnopened": "Poslat znovu neotevřevším",
       "resendWarning": "Otevření jsou nepřesná, takže mezi příjemci budou i lidé, kteří e-mail četli. Zvažte jinou formulaci než „nestihli jste“.",
+      "duplicateFailed": "Kampaň se nepodařilo duplikovat: {detail}",
       "duplicate": "Duplikovat kampaň",
       "download": "Stáhnout report",
       "segmentFromClicked": "Vytvořit segment z těch, kdo klikli",
@@ -212,6 +212,7 @@
     "collapseCluster": "Sbalit události",
     "expanded": "Rozbaleno",
     "collapsed": "Sbaleno",
+    "eventAnchor": "Trvalý odkaz na událost: {what}, {when}",
     "machineOpen": "Automatické stažení poštovním klientem, nemusí znamenat skutečné otevření",
     "sessionGroup": "{pages, plural, =0 {Návštěva webu} one {Návštěva webu, # stránka} few {Návštěva webu, # stránky} many {Návštěva webu, # stránky} other {Návštěva webu, # stránek}}",
     "empty": "U tohoto kontaktu zatím nemáme žádnou aktivitu.",

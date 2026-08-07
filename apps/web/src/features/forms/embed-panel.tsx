@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useFormatter, useTranslations } from 'next-intl';
+import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { Link } from '@mlain/i18n/navigation';
 import { Badge } from '@mlain/ui/components/badge';
 import { Card, CardTitle } from '@mlain/ui/components/card';
@@ -12,7 +12,8 @@ import { RadioGroup, RadioGroupItem } from '@mlain/ui/components/radio-group';
 import { ChevronRight, ExternalLink } from '@mlain/ui/icons';
 import { CheckIcon } from '@/lib/ui/status-icons';
 import { EMBED_CLASSES } from '@/features/public/embed-script';
-import type { FormEmbedView } from './types';
+import { UnstyledFormPreview, toPreviewField } from './unstyled-preview';
+import type { FormEmbedView, FormFieldView } from './types';
 
 type Strategy = 'self' | 'delegate' | 'hosted';
 
@@ -119,19 +120,30 @@ export function EmbedPanel({
   formName,
   embed,
   basePath,
+  fields = [],
+  consentText = null,
 }: {
   formId: string;
   formName: string;
   embed: FormEmbedView;
   /** Cesta k sekci formulářů bez slugu projektu. */
   basePath: string;
+  /**
+   * Pole formuláře pro náhled. Výchozí prázdný seznam znamená „detail se nenačetl",
+   * a pak se náhled radši nevykreslí: prázdný formulář by lhal stejně jako
+   * ostylovaný, jen naopak.
+   */
+  fields?: FormFieldView[];
+  consentText?: string | null;
 }) {
   const t = useTranslations('contacts.embed');
   const tf = useTranslations('forms');
   const tcs = useTranslations('contacts');
   const ta = useTranslations('common.a11y');
   const format = useFormatter();
+  const locale = useLocale();
   const [strategy, setStrategy] = useState<Strategy>('delegate');
+  const previewItems = fields.map((field) => toPreviewField(field, locale));
 
   const instructions = [
     tf('embed.instructionsIntro'),
@@ -271,6 +283,20 @@ export function EmbedPanel({
             </Card>
           )}
 
+          {/*
+           * NÁHLED VLOŽENÉHO FORMULÁŘE. Ukazuje ho jediná komponenta v produktu
+           * (`unstyled-preview.tsx`), sdílená s editorem polí, a je BEZ NAŠICH STYLŮ.
+           * Bez něj byl na téhle obrazovce jediný „náhled" odkaz na hostovanou
+           * stránku, která naše styly má: uživatel z něj četl vzhled, který na svém
+           * webu nedostane. U hotové stránky se nevykresluje, tam je náhledem
+           * ta stránka sama.
+           */}
+          {strategy !== 'hosted' && previewItems.length > 0 && (
+            <Card gap="gutter" data-testid="embed-preview">
+              <UnstyledFormPreview items={previewItems} consentText={consentText} />
+            </Card>
+          )}
+
           {strategy === 'hosted' && (
             <Card gap="gutter" data-testid="embed-hosted">
               <CardTitle as="h2">{t('hostedUrl')}</CardTitle>
@@ -299,6 +325,12 @@ export function EmbedPanel({
                   date: format.dateTime(new Date(embed.first_submission_at), 'short'),
                 })}
           </p>
+          {/*
+            Odkaz vede na HOSTOVANOU stránku, která naše styly má. U vkládaného
+            formuláře se proto nesmí jmenovat „náhled": vzhled, který se z něj dá
+            přečíst, na cizím webu nikdo nedostane. Jako zkouška odeslání ale platí
+            dál, protože je to tentýž formulář se stejnými poli.
+          */}
           <a
             href={embed.hosted_url}
             target="_blank"
@@ -307,8 +339,11 @@ export function EmbedPanel({
             data-testid="embed-preview-link"
           >
             <ExternalLink aria-hidden className="icon-sm shrink-0" />
-            {t('testPreview')}
+            {strategy === 'hosted' ? t('testPreview') : tf('embed.testOpenHosted')}
           </a>
+          {strategy === 'hosted' ? null : (
+            <p className="text-meta text-text-muted">{tf('embed.testHostedNote')}</p>
+          )}
         </Card>
       </div>
     </>

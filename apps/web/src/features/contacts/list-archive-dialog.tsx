@@ -56,6 +56,23 @@ export function ListArchiveDialog({
       open={open}
       onOpenChange={onOpenChange}
       level="N2"
+      // Kontakty, přihlášení ani historie souhlasů se nemažou, seznam jen zmizí
+      // z nabídek. Archivace není mazání a nesmí tak vypadat.
+      destructive={false}
+      // OVĚŘENO 7. 8., a proto to tu stojí napsané místo výchozí hodnoty: CESTA
+      // ZPĚT Z ARCHIVU SEZNAMU NEEXISTUJE ani v rozhraní, ani v API. Do tabulky
+      // `lists` píšou jen čtyři místa (`update`, `archive`, `setDefault`,
+      // `clearDefault` v `repo/lists.ts`) a žádné z nich nevrací `deleted_at`
+      // na NULL; obnovovací trasa v `lists.routes.ts` není a `update` navíc
+      // archivovaný seznam odmítne přes `requireLive`, takže ho nespraví ani
+      // PATCH. Šablony a kontakty obnovu mají, seznamy ne. Věta o nevratnosti
+      // je tedy PRAVDIVÁ a zůstává.
+      //
+      // Píše se výslovně schválně: u vlastních polí kontaktu je táž věta výsledkem
+      // vědomého rozhodnutí zadavatele ze 7. 8. (vrácení z archivu nechce), tady
+      // dosud stála jen z výchozí hodnoty. Dokud se to nerozhodne nahlas, vypadá
+      // pravda k nerozeznání od zapomenutí.
+      irreversible
       title={t('lists.archiveTitle', { name })}
       consequences={[
         t('lists.archiveConsequenceMenus'),

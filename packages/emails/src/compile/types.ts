@@ -1,3 +1,4 @@
+import type { TemplateKind } from '../document/profile';
 import type { FieldCatalog, FieldCatalogType } from '../external/field-catalog';
 import type { Issue } from '../issue';
 
@@ -43,7 +44,8 @@ export type CompileContext = {
    * výslovně jako undefined, ne tak, že klíč vynechají.
    */
   campaignId?: string | undefined;
-  templateKind: 'campaign' | 'transactional' | 'system';
+  /** Ve skutečnosti PROFIL, ne řádek. Viz `document/profile.ts`. */
+  templateKind: TemplateKind;
   fields: FieldCatalog;
   /** BCP 47 tag, libovolný platný. Neznámý tag kompilaci neshodí. */
   language: string;

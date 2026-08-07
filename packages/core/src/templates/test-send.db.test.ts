@@ -323,7 +323,7 @@ describe('testovací odeslání šablony', () => {
     ).rejects.toThrowError(/test_rate_limited/);
   });
 
-  it('bez nastaveného odesílání se odmítne s vlastním kódem', async () => {
+  it('bez odesílacího účtu a bez ověřené adresy se odmítne s vlastním kódem', async () => {
     const { ctx, template } = await seedSendableWorkspace({ withCampaign: false });
     await expect(
       sendTemplateTest(ctx, {
@@ -333,6 +333,45 @@ describe('testovací odeslání šablony', () => {
         assetBaseUrl: 'https://assets.test',
       }),
     ).rejects.toThrowError(/test_sending_not_configured/);
+  });
+
+  /**
+   * Zkušební e-mail musí jít poslat DŘÍV než první kampaň.
+   *
+   * Panel prvních kroků nabízí „Pošlete si zkušební e-mail" jako krok 4
+   * a „Odešlete první kampaň" až jako krok 5. Do 7. 8. 2026 se odesílatel
+   * hledal VÝHRADNĚ v uložených kampaních, takže v pořadí, které produkt sám
+   * doporučuje, ten krok udělat nešel: skončil na
+   * `test_sending_not_configured`. Naměřeno na čisté instalaci, 1 řádek
+   * v `sending_providers`, 0 v `sender_identities`, 0 v `campaigns`.
+   */
+  it('projde s připojeným účtem a ověřenou adresou, i když projekt nemá jedinou kampaň', async () => {
+    const { ws, ctx, template } = await seedSendableWorkspace({ withCampaign: false });
+    await withWorkspace(ws.ctx, (tx) =>
+      tx.execute(sql`
+        UPDATE workspaces
+           SET settings = jsonb_set(
+                 coalesce(settings, '{}'::jsonb), '{campaigns}',
+                 '{"trial_mode": true, "trial_verified":
+                    [{"email": "overena@firma.cz", "verified_at": "2026-08-07T10:00:00.000Z"}]}'::jsonb,
+                 true)
+         WHERE id = ${ws.workspaceId}`),
+    );
+
+    const result = await sendTemplateTest(ctx, {
+      templateId: template.id,
+      recipients: ['kolega@example.cz'],
+      renderData: {},
+      assetBaseUrl: 'https://assets.test',
+    });
+    expect(result.created).toBe(1);
+
+    const rows = await withWorkspace(ws.ctx, (tx) =>
+      tx
+        .select({ fromEmail: schema.campaigns.fromEmail, fromName: schema.campaigns.fromName })
+        .from(schema.campaigns),
+    );
+    expect(rows[0]!.fromEmail).toBe('overena@firma.cz');
   });
 
   /**

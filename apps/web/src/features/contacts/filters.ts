@@ -111,6 +111,59 @@ export function filtersToQuery(
   return query;
 }
 
+/** Které filtry má lišta nad tabulkou svoje ovládání a umí je tedy ukázat sama. */
+export type ToolbarControls = {
+  /** Nabídka seznamů. Bez jediného seznamu se nekreslí. */
+  list: boolean;
+  /** Nabídka štítků. Bez jediného štítku se nekreslí. */
+  tag: boolean;
+};
+
+/**
+ * Filtry, které z lišty NEJSOU vidět, a musí je tedy vypsat pruh pod ní.
+ *
+ * Vzniklo to proto, aby se táž informace neříkala dvakrát: nad tlačítkem „Novinky"
+ * nemá stát „Filtr: seznam Novinky". Odečítá se jen to, co lišta opravdu ukazuje:
+ *
+ *  - hledaný výraz je v hledacím poli vždycky,
+ *  - stav jen tehdy, když pro něj je tlačítko. Přepínač má „Všechny", „Aktivní"
+ *    a „Nepotvrzené", takže odhlášený, odražený, stěžující si a smazaný na něm poznat
+ *    NEJSOU a zůstávají v pruhu. Bez toho by odkaz na odražené kontakty vypadal jako
+ *    nefiltrovaný seznam,
+ *  - seznam a štítek jen tehdy, když se jejich nabídka vůbec kreslí.
+ *
+ * Segment, nejisté oslovení a rozsah data přidání v liště ovládání nemají vůbec,
+ * takže se nikdy neodečítají.
+ */
+export function filtersOffToolbar(
+  filters: ContactListFilters,
+  controls: ToolbarControls,
+): ContactListFilters {
+  const rest: ContactListFilters = { ...filters };
+  delete rest.q;
+  if (rest.status === 'active' || rest.status === 'unconfirmed') delete rest.status;
+  if (controls.list) delete rest.list_id;
+  if (controls.tag) delete rest.tag_id;
+  return rest;
+}
+
+/**
+ * Filtr pro počet nepotvrzených kontaktů v meta řádku pod názvem obrazovky.
+ *
+ * MUSÍ TO BÝT PODÍL Z ČÍSLA VEDLE. Věta „13 kontaktů · 10 nepotvrzených" se čte tak,
+ * že z těch třinácti jich deset čeká na potvrzení. Dřív se druhé číslo počítalo za celý
+ * projekt bez ohledu na filtr, takže se zapnutým filtrem tvrdilo, že ze sedmi kontaktů
+ * je deset nepotvrzených. Rozsah je proto TÝŽ filtr, jen se stavem `unconfirmed`.
+ *
+ * `null` znamená, že se počítat nemá. Nastane u zapnutého filtru stavu: „jen aktivní"
+ * dá vždycky nulu a „jen nepotvrzené" tutéž hodnotu jako počet vedle. Obojí je šum,
+ * protože stav je stejně vypsaný v pruhu s filtrem nad tabulkou.
+ */
+export function unconfirmedCountFilters(filters: ContactListFilters): ContactListFilters | null {
+  if (filters.status !== undefined) return null;
+  return { ...filters, status: 'unconfirmed' };
+}
+
 export function hasAnyFilter(filters: ContactListFilters): boolean {
   return Object.values(filters).some((value) => value !== undefined && value !== '');
 }

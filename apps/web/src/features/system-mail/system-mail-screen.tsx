@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
+import { passwordManagerOptOut } from '@mlain/ui/lib/password-manager';
 import { Alert } from '@mlain/ui/patterns/states';
 import { SelectField } from '@/lib/forms/select-field';
 import { FieldError, fieldAria } from '@/lib/forms/field-error';
@@ -181,10 +182,14 @@ export function SystemMailScreen({
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="system-mail-from">{t('systemMail.form.fromAddress')}</Label>
+              {/* Adresa, ze které chodí systémová pošta, ne přihlašovací.
+                  Podrobnosti v `@mlain/ui/lib/password-manager`. */}
               <Input
                 id="system-mail-from"
                 name="from_address"
                 type="email"
+                autoComplete="off"
+                {...passwordManagerOptOut}
                 defaultValue={
                   state.status === 'error'
                     ? (state.values?.from_address ?? '')

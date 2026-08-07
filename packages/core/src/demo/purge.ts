@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { writeAuditLog } from '../audit/write';
+import { clearAssetReferences } from '../templates/asset-references';
 import type { Tx } from '../tx';
 import { DemoAuditActions } from './audit';
 import { parseDemoManifest, type DemoManifest } from './manifest';
@@ -82,6 +83,34 @@ async function deleteAll(
   // sql.param() je u seznamů povinné. Holé pole se rozloží na $1, $2, $3
   // a dotaz spadne na 42809 op ANY/ALL (array) requires array on right side.
   const ids = (list: readonly string[]) => sql.param([...list]);
+
+  /**
+   * ODKAZY NA OBRÁZKY SE RUŠÍ PRVNÍ, JEŠTĚ PŘED SAMOTNÝM MAZÁNÍM.
+   *
+   * `asset_references.ref_id` je polymorfní (šablona, verze šablony, kampaň),
+   * takže na něm nemůže být cizí klíč a `DELETE FROM templates` ani
+   * `DELETE FROM campaigns` po sobě odkazy neuklidí. Dokud se rušily jen
+   * v mazacích službách (`deleteTemplate`, `softDeleteCampaign`), byl tenhle
+   * tvrdý úklid ukázkových dat třetí cestou, která je vyráběla.
+   *
+   * Zůstat po nich osiřelý řádek NENÍ kosmetická vada: `listPurgeCandidates`
+   * bere jen assety s `reference_count = 0`, takže by osiřelá reference
+   * NATRVALO zablokovala fyzický úklid obrázku, a knihovna médií by u něj
+   * hlásila použití v šabloně, kterou nikdo nevidí.
+   *
+   * VERZE ŠABLON SE MUSÍ DOHLEDAT TEĎ. `template_versions` visí na `templates`
+   * cizím klíčem `ON DELETE CASCADE`, takže po smazání šablony se už nedá
+   * zjistit, které verze existovaly, a jejich odkazy by osiřely bez šance na
+   * nápravu. Proto se čtou dřív, než se cokoli smaže.
+   */
+  const { rows: versions } = await tx.execute<{ id: string }>(sql`
+    SELECT id FROM template_versions
+     WHERE workspace_id = ${ws} AND template_id = ANY(${ids(manifest.templateIds)})`);
+  await clearAssetReferences(tx, ws, [
+    { refType: 'campaign', refIds: manifest.campaignIds },
+    { refType: 'template', refIds: manifest.templateIds },
+    { refType: 'template_version', refIds: versions.map((row) => row.id) },
+  ]);
 
   // Pořadí je dané cizími klíči: nejdřív listy stromu, potom jeho kořeny.
   for (const campaignId of manifest.campaignIds) {

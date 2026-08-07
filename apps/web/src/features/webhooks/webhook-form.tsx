@@ -49,8 +49,25 @@ export function WebhookFormView(props: WebhookFormViewProps) {
     );
   }
 
-  const groups = groupEventTypes(props.availableEventTypes);
   const selected = new Set(props.endpoint?.event_types ?? []);
+
+  /*
+   * Typ, který endpoint UŽ ODEBÍRÁ, se nabídne i tehdy, když ho katalog
+   * nezná. Bez toho by úprava adresy nebo popisu tiše smazala odběr, který se
+   * v zaškrtávátkách neobjevil, a majitel by o události přišel, aniž by na to
+   * sáhl. Takhle je odběr vidět a odhlásit se dá jedině vědomě.
+   */
+  const groups = groupEventTypes([...new Set([...props.availableEventTypes, ...selected])]);
+
+  /*
+   * Popisky se dohledávají PODMÍNĚNĚ. Klíč nemá typ, který katalog nezná, a
+   * takový se sem dostane pokaždé, když endpoint odebírá vysloužilý typ.
+   * Bez `t.has` by na tom formulář spadl a majitel by svůj webhook neupravil.
+   */
+  const groupLabel = (prefix: string) =>
+    t.has(`webhooks.eventGroups.${prefix}`) ? t(`webhooks.eventGroups.${prefix}`) : prefix;
+  const typeDescription = (type: string) =>
+    t.has(`webhooks.events.${type}`) ? t(`webhooks.events.${type}`) : null;
 
   return (
     <section aria-labelledby="webhook-form" className="flex flex-col gap-[var(--spacing-gutter)]">
@@ -103,20 +120,36 @@ export function WebhookFormView(props: WebhookFormViewProps) {
         <fieldset className="flex flex-col gap-[var(--spacing-hairline)]">
           <legend className="text-ui font-semibold text-text">{t('webhooks.form.events')}</legend>
           <p className="text-meta text-text-muted">{t('webhooks.form.eventsHint')}</p>
-          <div className="mt-[var(--spacing-hairline)] grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-[var(--spacing-gutter)]">
+          {/* 260 px, ne 200: do užšího sloupce se popis události nevejde na dva řádky. */}
+          <div className="mt-[var(--spacing-hairline)] grid grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-[var(--spacing-gutter)]">
             {groups.map((group) => (
-              <fieldset key={group.prefix} aria-label={group.prefix}>
-                <legend className="text-sm font-semibold text-text">{group.prefix}</legend>
-                {group.types.map((type) => (
-                  // 44 px klikací plochy i u zaškrtávátka v seznamu.
-                  <label
-                    key={type}
-                    className="flex min-h-[var(--size-target-min)] cursor-pointer items-center gap-[var(--spacing-inline)]"
-                  >
-                    <Checkbox name="event_types" value={type} defaultChecked={selected.has(type)} />
-                    <code className="font-mono text-meta">{type}</code>
-                  </label>
-                ))}
+              <fieldset key={group.prefix} aria-label={groupLabel(group.prefix)}>
+                <legend className="text-sm font-semibold text-text">
+                  {groupLabel(group.prefix)}
+                </legend>
+                {group.types.map((type) => {
+                  const description = typeDescription(type);
+                  return (
+                    // 44 px klikací plochy i u zaškrtávátka v seznamu.
+                    <label
+                      key={type}
+                      className="flex min-h-[var(--size-target-min)] cursor-pointer items-start gap-[var(--spacing-inline)] py-[var(--spacing-hairline)]"
+                    >
+                      <Checkbox
+                        name="event_types"
+                        value={type}
+                        defaultChecked={selected.has(type)}
+                        className="mt-0.5"
+                      />
+                      <span className="flex flex-col">
+                        <code className="font-mono text-meta">{type}</code>
+                        {description === null ? null : (
+                          <span className="text-meta text-text-muted">{description}</span>
+                        )}
+                      </span>
+                    </label>
+                  );
+                })}
               </fieldset>
             ))}
           </div>

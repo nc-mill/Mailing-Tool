@@ -1,9 +1,12 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import type { CSSProperties, ReactElement } from 'react';
 import type { InlineNode, RichText } from '../../../model/document-types';
 import { useFieldLabel } from '../../richtext/field-labels';
+import { greetingGuidanceFor } from '../../richtext/greeting-guidance';
 import { tokenValue } from '../../view/token-value';
+import { useView } from '../../view/view-state';
 import { useCanvasValues } from './canvas-context';
 
 /**
@@ -31,8 +34,10 @@ const TOKEN_STYLE: CSSProperties = {
 };
 
 function Inline({ nodes, linkColor }: { nodes: InlineNode[]; linkColor: string }): ReactElement {
+  const t = useTranslations('editor');
   const fieldLabel = useFieldLabel();
   const values = useCanvasValues();
+  const { greetingExample } = useView();
   return (
     <>
       {nodes.map((node, index) => {
@@ -45,12 +50,36 @@ function Inline({ nodes, linkColor }: { nodes: InlineNode[]; linkColor: string }
            * aby ze čtečky bylo pořád poznat, že je to značka, a ne text.
            */
           const substituted = values ? tokenValue(values, node) : null;
+          /*
+           * U OSLOVENÍ ŘEKNE ŠTÍTEK I VÝSLEDNOU VĚTU, jinak jen popisek pole.
+           *
+           * Nález z provozu: „Je tam v šabloně mailu napsáno jen ‚Oslovení'.
+           * Ale bude to vypadat jak? Dobrý den Honzo? Nebo Krásný den Honzo?"
+           * U jména si výsledek domyslí každý, u oslovení ne: je to hotová věta
+           * ze zdvořilostní formule a pátého pádu a její znění řídí nastavení
+           * projektu. Vepsat ji do štítku nejde, ten musí zůstat krátký, aby
+           * odstavec lámal řádek stejně jako hotový e-mail, takže jde do bubliny.
+           *
+           * KLÁVESNICE O NI NEPŘIJDE: po vstupu do bloku kreslí tutéž značku
+           * `PersonalizationNodeView` jako TLAČÍTKO a věta je i v bublině, kterou
+           * otevírá (`TokenInspector`). Bublina po najetí je tedy pohodlí navíc,
+           * ne jediná cesta.
+           */
+          const isGreeting = greetingGuidanceFor(node.expr) === 'greeting';
+          const hint =
+            isGreeting && substituted === null && greetingExample !== null
+              ? t('token.greetingTooltip', {
+                  label: fieldLabel(node.expr),
+                  example: greetingExample,
+                })
+              : undefined;
           return (
             <span
               key={index}
               data-testid="token"
               data-token-substituted={substituted === null ? undefined : ''}
-              aria-label={substituted === null ? undefined : fieldLabel(node.expr)}
+              aria-label={hint ?? (substituted === null ? undefined : fieldLabel(node.expr))}
+              {...(hint === undefined ? {} : { title: hint })}
               style={TOKEN_STYLE}
             >
               {substituted ?? fieldLabel(node.expr)}

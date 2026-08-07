@@ -65,6 +65,9 @@ export async function recomputeCampaignCounts(
   // Filtr na `bounce` nebo `complaint` by nevrátil nic a nic by nespadlo.
   const { rows: eventRows } = await tx.execute<Record<string, unknown>>(sql`
     SELECT count(DISTINCT message_id) FILTER (WHERE type = 'delivered')     AS delivered,
+           -- Tentýž vzorec jako v tracking/jobs/refresh-campaign-progress.ts,
+           -- aby kontrola driftu porovnávala dvě čísla spočtená stejně.
+           count(DISTINCT message_id) FILTER (WHERE type = 'rejected')      AS rejected,
            count(DISTINCT message_id) FILTER (WHERE type = 'bounced_hard')  AS bounced_hard,
            count(DISTINCT message_id) FILTER (WHERE type = 'bounced_soft')  AS bounced_soft,
            count(DISTINCT message_id) FILTER (WHERE type = 'complained')    AS complained,

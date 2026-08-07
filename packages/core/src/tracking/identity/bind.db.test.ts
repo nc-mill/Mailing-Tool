@@ -34,6 +34,30 @@ async function seedFixture(): Promise<Fixture> {
   };
 }
 
+/**
+ * Odvolání souhlasu s měřením. Píše se do `contact_consent_state`, tedy do
+ * odvozené tabulky, kterou plní `recordConsent` ve stejné transakci jako
+ * append-only log; test se ptá přesně na to, co čte měření.
+ */
+async function withdrawMeasurement(workspaceId: string, contactId: string): Promise<void> {
+  const { rows } = await asMigrator().query<{ id: string }>(
+    `INSERT INTO consents (workspace_id, contact_id, purpose, scope_list_id, status,
+                           legal_basis, source, evidence, recorded_by, occurred_at)
+     VALUES ($1, $2, 'analytics', NULL, 'withdrawn', 'consent', 'admin', '{}'::jsonb,
+             'system', now())
+     RETURNING id`,
+    [workspaceId, contactId],
+  );
+  await asMigrator().query(
+    `INSERT INTO contact_consent_state (contact_id, workspace_id, purpose, status,
+                                        legal_basis, since, last_consent_id)
+     VALUES ($1, $2, 'analytics', 'withdrawn', 'consent', now(), $3)
+     ON CONFLICT (contact_id, purpose) DO UPDATE
+        SET status = 'withdrawn', last_consent_id = EXCLUDED.last_consent_id`,
+    [contactId, workspaceId, rows[0]!.id],
+  );
+}
+
 async function countBindings(workspaceId: string, anonymousId: string): Promise<number> {
   const { rows } = await asMigrator().query<{ count: string }>(
     `SELECT count(*) FROM identity_bindings WHERE workspace_id = $1 AND anonymous_id = $2`,
@@ -188,6 +212,45 @@ describe('bindIdentity', () => {
     expect(scheduleMerge).not.toHaveBeenCalled();
     expect(await selectIdentityContactId(f.workspaceId, anonymousId)).toBeNull();
     expect(await countBindings(f.workspaceId, anonymousId)).toBe(0);
+  });
+
+  /**
+   * Odvolaný souhlas s měřením zastaví vazbu ze stejného místa jako článek 18,
+   * ale s vlastním výsledkem: obojí odmítne, důvod je jiný a v metrice se to
+   * musí dát odlišit.
+   */
+  it('kontakt s odvolaným souhlasem s měřením vazbu nezaloží', async () => {
+    const f = await seedFixture();
+    const anonymousId = randomUUID();
+    await withdrawMeasurement(f.workspaceId, f.contactId);
+
+    expect(await bind(f, anonymousId, f.contactId)).toBe('measurement_withdrawn');
+    expect(scheduleMerge).not.toHaveBeenCalled();
+    expect(await selectIdentityContactId(f.workspaceId, anonymousId)).toBeNull();
+    expect(await countBindings(f.workspaceId, anonymousId)).toBe(0);
+  });
+
+  /**
+   * Chybějící záznam NENÍ odmítnutí. Kdyby byl, přestala by po nasazení fungovat
+   * vazba všem kontaktům v každé instalaci naráz: účel `analytics` dnes nemá
+   * v `contact_consent_state` ani jeden řádek.
+   */
+  it('kontakt bez záznamu o měření se váže dál', async () => {
+    const f = await seedFixture();
+    expect(await bind(f, randomUUID(), f.contactId)).toBe('created');
+  });
+
+  it('znovu udělený souhlas vazbu zase povolí', async () => {
+    const f = await seedFixture();
+    await withdrawMeasurement(f.workspaceId, f.contactId);
+    expect(await bind(f, randomUUID(), f.contactId)).toBe('measurement_withdrawn');
+
+    await asMigrator().query(
+      `UPDATE contact_consent_state SET status = 'granted'
+        WHERE contact_id = $1 AND purpose = 'analytics'`,
+      [f.contactId],
+    );
+    expect(await bind(f, randomUUID(), f.contactId)).toBe('created');
   });
 
   it('zrušení omezení obnoví normální chování bez dalšího kroku', async () => {

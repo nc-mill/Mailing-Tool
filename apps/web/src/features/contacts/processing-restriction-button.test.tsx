@@ -99,6 +99,33 @@ describe('omezení zpracování z detailu kontaktu', () => {
     );
   });
 
+  it('kliknutí mimo okno rozepsané odůvodnění neztratí', async () => {
+    // Od 7. 8. jde nedestruktivní okno zavřít kliknutím mimo (pravidlo 5.3)
+    // a tohle je JEDINÉ ze sedmnácti takových oken, ve kterém se něco vyplňuje.
+    // Kliknutí mimo je ústup, ne zahození rozdělané práce (princip P10): text
+    // drží spouštěč, ne dialog, takže se po znovuotevření vrátí. Kdyby si ho
+    // někdy vzal dialog nebo kdyby ho zavření mazalo, spadne tenhle test.
+    //
+    // `pointerEventsCheck: 0` je nutné: Radix nad otevřeným modálem nastaví
+    // `pointer-events: none` a kliknutí mimo by se jinak nedalo poslat. Cílem
+    // je kořenový prvek, ne `body`: user-event si výsledek kontroly pamatuje
+    // na prvku, a `body` už ho má z dřívějších testů v tomhle souboru, kdy
+    // nad ním okno otevřené bylo.
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render('restrict');
+    await user.click(screen.getByTestId('restrict-processing'));
+    await user.type(await screen.findByLabelText(/čeho se žádost týká/i), 'Žádost e-mailem 4. 8.');
+
+    await user.click(document.documentElement);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(restrictProcessingAction).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId('restrict-processing'));
+    expect(await screen.findByLabelText(/čeho se žádost týká/i)).toHaveValue(
+      'Žádost e-mailem 4. 8.',
+    );
+  });
+
   it('chybu ze serveru ukáže, nespolkne ji', async () => {
     restrictProcessingAction.mockResolvedValue({ status: 'error', code: 'forbidden' });
     render('restrict');

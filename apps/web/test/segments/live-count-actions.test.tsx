@@ -119,3 +119,47 @@ describe('tlačítka živého počtu', () => {
     expect(fetchMock.mock.calls[0]![0]).toBe('/api/v1/segments/preview');
   });
 });
+
+/**
+ * ČTVRTÉ MRTVÉ TLAČÍTKO, „Spočítat přesně", SE NEVRACÍ.
+ *
+ * Odstraněno 7. 8. 2026, ne zapojeno, a tenhle test hlídá obě půlky toho
+ * rozhodnutí: že u odhadu nestojí tlačítko bez obsluhy a že místo něj stojí
+ * věta, proč je číslo přibližné.
+ *
+ * Zapojit ho nešlo: `POST /segments/preview` nemá čím vyžádat delší strop, ten
+ * je nastavením instalace (`SEGMENT_PREVIEW_TIMEOUT_MS`). A i kdyby přijímal,
+ * slib „přesně" by neplatil, protože s delším stropem může počítání dopadnout
+ * stejně a uživatel by dostal podruhé odhad od tlačítka, které slíbilo přesné
+ * číslo. Prvek, který dělá něco jiného, než slibuje, je horší než chybějící.
+ */
+describe('odhad počtu se přizná a nenabízí mrtvé tlačítko', () => {
+  /** Odpověď, kterou server vrátí, když přesné počítání zabije časový strop. */
+  function estimateResponse(count: number) {
+    return {
+      ok: true,
+      json: async () => ({
+        count,
+        exact: false,
+        warnings: ['segment_count_estimated'],
+        sample: [],
+      }),
+    } as unknown as Response;
+  }
+
+  it('u odhadu vysvětlí, proč je číslo přibližné, a nenabízí „Spočítat přesně"', async () => {
+    fetchMock.mockResolvedValue(estimateResponse(12000));
+    renderIntl(<LiveCount definition={ast} workspaceId="w-1" />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('live-count-run'));
+    });
+
+    // Odhad se přizná celou větou, ne jen číslem.
+    expect(await screen.findByText(/Přibližně/)).toBeInTheDocument();
+    // Věta říká, proč je přibližný, a kudy vede cesta k přesnému číslu.
+    expect(screen.getByText(/přepočítá na pozadí s delším limitem/)).toBeInTheDocument();
+    // Mrtvé tlačítko se nevrátilo.
+    expect(screen.queryByRole('button', { name: /Spočítat přesně/ })).toBeNull();
+  });
+});

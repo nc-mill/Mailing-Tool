@@ -61,6 +61,10 @@ export {
   LayoutDashboard,
   LayoutTemplate,
   Megaphone,
+  // Tři čárky, tedy hlavní menu na úzkém displeji. Do hlavičky se dostaly
+  // 7. 8. 2026 spolu s vysouvacím menu: pod 768 px se boční menu z rozvržení
+  // odstraní úplně a tohle tlačítko je jediná cesta do navigace.
+  Menu,
   Settings,
   Users,
   Workflow,
@@ -162,6 +166,9 @@ export {
   SlidersHorizontal,
   ChevronsUpDown,
   Columns3,
+  // Trychtýř s křížkem, tedy „zrušit filtry". Kanonický název dnešního Lucide je
+  // `FunnelX`; starší `FilterX` je jeho zaniklý alias a v 1.28 už neexistuje.
+  FunnelX,
   ListFilter,
   Rows3,
   Settings2,

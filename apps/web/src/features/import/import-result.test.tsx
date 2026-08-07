@@ -1,15 +1,18 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderIntl } from '../../../test/helpers/intl';
 import { ImportResult, type ImportResultRow } from './import-result';
 import { resultStatusOf } from './result-status';
 
+const push = vi.fn();
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
 }));
 
 const IMPORT_ID = '9855e936-c11a-4b3d-b799-33a53178916c';
 const WORKSPACE_ID = '019fbf52-d8b9-7b0d-b67e-528e8026a383';
+const RESUMED_ID = '019fdc40-1111-7000-8000-0000000000aa';
 
 function row(overrides: Partial<ImportResultRow> = {}): ImportResultRow {
   return {
@@ -40,6 +43,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  push.mockClear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -107,5 +111,60 @@ describe('import result screen', () => {
     );
 
     expect(screen.getByText(/nezapsal žádný kontakt/i)).toBeInTheDocument();
+  });
+  /**
+   * Tlačítko „Pokračovat" tady stálo od začátku BEZ OBSLUHY: kliknutí neudělalo
+   * vůbec nic, takže schopnost, kterou API umí, z rozhraní nešla použít a přitom
+   * vypadala, že jde. Test proto měří ODESLANÝ POŽADAVEK, ne existenci tlačítka.
+   */
+  it('pokračování zrušeného importu opravdu zavolá API a odejde do průvodce', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
+      ok: true,
+      json: async () => ({ id: RESUMED_ID, checkpoint_byte: 120 }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderIntl(
+      <ImportResult
+        row={row({ status: 'cancelled', checkpointRow: 1240, totalRows: 5000 })}
+        workspaceSlug="projekt"
+        workspaceId={WORKSPACE_ID}
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: /pokračovat od řádku/i });
+    await userEvent.click(button);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/v1/contacts/imports/${IMPORT_ID}/resume`,
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'X-Workspace-Id': WORKSPACE_ID }),
+      }),
+    );
+    // Průvodce dostane NOVÝ import, ne ten zrušený: pokračování zakládá další řádek.
+    expect(push).toHaveBeenCalledWith(
+      `/w/projekt/contacts/import?import=${RESUMED_ID}&step=mapping`,
+    );
+  });
+
+  it('neúspěšné pokračování napíše důvod, ne ticho', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 409, json: async () => ({}) })),
+    );
+
+    renderIntl(
+      <ImportResult
+        row={row({ status: 'cancelled', checkpointRow: 1240 })}
+        workspaceSlug="projekt"
+        workspaceId={WORKSPACE_ID}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /pokračovat od řádku/i }));
+    expect(await screen.findByText(/pokračovat se nepodařilo/i)).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
   });
 });

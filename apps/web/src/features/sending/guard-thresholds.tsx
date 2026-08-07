@@ -155,7 +155,7 @@ export function GuardThresholds({
       {/* Dvojice polí vedle sebe, mřížka z návrhu pro formulář ve dvou sloupcích. */}
       <div
         ref={fieldsRef}
-        className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-[var(--spacing-gutter)]"
+        className="grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-[var(--spacing-gutter)]"
       >
         {RATE_FIELDS.map(([key, limitKey, labelKey]) => {
           const max = limits[limitKey];

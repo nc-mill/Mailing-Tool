@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FINDING_CODES } from '../errors/registry';
 import { assertSendable, PreSendBlockedError, preSendCheck, type PreSendInput } from './precheck';
 
 const meta = (over: Record<string, unknown> = {}) =>
@@ -146,6 +147,55 @@ describe('preSendCheck', () => {
         }),
       }),
     ).toContain('unknown_block_skipped');
+  });
+});
+
+/**
+ * BRÁNA: kód, který kontrola vydá, musí být v registru.
+ *
+ * Devět kódů `precheck_*` v registru dlouho chybělo, a nespadlo kvůli tomu nic:
+ * kontrola je vydávala, API je posílalo v poli `findings` a editor je zobrazoval.
+ * Uzavřený počet v `test/errors/registry.test.ts` proto hlídal jen část
+ * skutečnosti. Tenhle test tu díru zavírá z druhé strany: nekontroluje počet,
+ * kontroluje, že každý SKUTEČNĚ VYDANÝ kód registr zná.
+ *
+ * Vstup je schválně nejhorší možný, aby se vydaly všechny najednou. Kdyby někdo
+ * přidal desátý kód a na registr zapomněl, spadne to tady.
+ */
+describe('registrace nálezů předodesílací kontroly', () => {
+  it('vydá jen kódy, které jsou v registru vedené jako finding', () => {
+    const worst = preSendCheck(
+      input({
+        compileMeta: meta({
+          hasUnsubscribeLink: false,
+          htmlBytes: 200_000,
+          links: [{ id: 'a', position: 1, url: 'http://a.cz', trackable: true, label: 'A' }],
+        }),
+        validationIssues: [
+          { code: 'content_nested_columns', severity: 'error', pointer: '', path: '' },
+        ],
+        subject: '  ',
+        preheader: '',
+        appUrl: 'http://localhost:3000',
+        emptyFieldRatios: [{ path: 'attributes.city', empty: 9, total: 10, hasDefault: false }],
+      }),
+    );
+    const emitted = worst.findings.map((finding) => finding.code);
+    // Pojistka proti testu, který by prošel s prázdným seznamem.
+    expect(emitted.length).toBeGreaterThan(5);
+    const registered = new Set(FINDING_CODES.map((entry) => entry.code));
+    expect(emitted.filter((code) => !registered.has(code))).toEqual([]);
+  });
+
+  it('má u každého kódu tutéž závažnost, jakou hlásí kontrola', () => {
+    const bySeverity = new Map(FINDING_CODES.map((entry) => [entry.code, entry.severity]));
+    const warnOnly = preSendCheck(
+      input({ preheader: '', compileMeta: meta({ htmlBytes: 90_000 }) }),
+    ).findings.filter((finding) => finding.code.startsWith('precheck_'));
+    expect(warnOnly.length).toBeGreaterThan(0);
+    for (const finding of warnOnly) {
+      expect(bySeverity.get(finding.code), finding.code).toBe(finding.severity);
+    }
   });
 });
 

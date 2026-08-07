@@ -17,6 +17,7 @@ function base(overrides: Partial<React.ComponentProps<typeof ConfirmDialog>> = {
     open: true,
     onOpenChange: () => {},
     level: 'N3' as const,
+    destructive: true,
     title: 'Smazat 3 402 kontaktů?',
     consequences: [
       'Kontakty zmizí ze všech seznamů a segmentů',
@@ -92,6 +93,30 @@ describe('ConfirmDialog', () => {
     await user.type(screen.getByLabelText('Pro potvrzení opište název projektu'), 'E-shop Kolo');
     await user.click(screen.getByRole('button', { name: 'Smazat projekt' }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('destruktivní akce má potvrzení v barvě nebezpečí', () => {
+    render(<ConfirmDialog {...base()} />);
+    expect(screen.getByRole('button', { name: 'Smazat 3 402 kontaktů' })).toHaveClass('bg-danger');
+  });
+
+  it('nedestruktivní potvrzení nese barvu primární akce, ne červenou', () => {
+    // Kdyby červeně svítilo i „Archivovat pole", přestane červená v aplikaci
+    // odlišovat mazání a lidé si zvyknou odklikávat červená tlačítka bez čtení.
+    render(
+      <ConfirmDialog
+        {...base({
+          level: 'N2',
+          destructive: false,
+          acknowledgement: undefined,
+          title: 'Archivovat pole Telefon?',
+          confirmLabel: 'Archivovat pole',
+        })}
+      />,
+    );
+    const confirm = screen.getByRole('button', { name: 'Archivovat pole' });
+    expect(confirm).toHaveClass('bg-primary');
+    expect(confirm).not.toHaveClass('bg-danger');
   });
 
   it('výchozí fokus je na ústupu, ne na destruktivním tlačítku', () => {

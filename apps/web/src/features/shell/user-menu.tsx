@@ -83,7 +83,11 @@ export function UserMenu({ user, workspaceSlug }: UserMenuProps) {
           >
             {initials}
           </span>
-          <span className="max-w-40 truncate">{label}</span>
+          {/* JMÉNO SE POD 640 px SKRÝVÁ, iniciály zůstávají. Vejde se do něj
+              160 px, tedy skoro polovina šířky telefonu, za údaj, který
+              uživatel o sobě ví. Tlačítko o přístupné jméno nepřijde, nese ho
+              `aria-label` výš. */}
+          <span className="hidden max-w-40 truncate sm:inline">{label}</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {/* Kdo je přihlášený, se pozná z e-mailu, ne ze jména: dva lidé se

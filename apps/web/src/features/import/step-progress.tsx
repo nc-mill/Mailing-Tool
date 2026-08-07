@@ -46,6 +46,12 @@ export function StepProgress({
     initial ?? { processed: 0, total: null, status: 'importing' },
   );
   const [degraded, setDegraded] = useState(false);
+  /**
+   * Průběh se nedaří přečíst. Odlišné od `degraded`: ten říká „jedeme náhradní
+   * cestou, ale čísla máme", tohle říká „čísla nemáme". Bez rozlišení by zamrzlá
+   * nula vypadala jako pomalý import.
+   */
+  const [unreadable, setUnreadable] = useState(false);
   const [announced, setAnnounced] = useState<string>('');
   const [confirmCancel, setConfirmCancel] = useState(false);
   const reached = useRef(new Set<number>());
@@ -54,6 +60,34 @@ export function StepProgress({
     let failures = 0;
     let source: EventSource | null = null;
     let poll: ReturnType<typeof setInterval> | null = null;
+
+    /*
+     * NEPOUŽITELNÁ ODPOVĚĎ SE NEBERE, MÍSTO TOHO SE PŘIZNÁ.
+     *
+     * Tahle obrazovka je jediné, co o běžícím importu člověk vidí, a její nejhorší
+     * možný stav je tichý: dosadit `undefined` do počítadla a čekat na konec, který
+     * se nepozná, protože `status` taky chybí. Navenek to vypadá jako import, který
+     * se rozjel a stojí, a v ničem se to neprojeví, ani v logu, ani v konzoli.
+     * Přesně ten příznak se 7. 8. 2026 nahlásil: obrazovka ukazovala „0 z 20"
+     * a „Import běží na serveru", zatímco import už byl dávno dokončený.
+     *
+     * Tvar odpovědi se proto ověřuje, ne předpokládá. Cizí odpověď (chybové tělo,
+     * přihlašovací stránka po vypršení relace, změněná obálka API) tím spadne do
+     * viditelného stavu „průběh se nedaří číst", a ne do zamrzlé nuly.
+     */
+    const asProgress = (value: unknown): Progress | null => {
+      if (typeof value !== 'object' || value === null) return null;
+      const row = value as Record<string, unknown>;
+      const processed = Number(row['checkpoint_row']);
+      const total = row['total_rows'];
+      if (!Number.isFinite(processed)) return null;
+      if (typeof row['status'] !== 'string') return null;
+      return {
+        processed,
+        total: total === null || total === undefined ? null : Number(total),
+        status: row['status'],
+      };
+    };
 
     const apply = (next: Progress) => {
       setProgress(next);
@@ -75,20 +109,26 @@ export function StepProgress({
           headers: { 'X-Workspace-Id': workspaceId },
         })
           .then((res) => res.json())
-          .then((row: { checkpoint_row: number; total_rows: number | null; status: string }) => {
-            apply({ processed: row.checkpoint_row, total: row.total_rows, status: row.status });
+          .then((body: unknown) => {
+            const next = asProgress(body);
+            if (next === null) {
+              setUnreadable(true);
+              return;
+            }
+            setUnreadable(false);
+            apply(next);
             // Konec importu musí poznat i tahle větev. Dřív ho poznávalo jenom
             // SSE, takže při dotazování zůstal uživatel na „Importujeme
             // kontakty" navždy, přestože počítadlo ukazovalo 50 z 50 a 100 %.
             // Naměřeno na produkční image: 250 vteřin dotazování po tom, co
             // worker zapsal `import finished`, a výsledek se neukázal.
-            if (TERMINAL_STATUSES.has(row.status)) {
+            if (TERMINAL_STATUSES.has(next.status)) {
               if (poll) clearInterval(poll);
               poll = null;
-              onDone?.(row.status);
+              onDone?.(next.status);
             }
           })
-          .catch(() => undefined);
+          .catch(() => setUnreadable(true));
       }, 5000);
     };
 
@@ -161,8 +201,16 @@ export function StepProgress({
         {announced}
       </p>
 
-      <p className="text-meta text-text-muted">{t('progress.runsOnServer')}</p>
-      {degraded ? <Alert tone="warning">{t('progress.liveUpdatesFailed')}</Alert> : null}
+      {/* Věta „běží na serveru" se u nečitelného průběhu NEUKAZUJE. Je to tvrzení
+          o stavu importu, které v tu chvíli nikdo neověřil, a právě ono dělalo
+          ze zamrzlé obrazovky přesvědčivou lež. */}
+      {unreadable ? null : (
+        <p className="text-meta text-text-muted">{t('progress.runsOnServer')}</p>
+      )}
+      {degraded && !unreadable ? (
+        <Alert tone="warning">{t('progress.liveUpdatesFailed')}</Alert>
+      ) : null}
+      {unreadable ? <Alert tone="warning">{t('progress.unreadable')}</Alert> : null}
 
       <Button variant="secondary" className="self-start" onClick={() => setConfirmCancel(true)}>
         {t('progress.cancel')}

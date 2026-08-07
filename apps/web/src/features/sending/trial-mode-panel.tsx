@@ -8,6 +8,7 @@ import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Dialog, DialogBody, DialogFooter, DialogTitle } from '@mlain/ui/components/dialog';
 import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
+import { passwordManagerOptOut } from '@mlain/ui/lib/password-manager';
 import { Alert, EmptyState } from '@mlain/ui/patterns/states';
 import { CheckIcon, ClockIcon } from '@/lib/ui/status-icons';
 import type { AddTrialAddressResult } from './actions';
@@ -262,8 +263,13 @@ export function TrialModePanel({
           <DialogBody>
             <p className="text-text-muted">{t('dialogExplanation')}</p>
             <Field label={t('emailLabel')} {...(fieldError === null ? {} : { error: fieldError })}>
+              {/* Adresa pro zkušební odeslání, ne přihlašovací. Nabídka správce
+                  hesel by v úzkém dialogu zakryla vysvětlení nad polem.
+                  Podrobnosti v `@mlain/ui/lib/password-manager`. */}
               <Input
                 type="email"
+                autoComplete="off"
+                {...passwordManagerOptOut}
                 data-testid="trial-email"
                 value={email}
                 onChange={(e) => {

@@ -91,6 +91,17 @@ export function buildCampaignSettingsSchema(limits: { CAMPAIGN_UNDO_WINDOW_SECON
   return z
     .object({
       timezone: z.string().min(1).optional(),
+      /**
+       * Poštovní adresa odesílatele do patičky e-mailu, hodnota za
+       * `{{ workspace.sender_address }}`.
+       *
+       * Klíč tu dlouho stál jako mrtvý: nikdo ho nezapisoval ani nečetl, takže
+       * výchozí patička odesílala prázdné místo na údaji, který musí obchodní
+       * sdělení ze zákona nést. Zapisuje ho `updateWorkspace` (pole v Nastavení
+       * → Projekt), čte ho odesílač ve `StmtCampaignHeader` a kontrola před
+       * odesláním. Bydlí na PROJEKTU, protože je to adresa firmy, ne vlastnost
+       * jednotlivé kampaně.
+       */
       postal_address: z.string().max(500).optional(),
       undo_window_seconds: z
         .number()

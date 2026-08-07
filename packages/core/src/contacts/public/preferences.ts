@@ -193,8 +193,21 @@ export async function applyPreferenceAction(
             skipConfirmation: true,
           });
         } else {
+          /*
+           * ROZSAH JE TU VŽDY 'list', I KDYŽ MÁ SEZNAM `unsubscribe_scope = 'global'`.
+           *
+           * Nastavení seznamu říká, co udělá KLIKNUTÍ NA ODHLAŠOVACÍ ODKAZ
+           * v e-mailu, tedy jedna akce bez dalšího výběru. Tady si člověk
+           * odškrtává konkrétní seznam ze seznamu zaškrtávátek a vidí u toho
+           * ostatní, které nechává zaškrtnuté. Kdyby jedno odškrtnutí odhlásilo
+           * ze všeho a navíc zablokovalo adresu pro celý projekt, udělala by
+           * stránka pravý opak toho, co uživatel právě odeslal.
+           *
+           * „Odhlaste mě ze všeho" má na téže stránce vlastní tlačítko
+           * (`unsubscribe_all`) a to globální odhlášení dělá.
+           */
           await unsubscribeByToken(
-            { ...token, data: { ...token.data, listId: list.id } },
+            { ...token, data: { ...token.data, listId: list.id }, effectiveScope: 'list' },
             { reason: 'preference_center' },
           );
         }

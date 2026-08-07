@@ -47,14 +47,24 @@ export type Radius = 0 | 4 | 6 | 8 | 12;
  * Uložené dokumenty ta pole ještě nesou. Schéma je proto pořád zná, jen už je
  * nevyžaduje, a nic je nečte.
  */
+/**
+ * Mapa rolí motivu. Částečná: neuvedená role bere výchozí hodnotu
+ * z theme/palette.ts (3.1.4).
+ *
+ * HODNOTA SMÍ BÝT I JMÉNO JINÉ ROLE, ne jen odstín. „Pozadí plátna = hlavní
+ * barva značky" je pak VAZBA, ne kopie odstínu: když se změní značka projektu,
+ * změní se `brand.primary` a pozadí plátna jde s ním. Rozvazuje to
+ * `resolveTheme`, takže do e-mailu odchází vždycky hex.
+ */
+export type RoleColorMap = Partial<Record<ThemeColorRole, ColorRef>>;
+
 export type Theme = {
   contentWidth: 600 | 640;
-  /** Částečná mapa. Neuvedená role bere výchozí hodnotu z theme/palette.ts (3.1.4). */
-  colors: Partial<Record<ThemeColorRole, HexColor>>;
+  colors: RoleColorMap;
   fonts: { heading: FontStackId; body: FontStackId };
   typography: { baseFontSize: number; baseLineHeight: number; headingScale: HeadingScale };
   radius: Radius;
-  darkMode: { strategy: 'auto' | 'off'; colors: Partial<Record<ThemeColorRole, HexColor>> };
+  darkMode: { strategy: 'auto' | 'off'; colors: RoleColorMap };
 };
 
 export type DateFormat = '%d.%m.%Y' | '%-d.%-m.%Y' | '%Y-%m-%d' | '%d.%m.%Y %H:%M' | '%H:%M';

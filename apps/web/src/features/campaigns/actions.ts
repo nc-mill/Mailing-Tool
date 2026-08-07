@@ -482,7 +482,17 @@ export async function updateCampaignSettingsAction(
   const campaignId = text(formData, 'campaign_id');
   const instance = `/api/v1/campaigns/${campaignId}`;
 
-  const name = text(formData, 'name');
+  /*
+   * JMÉNO SE TUDY UŽ NEUKLÁDÁ. Má vlastní akci `renameCampaignAction`, kterou
+   * volá pole v hlavičce obou kroků, a vlastní podmínku `canRenameCampaign`.
+   *
+   * Dokud jméno jezdilo tímhle formulářem, nešlo ho u čerstvé kampaně uložit
+   * vůbec: validace níž běží nad celým formulářem, takže přejmenování spadlo
+   * na prázdném předmětu a prázdném publiku, tedy na věcech, které s ním
+   * nesouvisí. Vyjmutí z validace by nestačilo, `PATCH` by jméno stejně
+   * posílal a u naplánované kampaně by celé uložení narazilo na
+   * `campaign_locked`.
+   */
   const subject = text(formData, 'subject');
   const preheader = text(formData, 'preheader');
   const fromName = text(formData, 'from_name');
@@ -492,8 +502,6 @@ export async function updateCampaignSettingsAction(
   const includeSegments = ids(formData, 'include_segment');
 
   const issues: Issue[] = [];
-  if (name === '') issues.push({ path: 'name', code: 'required', message: t('nameRequired') });
-  if (name.length > 200) issues.push({ path: 'name', code: 'too_long', message: t('nameTooLong') });
   if (subject === '') {
     issues.push({ path: 'subject', code: 'required', message: t('subjectRequired') });
   }
@@ -522,7 +530,6 @@ export async function updateCampaignSettingsAction(
   const senderDomainId = optionalId(formData, 'sender_domain_id');
 
   const body: Record<string, unknown> = {
-    name,
     subject,
     preheader,
     from_name: fromName,

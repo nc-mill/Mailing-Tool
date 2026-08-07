@@ -132,7 +132,13 @@ export const templates = pgTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
     name: text().notNull(),
-    kind: text().$type<'campaign' | 'transactional' | 'system'>().notNull().default('campaign'),
+    // `page` je VEŘEJNÁ STRÁNKA, ne e-mail: dokument se vykresluje v prohlížeči
+    // na naší doméně, má užší paletu bloků a jiný obal výstupu. Vlastní hodnota
+    // proto, že `kind` rozhoduje o profilu kontroly dokumentu, viz migrace 0029.
+    kind: text()
+      .$type<'campaign' | 'transactional' | 'system' | 'page'>()
+      .notNull()
+      .default('campaign'),
     schemaVersion: integer().notNull().default(1),
     design: jsonb().notNull(),
     // SHA-256 nad KANONICKOU serializací JSON (klíče lexikograficky, bez mezer,
@@ -154,7 +160,7 @@ export const templates = pgTable(
   (t) => [
     check('ck_templates__name_len', sql`length(${t.name}) BETWEEN 1 AND 120`),
     // Druh 'snippet' je zrušený: sdílené bloky mají jedno místo, content_snippets.
-    check('ck_templates__kind', sql`${t.kind} IN ('campaign','transactional','system')`),
+    check('ck_templates__kind', sql`${t.kind} IN ('campaign','transactional','system','page')`),
     check(
       'ck_templates__validation_state',
       sql`${t.validationState} IN ('unknown','valid','invalid')`,

@@ -9,11 +9,12 @@ import { IdentityAuditActions } from '../identity/audit';
  *
  * PROČ TENHLE SOUBOR VZNIKL. Systémová pošta byla nepojmenovaný stav odvozený
  * uvnitř odesílatele. Instalace s jediným odesílacím účtem typu SES ji odeslat
- * neumí, protože klient SES žije v odesílači napsaném v Go a v TypeScriptu žádný
- * není. Uživatel se to nedozvěděl NIKDE: pozvánka se tvářila jako odeslaná,
+ * neuměla a uživatel se to nedozvěděl NIKDE: pozvánka se tvářila jako odeslaná,
  * obnova hesla skončila v logu a adresa odesílatele (`mlain@doména`) se nikde
  * neukazovala ani nedala změnit. Zmatek nevznikal z jednoho chybějícího tlačítka,
- * ale z toho, že stav nebyl vidět.
+ * ale z toho, že stav nebyl vidět. (Účet typu SES odesílat umí od doplnění
+ * `platform/system-mail-ses.ts`; stav je ale pořád potřeba ukázat, protože účet
+ * může chybět nebo být vypnutý.)
  *
  * Tenhle soubor je jediný zdroj pravdy pro tři otázky: KTERÝM účtem se systémová
  * pošta odešle, Z JAKÉ adresy, a CO chybí, když to nejde. Odpovídá na ně jak
@@ -24,24 +25,30 @@ import { IdentityAuditActions } from '../identity/audit';
 /**
  * Typy odesílacích účtů, kterými se systémová pošta odsud poslat DÁ.
  *
- * Je to jednoprvkový seznam a je to ZNÁMÉ OMEZENÍ PRODUKTU, ne chyba nastavení
- * uživatele. Klient SES existuje jen v odesílači v Go; přidat druhý do TypeScriptu
- * znamená mít podpis AWS na dvou místech, což je samostatný úkol napříč dvěma
- * jazyky. Kdo sem přidá další typ, musí zároveň doplnit větev
- * v `DefaultSystemMailer.send`, jinak obrazovka začne slibovat víc, než produkt umí.
+ * Byl to jednoprvkový seznam `['smtp']` a bylo to popsané jako známé omezení
+ * produktu: klient SES prý žije jen v odesílači v Go. To přestalo platit.
+ * `@aws-sdk/client-sesv2` je v `packages/core` kvůli ověřování domén a
+ * konfiguračních sad, takže odeslání přes SES je jedno volání navíc
+ * (`platform/system-mail-ses.ts`), ne druhá implementace podpisu AWS.
+ *
+ * Kdo sem přidá další typ, musí zároveň doplnit větev v `DefaultSystemMailer.send`,
+ * jinak obrazovka začne slibovat víc, než produkt umí.
  */
-export const SYSTEM_MAIL_CAPABLE_TYPES: readonly string[] = ['smtp'];
+export const SYSTEM_MAIL_CAPABLE_TYPES: readonly string[] = ['smtp', 'ses'];
 
 /** Účty, které jsou zablokované nebo vypnuté, se neberou v úvahu vůbec. */
 export const SYSTEM_MAIL_ACCOUNT_FILTER = `p.status NOT IN ('blocked', 'disabled')`;
 
 /**
- * Automatický výběr: účty typu SMTP mají přednost před výchozím účtem, protože
- * jen jimi systémová pošta odejde. Projekt s výchozím SES a vedle toho SMTP
- * musí použít SMTP, jinak by systémová pošta neodešla, přestože instalace má čím.
- * Uvnitř téhož typu rozhoduje `is_default`, pak stáří.
+ * Automatický výběr: rozhoduje `is_default`, pak stáří.
+ *
+ * Do teď měl přednost typ SMTP před výchozím účtem, protože jen jím systémová
+ * pošta odešla. Ta přednost padá spolu s omezením: když projekt odešle oběma
+ * typy, je správná odpověď ta, kterou si uživatel zvolil jako výchozí. Kdyby
+ * SMTP přednost zůstala, odcházela by systémová pošta z jiné domény, než
+ * uživatel v nastavení vidí jako výchozí, a nikde by se to nevysvětlilo.
  */
-export const SYSTEM_MAIL_ACCOUNT_ORDER = `(p.type = 'smtp') DESC, p.is_default DESC, p.created_at`;
+export const SYSTEM_MAIL_ACCOUNT_ORDER = `p.is_default DESC, p.created_at`;
 
 /** Lokální část adresy odesílatele, když si uživatel nezvolil vlastní. */
 export const SYSTEM_MAIL_DEFAULT_LOCAL_PART = 'mlain';
@@ -49,7 +56,7 @@ export const SYSTEM_MAIL_DEFAULT_LOCAL_PART = 'mlain';
 export type SystemMailUnavailableReason =
   /** Projekt nemá ani jeden použitelný odesílací účet. */
   | 'no_account'
-  /** Účet je, ale jeho typ systémovou poštu odsud poslat neumí (dnes: SES). */
+  /** Účet je, ale jeho typ systémovou poštu odsud poslat neumí. */
   | 'provider_unsupported'
   /** Uživatel vybral konkrétní účet a ten už neexistuje nebo je vypnutý. */
   | 'selected_account_missing';
@@ -212,7 +219,7 @@ export type SystemMailStatus = {
   from_address: string;
   from_source: FromAddressSource;
   /**
-   * Typy účtů, kterými systémová pošta odejít umí. Dnes jediný, viz komentář výš.
+   * Typy účtů, kterými systémová pošta odejít umí, viz komentář výš.
    * Pole je zapisovatelné, protože jde do odpovědi API, a `readonly string[]`
    * se do schématu odpovědi (`z.array(z.string())`) nepřiřadí.
    */

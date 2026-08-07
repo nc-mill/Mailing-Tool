@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '@mlain/db/schema';
 import { blockDefaults, DEFAULT_THEME } from '@mlain/emails/document/defaults';
 import type { Document } from '@mlain/emails/document/types';
@@ -39,11 +39,23 @@ const TOKEN = 'abcdefghijklmnopqrstuvwx';
 
 type Seeded = Awaited<ReturnType<typeof seedWorkspace>>;
 
-async function seedWorkspace(options: { sendingConfigured?: boolean } = {}) {
+async function seedWorkspace(
+  options: { sendingConfigured?: boolean; withCampaign?: boolean; verifiedAddress?: boolean } = {},
+) {
   const ws = await seedWorkspaceForCoreTests();
   const service: ServiceContext = { ctx: ws.ctx, fields: catalog, userId: ws.userId };
 
   await withWorkspace(ws.ctx, async (tx) => {
+    if (options.verifiedAddress === true) {
+      await tx.execute(sql`
+        UPDATE workspaces
+           SET settings = jsonb_set(
+                 coalesce(settings, '{}'::jsonb), '{campaigns}',
+                 '{"trial_mode": true, "trial_verified":
+                    [{"email": "overena@firma.cz", "verified_at": "2026-08-07T10:00:00.000Z"}]}'::jsonb,
+                 true)
+         WHERE id = ${ws.workspaceId}`);
+    }
     if (options.sendingConfigured !== false) {
       const [provider] = await tx
         .insert(schema.sendingProviders)
@@ -55,8 +67,9 @@ async function seedWorkspace(options: { sendingConfigured?: boolean } = {}) {
           status: 'ready',
         })
         .returning({ id: schema.sendingProviders.id });
-      // Odesílací identita se bere z poslední uživatelské kampaně, stejně jako
-      // u testovacího odeslání a u e-mailu z formuláře.
+      // Odesílatele hledá společný resolver: předvolba projektu, pak poslední
+      // uživatelská kampaň, pak připojený účet s ověřenou adresou.
+      if (options.withCampaign === false) return;
       await tx.insert(schema.campaigns).values({
         workspaceId: ws.workspaceId,
         name: 'Jarní novinky',
@@ -307,6 +320,38 @@ describe('e-maily seznamu přes outbox', () => {
     });
     expect(blocked).toBe('suppressed');
     expect(await messagesOf(seeded, complained)).toHaveLength(0);
+  }, 120_000);
+
+  /**
+   * POTVRZOVACÍ E-MAIL MUSÍ ODEJÍT I V ČERSTVÉM PROJEKTU.
+   *
+   * Do 7. 8. 2026 se odesílatel hledal jen v `sender_identities` a v uložených
+   * kampaních. Čerstvý projekt nemá ani jedno (předvolbu odesílatele nejde
+   * založit bez ověřené domény, kterou zkušební režim z definice nemá), takže
+   * kontakt vznikl, token vznikl, `messages` zůstala prázdná a v auditu leželo
+   * `sending_not_configured`. Návštěvník veřejného formuláře přitom četl
+   * „Poslali jsme vám e-mail s odkazem" a nedostal nic.
+   */
+  it('potvrzení odejde i v projektu bez jediné kampaně, když je připojený účet a ověřená adresa', async () => {
+    const seeded = await seedWorkspace({ withCampaign: false, verifiedAddress: true });
+    const listId = await createList(seeded);
+    const contactId = await createContact(seeded, 'cerstvy@example.cz');
+
+    const outcome = await sendSubscriptionEmail(seeded.ws.ctx, {
+      kind: 'confirmation',
+      contactId,
+      listId,
+      token: TOKEN,
+      appUrl: APP_URL,
+      assetBaseUrl: ASSETS,
+    });
+    expect(outcome).toBe('sent');
+    expect(await messagesOf(seeded, contactId)).toHaveLength(1);
+
+    const [campaign] = await withWorkspace(seeded.ws.ctx, (tx) =>
+      tx.select().from(schema.campaigns).where(eq(schema.campaigns.kind, 'system')),
+    );
+    expect(campaign!.fromEmail).toBe('overena@firma.cz');
   }, 120_000);
 
   it('projekt bez odesílání vrátí důvod, ne výjimku', async () => {

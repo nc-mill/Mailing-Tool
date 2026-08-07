@@ -25,6 +25,15 @@ export type PropDescriptor =
       allowThemeRef: true;
       nullable?: boolean;
       hint?: I18nKey;
+      /**
+       * Ve KTERÉ paletě pole vybírá. Výchozí `light`, protože drtivá většina
+       * polí míří do `theme.colors`.
+       *
+       * `dark` mění vzorník, ne jen cíl zápisu: vzorky musí kreslit odstíny
+       * z `resolveTheme().dark`, jinak by uživatel vybíral tmavou barvu podle
+       * světlých vzorků a dostal by něco jiného, než na co klikl.
+       */
+      scheme?: 'light' | 'dark';
     }
   | {
       kind: 'number';

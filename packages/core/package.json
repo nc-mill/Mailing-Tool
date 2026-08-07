@@ -41,6 +41,7 @@
     "./ops/api": "./src/ops/api/index.ts",
     "./ops/*": "./src/ops/*.ts",
     "./providers/ses/*": "./src/providers/ses/*.ts",
+    "./contacts/forms/*": "./src/contacts/forms/*.ts",
     "./*": "./src/*/index.ts"
   },
   "scripts": {

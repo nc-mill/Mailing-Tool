@@ -4,6 +4,22 @@ Datum: 2026-08-05. Krátký plán, ne specifikace.
 
 ---
 
+## Stav k 7. 8. 2026: BODY 1 AŽ 5 HOTOVÉ, DOLADĚNÍ (6 AŽ 10) ZBÝVÁ
+
+Udělal agent `systemova-posta`. Odeslání přes SES je v
+`packages/core/src/platform/system-mail-ses.ts`, větev podle `config.kind`
+v `DefaultSystemMailer.send`, `SYSTEM_MAIL_CAPABLE_TYPES` je `['smtp', 'ses']`
+a `SYSTEM_MAIL_ACCOUNT_ORDER` je nově `p.is_default DESC, p.created_at`.
+
+**Jediná odchylka od plánu je krok 4 rozhodnutí R2 a je vynucená.** „Nejstarší
+nesmazaný projekt instalace s použitelným účtem přes `withoutContext`" NEJDE:
+`workspaces` má `ws_isolation_self` a `sending_providers` má `ws_isolation`,
+takže pod aplikační rolí vrátí oba dotazy nula řádků a vypadalo by to jako
+správná odpověď „instalace nemá projekt". Klíč
+`system_settings.settings.systemMail.workspace_id` proto zůstává (krok 3), ale
+plní se SÁM při každém úspěšném výběru účtu, viz
+`platform/system-mail-installation.ts`. Zbytek plánu platí beze změny.
+
 ## Stav k 6. 8. 2026 (revize proti kódu): PLÁN PLATÍ CELÝ, NEZAČALO SE
 
 Ověřeno: `SYSTEM_MAIL_CAPABLE_TYPES` je pořád `['smtp']`
@@ -117,12 +133,40 @@ dostane klíč `systemMail.workspace_id`. Pořadí výběru:
 1. `mail.workspaceId`, pokud zpráva projekt nese,
 2. nejstarší projekt uživatele (dnešní chování, beze změny),
 3. **nově:** projekt z `system_settings.settings.systemMail.workspace_id`,
-4. **nově:** když není nastavený, nejstarší nesmazaný projekt instalace, který má použitelný
-   odesílací účet.
+4. ~~**nově:** když není nastavený, nejstarší nesmazaný projekt instalace, který má
+   použitelný odesílací účet, čtený přes `withoutContext`, protože se ptáme na instalaci,
+   ne na projekt.~~ **TENHLE KROK BYL ŠPATNĚ, OPRAVENO 7. 8. 2026** (viz níž).
 
 Je to self-hosted instalace jednoho vlastníka, ne SaaS s cizími nájemníky, takže
-„půjčit si" odesílací účet jiného projektu není únik ani porušení izolace. Krok 4 se čte
-přes `withoutContext`, protože se ptáme na instalaci, ne na projekt.
+„půjčit si" odesílací účet jiného projektu není únik ani porušení izolace.
+
+> **OPRAVA KROKU 4, zapsaná 7. 8. 2026 po implementaci. Původní znění by spadlo POTICHU,
+> a to je na něm to nejhorší.**
+>
+> `withoutContext` neznamená „bez row level security", znamená jen „bez nastaveného
+> `mlain.workspace_id`". Politiky přitom platí dál: `workspaces` má `ws_isolation_self`
+> a `sending_providers` má `ws_isolation`, takže bez kontextu **nepustí ani jeden řádek**.
+> Oba dotazy by pod aplikační rolí vrátily prázdno.
+>
+> Nevypadalo by to jako chyba. Vypadalo by to jako správná odpověď „instalace nemá žádný
+> projekt s použitelným účtem", tedy přesně jako stav, který ten krok měl vyřešit. Žádná
+> výjimka, žádný záznam v logu, jen uživatel, kterému nepřijde obnova hesla.
+>
+> **Projít napříč projekty umí jedině migrátorská role** (tou jede `mlain doctor`). Stavět
+> na ní běhovou cestu obnovy hesla by bylo horší než ta chybějící zpráva: znamenalo by to
+> držet ve webovém procesu spojení, které obchází izolaci projektů, kvůli jedné výjimečné
+> situaci.
+>
+> **Jak je to udělané místo toho.** Klíč `system_settings.settings.systemMail.workspace_id`
+> z kroku 3 zůstává, ale nikdo ho nemusí vyplňovat ručně: **plní se sám** při každém
+> úspěšném výběru účtu (`platform/system-mail-installation.ts`). První systémová zpráva,
+> která projektem projde, ho tedy nastaví a od té chvíle funguje i cesta pro příjemce bez
+> projektu. `system_settings` je singleton bez RLS, takže se čte i zapisuje bez kontextu.
+>
+> **Co z toho zbývá jako otevřená věc.** Na instalaci, kde od nasazení téhle změny neodešla
+> ani jedna systémová zpráva s projektem, je klíč prázdný, takže uživatel bez projektu
+> obnovu hesla nedostane. Vyplní ho buď obrazovka z bodu 10, nebo průvodce instalací
+> (`identity/setup.ts` zakládá první projekt, takže tam je ta hodnota známá rovnou).
 
 **Úplně první instalace:** průvodce (`identity/setup.ts:122`) zakládá prvního uživatele
 a první projekt v jedné transakci, takže stav „uživatel bez jediného projektu v instalaci"
@@ -230,7 +274,9 @@ job `platform.system_mail_send` s pár pokusy. Až po tom, co odesílání přes
 8. Jméno projektu a instalace v textech systémových zpráv (R4).
 9. Job `platform.system_mail_send` pro dvě informační zprávy (R6).
 10. Volba „projekt systémové pošty instalace" na obrazovce Nastavení → Systémová pošta;
-    do té doby se počítá automaticky podle R2, kroku 4.
+    do té doby se klíč `systemMail.workspace_id` plní SÁM při prvním úspěšném výběru účtu
+    (viz opravu kroku 4 v R2). Na instalaci, ze které ještě žádná systémová zpráva
+    s projektem neodešla, tedy zůstává prázdný.
 
 ## 4. Odhad
 
@@ -257,7 +303,7 @@ Body 1 až 5 jsou zhruba **den práce**: dva menší nové soubory, změny v pě
 
 ## 6. Otázky pro zadavatele
 
-1. **Smí si systémová pošta „půjčit" odesílací účet jiného projektu** (R2, krok 4), když
+1. **Smí si systémová pošta „půjčit" odesílací účet jiného projektu** (R2, krok 3), když
    příjemce do žádného projektu nepatří? *Doporučuji ano.* Je to instalace jednoho vlastníka
    a alternativou je, že se odebraný uživatel nedostane k obnově hesla.
 2. **Má se `mlain@doména` u SES tvrdě vyžadovat z ověřené domény?** *Doporučuji ano:*

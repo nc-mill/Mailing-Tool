@@ -61,7 +61,10 @@
     "dialogTitle": "Remove the sample data?",
     "dialogContacts": "{contacts, plural, =0 {no contact} one {# contact} other {# contacts}}, {lists, plural, =0 {no list} one {# list} other {# lists}} and {tags, plural, =0 {no tag} one {# tag} other {# tags}}.",
     "dialogContent": "{segments, plural, =0 {no segment} one {# segment} other {# segments}}, {templates, plural, =0 {no template} one {# template} other {# templates}} and {campaigns, plural, =0 {no campaign} one {# campaign} other {# campaigns}} with its report.",
-    "dialogSafety": "Nothing else in the project is touched.",
+    "dialogSafety": "Your own contacts, lists, templates and campaigns are not deleted.",
+    "dialogEdits": "Whatever you put into the sample items goes with them: a sample contact you rewrote and a sample template you edited are deleted too.",
+    "dialogImpactContacts": "The sample lists and the tag disappear from {contacts, plural, =0 {no contact of your own} one {# contact of your own} other {# contacts of your own}} as well. The contacts themselves stay, they only lose the membership and the tag.",
+    "dialogImpactCampaigns": "{campaigns, plural, =0 {No campaign of your own loses its link} one {# campaign of your own loses its link} other {# campaigns of your own lose their link}} to a sample template or to an unsubscribe list. The campaign content stays.",
     "dialogAgain": "You can load the sample data again at any time.",
     "dialogConfirm": "Remove the sample data",
     "dialogCancel": "Keep them"

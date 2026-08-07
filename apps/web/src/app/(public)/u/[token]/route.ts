@@ -1,6 +1,7 @@
 import {
   anonymousBranding,
   isOneClickBody,
+  loadPublicPageDesign,
   oneClickRateLimit,
   readVerifiedToken,
   recordSystemLinkVisit,
@@ -8,6 +9,7 @@ import {
   unsubscribeRedirectFor,
 } from '@mlain/core/contacts';
 import { sanitizePublicToken } from '@mlain/core/net/public-link';
+import { renderDesignedPage } from '@/features/public/designed-page';
 import { publicTranslator } from '@/features/public/i18n';
 import { InvalidLinkPage, OneClickDonePage, UnsubscribePage } from '@/features/public/pages';
 import { renderPublicPage } from '@/features/public/render';
@@ -67,6 +69,36 @@ export async function GET(
   // dosud chyběla. Přesměrování po odhlášení (`?done=1`) druhý řádek nevyrobí.
   await recordSystemLinkVisit(verified.token, 'unsubscribe_page');
 
+  /*
+   * Navržená stránka po odhlášení (povrch `unsubscribed`, plán oddíl 3).
+   *
+   * JEN VE VĚTVI `?done=1`, tedy až po zápisu odhlášení, který udělal POST.
+   * Stránka PŘED odhlášením nese tlačítko, kterým se odhlašuje, a ta ovládací
+   * prvky navrhnout nejdou; je to totéž vymezení, kvůli kterému zůstává mimo
+   * rozsah centrum předvoleb.
+   *
+   * Jen u odhlášení z JEDNOHO seznamu, protože stránku vlastní seznam. Kdo se
+   * odhlásil ze všeho, nemá podle čeho seznam vybrat, a vzít „nějaký" by
+   * znamenalo ukázat stránku, která s jeho rozhodnutím nesouvisí. Táž hranice
+   * platí u `unsubscribeRedirectFor`.
+   *
+   * Vedlejší účinek je v jiném požadavku, takže ho tohle vykreslení nemůže
+   * zvrátit ani pádem; `renderDesignedPage` navíc padá na vestavěný text.
+   */
+  if (done && verified.token.effectiveScope === 'list' && verified.token.data.listId !== null) {
+    const designed = await renderDesignedPage(
+      await loadPublicPageDesign({
+        ctx: verified.token.scope.ctx,
+        surface: 'unsubscribed',
+        branding,
+        listId: verified.token.data.listId,
+        contactId: verified.token.data.contactId,
+        listName: verified.token.listName,
+      }),
+    );
+    if (designed !== null) return designed;
+  }
+
   // GET jen vykreslí stránku a NIC NEODHLÁSÍ (kritérium 57).
   return renderPublicPage(
     UnsubscribePage({
@@ -77,7 +109,11 @@ export async function GET(
       preferencesHref: verified.token.scope.preferenceCenter ? `/p/${token}` : null,
       senderName: branding.senderName,
       listName: verified.token.listName,
-      scoped: verified.token.data.listId !== null,
+      // Rozsah se NEODVOZUJE z tokenu, čte se hotový z `effectiveScope`: seznam
+      // přepnutý na `unsubscribe_scope = 'global'` odhlašuje ze všeho, i když
+      // token seznam nese. Kdyby si to stránka počítala sama, řekla by „odhlásíme
+      // vás z Novinek" a odhlásila by ze všeho.
+      scoped: verified.token.effectiveScope === 'list',
       done,
     }),
     { branding, locale: branding.locale },
@@ -114,7 +150,8 @@ export async function POST(
     return renderPublicPage(
       OneClickDonePage({
         t,
-        scoped: verified.token.data.listId !== null,
+        // Týž zdroj pravdy jako u stránky, viz GET.
+        scoped: verified.token.effectiveScope === 'list',
         listName: verified.token.listName,
       }),
       { branding, locale: branding.locale },

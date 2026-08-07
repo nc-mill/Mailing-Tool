@@ -323,7 +323,9 @@ describe('kategorie šablon', () => {
     const counts = await withWorkspace(a.ctx, (tx) => countTemplatesByCategory(tx, a.ctx));
 
     expect(page.items).toHaveLength(1);
-    expect(counts).toEqual({ all: 3, campaign: 1, form: 1, transactional: 1 });
+    // `page` je nula: stránky do e-mailové knihovny nepatří a do `all` se
+    // nepočítají, viz `TemplateCategoryCounts`.
+    expect(counts).toEqual({ all: 3, campaign: 1, form: 1, transactional: 1, page: 0 });
     expect(
       counts.campaign + counts.form + counts.transactional,
       'kategorie jsou výlučné, takže se musí sečíst na celek',
@@ -392,6 +394,6 @@ describe('kategorie šablon', () => {
     );
     expect(foreign.size).toBe(0);
     const counts = await withWorkspace(b.ctx, (tx) => countTemplatesByCategory(tx, b.ctx));
-    expect(counts).toEqual({ all: 0, campaign: 0, form: 0, transactional: 0 });
+    expect(counts).toEqual({ all: 0, campaign: 0, form: 0, transactional: 0, page: 0 });
   });
 });

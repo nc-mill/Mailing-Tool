@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContactsBulkActions } from './bulk-actions';
@@ -15,9 +15,10 @@ const createContactExportAction = vi
   .fn()
   .mockResolvedValue({ status: 'success', id: 'e-1', downloadUrl: '/api/v1/x?token=t' });
 
+const bulkTagContactsAction = vi.fn();
 vi.mock('./actions', () => ({
   bulkDeleteContactsAction: vi.fn().mockResolvedValue({ status: 'success' }),
-  bulkTagContactsAction: vi.fn().mockResolvedValue({ status: 'success' }),
+  bulkTagContactsAction: (...args: unknown[]) => bulkTagContactsAction(...args),
   createContactExportAction: (...args: unknown[]) => createContactExportAction(...args),
   exportStatusAction: vi.fn().mockResolvedValue({ status: 'success', state: 'completed' }),
 }));
@@ -39,6 +40,10 @@ const LISTS = [
   { id: 'l-1', name: 'Newsletter' },
   { id: 'l-2', name: 'Zákazníci' },
 ];
+const TAGS = [
+  { id: 't-1', name: 'Brno' },
+  { id: 't-2', name: 'Praha' },
+];
 
 /** Výsledek povýšení jednoho kontaktu. Blokace adresy se předává zvlášť. */
 function outcome(id: string, suppressionBlocking: string | null = null) {
@@ -59,6 +64,7 @@ function render(current: Selection = selection) {
       filters={{}}
       names={{ lists: {}, tags: {}, segments: {} }}
       lists={LISTS}
+      tags={TAGS}
       // Adresy vybraných řádků. Bez nich se export výběru vědomě neprovede, protože
       // publikum umí vyjmenovat kontakty jen e-mailem; podrobně u `emailsToAudience`.
       selectedEmails={['a@firma.cz', 'b@firma.cz']}
@@ -78,10 +84,21 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = () => undefined;
 });
 
-async function chooseList(name: RegExp) {
-  await userEvent.click(screen.getByRole('combobox', { name: /přidat do seznamu/i }));
-  await userEvent.click(await screen.findByRole('option', { name }));
+/**
+ * Akce se od 7. 8. 2026 volí PŘÍMO V NABÍDCE, ne rozbalovátkem a tlačítkem vedle něj.
+ * Nabídka má dvě skupiny se stejnými názvy seznamů, takže se položka hledá UVNITŘ
+ * skupiny; bez toho by dotaz našel „Newsletter" dvakrát a test by si sám vybral,
+ * jestli seznam přidává, nebo odebírá.
+ */
+async function chooseInListMenu(group: RegExp, name: RegExp) {
+  await userEvent.click(screen.getByRole('button', { name: /^seznamy$/i }));
+  const scope = within(await screen.findByRole('group', { name: group }));
+  await userEvent.click(scope.getByRole('menuitem', { name }));
 }
+
+const addToList = (name: RegExp) => chooseInListMenu(/^přidat 2 kontakty do seznamu$/i, name);
+const openRemoveFromList = (name: RegExp) =>
+  chooseInListMenu(/^odebrat 2 kontakty ze seznamu$/i, name);
 
 beforeEach(() => {
   refresh.mockClear();
@@ -97,6 +114,7 @@ beforeEach(() => {
     status: 'success',
     summary: { unsubscribed: 2, unchanged: 0 },
   });
+  bulkTagContactsAction.mockReset().mockResolvedValue({ status: 'success' });
 });
 
 describe('hromadné potvrzení kontaktů', () => {
@@ -150,18 +168,23 @@ describe('hromadné potvrzení kontaktů', () => {
  * Zbylá dvě tlačítka uměla potvrdit stav a smazat.
  */
 describe('hromadné přidání do seznamu', () => {
-  it('tlačítko v liště je a říká, kolika kontaktů se to týká', async () => {
+  it('akce i cíl jsou v jedné nabídce, ne v rozbalovátku a tlačítku vedle něj', async () => {
     render();
 
+    await userEvent.click(screen.getByRole('button', { name: /^seznamy$/i }));
+
+    // Nadpis skupiny nese akci i počet, takže je z nabídky poznat, co se stane,
+    // dřív než se to stane.
     expect(
-      await screen.findByRole('button', { name: /přidat 2 kontakty do seznamu/i }),
+      await screen.findByRole('group', { name: /^přidat 2 kontakty do seznamu$/i }),
     ).toBeInTheDocument();
-  });
-
-  it('bez vybraného seznamu je tlačítko vypnuté, aby akce nemířila nikam', () => {
-    render();
-
-    expect(screen.getByRole('button', { name: /přidat 2 kontakty do seznamu/i })).toBeDisabled();
+    expect(
+      screen.getByRole('group', { name: /^odebrat 2 kontakty ze seznamu$/i }),
+    ).toBeInTheDocument();
+    // Stará dvojice tlačítek v liště být nesmí, jinak by na obrazovce byly dvě cesty
+    // k téže akci.
+    expect(screen.queryByRole('button', { name: /^přidat 2 kontakty do seznamu$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^odebrat 2 kontakty ze seznamu$/i })).toBeNull();
   });
 
   it('pošle vybraný seznam i označené kontakty a ohlásí výsledek', async () => {
@@ -171,8 +194,7 @@ describe('hromadné přidání do seznamu', () => {
     });
     render();
 
-    await chooseList(/newsletter/i);
-    await userEvent.click(screen.getByRole('button', { name: /přidat 2 kontakty do seznamu/i }));
+    await addToList(/newsletter/i);
 
     await waitFor(() =>
       expect(addContactsToListAction).toHaveBeenCalledWith({
@@ -197,8 +219,7 @@ describe('hromadné přidání do seznamu', () => {
     });
     render();
 
-    await chooseList(/newsletter/i);
-    await userEvent.click(screen.getByRole('button', { name: /přidat 2 kontakty do seznamu/i }));
+    await addToList(/newsletter/i);
 
     expect(await screen.findByText(/poslali e-mail s potvrzením přihlášení/i)).toBeInTheDocument();
   });
@@ -210,8 +231,7 @@ describe('hromadné přidání do seznamu', () => {
     });
     render();
 
-    await chooseList(/newsletter/i);
-    await userEvent.click(screen.getByRole('button', { name: /přidat 2 kontakty do seznamu/i }));
+    await addToList(/newsletter/i);
 
     expect(
       await screen.findByText(/1 kontakt jsme přidat nemohli, protože má blokovanou adresu/i),
@@ -222,8 +242,7 @@ describe('hromadné přidání do seznamu', () => {
     addContactsToListAction.mockResolvedValue({ status: 'error', code: 'forbidden' });
     render();
 
-    await chooseList(/newsletter/i);
-    await userEvent.click(screen.getByRole('button', { name: /přidat 2 kontakty do seznamu/i }));
+    await addToList(/newsletter/i);
 
     expect(await screen.findByText(/do seznamu nepodařilo přidat/i)).toBeInTheDocument();
     expect(refresh).not.toHaveBeenCalled();
@@ -237,14 +256,18 @@ describe('hromadné přidání do seznamu', () => {
  */
 describe('hromadné odebrání ze seznamu', () => {
   async function openRemoveDialog() {
-    await chooseList(/newsletter/i);
-    await userEvent.click(screen.getByRole('button', { name: /odebrat 2 kontakty ze seznamu/i }));
+    await openRemoveFromList(/newsletter/i);
   }
 
-  it('tlačítko je vedle přidání a bez vybraného seznamu je vypnuté', () => {
+  it('odebrání je v téže nabídce jako přidání, jen v druhé skupině', async () => {
     render();
 
-    expect(screen.getByRole('button', { name: /odebrat 2 kontakty ze seznamu/i })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: /^seznamy$/i }));
+    const scope = within(
+      await screen.findByRole('group', { name: /^odebrat 2 kontakty ze seznamu$/i }),
+    );
+
+    expect(scope.getByRole('menuitem', { name: /newsletter/i })).toBeInTheDocument();
   });
 
   it('nejdřív se zeptá dialogem a bez potvrzení nic neodešle', async () => {
@@ -341,4 +364,146 @@ describe('hromadné odebrání ze seznamu', () => {
     );
     vi.unstubAllGlobals();
   }, 15_000);
+});
+
+/**
+ * ODEBRÁNÍ ŠTÍTKU. Nález zadavatele ze 7. 8. 2026: „Když vyberu nějaké kontakty a dám
+ * přidat štítek, tak už ho nejsem schopen hromadně u kontaktů zrušit."
+ *
+ * Server to uměl od začátku (`POST /contacts/tags:bulk` bere `add` i `remove`), jen
+ * rozhraní nabízelo pouhé přidání. `remove` se dosud používalo jedině v nabídce „Vrátit
+ * zpět", tedy na místě, kam se uživatel sám nedostal.
+ */
+describe('hromadné štítky', () => {
+  async function chooseInTagMenu(group: RegExp, name: RegExp) {
+    await userEvent.click(screen.getByRole('button', { name: /^štítky$/i }));
+    const scope = within(await screen.findByRole('group', { name: group }));
+    await userEvent.click(scope.getByRole('menuitem', { name }));
+  }
+
+  it('jedna nabídka nese přidání i odebrání, každé ve vlastní skupině', async () => {
+    render();
+
+    await userEvent.click(screen.getByRole('button', { name: /^štítky$/i }));
+
+    expect(await screen.findByRole('group', { name: /^přidat štítek$/i })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /^odebrat štítek$/i })).toBeInTheDocument();
+  });
+
+  it('přidání pošle štítek do add a nabídne vrácení', async () => {
+    render();
+
+    await chooseInTagMenu(/^přidat štítek$/i, /^brno$/i);
+
+    await waitFor(() =>
+      expect(bulkTagContactsAction).toHaveBeenCalledWith({
+        workspaceId: WORKSPACE,
+        scope: { mode: 'ids', ids: ['c-1', 'c-2'] },
+        add: ['t-1'],
+      }),
+    );
+  });
+
+  /*
+   * Odebrání se PTÁ PŘED AKCÍ. Nabídka „Vrátit zpět" by tu lhala: vrácení by štítek
+   * přidalo všem označeným, tedy i těm, kdo ho nikdy neměli. Podrobně u `RemoveTagDialog`.
+   */
+  it('odebrání se nejdřív zeptá a bez potvrzení nic neodešle', async () => {
+    render();
+
+    await chooseInTagMenu(/^odebrat štítek$/i, /^brno$/i);
+
+    expect(await screen.findByText(/odebrat štítek brno u 2 kontaktů\?/i)).toBeInTheDocument();
+    expect(bulkTagContactsAction).not.toHaveBeenCalled();
+  });
+
+  it('po potvrzení pošle štítek do remove a ohlásí výsledek', async () => {
+    render();
+
+    await chooseInTagMenu(/^odebrat štítek$/i, /^praha$/i);
+    await userEvent.click(await screen.findByRole('button', { name: /^odebrat štítek$/i }));
+
+    await waitFor(() =>
+      expect(bulkTagContactsAction).toHaveBeenCalledWith({
+        workspaceId: WORKSPACE,
+        scope: { mode: 'ids', ids: ['c-1', 'c-2'] },
+        remove: ['t-2'],
+      }),
+    );
+    expect(await screen.findByText(/štítek praha odebrán/i)).toBeInTheDocument();
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+
+  it('chybu ukáže a seznam neobnovuje, aby nevypadal jako změněný', async () => {
+    bulkTagContactsAction.mockResolvedValue({ status: 'error', code: 'forbidden' });
+    render();
+
+    await chooseInTagMenu(/^odebrat štítek$/i, /^brno$/i);
+    await userEvent.click(await screen.findByRole('button', { name: /^odebrat štítek$/i }));
+
+    expect(await screen.findByText(/štítek se nepodařilo/i)).toBeInTheDocument();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Zadavatel od produktu čeká, že „seznam musí kontakt nějaký mít". Jádro to NEVYNUCUJE
+ * (`lists` je v `ContactUpsertRequest` nepovinné a žádné minimum tam není), takže se to
+ * nedá zarazit chybou ze serveru. Musí se to tedy říct nahlas dřív, než akce proběhne.
+ */
+describe('odhlášení z posledního seznamu', () => {
+  it('řekne, kolik kontaktů zůstane bez jediného seznamu', async () => {
+    renderWithProviders(
+      <ContactsBulkActions
+        workspaceId={WORKSPACE}
+        selection={selection}
+        filters={{}}
+        names={{ lists: {}, tags: {}, segments: {} }}
+        lists={LISTS}
+        tags={TAGS}
+        selectedEmails={['a@firma.cz', 'b@firma.cz']}
+        // První kontakt je jen v Newsletteru, druhý ještě v Zákaznících.
+        selectedSubscriptions={[['l-1'], ['l-1', 'l-2']]}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /^seznamy$/i }));
+    const scope = within(
+      await screen.findByRole('group', { name: /^odebrat 2 kontakty ze seznamu$/i }),
+    );
+    await userEvent.click(scope.getByRole('menuitem', { name: /^newsletter$/i }));
+
+    expect(
+      await screen.findByText(/1 z označených kontaktů zůstane bez jediného seznamu/i),
+    ).toBeInTheDocument();
+  });
+
+  it('když nikdo bez seznamu nezůstane, větu neříká', async () => {
+    renderWithProviders(
+      <ContactsBulkActions
+        workspaceId={WORKSPACE}
+        selection={selection}
+        filters={{}}
+        names={{ lists: {}, tags: {}, segments: {} }}
+        lists={LISTS}
+        tags={TAGS}
+        selectedEmails={['a@firma.cz', 'b@firma.cz']}
+        selectedSubscriptions={[
+          ['l-1', 'l-2'],
+          ['l-1', 'l-2'],
+        ]}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /^seznamy$/i }));
+    const scope = within(
+      await screen.findByRole('group', { name: /^odebrat 2 kontakty ze seznamu$/i }),
+    );
+    await userEvent.click(scope.getByRole('menuitem', { name: /^newsletter$/i }));
+
+    expect(
+      await screen.findByText(/odebrat 2 kontakty ze seznamu newsletter\?/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/bez jediného seznamu/i)).toBeNull();
+  });
 });

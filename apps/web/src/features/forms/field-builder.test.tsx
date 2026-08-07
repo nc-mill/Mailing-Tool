@@ -81,6 +81,32 @@ describe('FieldBuilder', () => {
     expect(screen.getByTestId('email-locked')).toHaveTextContent('E-mail odebrat nejde');
   });
 
+  it('typy polí se nabízejí česky, ne jmény z databáze', async () => {
+    const user = userEvent.setup();
+    renderBuilder();
+    await user.click(screen.getByTestId('add-field'));
+    await user.click(screen.getByTestId('new-contact-field'));
+
+    const select = screen.getByRole('combobox', { name: 'Jaké hodnoty pole ponese' });
+    await user.click(select);
+    // `boolean` uživateli neřeklo, co se do pole zadává. „Ano/ne" ano.
+    expect(await screen.findByRole('option', { name: 'Ano/ne' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'boolean' })).toBeNull();
+    expect(screen.queryByRole('option', { name: 'long_text' })).toBeNull();
+  });
+
+  it('vedle popisku pole stojí jeho typ pojmenovaný, ne značka vstupu', async () => {
+    const user = userEvent.setup();
+    renderBuilder();
+    await user.click(screen.getByTestId('add-field'));
+    // Vybrané pole `enum` se do definice ukládá jako `select`, na obrazovce
+    // ale musí zůstat „Výběr z možností".
+    await user.click(screen.getByTestId('pick-attr-segment'));
+    expect(
+      within(screen.getByTestId('field-attr_segment')).getByText('Výběr z možností'),
+    ).toBeInTheDocument();
+  });
+
   it('strop patnácti polí říká dřív, než na něj uživatel narazí', () => {
     renderBuilder();
     expect(screen.getByTestId('field-limit')).toHaveTextContent('nejvýš 15 polí');
@@ -99,6 +125,40 @@ describe('FieldBuilder', () => {
     renderBuilder();
     await user.click(screen.getByTestId('add-field'));
     expect(screen.getByTestId('pick-email')).toBeDisabled();
+  });
+
+  /**
+   * NABÍDKA PEVNÝCH POLÍ MLUVÍ ČESKY, a není to kosmetika: vybrané jméno se
+   * stane POPISKEM pole, takže `first_name` neviděl jen správce v nabídce, ale
+   * i návštěvník na veřejné stránce formuláře.
+   */
+  it('pevná pole kontaktu se nabízejí pojmenovaně a popisek se z nich přebírá', async () => {
+    const user = userEvent.setup();
+    renderBuilder();
+    await user.click(screen.getByTestId('add-field'));
+
+    expect(screen.getByTestId('pick-first_name')).toHaveTextContent('Jméno');
+    // Celé jméno je jediné, které se do kontaktu nezapisuje jako sloupec, takže
+    // se na něj nejspíš zapomene jako první.
+    expect(screen.getByTestId('pick-full_name')).toHaveTextContent('Celé jméno');
+    // Týž název, jaký má pole v mapování importu a ve stavěči segmentů. Dvě
+    // jména pro jedno pole na dvou obrazovkách jsou horší než anglický klíč
+    // na obou.
+    expect(screen.getByTestId('pick-locale')).toHaveTextContent('Jazyk komunikace');
+    expect(screen.getByTestId('pick-first_name')).not.toHaveTextContent('first_name');
+
+    await user.click(screen.getByTestId('pick-first_name'));
+    await user.click(screen.getByTestId('save-fields'));
+
+    await waitFor(() => {
+      expect(saveFields).toHaveBeenCalled();
+    });
+    const payload = saveFields.mock.calls[0]?.[0] as {
+      fields: { target: unknown; label: unknown }[];
+    };
+    // Cíl zůstává technický, mění se JEN to, co uvidí člověk.
+    expect(payload.fields[1]?.target).toBe('first_name');
+    expect(payload.fields[1]?.label).toBe('Jméno');
   });
 
   it('pole s víc hodnotami se nenabízí a řekne se proč', async () => {
@@ -136,8 +196,9 @@ describe('FieldBuilder', () => {
     await user.click(screen.getByTestId('pick-first_name'));
 
     // Tlačítko je dosažitelné tabulátorem a má popisek pro čtečku, takže táhnutí
-    // myší není jediná cesta.
-    const up = screen.getByRole('button', { name: /Posunout pole first_name nahoru/ });
+    // myší není jediná cesta. Popisek je český: pole vybrané z nabídky si bere
+    // jméno z katalogu, ne `first_name` z API.
+    const up = screen.getByRole('button', { name: /Posunout pole Jméno nahoru/ });
     await user.click(up);
     await user.click(screen.getByTestId('save-fields'));
 

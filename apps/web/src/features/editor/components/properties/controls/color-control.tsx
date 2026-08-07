@@ -104,11 +104,23 @@ export function ColorControl({
   const isHex = typeof value === 'string' && value.startsWith('#');
   const selected = typeof value === 'string' ? value : null;
 
-  /** Skutečná barva zvolené hodnoty ve světlém režimu. `null` u „Průhledné". */
+  /*
+   * Paleta, ze které se kreslí vzorník i hex pod ním.
+   *
+   * Pole tmavého režimu (`descriptor.scheme: 'dark'`) musí ukazovat odstíny
+   * z tmavé palety. Se světlými vzorky by uživatel klikl na téměř bílé plátno
+   * a příjemce by v tmavém režimu dostal skoro černé, tedy vzorník by lhal.
+   *
+   * Kontrast se tímhle NEŘÍDÍ, ten se níž měří v obou paletách naráz, protože
+   * přesně tak ho měří `checkSemanticFields`.
+   */
+  const palette = descriptor.kind === 'color' && descriptor.scheme === 'dark' ? 'dark' : 'light';
+
+  /** Skutečná barva zvolené hodnoty ve zvolené paletě. `null` u „Průhledné". */
   const shown = useMemo(() => {
     if (selected === null) return null;
-    return resolved.light.color(selected as never);
-  }, [resolved, selected]);
+    return resolved[palette].color(selected as never);
+  }, [resolved, selected, palette]);
 
   /*
    * Kontrast se počítá ve světlém i tmavém režimu, stejně jako ho počítá
@@ -178,7 +190,7 @@ export function ColorControl({
         className="grid grid-cols-5 gap-1"
       >
         {ROLES.map((role, index) => {
-          const hex = resolved.light.roles[role];
+          const hex = resolved[palette].roles[role];
           const active = selected === role;
           return (
             <button

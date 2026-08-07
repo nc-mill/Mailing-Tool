@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SegmentAst } from '@mlain/ui/patterns/query-builder';
 import { SegmentBuilder } from '../../src/features/segments/segment-builder';
 import { EmptyDiagnostics } from '../../src/features/segments/empty-diagnostics';
-import { CleanupScenario } from '../../src/features/segments/cleanup-scenario';
 import { PresetGrid } from '../../src/features/segments/preset-card';
 import { AudienceBreakdown } from '../../src/components/segments/audience-breakdown';
 import { renderIntl } from '../helpers/intl';
@@ -278,81 +277,5 @@ describe('preset cards', () => {
     renderIntl(<PresetGrid presets={[sixPresets()[0]!]} onUse={onUse} />);
     await userEvent.click(screen.getByRole('button', { name: /^použít$/i }));
     expect(onUse).toHaveBeenCalledWith({ preset_key: 'never_opened' });
-  });
-});
-
-describe('reactivation cleanup', () => {
-  const segment = { name: 'Neaktivní', count: 1842 };
-
-  it('explains freezing in terms of the consequence', () => {
-    renderIntl(<CleanupScenario step="freeze" segment={segment} />);
-    expect(screen.getByText(/kdo se mezitím sám ozve, z úklidu vypadne/i)).toBeInTheDocument();
-  });
-
-  /**
-   * Tlačítko „Zmrazit seznam" nic nedělalo: obrazovka nezná id segmentu, které
-   * `POST /segments/{id}/freeze` vyžaduje. Kliknutí, po kterém si uživatel
-   * myslí, že je množina zmrazená, je horší než žádné tlačítko.
-   */
-  it('does not offer a freeze button it cannot carry out', () => {
-    renderIntl(<CleanupScenario step="freeze" segment={segment} />);
-    expect(screen.queryByRole('button', { name: /zmrazit/i })).toBeNull();
-  });
-
-  it('offers three actions described by consequence, defaulting to unsubscribe', () => {
-    renderIntl(<CleanupScenario step="action" segment={segment} />);
-    expect(screen.getByRole('radio', { name: /odhlásit je z odběru/i })).toBeChecked();
-    expect(
-      screen.getByText(/zůstanou v databázi, ale kampaně jim už neposíláme/i),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/nenávratně. může jen vlastník projektu/i)).toBeInTheDocument();
-  });
-
-  it('offers delete only to the owner', () => {
-    renderIntl(<CleanupScenario step="action" role="admin" segment={segment} />);
-    expect(screen.getByRole('radio', { name: /smazat je/i })).toBeDisabled();
-  });
-
-  it('shows the final confirmation with all four numbers and three buttons', () => {
-    renderIntl(
-      <CleanupScenario
-        step="confirm"
-        segment={segment}
-        campaign={{ name: 'Zajímá vás to', sentAt: '18. 7.', sent: 2480, responded: 638 }}
-        days={3}
-      />,
-    );
-    const body = document.body.textContent ?? '';
-    // Čeština odděluje tisíce i části data NEZLOMITELNOU mezerou, a jsou dvě
-    // různé: U+00A0 a U+202F (úzká). Které přesně, rozhoduje `Intl` podle verze
-    // ICU, takže se obě před porovnáním nahradí tečkou a očekávané hodnoty
-    // se píšou s tečkou.
-    //
-    // Zapisují se ESCAPEM, ne doslovným znakem. V editoru jsou k nerozeznání
-    // od obyčejné mezery a lint je hlásí jako podezřelý znak; při plošném
-    // úklidu „neviditelných mezer" jsem je jednou omylem nahradil obyčejnými
-    // a rozbil tím právě tenhle regulární výraz.
-    for (const value of ['1.842', '2.480', '638', '18. 7.']) {
-      expect(body.replace(/\u00a0|\u202f/g, '.')).toContain(value);
-    }
-    for (const name of [/zkontrolovat/i, /odložit o 14 dní/i, /zrušit úklid/i]) {
-      expect(screen.getByRole('button', { name })).toBeInTheDocument();
-    }
-  });
-
-  it('offers downloading the affected contacts before the cleanup runs', () => {
-    renderIntl(<CleanupScenario step="confirm" segment={segment} days={3} />);
-    expect(screen.getByRole('button', { name: /stáhnout těch/i }).textContent).toMatch(
-      /1\u00a0842/,
-    );
-  });
-
-  it('requires typing the segment name, because this is protection level N4', async () => {
-    renderIntl(<CleanupScenario step="confirm" segment={segment} days={3} />);
-    const confirm = screen.getByRole('button', { name: /zkontrolovat/i });
-    expect(screen.getByLabelText(/opište název segmentu/i)).toBeInTheDocument();
-    expect(confirm).toHaveAttribute('aria-disabled', 'true');
-    await userEvent.type(screen.getByLabelText(/opište název segmentu/i), 'Neaktivní');
-    expect(confirm).toHaveAttribute('aria-disabled', 'false');
   });
 });

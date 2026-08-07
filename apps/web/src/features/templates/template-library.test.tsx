@@ -285,3 +285,41 @@ describe('kategorie a zapojení', () => {
     expect(screen.queryByTestId('empty-state')).not.toBeInTheDocument();
   });
 });
+
+/**
+ * VEŘEJNÁ STRÁNKA V KNIHOVNĚ.
+ *
+ * Do 7. 8. 2026 se šablony druhu `page` do knihovny vůbec nevypisovaly. Bylo to
+ * míněné jako ochrana, aby se stránka nedala nabídnout jako e-mail, jenže to
+ * znamenalo, že nově založená stránka ZMIZELA: nešla najít, otevřít ani smazat.
+ * Nahlásil zadavatel snímkem knihovny, kde stránky nebyly ani vidět, ani podle
+ * čeho filtrovat.
+ *
+ * Odznak je proto povinný. Bez něj stránka v seznamu splyne s transakčním
+ * e-mailem, což je přesně ta záměna, kterou celý druh `page` má vyloučit.
+ */
+describe('knihovna šablon: veřejné stránky', () => {
+  const page = (id: string, name: string): TemplateListItem => ({
+    id,
+    name,
+    category: 'page',
+    usage: { forms: [], lists: [] },
+    updated_at: '2026-08-07T09:30:00.000Z',
+  });
+
+  it('vypíše veřejnou stránku, ne že ji schová', () => {
+    renderLibrary({ templates: [page('p1', 'Děkujeme za přihlášení')] });
+    expect(screen.getByText('Děkujeme za přihlášení')).toBeInTheDocument();
+  });
+
+  it('označí ji vlastním odznakem, aby nesplynula s e-mailem', () => {
+    renderLibrary({ templates: [page('p1', 'Děkujeme za přihlášení')] });
+    expect(screen.getByText('VEŘEJNÁ STRÁNKA')).toBeInTheDocument();
+    expect(screen.queryByText('TRANSAKČNÍ E-MAIL')).toBeNull();
+  });
+
+  it('kampaňová šablona odznak dál nemá, zúžení se jí netýká', () => {
+    renderLibrary({ templates: [free('t1', 'Newsletter')] });
+    expect(screen.queryByText('VEŘEJNÁ STRÁNKA')).toBeNull();
+  });
+});

@@ -54,26 +54,80 @@ $$;
 -- schématu public. Tady se jen pojistíme, že vlastnictví sedí.
 ALTER SCHEMA public OWNER TO mlain_migrator;
 
--- Časová zóna databáze. ALTER DATABASE smí jen vlastník databáze nebo
--- superuživatel, takže z migrace pod rolí mlain_migrator to udělat nejde.
--- Připojení si navíc nastavují `options: '-c timezone=UTC'`, tohle je druhá
--- pojistka pro klienty, kteří to neudělají (psql, pg_dump, externí nástroje).
-ALTER DATABASE mlain SET timezone = 'UTC';
+-- ---------------------------------------------------------------------------
+-- PRÁVA NA SAMOTNOU DATABÁZI
+-- ---------------------------------------------------------------------------
+-- Název databáze se NEPÍŠE natvrdo. U přibaleného Postgresu ho určuje
+-- POSTGRES_DB (tedy `mlain`), ale tenhle skript je zároveň RUČNÍ KROK pro
+-- externí Postgres a tam se databáze běžně jmenuje jinak (`defaultdb`,
+-- `neondb`, jméno podle projektu u poskytovatele). S natvrdo napsaným `mlain`
+-- skript na takové instalaci spadl hned na prvním příkazu.
+--
+-- `GRANT` ani `ALTER DATABASE` neberou výraz, jen literál, takže se jméno
+-- doplňuje přes `format(%I)` a `EXECUTE`. Skript se spouští připojený k té
+-- databázi, kterou nastavuje, takže `current_database()` je právě ona.
+DO $$
+DECLARE
+  db text := current_database();
+BEGIN
+  -- Časová zóna databáze. ALTER DATABASE smí jen vlastník databáze nebo
+  -- superuživatel, takže z migrace pod rolí mlain_migrator to udělat nejde.
+  -- Připojení si navíc nastavují `options: '-c timezone=UTC'`, tohle je druhá
+  -- pojistka pro klienty, kteří to neudělají (psql, pg_dump, externí nástroje).
+  EXECUTE format('ALTER DATABASE %I SET timezone = %L', db, 'UTC');
 
--- Připojení k databázi.
-GRANT CONNECT ON DATABASE mlain
-  TO mlain_app, mlain_sender, mlain_backup, mlain_gdpr, mlain_maintenance;
+  -- Připojení k databázi.
+  EXECUTE format(
+    'GRANT CONNECT ON DATABASE %I TO mlain_app, mlain_sender, mlain_backup, mlain_gdpr, mlain_maintenance',
+    db);
+
+  -- ZAKLÁDÁNÍ ROZŠÍŘENÍ. Bez tohohle grantu se na cizím Postgresu vůbec
+  -- nezaloží schéma: úplně první migrace `0000_extensions.sql` volá
+  -- CREATE EXTENSION na citext, pg_trgm a btree_gin a od PostgreSQL 13 smí
+  -- důvěryhodné rozšíření založit role, která má CREATE na aktuální databázi.
+  --
+  -- U přibaleného Postgresu to nikdo nepoznal, protože tam mlain_migrator
+  -- databázi VLASTNÍ (zakládá ji POSTGRES_USER) a právo má implicitně.
+  -- Na spravované databázi vlastní databázi účet poskytovatele a migrátor je
+  -- běžná role, takže první migrace skončila na
+  --
+  --   ERROR:  permission denied to create extension "citext"
+  --   HINT:   Must have CREATE privilege on current database to create this extension.
+  --
+  -- Ověřeno spuštěním obojím směrem proti běžícímu Postgresu 18, ne odvozeno:
+  -- bez grantu ta chyba padne, s grantem projdou všechna tři rozšíření.
+  -- Testovací pomocníci (`packages/db/test/global-setup.ts` a další tři místa)
+  -- si tenhle grant odjakživa dělali sami, takže testy vadu nemohly odhalit.
+  --
+  -- CREATE na databázi znamená „smí zakládat schémata a důvěryhodná rozšíření",
+  -- ne přístup k datům. Aplikační role ho nedostane, pravidlo, že schéma public
+  -- vlastní výhradně migrátor, tím zůstává v platnosti.
+  EXECUTE format('GRANT CREATE ON DATABASE %I TO mlain_migrator', db);
+END
+$$;
 
 -- Čtení schématu. Práva na jednotlivé tabulky uděluje P03 v migracích.
 -- mlain_backup tady není schválně, má pg_read_all_data.
 GRANT USAGE ON SCHEMA public
   TO mlain_app, mlain_sender, mlain_gdpr, mlain_maintenance;
 
--- pg_boss si své schéma migruje sám při boss.start(), tedy mimo náš migrační
--- runner. Aplikační role proto potřebuje vlastní schéma, do kterého smí
--- zakládat objekty. Bez tohohle řádku spadne worker při prvním startu na
--- "permission denied for database mlain".
-CREATE SCHEMA IF NOT EXISTS pgboss AUTHORIZATION mlain_app;
+-- SCHÉMA `pgboss` SE TADY NEZAKLÁDÁ. Vlastní ho migrace 0007_pgboss_schema,
+-- která ho zakládá s vlastníkem `mlain_migrator` a aplikační roli v něm dává
+-- USAGE a CREATE, protože pg-boss si své tabulky staví sám při boss.start().
+--
+-- Dřív ho zakládal tenhle skript příkazem
+-- `CREATE SCHEMA IF NOT EXISTS pgboss AUTHORIZATION mlain_app`, tedy s JINÝM
+-- vlastníkem, než chce migrace. Na přibaleném Postgresu to nikdo nepoznal:
+-- tam je `mlain_migrator` superuživatel (zakládá ho POSTGRES_USER), takže
+-- směl grantovat i na cizí schéma. Na externím Postgresu je běžnou rolí
+-- a instalace spadla na sedmé migraci:
+--
+--   migrace 0007_pgboss_schema selhala: permission denied for schema pgboss
+--
+-- Ověřeno spuštěním proti PostgreSQL 18 v obou variantách, ne odvozeno.
+-- Kdo pouštěl starší znění tohohle skriptu, musí vlastníka opravit ručně:
+-- `ALTER SCHEMA pgboss OWNER TO mlain_migrator;` (viz
+-- docs/operations/install-external-postgres.md).
 
 -- Zálohovací role čte všechno a nikdy nezapisuje.
 GRANT pg_read_all_data TO mlain_backup;

@@ -65,6 +65,16 @@ describe('Dialog', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
+  it('u nedestruktivního dialogu kliknutí mimo zavírá', async () => {
+    // Pravidlo 5.3: zavírá se tlačítkem, Esc a kliknutím mimo, to poslední jen
+    // u nedestruktivních. Kliknutí mimo je ústup, tedy bezpečný směr.
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(<Harness />);
+    await user.click(screen.getByRole('button', { name: 'Otevřít' }));
+    await user.click(document.body);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('ústup je vlevo a potvrzení vpravo, v celé aplikaci stejně', async () => {
     const user = userEvent.setup();
     render(<Harness />);

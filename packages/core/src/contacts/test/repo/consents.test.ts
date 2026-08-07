@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { rebuildConsents } from '../../../ops/rebuild-consents';
 import { rebuildConsentState } from '../../jobs/consents-rebuild-state';
 import { listConsents, recordConsent } from '../../repo/consents';
-import { asAppRole, asMigrator, createActiveContact, testContext } from '../support/db';
+import {
+  asAppRole,
+  asMigrator,
+  createActiveContact,
+  migratorUrl,
+  testContext,
+} from '../support/db';
 import { all, maybeOne, one } from '../support/phase-c';
 
 type ConsentStateRow = { status: string; legal_basis: string };
@@ -199,6 +206,53 @@ describe('souhlasy', () => {
 
     await rebuildConsentState({ workspaceId: ctx.workspaceId });
     expect((await consentState(ctx.workspaceId, contact.id, 'analytics')).status).toBe('granted');
+  });
+
+  /**
+   * Druhá cesta k témuž přepočtu, a schválně vede přes `@mlain/core/ops`, tedy
+   * přesně tak, jak ji volá `mlain rebuild-consents`. Fronta `consents.rebuild_state`
+   * totiž do téhle chvíle neměla producenta ŽÁDNÉHO: obsluha existovala, ale nevedl
+   * k ní ani příkaz, ani cesta API, jen ruční INSERT do tabulky úloh pg-bossu.
+   *
+   * Test běží pod migrátorskou rolí, protože pod ní běží i příkaz. Kdyby se ta cesta
+   * měřila pod aplikační rolí s kontextem, neměřila by to, co se v provozu spustí.
+   */
+  it('příkaz rebuild-consents přepočítá stav pod migrátorskou rolí', async () => {
+    const ctx = await testContext();
+    const contact = await createActiveContact(ctx, 'j@x.cz');
+    await recordConsent(ctx, {
+      contactId: contact.id,
+      purpose: 'analytics',
+      status: 'granted',
+      legalBasis: 'consent',
+      scopeListId: null,
+      source: 'form',
+    });
+    await asMigrator().query(
+      `UPDATE contact_consent_state SET status = 'withdrawn' WHERE contact_id = $1`,
+      [contact.id],
+    );
+
+    const report = await rebuildConsents({
+      adminUrl: migratorUrl(),
+      workspaceId: ctx.workspaceId,
+    });
+    expect(report.rebuilt).toBeGreaterThan(0);
+    expect((await consentState(ctx.workspaceId, contact.id, 'analytics')).status).toBe('granted');
+  });
+
+  /**
+   * Neexistující projekt NESMÍ skončit hlášením „hotovo, nula řádků". Přepočet se
+   * pouští po obnově ze zálohy, kdy operátor teprve zjišťuje, v jakém je instalace
+   * stavu, a překlep v identifikátoru by se tvářil jako úspěšná práce.
+   */
+  it('příkaz rebuild-consents odmítne neexistující projekt, ne aby ohlásil nulu', async () => {
+    await expect(
+      rebuildConsents({
+        adminUrl: migratorUrl(),
+        workspaceId: '00000000-0000-0000-0000-000000000000',
+      }),
+    ).rejects.toThrow(/neexistuje/);
   });
 
   it('cizí projekt souhlasy nevidí', async () => {

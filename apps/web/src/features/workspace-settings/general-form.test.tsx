@@ -18,15 +18,20 @@ const WORKSPACE = {
   timezone: 'Europe/Prague',
   address_form: 'formal' as const,
   greeting_enabled: true,
+  postal_address: 'Kolo Eshop s.r.o.\nNádražní 5\n110 00 Praha 1',
   created_at: '2026-01-01T00:00:00.000Z',
 };
 
-function renderForm(canWrite: boolean, initialState?: ActionState) {
+function renderForm(
+  canWrite: boolean,
+  initialState?: ActionState,
+  workspace: typeof WORKSPACE = WORKSPACE,
+) {
   return render(
     <NextIntlClientProvider locale="cs" messages={messages} timeZone="Europe/Prague">
       <GeneralForm
         action={vi.fn()}
-        workspace={WORKSPACE}
+        workspace={workspace}
         locales={['cs', 'en']}
         timezones={['Europe/Prague', 'UTC']}
         canWrite={canWrite}
@@ -120,5 +125,25 @@ describe('GeneralForm', () => {
       fieldErrors: { slug: ['Tuhle adresu už jiný projekt má.'] },
     });
     expect(screen.getByLabelText('Adresa projektu')).toHaveAttribute('aria-invalid', 'true');
+  });
+});
+
+/**
+ * Poštovní adresa odesílatele je údaj, který musí obchodní sdělení nést, a
+ * nemělo ho kde zadat: klíč `postal_address` existoval jen v zod schématu a
+ * v repozitáři ho nikdo nečetl ani nezapisoval, takže výchozí patička odesílala
+ * `{{ workspace.sender_address }}` jako prázdné místo.
+ */
+describe('GeneralForm, poštovní adresa odesílatele', () => {
+  it('předvyplní uloženou adresu', () => {
+    renderForm(true);
+    expect(screen.getByLabelText('Poštovní adresa odesílatele')).toHaveValue(
+      'Kolo Eshop s.r.o.\nNádražní 5\n110 00 Praha 1',
+    );
+  });
+
+  it('bez práva zápisu ukáže, že adresa chybí, místo prázdného místa', () => {
+    renderForm(false, undefined, { ...WORKSPACE, postal_address: '' });
+    expect(screen.getByText('Nevyplněno, patička odchází bez adresy')).toBeInTheDocument();
   });
 });

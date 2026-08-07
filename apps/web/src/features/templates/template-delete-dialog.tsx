@@ -93,6 +93,9 @@ export function TemplateDeleteDialog({
       open={open}
       onOpenChange={onOpenChange}
       level="N2"
+      // Šablona z knihovny zmizí. Nabídka Vrátit zpět platí jen do zavření
+      // obrazovky, potom je cesta zpátky jen přes API, takže barva zůstává.
+      destructive
       title={t('list.delete.title', { name })}
       consequences={[
         t('list.delete.consequenceLibrary'),

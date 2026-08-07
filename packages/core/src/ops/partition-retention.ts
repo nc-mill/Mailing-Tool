@@ -7,7 +7,11 @@ import {
   type Queryable,
   type VetoResult,
 } from '@mlain/db';
+import { writeAuditLog } from '../audit/write';
 import { loadConfig } from '../config';
+import type { Tx } from '../tx';
+import { OPS_AUDIT_ACTIONS } from './audit';
+import { withAdminTx } from './db';
 
 /**
  * RETENCE ODESLANÉ POŠTY. Dřív v produktu nebyla vůbec.
@@ -19,12 +23,27 @@ import { loadConfig } from '../config';
  * `messages.render_data`, tedy personalizační data příjemce, NAVĚKY.
  * To je hlavní důvod téhle práce; velikost databáze je vedlejší.
  *
- * PROČ TO NEBĚŽÍ Z WORKERU. Odpojení oddílu je DDL. Worker běží pod
- * `mlain_app`, která schéma nevlastní a `ALTER TABLE ... DETACH PARTITION` jí
- * skončí na „permission denied". Dát jí kvůli jedné úloze právo měnit schéma
- * znamená, že kterákoli chyba v kterékoli obsluze jobu může zahodit tabulku.
- * Úklid proto běží jako příkaz CLI pod `DATABASE_URL_MIGRATOR`, ze stejného
- * plánovače a se stejnou rolí jako migrace.
+ * POD JAKOU ROLÍ TO BĚŽÍ, A PROČ TO NENÍ PRÁCE PRO `mlain_app`. Odpojení oddílu
+ * je DDL. Role `mlain_app`, pod kterou jede worker i web, schéma nevlastní
+ * a `ALTER TABLE ... DETACH PARTITION` jí skončí na „permission denied". Dát
+ * JÍ právo měnit schéma nepřipadá v úvahu: pak by kterákoli chyba v kterékoli
+ * obsluze mohla zahodit tabulku. Úklid proto vždycky otevírá VLASTNÍ spojení
+ * pod `DATABASE_URL_MIGRATOR`, tedy pod toutéž rolí jako `mlain migrate`.
+ *
+ * ODKUD SE PŘÍKAZ POUŠTÍ (změna 7. 8. 2026). Do téhle chvíle to uměl JEDINĚ
+ * `mlain partitions` z plánovače hostitele. Znamenalo to, že dodávaná
+ * instalace úklid nespouštěla vůbec: `docker/compose.yml` ani `compose.scale.yml`
+ * žádný plánovač nemají a na PaaS k hostiteli přístup není. Každá instalace
+ * z našeho compose tedy držela `messages.render_data` navěky a `mlain doctor`
+ * by jí to hlásil napořád. Práci proto dělá i cronová fronta
+ * `platform.maintain_partitions` ve workeru (`ops/jobs/partition-jobs.ts`).
+ *
+ * NENÍ TO DRUHÝ MECHANISMUS, je to tentýž kód puštěný z jiného místa: obě
+ * cesty volají `maintainPartitions()` níž, tedy tutéž funkci, totéž spojení
+ * pod migrátorem a týž zápis do auditu. Liší se jen popiskem aktéra, aby se
+ * z auditu poznalo, která z nich běžela. Že job smí sáhnout na migrátorské
+ * URL, není nová výjimka: `platform.backup` pod ním ve workeru běží od P16,
+ * protože pod aplikační rolí by `pg_dump` narazil na row level security.
  *
  * PROČ PO ODDÍLECH, NE PO ŘÁDCÍCH. Mazání po řádcích nad tabulkou s miliony
  * zpráv znamená dlouhou transakci, nafouknutí tabulky a autovacuum, který to
@@ -170,9 +189,6 @@ const appendOnlyVeto: PartitionVeto = async (): Promise<VetoResult> => true;
  * která má svou vlastní konfigurační proměnnou, protože lhůta bez proměnné je
  * jen číslo, které si někdo vymyslel, a provozovatel ho nemá jak změnit:
  *
- *  - `audit_log` má `AUDIT_RETENTION_MONTHS` a vlastní úklid po řádcích
- *    (`platform.cleanup_audit_log`). Ten běží pod aplikační rolí a funguje,
- *    takže ho tenhle příkaz nepřebírá.
  *  - `inbound_deliveries` spadá pod projektovou retenci `retention.run`
  *    (`RETENTION_DEFAULTS.inbound_deliveries`), která maže po řádcích, protože
  *    lhůtu si nastavuje každý projekt zvlášť a oddíl je společný všem.
@@ -207,6 +223,56 @@ export function retentionTargets(now: Date, env?: NodeJS.ProcessEnv): RetentionT
       cutoff: minusMonths(now, config.TRACKING_RETENTION_MONTHS),
       veto: appendOnlyVeto,
     },
+    /**
+     * AUDIT SE UKLÍZÍ ZAHOZENÍM ODDÍLU, NE MAZÁNÍM ŘÁDKŮ, a je to bezpečnostní
+     * rozhodnutí, ne provozní pohodlí.
+     *
+     * Do 7. 8. 2026 to dělala fronta `platform.cleanup_audit_log` příkazem
+     * `DELETE FROM audit_log` pod aplikační rolí. Nefungovalo to ANI JEDNOU:
+     * migrace 0005, 0009, 0022 i 0026 dělají `REVOKE UPDATE, DELETE ON audit_log
+     * FROM mlain_app`, takže úloha padala každou noc na
+     * `permission denied for table audit_log` (SQLSTATE 42501). Ověřeno spuštěním.
+     *
+     * To odebrané právo NENÍ překážka, kterou by šlo obejít migrací. Je to ta
+     * vlastnost, kvůli které je audit k něčemu: aplikace do něj smí zapisovat
+     * a nesmí z něj mazat ani v něm měnit. Vrátit roli `DELETE` kvůli úklidu by
+     * vyměnilo nevyvratitelnost záznamu za pohodlí. Zahození celého oddílu pod
+     * migrátorem udělá touž práci a záruku nechá být.
+     *
+     * Vedlejší důsledek je žádoucí a odpovídá tomu, co o téhle lhůtě tvrdil
+     * registr front: audit se drží DÉLE než `AUDIT_RETENTION_MONTHS`, nikdy
+     * kratší dobu, protože oddíl smí zmizet až tehdy, když je za lhůtou i jeho
+     * poslední den.
+     */
+    {
+      table: 'audit_log',
+      column: 'created_at',
+      setting: 'AUDIT_RETENTION_MONTHS',
+      window: `${config.AUDIT_RETENTION_MONTHS} měsíců`,
+      cutoff: minusMonths(now, config.AUDIT_RETENTION_MONTHS),
+      veto: appendOnlyVeto,
+    },
+    /**
+     * AUDIT SE UKLÍZÍ ZAHOZENÍM ODDÍLU, NE MAZÁNÍM ŘÁDKŮ, a je to bezpečnostní
+     * rozhodnutí, ne provozní pohodlí.
+     *
+     * Do 7. 8. 2026 to dělala fronta `platform.cleanup_audit_log` příkazem
+     * `DELETE FROM audit_log` pod aplikační rolí. Nefungovalo to ANI JEDNOU:
+     * migrace 0005, 0009, 0022 i 0026 dělají `REVOKE UPDATE, DELETE ON audit_log
+     * FROM mlain_app`, takže úloha padala každou noc na
+     * `permission denied for table audit_log` (SQLSTATE 42501). Ověřeno spuštěním.
+     *
+     * To odebrané právo NENÍ překážka, kterou by šlo obejít migrací. Je to ta
+     * vlastnost, kvůli které je audit k něčemu: aplikace do něj smí zapisovat
+     * a nesmí z něj mazat ani v něm měnit. Vrátit roli `DELETE` kvůli úklidu by
+     * vyměnilo nevyvratitelnost záznamu za pohodlí. Zahození celého oddílu pod
+     * migrátorem udělá touž práci a záruku nechá být.
+     *
+     * Vedlejší důsledek je žádoucí a odpovídá tomu, co o téhle lhůtě tvrdí
+     * registr front: audit se drží DÉLE než `AUDIT_RETENTION_MONTHS`, nikdy
+     * kratší dobu, protože oddíl smí zmizet až tehdy, když je za lhůtou i jeho
+     * poslední den.
+     */
   ];
 }
 
@@ -287,6 +353,142 @@ export async function runPartitionMaintenance(input: RunInput): Promise<Retentio
   }
 
   return { dryRun, created, targets: reports };
+}
+
+/**
+ * Počty z jednoho běhu v podobě, ve které se zapisují do auditu.
+ *
+ * Je to vlastní funkce, ne inline objekt, protože obsah metadat je to jediné,
+ * co po běhu zůstane. Výpis do konzole zmizí s plánovačem hostitele.
+ */
+export function partitionMaintenanceMetadata(report: RetentionReport): Record<string, unknown> {
+  const tables: Record<string, number> = {};
+  let dropped = 0;
+  for (const target of report.targets) {
+    tables[target.table] = target.dropped.length;
+    dropped += target.dropped.length;
+  }
+  return { created: report.created.length, dropped, tables };
+}
+
+/**
+ * ZÁZNAM O TOM, ŽE ÚDRŽBA ODDÍLŮ PROBĚHLA.
+ *
+ * PROČ TO VŮBEC JE. `mlain partitions` je jediné místo, kde se uklízí odeslaná
+ * pošta, a pouští ho plánovač hostitele. Po úspěšném běhu nezbylo NIC: výpis
+ * spolkne plánovač, tabulky se jen zmenší a nikde není řádek, ze kterého by
+ * šlo poznat, že běh proběhl. Provozovatel tedy neměl jak zjistit, že mu
+ * retence týden neběžela a `messages.render_data` leží přes lhůtu. Na tenhle
+ * záznam se dívá `mlain doctor`.
+ *
+ * PROČ SE ZAPISUJE I BĚH, KTERÝ NIC NEZAHODIL. Nula zahozených oddílů je
+ * naprosto běžný a správný výsledek (lhůta ještě nikomu neuplynula). Zapisovat
+ * jen běhy, které něco smazaly, by znamenalo, že správně fungující instalace
+ * vypadá stejně jako instalace, kde úklid vůbec neběží.
+ *
+ * BĚH NANEČISTO SE NEZAPISUJE, a je to jediné, co tahle funkce odmítá. Zápis
+ * o běhu, který schválně nic neudělal, by v doktoru vypadal jako doklad
+ * o úklidu, tedy by uklidnil právě v okamžiku, kdy data leží přes lhůtu.
+ */
+export async function recordPartitionMaintenance(
+  tx: Tx,
+  report: RetentionReport,
+  /**
+   * Kdo úklid pustil. Dvě legitimní hodnoty: `mlain partitions` z plánovače
+   * hostitele a `platform.maintain_partitions` z workeru. Doktoru je to jedno,
+   * ptá se jen na akci, ale provozovateli ne: bez tohohle údaje se z auditu
+   * nepozná, jestli mu úklid dělá worker, nebo jeho vlastní cron, a tedy ani
+   * to, který z nich přestal běžet.
+   */
+  actorLabel: string = 'mlain partitions',
+): Promise<void> {
+  if (report.dryRun) {
+    throw new Error(
+      'Běh nanečisto se do auditu nezapisuje: nic nezahodil, a záznam o něm by v mlain doctor ' +
+        'vypadal jako doklad o proběhlém úklidu.',
+    );
+  }
+  await writeAuditLog(tx, {
+    action: OPS_AUDIT_ACTIONS['partition.maintained'],
+    // Údržba je operace nad celou instalací, ne nad projektem. `audit_log.workspace_id`
+    // je nullable schválně a politika ws_isolation_audit má NULL ve WITH CHECK.
+    workspaceId: null,
+    actor: { actorType: 'system', actorId: null, actorLabel },
+    targetType: 'partitions',
+    targetId: null,
+    metadata: partitionMaintenanceMetadata(report),
+  });
+}
+
+export type MaintainPartitionsInput = {
+  /** Vždy `DATABASE_URL_MIGRATOR`. Aplikační role tuhle práci udělat nemůže. */
+  migratorUrl: string;
+  dryRun?: boolean;
+  ensureMonths?: number;
+  now?: Date;
+  env?: NodeJS.ProcessEnv;
+  /** Popisek aktéra do auditu, viz `recordPartitionMaintenance`. */
+  actorLabel: string;
+};
+
+export type MaintainPartitionsResult = {
+  report: RetentionReport;
+  /**
+   * Chyba zápisu do auditu, když k ní došlo. NEVYHAZUJE se: úklid v tu chvíli
+   * UŽ PROBĚHL a výjimka by o něm lhala. Co s ní volající udělá, je jeho věc
+   * a u obou volajících je to jinak: CLI ji vypíše na chybový výstup, kam se
+   * dívá plánovač hostitele, job ji vyhodí, protože ve workeru je jediné
+   * viditelné místo tabulka úloh.
+   */
+  auditError: Error | null;
+};
+
+/**
+ * CELÝ BĚH ÚDRŽBY OD PŘIPOJENÍ PO ZÁPIS DO AUDITU. Jediná verze pro obě cesty,
+ * tedy pro `mlain partitions` i pro frontu `platform.maintain_partitions`.
+ *
+ * DVĚ SPOJENÍ, A JE TO ZÁMĚR. Samotný úklid běží přes holý `pg.Client` MIMO
+ * transakci, protože `ALTER TABLE ... DETACH PARTITION CONCURRENTLY` uvnitř
+ * transakčního bloku skončí chybou 25001. Audit se naproti tomu zapisuje
+ * transakčně přes drizzle (`withAdminTx`). Dvě různé cesty k databázi tu tedy
+ * nejsou nedopatření, jsou to dva různé požadavky na tutéž práci.
+ *
+ * AUDIT AŽ PO ÚKLIDU, ne v jedné transakci s ním. Odpojení oddílu je DDL mimo
+ * transakci, takže „obojí, nebo nic" tady neexistuje. Pořadí je zvolené tak,
+ * aby chyba padla na bezpečnou stranu: zapsat se dá jedině to, co se doopravdy
+ * stalo.
+ *
+ * `pg` se načítá dynamicky. Statický import by přitáhl ovladač databáze do
+ * každého balíčku, který na `@mlain/core/ops` jen sáhne, a týká se to i webu.
+ */
+export async function maintainPartitions(
+  input: MaintainPartitionsInput,
+): Promise<MaintainPartitionsResult> {
+  const { default: pg } = await import('pg');
+  const client = new pg.Client({ connectionString: input.migratorUrl });
+  await client.connect();
+  let report: RetentionReport;
+  try {
+    report = await runPartitionMaintenance({
+      client,
+      dryRun: input.dryRun ?? false,
+      ensureMonths: input.ensureMonths ?? 4,
+      ...(input.now === undefined ? {} : { now: input.now }),
+      ...(input.env === undefined ? {} : { env: input.env }),
+    });
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+
+  if (report.dryRun) return { report, auditError: null };
+  try {
+    await withAdminTx(input.migratorUrl, async (tx) => {
+      await recordPartitionMaintenance(tx, report, input.actorLabel);
+    });
+    return { report, auditError: null };
+  } catch (error) {
+    return { report, auditError: error as Error };
+  }
 }
 
 async function listPartitions(client: Queryable): Promise<string[]> {

@@ -54,6 +54,8 @@ export function FormDeleteDialog({
       open={open}
       onOpenChange={onOpenChange}
       level="N2"
+      // Formulář i odeslané záznamy z projektu zmizí, cesta zpět v rozhraní není.
+      destructive
       title={tf('deleteTitle', { name: form.name })}
       consequences={[
         tf('deleteConsequenceForm'),

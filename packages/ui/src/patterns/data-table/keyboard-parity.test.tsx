@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -142,7 +143,24 @@ describe('klávesová rovnocennost datové tabulky', () => {
 
   it('hlavičkový výběr, výběr podle filtru i zrušení jdou z klávesnice', async () => {
     const user = userEvent.setup();
-    render(<DataTable {...props()} />);
+    // Výběr drží „obrazovka", protože odkaz „Vybrat všech N" se od 7. 8. 2026 nabízí
+    // jen tabulce, jejíž volající umí režim převzít. Bez toho by pruh psal jedno
+    // a hromadná akce dělala druhé.
+    function Controlled() {
+      const [selectedIds, setSelectedIds] = useState<string[]>([]);
+      return (
+        <DataTable
+          {...props({
+            selection: {
+              selectedIds,
+              onSelectionChange: setSelectedIds,
+              onModeChange: vi.fn(),
+            },
+          })}
+        />
+      );
+    }
+    render(<Controlled />);
 
     screen.getByRole('checkbox', { name: 'Označit všechny řádky na stránce' }).focus();
     await user.keyboard(' ');

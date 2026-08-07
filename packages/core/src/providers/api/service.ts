@@ -88,16 +88,32 @@ export function presentProvider(row: ProviderRow): Record<string, unknown> {
     production_access: row.production_access,
     enforcement_status: row.enforcement_status,
     sending_enabled: row.sending_enabled,
+    /**
+     * Stav žádosti o produkční přístup: `PENDING`, `GRANTED`, `DENIED`, `FAILED`
+     * nebo `null`, když se o něj účet nikdy neucházel.
+     *
+     * Odpovídá na otázku, kterou `production_access` sám odpovědět neumí.
+     * `production_access = false` znamená jen „účet je v testovacím režimu",
+     * což platí stejně pro toho, kdo o přístup nikdy nepožádal, pro toho, komu
+     * se žádost posuzuje, i pro toho, komu ji Amazon zamítl. Bez tohohle pole
+     * nabízí obrazovka všem třem tentýž formulář a druhé odeslání skončí na
+     * `ConflictException` od Amazonu, tedy chybou místo vysvětlení.
+     */
+    review_status: row.review_status,
     quota_checked_at: row.quota_checked_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
 }
 
+// Druhý výčet sloupců v repozitáři, vedle `PUBLIC_COLUMNS` v repo/provider.ts.
+// Musí se držet s ním: sloupec, který chybí TADY, přijde jako `undefined`,
+// přestože ho typ `ProviderRow` slibuje. Tiše, protože `undefined` projde
+// všude, kde se čeká `null`. Právě tak se dosud ztrácel `review_status`.
 const PROVIDER_COLUMNS = `id, workspace_id, name, type, config_public, is_default, status,
   status_detail, verified_at, quota_max24h AS quota_max_24h, quota_max_send_rate,
   quota_sent24h AS quota_sent_24h, production_access, enforcement_status, sending_enabled,
-  quota_checked_at, created_at, updated_at`;
+  review_status, quota_checked_at, created_at, updated_at`;
 
 export async function listProviders(ctx: WorkspaceContext): Promise<ProviderRow[]> {
   return withWorkspace(ctx, async (tx) => {
@@ -573,7 +589,12 @@ export async function recomputeProviderStatus(
             production_access: provider.production_access,
             enforcement_status: provider.enforcement_status,
             sending_enabled: provider.sending_enabled,
-            review_status: null,
+            // NESMÍ tu být `null`, a bylo. Přepočet Amazona nevolá, skládá snímek
+            // z toho, co už je uložené, takže natvrdo psané `null` tvrdilo „účet
+            // o produkční přístup nikdy nežádal" pokaždé, když se stav přepočítal
+            // po ověření domény. Uložená hodnota se nese dál, stejně jako region
+            // a ověřené identity o pár řádků výš.
+            review_status: provider.review_status,
           }
         : null,
     setup:

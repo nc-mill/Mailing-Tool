@@ -373,7 +373,32 @@ export async function softDeleteCampaign(
       ),
     );
     const deleted = (r.rowCount ?? 0) > 0;
-    if (deleted) await deleteWorkingCopy(tx, ctx.workspaceId, id);
+    if (deleted) {
+      const workingCopyId = await deleteWorkingCopy(tx, ctx.workspaceId, id);
+      /**
+       * ODKAZY NA OBRÁZKY ODCHÁZEJÍ S KAMPANÍ, a je to oprava, ne úklid navíc.
+       *
+       * `asset_references` nemá a nemůže mít cizí klíč na `campaigns` ani na
+       * `templates`: `ref_id` je polymorfní, ukazuje jednou na kampaň a jednou
+       * na šablonu, takže se nic nemaže kaskádou. Dokud se odkazy nerušily tady,
+       * hlásila knihovna médií u obrázku použití v kampani, kterou uživatel
+       * nevidí, a **nešlo smazat něco, co už nikdo nepoužívá**. Táž vada je
+       * opravená u knihovní šablony v `templates/service.ts`; tohle je druhá
+       * cesta, kterou tam odkazy vznikají.
+       *
+       * Je to bezpečné právě proto, že mazat jde jen kampaň ve stavu `draft`
+       * nebo `schedule_missed`. U ODESLANÉ kampaně by to bezpečné NEBYLO:
+       * `referencedBySentCampaign` na odkazy spoléhá, když brání smazání
+       * obrázku, který si poštovní klienti stahují z už rozeslaného e-mailu.
+       *
+       * Obnovu to nerozbíjí, protože kampaň žádnou nemá. Kdyby přibyla, musí
+       * odkazy vrátit stejně, jako to dělá `restoreTemplate`.
+       */
+      await syncAssetReferences(tx, ctx, { refType: 'campaign', refId: id }, []);
+      if (workingCopyId !== null) {
+        await syncAssetReferences(tx, ctx, { refType: 'template', refId: workingCopyId }, []);
+      }
+    }
     return { deleted };
   });
 }
@@ -414,8 +439,16 @@ export async function softDeleteCampaign(
  * nastavené v `withWorkspace`. Filtr na `workspace_id` je v dotazu i tak,
  * protože izolace se nemá opírat jen o nastavení sezení.
  */
-async function deleteWorkingCopy(tx: Tx, workspaceId: string, campaignId: string): Promise<void> {
-  await tx.execute(
+async function deleteWorkingCopy(
+  tx: Tx,
+  workspaceId: string,
+  campaignId: string,
+): Promise<string | null> {
+  // `RETURNING id` je tu kvůli volajícímu, který podle něj ruší odkazy na
+  // obrázky. Bez něj by musel pracovní kopii dohledávat druhým dotazem, a to
+  // už by po tomhle UPDATE měla `deleted_at`, takže by se rozhodovalo podle
+  // stavu, který si tenhle příkaz sám vyrobil.
+  const r = await tx.execute<{ id: string }>(
     rawSql(
       `UPDATE templates t
           SET deleted_at = now(),
@@ -428,10 +461,12 @@ async function deleteWorkingCopy(tx: Tx, workspaceId: string, campaignId: string
           AND NOT EXISTS (SELECT 1 FROM campaigns o
                            WHERE o.template_id = t.id
                              AND o.workspace_id = $2
-                             AND o.deleted_at IS NULL)`,
+                             AND o.deleted_at IS NULL)
+       RETURNING t.id`,
       [campaignId, workspaceId],
     ),
   );
+  return r.rows[0]?.id ?? null;
 }
 
 /**
@@ -617,6 +652,12 @@ export async function listCampaignMessages(
 
 export type WorkspaceCampaignSettings = {
   undo_window_seconds?: number;
+  /**
+   * Poštovní adresa odesílatele do patičky e-mailu. Zapisuje ji nastavení
+   * projektu (`updateWorkspace`), čte ji odesílač ve `StmtCampaignHeader`
+   * i kontrola před odesláním. Klíč pochází z `buildCampaignSettingsSchema`.
+   */
+  postal_address?: string;
   trial_mode?: boolean;
   trial_verified?: Array<{ email: string; verified_at: string | null }>;
 };

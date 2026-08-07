@@ -129,7 +129,9 @@ nestačí a odmítne ho.
 
 `SECRET_KEY` musí být **doslova tentýž** jako má web. Sender jím dešifruje
 přístupové údaje odesílacího účtu a při neshodě zapíše každé zprávě
-`credentials_undecryptable`.
+`credentials_undecryptable`. Ten kód znamená opravdu klíče, nic jiného: když
+selže samotné ČTENÍ řádku účtu z databáze, zapíše se `provider_config_unreadable`
+a u klíčů není co hledat.
 
 Že sender žije, se pozná na zdravotním portu. Cesty jsou `/healthz` a `/readyz`,
 **ne** `/health`:
@@ -249,8 +251,10 @@ s heslem v **Nastavení → Tým**.
 
 ## Dokumentace
 
-- `docs/operations/` jsou **provozní runbooky**: zálohy a obnova, rotace klíče,
-  upgrade, oddíly a retence, licence třetích stran, runbook dema.
+- `docs/operations/` jsou **provozní runbooky**: instalace na externí Postgres,
+  zálohy a obnova, rotace klíče, upgrade, oddíly a retence, licence třetích stran,
+  runbook dema. Kdo neinstaluje s přibaleným Postgresem, začíná u
+  [docs/operations/install-external-postgres.md](docs/operations/install-external-postgres.md).
 - `docs/superpowers/plans/` jsou implementační plány jednotlivých částí.
 - `docs/superpowers/plans/NALEZY-NAPRIC-PLANY.md` je registr nálezů. Stojí
   za přečtení dřív, než sáhnete na `exports` mapu v `packages/core`, na

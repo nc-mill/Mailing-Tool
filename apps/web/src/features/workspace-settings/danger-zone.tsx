@@ -77,6 +77,7 @@ export function DangerZoneView({ workspace, action, initialState }: DangerZoneVi
           open={open}
           onOpenChange={setOpen}
           level="N4"
+          destructive
           title={t('general.danger.dialogTitle', { name: workspace.name })}
           consequences={[
             t('general.danger.consequence1'),

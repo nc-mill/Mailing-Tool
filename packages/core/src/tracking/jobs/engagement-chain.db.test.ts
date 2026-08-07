@@ -325,4 +325,76 @@ describe('řetěz měření kampaně od pixelu po číslo v reportu', () => {
     const drift = await withWorkspace(ctx, (tx) => compareWithStored(tx, ctx, campaignId));
     expect(drift.differences).toEqual([]);
   });
+
+  /**
+   * SOUHLAS S MĚŘENÍM PLATÍ I NA E-MAILOVÝ KANÁL, ale jen na osobní atribuci.
+   *
+   * Kdyby platil jen na webové události, přepínač na detailu kontaktu by lhal
+   * na téže obrazovce, na které stojí: měření vypnuté, a v časové ose vedle
+   * přibývá „Otevřel e-mail". Statistika kampaně se naopak měnit NESMÍ, je to
+   * souhrn o zásilce, ne profil člověka, a jedno odvolání by jinak přepsalo
+   * čísla už odeslané kampaně.
+   *
+   * Test běží jako POSLEDNÍ schválně: sdílí kampaň s ostatními a odvolání
+   * souhlasu by jim posunulo výchozí stav.
+   */
+  it('odvolaný souhlas s měřením zastaví časovou osu, statistiku kampaně ne', async () => {
+    const contactD = await seedContact(workspaceId, 'd@example.cz');
+    const message = await seedMessage({
+      workspaceId,
+      campaignId,
+      contactId: contactD,
+      createdAt: AUDIENCE_BUILT_AT,
+      sentAt: new Date(AUDIENCE_BUILT_AT.getTime() + 60_000),
+    });
+
+    const consent = await asMigrator().query<{ id: string }>(
+      `INSERT INTO consents (workspace_id, contact_id, purpose, scope_list_id, status,
+                             legal_basis, source, evidence, recorded_by, occurred_at)
+       VALUES ($1, $2, 'analytics', NULL, 'withdrawn', 'consent', 'admin', '{}'::jsonb,
+               'system', now())
+       RETURNING id`,
+      [workspaceId, contactD],
+    );
+    await asMigrator().query(
+      `INSERT INTO contact_consent_state (contact_id, workspace_id, purpose, status,
+                                          legal_basis, since, last_consent_id)
+       VALUES ($1, $2, 'analytics', 'withdrawn', 'consent', now(), $3)`,
+      [contactD, workspaceId, consent.rows[0]!.id],
+    );
+
+    const before = await stats(workspaceId, campaignId);
+
+    buffered.length = 0;
+    handleOpen({
+      token: openToken(workspaceId, message),
+      userAgent: HUMAN_UA,
+      method: 'GET',
+      headers: { 'user-agent': HUMAN_UA },
+      ip: '198.51.100.40',
+      now: new Date(),
+    });
+    expect(buffered).toHaveLength(1);
+    await flushTrackingEvents(buffered);
+    expect(await drainQueue('tracking.process_engagement')).toBe(1);
+
+    // Do časové osy nepřibylo nic.
+    const { rows: timeline } = await asMigrator().query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM web_events
+        WHERE workspace_id = $1 AND contact_id = $2`,
+      [workspaceId, contactD],
+    );
+    expect(Number(timeline[0]!.count), 'otevření se zapsalo do časové osy').toBe(0);
+
+    // Surový doklad i souhrn kampaně zůstávají: to není profil člověka.
+    const { rows: raw } = await asMigrator().query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM message_events
+        WHERE workspace_id = $1 AND contact_id = $2 AND type = 'open'`,
+      [workspaceId, contactD],
+    );
+    expect(Number(raw[0]!.count)).toBe(1);
+
+    const after = await stats(workspaceId, campaignId);
+    expect(after.counts.opensUnique).toBe(before.counts.opensUnique + 1);
+  });
 });

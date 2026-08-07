@@ -93,6 +93,32 @@ export const FormDefinitionSchema = z
      */
     delivery_template_id: z.uuid().nullable().default(null),
     redirect_url: z.url().nullable().default(null),
+    /**
+     * Veřejné stránky, které formulář ukáže návštěvníkovi. Jsou to odkazy na
+     * `templates` s `kind = 'page'`, tedy dokumenty z téhož editoru jako e-maily.
+     *
+     * `null` ZNAMENÁ VESTAVĚNÝ TEXT, tedy dnešní chování, a je to výchozí stav.
+     * Formulář, který o stránky nepožádal, se nezmění.
+     *
+     * VÝBĚR JE U KAŽDÉHO FORMULÁŘE ZVLÁŠŤ (požadavek zadavatele z oddílu 0.3
+     * plánu). Šablona je sdílená, odkaz na ni ne: dva formuláře můžou ukazovat
+     * na tutéž stránku i na dvě různé a přehození u jednoho se druhého nedotkne.
+     * Proto je to trojice klíčů tady, ne jedno nastavení projektu.
+     *
+     * `thanks_template_id` vlastní VÝHRADNĚ formulář, protože děkovací stránka
+     * je cíl přesměrování bez tokenu a seznam o ní nemá jak rozhodnout. Zbylé
+     * dvě má formulář jen jako PRVNÍ volbu; když je nemá, sáhne se na seznam
+     * a teprve pak na vestavěný text (pořadí hledání v `public/page-template.ts`).
+     * Stránka po odhlášení tady schválně není: chodí se na ni z odkazu
+     * v e-mailu, takže není podle čeho určit, který formulář by ji vlastnil.
+     *
+     * CIZÍ KLÍČ TO MÍT NEMŮŽE, je to jsonb. Platnost proto ověřuje doména při
+     * čtení: smazaná i neplatná šablona spadne na vestavěný text a zaloguje se.
+     * Nikdy nesmí přihlášení skončit chybou proto, že si někdo smazal návrh.
+     */
+    thanks_template_id: z.uuid().nullable().default(null),
+    confirmed_template_id: z.uuid().nullable().default(null),
+    already_subscribed_template_id: z.uuid().nullable().default(null),
     success_message: LocalizedTextSchema.partial().default({}),
     active: z.boolean().default(true),
   })

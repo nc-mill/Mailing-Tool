@@ -119,6 +119,7 @@ export async function anonymizeContact(
       contactIds: [contactId],
       listId: null,
       reason: 'contact_anonymized',
+      tx,
     });
 
     // 5. Odstřižení vazeb v cizích doménách běží asynchronně.

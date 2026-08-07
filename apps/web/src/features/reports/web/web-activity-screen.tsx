@@ -240,7 +240,7 @@ export function WebActivityScreen({
     <div data-testid="web-activity-screen">
       {header}
 
-      <div className="mb-[var(--spacing-gutter)] grid grid-cols-[repeat(auto-fit,minmax(230px,1fr))] gap-[var(--spacing-gutter)]">
+      <div className="mb-[var(--spacing-gutter)] grid grid-cols-[repeat(auto-fit,minmax(min(230px,100%),1fr))] gap-[var(--spacing-gutter)]">
         <Tile
           label={t('web.overview.tileKnown')}
           icon={<Users aria-hidden className="icon-md" />}
@@ -406,7 +406,7 @@ export function WebActivityScreen({
         </Card>
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-[var(--spacing-gutter)]">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(320px,100%),1fr))] gap-[var(--spacing-gutter)]">
         <Card>
           <CardHeader title={t('web.overview.pagesHeading')} />
           <table className="w-full border-collapse text-left">

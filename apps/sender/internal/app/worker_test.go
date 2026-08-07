@@ -320,3 +320,122 @@ func TestCampaignMessageStillGetsPreferencesAndWebview(t *testing.T) {
 		t.Fatalf("kampaňová zpráva přišla o předvolby nebo webview: %q", out.HTML)
 	}
 }
+
+// headerWithRoots je hlavička projektu, který má vyplněný název i poštovní adresu.
+func headerWithRoots(t *testing.T, html, text, subject, postalAddress string) *campaign.Header {
+	t.Helper()
+	h, err := campaign.PrepareHeader(&campaign.Raw{
+		ID:            uuid.MustParse("0192f3a0-1c2d-7e44-9e5f-60718293a4b5"),
+		WorkspaceID:   uuid.MustParse("0192f3a0-1c2d-7e40-9a1b-2c3d4e5f6071"),
+		Name:          "Letní výprodej",
+		WorkspaceName: "Kolo Eshop",
+		PostalAddress: "Kolo Eshop s.r.o., Nádražní 5, 110 00 Praha 1",
+		Subject:       subject,
+		Preheader:     "Končí v neděli",
+		FromName:      "Jan Novák",
+		FromEmail:     "newsletter@mail.example.cz",
+		CompiledHTML:  html,
+		CompiledText:  text,
+		Revision:      1,
+		Timezone:      "Europe/Prague",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if postalAddress == "" {
+		h.Raw.PostalAddress = ""
+	}
+	return h
+}
+
+// Kořeny campaign a workspace dodává SENDER z hlavičky kampaně. V render_data
+// nejsou a nikdy nebyly: bez tohohle doplnění se {{ workspace.sender_address }}
+// ve výchozí patičce vyrenderuje jako prázdný řetězec, a to je poštovní adresa,
+// kterou musí obchodní sdělení ze zákona nést.
+func TestCampaignAndWorkspaceRootsComeFromHeader(t *testing.T) {
+	body := `<html><body>{{ campaign.name }}|{{ workspace.name }}|{{ workspace.sender_address }}</body></html>`
+	out, err := testRenderer(t).Render(
+		headerWithRoots(t, body, "{{ workspace.sender_address }}", "Sleva 50 %", "vyplněná"),
+		testMessage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Letní výprodej|Kolo Eshop|Kolo Eshop s.r.o., Nádražní 5, 110 00 Praha 1"
+	if !strings.Contains(out.HTML, want) {
+		t.Fatalf("kořeny se nedoplnily:\n%s", out.HTML)
+	}
+	if !strings.Contains(out.Text, "Nádražní 5") {
+		t.Fatalf("textová část přišla o poštovní adresu:\n%s", out.Text)
+	}
+}
+
+// {{ campaign.subject }} v těle je VYRENDEROVANÝ předmět, ne jeho zdroj.
+// Předmět bývá personalizovaný, takže dosazení zdroje by příjemci poslalo
+// syrový Liquid výraz.
+func TestCampaignSubjectRootIsRendered(t *testing.T) {
+	out, err := testRenderer(t).Render(
+		headerWithRoots(t, `<html><body>{{ campaign.subject }}</body></html>`, "",
+			"Ahoj {{ contact.first_name }}", "vyplněná"),
+		testMessage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.HTML, "<body>Ahoj Jana</body>") {
+		t.Fatalf("předmět se do těla dostal nevyrenderovaný:\n%s", out.HTML)
+	}
+}
+
+// Ukázková data z contactPreviewData, která si do render_data ukládá transakční
+// cesta i e-maily seznamu, NESMÍ přebít skutečnou adresu projektu. Jinak by
+// příjemci odešlo „Demo s.r.o., Na Příkopě 1".
+func TestSampleWorkspaceDataInRenderDataIsOverridden(t *testing.T) {
+	msg := testMessage()
+	msg.RenderData = []byte(`{"contact":{"first_name":"Jana"},` +
+		`"workspace":{"name":"Demo","sender_address":"Demo s.r.o., Na Příkopě 1"}}`)
+	out, err := testRenderer(t).Render(
+		headerWithRoots(t, `<html><body>{{ workspace.sender_address }}</body></html>`, "",
+			"Předmět", "vyplněná"),
+		msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.HTML, "Na Příkopě") {
+		t.Fatalf("ukázková adresa přebila skutečnou:\n%s", out.HTML)
+	}
+	if !strings.Contains(out.HTML, "Nádražní 5") {
+		t.Fatalf("skutečná adresa projektu v těle chybí:\n%s", out.HTML)
+	}
+}
+
+// Mapa _present se pro kořeny senderu PŘEPOČÍTÁVÁ. Aplikace ji plní při
+// materializaci, kdy hodnoty ještě nezná, takže by blok podmíněný vyplněností
+// poštovní adresy v odeslaném e-mailu tiše zmizel.
+func TestPresenceIsRecomputedForSenderRoots(t *testing.T) {
+	msg := testMessage()
+	msg.RenderData = []byte(`{"contact":{"first_name":"Jana"},` +
+		`"_present":{"workspace__sender_address":false,"contact__first_name":true}}`)
+	body := `<html><body>{% if _present.workspace__sender_address %}` +
+		`{{ workspace.sender_address }}{% endif %}</body></html>`
+	out, err := testRenderer(t).Render(headerWithRoots(t, body, "", "Předmět", "vyplněná"), msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.HTML, "Nádražní 5") {
+		t.Fatalf("podmíněný blok se skryl, přestože adresa vyplněná je:\n%s", out.HTML)
+	}
+}
+
+// Opačný směr: projekt bez poštovní adresy nesmí dostat pravdivou přítomnost.
+func TestPresenceIsFalseWhenPostalAddressIsEmpty(t *testing.T) {
+	msg := testMessage()
+	msg.RenderData = []byte(`{"contact":{"first_name":"Jana"},` +
+		`"_present":{"workspace__sender_address":true}}`)
+	body := `<html><body>[{% if _present.workspace__sender_address %}adresa{% endif %}]</body></html>`
+	out, err := testRenderer(t).Render(headerWithRoots(t, body, "", "Předmět", ""), msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.HTML, "[]") {
+		t.Fatalf("prázdná adresa se tváří jako vyplněná:\n%s", out.HTML)
+	}
+}

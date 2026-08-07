@@ -1,28 +1,28 @@
 import { parseArgs } from 'node:util';
-import { runPartitionMaintenance, type RetentionReport } from '@mlain/core/ops';
+import { maintainPartitions, type RetentionReport } from '@mlain/core/ops';
 import { EXIT_CONFIG, EXIT_OK, EXIT_USAGE } from '../exit-codes';
 import { loadCliConfig } from './load-cli-config';
 import type { CliStreams } from '../dispatch';
 
 /**
- * `mlain partitions` je JEDINÉ místo, kde se v produktu uklízí odeslaná pošta.
+ * `mlain partitions` uklidí odeslanou poštu RUČNĚ nebo z plánovače hostitele.
  *
- * Do téhle chvíle retence neexistovala: `dropPartitionsBefore()` neměla
- * volajícího, fronty `retention.drop_message_partitions`
- * a `tracking.enforce_retention` byly v registru bez obsluhy
- * a `MESSAGE_RETENTION_DAYS` nikdo nečetl. `messages.render_data` s údaji
- * příjemce tedy zůstávalo v databázi navždy.
+ * Do zavedení tohohle příkazu retence neexistovala vůbec:
+ * `dropPartitionsBefore()` neměla volajícího, fronty
+ * `retention.drop_message_partitions` a `tracking.enforce_retention` byly
+ * v registru bez obsluhy a `MESSAGE_RETENTION_DAYS` nikdo nečetl.
+ * `messages.render_data` s údaji příjemce tedy zůstávalo v databázi navždy.
  *
- * PROČ PŘÍKAZ A NE JOB. Odpojení oddílu je DDL a worker běží pod `mlain_app`,
- * která schéma nevlastní. Aby to uměl jako job, musel by dostat právo měnit
- * schéma, a pak by kterákoli chyba v kterékoli obsluze mohla zahodit tabulku.
- * Příkaz běží pod `DATABASE_URL_MIGRATOR`, ze stejného plánovače a se stejnou
- * rolí jako `mlain migrate`. Zmíněné dvě fronty byly z registru odstraněné,
- * aby v něm nezůstalo něco, co se tváří, že uklízí, a neuklízí nic.
+ * OD 7. 8. 2026 UŽ NENÍ JEDINÝ. Instalace se stará sama: cronová fronta
+ * `platform.maintain_partitions` pouští ve workeru tutéž práci každou noc,
+ * protože dodávaný compose žádný plánovač hostitele nemá a na PaaS ho nejde
+ * ani doplnit. Příkaz zůstává pro tři případy: ruční běh, běh nanečisto
+ * (`--dry-run`) a instalace, která worker vůbec nepouští.
  *
- * SPOJENÍ JE MIMO TRANSAKCI, a je to podmínka, ne styl.
- * `ALTER TABLE ... DETACH PARTITION CONCURRENTLY` uvnitř transakčního bloku
- * skončí chybou 25001. Proto se tu otevírá holý `pg.Client` a ne `withAdminTx`.
+ * SPOLEČNÝ KÓD JE V `@mlain/core/ops`, ne tady. `maintainPartitions()` drží
+ * připojení pod migrátorem, běh mimo transakci i zápis do auditu; tenhle
+ * soubor je jenom rozhraní na příkazovou řádku. Dvě kopie téhle sekvence by
+ * se rozešly první opravou.
  */
 export async function runPartitionsCommand(
   streams: CliStreams,
@@ -71,22 +71,30 @@ export async function runPartitionsCommand(
     return EXIT_CONFIG;
   }
 
-  const { default: pg } = await import('pg');
-  const client = new pg.Client({ connectionString: migratorUrl });
-  await client.connect();
-  let report: RetentionReport;
-  try {
-    report = await runPartitionMaintenance({
-      client,
-      dryRun: values['dry-run'] === true,
-      ensureMonths: months,
-      env,
-    });
-  } finally {
-    await client.end().catch(() => undefined);
-  }
+  const { report, auditError } = await maintainPartitions({
+    migratorUrl,
+    dryRun: values['dry-run'] === true,
+    ensureMonths: months,
+    env,
+    actorLabel: 'mlain partitions',
+  });
 
   printReport(streams, report);
+  /**
+   * NEÚSPĚCH ZÁPISU DO AUDITU BĚH NESHODÍ a příkaz kvůli němu nekončí
+   * nenulovým kódem. Úklid v tu chvíli UŽ PROBĚHL a nenulový kód by o něm
+   * lhal, takže by provozovatel opakoval něco, co je hotové. Ztráta je jinde
+   * a je vidět: bez záznamu začne `mlain doctor` do dvou dnů hlásit, že údržba
+   * neběží. Hlášku proto vypisujeme na chybový výstup, kam se dívá plánovač
+   * hostitele.
+   */
+  if (auditError !== null) {
+    streams.stderr(
+      'Údržba oddílů proběhla, ale nepodařilo se ji zapsat do auditu: ' +
+        `${auditError.message}. Bez toho záznamu začne mlain doctor do dvou dnů hlásit, ` +
+        'že údržba neběží, přestože běžela.',
+    );
+  }
   return EXIT_OK;
 }
 

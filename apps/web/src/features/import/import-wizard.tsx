@@ -57,7 +57,13 @@ type PreviewState =
   | { kind: 'idle' }
   | { kind: 'loading' }
   | { kind: 'ready'; data: ApiPreview }
-  | { kind: 'failed'; detail: string };
+  | { kind: 'failed'; detail: string }
+  /*
+   * SPUŠTĚNÍ IMPORTU SELHALO, což NENÍ totéž co selhaný náhled, a proto to má
+   * vlastní stav. Znění u `failed` mluví o načtení náhledu a nabízí „Zkusit znovu",
+   * které načte náhled; u odmítnutého spuštění by obojí lhalo.
+   */
+  | { kind: 'startFailed'; code: string };
 
 /**
  * Převod mapování z podoby obrazovky do podoby API.
@@ -400,6 +406,19 @@ export function ImportWizard({
       // diagram přechod previewing → validating zakazuje, takže se zakládá
       // nový import.
       {...(step === 'preview' ? { destructiveBack: t('wizard.backFromPreview') } : {})}
+      /*
+       * KROKY S VLASTNÍM HLAVNÍM TLAČÍTKEM OBECNÉ „Pokračovat" NEMAJÍ.
+       *
+       * Do 7. 8. tu byla dvě hlavní tlačítka vedle sebe a to obecné bylo horší
+       * než mrtvé: `goNext` jen přepne krok, takže „Pokračovat" na kroku Volby
+       * přeplo na obrazovku průběhu, ANIŽ BY IMPORT SPUSTILO. Uživatel pak koukal
+       * na ukazatel „0 z 20", který se nikdy nepohnul, protože se nikdy nic
+       * nezařadilo. Zadavatel to 7. 8. zažil a musel se vracet zpátky.
+       *
+       * Nahrání souboru je na tom stejně: soubor se odesílá vlastním tlačítkem
+       * a přechod na další krok se řídí tím, jestli se nahrál.
+       */
+      hideNext={step === 'options' || step === 'upload'}
     >
       <div className="flex flex-col gap-[var(--spacing-gutter)]">
         {/* Rozdělaný import a jeho platnost. Je to informace o stavu, ne chyba,
@@ -433,6 +452,22 @@ export function ImportWizard({
             }
           >
             <p>{t('previewFailed.nextStep', { detail: preview.detail })}</p>
+          </Alert>
+        ) : null}
+
+        {/*
+          SPUŠTĚNÍ IMPORTU SE ODMÍTLO. Vlastní hláška, ne ta o náhledu: uživatel
+          v tu chvíli stojí nad tlačítkem „Naimportovat" a potřebuje vědět, PROČ
+          se nic nestalo a co s tím. Nejčastější příčina má vlastní větu, protože
+          „už běží jiný import" se řeší úplně jinak než chybějící oprávnění.
+        */}
+        {preview.kind === 'startFailed' ? (
+          <Alert tone="error" title={t('startFailed.title')}>
+            <p>
+              {preview.code === 'import_already_running'
+                ? t('startFailed.alreadyRunning')
+                : t('startFailed.other', { code: preview.code })}
+            </p>
           </Alert>
         ) : null}
 
@@ -542,10 +577,35 @@ export function ImportWizard({
               }
               if (!(await patch({ options: toApiOptions(value, tagIds) }))) return;
               if (importId !== null) {
-                await fetch(`/api/v1/contacts/imports/${importId}/confirm`, {
+                /*
+                 * ODPOVĚĎ SE MUSÍ ČÍST. Do 7. 8. se výsledek `confirm` zahazoval
+                 * a průvodce šel na obrazovku průběhu BEZ OHLEDU na to, jestli se
+                 * import vůbec zařadil.
+                 *
+                 * Nebyla to teorie: zadavatel doklikal průvodce, server odpověděl
+                 * **423** (`import_already_running`, v projektu ležel zaseknutý import
+                 * z předchozího dne), a produkt mu ukázal ukazatel průběhu, který se
+                 * nikdy nepohnul. Doslova řekl „já jako uživatel vím hovno, že se to
+                 * vůbec nezařadilo".
+                 *
+                 * Tichý neúspěch je tu horší než pád: uživatel čeká na práci,
+                 * která nezačala, a nemá jak zjistit proč.
+                 */
+                const res = await fetch(`/api/v1/contacts/imports/${importId}/confirm`, {
                   method: 'POST',
                   headers: { 'X-Workspace-Id': workspaceId, 'Content-Type': 'application/json' },
                 });
+                if (!res.ok) {
+                  const problem = (await res.json().catch(() => null)) as { code?: string } | null;
+                  console.error(
+                    `Spuštění importu ${importId} selhalo: HTTP ${res.status}`,
+                    problem?.code ?? '',
+                  );
+                  // Kód se předává dál, protože „už běží jiný import" a „chybí
+                  // oprávnění" potřebují každý jinou větu i jinou radu.
+                  setPreview({ kind: 'startFailed', code: problem?.code ?? `HTTP ${res.status}` });
+                  return;
+                }
               }
               goToStep('progress');
             }}

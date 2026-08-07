@@ -23,6 +23,7 @@ import {
   type ListRow,
 } from '../repo/lists';
 import type { ContactsEnv } from './index';
+import { assertPageTemplateRefs } from './page-refs';
 import {
   EmailInput,
   IdParam,
@@ -64,6 +65,20 @@ const ListSchema = z
     goodbye_template_id: Uuid.nullable(),
     confirm_redirect_url: z.string().nullable(),
     unsubscribe_redirect_url: z.string().nullable(),
+    unsubscribe_scope: z.enum(['list', 'global']),
+    already_subscribed_redirect_url: z.string().nullable(),
+    /**
+     * Veřejné stránky seznamu: návrhy druhu `page` místo vestavěné věty.
+     * `null` znamená VESTAVĚNÝ TEXT, tedy dnešní chování.
+     *
+     * Je to jiná odpověď na tutéž otázku jako `*_redirect_url` o řádek výš:
+     * co uvidí návštěvník po tomhle kroku. U potvrzení a u „už jste přihlášeni"
+     * má přednost formulář, ze kterého přihlášení přišlo; stránka po odhlášení
+     * je jen tady, protože se na ni chodí z odkazu v e-mailu.
+     */
+    confirmed_template_id: Uuid.nullable(),
+    already_subscribed_template_id: Uuid.nullable(),
+    unsubscribed_template_id: Uuid.nullable(),
     is_default: z.boolean(),
     public_visible: z.boolean(),
     public_name: z.string().nullable(),
@@ -108,6 +123,27 @@ const CreateListSchema = z
      */
     confirm_redirect_url: z.string().max(2000).nullable().optional(),
     unsubscribe_redirect_url: z.string().max(2000).nullable().optional(),
+    /**
+     * Rozsah odhlášení z odkazu v e-mailu tohohle seznamu.
+     *
+     * Výchozí `list` je dnešní chování. `global` NENÍ jen širší rozsah: navíc
+     * zakládá blokaci adresy pro CELÝ projekt (`lists/unsubscribe.ts`), takže
+     * se na něj přepíná vědomě a změna se zapisuje do auditu.
+     */
+    unsubscribe_scope: z.enum(['list', 'global']).default('list'),
+    /**
+     * Vlastní stránka pro toho, kdo v seznamu už potvrzený je. `null` znamená
+     * dnešní chování, tedy tatáž děkovací stránka jako u nového zájemce.
+     *
+     * Vyplněná adresa VĚDOMĚ prolamuje jednotnou odpověď formuláře (R9): jiná
+     * odpověď na známou adresu prozradí, kdo v databázi je. Proto je výchozí
+     * `null` a proto o zapnutí rozhoduje správce, ne produkt.
+     */
+    already_subscribed_redirect_url: z.string().max(2000).nullable().optional(),
+    /** Odkazy na veřejné stránky, viz `ListSchema`. `null` vrací vestavěný text. */
+    confirmed_template_id: Uuid.nullable().optional(),
+    already_subscribed_template_id: Uuid.nullable().optional(),
+    unsubscribed_template_id: Uuid.nullable().optional(),
     is_default: z.boolean().default(false),
     /**
      * Nabízet seznam ve veřejném centru předvoleb k PŘIHLÁŠENÍ?
@@ -173,6 +209,11 @@ function present(row: ListRow): z.infer<typeof ListSchema> {
     goodbye_template_id: row.goodbyeTemplateId,
     confirm_redirect_url: row.confirmRedirectUrl,
     unsubscribe_redirect_url: row.unsubscribeRedirectUrl,
+    unsubscribe_scope: row.unsubscribeScope,
+    already_subscribed_redirect_url: row.alreadySubscribedRedirectUrl,
+    confirmed_template_id: row.confirmedTemplateId,
+    already_subscribed_template_id: row.alreadySubscribedTemplateId,
+    unsubscribed_template_id: row.unsubscribedTemplateId,
     is_default: row.isDefault,
     public_visible: row.publicVisible,
     public_name: row.publicName,
@@ -604,6 +645,23 @@ async function assertListEmailTemplates(
   await assertListEmailTemplate(ctx, 'goodbye', 'goodbye_template_id', body.goodbye_template_id);
 }
 
+/**
+ * Odkazy na veřejné stránky z těla, pojmenované PŘESNĚ TAK, jak je klient poslal.
+ * Kontroluje je `assertPageTemplateRefs`, tedy tatáž závora jako u formuláře:
+ * jedna kopie pravidla pro obě obrazovky, aby se nerozešly.
+ */
+function pageRefsOf(body: {
+  confirmed_template_id?: string | null | undefined;
+  already_subscribed_template_id?: string | null | undefined;
+  unsubscribed_template_id?: string | null | undefined;
+}): Record<string, string | null | undefined> {
+  return {
+    confirmed_template_id: body.confirmed_template_id,
+    already_subscribed_template_id: body.already_subscribed_template_id,
+    unsubscribed_template_id: body.unsubscribed_template_id,
+  };
+}
+
 /** Prohlášení o doloženém souhlasu se kontroluje na jednom místě pro obě cesty zápisu. */
 function assertDeclaration(body: { skip_confirmation: boolean; declaration: boolean }): void {
   // Vynucené potvrzení jde obejít jen s výslovným prohlášením, že souhlas je doložený.
@@ -633,6 +691,7 @@ export function registerListRoutes(app: OpenAPIHono<ContactsEnv>): void {
     assertPermission(ctx, 'lists:write');
     const body = c.req.valid('json');
     await assertListEmailTemplates(ctx, body);
+    await assertPageTemplateRefs(ctx, pageRefsOf(body));
     const row = await createList(ctx, {
       name: body.name,
       description: body.description ?? null,
@@ -659,6 +718,19 @@ export function registerListRoutes(app: OpenAPIHono<ContactsEnv>): void {
       ...(body.unsubscribe_redirect_url === undefined
         ? {}
         : { unsubscribeRedirectUrl: body.unsubscribe_redirect_url }),
+      unsubscribeScope: body.unsubscribe_scope,
+      ...(body.already_subscribed_redirect_url === undefined
+        ? {}
+        : { alreadySubscribedRedirectUrl: body.already_subscribed_redirect_url }),
+      ...(body.confirmed_template_id === undefined
+        ? {}
+        : { confirmedTemplateId: body.confirmed_template_id }),
+      ...(body.already_subscribed_template_id === undefined
+        ? {}
+        : { alreadySubscribedTemplateId: body.already_subscribed_template_id }),
+      ...(body.unsubscribed_template_id === undefined
+        ? {}
+        : { unsubscribedTemplateId: body.unsubscribed_template_id }),
       isDefault: body.is_default,
       publicVisible: body.public_visible,
       ...(body.public_name === undefined ? {} : { publicName: body.public_name }),
@@ -683,6 +755,7 @@ export function registerListRoutes(app: OpenAPIHono<ContactsEnv>): void {
     assertPermission(ctx, 'lists:write');
     const body = c.req.valid('json');
     await assertListEmailTemplates(ctx, body);
+    await assertPageTemplateRefs(ctx, pageRefsOf(body));
     const row = await updateList(ctx, c.req.valid('param').id, {
       ...(body.name === undefined ? {} : { name: body.name }),
       ...(body.description === undefined ? {} : { description: body.description }),
@@ -711,6 +784,19 @@ export function registerListRoutes(app: OpenAPIHono<ContactsEnv>): void {
       ...(body.unsubscribe_redirect_url === undefined
         ? {}
         : { unsubscribeRedirectUrl: body.unsubscribe_redirect_url }),
+      ...(body.unsubscribe_scope === undefined ? {} : { unsubscribeScope: body.unsubscribe_scope }),
+      ...(body.already_subscribed_redirect_url === undefined
+        ? {}
+        : { alreadySubscribedRedirectUrl: body.already_subscribed_redirect_url }),
+      ...(body.confirmed_template_id === undefined
+        ? {}
+        : { confirmedTemplateId: body.confirmed_template_id }),
+      ...(body.already_subscribed_template_id === undefined
+        ? {}
+        : { alreadySubscribedTemplateId: body.already_subscribed_template_id }),
+      ...(body.unsubscribed_template_id === undefined
+        ? {}
+        : { unsubscribedTemplateId: body.unsubscribed_template_id }),
       ...(body.public_visible === undefined ? {} : { publicVisible: body.public_visible }),
       ...(body.public_name === undefined ? {} : { publicName: body.public_name }),
       ...(body.public_description === undefined

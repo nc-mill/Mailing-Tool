@@ -43,7 +43,8 @@ function settingsForm(): FormData {
   const form = new FormData();
   form.set('workspace_id', WORKSPACE);
   form.set('campaign_id', CAMPAIGN);
-  form.set('name', 'Letní výprodej');
+  // Jméno formulář NENESE: ukládá ho `renameCampaignAction` z hlavičky, ne tahle
+  // akce. Pole `name` ve `FormData` by tu bylo lež o tvaru obrazovky.
   form.set('subject', 'Letní výprodej začíná');
   form.append('include_list', 'list-1');
   return form;
@@ -458,7 +459,8 @@ describe('updateCampaignSettingsAction', () => {
     expect(options.method).toBe('PATCH');
     expect(mutate.mock.calls[1]?.[0]).toBe(`/api/v1/campaigns/${CAMPAIGN}/compile`);
     expect(options.body).toEqual({
-      name: 'Letní výprodej',
+      // `name` v těle NENÍ a být nesmí: jméno se ukládá vlastní akcí, a klíč
+      // navíc by u naplánované kampaně shodil celý požadavek na `campaign_locked`.
       subject: 'Letní výprodej začíná',
       preheader: 'Slevy až 50 %',
       from_name: 'Kolo Shop',

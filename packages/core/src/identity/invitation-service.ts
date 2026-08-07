@@ -5,6 +5,7 @@ import { loadConfig, type MlainConfig } from '../config';
 import { ApiError } from '../errors/api-error';
 import { writeAuditLog } from '../audit/write';
 import { queueSystemMail } from '../platform/system-mail';
+import { readWorkspaceLocaleTx } from '../platform/workspace-locale';
 import { getSystemMailStatus } from '../platform/system-mail-config';
 import { createInvitationContext } from './context';
 import { generateOpaqueToken, tokenHash } from './token';
@@ -72,9 +73,8 @@ export async function createInvitation(
    * Kontroluje se to PŘED zápisem, ne až podle výsledku odeslání, a je to
    * rozdíl, který uživatel vidí. Dřív vznikl řádek v `invitations`, obrazovka
    * ukázala „čeká na přijetí" a e-mail nikam neodešel; pozvaný člověk se to
-   * nedozvěděl nikdy a zvoucí se to dozvěděl leda z logu. Instalace s jediným
-   * odesílacím účtem typu SES je přesně v tomhle stavu, protože systémovou poštu
-   * odsud odešle jen účet typu SMTP.
+   * nedozvěděl nikdy a zvoucí se to dozvěděl leda z logu. Projekt bez použitelného
+   * odesílacího účtu je přesně v tomhle stavu.
    *
    * Platí to i mimo produkci. Záchranná větev v `queueSystemMail`, která odkaz
    * mimo produkci dopíše do logu, je pomůcka pro vývoj, ne způsob doručení:
@@ -156,14 +156,10 @@ export async function createInvitation(
    * pozvánku. `DEFAULT_LOCALE` zůstává jako pojistka pro případ, že by řádek
    * projektu nešel přečíst.
    */
-  const { rows: workspaces } = await tx.execute<{ locale: string }>(sql`
-    SELECT locale FROM workspaces WHERE id = ${ctx.workspaceId}::uuid LIMIT 1
-  `);
-
   await queueSystemMail({
     template: 'invitation',
     to: email,
-    locale: workspaces[0]?.locale ?? cfg().DEFAULT_LOCALE,
+    locale: (await readWorkspaceLocaleTx(tx, ctx)) ?? cfg().DEFAULT_LOCALE,
     data: { url: `${cfg().APP_URL}/invitations/accept?token=${token}` },
     workspaceId: ctx.workspaceId,
   });

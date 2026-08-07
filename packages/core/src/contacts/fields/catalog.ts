@@ -125,6 +125,18 @@ const FIRST_CLASS_FIELDS: readonly Omit<FieldCatalogEntry, 'deleted'>[] = [
 ];
 
 /**
+ * Prvotřídní pole vyvážená kvůli materializaci kampaně.
+ *
+ * `SNAPSHOTTABLE_CONTACT_COLUMNS` v `campaigns/audience/render-data.ts` říká, které
+ * sloupce `contacts` smí kandidátský dotaz vybrat, a musí tenhle seznam pokrýt.
+ * Kdyby se rozešly, přibylo by pole, které editor nabídne a odeslaná zpráva nedodá.
+ * Totéž platí pro typ `datetime` a `ISO_DATE_CONTACT_COLUMNS` tamtéž. Hlídají to
+ * testy, ne dobrá vůle.
+ */
+export const FIRST_CLASS_CONTACT_FIELDS: readonly Omit<FieldCatalogEntry, 'deleted'>[] =
+  FIRST_CLASS_FIELDS;
+
+/**
  * Pole, která zmizí, když projekt oslovení a 5. pád neřeší
  * (`workspaces.greeting_enabled = false`).
  *

@@ -1,11 +1,18 @@
 import { keyringChecks } from './checks-keyring';
+import { maintenanceChecks } from './checks-maintenance';
 import { runtimeChecks } from './checks-runtime';
 import { storageChecks } from './checks-storage';
 import { workspaceChecks } from './checks-workspace';
 import { sortFindings } from './format';
 import type { DoctorContext, DoctorFinding } from './types';
 
-const ALL_CHECKS = [...keyringChecks, ...storageChecks, ...runtimeChecks, ...workspaceChecks];
+const ALL_CHECKS = [
+  ...keyringChecks,
+  ...storageChecks,
+  ...runtimeChecks,
+  ...workspaceChecks,
+  ...maintenanceChecks,
+];
 
 export type DoctorReport = { findings: DoctorFinding[] };
 

@@ -34,4 +34,6 @@ export {
 export type { SeedInput } from './seed';
 export { purgeDemoData } from './purge';
 export type { PurgeReport } from './purge';
+export { NO_DEMO_IMPACT, readDemoImpact } from './impact';
+export type { DemoImpact } from './impact';
 export { DemoAuditActions } from './audit';

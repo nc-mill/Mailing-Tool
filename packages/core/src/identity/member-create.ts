@@ -14,10 +14,12 @@ import type { Role, WorkspaceContext } from './types';
  * Založení člena rovnou, bez pozvánky e-mailem.
  *
  * PROČ TENHLE SOUBOR VZNIKL. Do projektu se dalo přidat člověka JEDINOU cestou:
- * pozvánkou, která odchází systémovým e-mailem. Jenže systémovou poštu odsud umí
- * odeslat pouze účet typu SMTP (`platform/system-mailer.ts`), takže instalace
- * s jediným účtem typu SES nemá jak pozvánku doručit. Správce vyplnil adresu,
- * pozvánka se zapsala do tabulky, a pozvaný člověk nedostal nikdy nic. U samo-
+ * pozvánkou, která odchází systémovým e-mailem. Jenže projekt bez použitelného
+ * odesílacího účtu (`platform/system-mailer.ts`) nemá jak pozvánku doručit.
+ * Správce vyplnil adresu, pozvánka se zapsala do tabulky, a pozvaný člověk
+ * nedostal nikdy nic. Tehdy do toho stavu spadala i instalace s jediným účtem
+ * typu SES, protože systémovou poštu odsud odeslal jen účet typu SMTP; ta část
+ * je opravená, ale cesta bez pozvánky zůstává. U samo-
  * hostovaného produktu, kde správce sedí u serveru, je nastavení hesla rukou
  * legitimní cesta, ne obcházení bezpečnosti.
  *

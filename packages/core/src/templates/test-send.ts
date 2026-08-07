@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import * as schema from '@mlain/db/schema';
 import { prepareRenderData } from '@mlain/contracts/liquid/prepare-render-data';
 import { hasContentBlocks } from '@mlain/emails/document/content-stats';
@@ -6,6 +6,7 @@ import type { Document } from '@mlain/emails/document/types';
 import { toPreparedSchema } from '@mlain/emails/paths';
 import { wsEq } from '../identity/scope';
 import type { WorkspaceContext } from '../identity/types';
+import { resolveSenderIdentity, type ResolvedSenderIdentity } from '../sender-identities/resolve';
 import { withWorkspace, type Tx } from '../tx';
 import { compileTemplate } from './compile';
 import { findTemplateById, validationProfileFor, type TemplateRow } from './repository';
@@ -120,7 +121,13 @@ export async function sendTemplateTest(
       throw new TestSendError('test_template_empty');
     }
 
-    const identity = await senderIdentity(tx, ctx.ctx);
+    // Odesílatel se od 7. 8. 2026 hledá SPOLEČNÝM resolverem, který se ptá
+    // i na předvolbu odesílatele a na připojený účet s ověřenou adresou.
+    // Do té doby se tahle trasa ptala VÝHRADNĚ uložených kampaní, takže
+    // zkušební e-mail nešlo poslat dřív než první kampaň, přestože ho panel
+    // prvních kroků nabízí jako krok 4 a kampaň až jako krok 5.
+    const identity = await resolveSenderIdentity(tx, ctx.ctx);
+    if (identity === null) throw new TestSendError('test_sending_not_configured');
     const contactId = await resolveTestContactId(tx, ctx.ctx);
 
     const compiled = await compileTemplate({
@@ -266,59 +273,6 @@ async function resolveTestContactId(tx: Tx, ctx: WorkspaceContext): Promise<stri
   return row.id;
 }
 
-type SenderIdentity = {
-  providerId: string;
-  senderDomainId: string | null;
-  fromName: string;
-  fromEmail: string;
-  replyTo: string | null;
-};
-
-/**
- * Odesílací identita skryté kampaně.
- *
- * ROZHODNUTÍ, KTERÉ SE MUSELO UDĚLAT: projekt nemá nikde uloženou výchozí
- * odesílací identitu. `workspaces.settings.campaigns` nese jen okno pro vrácení
- * a zkušební režim, konfigurace providera adresu neobsahuje a `sender_domains`
- * zná doménu, ne celou adresu. Vymyslet lokální část (`test@…`, `no-reply@…`)
- * by znamenalo poslat mail z adresy, kterou nikdo nezaložil.
- *
- * Bere se proto identita z POSLEDNÍ kampaně projektu, která ji má vyplněnou.
- * Testovací mail tím odejde přesně tak, jak odcházejí ostré kampaně toho
- * projektu, což je u testu žádoucí. Když taková kampaň není, odesílání ještě
- * není nastavené a odmítne se to s vlastním kódem, ne tichým výchozím nastavením.
- */
-async function senderIdentity(tx: Tx, ctx: WorkspaceContext): Promise<SenderIdentity> {
-  const [row] = await tx
-    .select({
-      providerId: schema.campaigns.providerId,
-      senderDomainId: schema.campaigns.senderDomainId,
-      fromName: schema.campaigns.fromName,
-      fromEmail: schema.campaigns.fromEmail,
-      replyTo: schema.campaigns.replyTo,
-    })
-    .from(schema.campaigns)
-    .where(
-      and(
-        wsEq(ctx, schema.campaigns),
-        isNull(schema.campaigns.deletedAt),
-        eq(schema.campaigns.kind, 'campaign'),
-        isNotNull(schema.campaigns.providerId),
-        ne(schema.campaigns.fromEmail, ''),
-      ),
-    )
-    .orderBy(desc(schema.campaigns.updatedAt))
-    .limit(1);
-  if (!row?.providerId) throw new TestSendError('test_sending_not_configured');
-  return {
-    providerId: row.providerId,
-    senderDomainId: row.senderDomainId,
-    fromName: row.fromName,
-    fromEmail: row.fromEmail,
-    replyTo: row.replyTo,
-  };
-}
-
 /**
  * Skrytá kampaň je JEDNA na šablonu a přepisuje se při každém testu.
  *
@@ -341,7 +295,7 @@ async function upsertSystemCampaign(
     html: string;
     text: string;
     compileMeta: unknown;
-    identity: SenderIdentity;
+    identity: ResolvedSenderIdentity;
     now: Date;
   },
 ): Promise<string> {

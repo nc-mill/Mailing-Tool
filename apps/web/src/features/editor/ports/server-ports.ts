@@ -1,7 +1,7 @@
 import 'server-only';
 // Doména se importuje na úroveň `@mlain/core/<domena>`. Hlubší podcesta se přes
 // zástupný znak v mapě `exports` rozřeší na adresář, ne na soubor.
-import { getFieldCatalog } from '@mlain/core/contacts';
+import { getFieldCatalog, readGreetingSettings } from '@mlain/core/contacts';
 // ODCHYLKA OD PLÁNU: `@mlain/core/identity` jako veřejná plocha domény dnes
 // **neexistuje** (otevřený požadavek P04-R1 z kapitoly 9.2). Mapa `exports`
 // balíčku `@mlain/core` má ale klíč `"./identity/*": "./src/identity/*.ts"`,
@@ -14,6 +14,7 @@ import * as schema from '@mlain/db/schema';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import type { EditorDocument } from '../model/document-types';
 import type { FieldCatalog } from '../model/field-catalog';
+import type { SampleGreetingSettings } from '@mlain/emails/preview-data';
 
 /**
  * Čtení pro serverovou komponentu. **Jediné místo, kde editor sahá na `@mlain/core`.**
@@ -53,6 +54,12 @@ export async function loadEditorData(input: {
    */
   kind: string;
   fieldCatalog: FieldCatalog;
+  /**
+   * Nastavení oslovení projektu. Editor ho potřebuje k tomu, aby vzorová věta
+   * na plátně zněla jako ta, která doopravdy odejde; v prohlížeči ho zjistit
+   * nemůže. Podrobněji u `greeting` ve skořápce editoru.
+   */
+  greeting: SampleGreetingSettings;
 } | null> {
   const ctx = await createWorkspaceContext({
     kind: 'session',
@@ -62,7 +69,7 @@ export async function loadEditorData(input: {
 
   // Katalog polí i šablona jdou naráz: nezávisí na sobě a sériově by to byly
   // dva zbytečné okružní časy do databáze.
-  const [rows, fieldCatalog] = await Promise.all([
+  const [rows, fieldCatalog, greeting] = await Promise.all([
     withWorkspace(ctx, (tx) =>
       tx
         .select({
@@ -82,6 +89,7 @@ export async function loadEditorData(input: {
         .limit(1),
     ),
     getFieldCatalog(ctx),
+    withWorkspace(ctx, (tx) => readGreetingSettings(tx, ctx)),
   ]);
 
   const row = rows[0];
@@ -92,6 +100,7 @@ export async function loadEditorData(input: {
     name: row.name,
     kind: row.kind,
     fieldCatalog,
+    greeting,
   };
 }
 

@@ -1,6 +1,11 @@
 import { createHtmlEngine } from '@mlain/contracts/liquid/engine';
 import { sql } from 'drizzle-orm';
 import { withWorkspace } from '../../tx';
+import {
+  readCampaignRootsSource,
+  withCampaignRoots,
+  type CampaignRootsSource,
+} from '../../campaigns/render-roots';
 import type { VerifiedPublicToken } from './unsubscribe';
 
 /**
@@ -62,7 +67,11 @@ async function findMessage(
 async function findCampaign(
   token: VerifiedPublicToken,
   campaignId: string,
-): Promise<{ compiled_html: string | null; subject: string | null } | null> {
+): Promise<{
+  compiled_html: string | null;
+  subject: string | null;
+  roots: CampaignRootsSource | null;
+} | null> {
   return withWorkspace(token.scope.ctx, async (tx) => {
     const { rows } = await tx.execute<{ compiled_html: string | null; subject: string | null }>(sql`
       SELECT compiled_html, subject
@@ -71,7 +80,10 @@ async function findCampaign(
          AND workspace_id = ${token.scope.ctx.workspaceId}::uuid
          AND deleted_at IS NULL
     `);
-    return rows[0] ?? null;
+    const row = rows[0];
+    if (!row) return null;
+    const roots = await readCampaignRootsSource(tx, token.scope.ctx, campaignId);
+    return { ...row, roots };
   });
 }
 
@@ -111,7 +123,22 @@ export async function loadWebview(
    * skládání dávky, takže se druhá příprava nedělá a dělat nesmí: podruhé připravená
    * data nejsou totéž co jednou připravená.
    */
-  const data = { ...(message.render_data ?? {}), ...systemUrls(rawToken) };
+  /*
+   * Kořeny `campaign` a `workspace` v render_data NEJSOU: dodává je odesílač
+   * z hlavičky kampaně, protože jsou konstantní pro celou kampaň a kopie do
+   * každé zprávy by u milionové kampaně stála stovky megabajtů. Webová podoba
+   * je proto musí doplnit ze stejného zdroje, jinak by v prohlížeči chyběla
+   * poštovní adresa v patičce, kterou příjemce v e-mailu VIDĚL. Je to táž
+   * úvaha jako u systémových adres o pár řádků výš.
+   */
+  const withUrls = { ...(message.render_data ?? {}), ...systemUrls(rawToken) };
+  const { data, roots } =
+    campaign.roots === null
+      ? { data: withUrls, roots: null }
+      : await withCampaignRoots(withUrls, campaign.roots);
+
   const html = await createHtmlEngine().parseAndRender(campaign.compiled_html, data);
-  return { state: 'ok', html, subject: campaign.subject ?? '' };
+  // Předmět stránky je VYRENDEROVANÝ, ne zdroj: personalizovaný předmět by
+  // v titulku ukázal `Ahoj {{ contact.first_name }}`.
+  return { state: 'ok', html, subject: roots?.campaign.subject ?? campaign.subject ?? '' };
 }

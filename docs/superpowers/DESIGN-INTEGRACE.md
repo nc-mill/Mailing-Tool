@@ -303,6 +303,11 @@ Ovládání zmizelo, klíče zůstaly. Smazat.
 
 Chtějí změnu na straně serveru, samotným designem se to nespraví.
 
+**Upřesněno 7. 8. 2026:** v rozhraní není co spravit ani designem, ani jinak. Knihovna šablon
+je seznam bez miniatur a `thumbnail_asset_id` se v `apps/web` nevyskytuje, takže není rozbitý
+obrázek ani prázdné okno. Je to chybějící funkce, ne vada, a rozvaha o ní je v oddílu 3
+`STAV-UKOLU.md`.
+
 ### Zbytky zkušebních dat v `mlain_clean`
 
 Mimo jiné kampaň „Zkouška toku e-mailů", třicetibloková „Nová šablona" a segmenty

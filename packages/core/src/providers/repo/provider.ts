@@ -1,4 +1,4 @@
-import { withWorkspace, type WorkspaceContext, type Tx } from '../../tx';
+import { withWorkspace, type WorkspaceContext } from '../../tx';
 import { ApiError } from '../../errors/api-error';
 // ODCHYLKA OD PLÁNU: plán zakládal druhý `raw-sql.ts` v `providers/repo/`. Byla by to
 // druhá kopie téže funkce v témž balíčku, tedy přesně ta konstrukce, která se za půl
@@ -21,6 +21,18 @@ export type ProviderRow = {
   production_access: boolean | null;
   enforcement_status: string | null;
   sending_enabled: boolean | null;
+  /**
+   * Stav žádosti o produkční přístup u Amazonu, z `Details.ReviewDetails.Status`
+   * v odpovědi SES v2 `GetAccount`. Hodnoty podle výčtu `ReviewStatus` v AWS SDK:
+   * `PENDING`, `GRANTED`, `DENIED`, `FAILED`. `null` znamená, že účet o přístup
+   * nikdy nežádal, nebo že jsme se Amazona ještě neptali.
+   *
+   * Dokud sloupec chyběl (do migrace 0025), hodnota se z Amazonu načetla a zahodila.
+   * Pak se sice ukládala, ale nebyla ve výčtu níž, takže ji nikdo nepřečetl. Bez ní
+   * neumí preflight rozlišit „čeká se na schválení" od „Amazon zamítl", což je
+   * rozdíl mezi „počkej si" a „takhle to nikdy neodejde".
+   */
+  review_status: string | null;
   quota_checked_at: string | null;
   created_at: string;
   updated_at: string;
@@ -40,7 +52,8 @@ export type ProviderRow = {
 const PUBLIC_COLUMNS = `id, workspace_id, name, type, config_public, is_default, status,
   status_detail, verified_at, quota_max24h AS quota_max_24h, quota_max_send_rate,
   quota_sent24h AS quota_sent_24h,
-  production_access, enforcement_status, sending_enabled, quota_checked_at, created_at, updated_at`;
+  production_access, enforcement_status, sending_enabled, review_status,
+  quota_checked_at, created_at, updated_at`;
 
 /** config_encrypted se ze zadneho ctecího dotazu nevraci. Sifra se cte jen pri volani AWS. */
 export async function getProviderById(
@@ -124,33 +137,6 @@ export async function setDefaultProvider(ctx: WorkspaceContext, id: string): Pro
   });
 }
 
-/**
- * ODCHYLKA OD PLÁNU, VYNUCENÁ OTEVŘENÝM POŽADAVKEM R-P03.8.
- *
- * Sloupec `sending_providers.review_status` v migraci NENÍ; požadavek na něj je zapsaný,
- * ale P03 ho zatím nesplnil. Plán ho v `UPDATE` uvádí natvrdo, takže by celý zápis
- * skončil chybou 42703 a snapshot účtu by se neuložil vůbec, ne jen bez jednoho pole.
- *
- * Přítomnost sloupce se proto zjišťuje jednou za proces a podle toho se skládá seznam
- * sloupců. Až P03 migraci doplní, zápis začne hodnotu ukládat sám a tenhle soubor se
- * nemění. Opačné pořadí (zapsat natvrdo a čekat na migraci) by znamenalo, že do té doby
- * nefunguje ani načítání kvót, což je věc, na které stojí automatická pauza.
- */
-let reviewStatusColumn: boolean | null = null;
-
-async function hasReviewStatusColumn(tx: Tx): Promise<boolean> {
-  if (reviewStatusColumn !== null) return reviewStatusColumn;
-  const r = await tx.execute<{ n: number }>(
-    rawSql(
-      `SELECT count(*)::int AS n FROM information_schema.columns
-        WHERE table_name = 'sending_providers' AND column_name = 'review_status'`,
-      [],
-    ),
-  );
-  reviewStatusColumn = (r.rows[0]?.n ?? 0) > 0;
-  return reviewStatusColumn;
-}
-
 export type AccountSnapshotColumns = {
   quota_max_24h: number | null;
   quota_max_send_rate: number | null;
@@ -161,25 +147,34 @@ export type AccountSnapshotColumns = {
   review_status: string | null;
 };
 
+/**
+ * Snímek účtu z odpovědi Amazonu na `GetAccount`.
+ *
+ * `review_status` stojí v příkazu NATVRDO. Do migrace 0025 se sloupec za běhu
+ * dohledával v `information_schema` a při neexistenci se z `UPDATE` vynechal,
+ * protože žádná migrace ho nezaváděla a natvrdo psaný příkaz by skončil chybou
+ * 42703. Padlo by s ním i načtení kvót, na kterých stojí automatická pauza
+ * kampaně, takže se tehdy obcházení vyplatilo.
+ *
+ * Sloupec zavádí migrace 0025 a obcházení je od té chvíle MRTVÝ KÓD, který
+ * svádí k domněnce, že je sloupec volitelný. Kdyby chyběl, má zápis spadnout
+ * hlasitě, ne se tiše ochudit o jedno pole.
+ */
 export async function updateAccountSnapshot(
   ctx: WorkspaceContext,
   id: string,
   a: AccountSnapshotColumns,
 ): Promise<void> {
   await withWorkspace(ctx, async (tx) => {
-    const review = (await hasReviewStatusColumn(tx)) ? `review_status = $9,` : '';
     await tx.execute(
       rawSql(
         // Skutečná jména sloupců jsou `quota_max24h` a `quota_sent24h`, viz PUBLIC_COLUMNS.
         `UPDATE sending_providers
           SET quota_max24h = $3, quota_max_send_rate = $4, quota_sent24h = $5,
               production_access = $6, enforcement_status = $7, sending_enabled = $8,
-              ${review}
+              review_status = $9,
               quota_checked_at = now(), updated_at = now()
         WHERE id = $1 AND workspace_id = $2`,
-        // review_status musi byt v seznamu sloupcu. Drive prosel signaturou i ctenim
-        // z AWS, ale v UPDATE chybel, takze hodnota tise mizela a preflight nemel podle
-        // ceho rozlisit bezici zadost od zamitnute. Sloupec zavadi pozadavek R-P03.8.
         [
           id,
           ctx.workspaceId,

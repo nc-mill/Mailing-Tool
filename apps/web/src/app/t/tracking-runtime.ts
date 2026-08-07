@@ -151,7 +151,7 @@ export function getTrackingRuntime(): TrackingRuntime {
     },
     isWebTrackingEnabled: () => true,
     identityTokenTtlSeconds: config.TRACKING_IDENTITY_TOKEN_TTL_SECONDS,
-    contactLookupTimeoutMs: 30,
+    contactLookupTimeoutMs: config.TRACKING_CONTACT_LOOKUP_TIMEOUT_MS,
   });
 
   cached = {

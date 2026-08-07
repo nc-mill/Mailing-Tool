@@ -51,6 +51,12 @@ const GeneralSchema = z.object({
     .regex(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/),
   locale: z.string().min(2),
   timezone: z.string().min(1),
+  /**
+   * Poštovní adresa odesílatele. Prázdná je v pořádku: projekt, který teprve
+   * zkouší, nemá být kvůli ní zastavený. Že chybí, řekne kontrolní seznam
+   * před odesláním kampaně.
+   */
+  postal_address: z.string().trim().max(500),
 });
 
 export async function updateWorkspaceAction(
@@ -63,6 +69,9 @@ export async function updateWorkspaceAction(
     slug: formData.get('slug'),
     locale: formData.get('locale'),
     timezone: formData.get('timezone'),
+    // `?? ''` drží zpětnou kompatibilitu formuláře bez tohohle pole: chybějící
+    // hodnota by jinak spadla na validaci a uložení by přestalo fungovat celé.
+    postal_address: formData.get('postal_address') ?? '',
   });
 
   if (!parsed.success) {

@@ -14,6 +14,9 @@
 import { Pool } from 'pg';
 import { afterAll, beforeAll } from 'vitest';
 import { createWorkspaceAsUser } from '@mlain/db';
+import { plainToRichText } from '@mlain/emails/base/rich';
+import { blockDefaults, DEFAULT_THEME } from '@mlain/emails/document/defaults';
+import type { Document, SectionBlock } from '@mlain/emails/document/types';
 import { startPgHarness, type PgHarness } from '@mlain/core/test-support/pg-harness';
 import { createWorkspaceContext } from '../../../../packages/core/src/identity/context';
 import { hashPassword } from '../../../../packages/core/src/identity/password';
@@ -28,6 +31,7 @@ import * as schema from '@mlain/db/schema';
 import { writeContact } from '../../../../packages/core/src/contacts/repo/contacts';
 import { issueConfirmationIn } from '../../../../packages/core/src/contacts/repo/subscriptions';
 import { registerSubscriptionEmails } from '../../../../packages/core/src/contacts/lists/subscribe-service';
+import { createTemplateRow } from '../../../../packages/core/src/templates/repository';
 
 let harness: PgHarness | null = null;
 let migratorPool: Pool | null = null;
@@ -140,6 +144,131 @@ export async function createList(
     ],
   );
   return rows[0]!.id;
+}
+
+/**
+ * Předvolba odesílatele, ze které veřejné stránky berou jméno v hlavičce.
+ *
+ * Zakládá se pod migrátorem a rovnou s účtem i doménou, protože obojí drží cizí klíč.
+ * Pro veřejné stránky je podstatné jen `from_name`; zbytek je nutná výbava, aby řádek
+ * vůbec směl vzniknout.
+ */
+export async function createSenderIdentity(ctx: WorkspaceContext, fromName: string): Promise<void> {
+  const { rows: providers } = await asMigrator().query<{ id: string }>(
+    `INSERT INTO sending_providers (workspace_id, name, type, config_encrypted, verified_at)
+     VALUES ($1, 'Test', 'ses', '', now()) RETURNING id`,
+    [ctx.workspaceId],
+  );
+  const providerId = providers[0]!.id;
+  const { rows: domains } = await asMigrator().query<{ id: string }>(
+    `INSERT INTO sender_domains (workspace_id, provider_id, domain, verified_at)
+     VALUES ($1, $2, 'priklad.cz', now()) RETURNING id`,
+    [ctx.workspaceId, providerId],
+  );
+  await asMigrator().query(
+    `INSERT INTO sender_identities
+       (workspace_id, name, from_name, from_email, provider_id, sender_domain_id, is_default)
+     VALUES ($1, 'Vychozi', $2, 'posta@priklad.cz', $3, $4, true)`,
+    [ctx.workspaceId, fromName, providerId, domains[0]!.id],
+  );
+}
+
+/**
+ * Dokument veřejné stránky, tedy `templates.design` u šablony `kind = 'page'`.
+ *
+ * Odstavce se píšou prostým textem s Liquid výrazy (`plainToRichText`), takže
+ * test čte stejně jako to, co v Builderu napíše autor.
+ */
+export function pageDocument(input: {
+  name: string;
+  language?: string;
+  paragraphs: string[];
+}): Document {
+  return {
+    schemaVersion: 1,
+    meta: { name: input.name, previewText: '', language: input.language ?? 'cs' },
+    theme: structuredClone(DEFAULT_THEME),
+    blocks: [
+      {
+        id: 'sec-1',
+        type: 'section',
+        props: blockDefaults('section'),
+        children: input.paragraphs.map((paragraph, index) => ({
+          id: `txt-${index}`,
+          type: 'text',
+          props: { ...blockDefaults('text'), content: plainToRichText(paragraph) },
+        })),
+      } as SectionBlock,
+    ],
+  };
+}
+
+/** Šablona veřejné stránky v knihovně projektu. Vrací její ID. */
+export async function createPageTemplate(
+  ctx: WorkspaceContext,
+  input: { name: string; document: Document },
+): Promise<string> {
+  return withWorkspace(ctx, async (tx) => {
+    const row = await createTemplateRow(tx, ctx, {
+      name: input.name,
+      kind: 'page',
+      design: input.document,
+      usedFields: [],
+    });
+    return row.id;
+  });
+}
+
+/**
+ * Šablona stránky s ROZBITÝM dokumentem, na kterém vykreslení spadne.
+ *
+ * Zakládá se pod migrátorem přímo do tabulky, protože doménová cesta by takový
+ * dokument nevzala. Je to jediný způsob, jak ověřit, že pád vykreslení nesmí
+ * zvrátit odhlášení: v produkci ho vyrobí až budoucí neshoda verzí schématu,
+ * kterou dnes nikdo nenapíše ručně.
+ */
+export async function createBrokenPageTemplate(ctx: WorkspaceContext): Promise<string> {
+  const { rows } = await asMigrator().query<{ id: string }>(
+    `INSERT INTO templates (workspace_id, name, kind, schema_version, design, design_hash)
+     VALUES ($1, 'Rozbitá stránka', 'page', 1, $2::jsonb, '\\x00'::bytea) RETURNING id`,
+    [
+      ctx.workspaceId,
+      JSON.stringify({
+        schemaVersion: 1,
+        meta: { name: 'Rozbitá stránka', previewText: '', language: 'cs' },
+        theme: DEFAULT_THEME,
+        // `blocks` musí být pole. Emitor nad ním volá `map`, takže tady spadne.
+        blocks: null,
+      }),
+    ],
+  );
+  return rows[0]!.id;
+}
+
+/**
+ * Připojí stránku k seznamu, tedy sloupce z migrace 0029. Seznam vlastní povrchy
+ * `confirmed`, `already_subscribed` a `unsubscribed`, viz oddíl 3 plánu.
+ */
+export async function setListPages(
+  ctx: WorkspaceContext,
+  listId: string,
+  pages: { confirmed?: string; alreadySubscribed?: string; unsubscribed?: string },
+): Promise<void> {
+  await asMigrator().query(
+    `UPDATE lists
+        SET confirmed_template_id = coalesce($3::uuid, confirmed_template_id),
+            already_subscribed_template_id =
+              coalesce($4::uuid, already_subscribed_template_id),
+            unsubscribed_template_id = coalesce($5::uuid, unsubscribed_template_id)
+      WHERE workspace_id = $1 AND id = $2`,
+    [
+      ctx.workspaceId,
+      listId,
+      pages.confirmed ?? null,
+      pages.alreadySubscribed ?? null,
+      pages.unsubscribed ?? null,
+    ],
+  );
 }
 
 /** Přepne nastavení projektu `settings.contacts.public_preference_center`. */
@@ -261,11 +390,19 @@ export async function latestConsent(
 /** Požadavek na veřejnou stránku. Bez cookie, bez relace: tak ho pošle příjemce. */
 export function publicRequest(
   url: string,
-  init: { method?: string; body?: string; contentType?: string; ip?: string } = {},
+  init: {
+    method?: string;
+    body?: string;
+    contentType?: string;
+    ip?: string;
+    /** Další hlavičky, typicky `accept-language`, kterou se stránka řídit NESMÍ. */
+    headers?: Record<string, string>;
+  } = {},
 ): Request {
   const headers: Record<string, string> = {
     'user-agent': 'vitest',
     'x-forwarded-for': init.ip ?? '198.51.100.7',
+    ...init.headers,
   };
   if (init.contentType !== undefined) headers['content-type'] = init.contentType;
   return new Request(`https://mlain.test${url}`, {

@@ -23,10 +23,12 @@ import {
 import { ListArchiveDialog } from './list-archive-dialog';
 import {
   saveListBasicsAction,
-  saveListRedirectsAction,
+  saveListUnsubscribeScopeAction,
   setDefaultListAction,
 } from './list-email-actions';
 import { ListEmails, type ListEmailState } from './list-emails';
+import { ListPages } from './list-pages-card';
+import type { PageOption } from '@/features/forms/page-choice';
 
 export type ListDetailData = {
   id: string;
@@ -52,6 +54,25 @@ export type ListDetailData = {
   /** Kam po potvrzení a po odhlášení. Prázdné znamená „zůstane naše stránka". */
   confirm_redirect_url: string;
   unsubscribe_redirect_url: string;
+  /**
+   * Vlastní stránka pro toho, kdo v seznamu už potvrzený je. Prázdné znamená
+   * dnešní chování, tedy tatáž děkovací stránka jako u nového zájemce.
+   */
+  already_subscribed_redirect_url: string;
+  /**
+   * Návrhy veřejných stránek, tedy šablony druhu `page`. `null` znamená
+   * vestavěný text. Stojí VEDLE adres výš, protože je to táž otázka („co
+   * návštěvník uvidí") a obrazovka je nabízí jako jednu volbu ze tří.
+   */
+  confirmed_template_id: string | null;
+  already_subscribed_template_id: string | null;
+  unsubscribed_template_id: string | null;
+  /**
+   * Co udělá kliknutí na odhlašovací odkaz: odhlásí z tohohle seznamu, nebo
+   * ze všech? `global` navíc blokuje adresu pro celý projekt, viz kartu
+   * „Rozsah odhlášení".
+   */
+  unsubscribe_scope: 'list' | 'global';
   /**
    * Výchozí seznam projektu. Řídí, co je předem zaškrtnuté při ručním přidání
    * kontaktu a předvybrané v průvodci importem, takže je to rozhodnutí o tom,
@@ -116,6 +137,7 @@ export function ListDetail({
   workspaceId,
   language,
   list,
+  pages = [],
 }: {
   basePath: string;
   /** Kam vede odkaz na šablonu vlastního znění, tedy `/w/{slug}/templates`. */
@@ -125,6 +147,11 @@ export function ListDetail({
   /** Jazyk, ve kterém se předvyplní nově založené znění e-mailu. */
   language: 'cs' | 'en';
   list: ListDetailData;
+  /**
+   * Knihovna veřejných stránek projektu. Výchozí prázdný seznam znamená „zatím
+   * žádná", což karta umí říct; obrazovka kvůli tomu nespadne.
+   */
+  pages?: PageOption[];
 }) {
   const t = useTranslations('contacts');
   const tc = useTranslations('common');
@@ -150,9 +177,9 @@ export function ListDetail({
   // nikdo nechtěl.
   const [ttl, setTtl] = useState(String(list.confirmation_ttl_hours));
   const [maxResends, setMaxResends] = useState(String(list.confirmation_max_resends));
-  const [confirmRedirect, setConfirmRedirect] = useState(list.confirm_redirect_url);
-  const [unsubscribeRedirect, setUnsubscribeRedirect] = useState(list.unsubscribe_redirect_url);
-  const [redirectsSaved, setRedirectsSaved] = useState(false);
+  const [unsubscribeScope, setUnsubscribeScope] = useState(list.unsubscribe_scope);
+  const [scopeSaved, setScopeSaved] = useState(false);
+  const [scopeError, setScopeError] = useState(false);
   const [defaultSaved, setDefaultSaved] = useState(false);
   const [defaultError, setDefaultError] = useState(false);
   // Archivace se ptá. Je to jediné mazání seznamu, které produkt má, takže se
@@ -196,17 +223,25 @@ export function ListDetail({
     router.refresh();
   }
 
-  async function saveRedirects() {
-    const result = await saveListRedirectsAction({
+  /**
+   * Rozsah odhlášení. Mění i to, jestli se adresa zablokuje pro celý projekt,
+   * takže se ukládá jako vědomé kliknutí a neúspěch se ozve.
+   */
+  async function changeUnsubscribeScope(next: 'list' | 'global') {
+    setUnsubscribeScope(next);
+    setScopeError(false);
+    const result = await saveListUnsubscribeScopeAction({
       workspaceId,
       listId: list.id,
-      confirmRedirectUrl: confirmRedirect,
-      unsubscribeRedirectUrl: unsubscribeRedirect,
+      unsubscribeScope: next,
     });
-    if (result.status === 'success') {
-      setRedirectsSaved(true);
-      router.refresh();
+    if (result.status === 'error') {
+      setUnsubscribeScope(unsubscribeScope);
+      setScopeError(true);
+      return;
     }
+    setScopeSaved(true);
+    router.refresh();
   }
 
   async function savePublic(next: {
@@ -424,7 +459,7 @@ export function ListDetail({
 
         {/* Dva sloupce od 360 px na sloupec. `items-start` je podstatné: bez něj by se
             karty v jednom sloupci roztáhly na výšku toho druhého. */}
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] items-start gap-[var(--spacing-gutter)]">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(360px,100%),1fr))] items-start gap-[var(--spacing-gutter)]">
           <div className="flex flex-col gap-[var(--spacing-gutter)]">
             {/* Základní údaje. Do 5. 8. 2026 šel na seznamu nastavit jen režim potvrzení,
                 opt-in a veřejné nabízení, takže seznam nešlo ani přejmenovat.
@@ -475,48 +510,36 @@ export function ListDetail({
               </Field>
             </Card>
 
-            {/* Kam po potvrzení a po odhlášení. Prázdné pole znamená, že člověk zůstane
-                na naší stránce, a to je pro většinu projektů správně: naše stránka mu
-                řekne, co se právě stalo, a nabídne opravu, kdyby to bylo omylem.
-                Ukládá se opuštěním pole, proto tu není tlačítko. */}
-            <Card gap="gutter">
-              <CardTitle>{t('lists.redirectsTitle')}</CardTitle>
-              <Field
-                label={t('lists.confirmRedirect')}
-                hint={t('lists.confirmRedirectHint')}
-                optionalLabel={t('lists.publicOptional')}
-              >
-                <Input
-                  type="url"
-                  value={confirmRedirect}
-                  placeholder="https://"
-                  data-testid="list-confirm-redirect"
-                  className="font-mono"
-                  onChange={(event) => setConfirmRedirect(event.target.value)}
-                  onBlur={() => void saveRedirects()}
-                />
-              </Field>
-              <Field
-                label={t('lists.unsubscribeRedirect')}
-                hint={t('lists.unsubscribeRedirectHint')}
-                optionalLabel={t('lists.publicOptional')}
-              >
-                <Input
-                  type="url"
-                  value={unsubscribeRedirect}
-                  placeholder="https://"
-                  data-testid="list-unsubscribe-redirect"
-                  className="font-mono"
-                  onChange={(event) => setUnsubscribeRedirect(event.target.value)}
-                  onBlur={() => void saveRedirects()}
-                />
-              </Field>
-              {redirectsSaved ? (
-                <p role="status" className="text-sm text-success-text">
-                  {t('lists.basicsSaved')}
-                </p>
-              ) : null}
-            </Card>
+            {/* Co uvidí návštěvník po potvrzení, po odhlášení a když už
+                přihlášený je. Dřív to byla tři pole s adresou; teď je adresa
+                jednou ze tří voleb každého kroku, protože vlastní stránka
+                a přesměrování si odporují a jako dvě pole vedle sebe se daly
+                nastavit obě naráz. */}
+            <ListPages
+              listId={list.id}
+              listName={list.name}
+              workspaceId={workspaceId}
+              templatesPath={templatesPath}
+              pages={pages}
+              unsubscribeScope={unsubscribeScope}
+              states={[
+                {
+                  surface: 'confirmed',
+                  templateId: list.confirmed_template_id,
+                  redirectUrl: list.confirm_redirect_url,
+                },
+                {
+                  surface: 'already_subscribed',
+                  templateId: list.already_subscribed_template_id,
+                  redirectUrl: list.already_subscribed_redirect_url,
+                },
+                {
+                  surface: 'unsubscribed',
+                  templateId: list.unsubscribed_template_id,
+                  redirectUrl: list.unsubscribe_redirect_url,
+                },
+              ]}
+            />
 
             {/* Výchozí seznam projektu. Endpoint na to existoval od začátku a neměl
                 volajícího, takže se výchozí seznam nedal přehodit odnikud. Je to
@@ -618,6 +641,50 @@ export function ListDetail({
               ) : null}
             </Card>
 
+            {/* Rozsah odhlášení. Do 7. 8. 2026 to nešlo nastavit vůbec: rozhodovala
+                výhradně přítomnost seznamu v podepsaném odkazu, takže kliknutí
+                odhlásilo vždy jen z jednoho seznamu.
+
+                U volby „ze všech" se NESMÍ zamlčet druhá polovina následku:
+                globální odhlášení navíc zapíše adresu mezi blokované pro celý
+                projekt, tedy z ní neodejde nic, ani z jiného seznamu. Bez toho
+                by si tím šlo omylem zablokovat vlastní databázi kontaktů. */}
+            <Card gap="gutter">
+              <CardTitle>{t('lists.unsubscribeScopeTitle')}</CardTitle>
+              <ChoiceGroup
+                name="unsubscribe-scope"
+                value={unsubscribeScope}
+                onChange={(next) => void changeUnsubscribeScope(next)}
+                choices={[
+                  {
+                    value: 'list',
+                    label: t('lists.unsubscribeScopeList'),
+                    hint: t('lists.unsubscribeScopeListHint'),
+                  },
+                  {
+                    value: 'global',
+                    label: t('lists.unsubscribeScopeGlobal'),
+                    hint: t('lists.unsubscribeScopeGlobalHint'),
+                  },
+                ]}
+              />
+              {unsubscribeScope === 'global' ? (
+                <Alert tone="warning" data-testid="list-unsubscribe-scope-warning">
+                  {t('lists.unsubscribeScopeGlobalWarning')}
+                </Alert>
+              ) : null}
+              {scopeSaved && !scopeError ? (
+                <p role="status" className="text-sm text-success-text">
+                  {t('lists.unsubscribeScopeChanged')}
+                </p>
+              ) : null}
+              {scopeError ? (
+                <p role="alert" className="text-sm text-danger-text">
+                  {t('lists.basicsFailed')}
+                </p>
+              ) : null}
+            </Card>
+
             {/* Veřejné nabízení. Není to vzhled: zapnuté nabízení znamená, že se do seznamu
                 smí sám přihlásit kdokoli, kdo drží odhlašovací odkaz z libovolného našeho
                 e-mailu. U seznamu, který znamená nárok, je to nárok zdarma, takže výchozí
@@ -689,6 +756,10 @@ export function ListDetail({
               listName={list.name}
               language={language}
               templatesPath={templatesPath}
+              // Ze STAVU, ne z načtených dat: přepnutí přepínače o kus výš musí
+              // být na kartě potvrzovacího e-mailu vidět hned, jinak si obrazovka
+              // do příštího načtení protiřečí.
+              optIn={optIn}
               emails={list.emails}
             />
           </div>

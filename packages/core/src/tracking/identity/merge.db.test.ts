@@ -287,6 +287,42 @@ describe('runIdentityMerge', () => {
     expect((await run(f)).status).toBe('skipped_restricted');
   });
 
+  /**
+   * Souhlas s měřením se kontroluje ZNOVU, mezi vazbou a během jobu mohl člověk
+   * měření odmítnout. Doplnit mu `contact_id` do už uložených anonymních
+   * událostí by bylo zpětné pojmenování stopy, kterou si nepřál mít
+   * pojmenovanou, a stalo by se to minuty poté, co odmítnutí zaznělo.
+   */
+  it('odvolaný souhlas s měřením historii nedoplní', async () => {
+    const f = await seedFixture();
+    const { rows } = await asMigrator().query<{ id: string }>(
+      `INSERT INTO consents (workspace_id, contact_id, purpose, scope_list_id, status,
+                             legal_basis, source, evidence, recorded_by, occurred_at)
+       VALUES ($1, $2, 'analytics', NULL, 'withdrawn', 'consent', 'admin', '{}'::jsonb,
+               'system', now())
+       RETURNING id`,
+      [f.workspaceId, f.contactId],
+    );
+    await asMigrator().query(
+      `INSERT INTO contact_consent_state (contact_id, workspace_id, purpose, status,
+                                          legal_basis, since, last_consent_id)
+       VALUES ($1, $2, 'analytics', 'withdrawn', 'consent', now(), $3)`,
+      [f.contactId, f.workspaceId, rows[0]!.id],
+    );
+    await seedWebEvents({
+      workspaceId: f.workspaceId,
+      anonymousId: f.anonymousId,
+      count: 3,
+      occurredAt: IN_WINDOW,
+    });
+
+    const result = await run(f);
+    expect(result.status).toBe('skipped_measurement_withdrawn');
+    expect(result.mergeId).toBeNull();
+    expect(await countEventsForContact(f.workspaceId, f.contactId)).toBe(0);
+    expect(await countMergeRows(f.workspaceId, f.bindingId)).toBe(0);
+  });
+
   it('anonymní stopa navázaná na JINÝ kontakt zůstane anonymní', async () => {
     const f = await seedFixture();
     const { rows: other } = await asMigrator().query<{ id: string }>(

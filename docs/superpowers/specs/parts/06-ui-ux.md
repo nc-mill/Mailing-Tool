@@ -770,11 +770,11 @@ Riziko akce se určí ze tří os. Součet rozhoduje o úrovni ochrany.
 | Akce | Rozsah | Obnovitelnost | Vnější dopad | Součet | Úroveň |
 |---|---|---|---|---|---|
 | Odebrání kontaktu ze seznamu | 0 | 0 | 0 | 0 | N1 |
-| Smazání štítku | 0 | 1 | 0 | 1 | N1 |
+| Smazání štítku | 0 | 2 | 0 | 2 | **N2**, viz poznámka pod tabulkou |
 | Archivace šablony | 0 | 0 | 0 | 0 | N1 |
 | Smazání jednoho kontaktu | 0 | 2 | 0 | 2 | N2 |
 | Smazání segmentu | 0 | 0 | 1 | 1 | **N1**, viz poznámka pod tabulkou |
-| Odebrání člena týmu | 0 | 0 | 1 | 1 | N1 |
+| Odebrání člena týmu | 0 | 1 | 1 | 2 | **N2**, viz poznámka pod tabulkou |
 | Hromadné smazání 500 kontaktů | 2 | 2 | 0 | 4 | N3 |
 | Hromadné smazání 50 000 kontaktů | 2 | 2 | 0 | 4 | N3 |
 | **Odeslání kampaně** | 2 | 2 | 2 | 6 | **zvláštní režim, viz 6.3** |
@@ -795,6 +795,10 @@ Riziko akce se určí ze tří os. Součet rozhoduje o úrovni ochrany.
 - definici drží 30 dní v koši, odkud jde obnovit i po vypršení okna.
 
 Osa **Obnovitelnost** je proto 0 („plně vratné"), ne 1. Smazání segmentu **nemaže kontakty**, jen definici výpočtu, takže se nemá co ztratit. Osa Vnějšího dopadu zůstává 1, protože segment může používat kolega v naplánované kampani. Na to se ale odpovídá jinak než dialogem: **když je segment použitý v naplánované nebo běžící kampani, smazat nejde vůbec** a rozhraní místo dialogu ukáže seznam kampaní, které ho drží.
+
+**Smazání štítku je N2, ne N1, protože jeho obnovitelnost je 2, ne 1.** *Dokument a aplikace si tady do 7. 8. 2026 protiřečily: tabulka dávala štítku N1, tedy „provést rovnou a nabídnout Vrátit zpět", obrazovka štítků má potvrzovací okno.* Opravená je tabulka, protože měřitelná je aplikace: `deleteTag` maže řádek natvrdo (`DELETE FROM tags`) a kaskádou s ním i všechna přiřazení kontaktů, obnovovací trasa v API neexistuje a koš taky ne. Tlačítko Vrátit zpět tedy nemá čím slib splnit; dřív se přesně to dělo a vrácení jen obnovilo stránku, po které se štítek nevrátil. Hodnotu 2 dostává v téže tabulce i „Smazání jednoho kontaktu", které je ze zálohy obnovitelné úplně stejně, takže je to srovnání dvou řádků, ne zpřísnění ochrany. **Pozor na záměnu:** „Odebrání štítku" v 6.6 je jiná akce, sundání štítku z kontaktů, a ta vratná zůstává i s nabídkou Vrátit zpět.
+
+**Odebrání člena týmu je N2, ne N1, protože jeho obnovitelnost je 1, ne 0.** Členství se maže natvrdo (`DELETE FROM memberships`) a „vrácení" znamená projít znovu pozvánku nebo formulář založení člena, tedy ruční zopakování, u kterého si správce musí pamatovat i roli a u pozvánky musí druhá strana znovu potvrdit. To není vratnost, jakou má na mysli N1: okno na vrácení nemá jak vzít zpátky to, co se stalo mezitím, protože kolega ztrácí přístup okamžitě. **Nevratné to ale není:** účet ani jeho práce v projektu se nemažou, obnovitelnost je proto 1, ne 2, akce **není destruktivní** a věta „Tuhle akci nejde vzít zpět" do okna nepatří (aplikace ji tam od 7. 8. nemá).
 
 **Odeslání kampaně nemá N4 s opisováním názvu, ačkoliv na to podle bodů vychází.** Je to nejčastější důležitá akce v produktu, dělá se každý týden a opisování názvu by se po třetí kampani stalo automatickým pohybem, který nic nechrání. Místo toho má vlastní, silnější a méně otravný režim.
 

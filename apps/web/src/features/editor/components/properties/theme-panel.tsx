@@ -1,13 +1,12 @@
 'use client';
 
-import type { ThemeColorRole } from '@mlain/emails/document/types';
-import { resolveTheme } from '@mlain/emails/theme/resolve';
+import type { ColorRef, ThemeColorRole } from '@mlain/emails/document/types';
 import { CardTitle } from '@mlain/ui/components/card';
 import { useTranslations } from 'next-intl';
 import type { ComponentProps } from 'react';
 import { THEME_GROUPS } from '../../descriptors/theme';
 import type { PropDescriptor } from '../../descriptors/types';
-import { themeWithDefaults, type Theme } from '../../model/document-types';
+import type { Theme } from '../../model/document-types';
 import { useEditorState, useEditorStore } from '../../state/use-editor';
 import { PropField } from './prop-field';
 
@@ -71,6 +70,32 @@ const FIELD_BASE: Omit<ComponentProps<typeof PropField>, 'descriptor' | 'value' 
  */
 const ROLE_KEYS = new Set<string>(['surface.canvas', 'surface.content']);
 
+/** Předpona klíče pole, které míří do tmavé palety, ne do světlé. */
+const DARK_PREFIX = 'dark:';
+
+/**
+ * KAM POLE PANELU UKLÁDÁ. Jediné místo, které o tom rozhoduje.
+ *
+ * Čtení i zápis se ptají téhle funkce, takže se nemůžou rozejít. Dřív to byla
+ * jedna podmínka u hodnoty a druhá u obsluhy; se dvěma paletami by z toho byly
+ * čtyři kopie téhož rozhodnutí a stačilo by opravit tři z nich.
+ *
+ * `null` znamená „tohle není barva role", tedy běžné pole motivu adresované
+ * cestou s tečkou (`typography.baseFontSize` a spol.).
+ */
+type ColorTarget = { scheme: 'light' | 'dark'; role: ThemeColorRole };
+
+function colorTarget(key: string): ColorTarget | null {
+  const dark = key.startsWith(DARK_PREFIX);
+  const role = dark ? key.slice(DARK_PREFIX.length) : key;
+  if (!ROLE_KEYS.has(role)) return null;
+  return { scheme: dark ? 'dark' : 'light', role: role as ThemeColorRole };
+}
+
+/** Mapa barev té palety, do které cíl míří. Obě jsou částečné, chybějící role dědí. */
+const schemeColors = (theme: Theme, scheme: 'light' | 'dark') =>
+  (scheme === 'dark' ? theme.darkMode?.colors : theme.colors) ?? {};
+
 /**
  * Co má vzorník ukázat jako zvolenou hodnotu.
  *
@@ -82,21 +107,26 @@ const ROLE_KEYS = new Set<string>(['surface.canvas', 'surface.content']);
  * Jakmile barva v dokumentu je, vrací se ona: uživatel si ji zvolil a má ji
  * vidět takovou, jaká je.
  */
-const roleValue = (theme: Theme, role: string): string =>
-  theme.colors?.[role as ThemeColorRole] ?? role;
+const roleValue = (theme: Theme, target: ColorTarget): string =>
+  schemeColors(theme, target.scheme)[target.role] ?? target.role;
 
 /**
- * Do mapy rolí patří HEX, ne odkaz na roli.
+ * Do mapy rolí se ukládá TO, CO UŽIVATEL ZVOLIL: hex u vlastní barvy, jméno
+ * role u role.
  *
- * Vzorník nabízí i role motivu, a kdyby se do `colors` uložilo `brand.primary`,
- * `resolveTheme` by tu hodnotu vydal beze změny a do e-mailu by šel název role
- * místo barvy. Odkaz se proto rozřeší na odstín ve chvíli volby.
+ * Dřív se odkaz na roli rozřešil na odstín hned při volbě. „Pozadí plátna =
+ * hlavní barva značky" se tím zmrazilo na konkrétní odstín a po změně značky
+ * projektu zůstalo staré, přestože uživatel volbou řekl vazbu, ne barvu.
+ * Rozvazuje ji `resolveTheme` až při vykreslení, takže do e-mailu odchází
+ * pořád hex a jméno role se v HTML objevit nemůže.
+ *
+ * Prázdný řetězec a nezvolená hodnota se zahazují: mapa rolí je částečná
+ * a role bez hodnoty znamená „vezmi výchozí", což se zapisuje vynecháním,
+ * ne prázdnou hodnotou.
  */
-const asHex = (theme: Theme, next: unknown): string | undefined => {
+const asColorRef = (next: unknown): ColorRef | undefined => {
   if (typeof next !== 'string' || next === '') return undefined;
-  return next.startsWith('#')
-    ? next
-    : resolveTheme(themeWithDefaults(theme)).light.color(next as ThemeColorRole);
+  return next as ColorRef;
 };
 
 const getPath = (source: Record<string, unknown>, path: string): unknown =>
@@ -147,19 +177,42 @@ export function ThemePanel({
           className="flex min-w-0 flex-col gap-[var(--spacing-stack)] border-t border-border pt-[var(--spacing-stack)]"
         >
           <legend className="meta-caps text-text-muted">{t(group.label)}</legend>
-          {group.props.map((descriptor) =>
-            ROLE_KEYS.has(descriptor.key) ? (
+          {group.props.map((descriptor) => {
+            const target = colorTarget(descriptor.key);
+            /*
+             * Plochy tmavého režimu při vypnutém tmavém režimu ZMIZÍ, ne
+             * zašednou. Emitter tmavou paletu při `strategy: 'off'` nevydá
+             * vůbec (`head-css.ts`), takže by to byla pole, po kterých se
+             * v e-mailu nic nepozná.
+             */
+            if (target?.scheme === 'dark' && document.theme.darkMode?.strategy !== 'auto') {
+              return null;
+            }
+            /*
+             * Plochy tmavého režimu při vypnutém tmavém režimu ZMIZÍ, ne
+             * zašednou. Emitter tmavou paletu při `strategy: 'off'` nevydá
+             * vůbec (`head-css.ts`), takže by to byla pole, po kterých se
+             * v e-mailu nic nepozná.
+             */
+
+            return target !== null ? (
               <PropField
                 key={descriptor.key}
                 {...FIELD_BASE}
                 descriptor={descriptor}
-                value={roleValue(document.theme, descriptor.key)}
+                value={roleValue(document.theme, target)}
                 onChange={(next) => {
-                  const hex = asHex(document.theme, next);
-                  if (hex === undefined) return;
-                  store.patchTheme({
-                    colors: { ...document.theme.colors, [descriptor.key]: hex },
-                  } as Partial<Theme>);
+                  const ref = asColorRef(next);
+                  if (ref === undefined) return;
+                  const colors = {
+                    ...schemeColors(document.theme, target.scheme),
+                    [target.role]: ref,
+                  };
+                  store.patchTheme(
+                    (target.scheme === 'dark'
+                      ? { darkMode: { ...document.theme.darkMode, colors } }
+                      : { colors }) as Partial<Theme>,
+                  );
                 }}
               />
             ) : (
@@ -181,8 +234,8 @@ export function ThemePanel({
                   )
                 }
               />
-            ),
-          )}
+            );
+          })}
         </fieldset>
       ))}
     </div>

@@ -114,7 +114,20 @@ describe('kritérium 35: každá registrovaná cesta je v dokumentu', () => {
 
   // 43 → 46: `POST /api/v1/members`, `GET /api/v1/users/orphaned`
   // a `DELETE /api/v1/users/{user_id}`.
-  it('dokument obsahuje 46 operací vlastněných částí 1', () => {
+  //
+  // 46 → 47: `POST /api/v1/invitations/signup`. Pozvaný člověk si tou trasou
+  // zakládá účet, když v instalaci ještě žádný nemá. Do té doby mu obrazovka
+  // pozvánky nabízela JEDINĚ přihlášení k účtu, který nemá, takže pozvánky
+  // fungovaly výhradně pro lidi už zavedené a čerstvá instalace neměla jak
+  // pustit dovnitř prvního člověka. Registraci to neotevírá: účet vznikne jen
+  // s platným tokenem a na adresu z pozvánky, ne z těla požadavku.
+  //
+  // 47 → 49: `GET /api/v1/jobs/worker` a `POST /api/v1/jobs/{kind}/{id}/cancel`.
+  // Obojí je centrum úloh: první říká, jestli worker vůbec žije a co má ve frontě,
+  // druhé umí běžící úlohu zastavit. Do té doby šlo o úlohách jen číst, takže
+  // zaseknutá práce se dala zrušit jedině zásahem do databáze a o mrtvém workeru
+  // se člověk dozvěděl tím, že se prostě nic nedělo. Vyžádal si zadavatel.
+  it('dokument obsahuje 49 operací vlastněných částí 1', () => {
     const document = buildOpenApiDocument(app);
     const operations = Object.entries(document.paths ?? {})
       .filter(([path]) => {
@@ -122,7 +135,7 @@ describe('kritérium 35: každá registrovaná cesta je v dokumentu', () => {
         return CAST_1_KORENY.includes(koren);
       })
       .flatMap(([, methods]) => Object.keys(methods as Record<string, unknown>));
-    expect(operations.length).toBe(46);
+    expect(operations.length).toBe(49);
   });
 });
 

@@ -80,8 +80,12 @@ const UNDELIVERED: Readonly<Record<string, string>> = {
   // `mlain partitions` pod migrátorskou rolí.
   'tracking.refresh_proxy_ranges':
     'stahování rozsahů Apple relay z internetu. TRACKING_APPLE_RELAY_RANGES je ve výchozím stavu vypnuté a ProxyRangeIndex si vestavěný rozsah nese sám, takže bez zdroje adres by úloha jen dělala prázdné kolo',
-  'tracking.erase_contact':
-    'výmaz podle článku 17 dnes obsluhuje gdpr.sever_links, která odpojí vazby ve web_events i message_engagement. Druhá cesta k témuž by znamenala dva výklady toho, co znamená vymazat kontakt',
+  // `tracking.erase_contact` z tohohle seznamu ZMIZELA i s frontou, a je to
+  // správný konec téhle položky. Důvod, který tu stál, byl totiž důvod, proč
+  // ta fronta nemá existovat, ne proč nemá mít obsluhu: stopu kontaktu odpojuje
+  // `gdpr.sever_links` a druhá cesta k témuž by znamenala dva výklady toho, co
+  // znamená vymazat kontakt. Seznam nedodaných obsluh není místo, kde se
+  // schovávají fronty navíc.
 };
 
 const registryNames = QUEUE_REGISTRY.map((entry) => entry.name);
@@ -152,7 +156,11 @@ describe('pokrytí front obsluhami', () => {
     'gdpr.sever_links',
     'inbound.process',
     'retention.run',
-    'tracking.rebuild_engagement',
+    // `tracking.rebuild_engagement` z výčtu ZMIZELA i s frontou. Nebyla to
+    // nedodaná obsluha, byla to obsluha, kterou nikdo nikdy nespustil:
+    // rekonstrukci dělá `mlain rebuild-engagement` přímým voláním dávkovače.
+    // Tenhle výčet hlídá fronty, které MUSÍ být zapojené; fronta, která nemá
+    // existovat, do něj nepatří.
     // Tlačítko a dialog v rozhraní existovaly dřív než trasa: potvrzení mazání
     // končilo na 404 a úloha se ani nezařadila. Test drží obojí pohromadě.
     'contacts.bulk_delete',

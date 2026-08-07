@@ -42,12 +42,18 @@ type ListApi = {
   confirmation_max_resends: number;
   confirm_redirect_url: string | null;
   unsubscribe_redirect_url: string | null;
+  already_subscribed_redirect_url: string | null;
+  unsubscribe_scope: 'list' | 'global';
   is_default: boolean;
   send_welcome: boolean;
   send_goodbye: boolean;
   confirmation_template_id: string | null;
   welcome_template_id: string | null;
   goodbye_template_id: string | null;
+  /** Návrhy veřejných stránek seznamu, tedy šablony druhu `page` (migrace 0029). */
+  confirmed_template_id: string | null;
+  already_subscribed_template_id: string | null;
+  unsubscribed_template_id: string | null;
 };
 
 type ListStats = { pending: number; confirmed: number };
@@ -83,9 +89,21 @@ export default async function ListDetailPage({ params }: PageProps) {
   }
   const workspaceId = access.data.workspace.id;
 
-  const [detail, stats] = await Promise.all([
+  const [detail, stats, pages] = await Promise.all([
     apiFetch<{ data: ListApi }>(`/api/v1/lists/${id}`, { workspaceId }),
     apiFetch<ListStats>(`/api/v1/lists/${id}/stats`, { workspaceId }),
+    /*
+     * Knihovna veřejných stránek, tedy šablony druhu `page`.
+     *
+     * `kind=page` je POVINNÉ. Výchozí výpis šablon stránky nevrací: jsou to
+     * samostatná kategorie právě proto, aby se nedaly nabídnout jako obsah
+     * kampaně ani jako e-mail seznamu. Bez toho filtru by nabídka byla vždycky
+     * prázdná. `limit` je 100, protože víc ta trasa nedovolí.
+     */
+    apiFetch<{ items: { id: string; name: string }[] }>('/api/v1/templates', {
+      workspaceId,
+      searchParams: { limit: 100, view: 'summary', kind: 'page' },
+    }),
   ]);
 
   if (!detail.ok) {
@@ -130,6 +148,16 @@ export default async function ListDetailPage({ params }: PageProps) {
     // Formulářová pole pracují s prázdným řetězcem, doména s null.
     confirm_redirect_url: api.confirm_redirect_url ?? '',
     unsubscribe_redirect_url: api.unsubscribe_redirect_url ?? '',
+    already_subscribed_redirect_url: api.already_subscribed_redirect_url ?? '',
+    // Odkaz na návrh zůstává `null`, ne prázdný řetězec: „bez návrhu" znamená
+    // vestavěný text, a to je jiná věc než prázdná adresa.
+    confirmed_template_id: api.confirmed_template_id ?? null,
+    already_subscribed_template_id: api.already_subscribed_template_id ?? null,
+    unsubscribed_template_id: api.unsubscribed_template_id ?? null,
+    // Starší API bez tohohle pole (nasazení, kde ještě neproběhla migrace 0027)
+    // spadne na 'list', tedy na dnešní chování. Neznámé nastavení nesmí vést
+    // k tomu, že se lidem po kliknutí zablokuje adresa pro celý projekt.
+    unsubscribe_scope: api.unsubscribe_scope ?? 'list',
     is_default: api.is_default,
     emails: [
       {
@@ -164,6 +192,9 @@ export default async function ListDetailPage({ params }: PageProps) {
       workspaceId={workspaceId}
       language={locale.toLowerCase().startsWith('cs') ? 'cs' : 'en'}
       list={list}
+      // Selhání výpisu obrazovku neshodí: nastavení seznamu má smysl i bez
+      // nabídky stránek, jen v ní nepůjde žádnou vybrat.
+      pages={pages.ok ? pages.data.items : []}
     />
   );
 }

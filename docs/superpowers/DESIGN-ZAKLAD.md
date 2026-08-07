@@ -58,7 +58,7 @@ se nepřenáší. Data v návrhu jsou vymyšlená, skutečná berou obrazovky od
 3. **Texty z katalogu** (`packages/i18n/messages/cs/*.json` a `en/*.json`),
    ne z návrhu. Návrh je česky, aplikace je dvojjazyčná. Nový klíč do obou.
 4. **Přístupnost se nesmí zhoršit.** Viditelný focus, sémantické landmarky,
-   kontrast, klikací plocha aspoň 44 px.
+   kontrast, klikací plocha podle pravidla 1.12 (44 px, se zapsanými výjimkami).
 
 ---
 
@@ -179,9 +179,9 @@ každou hodnotu.
 | `--size-topbar` | `70px` | Výška hlavičky. |
 | `--size-sidebar` | `236px` | Rozbalené boční menu. |
 | `--size-sidebar-collapsed` | `76px` | Zabalené boční menu. |
-| `--size-target-min` | `44px` | **Nejmenší klikací plocha.** Nikdy pod to. |
+| `--size-target-min` | `44px` | **Klikací plocha samostatného ovládacího prvku.** Výjimky viz 1.12. |
 | `--size-control-lg` | `48px` | Velké tlačítko, `size="lg"`. |
-| `--size-control` | `40px` | Pole filtru, ikonové tlačítko v hlavičce. |
+| `--size-control` | `40px` | Pole filtru, ikonové tlačítko v hlavičce. **Viditelná výška**, klikací plocha je 44 px, viz 1.12. |
 | `--size-control-sm` | `36px` | Tlačítko v liště, stránkování, ikonový čtverec na dlaždici. |
 | `--size-control-xs` | `34px` | Ikonové tlačítko v řádku tabulky. |
 | `--size-avatar` | `32px` | Iniciály v hlavičce. |
@@ -300,6 +300,67 @@ Na verzálky je hotová utilita **`meta-caps`**: mono, 12 px, prostrkání 0.05e
 
 `--duration-fast` 120 ms (barvy), `--duration-normal` 200 ms (rozbalení),
 `--duration-nav` 280 ms (zabalení menu).
+
+### 1.12 Klikací plocha
+
+Do 7. 8. 2026 stála v příručce tři různá čísla: kapitola 5 psala „44 px, nikdy
+pod to", token `--size-control` měl 40 px s poznámkou „pole filtru" a kapitola 9
+schvalovala výjimku 32 px. Ani jedno z nich nebylo celé pravdivé. Tohle je
+jediné pravidlo a platí přednostně před každou zmínkou jinde.
+
+**Pravidlo: klikací plocha samostatného ovládacího prvku je 44 × 44 px
+(`--size-target-min`). Viditelná velikost může být menší.**
+
+Rozdíl mezi viditelnou velikostí a klikací plochou je celé jádro věci. Návrh
+sází hustou lištu na 40 px a nafouknout v ní jeden prvek na 44 px by rozhodilo
+řadu. Plocha se proto roztahuje neviditelným překryvem, ne rámečkem:
+
+```
+relative after:absolute after:top-1/2 after:left-0 after:-translate-y-1/2
+after:h-[var(--size-target-min)] after:w-full after:content-['']
+```
+
+Používá to volič filtru na Kontaktech (`features/contacts/filter-picker.tsx`)
+a nabídka „…" v řádku tabulky. **Není to náplast, je to způsob, jak se to dělá.**
+
+#### Kolik je doopravdy potřeba
+
+WCAG 2.2 žádá na úrovni **AA** (kritérium 2.5.8 Target Size Minimum) plochu
+**24 × 24 px**, ne 44. Čtyřicet čtyři je kritérium **2.5.5 na úrovni AAA**
+a zároveň naše domácí laťka. Proto se výjimky nad 24 px dají obhájit, ale
+musí být zapsané tady, ne vymyšlené na obrazovce.
+
+#### Schválené výjimky
+
+| Prvek | Viditelně | Klikací plocha | Proč |
+|---|---|---|---|
+| Pole filtru, ikonové tlačítko v hlavičce (`--size-control`, `IconButton size="sm"`) | 40 px | **44 px překryvem** | Rytmus husté lišty. Plocha pravidlo splňuje, jen ji není vidět. |
+| Stránkování, pruh hromadného výběru (`--size-control-sm`, `IconButton size="xs"`) | 36 px | 36 px | Nad AA minimem a prvky stojí samostatně, s mezerou kolem. |
+| Ikonová akce v řádku tabulky (`--size-control-xs`, `IconButton size="row"`) | 34 px | 34 px | Padesát řádků pod sebou. Vyšší tlačítko by roztáhlo řádek a zkrátilo seznam na obrazovku. |
+| Kotva události na časové ose (`--size-control-2xs`) | 32 px | 32 px | Druhotný odkaz vedle věty, návrh ho má výslovně takhle. |
+| Zaškrtávátko (`--size-choice` 18 px, `--size-choice-dense` 16 px) | 16 nebo 18 px | tolikéž | **Jde na výjimku ODSTUPEM**, ne velikostí, viz níž. |
+| Podpoložka bočního menu | 44 px | 44 px | **Není výjimka.** Návrh měl 34 px, aplikace má 44 a zůstane to tak. |
+
+#### Odstup místo velikosti
+
+Kritérium 2.5.8 má vedle velikosti druhou cestu: prvek menší než 24 px vyhoví,
+pokud se kolem něj vejde kružnice o průměru 24 px, aniž by protla kružnici
+jiného cíle. Tudy jde zaškrtávátko v tabulce. Naměřeno 7. 8. 2026 na Kontaktech:
+16 × 16 px a **63 px mezi středy sousedních zaškrtávátek**, tedy víc než dvakrát
+tolik, kolik kritérium žádá.
+
+Když ale zaškrtávátka postavíš blíž než 24 px od sebe nebo od jiného cíle,
+výjimka přestane platit a je to vada přístupnosti. **Odstup je součást
+rozhodnutí, ne náhoda rozvržení.**
+
+#### Co se nesmí
+
+- Klesnout pod **24 px** u čehokoli klikacího, pokud nejde o výjimku odstupem
+  popsanou výš. Tohle je tvrdá hranice WCAG AA.
+- Zavést další výjimku bez řádku v téhle tabulce. Když jedna obrazovka usoudí,
+  že se jí 44 px nehodí, vznikne šesté číslo a příručka přestane platit.
+- Psát velikost číslem z Tailwindu. `min-h-11` je náhodou 44 px, ale změnu
+  tokenu mine. Piš `min-h-[var(--size-target-min)]`.
 
 ---
 
@@ -854,12 +915,13 @@ Věci, na kterých jsem se zdržel a které bys zopakoval.
    (`--edge-*`) a vysouvací panel menu má měkký stín (`--shadow-flyout`).
    To je celé. Karta stín nemá.
 
-9. **Klikací plocha: 44 px je pravidlo, 32 px je jediná výjimka.** Podpoložky
-   menu jsou v návrhu 34 px vysoké, v aplikaci mají 44 a zůstane to tak;
-   přístupnost má přednost. Jediná schválená výjimka je **kotva události na
-   časové ose** (32 px), protože je to druhotný odkaz vedle věty, návrh ho má
-   výslovně takhle a 32 px pořád splňuje WCAG 2.5.8 na úrovni AA (minimum je
-   24 px). Další výjimky si nezaváděj, tuhle se mnou projednej.
+9. **Klikací plocha má JEDNO pravidlo a je v kapitole 1.12.** Tenhle bod
+   dřív tvrdil, že 32 px je jediná výjimka, což nebyla pravda: v aplikaci
+   se běžně používá 40 px (pole filtru), 36 px (stránkování) a 34 px
+   (ikonová akce v řádku tabulky). Tři různá čísla v příručce znamenala,
+   že se každá obrazovka rozhodovala sama. Výjimky jsou teď vyjmenované
+   v tabulce v 1.12 i s důvodem; **další si nezaváděj, tuhle se mnou projednej.**
+   Podpoložky menu zůstávají na 44 px, přestože je návrh má na 34.
 
 10. **Aktivní sekce menu se pozná jinak než předponou cesty.** Přehled leží na
    `/w/{slug}`, což je předpona úplně všeho. Sidebar to už řeší

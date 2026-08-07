@@ -3,6 +3,11 @@ import { createSystemContext } from '../../identity/context';
 import type { WorkspaceContext } from '../../identity/types';
 import { withWorkspace, type Tx } from '../../tx';
 import { GREETING_RECOMPUTE_BATCH_SIZE } from '../constants';
+import {
+  clearPendingLocaleAlign,
+  readPendingLocaleAlign,
+  type PendingLocaleAlign,
+} from '../locale-align-pending';
 import { buildGreeting } from '../naming/greeting';
 import { resolveName } from '../naming/resolve';
 import type { Gender, NameOverrideLookup } from '../naming/types';
@@ -27,14 +32,32 @@ export type RecomputeGreetingPayload = {
    * SJEDNOCENÍ JAZYKA KONTAKTŮ. Bez tohohle pole se běh jazyka ani vokativu
    * nedotkne a chová se přesně jako dřív (přepočet po změně vykání a tykání).
    *
-   * `to` je cílový jazyk. `from` vybírá, koho se to týká:
+   * CÍLOVÝ JAZYK V NÁKLADU NENÍ, A JE TO OPRAVA ZTRÁTY DAT, NE ÚSPORA. Dřív tu
+   * stálo `to`, tedy jazyk projektu v okamžiku ZAŘAZENÍ. Fronta má politiku
+   * `stately` a klíč projektu, takže dokud první úloha leží ve stavu `created`,
+   * druhá se zahodí a přežije ta STARŠÍ i se svým nákladem. Kdo přepnul projekt
+   * na angličtinu a hned zpátky na češtinu, dostal běh se směrem `cs → en` nad
+   * projektem, který je česky, tedy PROJEKT V ČEŠTINĚ A KONTAKTY V ANGLIČTINĚ.
+   * Přesně ten stav, kvůli kterému tenhle běh vznikl.
+   *
+   * Cíl se proto čte ze sloupce `workspaces.locale` až při zpracování
+   * (`loadGreetingSettings`). Je to tatáž úvaha, jakou `discardNote` v registru
+   * front slibuje u zbytku nastavení: čekající běh si stav načte, až začne.
+   * Nákladu tím zůstává jen to, co ze stavu odvodit NELZE, tedy `from`.
+   *
+   * `from` vybírá, koho se sjednocení týká:
    *  - konkrétní jazyk: jen kontakty, které ho mají. Tak to zařazuje změna jazyka
    *    projektu: kontakty se starým jazykem projektu ho zdědily, takže jdou s ním,
-   *    a kdo má jazyk jiný, si ho zvolil sám a nechá se být.
-   *  - `null`: všechny kontakty, které mají jiný jazyk než `to`. To je ruční
+   *    a kdo má jazyk jiný, si ho zvolil sám a nechá se být. Když se jazyk mezitím
+   *    vrátil zpátky, vyjde `from` roven cíli a běh jazyka nezmění ani u jednoho
+   *    kontaktu, což je správně: žádný se totiž nestihl přepsat.
+   *  - `null`: všechny kontakty, které mají jiný jazyk než projekt. To je ruční
    *    hromadná oprava z nastavení, kde uživatel výslovně řekne „srovnej to všechno".
+   *
+   * Úlohy zařazené starším kódem nesou navíc klíč `to`. Ten se tiše ignoruje,
+   * protože právě on byl tou vadou; přepsat je při nasazení není nutné.
    */
-  alignLocale?: { to: string; from?: string | null };
+  alignLocale?: { from?: string | null };
 };
 
 /**
@@ -96,10 +119,24 @@ export async function recomputeGreeting(
 ): Promise<{ scanned: number; updated: number }> {
   const ctx = createSystemContext(payload.workspaceId, 'contacts.recompute_greeting');
   const settings = await loadGreetingSettings(ctx);
+
+  /*
+   * Co se má sjednotit, se skládá ze DVOU zdrojů, a je to oprava ztráty práce
+   * ze slučování úloh (rozvaha v `contacts/locale-align-pending.ts`):
+   *
+   *  - vlastní náklad téhle úlohy,
+   *  - čekající požadavky uložené v projektu, tedy i ty, jejichž úloha se
+   *    o tuhle sloučila a zahodila.
+   *
+   * Druhý zdroj je ten důležitý: bez něj by běh zařazený změnou vykání nevěděl
+   * nic o změně jazyka, která se o něj sloučila, a ta by se ztratila celá.
+   */
+  const pending = await withWorkspace(ctx, (tx) => readPendingLocaleAlign(tx, ctx.workspaceId));
+  const align = mergeAlign(payload.alignLocale, pending);
+
   // Přepisy jmen se čtou JEN při sjednocování jazyka, protože jen tam se počítá
   // vokativ znovu. Bez toho by běh po změně vykání stahoval celý slovník pro nic.
-  const overrides =
-    payload.alignLocale === undefined ? EMPTY_OVERRIDES : await loadNameOverrides(ctx);
+  const overrides = align === undefined ? EMPTY_OVERRIDES : await loadNameOverrides(ctx);
 
   let cursor = payload.cursor ?? '00000000-0000-0000-0000-000000000000';
   let scanned = 0;
@@ -116,7 +153,7 @@ export async function recomputeGreeting(
     cursor = batch.reduce((max, row) => (row.id > max ? row.id : max), cursor);
 
     const changes = batch
-      .map((row) => ({ row, built: recomputeFor(row, settings, payload.alignLocale, overrides) }))
+      .map((row) => ({ row, built: recomputeFor(row, settings, align, overrides) }))
       .filter(
         ({ row, built }) =>
           // Prázdné oslovení se nezapisuje NIKDY (nález I91).
@@ -137,13 +174,40 @@ export async function recomputeGreeting(
     updated += await writeBatch(ctx, changes);
   }
 
+  // Čekající požadavky se odškrtávají AŽ TEĎ, po celém průchodu. Běh, který
+  // spadne v půlce, si je tím při opakování najde znovu; smazat je předem by
+  // znamenalo sjednocení, které se nikdy nedokončilo a už se nikdy nezopakuje.
+  await withWorkspace(ctx, (tx) => clearPendingLocaleAlign(tx, ctx.workspaceId, pending));
+
   return { scanned, updated };
+}
+
+/**
+ * Sjednotí náklad úlohy s čekajícími požadavky projektu do jediné množiny
+ * výchozích jazyků. `undefined` znamená, že se jazyka nemá dotknout nic.
+ *
+ * `null` uvnitř množiny přebíjí všechno ostatní: je to ruční „srovnej všechno",
+ * a ten je nadmnožinou každého konkrétního směru.
+ */
+function mergeAlign(
+  payloadAlign: RecomputeGreetingPayload['alignLocale'],
+  pending: PendingLocaleAlign,
+): AlignLocale | undefined {
+  const from = new Set<string | null>(pending);
+  if (payloadAlign !== undefined) from.add(payloadAlign.from ?? null);
+  if (from.size === 0) return undefined;
+  return { from };
 }
 
 type GreetingSettings = {
   addressForm: 'formal' | 'informal';
   salutationBy: 'first_name' | 'surname';
   vocativePolicy: 'strict' | 'balanced';
+  /**
+   * Jazyk projektu, tedy CÍL sjednocení. `null` znamená, že se řádek projektu
+   * nepodařilo přečíst; pak se jazyka nedotkneme vůbec, viz `targetLocale`.
+   */
+  workspaceLocale: string | null;
 };
 
 type ContactRow = {
@@ -177,17 +241,25 @@ type Recomputed = {
  * `settings.contacts`; obojí se tedy musí přečíst zvlášť. Kdyby se address_form
  * nečetl, přepočítal by se celý projekt na vykání a job, který má tykání
  * rozšířit, by ho naopak plošně zrušil.
+ *
+ * Ze stejného řádku se bere i `locale`, tedy CÍL sjednocení jazyka. Dřív ležel
+ * v nákladu úlohy a slučování ho zahazovalo i s celým směrem změny; rozvaha je
+ * u `alignLocale`.
  */
 async function loadGreetingSettings(ctx: WorkspaceContext): Promise<GreetingSettings> {
   return withWorkspace(ctx, async (tx) => {
     const settings = await readContactsSettings(tx, ctx);
-    const { rows } = await tx.execute<{ address_form: 'formal' | 'informal' }>(sql`
-      SELECT address_form FROM workspaces WHERE id = ${ctx.workspaceId}::uuid
+    const { rows } = await tx.execute<{ address_form: 'formal' | 'informal'; locale: string }>(sql`
+      SELECT address_form, locale FROM workspaces WHERE id = ${ctx.workspaceId}::uuid
     `);
     return {
       addressForm: rows[0]?.address_form ?? 'formal',
       salutationBy: settings.salutation_by,
       vocativePolicy: settings.vocative_policy,
+      // Chybějící řádek se NEDOPLŇUJE výchozím jazykem. U vykání je `formal`
+      // bezpečný odhad, u jazyka žádný takový není: dosazená čeština by
+      // přepsala jazyk všech kontaktů projektu, o kterém nic nevíme.
+      workspaceLocale: rows[0]?.locale ?? null,
     };
   });
 }
@@ -216,24 +288,34 @@ async function readBatch(tx: Tx, ctx: WorkspaceContext, cursor: string): Promise
   return rows;
 }
 
+/** Množina výchozích jazyků, kterých se běh týká. Sestavuje ji `mergeAlign`. */
+type AlignLocale = { from: ReadonlySet<string | null> };
+
 /**
  * Cílový jazyk kontaktu. Vrací jazyk, který kontakt má, dokud se běh jazyka
  * netýká; rozhodnutí, KOHO se sjednocení týká, je popsané u `alignLocale`.
+ *
+ * Cíl je VŽDY aktuální jazyk projektu, nikdy hodnota z nákladu. Bez řádku
+ * projektu se jazyk nemění vůbec, protože sjednotit není na co.
  */
-function targetLocale(row: ContactRow, align: RecomputeGreetingPayload['alignLocale']): string {
+function targetLocale(
+  row: ContactRow,
+  align: AlignLocale | undefined,
+  workspaceLocale: string | null,
+): string {
   if (align === undefined) return row.locale;
-  const from = align.from ?? null;
-  if (from === null) return align.to;
-  return row.locale === from ? align.to : row.locale;
+  if (workspaceLocale === null) return row.locale;
+  if (align.from.has(null)) return workspaceLocale;
+  return align.from.has(row.locale) ? workspaceLocale : row.locale;
 }
 
 function recomputeFor(
   row: ContactRow,
   settings: GreetingSettings,
-  align: RecomputeGreetingPayload['alignLocale'],
+  align: AlignLocale | undefined,
   overrides: NameOverrideLookup,
 ): Recomputed {
-  const locale = targetLocale(row, align);
+  const locale = targetLocale(row, align, settings.workspaceLocale);
 
   // Vokativ se přepočítává jen tehdy, když se kontaktu MĚNÍ JAZYK a tvar není
   // zamknutý. Jinak zůstává přesně tak, jak leží ve sloupcích: přepočet oslovení

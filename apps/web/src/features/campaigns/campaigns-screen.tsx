@@ -19,6 +19,7 @@ import {
   unscheduleCampaignAction,
 } from './actions';
 import type { CampaignPermissions, CampaignRowAction } from './campaign-state';
+import { CampaignsBulkActions } from './bulk-actions';
 import { CancelCampaignDialog } from './cancel-campaign-dialog';
 import { DeleteCampaignDialog } from './delete-campaign-dialog';
 import { RenameCampaignDialog } from './rename-campaign-dialog';
@@ -67,6 +68,19 @@ export function CampaignsScreen({
    * bez toho by si tabulka nakreslila vlastní tlačítko o řádek níž.
    */
   const [columnsOpen, setColumnsOpen] = useState(false);
+  /*
+   * Výběr řádků drží obrazovka, protože hromadné akce potřebují znát STAV každé
+   * označené kampaně, ne jen její identifikátor: smazat jde `draft`
+   * a `schedule_missed`, nic jiného.
+   */
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  /*
+   * Kolikátý úklid výběru to je, tedy `clearToken` pro tabulku. Vynulovat vlastní
+   * pole NESTAČÍ: režim „vybráno všech N" bydlí uvnitř `DataTable` a počet si
+   * v něm bere z celkového čísla, ne z délky pole, takže by pruh po smazání
+   * zůstal viset nad kampaněmi, které už neexistují.
+   */
+  const [clearedSelections, setClearedSelections] = useState(0);
 
   /*
    * Meta řádek pod nadpisem. Skládá se ze tří údajů oddělených tečkou:
@@ -151,6 +165,20 @@ export function CampaignsScreen({
     });
   }
 
+  /*
+   * Označené řádky, ne jen identifikátory: hromadné mazání se rozhoduje podle
+   * stavu kampaně. Výběr se přitom o smazané kampaně sám očistí, protože se
+   * skládá z toho, co je v tabulce; bez toho by pruh po obnovení počítal
+   * i kampaně, které už neexistují.
+   */
+  const selectedRows = rows.filter((row) => selectedIds.includes(row.id));
+
+  /** Úklid výběru po hromadné akci. Ruší obojí: vlastní pole i režim v tabulce. */
+  function setSelection(next: string[]) {
+    setSelectedIds(next);
+    setClearedSelections((count) => count + 1);
+  }
+
   function onRowAction(action: Exclude<CampaignRowAction, 'editContent'>, row: CampaignRow) {
     switch (action) {
       case 'rename':
@@ -214,6 +242,27 @@ export function CampaignsScreen({
         onRetry={() => router.refresh()}
         rowActions={{ permissions, onAction: onRowAction }}
         columnSettings={{ open: columnsOpen, onOpenChange: setColumnsOpen }}
+        selection={{
+          selectedIds: selectedRows.map((row) => row.id),
+          onSelectionChange: setSelectedIds,
+          clearToken: clearedSelections,
+        }}
+        {...(permissions.remove
+          ? {
+              /*
+               * Bez práva mazat se pruh výběru nechá bez akcí, protože jiná
+               * hromadná akce nad kampaněmi neexistuje. Nabídnout tu něco, co
+               * server odmítne, by bylo horší než prázdný pruh.
+               */
+              bulkActions: (
+                <CampaignsBulkActions
+                  workspaceId={workspaceId}
+                  selected={selectedRows}
+                  onCompleted={setSelection}
+                />
+              ),
+            }
+          : {})}
       />
 
       {renaming !== null && (

@@ -4,11 +4,19 @@ import { useState } from 'react';
 import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { useRouter } from '@mlain/i18n/navigation';
 import { Button } from '@mlain/ui/components/button';
-import { Select, SelectItem } from '@mlain/ui/components/select';
-import { CircleCheckBig, Download, Trash2 } from '@mlain/ui/icons';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@mlain/ui/components/dropdown-menu';
+import { ChevronDown, CircleCheckBig, Download, List, Tag, Trash2 } from '@mlain/ui/icons';
 // K5 z 13.1 části 6: fronta oznámení, odpočet u „Vrátit zpět", chyba se nezavírá sama.
 import { useToast } from '@mlain/ui/patterns/toast';
 import { BulkDeleteDialog } from './bulk-delete-dialog';
+import { RemoveTagDialog } from './remove-tag-dialog';
 import { bulkDeleteContactsAction, bulkTagContactsAction } from './actions';
 import { ContactExportDialog, exportAndDownload, useContactExport } from './contact-export';
 import { emailsToAudience, filtersToAudience } from './export-audience';
@@ -43,6 +51,30 @@ export type ContactsBulkActionsProps = {
    * `bulk.addToList` a `bulk.removeFromList` v katalozích ležely od začátku.
    */
   lists?: { id: string; name: string }[];
+  /**
+   * Seznamy, ve kterých je každý označený kontakt JEŠTĚ PŘIHLÁŠENÝ, jedno pole na kontakt.
+   *
+   * Slouží k jedinému: spočítat, kolik kontaktů po odhlášení nezůstane v žádném seznamu.
+   * Jádro to nezakazuje (`lists` je v `ContactUpsertRequest` nepovinné a žádná podmínka
+   * minimálního počtu tam není), takže se to nedá zarazit chybou ze serveru. Říct se to
+   * ale musí nahlas, jinak akce tiše vyrobí kontakty, na které se nedá dosáhnout žádným
+   * seznamem. Bere se z toho, co je na obrazovce; další dotaz na server kvůli tomu nemá
+   * smysl posílat.
+   */
+  selectedSubscriptions?: string[][];
+  /**
+   * Akce doběhla ÚSPĚŠNĚ a výběr se má uklidit.
+   *
+   * Nález z provozu: „Vyberu nějaké kontakty, udělám nad nimi operaci. Ta proběhne,
+   * ale tohle tam zůstane viset. Pokud kontakty smažu, tak nemá co s tím dál dělat."
+   * Po akci se do téhle chvíle volalo jen `router.refresh()`, takže se obnovila DATA,
+   * ale výběr zůstal, a to i po smazání, kdy v něm ležely identifikátory kontaktů,
+   * které už neexistují.
+   *
+   * VOLÁ SE JEN Z ÚSPĚŠNÉ VĚTVE. Po chybě výběr zůstává schválně: uživatel by jinak
+   * přišel o odklikanou práci a musel označovat znovu (zákaz z 6.7).
+   */
+  onCompleted?: () => void;
 };
 
 /**
@@ -61,10 +93,25 @@ const PANEL_BUTTON = [
   'hover:translate-y-0 hover:bg-panel-line hover:shadow-none',
 ].join(' ');
 
-/** Nabídka na tmavém pruhu. Rozbalený seznam se portáluje na papír, proto se nemění. */
-const PANEL_SELECT = [
-  'w-56 min-h-[var(--size-control-sm)] h-[var(--size-control-sm)] py-1',
-  'border-panel-soft bg-transparent text-sm text-panel-foreground',
+/**
+ * Spouštěč nabídky na tmavém pruhu. Rozbalený obsah se portáluje na papír, proto se
+ * v něm nic přebarvovat nemusí.
+ *
+ * VYPADÁ JAKO ROZBALOVÁTKO, ALE JE TO NABÍDKA AKCÍ, a je to schválně. Uživatel na ten
+ * prvek ukazuje jako na „select" a vzhled tedy zůstává, jenže se v něm od 7. 8. 2026
+ * nevybírá HODNOTA, ale AKCE („přidat štítek Brno", „odebrat štítek Brno"). Rozbalovátko,
+ * jehož volba rovnou provede nevratnou operaci, je past: čtečka ho ohlásí jako výběr
+ * hodnoty a klávesnice v něm mezi položkami přejíždí, takže by se odebrání spustilo
+ * i jen projetím seznamu šipkami. Nabídka akcí tohle nemá.
+ */
+const PANEL_MENU = [
+  'flex w-56 items-center justify-between gap-2 rounded-[var(--radius-control)] px-3.5',
+  'h-[var(--size-control-sm)] border border-panel-soft bg-transparent',
+  'text-sm text-panel-foreground disabled:cursor-not-allowed disabled:opacity-60',
+  // Výška je 36 px kvůli rytmu pruhu, klikací plocha 44 px kvůli pravidlu. Týž
+  // neviditelný překryv jako u filtrů nad tabulkou a u nabídky „…" v řádku.
+  'relative after:absolute after:top-1/2 after:left-0 after:h-[var(--size-target-min)]',
+  "after:w-full after:-translate-y-1/2 after:content-['']",
 ].join(' ');
 
 export function ContactsBulkActions({
@@ -75,6 +122,8 @@ export function ContactsBulkActions({
   tags = [],
   lists = [],
   selectedEmails = [],
+  selectedSubscriptions = [],
+  onCompleted,
 }: ContactsBulkActionsProps) {
   const t = useTranslations('contacts');
   const format = useFormatter();
@@ -84,22 +133,52 @@ export function ContactsBulkActions({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   /**
-   * Vybraný seznam. Rozbalovátko zůstává neřízené a stav je jen jeho ozvěna: kdyby se
-   * `value` dopisovalo až po první volbě, přepnul by se prvek z neřízeného na řízený
-   * a React by na to nadával. Tlačítko potřebuje znát jen ID, ne ovládat nabídku.
+   * Seznam, kterého se týká otevřené okno odebrání. Není to „vybraná hodnota
+   * rozbalovátka": od chvíle, kdy se akce volí přímo v nabídce, drží tenhle stav jen
+   * cíl rozdělané akce, dokud ji uživatel nepotvrdí nebo neustoupí.
    */
   const [listId, setListId] = useState<string | null>(null);
   const [addingToList, setAddingToList] = useState(false);
   const [removingFromList, setRemovingFromList] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
+  /** Totéž pro odebrání štítku. */
+  const [removeTagTarget, setRemoveTagTarget] = useState<{ id: string; name: string } | null>(null);
+  const [removeTagOpen, setRemoveTagOpen] = useState(false);
+  const [removingTag, setRemovingTag] = useState(false);
   const contactExport = useContactExport(workspaceId);
 
   const chips = useFilterChips()(filters, names);
 
-  // Filtr se v dialogu opakuje jen tehdy, když se maže „vše odpovídající filtru".
-  // U výběru na stránce žádný filtr o rozsahu nerozhoduje a věta by mátla.
+  /*
+   * Filtr se v dialogu opakuje jen tehdy, když se maže „vše odpovídající filtru".
+   * U výběru na stránce žádný filtr o rozsahu nerozhoduje a věta by mátla.
+   *
+   * BEZ ZAPNUTÉHO FILTRU SE TO ŘÍKÁ SLOVY, ne mlčením. „Vše odpovídající filtru"
+   * nad nefiltrovaným seznamem znamená všechny kontakty projektu, a to je největší
+   * možný rozsah, jaký tahle obrazovka umí spustit. Prázdné místo, kde jindy stojí
+   * výčet filtru, by se dalo přečíst jako „rozsah je malý".
+   */
   const filterDescription =
-    selection.mode === 'allMatching' && chips.length > 0 ? format.list(chips) : null;
+    selection.mode !== 'allMatching'
+      ? null
+      : chips.length > 0
+        ? format.list(chips)
+        : t('bulk.filterNone');
+
+  /*
+   * CO SE NAD CELÝM FILTREM UDĚLAT NEDÁ.
+   *
+   * Štítky, seznamy i povýšení na potvrzené jdou v API výhradně přes výčet
+   * identifikátorů: `POST /contacts/tags:bulk` bere `filter: { contact_ids }`
+   * a nic jiného, přihlášení do seznamu jede přes adresy a potvrzení po jednom
+   * kontaktu. Nad statisíci řádky by to byl statisíc požadavků.
+   *
+   * NENABÍZEJÍ SE, MÍSTO ABY SVÍTILY ZAŠEDLE (kritérium 18 části 6). Zašedlé
+   * tlačítko bez vysvětlení je zakázané a vysvětlení se do tmavého pruhu vedle
+   * pěti dalších prvků nevejde. Místo nich stojí v pruhu jedna věta, která říká,
+   * co v tomhle režimu jde a jak se dostat ke zbytku.
+   */
+  const wholeFilter = selection.mode === 'allMatching';
 
   const scope: BulkScope =
     selection.mode === 'allMatching'
@@ -138,13 +217,43 @@ export function ContactsBulkActions({
       },
     });
     router.refresh();
+    // Štítek je přidaný, výběr splnil svůj účel. Nabídka „Vrátit zpět" v oznámení
+    // funguje dál: drží si vlastní rozsah akce, ne aktuální výběr v tabulce.
+    onCompleted?.();
+  }
+
+  /**
+   * Hromadné ODEBRÁNÍ štítku.
+   *
+   * Nález zadavatele ze 7. 8. 2026: „Když vyberu nějaké kontakty a dám přidat štítek,
+   * tak už ho nejsem schopen hromadně u kontaktů zrušit." Server to uměl od začátku,
+   * `POST /contacts/tags:bulk` bere `add` i `remove` a vrací `tagged` a `untagged`.
+   * Rozhraní nabízelo jen přidání; `remove` se používalo jedině ve vrácení zpět, tedy
+   * na místě, kam se uživatel sám nedostal.
+   *
+   * Potvrzuje se DIALOGEM, ne nabídkou vrácení. Proč zrovna tady, když přidání dialog
+   * nemá, vysvětluje `RemoveTagDialog`.
+   */
+  async function removeTag(tagId: string, tagName: string) {
+    setRemovingTag(true);
+    const result = await bulkTagContactsAction({ workspaceId, scope, remove: [tagId] });
+    setRemovingTag(false);
+    if (result.status === 'error') {
+      toast.error(t('bulk.tagFailed', { detail: result.code }));
+      return;
+    }
+    toast.success(t('bulk.tagRemoved', { tag: tagName }));
+    router.refresh();
+    onCompleted?.();
   }
 
   /**
    * Hromadné přidání do seznamu.
    *
    * JEN NAD OZNAČENÝMI ŘÁDKY, ze stejného důvodu jako povýšení na potvrzené: přihlašovací
-   * endpoint bere adresy, ne filtr, a výběr v tabulce je stejně vždycky režim `ids`.
+   * endpoint bere adresy, ne filtr. V režimu „vše odpovídající filtru" se proto nabídka
+   * seznamů vůbec nekreslí a tahle funkce se do volání nedostane; pojistka na začátku
+   * přesto zůstává, protože rozhodnutí o rozsahu přichází zvenčí.
    *
    * Není to optimistická akce s nabídkou vrácení jako štítek. Přihlášení do seznamu
    * mění to, komu se smí posílat, a u odhlášeného kontaktu odešle potvrzovací e-mail
@@ -156,15 +265,15 @@ export function ContactsBulkActions({
    * odkazem. Rozhraní to musí říct nahlas, jinak by uživatel viděl „přidáno" a čekal
    * příjemce, kteří v rozesílce nebudou.
    */
-  async function addToList() {
-    if (listId === null || selection.mode !== 'ids') return;
-    const list = lists.find((candidate) => candidate.id === listId);
+  async function addToList(targetId: string) {
+    if (selection.mode !== 'ids') return;
+    const list = lists.find((candidate) => candidate.id === targetId);
     if (list === undefined) return;
 
     setAddingToList(true);
     const result = await addContactsToListAction({
       workspaceId,
-      listId,
+      listId: targetId,
       ids: [...selection.ids],
     });
     setAddingToList(false);
@@ -195,6 +304,7 @@ export function ContactsBulkActions({
     else toast.success(message);
 
     router.refresh();
+    onCompleted?.();
   }
 
   /**
@@ -235,6 +345,7 @@ export function ContactsBulkActions({
     }
 
     router.refresh();
+    onCompleted?.();
   }
 
   /**
@@ -242,8 +353,8 @@ export function ContactsBulkActions({
    *
    * JEN NAD OZNAČENÝMI ŘÁDKY, ne nad „vše odpovídající filtru": akce jde po jednom
    * kontaktu (hromadný endpoint na změnu stavu v API není) a nad statisíci řádky
-   * by to byl statisíc požadavků. Výběr v tabulce je stejně vždycky režim `ids`,
-   * viz komentář u typu `Selection`.
+   * by to byl statisíc požadavků. V režimu celého filtru se tlačítko nekreslí,
+   * místo něj stojí v pruhu věta, proč tam není.
    *
    * Není to optimistická akce s nabídkou vrácení jako štítek: povýšení zapisuje
    * souhlas a potvrzuje přihlášení do seznamů, tedy má vnější dopad na to, komu
@@ -280,90 +391,145 @@ export function ContactsBulkActions({
       toast.success(t('confirmState.done', { count: result.outcomes.length }));
     }
     router.refresh();
+    // Chybová barva oznámení výš neznamená neúspěch: kontakty POVÝŠENÉ JSOU, jen na
+    // části adres zůstala blokace. Akce doběhla, takže se výběr uklízí i v té větvi.
+    onCompleted?.();
   }
 
   return (
     <>
-      <Button
-        variant="secondary"
-        size="sm"
-        className={PANEL_BUTTON}
-        disabled={confirming || selection.mode !== 'ids'}
-        onClick={() => {
-          void confirmSelected();
-        }}
-      >
-        <CircleCheckBig aria-hidden className="icon-sm" />
-        {confirming ? t('confirmState.confirming') : t('confirmState.bulkAction')}
-      </Button>
-
-      {/* `w-56` přebíjí výchozí `w-full` v `Select`. Lišta je flex s zalomením, takže
-          rozbalovátko na celou šířku zabere celý řádek a vytlačí tlačítka pod sebe. */}
-      {tags.length > 0 ? (
-        <Select
-          className={PANEL_SELECT}
-          aria-label={t('bulk.addTag')}
-          placeholder={t('bulk.addTag')}
-          onValueChange={(tagId: string) => {
-            const tag = tags.find((candidate) => candidate.id === tagId);
-            if (tag) void addTag(tag.id, tag.name);
+      {/* Věta místo tří zašedlých ovládacích prvků. Stojí před akcemi, protože
+          vysvětluje, proč je jich v tomhle režimu míň, ne co dělá to za ní. */}
+      {wholeFilter ? (
+        <span data-testid="bulk-whole-filter-note" className="text-panel-soft">
+          {t('bulk.wholeFilterLimits')}
+        </span>
+      ) : (
+        <Button
+          variant="secondary"
+          size="sm"
+          className={PANEL_BUTTON}
+          disabled={confirming}
+          onClick={() => {
+            void confirmSelected();
           }}
         >
-          {tags.map((tag) => (
-            <SelectItem key={tag.id} value={tag.id}>
-              {tag.name}
-            </SelectItem>
-          ))}
-        </Select>
+          <CircleCheckBig aria-hidden className="icon-sm" />
+          {confirming ? t('confirmState.confirming') : t('confirmState.bulkAction')}
+        </Button>
+      )}
+
+      {/*
+       * ŠTÍTKY: JEDNA NABÍDKA NA PŘIDÁNÍ I ODEBRÁNÍ.
+       *
+       * Přidání tu bylo od začátku, odebrání nešlo vůbec, přestože ho server umí.
+       * Obě akce jsou nad týmž seznamem štítků, takže je uživatel nemá hledat na dvou
+       * místech; oddělují je nadpis skupiny, čára a barva, ne až text položky.
+       *
+       * `w-56` je tu proto, že lišta je flex se zalomením: spouštěč na celou šířku by
+       * zabral celý řádek a vytlačil tlačítka pod sebe.
+       */}
+      {tags.length > 0 && !wholeFilter ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className={PANEL_MENU} disabled={removingTag}>
+              <span className="flex items-center gap-2">
+                <Tag aria-hidden className="icon-sm" />
+                {t('bulk.tagsMenu')}
+              </span>
+              <ChevronDown aria-hidden className="icon-sm" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="max-h-80 overflow-auto">
+            <DropdownMenuGroup label={t('bulk.addTag')}>
+              {tags.map((tag) => (
+                <DropdownMenuItem
+                  key={`add-${tag.id}`}
+                  onSelect={() => void addTag(tag.id, tag.name)}
+                >
+                  {tag.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup label={t('bulk.removeTag')}>
+              {tags.map((tag) => (
+                <DropdownMenuItem
+                  key={`remove-${tag.id}`}
+                  tone="danger"
+                  onSelect={() => {
+                    setRemoveTagTarget(tag);
+                    setRemoveTagOpen(true);
+                  }}
+                >
+                  {tag.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : null}
 
-      {/* Nabídka seznamů a tlačítko k ní patří k sobě. Bez tlačítka byla nabídka slepá:
-          uživatel v ní vybral „Newsletter" a neměl co zmáčknout. */}
-      {lists.length > 0 ? (
-        <>
-          <Select
-            className={PANEL_SELECT}
-            aria-label={t('bulk.addToList')}
-            placeholder={t('bulk.addToList')}
-            onValueChange={setListId}
-          >
-            {lists.map((list) => (
-              <SelectItem key={list.id} value={list.id}>
-                {list.name}
-              </SelectItem>
-            ))}
-          </Select>
-          <Button
-            variant="secondary"
-            size="sm"
-            className={PANEL_BUTTON}
-            disabled={addingToList || listId === null || selection.mode !== 'ids'}
-            onClick={() => {
-              void addToList();
-            }}
-          >
-            {addingToList
-              ? t('bulk.addToListRunning')
-              : t('bulk.addToListAction', { count: selection.count })}
-          </Button>
-          {/* Odebrání stojí vedle přidání schválně: je to táž nabídka seznamů a uživatel
-              nemá hledat opačnou akci na jiném místě obrazovky. */}
-          <Button
-            variant="secondary"
-            size="sm"
-            className={PANEL_BUTTON}
-            disabled={removingFromList || listId === null || selection.mode !== 'ids'}
-            onClick={() => setRemoveOpen(true)}
-          >
-            {removingFromList
-              ? t('bulk.removeFromListRunning')
-              : t('bulk.removeFromListAction', { count: selection.count })}
-          </Button>
-        </>
+      {/*
+       * SEZNAMY: TÁŽ NABÍDKA, JEN S JINÝM OBSAHEM.
+       *
+       * Do 7. 8. 2026 tu stálo rozbalovátko s cílem a vedle něj dvě tlačítka s akcí,
+       * takže byla nabídka bez tlačítka slepá a tlačítko bez nabídky nemělo cíl. Teď
+       * nese obojí jedna nabídka a lišta je o dva prvky kratší.
+       */}
+      {lists.length > 0 && !wholeFilter ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={PANEL_MENU}
+              disabled={addingToList || removingFromList}
+            >
+              <span className="flex items-center gap-2">
+                <List aria-hidden className="icon-sm" />
+                {addingToList
+                  ? t('bulk.addToListRunning')
+                  : removingFromList
+                    ? t('bulk.removeFromListRunning')
+                    : t('bulk.listsMenu')}
+              </span>
+              <ChevronDown aria-hidden className="icon-sm" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="max-h-80 overflow-auto">
+            <DropdownMenuGroup label={t('bulk.addToListAction', { count: selection.count })}>
+              {lists.map((list) => (
+                <DropdownMenuItem key={`add-${list.id}`} onSelect={() => void addToList(list.id)}>
+                  {list.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup label={t('bulk.removeFromListAction', { count: selection.count })}>
+              {lists.map((list) => (
+                <DropdownMenuItem
+                  key={`remove-${list.id}`}
+                  tone="danger"
+                  onSelect={() => {
+                    setListId(list.id);
+                    setRemoveOpen(true);
+                  }}
+                >
+                  {list.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : null}
 
       {/* Export výběru. Do 5. 8. 2026 se dal výběr vyvézt jedině z dialogu mazání,
-          tedy jen tomu, kdo ho chtěl smazat, a i tam skončil na 422. */}
+          tedy jen tomu, kdo ho chtěl smazat, a i tam skončil na 422.
+
+          VÝBĚR PO EXPORTU ZŮSTÁVÁ, a je to vědomé rozhodnutí. Export nic nezměnil:
+          tytéž kontakty jsou pořád v tabulce a export je typicky mezikrok („vyveze
+          si je a pak jim přidám štítek"). Zrušit výběr tady by znamenalo označovat
+          znovu. U ostatních akcí je to obráceně: po nich už s výběrem není co dělat. */}
       <Button
         variant="secondary"
         size="sm"
@@ -392,11 +558,31 @@ export function ContactsBulkActions({
         {t('bulk.delete')}
       </Button>
 
+      {/* Okno odebrání štítku. `key` zařídí, že okno otevřené nad jiným štítkem začíná
+          čisté, stejně jako u oken v řádku tabulky. */}
+      {removeTagTarget === null ? null : (
+        <RemoveTagDialog
+          key={removeTagTarget.id}
+          open={removeTagOpen}
+          onOpenChange={setRemoveTagOpen}
+          count={selection.count}
+          tagName={removeTagTarget.name}
+          onConfirm={() => removeTag(removeTagTarget.id, removeTagTarget.name)}
+        />
+      )}
+
       <RemoveFromListDialog
         open={removeOpen}
         onOpenChange={setRemoveOpen}
         count={selection.count}
         listName={lists.find((candidate) => candidate.id === listId)?.name ?? ''}
+        // Kolik označených kontaktů po odhlášení nezůstane v žádném seznamu. Počítá se
+        // z toho, co je na obrazovce, ne dalším dotazem na server; podrobně u propy.
+        orphaned={
+          listId === null
+            ? 0
+            : selectedSubscriptions.filter((ids) => ids.length === 1 && ids[0] === listId).length
+        }
         onConfirm={removeFromList}
       />
 
@@ -430,6 +616,10 @@ export function ContactsBulkActions({
             // a uvidí kontakty, které podle hlášky už neexistují.
             toast.success(t('bulk.queued', { count: selection.count }));
             router.refresh();
+            // Nejdůležitější místo z celého nálezu: po smazání ležely ve výběru
+            // identifikátory kontaktů, které už neexistují, a pruh nad tabulkou nad
+            // nimi dál nabízel akce.
+            onCompleted?.();
           } else {
             // Dialog se zavírá i po chybě, takže bez tohohle oznámení zůstal uživatel
             // u nezměněné tabulky a bez jediného slova o tom, že se mazání nespustilo.

@@ -3,7 +3,7 @@ import { loadConfig, type MlainConfig } from '../config';
 import { decryptProviderConfig } from '../providers/crypto';
 import { sendSmtp } from '../providers/smtp/send';
 import { createSystemContext } from '../identity/context';
-import { withUser, withWorkspace } from '../tx';
+import { withoutContext, withUser, withWorkspace } from '../tx';
 import { rawSql } from '../campaigns/repo/raw-sql';
 import { buildSystemMailMime, renderSystemMail } from './system-mail-templates';
 import {
@@ -13,6 +13,11 @@ import {
   type SystemMailAccount,
   type SystemMailSettings,
 } from './system-mail-config';
+import {
+  readInstallationSystemMailWorkspace,
+  rememberInstallationSystemMailWorkspace,
+} from './system-mail-installation';
+import { sendSystemMailSes } from './system-mail-ses';
 import type { SystemMail, SystemMailer } from './system-mail';
 
 /**
@@ -57,11 +62,17 @@ export class SystemMailNotConfiguredError extends Error {
   }
 }
 
-/** Odeslání selhalo na straně SMTP serveru. Taky se hází, ze stejného důvodu. */
+/**
+ * Odeslání selhalo na straně poskytovatele. Taky se hází, ze stejného důvodu.
+ *
+ * `providerCode` je kód od SMTP serveru, nebo jméno výjimky AWS (`MessageRejected`
+ * u neověřené adresy odesílatele, `TooManyRequestsException` u throttlingu).
+ * Zůstává v textu, protože každý z těch stavů se opravuje jinak.
+ */
 export class SystemMailSendError extends Error {
   readonly code = 'system_mail_send_failed';
-  constructor(smtpCode: string, detail: string) {
-    super(`Systémový e-mail se nepodařilo odeslat (${smtpCode}): ${detail}`);
+  constructor(providerCode: string, detail: string) {
+    super(`Systémový e-mail se nepodařilo odeslat (${providerCode}): ${detail}`);
     this.name = 'SystemMailSendError';
   }
 }
@@ -80,6 +91,12 @@ export class SystemMailSendError extends Error {
  * kdo zapomene heslo, není přihlášený. Jeho projekty se dohledají cestou
  * `withUser`, kterou politika `ws_member_visibility` k tomu účelu vystavuje,
  * a bere se ten nejstarší, tedy ten, který si po instalaci založil první.
+ *
+ * TŘETÍ MOŽNOST je projekt systémové pošty instalace (rozhodnutí R2 plánu).
+ * Uživatel odebraný z posledního projektu žádný nemá, a přesto se musí dostat
+ * k obnově hesla; stránka `no-workspace` takový stav zná, takže není hypotetický.
+ * Podrobnosti a proč se projekt instalace nedá NAJÍT dotazem, ale musí se
+ * pamatovat, jsou v `system-mail-installation.ts`.
  */
 async function resolveWorkspaceId(mail: SystemMail): Promise<string> {
   if (mail.workspaceId) return mail.workspaceId;
@@ -96,8 +113,13 @@ async function resolveWorkspaceId(mail: SystemMail): Promise<string> {
     });
     const id = rows[0]?.id;
     if (id) return id;
+
+    const installation = await withoutContext(readInstallationSystemMailWorkspace);
+    if (installation) return installation;
+
     throw new SystemMailNotConfiguredError(
-      'uživatel nepatří do žádného projektu, není tedy odkud vzít odesílací účet.',
+      'uživatel nepatří do žádného projektu a instalace nemá zapamatovaný projekt ' +
+        'systémové pošty, není tedy odkud vzít odesílací účet.',
     );
   }
 
@@ -124,6 +146,18 @@ async function pickAccount(workspaceId: string): Promise<{
   const { settings, resolved } = await withWorkspace(ctx, async (tx) => {
     const settings = await readSystemMailSettings(tx, workspaceId);
     const resolved = await resolveSystemMailAccount(tx, workspaceId, settings);
+    /**
+     * Projekt, který systémovou poštu odeslat UMÍ, se zapamatuje jako projekt
+     * instalace, pokud tam ještě žádný není. Je to jediné místo, kde se ta
+     * informace dá získat spolehlivě: tady je kontext projektu, takže izolace
+     * `sending_providers` nepřekáží. Zápis se dělá ve stejné transakci, aby
+     * nevzniklo druhé spojení kvůli jednomu UPDATE; `system_settings` je bez RLS
+     * a aplikační role smí měnit sloupec `settings`, takže kontext projektu
+     * ničemu nevadí.
+     */
+    if (resolved.account !== null && resolved.reason === null) {
+      await rememberInstallationSystemMailWorkspace(tx, workspaceId);
+    }
     return { settings, resolved };
   });
 
@@ -136,14 +170,15 @@ async function pickAccount(workspaceId: string): Promise<{
   }
 
   /**
-   * SES se odsud NEODESÍLÁ. Klient SES je v senderu v Go a v TypeScriptu žádný
-   * není; přidávat sem druhý by znamenalo mít podpis AWS na dvou místech.
-   * Hlásí se to nahlas jako nenastavená pošta, ne jako úspěch: instalace, která
-   * má jediný účet typu SES, systémovou poštu prostě zatím poslat neumí.
+   * Neznámý typ účtu se hlásí nahlas jako nenastavená pošta, ne jako úspěch.
+   * Dnes to nemá jak nastat: `SYSTEM_MAIL_CAPABLE_TYPES` obsahuje oba typy,
+   * které schéma odesílacího účtu zná. Zůstává to tu jako pojistka pro chvíli,
+   * kdy přibude třetí typ a někdo zapomene na větev v `send`.
    */
   if (resolved.reason === 'provider_unsupported') {
     throw new SystemMailNotConfiguredError(
-      `odesílací účet typu ${resolved.account.type} systémovou poštu neumí. Přidej účet typu SMTP.`,
+      `odesílací účet typu ${resolved.account.type} systémovou poštu odeslat neumí. ` +
+        'Vyber v Nastavení → Systémová pošta jiný účet.',
     );
   }
 
@@ -158,7 +193,7 @@ export class DefaultSystemMailer implements SystemMailer {
       stored: account.config_encrypted,
       workspaceId: account.workspace_id,
     });
-    if (config.kind !== 'smtp') {
+    if (config.kind !== account.type) {
       throw new SystemMailNotConfiguredError(
         'typ účtu v databázi a v šifrované obálce se rozchází.',
       );
@@ -174,29 +209,44 @@ export class DefaultSystemMailer implements SystemMailer {
       messageIdHost: new URL(cfg().APP_URL).hostname,
     });
 
-    const result = await sendSmtp({
-      host: config.host,
-      port: config.port,
-      username: config.username,
-      password: config.password,
-      encryption: config.encryption,
-      timeoutMs: cfg().SENDER_SMTP_COMMAND_TIMEOUT_SECONDS * 1000,
-      // Poštovní past v E2E i vývojová instalace běží na neveřejné adrese. Ochrana
-      // proti SSRF tady nechrání před ničím: host nezadává útočník přes formulář
-      // veřejného webu, ale vlastník instalace v nastavení odesílacího účtu, a ten
-      // už si stejně smí nastavit cokoliv.
-      allowPrivateAddress: true,
-      from,
-      to: mail.to,
-      message,
-    });
+    /**
+     * Obě větve dostávají TOTÉŽ MIME a liší se jen dopravou. Kdyby si každá
+     * skládala zprávu po svém, rozešly by se hlavičky `Auto-Submitted`
+     * a `X-Auto-Response-Suppress`, a to zrovna u větve, kterou nikdo ručně
+     * nekontroluje v poštovní pasti.
+     */
+    const result =
+      config.kind === 'ses'
+        ? await sendSystemMailSes({
+            config,
+            from,
+            to: mail.to,
+            message,
+            timeoutMs: cfg().AWS_API_TIMEOUT_MS,
+          })
+        : await sendSmtp({
+            host: config.host,
+            port: config.port,
+            username: config.username,
+            password: config.password,
+            encryption: config.encryption,
+            timeoutMs: cfg().SENDER_SMTP_COMMAND_TIMEOUT_SECONDS * 1000,
+            // Poštovní past v E2E i vývojová instalace běží na neveřejné adrese. Ochrana
+            // proti SSRF tady nechrání před ničím: host nezadává útočník přes formulář
+            // veřejného webu, ale vlastník instalace v nastavení odesílacího účtu, a ten
+            // už si stejně smí nastavit cokoliv.
+            allowPrivateAddress: true,
+            from,
+            to: mail.to,
+            message,
+          });
 
     if (!result.ok) {
       throw new SystemMailSendError(result.code, result.detail);
     }
 
     logger().info(
-      { template: mail.template, to: mail.to, provider_id: account.id },
+      { template: mail.template, to: mail.to, provider_id: account.id, provider: config.kind },
       'system_mail_sent',
     );
   }

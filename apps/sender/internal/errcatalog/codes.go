@@ -57,6 +57,11 @@ const (
 	SMTPInsecureAuthRefused    = "smtp_insecure_auth_refused"
 	CredentialsUndecryptable   = "credentials_undecryptable"
 	ContractMismatch           = "contract_mismatch"
+	// ProviderConfigUnreadable je ČTENÍ řádku odesílacího účtu, které selhalo.
+	// Existuje proto, aby se chyba databáze nehlásila jako chyba dešifrování:
+	// credentials_undecryptable pošle toho, kdo to vyšetřuje, za SECRET_KEY,
+	// zatímco příčina je jinde a klíče jsou v pořádku.
+	ProviderConfigUnreadable = "provider_config_unreadable"
 
 	LiquidEscapedEntityInConstruct = "liquid_escaped_entity_in_construct"
 
@@ -99,6 +104,11 @@ var classes = map[string]ErrorClass{
 	SMTPInsecureAuthRefused:    ClassFatal,
 	CredentialsUndecryptable:   ClassFatal,
 	ContractMismatch:           ClassFatal,
+	// Fatal ze stejného důvodu jako credentials_undecryptable: osud ZPRÁVY je
+	// návrat na pending (varianta D3d), osud KAMPANĚ pozastavení po vyčerpání
+	// pokusů. Označit zprávy za failed kvůli chybě čtení z databáze by znamenalo
+	// milion nenávratně zkažených zpráv místo minuty zpoždění.
+	ProviderConfigUnreadable: ClassFatal,
 
 	LiquidEscapedEntityInConstruct: ClassFatal,
 
@@ -150,6 +160,8 @@ var explanations = map[string]string{
 	ProviderQuotaExceeded:    "vyčerpaná denní kvóta provideru",
 	CredentialsUndecryptable: "konfiguraci odesílacího účtu nejde dešifrovat, nesouhlasí SECRET_KEY",
 	ContractMismatch:         "typ odesílacího účtu v databázi nesouhlasí s typem v šifrované konfiguraci",
+	ProviderConfigUnreadable: "řádek odesílacího účtu nejde z databáze přečíst; " +
+		"klíče a šifrování s tím NEMAJÍ nic společného, hledejte příčinu v databázi a v podrobnosti chyby",
 
 	MessageRejected: "provider zprávu odmítl; u účtu SES v sandboxu to nejčastěji znamená, " +
 		"že adresa PŘÍJEMCE není u Amazonu ověřená, protože v sandboxu se doručuje jen na ověřené identity",

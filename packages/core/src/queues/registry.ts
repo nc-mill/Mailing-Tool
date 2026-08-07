@@ -54,38 +54,117 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     retryDelaySeconds: 0,
     expireInSeconds: 2 * MINUTE,
     singletonKeyTemplate: 'delivery:<delivery_id>',
+    policy: 'exclusive',
     discardNote:
-      'SLUČOVÁNÍ ZÁMĚRNĚ VYPNUTÉ: fronta nemá v repozitáři producenta. Obsluha existuje ' +
-      '(platform/jobs/webhook_deliver.ts) a fan-out zapisuje řádky do webhook_deliveries, ' +
-      'ale do fronty nikdo nezařazuje, takže se nedá ověřit, že by delivery:<delivery_id> ' +
-      'doopravdy chodil. Až producent vznikne, bude to exclusive: zahodí se druhé zařazení ' +
-      'TÉHOŽ doručení, práce se neztratí, protože pravdu drží řádek ve webhook_deliveries ' +
-      'a další pokus zařadí aplikace podle next_attempt_at. Pořadí doručení na týž endpoint ' +
-      'se držet NEBUDE: šlo by to jedině přes key_strict_fifo s klíčem endpointu, jenže tam ' +
-      'by jedno trvale selhavší doručení zamklo endpoint navždy.',
+      'PRODUCENT UŽ EXISTUJE, takže se politika zapnula přesně tak, jak tenhle záznam dřív ' +
+      'sliboval. Zařazuje fanoutEvent (platform/webhooks/emit.ts) ve stejné transakci jako ' +
+      'INSERT řádku a opakovací sken platform.webhook_retry podle next_attempt_at. Zahodí se ' +
+      'tedy druhé zařazení TÉHOŽ doručení, tedy souběh těch dvou cest; práce se neztratí, ' +
+      'protože pravdu drží řádek ve webhook_deliveries a další pokus zařadí sken. Pořadí ' +
+      'doručení na týž endpoint se NEDRŽÍ: šlo by to jedině přes key_strict_fifo s klíčem ' +
+      'endpointu, jenže tam by jedno trvale selhavší doručení zamklo endpoint navždy.',
     deadLetter: false,
     payloadFields: ['delivery_id', 'created_at'],
     source: 'část 1, 3.8',
   },
-  // `platform.maintain_partitions` TADY UŽ NENÍ a nezakládejte ji znovu.
+  /*
+   * OPAKOVACÍ SKEN DORUČENÍ. Fronta doplněná po nálezu, že odchozí webhooky
+   * neodejdou vůbec.
+   *
+   * Sama o sobě je to druhá polovina opravy a bez ní by ta první nestačila.
+   * `platform.webhook_deliver` má schválně `retryLimit: 0`, protože odstupy mezi
+   * pokusy řídí aplikace vlastní tabulkou (`webhooks/backoff.ts`), ne pg-boss.
+   * Bez skenu by tedy PRVNÍ neúspěch byl zároveň poslední: `applyDeliveryOutcome`
+   * by poctivě spočítal `next_attempt_at`, zapsal ho, a nikdo by se na ten sloupec
+   * nikdy nepodíval. Totéž platí pro ruční opakování z obrazovky
+   * (`retryDelivery` v delivery-query.ts), které řádek jen vrátí na `pending`.
+   */
+  {
+    name: 'platform.webhook_retry',
+    domain: 'platform',
+    owner: 'P04',
+    description: 'Zařadí doručení, jejichž next_attempt_at nastal, včetně ručního opakování.',
+    cron: '* * * * *',
+    retryLimit: 3,
+    retryBackoff: true,
+    retryDelaySeconds: 10,
+    expireInSeconds: 5 * MINUTE,
+    singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: sken je výběr doručení po termínu podle next_attempt_at, ' +
+      'takže příští tik za minutu vezme i to, co tenhle nestihl. Zahodit ho je žádoucí, ' +
+      'protože sken jde přes všechny projekty a může trvat déle než minutu; dva souběžné ' +
+      'běhy by se přetahovaly o tatáž doručení.',
+    deadLetter: false,
+    payloadFields: [],
+    source: 'část 1, 3.8 (fronta doplněna po nálezu, viz komentář výš)',
+  },
+  // `platform.maintain_partitions` SE 7. 8. 2026 VRÁTILA, a je to jediná
+  // fronta, která se kdy vrátila ze seznamu zrušených. Proč, ať to nikdo
+  // neotočí zpátky bez znalosti obou kroků:
   //
-  // Byla poslední ze tří front, které slibovaly práci s oddíly a žádnou
-  // nedělaly. Zakládání oddílu je `CREATE TABLE ... PARTITION OF`, tedy DDL,
-  // a worker běží pod rolí `mlain_app`, která schéma nevlastní. Obsluha jí
-  // proto nikdy nevznikla a vzniknout nemohla, jen v registru vypadala jako
+  // ZRUŠENA BYLA PRÁVEM. Slibovala práci s oddíly a nedělala žádnou. Zakládání
+  // oddílu je `CREATE TABLE ... PARTITION OF`, tedy DDL, a worker jede pod rolí
+  // `mlain_app`, která schéma nevlastní. Obsluha jí proto nikdy nevznikla
+  // a pod aplikační rolí ani vzniknout nemohla; v registru jen vypadala jako
   // denní údržba v 02:00.
   //
-  // Zakládání oddílů dopředu i úklid těch za lhůtou dělá `mlain partitions`
-  // pod `DATABASE_URL_MIGRATOR`, pouštěný z plánovače hostitele. Obojí je
-  // schválně v JEDNOM příkazu: bez zakládání dopředu přestane instalace po
-  // čtyřech měsících přijímat zápisy, protože výchozí oddíl se nezakládá
-  // a zápis mimo okno tvrdě selže. Viz
-  // `packages/core/src/ops/partition-retention.ts`
+  // VRÁTILA SE, PROTOŽE NÁHRADA NIKDE NEBĚŽELA. Práci převzal `mlain partitions`
+  // pod `DATABASE_URL_MIGRATOR`, jenže ten se pouští z plánovače hostitele,
+  // a dodávaná instalace žádný nemá: ani `docker/compose.yml`, ani
+  // `compose.scale.yml` nic takového nespouštějí a na PaaS k hostiteli přístup
+  // není. Retence odeslané pošty tedy v praxi neběžela NIKDE, jen to tentokrát
+  // vypadalo vyřešeně.
+  //
+  // NÁMITKA Z ROKU PŘEDTÍM UŽ NEPLATÍ. Obsluha neběží pod aplikační rolí:
+  // `maintainPartitions()` si otevře vlastní spojení pod migrátorem, takže
+  // `mlain_app` žádné právo na DDL nedostává. Přesně tak běží `platform.backup`
+  // od P16. Fronta a `mlain partitions` jsou dvě spouštění TÉŽE funkce, ne dva
+  // mechanismy; poznají se v auditu podle popisku aktéra.
+  //
+  // Zakládání dopředu a úklid za lhůtou zůstávají schválně v JEDNÉ úloze: bez
+  // zakládání dopředu přestane instalace po čtyřech měsících přijímat zápisy,
+  // protože výchozí oddíl se nezakládá a zápis mimo okno tvrdě selže. Viz
+  // `packages/core/src/ops/partition-retention.ts`,
+  // `packages/core/src/ops/jobs/partition-jobs.ts`
   // a `docs/operations/partitions-retention.md`.
   //
-  // Druhou pojistkou je migrační runner: `runMigrations` volá
+  // Třetí pojistkou zůstává migrační runner: `runMigrations` volá
   // `ensureUpcomingPartitions(client, new Date(), 4)`, takže každý upgrade
-  // okno posune, i kdyby plánovač nikdo nenastavil.
+  // okno posune, i kdyby worker stál a plánovač nikdo nenastavil.
+  {
+    name: 'platform.maintain_partitions',
+    domain: 'platform',
+    owner: 'P16',
+    description:
+      'Retence odeslané pošty a událostí plus zakládání oddílů čtyři měsíce dopředu. ' +
+      'Táž práce, jakou dělá `mlain partitions`, pod rolí migrátora.',
+    // O deset minut dřív než ostatní noční úklidy a hodinu před zálohou.
+    // Pořadí není libovolné: `DETACH PARTITION CONCURRENTLY` sice bere jen
+    // krátký zámek, ale záloha běžící přes odpojování by měla v dumpu tabulku
+    // ve dvou různých stavech.
+    cron: '5 2 * * *',
+    // JEDEN POKUS S ODSTUPEM, ne tři. Když úklid spadne, spadne skoro vždycky
+    // na něčem, co se za pár minut nespraví (chybějící migrátorské URL, právo,
+    // zamčená tabulka), a další tik přijde stejně zítra. Jeden opakovaný pokus
+    // po pěti minutách pokrývá to jediné, co se spravit může: krátkodobě
+    // nedostupné spojení při zápisu do auditu.
+    retryLimit: 1,
+    retryBackoff: false,
+    retryDelaySeconds: 300,
+    expireInSeconds: 1 * HOUR,
+    singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný a žádoucí: úklid se řídí stářím dat, takže zítřejší běh ' +
+      'zahodí i to, co dnešní nestihl, a oddíly dopředu zakládá se čtyřměsíční rezervou. ' +
+      'Nepřijatelné by bylo opačné pořadí, tedy dva souběžné běhy: druhý by odpojoval oddíl, ' +
+      'který první právě odpojuje, a skončil by chybou nad polovičním stavem katalogu.',
+    deadLetter: true,
+    payloadFields: [],
+    source: 'část 1, 3.9 (fronta obnovena 7. 8. 2026, viz komentář výš)',
+  },
   {
     name: 'platform.cleanup_sessions',
     domain: 'platform',
@@ -124,25 +203,25 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     payloadFields: [],
     source: 'část 1, 4.4 (název odvozen P01)',
   },
-  {
-    name: 'platform.cleanup_audit_log',
-    domain: 'platform',
-    owner: 'P04',
-    description: 'Retence auditu podle AUDIT_RETENTION_MONTHS.',
-    cron: '35 2 * * *',
-    retryLimit: 3,
-    retryBackoff: true,
-    retryDelaySeconds: 60,
-    expireInSeconds: 30 * MINUTE,
-    singletonKeyTemplate: 'global',
-    policy: 'exclusive',
-    discardNote:
-      'Zahozený tik je neškodný: retence je daná stářím záznamu, zítřejší běh smaže i zbytek. ' +
-      'Audit se drží DÉLE, než AUDIT_RETENTION_MONTHS káže, nikdy kratší dobu.',
-    deadLetter: false,
-    payloadFields: [],
-    source: 'část 1, 3.7 a 4.9 (název odvozen P01)',
-  },
+  // `platform.cleanup_audit_log` BYLA ZRUŠENA 7. 8. 2026 a retenci auditu
+  // převzalo `platform.maintain_partitions`. Ať to nikdo nevrací zpátky:
+  //
+  // NIKDY ANI JEDNOU NEDOBĚHLA. Mazala příkazem `DELETE FROM audit_log` pod
+  // aplikační rolí, jenže migrace 0005, 0009, 0022 i 0026 dělají
+  // `REVOKE UPDATE, DELETE ON audit_log FROM mlain_app`. Padala tedy každou noc
+  // na `permission denied for table audit_log` (SQLSTATE 42501) a audit se
+  // neuklidil nikdy. Ověřeno spuštěním proti čerstvě zmigrované databázi.
+  //
+  // ODEBRANÉ PRÁVO SE NEVRACÍ. Že aplikace do auditu smí zapisovat a nesmí
+  // z něj mazat, je ta vlastnost, kvůli které je audit k něčemu. Migrace, která
+  // by roli `DELETE` vrátila, by tu záruku zrušila kvůli úklidu.
+  //
+  // PRÁCI DĚLÁ ZAHOZENÍ ODDÍLU pod migrátorem, tedy týž mechanismus, jaký už
+  // uklízí `messages`, `message_events` a `web_events`; `audit_log` je od téhle
+  // změny čtvrtý cíl v `ops/partition-retention.ts`. Lhůtu dál řídí
+  // `AUDIT_RETENTION_MONTHS` a platí u ní totéž, co slibovala zrušená fronta:
+  // audit se drží DÉLE, nikdy kratší dobu, protože oddíl smí zmizet až tehdy,
+  // když je za lhůtou i jeho poslední den.
   {
     name: 'platform.purge_workspaces',
     domain: 'platform',
@@ -207,10 +286,61 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
 
   // --- Kontakty, souhlasy, segmenty a GDPR, část 2 -------------------------
   {
+    /*
+     * OBNOVA ZASEKNUTÝCH IMPORTŮ. Do registru přidána 7. 8. 2026, do té doby
+     * ji nevolal NIKDO, přestože obsluha, test i migrace 0024 (grant a politika
+     * pro sken napříč projekty) existovaly.
+     *
+     * Proč to není kosmetika: `confirmImport` v `import/service.ts` odmítne každý
+     * další import v projektu, dokud v něm leží řádek ve stavu `importing`
+     * (kód `import_already_running`). Zabitý worker uprostřed importu tedy
+     * projektu zamkl importování NATRVALO a jediná cesta ven vedla přes ruční
+     * zásah do databáze. Ve vývojové instalaci se to 7. 8. stalo a zadavatel
+     * na to narazil.
+     *
+     * Každých deset minut, ne v noci: zamčené importování je vidět hned a čekat
+     * s nápravou do druhého dne by znamenalo den bez importů. Sken sám je levný,
+     * je to jeden dotaz nad `imports` s podmínkou na stáří.
+     */
+    name: 'contacts.recover_stale_imports',
+    domain: 'contacts',
+    owner: 'P11',
+    description:
+      'Sken zaseknutých importů napříč projekty. Řádek ve stavu importing, který se ' +
+      'nehnul, zařadí zpátky do contacts.import, aby projekt nezůstal se zamčeným importováním.',
+    cron: '*/10 * * * *',
+    // JEDEN POKUS. Když sken spadne, spadne na nedostupné databázi nebo na právech,
+    // a obojí se za deset minut buď spraví samo, nebo ho nespraví ani třetí pokus.
+    // Další tik přijde tak jako tak.
+    retryLimit: 1,
+    retryBackoff: false,
+    retryDelaySeconds: 60,
+    expireInSeconds: 10 * MINUTE,
+    singletonKeyTemplate: 'global',
+    policy: 'exclusive',
+    discardNote:
+      'Zahozený tik je neškodný: sken se řídí STÁŘÍM řádku, takže příští běh najde totéž ' +
+      'a ještě víc. Dva souběžné běhy by naopak týž import zařadily dvakrát; před tím ' +
+      'chrání i klíč fronty contacts.import, který je ID importu.',
+    deadLetter: true,
+    payloadFields: [],
+    source: 'část 2, import (fronta zapojena 7. 8. 2026, viz komentář výš)',
+  },
+  {
     name: 'contacts.import',
     domain: 'contacts',
     owner: 'P11',
-    description: 'Import CSV po dávkách s checkpointy. Jeden běžící import na projekt.',
+    // POPIS SE SROVNAL SE SKUTEČNOSTÍ, CHOVÁNÍ SE NEMĚNILO. Stálo tu „jeden běžící
+    // import na projekt", což čtenáře vedlo k tomu, že to zařizuje klíč fronty.
+    // Nezařizuje: klíč je ID importu, tedy „jeden běh nad jedním importem". Omezení
+    // na projekt existuje, ale drží ho DOMÉNA, ne pg-boss: `confirmImport`
+    // (`contacts/import/service.ts`) se před přechodem do `importing` podívá, jestli
+    // v projektu neběží jiný import, a když ano, odpoví `resource_locked` s kódem
+    // `import_already_running`. Je to lepší místo: uživatel dostane srozumitelnou
+    // odpověď hned, kdežto klíč projektu by úlohu tiše sloučil.
+    description:
+      'Import CSV po dávkách s checkpointy. Klíč je ID importu, tedy jeden běh nad jedním ' +
+      'importem; jeden běžící import na projekt hlídá confirmImport, ne fronta.',
     retryLimit: 3,
     retryBackoff: true,
     retryDelaySeconds: 30,
@@ -218,13 +348,16 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     singletonKeyTemplate: '<import_id>',
     policy: 'exclusive',
     discardNote:
-      'OPRAVENO PODLE SKUTEČNÉHO PRODUCENTA. Registr tu měl <workspace_id>, jenže ' +
-      'import/service.ts posílá importId a fáze validace ho posílá jako ' +
-      '<workspace_id>:validate:<import_id>. Klíč projektu tu nikdy nikdo neposlal a batch.ts ' +
-      'před ním výslovně varuje: zabitý worker by projektu zamkl VŠECHNY další importy. ' +
-      'Zahodí se tedy druhé zařazení TÉHOŽ importu, což je přesně to, co dělá ' +
-      'recover-stale.ts, když se plete s běžícím během. Práce se neztrácí, pravdu drží řádek ' +
-      'v imports i s checkpointem.',
+      'OPRAVENO PODLE SKUTEČNÉHO PRODUCENTA. Registr tu měl <workspace_id>, jenže jediný ' +
+      'producent (confirmImport v import/service.ts) posílá importId. Fáze validace tu ' +
+      'kdysi posílala <workspace_id>:validate:<import_id>, ale ta se ZRUŠILA CELÁ: nahrání ' +
+      'souboru dnes do fronty nezařazuje nic, protože obsluha na phase nekoukala a import ' +
+      'proběhl dřív, než se uživatel proklikal k volbám. Klíč projektu tu tedy nikdy nikdo ' +
+      'neposlal a batch.ts před ním výslovně varuje: zabitý worker by projektu zamkl VŠECHNY ' +
+      'další importy, a to i obnovu, protože recover-stale.ts zařazuje s onMerged drop a ' +
+      'obnova zaseknutého importu B by se sloučila s běžícím importem A. Zahodí se tedy druhé ' +
+      'zařazení TÉHOŽ importu, což je přesně to, co dělá recover-stale.ts, když se plete ' +
+      's běžícím během. Práce se neztrácí, pravdu drží řádek v imports i s checkpointem.',
     deadLetter: true,
     payloadFields: ['import_id', 'workspace_id'],
     source: 'část 2, 4.6',
@@ -335,7 +468,11 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
       'takže pokryje i tu změnu, kvůli které byl třetí požadavek zahozen. A schválně ne short, ' +
       'ačkoli tak zněl první návrh: short omezuje POUZE stav created a aktivních běhů neomezuje, ' +
       'takže by nad TÝMŽ projektem mohly běžet dva přepočty souběžně a přepisovat si tytéž řádky ' +
-      'kontaktů. Přesně tomu má klíč projektu bránit, viz WORKSPACE_SINGLETON_QUEUES.',
+      'kontaktů. Přesně tomu má klíč projektu bránit, viz WORKSPACE_SINGLETON_QUEUES. ' +
+      'Slib „čekající běh si nastavení načte" platí i pro JAZYK, ale až od 7. 8. 2026: do té ' +
+      'doby nesl náklad cílový jazyk (`align_locale.to`) a zahození novějšího požadavku tím ' +
+      'zahazovalo SMĚR změny, takže projekt vrácený zpátky na češtinu mohl skončit ' +
+      's kontakty v angličtině. Cíl se čte ze sloupce `workspaces.locale` při zpracování.',
     deadLetter: true,
     payloadFields: ['workspace_id', 'cursor', 'align_locale'],
     source: 'část 2, 4.5',
@@ -951,8 +1088,10 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
   // nevlastní. Úloha by skončila na „permission denied", nebo, kdyby jí někdo
   // práva dodal, by dostal právo zahodit tabulku každý handler v aplikaci.
   //
-  // Úklid dělá `mlain partitions` pod `DATABASE_URL_MIGRATOR`, pouštěný
-  // z plánovače hostitele stejně jako migrace. Viz
+  // Úklid dělá `platform.maintain_partitions` (a ručně `mlain partitions`),
+  // obojí pod `DATABASE_URL_MIGRATOR`, tedy pod toutéž rolí jako migrace. Ta
+  // fronta si spojení pod migrátorem otvírá sama uvnitř obsluhy, takže právo
+  // na DDL nedostává aplikační role, jen ten jeden běh. Viz
   // `packages/core/src/ops/partition-retention.ts`
   // a `docs/operations/partitions-retention.md`.
 
@@ -1101,11 +1240,11 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     source: 'část 5, 3.10.3',
   },
   // `tracking.enforce_retention` TADY UŽ NENÍ, ze stejného důvodu jako
-  // `retention.drop_message_partitions` výš: odpojení oddílu je DDL a worker
-  // na ně nemá a nesmí mít práva. `web_events` i `message_events` uklízí
-  // `mlain partitions` podle `TRACKING_RETENTION_MONTHS`, respektive
-  // `MESSAGE_EVENT_RETENTION_DAYS`. Dva úklidy dvou tabulek týmž mechanismem
-  // ze dvou míst by znamenaly dvě různá pravidla pro totéž.
+  // `retention.drop_message_partitions` výš: odpojení oddílu je DDL a aplikační
+  // role na ně nemá a nesmí mít práva. `web_events` i `message_events` uklízí
+  // `platform.maintain_partitions` podle `TRACKING_RETENTION_MONTHS`,
+  // respektive `MESSAGE_EVENT_RETENTION_DAYS`. Dva úklidy dvou tabulek týmž
+  // mechanismem ze dvou míst by znamenaly dvě různá pravidla pro totéž.
   {
     name: 'tracking.refresh_proxy_ranges',
     domain: 'tracking',
@@ -1126,49 +1265,38 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
     payloadFields: [],
     source: 'část 5, 3.6',
   },
-  {
-    name: 'tracking.erase_contact',
-    domain: 'tracking',
-    owner: 'P10',
-    description: 'Vymaže stopu kontaktu ve web_events a message_engagement.',
-    retryLimit: 5,
-    retryBackoff: true,
-    retryDelaySeconds: 60,
-    expireInSeconds: 1 * HOUR,
-    singletonKeyTemplate: '<contact_id>',
-    discardNote:
-      'SLUČOVÁNÍ ZÁMĚRNĚ VYPNUTÉ: fronta nemá v repozitáři producenta. Obsluha existuje, ale ' +
-      'nikdo do fronty nezařazuje, takže se nedá ověřit, že by <contact_id> chodil. Navíc je ' +
-      'to výmaz osobních údajů, tedy přesně ten druh úlohy, kde se slučování nezapíná ' +
-      'naslepo.',
-    deadLetter: true,
-    payloadFields: ['workspace_id', 'contact_id'],
-    source: 'část 5, 3.15',
-  },
-  // Doplněno po nálezu: P10 tuhle frontu implementuje a P16 ji volá z CLI
-  // (`mlain rebuild-engagement`), ale v registru chyběla. Bez opakování
-  // schválně: rekonstrukce od nuly běží nad celým projektem a opakovaný běh
-  // po selhání uprostřed by jen zdvojnásobil zátěž. Operátor ji pustí znovu sám.
-  {
-    name: 'tracking.rebuild_engagement',
-    domain: 'tracking',
-    owner: 'P10',
-    description:
-      'Rekonstrukce contact_engagement od nuly ze zdroje pravdy message_engagement po havárii nebo obnově zálohy.',
-    retryLimit: 0,
-    retryBackoff: false,
-    retryDelaySeconds: 0,
-    expireInSeconds: 2 * HOUR,
-    concurrency: 1,
-    singletonKeyTemplate: '<workspace_id>',
-    discardNote:
-      'SLUČOVÁNÍ ZÁMĚRNĚ VYPNUTÉ: fronta nemá v repozitáři producenta. Příkaz mlain ' +
-      'rebuild-engagement volá dávkovač ops/rebuild-engagement.ts PŘÍMO a do fronty ' +
-      'nezařazuje nic, takže klíč <workspace_id> dnes neposílá nikdo.',
-    deadLetter: true,
-    payloadFields: ['workspace_id', 'batch_size'],
-    source: 'část 5, 3.9.4 a kritérium 77',
-  },
+  // `tracking.erase_contact` TADY UŽ NENÍ a nezakládejte ji znovu.
+  //
+  // Slibovala, že vymaže stopu kontaktu ve `web_events` a `message_engagement`,
+  // a tu práci PRÁVĚ TEĎ dělá `gdpr.sever_links`: ta obě tabulky odpojí od
+  // kontaktu a volají ji oba producenti výmazu (`contacts/gdpr/erase.ts`,
+  // řádky 125 a 205), tedy jak anonymizace, tak tvrdé smazání.
+  //
+  // Nebyla to odložená funkce, byla to DRUHÁ CESTA K TÉMUŽ. Neměla producenta
+  // ANI obsluhu a `apps/worker/test/handler-coverage.test.ts` u ní ten důvod
+  // vedl doslova: „druhá cesta k témuž by znamenala dva výklady toho, co
+  // znamená vymazat kontakt". Dokud v registru stála, četla se jako
+  // neimplementovaný výmaz stopy, ačkoli výmaz funguje a je otestovaný.
+  //
+  // Kdyby se někdy ukázalo, že `gdpr.sever_links` nestačí, patří rozšíření do
+  // NÍ, ne do nové fronty vedle ní. Výmaz podle článku 17 musí mít jednu cestu,
+  // u které jde dokázat, že proběhla celá.
+  // `tracking.rebuild_engagement` TADY UŽ NENÍ a nezakládejte ji znovu.
+  //
+  // Rekonstrukci `contact_engagement` po havárii nebo obnově zálohy dělá příkaz
+  // `mlain rebuild-engagement`, který volá dávkovač `ops/rebuild-engagement.ts`
+  // PŘÍMO. To je funkční cesta a má svůj test.
+  //
+  // Fronta vedle něj byla cesta, KTEROU NIKDO NIKDY NESPUSTIL. Poznalo se to na
+  // její vlastní obsluze: přijímala náklad ve DVOU tvarech (`workspace_id`
+  // i `workspaceId`) naslepo, protože se nedalo ověřit, který z nich by
+  // producent posílal. Nespuštěná obsluha není hotová funkce, je to závazek:
+  // tváří se jako druhá cesta, na kterou se dá spolehnout.
+  //
+  // Kdyby se ukázalo, že běh v popředí terminálu vadí (rekonstrukce je dlouhá),
+  // fronta se přidá ZNOVU A VĚDOMĚ, s producentem a s testem, který ji projde
+  // celou. Rozhodnutí zadavatele: dnes je to volba mezi funkční a nefunkční
+  // cestou, ne mezi dvěma funkčními.
 
   // --- Sender, část 4b ------------------------------------------------------
   // Sender je Go proces s vlastní smyčkou nad outboxem a pg-boss nepoužívá.
@@ -1195,6 +1323,69 @@ export const QUEUE_REGISTRY: readonly QueueEntry[] = [
   },
 ];
 
+/**
+ * FRONTY, KTERÉ SE ZRUŠILY A MUSÍ ZMIZET I Z BĚŽÍCÍ DATABÁZE.
+ *
+ * PROČ TENHLE SEZNAM VŮBEC MUSÍ EXISTOVAT. Vyškrtnutí fronty z registru je
+ * změna KÓDU, ne dat. Na čisté instalaci se fronta prostě nezaloží, jenže na
+ * instalaci, která běží, řádek v `pgboss.queue` zůstane ležet i s tím, co k němu
+ * patří: plán v `pgboss.schedule` a nedokončené tiky v `pgboss.job`. Srovnávání
+ * politik (`reconcilePolicies`) na ně schválně nesahá, protože chodí jen po
+ * frontách z registru, takže se o nich nedozví nikdo.
+ *
+ * A NENÍ TO KOSMETIKA, JE TO ŽIVÝ CRON. Naměřeno ve vývojové databázi 7. 8.:
+ * `platform.maintain_partitions` a `retention.drop_message_partitions` měly
+ * v `pgboss.schedule` pořád svůj denní výraz a v `pgboss.job` po čtyřech ticích
+ * ve stavu `created`. Zrušená fronta tedy dál každý den tikala do prázdna
+ * a v tabulce úloh přibývaly řádky, které si nikdo nikdy nevyzvedne. V seznamu
+ * front to navíc vypadalo jako naplánovaná údržba, která se „jen nespouští".
+ *
+ * DŮVOD JE POVINNÝ a je to tentýž text jako v náhrobním komentáři u fronty.
+ * Kdo tenhle seznam čte, musí poznat rozdíl mezi „práci dělá něco jiného"
+ * a „ta práce se dneska nedělá vůbec".
+ *
+ * JAK SE SEM POLOŽKA PŘIDÁVÁ. Zároveň s vyškrtnutím fronty z registru, ne
+ * později. Test `retired.test.ts` hlídá obojí: jméno tady nesmí být zároveň
+ * v registru a náhrobní komentář v registru musí mít protějšek tady.
+ */
+export const RETIRED_QUEUES: readonly { readonly name: string; readonly reason: string }[] = [
+  // `platform.maintain_partitions` TU UŽ NENÍ, protože se 7. 8. 2026 vrátila do
+  // registru. Zrušená byla proto, že pod aplikační rolí nešlo dělat DDL;
+  // vrátila se s obsluhou, která si otvírá vlastní spojení pod migrátorem,
+  // protože náhradní cesta (`mlain partitions` z plánovače hostitele) se
+  // v dodávané instalaci nikdy nespouštěla. Celý rozbor je u fronty v registru.
+  // NEPŘIDÁVEJTE ji sem zpátky, aniž byste ji zároveň vyškrtli z registru:
+  // worker by ji každý start založil a hned smazal.
+  {
+    name: 'retention.drop_message_partitions',
+    reason:
+      'Odpojení oddílu za lhůtou dělá platform.maintain_partitions, a to pod migrátorským ' +
+      'spojením, ne pod aplikační rolí. Druhá fronta nad touž prací by znamenala dvě různá ' +
+      'pravidla pro totéž a dvě místa, kde se dá zahodit tabulka.',
+  },
+  {
+    name: 'tracking.enforce_retention',
+    reason:
+      'Retenci web_events i message_events dělá platform.maintain_partitions pod migrátorským ' +
+      'spojením. Dva úklidy dvou tabulek týmž mechanismem ze dvou míst by znamenaly dvě různá ' +
+      'pravidla pro totéž.',
+  },
+  {
+    name: 'tracking.erase_contact',
+    reason:
+      'Stopu kontaktu ve web_events a message_engagement odpojuje gdpr.sever_links a volají ji ' +
+      'oba producenti výmazu. Druhá cesta k témuž by znamenala dva výklady toho, co znamená ' +
+      'vymazat kontakt; výmaz podle článku 17 musí mít jednu cestu.',
+  },
+  {
+    name: 'tracking.rebuild_engagement',
+    reason:
+      'Rekonstrukci contact_engagement dělá příkaz `mlain rebuild-engagement`, který volá ' +
+      'dávkovač přímo. Fronta vedle něj byla cesta, kterou nikdo nikdy nespustil: její obsluha ' +
+      'přijímala náklad ve dvou tvarech naslepo, protože se nedalo ověřit, který by chodil.',
+  },
+];
+
 const BY_NAME = new Map(QUEUE_REGISTRY.map((entry) => [entry.name, entry]));
 
 export function queueNames(): string[] {
@@ -1213,6 +1404,98 @@ export function queue(name: string): QueueEntry {
 
 export function dlqName(name: string): string {
   return `${name}.dlq`;
+}
+
+/**
+ * JEDINÝ TVAR VOLEB, SE KTERÝM SE FRONTA ZAKLÁDÁ. Používá ho worker
+ * (`registerQueues`) i testovací prostředí (`test-support/pgboss.ts`).
+ *
+ * PROČ TO NENÍ DVAKRÁT OPSANÉ, JAKO BYLO. Testovací prostředí zakládalo fronty
+ * samo a posílalo jedinou volbu, `deadLetter`. Politika slučování tedy v testech
+ * zůstávala `standard`, kdežto v provozu byla `exclusive` nebo `stately`, a to
+ * je přesně ten rozdíl, kvůli kterému test nezměří, co dělá provoz: v testu se
+ * druhá úloha s týmž klíčem ZAŘADÍ, v provozu se zahodí. Test na slučování by
+ * tedy prošel, i kdyby se slučování celé rozbilo, a test, který se spoléhá na
+ * to, že druhé zařazení projde, by byl v provozu nepravdivý.
+ *
+ * `pgboss.create_queue` má `ON CONFLICT DO NOTHING`, takže na existující frontě
+ * tyhle volby nic nezmění; od toho je `reconcilePolicies` ve workeru. Tady jde
+ * o čistou instalaci, a tou je každá testovací databáze.
+ */
+export function queueCreateOptions(entry: QueueEntry): Record<string, unknown> {
+  return {
+    // Konvence 9.1: explicitně, nikdy se nespoléhat na výchozí hodnoty.
+    retryLimit: entry.retryLimit,
+    retryBackoff: entry.retryBackoff,
+    retryDelay: entry.retryDelaySeconds,
+    expireInSeconds: entry.expireInSeconds,
+    // Slučování duplicitních úloh. Bez tohohle řádku uloží pg-boss `singletonKey`
+    // do sloupce a NIC podle něj neslučuje, protože pro politiku `standard` ho
+    // ignoruje. Přesně v tom stavu byl produkt: 47 front klíč deklarovalo,
+    // producenti ho posílali, a nesloučila se ani jedna úloha.
+    //
+    // Fronta bez `policy` v registru zůstává `standard` schválně, důvod je
+    // u každé takové v jejím `discardNote`.
+    ...(entry.policy ? { policy: entry.policy } : {}),
+    ...(entry.deadLetter ? { deadLetter: dlqName(entry.name) } : {}),
+  };
+}
+
+/**
+ * Volby fronty pro nedoručitelné úlohy.
+ *
+ * BEZ POLITIKY, a to je rozhodnutí, ne opomenutí: slučovat nedoručitelné úlohy
+ * by znamenalo tiše zahodit právě to, co se má vyšetřit. BEZ OPAKOVÁNÍ ze
+ * stejného důvodu: úloha se sem dostala až po vyčerpání pokusů ve své frontě.
+ */
+export function dlqCreateOptions(entry: QueueEntry): Record<string, unknown> {
+  return {
+    retryLimit: 0,
+    retryBackoff: false,
+    retryDelay: 0,
+    expireInSeconds: entry.expireInSeconds,
+  };
+}
+
+/**
+ * Úplný předpis zakládání front: co založit, s jakými volbami a V JAKÉM POŘADÍ.
+ *
+ * Jedna funkce pro provoz i pro testy. Kdyby si obě strany jen půjčovaly
+ * `queueCreateOptions` a cyklus si psaly samy, rozešly by se v pořadí, a to je
+ * druhá polovina téhož problému: pg-boss trvá na tom, aby fronta pro
+ * nedoručitelné existovala DŘÍV než ta, která na ni odkazuje, jinak řekne
+ *
+ *   Error: Queue platform.webhook_fanout.dlq does not exist
+ *
+ * Dokud si pg-boss migroval schéma sám, zakládal si chybějící fronty mimoděk
+ * při prvním `send`, takže na pořadí nezáleželo. Od chvíle, kdy schéma vlastní
+ * migrátor a worker jede s `migrate: false`, je `createQueue()` jediná cesta
+ * a pořadí najednou rozhoduje; kontejner na tom skončil v restartové smyčce.
+ */
+/**
+ * Jména k odstranění z běžící databáze, V POŘADÍ, ve kterém se smí mazat.
+ *
+ * POŘADÍ JE OPAČNÉ NEŽ PŘI ZAKLÁDÁNÍ, a to není symetrie pro symetrii, ale
+ * cizí klíče. `queue.dead_letter` i `job.dead_letter` odkazují na `queue.name`
+ * s `ON DELETE RESTRICT`, takže smazat napřed `<fronta>.dlq` by skončilo na
+ * porušení cizího klíče, dokud na ni hlavní fronta (nebo kterákoli její úloha)
+ * ukazuje. Napřed tedy hlavní fronta i s úlohami, teprve pak její dead letter.
+ *
+ * Dead letter fronta se přidává vždy: registr už neví, jestli ji zrušená fronta
+ * měla, a smazání neexistující fronty je v pg-bossu tichá prázdná operace.
+ */
+export function retiredQueueDeleteOrder(): readonly string[] {
+  return RETIRED_QUEUES.flatMap((retired) => [retired.name, dlqName(retired.name)]);
+}
+
+export function queueCreatePlan(): readonly { name: string; options: Record<string, unknown> }[] {
+  const plan: { name: string; options: Record<string, unknown> }[] = [];
+  for (const entry of QUEUE_REGISTRY) {
+    if (entry.deadLetter)
+      plan.push({ name: dlqName(entry.name), options: dlqCreateOptions(entry) });
+    plan.push({ name: entry.name, options: queueCreateOptions(entry) });
+  }
+  return plan;
 }
 
 export function cronQueues(): (QueueEntry & { cron: string })[] {

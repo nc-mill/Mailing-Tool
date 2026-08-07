@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { apiFetch } from '@/lib/api-client/fetch';
-import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
+import { getWorkspaceAccess, hasPermission } from '@/lib/identity/workspace-access';
+import { ForbiddenSection } from '@/features/settings/forbidden-section';
 import { NewCampaignScreen, type TemplateOption } from '@/features/campaigns/new-campaign-screen';
 
 /**
@@ -28,6 +29,25 @@ export default async function NewCampaignPage({ params }: PageProps) {
   const access = await getWorkspaceAccess(workspaceSlug);
   if (!access.ok) notFound();
   const workspaceId = access.data.workspace.id;
+
+  /**
+   * Zakládání kampaně má `campaigns:write`, tedy editor a výš. Kontrola patří
+   * sem, ne až k uložení: prohlížející jinak vyplnil jméno, vybral šablonu
+   * a odmítnutí přišlo od API na konci. Přehled tuhle akci od dneška vysvětluje
+   * (`DashboardGrid`), přímou adresou ale díra zůstávala.
+   *
+   * Vysvětlení, ne `notFound()`: uživatel má vědět, které oprávnění chybí a kdo
+   * mu ho může dát (stav S11, pravidlo 2 ze 7.2b části 6).
+   */
+  if (!hasPermission(access.data, 'campaigns:write')) {
+    return (
+      <ForbiddenSection
+        permission="campaigns:write"
+        currentRole={access.data.role}
+        workspaceSlug={workspaceSlug}
+      />
+    );
+  }
 
   /*
    * `view=summary` vynechá dokument `design`, který je zdaleka největší sloupec

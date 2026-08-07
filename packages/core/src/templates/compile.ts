@@ -1,5 +1,6 @@
 import { compileDocument } from '@mlain/emails/compile/compile';
 import type { CompileContext, CompileResult } from '@mlain/emails/compile/types';
+import type { ValidationProfile } from '@mlain/emails/document/profile';
 import type { Document } from '@mlain/emails/document/types';
 import type { FieldCatalog } from '../contacts/fields/catalog';
 import { readContactsSettings } from '../contacts/settings';
@@ -12,7 +13,12 @@ export type CompileTemplateInput = {
   tx: Tx;
   ctx: WorkspaceContext;
   document: Document;
-  templateKind: 'campaign' | 'transactional' | 'system';
+  /**
+   * PROFIL, ne `templates.kind`. Volající sem posílá `validationProfileFor(kind)`,
+   * takže vedle `campaign` a `transactional` sem chodí i `page` (veřejná
+   * stránka). Typ je ten z emitoru, aby doména neměla druhý seznam profilů.
+   */
+  templateKind: ValidationProfile;
   fields: FieldCatalog;
   language: string;
   assetBaseUrl: string;

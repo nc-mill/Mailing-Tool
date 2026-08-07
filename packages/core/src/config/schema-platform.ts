@@ -85,7 +85,48 @@ export const platformShape = {
   DEFAULT_LOCALE: z.string().min(2).max(5).default('cs'),
   SUPPORTED_LOCALES: envCsv().prefault('cs,en'),
   DEFAULT_TIMEZONE: envTimezone().default('Europe/Prague'),
-  SIGNUP_MODE: z.enum(['closed', 'invite', 'open']).default('closed'),
+  /**
+   * Kdo si smí založit ÚČET. Výchozí `invite` odpovídá rozhodnutí zadavatele
+   * z 31. 7. 2026 („invite: doporučený výchozí stav").
+   *
+   * `closed` tu stálo do 7. 8. 2026 a bylo to horší, než jak to vypadá:
+   * `invite` totiž nic nekontrolovalo, protože zakládání účtu z pozvánky
+   * v repozitáři VŮBEC NEEXISTOVALO. Pozvaný člověk bez účtu dostal e-mail,
+   * klikl na odkaz a obrazovka mu nabídla jedině přihlášení k účtu, který
+   * neměl. Cesta se dopisuje v `identity/signup.ts` a tenhle výchozí stav ji
+   * zapíná, aby čerstvá instalace uměla pozvat člověka bez sáhnutí do
+   * konfigurace.
+   *
+   * `invite` NEOTEVÍRÁ registraci: účet vznikne jedině s 32bajtovým tokenem
+   * z pozvánky a na adresu, kterou nese POZVÁNKA, ne návštěvník.
+   *
+   * HODNOTA `open` TU BYLA A JE PRYČ (7. 8. 2026). Enum ji nabízel, spec u ní
+   * sliboval ověření e-mailu před prvním přihlášením, ale veřejnou registraci
+   * neimplementovala ani jedna trasa: `open` se choval přesně jako `invite`,
+   * protože token pozvánky se vyžadoval tak jako tak.
+   *
+   * Vyhozena je proto, že tichost je tu ta nebezpečná část. Kdo si napsal
+   * `SIGNUP_MODE=open`, žil v přesvědčení, že si lidé účty zakládají sami,
+   * a instalace mu to nijak nevyvrátila. Nastavení, které nedělá to, co říká
+   * jeho jméno, je horší než nastavení, které chybí, a u nastavení o tom, kdo
+   * si smí založit účet, to platí dvojnásob. Teď je z toho hlasitá chyba
+   * konfigurace při startu.
+   *
+   * Dopsat veřejnou registraci je samostatné zadání s bezpečnostními dopady
+   * (ověření adresy, brzdy proti zakládání účtů ve velkém, vyzrazení, že
+   * adresa je registrovaná, a vazba na to, kdo smí zakládat projekty).
+   * Až vznikne, hodnota se sem vrátí i s implementací.
+   */
+  SIGNUP_MODE: z
+    .enum(['closed', 'invite'], {
+      error: (issue) =>
+        issue.input === 'open'
+          ? 'hodnota `open` (veřejná registrace) se 7. 8. 2026 zrušila, protože ji nic ' +
+            'neimplementovalo a chovala se jako `invite`. Napište `invite`; instalace se ' +
+            'tím nemění, jen o tom nelže.'
+          : 'povolené hodnoty jsou `closed` a `invite`',
+    })
+    .default('invite'),
   SESSION_ABSOLUTE_TTL_DAYS: envInt(1, 365).default(30),
   SESSION_IDLE_TTL_DAYS: envInt(1, 365).default(14),
   MIGRATE_ON_START: envBool().prefault('true'),

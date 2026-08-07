@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import * as schema from '@mlain/db/schema';
 import { prepareRenderData } from '@mlain/contracts/liquid/prepare-render-data';
 import { hasContentBlocks } from '@mlain/emails/document/content-stats';
@@ -12,6 +12,10 @@ import type { WorkspaceContext } from '../../identity/types';
 import { compileTemplate } from '../../templates/compile';
 import { findTemplateById, validationProfileFor } from '../../templates/repository';
 import { contactPreviewData } from '../../templates/api/preview-data';
+import {
+  resolveSenderIdentity,
+  type ResolvedSenderIdentity,
+} from '../../sender-identities/resolve';
 import { withWorkspace, type Tx } from '../../tx';
 import { writeAudit } from '../audit';
 import { getFieldCatalog } from '../fields/catalog';
@@ -33,10 +37,18 @@ import { registerSubscriptionEmails, type SubscriptionEmailPort } from './subscr
  * uživateli hlásil úspěch a e-mail nikam neodešel: veřejný formulář, potvrzovací
  * stránka, centrum předvoleb i tlačítko „Poslat potvrzení znovu" mlčely stejně.
  *
- * NEJDE TO PŘES SYSTÉMOVOU POŠTU, a nemůže. `queueSystemMail` umí jedině SMTP
- * (`SYSTEM_MAIL_CAPABLE_TYPES = ['smtp']`), protože TS klient pro SES neexistuje.
- * Projekt, který má nastavené jen SES, a to je výchozí stav po průvodci instalací,
- * by z ní nedostal nic. Outbox naopak obsluhuje Go sender a SES umí.
+ * NEJDE TO PŘES SYSTÉMOVOU POŠTU, a nemá. Závěr platí, ZDŮVODNĚNÍ se ale 7. 8. změnilo.
+ *
+ * Dřív tu stálo, že `queueSystemMail` umí jedině SMTP a TS klient pro SES neexistuje.
+ * To už NEPLATÍ: `SYSTEM_MAIL_CAPABLE_TYPES` je od 7. 8. `['smtp', 'ses']` a odesílání
+ * přes SES je v `platform/system-mail-ses.ts`. Projekt s pouhým SES tedy systémovou
+ * poštu dostane.
+ *
+ * Skutečný důvod je jiný a trvalý: **systémová pošta je provozní zpráva instalace**
+ * (pozvánka, obnova hesla) a schválně nenese odhlašovací odkaz ani `List-Unsubscribe`.
+ * E-maily seznamu jsou naopak zprávy odběrateli, patří do outboxu, počítají se do
+ * statistik zásilky a mají svoje závory na odhlašovací odkaz. Poslat je systémovou
+ * poštou by je vyňalo z evidence i z těch závor.
  *
  * VZOREM JE `forms/delivery-email.ts`, tedy skrytá kampaň jako nosič obsahu plus
  * řádek v `messages`. Rozdíly jsou dva a oba věcné:
@@ -237,7 +249,7 @@ async function send(
     // a zkompiluje se bez výhrady, takže tuhle kontrolu nikdo jiný neudělá.
     if (!hasContentBlocks(document)) return 'template_empty';
 
-    const identity = await senderIdentity(tx, ctx);
+    const identity = await resolveSenderIdentity(tx, ctx);
     if (identity === null) return 'sending_not_configured';
 
     const compiled = await compileTemplate({
@@ -339,63 +351,6 @@ function subjectFor(fallback: string, document: Document): string {
   return (fromDocument !== '' ? fromDocument : fallback).slice(0, 400);
 }
 
-type SenderIdentity = {
-  providerId: string;
-  senderDomainId: string | null;
-  fromName: string;
-  fromEmail: string;
-  replyTo: string | null;
-};
-
-/**
- * Odesílací identita skryté kampaně.
- *
- * Pořadí je stejné jako u transakčního API: výchozí identita projektu, pak
- * poslední kampaň, která má identitu vyplněnou. Druhý krok je pád zpět pro
- * projekt, který v `sender_identities` nemá ani řádek, ale kampaň už rozeslal.
- *
- * Vrací `null` místo výjimky, protože „projekt ještě nemá nastavené odesílání"
- * je stav, ne porucha, a přihlášení kvůli němu nesmí spadnout.
- */
-async function senderIdentity(tx: Tx, ctx: WorkspaceContext): Promise<SenderIdentity | null> {
-  const [preferred] = await tx
-    .select({
-      providerId: schema.senderIdentities.providerId,
-      senderDomainId: schema.senderIdentities.senderDomainId,
-      fromName: schema.senderIdentities.fromName,
-      fromEmail: schema.senderIdentities.fromEmail,
-      replyTo: schema.senderIdentities.replyTo,
-    })
-    .from(schema.senderIdentities)
-    .where(wsEq(ctx, schema.senderIdentities))
-    .orderBy(desc(schema.senderIdentities.isDefault), schema.senderIdentities.createdAt)
-    .limit(1);
-  if (preferred) return preferred;
-
-  const [row] = await tx
-    .select({
-      providerId: schema.campaigns.providerId,
-      senderDomainId: schema.campaigns.senderDomainId,
-      fromName: schema.campaigns.fromName,
-      fromEmail: schema.campaigns.fromEmail,
-      replyTo: schema.campaigns.replyTo,
-    })
-    .from(schema.campaigns)
-    .where(
-      and(
-        wsEq(ctx, schema.campaigns),
-        isNull(schema.campaigns.deletedAt),
-        eq(schema.campaigns.kind, 'campaign'),
-        isNotNull(schema.campaigns.providerId),
-        ne(schema.campaigns.fromEmail, ''),
-      ),
-    )
-    .orderBy(desc(schema.campaigns.updatedAt))
-    .limit(1);
-  if (!row?.providerId) return null;
-  return { ...row, providerId: row.providerId };
-}
-
 /**
  * Skrytá kampaň je JEDNA NA DVOJICI (seznam, druh e-mailu) a přepisuje se při
  * každém odeslání.
@@ -421,7 +376,7 @@ async function upsertSystemCampaign(
     html: string;
     text: string;
     compileMeta: unknown;
-    identity: SenderIdentity;
+    identity: ResolvedSenderIdentity;
     now: Date;
   },
 ): Promise<string> {

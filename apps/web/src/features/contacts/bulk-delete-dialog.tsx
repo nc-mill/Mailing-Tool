@@ -63,6 +63,7 @@ export function BulkDeleteDialog({
       open={open}
       onOpenChange={onOpenChange}
       level="N3"
+      destructive
       title={t('bulk.deleteTitle', { count })}
       consequences={[
         t('bulk.deleteConsequenceLists'),

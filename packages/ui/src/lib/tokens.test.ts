@@ -52,6 +52,26 @@ describe('tokens.css', () => {
     }
   });
 
+  /**
+   * STUPNICE VRSTEV MÁ TŘI PATRA A JEJICH POŘADÍ JE PRAVIDLO, NE NÁHODA.
+   *
+   * Naměřená vada: `--z-dialog` bylo 40, tedy POD lištou (50), takže za
+   * otevřeným dialogem zůstávalo svítit logo, přepínač projektů i jméno
+   * uživatele, zatímco zbytek obrazovky ztmavl. Odečteno z pixelů: lišta
+   * držela #faf7ee, obsah pod ní #868279.
+   *
+   * Čtyřicítku mělo `--z-dialog` navíc SPOLEČNOU s `--z-sidebar` a boční menu
+   * bylo překryté jen pořadím v DOM. Test proto trvá i na ostré nerovnosti:
+   * o vrstvení má rozhodovat číslo, ne pořadí v kódu.
+   */
+  it('vrstvy jdou po sobě: skořápka, dialog, vyjížděcí vrstva', () => {
+    const layer = (name: string) => Number(tokenValue(light, name));
+    expect(layer('--z-sidebar')).toBeLessThan(layer('--z-topbar'));
+    expect(layer('--z-topbar')).toBeLessThan(layer('--z-dialog'));
+    expect(layer('--z-dialog')).toBeLessThan(layer('--z-flyout'));
+    expect(layer('--z-toast')).toBeLessThan(layer('--z-sidebar'));
+  });
+
   it('světlý a tmavý režim mají stejnou množinu barevných tokenů', () => {
     const colors = (source: Record<string, string>) =>
       Object.keys(source)

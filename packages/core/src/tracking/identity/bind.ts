@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { allowsMeasurement } from '../../contacts/repo/consents';
 import { recordIdentityBind } from '../metrics';
 import { enqueueIdentityMerge, type IdentityMergeJobData } from '../jobs/identity-merge';
 import {
@@ -33,7 +34,15 @@ import { withTrackingTx, type Tx } from '../repo/tx';
  */
 
 export type BindOutcome =
-  'created' | 'bound' | 'unchanged' | 'rebound' | 'shared' | 'restricted' | 'contact_not_found';
+  | 'created'
+  | 'bound'
+  | 'unchanged'
+  | 'rebound'
+  | 'shared'
+  | 'restricted'
+  /** Kontakt má odvolaný souhlas s měřením, viz krok 0b. */
+  | 'measurement_withdrawn'
+  | 'contact_not_found';
 
 /**
  * Kolik vazeb za 24 hodin dělá ze zařízení sdílené.
@@ -78,6 +87,14 @@ export async function bindIdentity(input: BindIdentityInput): Promise<BindOutcom
       const guard = await selectContactGuard(tx, input.workspaceId, input.contactId);
       if (guard === null) return 'contact_not_found';
       if (guard.processingRestricted || guard.deletedAt !== null) return 'restricted';
+      /**
+       * 0b. odvolaný souhlas s měřením. Vazba se NEZALOŽÍ, protože právě ona
+       * dělá z anonymní stopy stopu konkrétního člověka: bez ní se události dál
+       * ukládají, ale bez `contact_id`. Zastavit to až o patro níž nestačí,
+       * `identities.contact_id` by zůstalo nastavené a přiřadilo by kontaktu
+       * všechno, co přijde potom.
+       */
+      if (!allowsMeasurement(guard.measurementConsent)) return 'measurement_withdrawn';
 
       // 1. aktuální stav vazby
       const identity = await selectIdentityForUpdate(tx, input.workspaceId, input.anonymousId);

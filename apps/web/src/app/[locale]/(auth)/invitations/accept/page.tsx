@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
-import { acceptInvitationAction } from '@/features/auth/actions';
+import { acceptInvitationAction, invitationSignupAction } from '@/features/auth/actions';
 import {
   AcceptInvitationPanel,
   type InvitationView,
@@ -23,7 +23,12 @@ export default async function AcceptInvitationPage({
 
   if (!params.token) {
     return (
-      <AcceptInvitationPanel view={{ kind: 'invalid' }} action={acceptInvitationAction} token="" />
+      <AcceptInvitationPanel
+        view={{ kind: 'invalid' }}
+        action={acceptInvitationAction}
+        signupAction={invitationSignupAction}
+        token=""
+      />
     );
   }
 
@@ -41,5 +46,12 @@ export default async function AcceptInvitationPage({
       }
     : { kind: 'signedOut' };
 
-  return <AcceptInvitationPanel view={view} action={acceptInvitationAction} token={params.token} />;
+  return (
+    <AcceptInvitationPanel
+      view={view}
+      action={acceptInvitationAction}
+      signupAction={invitationSignupAction}
+      token={params.token}
+    />
+  );
 }

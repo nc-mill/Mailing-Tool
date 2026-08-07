@@ -467,7 +467,35 @@ export const campaignAudienceProgress = pgTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
     phase: text().notNull().default('collecting'),
-    cursorContactId: uuid(), // kurzor přes ORDER BY id
+    /**
+     * Kurzor přes `ORDER BY id`, tedy záložka „odkud pokračovat" po restartu workeru.
+     *
+     * CIZÍ KLÍČ NA `contacts` TADY SCHVÁLNĚ NENÍ a nechybí. Prověřeno 7. 8. 2026
+     * proti výmazu podle článku 17, protože sloupec drží identifikátor kontaktu
+     * a `gdpr.sever_links` o něm neví:
+     *
+     *   * `ON DELETE cascade` by s vymazaným člověkem smazal CELÝ řádek postupu,
+     *     tedy stav stavby publika cizí kampaně. Ztráta záložky uprostřed stavby
+     *     znamená scan od začátku u kampaně, která už běží.
+     *   * `ON DELETE set null` by tutéž stavbu potichu vrátil na začátek
+     *     (`materialize.ts` čte `cursor_contact_id ?? ZERO_UUID`).
+     *   * `ON DELETE restrict` je nejhorší ze všech: zablokoval by fyzický výmaz
+     *     osoby kvůli provozní záložce. Výmaz podle článku 17 nesmí selhat na tom,
+     *     že si worker pamatuje pozici v seznamu.
+     *
+     * A NEVADÍ ANI TO, ŽE TAM IDENTIFIKÁTOR ZŮSTANE. Anonymizace řádek v `contacts`
+     * nechává (jen ho vyprázdní), takže kurzor pořád ukazuje na existující řádek
+     * bez osobního údaje. Po fyzickém výmazu ukazuje na nic. Samotné UUID není
+     * osobní údaj a týž identifikátor si projekt VĚDOMĚ nechává i jinde:
+     * `audit_log.target_id` a `suppressions.source_ref` (bez ní by se vymazaný
+     * člověk vrátil prvním importem). Kurzor se nikde nevypisuje, čte ho jedině
+     * `WHERE id > $kurzor`, kterému neexistující UUID nevadí.
+     *
+     * Vynulování po `phase = 'done'` se taky ZVAŽOVALO A ZAMÍTLO: opakovaný job nad
+     * kampaní ve stavu `sending` pokračuje (`decideAfterFailedClaim`), takže by
+     * s prázdným kurzorem projel celé publikum znovu.
+     */
+    cursorContactId: uuid(),
     insertedRows: integer().notNull().default(0),
     skippedSuppressed: integer().notNull().default(0),
     skippedUnsubscribed: integer().notNull().default(0),

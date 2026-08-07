@@ -131,6 +131,31 @@ func TestProviderDescriptorIsLoaded(t *testing.T) {
 	}
 }
 
+// Účet SMTP má sending_enabled prázdné a řádek se PŘESTO musí přečíst.
+//
+// Tenhle test je proti nálezu ze 7. 8. 2026: sloupec se skenoval do bool,
+// takže NULL shodil čtení CELÉHO řádku providera chybou
+// „cannot scan NULL into *bool". Zpráva pak zůstala navždy pending s kódem
+// credentials_undecryptable a z instalace, která posílá přes SMTP, tedy
+// z výchozího způsobu u vlastního nasazení, neodešel ani jeden e-mail.
+func TestProviderRowWithEmptySendingEnabledIsReadableAndAllowedToSend(t *testing.T) {
+	db := testsupport.New(t)
+	s := db.SeedCampaign(t, "sending")
+	if _, err := db.Admin.Exec(context.Background(),
+		`UPDATE sending_providers SET type = 'smtp', sending_enabled = NULL WHERE id = $1`,
+		s.ProviderID); err != nil {
+		t.Fatal(err)
+	}
+	st := store(t, db, "sender-A")
+	d, err := st.ProviderRow(context.Background(), s.ProviderID)
+	if err != nil {
+		t.Fatalf("řádek účtu SMTP musí jít přečíst i s prázdným sending_enabled: %v", err)
+	}
+	if !d.SendingEnabled {
+		t.Error("prázdná hodnota se musí číst jako zapnuto, jinak sender odmítne odesílat přes SMTP")
+	}
+}
+
 func TestMissingCampaignIsNotFound(t *testing.T) {
 	db := testsupport.New(t)
 	st := store(t, db, "sender-A")

@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../identity/types';
 import { withWorkspace } from '../tx';
 import { writeAudit } from './audit';
 import { enqueue } from './jobs/enqueue';
+import { recordPendingLocaleAlign } from './locale-align-pending';
 
 /**
  * JAZYK, VE KTERÉM SE KONTAKT OSLOVUJE.
@@ -98,10 +99,18 @@ export async function alignGreetingLocale(
   const summary = await greetingLocaleSummary(ctx);
 
   await withWorkspace(ctx, async (tx) => {
+    // Požadavek se zapisuje i do projektu, aby přežil slučování front: kdyby se
+    // tahle úloha sloučila s během zařazeným změnou nastavení, výslovné
+    // „srovnej všechno" by se ztratilo a uživatel by na obrazovce viděl 202
+    // u práce, která se nikdy neudělá. Rozvaha v `locale-align-pending.ts`.
+    await recordPendingLocaleAlign(tx, ctx.workspaceId, null);
     await enqueue(
       tx,
       'contacts.recompute_greeting',
-      { workspaceId: ctx.workspaceId, alignLocale: { to: summary.workspaceLocale, from: null } },
+      // Cíl si běh přečte z `workspaces.locale` sám, viz `alignLocale`
+      // v `contacts/jobs/recompute-greeting.ts`. `summary.workspaceLocale` je
+      // tady jen podklad pro odpověď rozhraní, ne pokyn pro úlohu.
+      { workspaceId: ctx.workspaceId, alignLocale: { from: null } },
       { singletonKey: ctx.workspaceId },
     );
     await writeAudit(tx, ctx, {

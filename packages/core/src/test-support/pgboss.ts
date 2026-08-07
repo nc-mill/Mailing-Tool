@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { Client } from 'pg';
 import { PgBoss } from 'pg-boss';
-import { QUEUE_REGISTRY, dlqName } from '../queues';
+import { QUEUE_REGISTRY, queueCreatePlan } from '../queues';
 
 /**
  * Verze knihovny se čte z jejího `package.json`, ne z konstanty v tomhle
@@ -49,8 +49,17 @@ const PGBOSS_VERSION = (
  * dřívější verzí tohohle souboru zůstala ležet i poté, co sem přibyla fronta,
  * a testy by běžely nad neúplným schématem, aniž by cokoli spadlo. Verze je
  * v otisku proto, že tabulky staví knihovna a jejich tvar se s ní mění.
+ *
+ * NEJEN JMÉNA, ALE I POLITIKA A DEAD LETTER. Fronta se zakládá `create_queue`,
+ * který má `ON CONFLICT DO NOTHING`, takže hotová šablona se přepnutím politiky
+ * v registru UŽ NEZMĚNÍ. Bez těch dvou hodnot v otisku by změna registru
+ * neznamenala novou šablonu a testy by dál běžely nad frontami se starou
+ * politikou. Tichý rozdíl mezi testem a provozem je přesně to, čemu tenhle
+ * otisk brání; kdyby stačila jména, stačil by i seznam.
  */
-export const PGBOSS_RECIPE = `pgboss@${PGBOSS_VERSION};${QUEUE_REGISTRY.map((e) => e.name)
+export const PGBOSS_RECIPE = `pgboss@${PGBOSS_VERSION};${QUEUE_REGISTRY.map(
+  (e) => `${e.name}:${e.policy ?? 'standard'}:${e.deadLetter ? 'dlq' : '-'}`,
+)
   .sort()
   .join(',')}`;
 
@@ -67,12 +76,14 @@ export async function installPgBoss(migratorUrl: string): Promise<void> {
     // POŘADÍ JE PODSTATNÉ, stejně jako v `registerQueues`: napřed fronta pro
     // nedoručitelné, teprve pak ta, která na ni odkazuje. pg-boss trvá na tom,
     // aby cílová fronta v tu chvíli existovala.
-    for (const entry of QUEUE_REGISTRY) {
-      if (entry.deadLetter) await boss.createQueue(dlqName(entry.name));
-      await boss.createQueue(
-        entry.name,
-        entry.deadLetter ? { deadLetter: dlqName(entry.name) } : {},
-      );
+    //
+    // PŘEDPIS SE BERE ZE STEJNÉ FUNKCE JAKO V PROVOZU (`queueCreatePlan`).
+    // Dřív se tu posílala jediná volba, `deadLetter`, takže testovací fronty
+    // vznikaly s politikou `standard`, kdežto provozní s `exclusive` nebo
+    // `stately`. Testy tedy neměřily totéž chování co provoz: druhé zařazení
+    // s týmž klíčem v testu PROŠLO a v provozu se zahodilo.
+    for (const { name, options } of queueCreatePlan()) {
+      await boss.createQueue(name, options);
     }
   } finally {
     await boss.stop({ graceful: false }).catch(() => undefined);

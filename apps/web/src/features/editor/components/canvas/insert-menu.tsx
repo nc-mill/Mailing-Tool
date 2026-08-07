@@ -8,11 +8,12 @@ import {
   DropdownMenuTrigger,
 } from '@mlain/ui/components/dropdown-menu';
 import { useTranslations } from 'next-intl';
-import { PALETTE } from '../../descriptors/registry';
+import { paletteFor } from '../../descriptors/registry';
 import { canContain, typeAt } from '../../model/tree';
 import type { Path } from '../../model/tree';
 import { useEditorState, useEditorStore } from '../../state/use-editor';
 import { Plus } from '../icons';
+import { useTemplateProfile } from '../richtext/template-profile';
 
 /**
  * Nabídka „přidej blok sem".
@@ -42,6 +43,10 @@ export function InsertMenu({
   const store = useEditorStore();
   const document = useEditorState((state) => state.document);
   const parentType = typeAt(document, parent);
+  // Táž paleta jako v panelu vlevo, včetně zúžení pro veřejnou stránku. Kdyby
+  // si nabídka brala `PALETTE` napřímo, dal by se blok, který panel neukáže,
+  // vložit odsud, a zákaz by platil jen zdánlivě.
+  const palette = paletteFor(useTemplateProfile());
 
   return (
     <DropdownMenu>
@@ -60,7 +65,7 @@ export function InsertMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent>
-        {PALETTE.map((group) => {
+        {palette.map((group) => {
           const entries = group.entries.filter((entry) => canContain(parentType, entry.type));
           if (entries.length === 0) return null;
           return (

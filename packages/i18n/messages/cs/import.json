@@ -219,7 +219,7 @@
     "declarationLink": "Co to znamená",
     "declarationEvidence": "Uloží se jako důkaz včetně data a mého jména.",
     "duplicateErrorUnavailable": "U souboru téhle velikosti neumíme spolehlivě poznat druhý výskyt téže adresy, takže tuhle volbu nenabízíme.",
-    "submit": "Naimportovat {count, plural, =0 {žádný kontakt} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}",
+    "submit": "Naimportovat {count, plural, =0 {kontakty} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}",
     "listHint": "Povinné. Kontakt bez seznamu nemá co dostat a nemá se z čeho odhlásit, proto ho vždycky někam zařadíme.",
     "listPlaceholder": "Vyberte seznam",
     "listRequired": "Vyberte seznam, do kterého kontakty patří, nebo rovnou založte nový.",
@@ -249,7 +249,8 @@
     "cancelConfirmTitle": "Zrušit import?",
     "cancelConfirmBody": "Zpracovaných {done} kontaktů v databázi zůstane. Zbylých {rest} se nenaimportuje. Půjde pokračovat od místa, kde jsme skončili.",
     "cancelConfirm": "Zrušit import",
-    "cancelDismiss": "Nechat běžet"
+    "cancelDismiss": "Nechat běžet",
+    "unreadable": "Průběh importu se nedaří načíst, takže čísla níž nemusí platit. Import sám tím nijak netrpí, běží dál na serveru. Obnovte stránku; když to bude trvat, najdete stav importu v Centru úloh."
   },
   "result": {
     "completed": "Naimportováno {count, plural, =0 {žádný kontakt} one {# kontakt} few {# kontakty} many {# kontaktu} other {# kontaktů}}",
@@ -281,6 +282,7 @@
     "showImported": "Zobrazit naimportované kontakty",
     "reviewVocative": "Zkontrolovat",
     "resume": "Pokračovat od řádku {row}",
+    "resumeFailed": "Pokračovat se nepodařilo. Nahraný soubor mažeme po 30 dnech, takže od starších importů už pokračovat nejde: nahrajte soubor znovu.",
     "uploadAnother": "Nahrát jiný soubor",
     "supportDetails": "Podrobnosti pro technickou podporu"
   },
@@ -394,5 +396,10 @@
     "noNameAll": "Neoslovovat jménem u všech",
     "lockNote": "Co jednou potvrdíte nebo opravíte, už nikdy sami nezměníme.",
     "empty": "Ve frontě nic není. Všechna oslovení jsou potvrzená nebo jistá."
+  },
+  "startFailed": {
+    "title": "Import se nespustil",
+    "alreadyRunning": "V projektu už jeden import běží a druhý spustit nejde. Počkejte, až doběhne, nebo ho zastavte v Centru úloh, a pak to zkuste znovu. Nastavení, které jste vyplnili, zůstalo uložené.",
+    "other": "Server import odmítl a nezařadil ho. Zkuste to prosím znovu. Technický kód: {code}"
   }
 }

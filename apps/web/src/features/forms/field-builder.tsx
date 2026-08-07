@@ -13,7 +13,10 @@ import { Switch } from '@mlain/ui/components/switch';
 import { ArrowDown, ArrowUp, Plus, Save, X } from '@mlain/ui/icons';
 import { Alert } from '@mlain/ui/patterns/states';
 import { CheckIcon } from '@/lib/ui/status-icons';
+import { useContactTargetLabel } from '@/lib/ui/contact-target-label';
+import { useFieldTypeHint, useFieldTypeLabel } from '@/lib/ui/field-type-label';
 import { createContactFieldAction, saveFormFieldsAction, type FormFieldBody } from './actions';
+import { UnstyledFormPreview } from './unstyled-preview';
 import type { ContactFieldOption, FormFieldView } from './types';
 
 /** Strop ze schématu (`FormDefinitionSchema.fields.max(15)`). Uživatel ho vidí dřív, než na něj narazí. */
@@ -121,6 +124,7 @@ export function FieldBuilder({
 }) {
   const t = useTranslations('forms.fields');
   const tc = useTranslations('common.actions');
+  const typeLabel = useFieldTypeLabel();
 
   const [items, setItems] = useState<BuilderField[]>(() =>
     fields.map((field) => toBuilder(field, locale)),
@@ -195,7 +199,7 @@ export function FieldBuilder({
       {/* Pole vlevo, náhled vpravo. Náhled musí být vidět zároveň se seznamem,
           jinak se uživatel proklikává nahoru a dolů a nepozná, co která změna
           udělala. Pod 360 px na sloupec se to sesype pod sebe. */}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] items-start gap-[var(--spacing-gutter)]">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(360px,100%),1fr))] items-start gap-[var(--spacing-gutter)]">
         <div className="flex flex-col gap-[var(--spacing-stack)]">
           {/* `role="list"` na `div`u, protože položkou je karta a `Card` vykresluje
               `section`, `div`, `article` nebo `aside`, ne `li`. Čtečka díky rolím
@@ -220,6 +224,11 @@ export function FieldBuilder({
                   <div className="flex flex-wrap items-center gap-[var(--spacing-inline)]">
                     {/* Klíč je technický údaj do API, čte se po znacích. */}
                     <span className="font-mono text-meta text-text-muted">{item.key}</span>
+                    {/* Typ vedle klíče, a to POJMENOVANÝ. Uložená definice nese
+                        značku vstupu (`checkbox`, `textarea`), takže bez převodu
+                        by tu stálo `checkbox` u pole, které se zakládalo jako
+                        „Ano/ne". */}
+                    <span className="text-meta text-text-muted">{typeLabel(item.type)}</span>
                     {locked && (
                       <Badge tone="neutral" icon={CheckIcon} className="ml-auto">
                         {t('required')}
@@ -341,7 +350,7 @@ export function FieldBuilder({
           )}
         </div>
 
-        <FormPreview items={items} />
+        <UnstyledFormPreview items={items} />
       </div>
 
       <AddFieldDialog
@@ -370,75 +379,6 @@ export function FieldBuilder({
   );
 }
 
-/**
- * Živý náhled.
- *
- * BĚŽÍ V RÁMEČKU (`iframe`) SE SVÝM VLASTNÍM DOKUMENTEM, ne přímo na obrazovce.
- * Zní to jako komplikace, ale bez toho náhled LŽE: naše aplikace má reset stylů,
- * takže holý `input` v ní nemá rámeček ani odsazení a formulář vypadal jako
- * seznam popisků bez políček. Přesně opačně, než jak vypadá na cizím webu, kde
- * platí výchozí styly prohlížeče.
- *
- * Uvnitř rámečku není ANI JEDNO naše pravidlo, takže je vidět to, co uvidí
- * návštěvník stránky, která si formulář zatím nenastylovala. Není to totéž co
- * shadow DOM ve vkládaném formuláři, který je zakázaný: ten by izoloval formulář
- * na CIZÍM webu a znemožnil jeho stylování. Tady jde o náhled na naší obrazovce.
- */
-function FormPreview({ items }: { items: BuilderField[] }) {
-  const t = useTranslations('forms.fields');
-
-  const html = useMemo(() => {
-    const escape = (value: string) =>
-      value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-    const controls = items
-      .map((item) => {
-        const id = `p-${escape(item.key)}`;
-        const required = item.required ? ' required' : '';
-        const control =
-          item.type === 'textarea'
-            ? `<textarea id="${id}"${required}></textarea>`
-            : item.type === 'select'
-              ? `<select id="${id}"${required}>${(item.options ?? [])
-                  .map((option) => `<option>${escape(option.label)}</option>`)
-                  .join('')}</select>`
-              : `<input id="${id}" type="${escape(
-                  item.type === 'datetime' ? 'datetime-local' : item.type,
-                )}"${required}>`;
-        return `<div class="ml-field"><label class="ml-label" for="${id}">${escape(
-          item.label,
-        )}</label> ${control}</div>`;
-      })
-      .join('');
-
-    return `<!doctype html><html><body style="margin:8px"><form class="ml-form">${controls}<button class="ml-button" type="submit">${escape(
-      t('previewSubmit'),
-    )}</button></form></body></html>`;
-  }, [items, t]);
-
-  return (
-    <div className="flex flex-col gap-[var(--spacing-stack)]">
-      <div className="flex flex-col gap-[var(--spacing-hairline)]">
-        <h3 className="meta-caps text-text-muted">{t('preview')}</h3>
-        <p className="text-meta text-text-muted">{t('previewHint')}</p>
-      </div>
-      {/*
-       * `bg-white` je jediná barva na téhle obrazovce, která NENÍ token, a je to
-       * schválně: rámeček nepředstavuje plochu naší aplikace, ale cizí stránku
-       * s výchozími styly prohlížeče. Papírová barva ani tmavý režim by tady
-       * lhaly, protože web, kam si formulář někdo vloží, naše motivy nemá.
-       */}
-      <iframe
-        title={t('preview')}
-        data-testid="field-preview"
-        srcDoc={html}
-        className="h-64 w-full rounded-[var(--radius-control)] border border-border bg-white"
-        sandbox=""
-      />
-    </div>
-  );
-}
-
 function AddFieldDialog({
   open,
   onOpenChange,
@@ -458,6 +398,8 @@ function AddFieldDialog({
 }) {
   const t = useTranslations('forms.fields');
   const tc = useTranslations('common.actions');
+  const typeLabel = useFieldTypeLabel();
+  const targetLabel = useContactTargetLabel();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -466,27 +408,37 @@ function AddFieldDialog({
         <div className="flex max-h-[52vh] flex-col gap-[var(--spacing-gutter)] overflow-y-auto pr-1">
           <section className="flex flex-col gap-[var(--spacing-inline)]">
             <h3 className="meta-caps text-text-muted">{t('targetContact')}</h3>
-            {CONTACT_TARGETS.map((candidate) => (
-              <Button
-                key={candidate.target}
-                variant="secondary"
-                className="justify-start font-mono"
-                data-testid={`pick-${candidate.target}`}
-                disabled={used.has(candidate.target)}
-                onClick={() => {
-                  if (used.has(candidate.target)) return;
-                  onPick({
-                    key: candidate.target,
-                    target: candidate.target,
-                    label: candidate.target,
-                    required: candidate.target === 'email',
-                    type: candidate.type,
-                  });
-                }}
-              >
-                {candidate.target}
-              </Button>
-            ))}
+            {CONTACT_TARGETS.map((candidate) => {
+              const label = targetLabel(candidate.target);
+              const taken = used.has(candidate.target);
+              return (
+                <Button
+                  key={candidate.target}
+                  variant="secondary"
+                  className="justify-start"
+                  data-testid={`pick-${candidate.target}`}
+                  disabled={taken}
+                  onClick={() => {
+                    if (taken) return;
+                    onPick({
+                      key: candidate.target,
+                      target: candidate.target,
+                      // POPISEK JE ČESKY, ne `first_name`. Tahle hodnota není
+                      // jen do nabídky: jde rovnou do definice formuláře a
+                      // veřejná stránka ji ukazuje návštěvníkovi u vstupu.
+                      label,
+                      required: candidate.target === 'email',
+                      type: candidate.type,
+                    });
+                  }}
+                >
+                  {/* Zašedlá volba říká DŮVOD, stejně jako u vlastních polí:
+                      jinak uživatel hledá, proč pole nejde vybrat. */}
+                  {label}
+                  {taken ? ` · ${t('alreadyUsed')}` : ''}
+                </Button>
+              );
+            })}
           </section>
 
           <section className="flex flex-col gap-[var(--spacing-inline)]">
@@ -527,8 +479,11 @@ function AddFieldDialog({
                   }}
                 >
                   {/* Zašedlá volba musí říct DŮVOD, jinak uživatel hledá, proč
-                      pole z katalogu nejde vybrat. */}
+                      pole z katalogu nejde vybrat. Typ stojí vedle popisku
+                      pojmenovaný: ze samotného „VIP" nepoznám, jestli do
+                      formuláře přibude zaškrtávátko, nebo řádek na text. */}
                   {field.label[locale] ?? field.label['en'] ?? field.key}
+                  {` · ${typeLabel(field.type)}`}
                   {reason === undefined ? '' : ` · ${reason}`}
                 </Button>
               );
@@ -577,6 +532,8 @@ function NewContactFieldDialog({
 }) {
   const t = useTranslations('forms.fields');
   const tc = useTranslations('common.actions');
+  const typeLabel = useFieldTypeLabel();
+  const typeHint = useFieldTypeHint();
   const [label, setLabel] = useState('');
   const [key, setKey] = useState('');
   const [type, setType] = useState<string>('text');
@@ -650,12 +607,28 @@ function NewContactFieldDialog({
               placeholder={t('newFieldType')}
               aria-label={t('newFieldType')}
             >
+              {/* V nabídce stálo `boolean`, `long_text` a `url`, tedy jména z DDL.
+                  Uživatel u `boolean` nevěděl, co se do pole zadává. Nabízí se
+                  proto česky („Ano/ne"), a co typ znamená, řekne řádek pod
+                  výběrem, ne až chyba při ukládání. */}
               {NEW_FIELD_TYPES.map((candidate) => (
                 <SelectItem key={candidate} value={candidate}>
-                  {candidate}
+                  {typeLabel(candidate)}
                 </SelectItem>
               ))}
             </Select>
+            {/* Nápověda se mění s volbou, takže NENÍ v `Field hint`: ten by ji
+                přečetl jednou při složení a u výběru je smysl volby to jediné,
+                co uživatel hledá. `aria-live` ji řekne i čtečce. */}
+            {typeHint(type) === null ? null : (
+              <p
+                aria-live="polite"
+                data-testid="new-field-type-hint"
+                className="text-meta text-text-muted"
+              >
+                {typeHint(type)}
+              </p>
+            )}
           </div>
 
           {failure !== null && (

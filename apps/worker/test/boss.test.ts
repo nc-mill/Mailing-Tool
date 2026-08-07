@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { QUEUE_REGISTRY } from '@mlain/core/queues';
+import { QUEUE_REGISTRY, RETIRED_QUEUES, needsDependencies } from '@mlain/core/queues';
 import { registerQueues } from '../src/boss';
 
 // Odchylka od plánu: parametry jsou typované explicitně, jinak vi.fn() odvodí
@@ -14,12 +14,19 @@ function fakeBoss() {
     schedule: vi.fn(
       async (_name: string, _cron: string, _data?: unknown, _options?: unknown) => {},
     ),
+    unschedule: vi.fn(async (_name: string, _key?: string) => {}),
+    deleteQueue: vi.fn(async (_name: string) => {}),
     work: vi.fn(
       async (_name: string, _options: Record<string, unknown>, _handler: unknown) => 'worker-id',
     ),
     executeSql,
     getDb: () => ({ executeSql }),
   };
+}
+
+/** Všechny fronty z registru s obsluhou, tedy stav „nic nechybí". */
+function allHandlers(): Record<string, () => Promise<void>> {
+  return Object.fromEntries(QUEUE_REGISTRY.map((entry) => [entry.name, async () => {}]));
 }
 
 const OPTIONS = { concurrency: 5, schema: 'pgboss', logger: silentLogger() };
@@ -35,9 +42,9 @@ describe('registrace front', () => {
     }
   });
 
-  it('naplánuje každou frontu, která má cron', async () => {
+  it('naplánuje každou frontu, která má cron a obsluhu', async () => {
     const boss = fakeBoss();
-    await registerQueues(boss as never, {}, { ...OPTIONS, logger: silentLogger() });
+    await registerQueues(boss as never, allHandlers(), { ...OPTIONS, logger: silentLogger() });
     const scheduled = boss.schedule.mock.calls.map((call) => call[0] as string);
     for (const entry of QUEUE_REGISTRY.filter((item) => item.cron)) {
       expect(scheduled, `chybí plán ${entry.name}`).toContain(entry.name);
@@ -115,9 +122,11 @@ describe('slučování duplicitních úloh', () => {
     const boss = fakeBoss();
     await registerQueues(boss as never, {}, { ...OPTIONS, logger: silentLogger() });
 
-    expect(boss.executeSql).toHaveBeenCalledOnce();
-    const [text, values] = boss.executeSql.mock.calls[0] as [string, unknown[]];
-    expect(text).toContain('UPDATE "pgboss".queue');
+    const update = boss.executeSql.mock.calls.find(([text]) =>
+      text.includes('UPDATE "pgboss".queue'),
+    );
+    expect(update, 'srovnání politik se nespustilo').toBeDefined();
+    const [text, values] = update as [string, unknown[]];
     expect(text).toContain('IS DISTINCT FROM');
 
     const [names, policies] = values as [string[], string[]];
@@ -153,6 +162,158 @@ describe('slučování duplicitních úloh', () => {
         { ...OPTIONS, schema: 'pg"boss; DROP', logger: silentLogger() },
       ),
     ).rejects.toThrow(/není platný identifikátor/);
+  });
+});
+
+describe('fronty, které se zrušily', () => {
+  /** Odpověď na dotaz „co po zrušených frontách zbylo". */
+  function leftovers(boss: ReturnType<typeof fakeBoss>, names: readonly string[]): void {
+    boss.executeSql.mockImplementation(async (text: string) => {
+      if (!text.includes('FROM "pgboss".queue')) return { rows: [] };
+      if (text.includes('UPDATE')) return { rows: [] };
+      return { rows: names.map((name) => ({ name, jobs: 4, schedules: 1 })) };
+    });
+  }
+
+  it('zruší plán a smaže frontu, která v databázi po vyškrtnutí z registru zbyla', async () => {
+    // Vyškrtnutí z registru je změna KÓDU. Řádek v `pgboss.queue` na běžící
+    // instalaci zůstane ležet i s plánem cronu a s tiky, protože srovnávání
+    // politik chodí schválně jen po frontách z registru.
+    //
+    // Zástupce se 7. 8. změnil z `platform.maintain_partitions` na
+    // `retention.drop_message_partitions`: ta první se toho dne vrátila do
+    // registru (úklid oddílů dělá worker, viz `ops/jobs/partition-jobs.ts`),
+    // takže se na ní úklid zrušených front testovat nedá. Druhá zůstává
+    // zrušená natrvalo, protože by byla druhou cestou k téže práci.
+    const boss = fakeBoss();
+    leftovers(boss, ['retention.drop_message_partitions']);
+    await registerQueues(boss as never, allHandlers(), { ...OPTIONS, logger: silentLogger() });
+
+    expect(boss.unschedule.mock.calls.map((call) => call[0])).toContain(
+      'retention.drop_message_partitions',
+    );
+    expect(boss.deleteQueue.mock.calls.map((call) => call[0])).toContain(
+      'retention.drop_message_partitions',
+    );
+  });
+
+  it('smaže hlavní frontu DŘÍV než její dead letter, jinak padne cizí klíč', async () => {
+    // `queue.dead_letter` i `job.dead_letter` mají ON DELETE RESTRICT, takže
+    // opačné pořadí skončí na porušení cizího klíče.
+    const boss = fakeBoss();
+    leftovers(boss, ['tracking.erase_contact', 'tracking.erase_contact.dlq']);
+    await registerQueues(boss as never, allHandlers(), { ...OPTIONS, logger: silentLogger() });
+
+    const deleted = boss.deleteQueue.mock.calls.map((call) => call[0] as string);
+    expect(deleted.indexOf('tracking.erase_contact')).toBeLessThan(
+      deleted.indexOf('tracking.erase_contact.dlq'),
+    );
+  });
+
+  it('nesahá na frontu, která v databázi není', async () => {
+    const boss = fakeBoss();
+    leftovers(boss, []);
+    await registerQueues(boss as never, allHandlers(), { ...OPTIONS, logger: silentLogger() });
+    expect(boss.deleteQueue).not.toHaveBeenCalled();
+  });
+
+  it('nesahá na jedinou frontu z registru', async () => {
+    const boss = fakeBoss();
+    leftovers(
+      boss,
+      RETIRED_QUEUES.map((retired) => retired.name),
+    );
+    await registerQueues(boss as never, allHandlers(), { ...OPTIONS, logger: silentLogger() });
+
+    const registryNames = new Set(QUEUE_REGISTRY.map((entry) => entry.name));
+    for (const [name] of boss.deleteQueue.mock.calls) {
+      expect(registryNames.has(name), `${name} je v registru a mazat se nesmí`).toBe(false);
+    }
+  });
+
+  it('neshodí start workeru, když se úklid nepovede', async () => {
+    // Na rozdíl od srovnávání politik je to úklid po sobě samém, ne podmínka
+    // správného chování: fronta, kterou se nepovedlo smazat, dál nic nedělá.
+    const boss = fakeBoss();
+    leftovers(boss, ['platform.maintain_partitions']);
+    boss.deleteQueue.mockRejectedValue(new Error('permission denied'));
+    await expect(
+      registerQueues(boss as never, allHandlers(), { ...OPTIONS, logger: silentLogger() }),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('cronové fronty bez obsluhy', () => {
+  /** Obsluhy pro všechny fronty kromě jedné cronové. */
+  function allExcept(name: string): Record<string, () => Promise<void>> {
+    const handlers = allHandlers();
+    delete handlers[name];
+    return handlers;
+  }
+
+  it('cronovou frontu bez obsluhy neplánuje a její plán ruší', async () => {
+    // Tik by uvízl ve stavu `created`, nikdy neexpiroval (expirace se týká
+    // běžících úloh) a politika `exclusive` by od té chvíle zahodila každý další.
+    // Naměřeno: 2 764 takových tiků u `domain.recheck`.
+    const boss = fakeBoss();
+    await registerQueues(boss as never, allExcept('domain.recheck'), {
+      ...OPTIONS,
+      logger: silentLogger(),
+    });
+
+    expect(boss.schedule.mock.calls.map((call) => call[0])).not.toContain('domain.recheck');
+    expect(boss.unschedule.mock.calls.map((call) => call[0])).toContain('domain.recheck');
+  });
+
+  it('smaže tiky, které se v takové frontě už nakupily', async () => {
+    // Zrušení plánu zastaví přírůstek, ne to, co tam leží. Po dodání obsluhy by
+    // se nasbírané tiky spustily všechny najednou.
+    const boss = fakeBoss();
+    await registerQueues(boss as never, allExcept('domain.recheck'), {
+      ...OPTIONS,
+      logger: silentLogger(),
+    });
+
+    const purge = boss.executeSql.mock.calls.find(([text]) => text.includes('DELETE FROM'));
+    expect(purge, 'uvízlé tiky se neuklidily').toBeDefined();
+    const [text, values] = purge as [string, unknown[]];
+    // Podmínka je úzká schválně: přesně to, co vkládá plánovač pg-bossu.
+    // Úloha od producenta má náklad nebo klíč a nesmí se jí to dotknout.
+    expect(text).toContain("state = 'created'");
+    expect(text).toContain('singleton_key IS NULL');
+    expect(text).toContain("data = '{}'::jsonb");
+    expect(values[0]).toEqual(['domain.recheck']);
+  });
+
+  it('cronovou frontu s NEZAPOJENOU obsluhou taky neplánuje', async () => {
+    // `needsDependencies` má být hlasitá, jenže u cronu z ní je generátor
+    // selhání: naměřeno 3 993 stejných selhání u `outbox.reconcile` za čtyři
+    // dny. Hlášení, které přijde tisíckrát denně, není hlasitější než ticho.
+    const boss = fakeBoss();
+    const handlers = allHandlers() as Record<string, unknown>;
+    handlers['outbox.reconcile'] = needsDependencies('outbox.reconcile', 'ReconcileDeps.reconcile');
+    await registerQueues(boss as never, handlers as never, { ...OPTIONS, logger: silentLogger() });
+
+    expect(boss.schedule.mock.calls.map((call) => call[0])).not.toContain('outbox.reconcile');
+    expect(boss.unschedule.mock.calls.map((call) => call[0])).toContain('outbox.reconcile');
+  });
+
+  it('obsluhu takové fronty přesto zaregistruje, aby ruční zařazení spadlo nahlas', async () => {
+    // Potlačuje se tikání, ne hlasitost. Úloha, kterou do fronty zařadí člověk
+    // nebo producent, musí pořád skončit chybou s vysvětlením, co chybí.
+    const boss = fakeBoss();
+    const handlers = allHandlers() as Record<string, unknown>;
+    handlers['outbox.reconcile'] = needsDependencies('outbox.reconcile', 'ReconcileDeps.reconcile');
+    await registerQueues(boss as never, handlers as never, { ...OPTIONS, logger: silentLogger() });
+
+    expect(boss.work.mock.calls.map((call) => call[0])).toContain('outbox.reconcile');
+  });
+
+  it('frontu s obsluhou neuklízí ani neodplánuje', async () => {
+    const boss = fakeBoss();
+    await registerQueues(boss as never, allHandlers(), { ...OPTIONS, logger: silentLogger() });
+    expect(boss.unschedule).not.toHaveBeenCalled();
+    expect(boss.executeSql.mock.calls.some(([text]) => text.includes('DELETE FROM'))).toBe(false);
   });
 });
 

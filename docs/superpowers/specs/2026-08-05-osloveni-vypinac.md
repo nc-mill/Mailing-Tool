@@ -188,9 +188,14 @@ Obě běží ze sestaveného kódu ve `apps/worker/dist`.
 - `GET /api/v1/greeting-locale`, `POST /api/v1/greeting-locale:align`
 - `GET /api/v1/vocative-review`, `/count`, `POST /vocative-review/confirm`
 - `POST /api/v1/contacts/preview-greeting` (`contacts/api/contact-edit.routes.ts`)
-- `PUT /api/v1/name-overrides` (přepisy rodu a vokativu na úrovni projektu). **Nález mimo
-  zadání: tenhle endpoint nemá v aplikaci žádnou obrazovku, `name-overrides` se v `apps/web`
-  nevyskytuje ani jednou.**
+- `GET`, `POST` `/api/v1/name-overrides` a `DELETE /api/v1/name-overrides/{id}` (přepisy rodu
+  a vokativu na úrovni projektu, `contacts/api/name-overrides.routes.ts`). **OPRAVA 7. 8. 2026:
+  tady stálo `PUT /api/v1/name-overrides` a takové sloveso na téhle cestě NEEXISTUJE.** Zápis
+  je `POST` (zakládá i přepisuje podle klíče jména), mazání je `DELETE` s `id`. Správně to
+  odjakživa má `specs/parts/02-kontakty.md:3416`.
+  **Nález mimo zadání, vyřešen 7. 8. 2026:** endpointy neměly v aplikaci žádnou obrazovku,
+  slovník šlo jen plnit z fronty kontroly oslovení a nešlo vypsat ani opravit. Obrazovka je
+  v `apps/web/src/app/[locale]/w/[workspaceSlug]/settings/name-overrides/page.tsx`.
 
 ### 2.5 Cesta do e-mailu
 

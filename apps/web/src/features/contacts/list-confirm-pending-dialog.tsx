@@ -45,6 +45,8 @@ export function ListConfirmPendingDialog({
       open={open}
       onOpenChange={onOpenChange}
       level="N2"
+      // Změna stavu souhlasu, nic se nemaže a nic neodchází ven.
+      destructive={false}
       title={t('lists.confirmPendingQuestion', { count: list.pending_count })}
       consequences={[t('lists.confirmPendingDeclaration')]}
       // Vrátit se to nedá, ale nálepka „nevratné" tu není: váhu nese prohlášení,

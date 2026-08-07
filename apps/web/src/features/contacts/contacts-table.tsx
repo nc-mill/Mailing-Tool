@@ -15,19 +15,23 @@ import {
 import { IconButton } from '@mlain/ui/components/icon-button';
 import { PageHeader } from '@mlain/ui/components/page-header';
 import { Tooltip } from '@mlain/ui/components/tooltip';
+import { passwordManagerOptOut } from '@mlain/ui/lib/password-manager';
 import {
   CircleCheckBig,
   ClipboardList,
   Download,
+  FunnelX,
+  List,
   Search,
   SlidersHorizontal,
   SpellCheck2,
+  Tag,
   Upload,
   UserRoundPlus,
 } from '@mlain/ui/icons';
 // K1 z 13.1 části 6: výběr přežije přestránkování a je vidět jeho velikost, kurzorové
 // stránkování bez čísel stránek, virtualizace od 100 řádků, sticky hlavička.
-import { DataTable, type DataTableColumn } from '@mlain/ui/patterns/data-table';
+import { DataTable, type DataTableColumn, type SelectionMode } from '@mlain/ui/patterns/data-table';
 import { MoreIcon } from '@/lib/ui/status-icons';
 import { ContactsBulkActions } from './bulk-actions';
 import { ConfirmContactButton } from './confirm-contact-button';
@@ -42,8 +46,10 @@ import { GreetingBadge } from './greeting-badge';
 import type { GreetingStatusInput } from './greeting-status';
 import { describeContactState } from './contact-state';
 import { useFilterChips } from './filter-chips';
+import { ContactFilterPicker } from './filter-picker';
 import {
   contactsHref,
+  filtersOffToolbar,
   hasAnyFilter,
   type ContactListFilters,
   type ContactStatus,
@@ -99,6 +105,10 @@ export type ContactsTableProps = {
    * návrh tam má „58 kontaktů · 12 nepotvrzených", protože nepotvrzený kontakt je
    * jediné číslo, se kterým se na téhle obrazovce dá něco udělat. Když se počet
    * nepodaří zjistit, vynechá se, místo aby se napsala nula.
+   *
+   * JE TO PODÍL Z ČÍSLA VEDLE, tedy počet v rozsahu ZAPNUTÉHO FILTRU. Věta se takhle
+   * čte („z těch 58 jich 12 čeká") a jinak počítané číslo v ní lže; podrobně u dotazu
+   * na obrazovce kontaktů. Se zapnutým filtrem stavu se prop vynechá úplně.
    */
   unconfirmed?: number;
   filters: ContactListFilters;
@@ -139,12 +149,15 @@ export type ContactsTableProps = {
  * Výběr má dvě podoby a rozdíl mezi nimi je v 6.5 části 6 popsaný jako klasická past:
  * uživatel zaškrtne hlavičku, myslí si, že vybral 50 řádků, a smaže 50 000.
  *
- * ZNÁMÉ OMEZENÍ VŮČI P05. `DataTable` drží režim výběru („na stránce" versus „vše
- * odpovídající filtru") uvnitř `useRowSelection` a ven ho nepouští: `onSelectionChange`
- * se při rozšíření výběru na celý filtr vůbec nezavolá. Hromadné akce proto vždycky
- * dostanou režim `ids` s tím, co je opravdu zaškrtnuté. Aby rozhraní nelhalo, dialog
- * smazání počítá s týmž číslem. Až P05 přidá `onSelectionModeChange`, doplní se sem
- * druhá větev a nic dalšího se měnit nebude.
+ * OD 7. 8. 2026 SE POUŽÍVAJÍ OBĚ. Do té doby tu stálo `mode: 'ids'` natvrdo, protože
+ * `DataTable` režim výběru ven nepouštěl: odkaz „Vybrat všech N" ho přepnul jen uvnitř
+ * tabulky, pruh napsal „Vybráno všech 12 480" a tlačítko pod tím textem mazalo dvacet
+ * zaškrtnutých řádků. Větve `allMatching` v `bulk-actions.tsx` byly celou tu dobu mrtvý
+ * kód. Režim teď teče ven přes `selection.onModeChange` a rozhoduje o rozsahu akce.
+ *
+ * `count` NENÍ délka pole. V režimu `allMatching` je to počet z `GET /contacts/count`
+ * pro tentýž filtr, jaký je v adrese, tedy skutečný rozsah akce. Právě tohle číslo
+ * musí stát v potvrzení mazání, ne počet zaškrtnutých řádků.
  */
 export type Selection =
   { mode: 'ids'; ids: ReadonlySet<string>; count: number } | { mode: 'allMatching'; count: number };
@@ -352,6 +365,20 @@ export function ContactsTable({
   });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   /**
+   * Režim výběru. Drží ho obrazovka, přestože se přepíná uvnitř tabulky: rozhoduje
+   * o ROZSAHU hromadné akce, a ten skládají hromadné akce tady, ne `DataTable`.
+   */
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>('rows');
+  /**
+   * Kolikátý úklid výběru to je. Slouží jako `clearToken` pro tabulku.
+   *
+   * Vlastní pole `selectedIds` na úklid NESTAČÍ: režim „vybráno vše odpovídající
+   * filtru" bydlí uvnitř `DataTable` a počet si v něm bere z celkového čísla, ne
+   * z délky pole. Bez tokenu by pruh výběru po hromadné akci v tomhle režimu zůstal
+   * viset, přesně jak to hlásil uživatel.
+   */
+  const [clearedSelections, setClearedSelections] = useState(0);
+  /**
    * Panel nastavení sloupců si drží obrazovka, ne tabulka. Spouštěč totiž podle
    * návrhu patří do hlavičky obrazovky vedle hlavní akce, a tam `DataTable`
    * nedosáhne. S předaným `columnSettings` si vlastní tlačítko nekreslí.
@@ -374,21 +401,68 @@ export function ContactsTable({
   const contactExport = useContactExport(workspaceId);
   const unsubscribe = useUnsubscribeContact(workspaceId);
 
-  if (rows.length === 0) {
-    return hasAnyFilter(filters) ? (
-      <ContactsFilteredEmptyState basePath={basePath} filters={filters} names={names} />
-    ) : (
-      <ContactsEmptyState basePath={basePath} workspaceId={workspaceId} />
-    );
+  /*
+   * PROJEKT BEZ KONTAKTŮ nemá lištu ani hlavičku, jen cesty, jak sem kontakty dostat.
+   * Filtrovat není co a pět tlačítek nad prázdnou obrazovkou by od nich odvádělo.
+   *
+   * PRÁZDNÝ VÝSLEDEK FILTRU je něco jiného a do téhle chvíle se choval stejně: obrazovka
+   * se celá zahodila a s ní i ovládání filtru. Kdo si vybral seznam, ve kterém nikdo není,
+   * neměl jak přepnout na jiný, jedině všechny filtry zrušit a začít znovu. Lišta proto
+   * zůstává a prázdný stav nastupuje až místo tabulky, viz níž.
+   */
+  if (rows.length === 0 && !hasAnyFilter(filters)) {
+    return <ContactsEmptyState basePath={basePath} workspaceId={workspaceId} />;
   }
 
-  const selection: Selection = {
-    mode: 'ids',
-    ids: new Set(selectedIds),
-    count: selectedIds.length,
-  };
+  /**
+   * Kolik kontaktů odpovídá filtru. `null` znamená, že se počet nepodařilo zjistit,
+   * a pak se rozšíření výběru na celý filtr VŮBEC NENABÍZÍ: bez čísla by potvrzení
+   * mazání muselo lhát nebo mlčet o tom, kolika kontaktů se akce týká.
+   */
+  const matchingTotal = total?.count ?? null;
 
-  const chips = describeChips(filters, names);
+  const selection: Selection =
+    selectionMode === 'allMatchingFilter' && matchingTotal !== null
+      ? { mode: 'allMatching', count: matchingTotal }
+      : { mode: 'ids', ids: new Set(selectedIds), count: selectedIds.length };
+
+  /** Nabídka bez obsahu se nekreslí, takže filtr, který drží, by nebyl z lišty vidět. */
+  const toolbarControls = { list: lists.length > 0, tag: tags.length > 0 };
+
+  /**
+   * Úklid výběru po úspěšné hromadné akci. Ruší obojí: vlastní pole i režim výběru
+   * uvnitř tabulky, protože každé z nich drží někdo jiný.
+   */
+  function clearSelection() {
+    setSelectedIds([]);
+    // Režim se ruší TADY, ne v tabulce: úklid tokenem se ven schválně nehlásí, aby
+    // hook nesahal na stav cizí komponenty uprostřed vykreslování. Kdo pošle token,
+    // srovná si režim sám; podrobně u `useRowSelection`.
+    setSelectionMode('rows');
+    setClearedSelections((count) => count + 1);
+  }
+
+  /*
+   * Pruh pod lištou popisuje UŽ JEN TO, CO Z LIŠTY NENÍ VIDĚT.
+   *
+   * Dokud na obrazovce žádné ovládání filtru nebylo, byl ten pruh jediné místo, kde
+   * se dalo přečíst, podle čeho je seznam zúžený. Od chvíle, kdy jsou seznam, štítek,
+   * stav i hledaný výraz vidět přímo na ovládacích prvcích, by opisoval sám sebe:
+   * nad tlačítkem „Novinky" by stálo „Filtr: seznam Novinky".
+   *
+   * Nezruší se ale celý, protože pořád existují filtry, ke kterým v liště ovládání
+   * není: segment, nejisté oslovení, rozsah data přidání a stavy mimo tři tlačítka
+   * (odhlášený, odražený, stěžující si, smazaný). Na ty se sem dá přijít odkazem
+   * odjinud a bez pruhu by nebylo poznat, že jsou zapnuté.
+   */
+  const chips = describeChips(filtersOffToolbar(filters, toolbarControls), names);
+
+  /**
+   * Popis CELÉHO filtru, včetně toho, co je vidět v liště. Patří do lišty výběru
+   * („Vybrat všech 7 odpovídajících filtru"), protože tam se rozhoduje o rozsahu
+   * hromadné akce a ten se ovládáním na obrazovce nezmenšuje.
+   */
+  const wholeFilter = describeChips(filters, names);
 
   function exportList() {
     void contactExport.start({
@@ -423,6 +497,20 @@ export function ContactsTable({
     router.push(contactsHref(basePath, next));
   }
 
+  /**
+   * Zúžení na jeden seznam nebo jeden štítek. Zapisuje do TÉŽE adresy jako přepínač stavu,
+   * takže se výsledek dá poslat odkazem a zpětné tlačítko se vrací po jednotlivých volbách.
+   *
+   * NENÍ TO STAVITEL SEGMENTŮ. Ten v aplikaci je a je na složené podmínky; tohle je rychlé
+   * zúžení výpisu na jednu skupinu, jaké člověk potřebuje několikrát za den.
+   */
+  function setFilter(key: 'list_id' | 'tag_id', value: string | undefined) {
+    const next: ContactListFilters = { ...filters };
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+    router.push(contactsHref(basePath, next));
+  }
+
   function search(query: string) {
     const next: ContactListFilters = { ...filters };
     const trimmed = query.trim();
@@ -443,7 +531,9 @@ export function ContactsTable({
         : total.precision === 'estimated'
           ? t('list.countTotalEstimated', { count: format.number(total.count) })
           : t('list.countTotal', { count: total.count })}
-      {unconfirmed === undefined
+      {/* U prázdného výsledku se druhá půlka vynechává. Znění pro nulu zní „všechny
+          potvrzené", což se za větou „Žádný kontakt" čte jako tvrzení o nikom. */}
+      {unconfirmed === undefined || rows.length === 0
         ? null
         : ` · ${t('list.countUnconfirmed', { count: unconfirmed })}`}
     </>
@@ -522,9 +612,10 @@ export function ContactsTable({
         }
       />
 
-      {/* Hledání a filtr stavu. Do téhle chvíle na obrazovce žádné ovládání filtru
-          nebylo: filtr sice žil v URL a šlo se na něj odkázat, ale zapnout se dal
-          jedině prokliknutím odjinud nebo ručním dopsáním parametru do adresy. */}
+      {/* Hledání, výběr seznamu a štítku a filtr stavu. Do téhle chvíle na obrazovce
+          žádné ovládání filtru nebylo: filtr sice žil v URL a šlo se na něj odkázat,
+          ale zapnout se dal jedině prokliknutím odjinud nebo ručním dopsáním parametru
+          do adresy. */}
       <div className="mb-[var(--spacing-gutter)] flex flex-wrap items-center gap-[var(--spacing-stack)]">
         <form
           role="search"
@@ -539,6 +630,10 @@ export function ContactsTable({
           <input
             type="search"
             name="q"
+            // Do hledání nepatří uložené heslo. Bez těchhle značek nad pole
+            // vyskočí nabídka správce hesel a zakryje první řádky tabulky.
+            // Proč jich je šest, vysvětluje `@mlain/ui/lib/password-manager`.
+            {...passwordManagerOptOut}
             // `key` přepíše obsah pole, když se filtr změní zvenčí (proklik ze štítku,
             // zpětné tlačítko). Bez něj by v poli zůstal starý výraz z minulé adresy.
             key={filters.q ?? ''}
@@ -548,6 +643,36 @@ export function ContactsTable({
             className="h-full w-full min-w-0 border-0 bg-transparent text-ui text-text outline-none placeholder:text-text-muted"
           />
         </form>
+
+        {/* Výběr seznamu a štítku. Nabídka bez obsahu se nekreslí: projekt bez jediného
+            štítku by měl v liště tlačítko, které otevře prázdné okno. */}
+        {lists.length > 0 ? (
+          <ContactFilterPicker
+            data-testid="contacts-filter-list"
+            label={t('filters.list')}
+            allLabel={t('filters.listAll')}
+            searchPlaceholder={t('filters.listSearch')}
+            emptyText={t('filters.listEmpty')}
+            options={lists}
+            value={filters.list_id}
+            onChange={(value) => setFilter('list_id', value)}
+            icon={<List aria-hidden className="icon-sm" />}
+          />
+        ) : null}
+
+        {tags.length > 0 ? (
+          <ContactFilterPicker
+            data-testid="contacts-filter-tag"
+            label={t('filters.tag')}
+            allLabel={t('filters.tagAll')}
+            searchPlaceholder={t('filters.tagSearch')}
+            emptyText={t('filters.tagEmpty')}
+            options={tags}
+            value={filters.tag_id}
+            onChange={(value) => setFilter('tag_id', value)}
+            icon={<Tag aria-hidden className="icon-sm" />}
+          />
+        ) : null}
 
         <div
           role="group"
@@ -570,6 +695,44 @@ export function ContactsTable({
             onClick={() => setStatus('unconfirmed')}
           />
         </div>
+
+        {/*
+         * ZRUŠENÍ CELÉHO FILTRU NA KONCI ŘADY, ne pod ní.
+         *
+         * Přání uživatele: „Pokud mám vybrané nějaké filtry, tak tam doprava přidej
+         * tlačítko Zrušit filtry, které je všechny odstraní. Ať nemusím každý jeden
+         * klikat a rušit ručně." Stálo do téhle chvíle v pruhu pod lištou, tedy jinde,
+         * než se filtr zapíná; v pruhu proto od téhle chvíle NENÍ, aby na obrazovce
+         * nebyla dvě tlačítka na jednu věc.
+         *
+         * Ukazuje se JEN při zapnutém filtru: bez něj by zabíralo místo v řadě, která
+         * je i tak plná, a slibovalo akci, která nemá co udělat.
+         *
+         * `basePath` bez parametrů ruší OPRAVDU VŠECHNO včetně hledaného výrazu, stavu
+         * a filtrů, ke kterým v liště ovládání není. Tlačítko slibuje „zrušit filtry"
+         * bez výhrady, takže výhradu nesmí mít ani chování.
+         *
+         * `ms-auto` ho odsune doprava, dokud se řada vejde na jeden řádek; po zalomení
+         * na úzké obrazovce zůstane na začátku dalšího řádku, protože prázdné místo
+         * před ním už žádné není.
+         */}
+        {hasAnyFilter(filters) ? (
+          <Button
+            variant="secondary"
+            data-testid="contacts-clear-filters"
+            // 40 px vysoké kvůli řadě, 44 px na kliknutí kvůli pravidlu; proč zrovna
+            // takhle, stojí u `ContactFilterPicker`.
+            className={[
+              'ms-auto h-[var(--size-control)] min-h-[var(--size-control)] px-4 text-ui',
+              'relative after:absolute after:top-1/2 after:left-0 after:h-[var(--size-target-min)]',
+              "after:w-full after:-translate-y-1/2 after:content-['']",
+            ].join(' ')}
+            onClick={() => router.push(basePath)}
+          >
+            <FunnelX aria-hidden className="icon-sm" />
+            {t('filters.clear')}
+          </Button>
+        ) : null}
       </div>
 
       {/*
@@ -577,10 +740,13 @@ export function ContactsTable({
        *
        * `filterDescription` níž se v `DataTable` používá JEDINĚ uvnitř lišty výběru,
        * takže po prokliku ze štítku viděl uživatel jeden kontakt a nikde se nedozvěděl,
-       * proč jich není víc ani jak se filtru zbaví. Filtr přitom žije v URL, takže ho
-       * ani nešlo poznat z ovládacích prvků: žádné tu nejsou.
+       * proč jich není víc ani jak se filtru zbaví.
+       *
+       * ZRUŠENÍ TU UŽ NENÍ. Přesunulo se na konec řady filtrů, tedy tam, kde se filtr
+       * zapíná; dvě tlačítka na jednu věc kousek od sebe jsou horší než jedno. Pruh
+       * je od téhle chvíle jen popis, a to výhradně toho, co z lišty vidět není.
        */}
-      {chips.length > 0 ? (
+      {chips.length > 0 && rows.length > 0 ? (
         <Card
           as="div"
           tone="muted"
@@ -591,237 +757,262 @@ export function ContactsTable({
           <span className="text-ui text-text">
             {t('list.filteredFilter', { filter: format.list(chips) })}
           </span>
-          <Button variant="link" onClick={() => router.push(basePath)}>
-            {t('list.filteredClearAll')}
-          </Button>
         </Card>
       ) : null}
 
-      <DataTable
-        tableId="contacts"
-        caption={t('list.title')}
-        rows={rows}
-        getRowId={(row) => row.id}
-        labels={labels}
-        count={{
-          value: total?.count ?? rows.length,
-          precision: total?.precision ?? 'exact',
-        }}
-        cursorInvalid={cursorInvalid}
-        columnSettings={{ open: columnsOpen, onOpenChange: setColumnsOpen }}
-        filterDescription={chips.length > 0 ? format.list(chips) : ''}
-        selection={{ selectedIds, onSelectionChange: setSelectedIds }}
-        // Hromadné akce jsou klientská komponenta, kterou skládá tabulka, ne stránka:
-        // funkci `renderBulkActions` by ze serverové komponenty nešlo předat, protože
-        // přes hranici React Server Components projdou jen serializovatelné hodnoty.
-        bulkActions={
-          <ContactsBulkActions
-            workspaceId={workspaceId}
-            selection={selection}
-            filters={filters}
-            names={names}
-            tags={tags}
-            lists={lists}
-            // Adresy vybraných řádků. Publikum exportu umí vyjmenovat kontakty jen
-            // e-mailem: `Audience` výčet id nezná a `CONTACT_FIELD_KEYS` v segmentech
-            // `id` nemá. Tabulka je na obrazovce stejně ukazuje, takže je má po ruce.
-            selectedEmails={rows
-              .filter((row) => selection.mode === 'ids' && selection.ids.has(row.id))
-              .map((row) => row.email)}
-          />
-        }
-        onRowActivate={(row) => router.push(`${basePath}/${row.id}`)}
-        virtualizeFrom={100}
-        // Devět místo výchozích šesti: osm sloupců návrhu plus nabídka „…" na konci
-        // řádku. Žádný z nich se nesmí schovat za nastavení sloupců, dokud si to
-        // uživatel sám nepřeje, a u nabídky to platí dvojnásob: schovaná nabídka
-        // znamená, že se z řádku nedá udělat vůbec nic.
-        defaultVisibleColumns={9}
-        // Kurzorové stránkování bez čísel stránek. Kurzor jde do URL, ne do stavu
-        // komponenty: odkaz na stránku se dá poslat dál a zpětné tlačítko funguje.
-        pagination={{
-          hasMore: pagination.has_more && pagination.next_cursor !== null,
-          canGoBack: pagination.prev_cursor !== null,
-          onPrevious: () => router.push(contactsHref(basePath, filters, pagination.prev_cursor)),
-          onNext: () => router.push(contactsHref(basePath, filters, pagination.next_cursor)),
-        }}
-        // Typ je uvedený VÝSLOVNĚ. Bez něj TypeScript neodvodí `row` u žádného
-        // sloupce, jakmile je v poli i `null` z podmíněného sloupce oslovení.
-        columns={(
-          [
-            {
-              id: 'email',
-              header: t('columns.email'),
-              cell: (row) => (
-                <Link
-                  href={`${basePath}/${row.id}`}
-                  aria-label={t('list.openDetail', { email: row.email })}
-                  // Podtržení kreslí sám odkaz, takže `no-underline` musí být na `<a>`;
-                  // na potomkovi by nezabralo. Adresa je v návrhu obyčejný text barvy
-                  // písma, který se podtrhne teprve při najetí.
-                  className="block truncate text-ui text-text no-underline hover:underline"
-                >
-                  {row.email}
-                </Link>
-              ),
-            },
-            {
-              id: 'name',
-              header: t('columns.name'),
-              cell: (row) => <span className="block truncate text-ui">{row.name ?? ''}</span>,
-            },
-            // Oslovení hned za jménem: rozdíl mezi „Petr" a „Petře" je celý produkt
-            // a v žádném jiném sloupci ho vidět není. Projekt, který oslovení neřeší,
-            // sloupec nemá; `.filter(Boolean)` pod definicí ho vystřihne.
-            greetingEnabled
-              ? {
-                  id: 'greeting',
-                  header: t('greeting.column'),
-                  cell: (row: ContactRow) => <GreetingBadge contact={row.greeting} />,
-                }
-              : null,
-            {
-              id: 'status',
-              header: t('columns.status'),
-              width: 130,
-              cell: (row) => (
-                <ContactStatusBadges
-                  badges={
-                    describeContactState({
-                      status: row.status,
-                      processing_restricted: row.processing_restricted,
-                      snooze_until: row.snooze_until,
-                      anonymized_at: row.anonymized_at,
-                      status_changed_at: row.created_at,
-                    }).badges
+      {/* Prázdný výsledek filtru nastupuje MÍSTO TABULKY, ne místo celé obrazovky: pruh
+          s filtrem nad ním se proto nekreslí (řekne to samo) a lišta s ovládáním zůstává,
+          aby šel filtr rovnou přepnout. */}
+      {rows.length === 0 ? (
+        <ContactsFilteredEmptyState basePath={basePath} filters={filters} names={names} />
+      ) : (
+        <DataTable
+          tableId="contacts"
+          caption={t('list.title')}
+          rows={rows}
+          getRowId={(row) => row.id}
+          labels={labels}
+          count={{
+            value: total?.count ?? rows.length,
+            precision: total?.precision ?? 'exact',
+          }}
+          cursorInvalid={cursorInvalid}
+          columnSettings={{ open: columnsOpen, onOpenChange: setColumnsOpen }}
+          filterDescription={wholeFilter.length > 0 ? format.list(wholeFilter) : ''}
+          // `clearToken` uklidí i režim „vybráno vše odpovídající filtru", na který
+          // samotné vynulování `selectedIds` nedosáhne. Podrobně u `useRowSelection`.
+          selection={{
+            selectedIds,
+            onSelectionChange: setSelectedIds,
+            // Bez `onModeChange` tabulka odkaz „Vybrat všech N" vůbec nenabídne.
+            // Kontakty ho nabídnout SMÍ, protože jejich hromadné smazání i export
+            // berou filtr (`POST /contacts/bulk-delete` s `filter`, `filtersToAudience`).
+            // Bez známého počtu se ale nenabízí ani tady: potvrzení mazání musí říct,
+            // kolika kontaktů se akce týká.
+            ...(matchingTotal === null ? {} : { onModeChange: setSelectionMode }),
+            clearToken: clearedSelections,
+          }}
+          // Hromadné akce jsou klientská komponenta, kterou skládá tabulka, ne stránka:
+          // funkci `renderBulkActions` by ze serverové komponenty nešlo předat, protože
+          // přes hranici React Server Components projdou jen serializovatelné hodnoty.
+          bulkActions={
+            <ContactsBulkActions
+              workspaceId={workspaceId}
+              selection={selection}
+              filters={filters}
+              names={names}
+              tags={tags}
+              lists={lists}
+              // Adresy vybraných řádků. Publikum exportu umí vyjmenovat kontakty jen
+              // e-mailem: `Audience` výčet id nezná a `CONTACT_FIELD_KEYS` v segmentech
+              // `id` nemá. Tabulka je na obrazovce stejně ukazuje, takže je má po ruce.
+              selectedEmails={rows
+                .filter((row) => selection.mode === 'ids' && selection.ids.has(row.id))
+                .map((row) => row.email)}
+              // Přihlášení označených kontaktů. Slouží k jedinému: spočítat, kolik jich
+              // po odhlášení nezůstane v žádném seznamu. Tabulka ta data má, takže se
+              // kvůli tomu neposílá další dotaz na server.
+              selectedSubscriptions={rows
+                .filter((row) => selection.mode === 'ids' && selection.ids.has(row.id))
+                .map((row) => row.subscribed_list_ids)}
+              // Po úspěšné akci výběr zmizí. Bez tohohle pruh viset zůstal, a po smazání
+              // dokonce nabízel akce nad kontakty, které už neexistují.
+              onCompleted={clearSelection}
+            />
+          }
+          onRowActivate={(row) => router.push(`${basePath}/${row.id}`)}
+          virtualizeFrom={100}
+          // Devět místo výchozích šesti: osm sloupců návrhu plus nabídka „…" na konci
+          // řádku. Žádný z nich se nesmí schovat za nastavení sloupců, dokud si to
+          // uživatel sám nepřeje, a u nabídky to platí dvojnásob: schovaná nabídka
+          // znamená, že se z řádku nedá udělat vůbec nic.
+          defaultVisibleColumns={9}
+          // Kurzorové stránkování bez čísel stránek. Kurzor jde do URL, ne do stavu
+          // komponenty: odkaz na stránku se dá poslat dál a zpětné tlačítko funguje.
+          pagination={{
+            hasMore: pagination.has_more && pagination.next_cursor !== null,
+            canGoBack: pagination.prev_cursor !== null,
+            onPrevious: () => router.push(contactsHref(basePath, filters, pagination.prev_cursor)),
+            onNext: () => router.push(contactsHref(basePath, filters, pagination.next_cursor)),
+          }}
+          // Typ je uvedený VÝSLOVNĚ. Bez něj TypeScript neodvodí `row` u žádného
+          // sloupce, jakmile je v poli i `null` z podmíněného sloupce oslovení.
+          columns={(
+            [
+              {
+                id: 'email',
+                header: t('columns.email'),
+                cell: (row) => (
+                  <Link
+                    href={`${basePath}/${row.id}`}
+                    aria-label={t('list.openDetail', { email: row.email })}
+                    // Podtržení kreslí sám odkaz, takže `no-underline` musí být na `<a>`;
+                    // na potomkovi by nezabralo. Adresa je v návrhu obyčejný text barvy
+                    // písma, který se podtrhne teprve při najetí.
+                    className="block truncate text-ui text-text no-underline hover:underline"
+                  >
+                    {row.email}
+                  </Link>
+                ),
+              },
+              {
+                id: 'name',
+                header: t('columns.name'),
+                cell: (row) => <span className="block truncate text-ui">{row.name ?? ''}</span>,
+              },
+              // Oslovení hned za jménem: rozdíl mezi „Petr" a „Petře" je celý produkt
+              // a v žádném jiném sloupci ho vidět není. Projekt, který oslovení neřeší,
+              // sloupec nemá; `.filter(Boolean)` pod definicí ho vystřihne.
+              greetingEnabled
+                ? {
+                    id: 'greeting',
+                    header: t('greeting.column'),
+                    cell: (row: ContactRow) => <GreetingBadge contact={row.greeting} />,
                   }
-                />
-              ),
-            },
-            /*
-             * Potvrzení PŘÍMO V ŘÁDKU, ne až na detailu a ne až po zaškrtnutí.
-             *
-             * Hromadná akce nad výběrem zůstává, protože je užitečná u dávky, ale pro jeden
-             * kontakt znamenala tři kroky (zaškrtnout, najít tlačítko nad tabulkou, kliknout)
-             * a stejně tak dlouhá byla odbočka na detail a zpátky. Tlačítko v řádku je jedno
-             * kliknutí.
-             *
-             * JE TO IKONA S BUBLINOU, NE TLAČÍTKO SE SLOVEM. Rozhodnutí návrhu: sloupec má
-             * 60 px a deset textových tlačítek pod sebou by z něj udělalo druhý sloupec stavu.
-             * U potvrzeného kontaktu zůstává táž ikona v zelené, aby sloupec neměl díry a bylo
-             * v něm na první pohled poznat, co je hotové.
-             *
-             * SLOUPEC STOJÍ HNED ZA STAVEM SCHVÁLNĚ, ne na konci. `useColumnPreferences`
-             * schová všechny sloupce za prvními osmi, dokud si uživatel nevybere jinak,
-             * takže akce na konci by se novému uživateli nezobrazila vůbec.
-             *
-             * Klik na tlačítko NEOTEVŘE detail: `DataTable.onRowClick` ignoruje cíle uvnitř
-             * `button, a, input, label`, takže se aktivace řádku nespustí.
-             */
-            {
-              id: 'confirm',
-              header: t('confirmState.column'),
-              width: 60,
-              cell: (row) =>
-                row.status === 'active' ? (
-                  <Tooltip content={t('confirmState.confirmed')}>
-                    <span
-                      // Zaostřitelné schválně: bublina u potvrzení musí jít vyvolat
-                      // i z klávesnice, ne jen myší.
-                      tabIndex={0}
-                      role="img"
-                      aria-label={t('confirmState.confirmed')}
-                      className="inline-flex size-[var(--size-control-xs)] items-center justify-center rounded-[var(--radius-control)] text-success-text"
-                    >
-                      <CircleCheckBig aria-hidden className="icon-md" />
-                    </span>
-                  </Tooltip>
-                ) : (
-                  <ConfirmContactButton
-                    workspaceId={workspaceId}
-                    contactId={row.id}
-                    status={row.status}
-                    email={row.email}
-                    variant="row"
+                : null,
+              {
+                id: 'status',
+                header: t('columns.status'),
+                width: 130,
+                cell: (row) => (
+                  <ContactStatusBadges
+                    badges={
+                      describeContactState({
+                        status: row.status,
+                        processing_restricted: row.processing_restricted,
+                        snooze_until: row.snooze_until,
+                        anonymized_at: row.anonymized_at,
+                        status_changed_at: row.created_at,
+                      }).badges
+                    }
                   />
                 ),
-            },
-            {
-              id: 'lists',
-              header: t('columns.lists'),
-              cell: (row) => (
-                // Čárkový výčet, ne „Brno a Newsletter": spojka v buňce tabulky svádí
-                // číst dva štítky jako jeden název. Krátký styl dá čárku i v češtině,
-                // kde samotný typ „unit" spojku pořád nechává.
-                <span className="block truncate text-sm text-text-muted">
-                  {format.list(row.lists, { type: 'unit', style: 'short' })}
-                </span>
-              ),
-            },
-            {
-              id: 'tags',
-              header: t('columns.tags'),
-              cell: (row) => (
-                <span className="block truncate text-sm text-text-muted">
-                  {format.list(row.tags, { type: 'unit', style: 'short' })}
-                </span>
-              ),
-            },
-            {
-              id: 'createdAt',
-              header: t('columns.createdAt'),
-              width: 100,
-              cell: (row) => (
-                <time
-                  dateTime={row.created_at}
-                  className="whitespace-nowrap font-mono text-meta text-text-muted"
-                >
-                  {format.dateTime(new Date(row.created_at), 'short')}
-                </time>
-              ),
-            },
-            /*
-             * Nabídka „…" na konci řádku, tvarem shodná se Štítky a seznamem segmentů.
-             *
-             * Řádek zůstává prokliknutelný na detail: nabídka je zkratka pro čtyři akce,
-             * které tam jsou, ne jejich náhrada. `DataTable` cíle uvnitř `button`
-             * a `[role="menuitem"]` z aktivace řádku vyjímá, takže se detail neotevře
-             * ani při otevírání nabídky, ani při volbě položky.
-             */
-            {
-              id: 'actions',
-              // `columns.action` je týž popisek, jaký nad sloupcem s nabídkou mají
-              // Formuláře, Blokované adresy i Vlastní pole. Nový klíč by znamenal
-              // dvě slova pro jednu věc, která se má napříč aplikací číst stejně.
-              header: t('columns.action'),
-              width: 60,
-              cell: (row: ContactRow) => (
-                <span className="flex justify-end">
-                  <ContactRowMenu
-                    row={row}
-                    basePath={basePath}
-                    canManageRestriction={canManageRestriction}
-                    onUnsubscribe={(target) => {
-                      void unsubscribe({
-                        email: target.email,
-                        listIds: target.subscribed_list_ids,
-                      });
-                    }}
-                    onRestrict={(target) => {
-                      setRestrictTarget(target);
-                      setRestrictOpen(true);
-                    }}
-                    onDelete={(target) => {
-                      setDeleteTarget(target);
-                      setDeleteOpen(true);
-                    }}
-                  />
-                </span>
-              ),
-            },
-          ] satisfies (DataTableColumn<ContactRow> | null)[]
-        ).filter((column) => column !== null)}
-      />
+              },
+              /*
+               * Potvrzení PŘÍMO V ŘÁDKU, ne až na detailu a ne až po zaškrtnutí.
+               *
+               * Hromadná akce nad výběrem zůstává, protože je užitečná u dávky, ale pro jeden
+               * kontakt znamenala tři kroky (zaškrtnout, najít tlačítko nad tabulkou, kliknout)
+               * a stejně tak dlouhá byla odbočka na detail a zpátky. Tlačítko v řádku je jedno
+               * kliknutí.
+               *
+               * JE TO IKONA S BUBLINOU, NE TLAČÍTKO SE SLOVEM. Rozhodnutí návrhu: sloupec má
+               * 60 px a deset textových tlačítek pod sebou by z něj udělalo druhý sloupec stavu.
+               * U potvrzeného kontaktu zůstává táž ikona v zelené, aby sloupec neměl díry a bylo
+               * v něm na první pohled poznat, co je hotové.
+               *
+               * SLOUPEC STOJÍ HNED ZA STAVEM SCHVÁLNĚ, ne na konci. `useColumnPreferences`
+               * schová všechny sloupce za prvními osmi, dokud si uživatel nevybere jinak,
+               * takže akce na konci by se novému uživateli nezobrazila vůbec.
+               *
+               * Klik na tlačítko NEOTEVŘE detail: `DataTable.onRowClick` ignoruje cíle uvnitř
+               * `button, a, input, label`, takže se aktivace řádku nespustí.
+               */
+              {
+                id: 'confirm',
+                header: t('confirmState.column'),
+                width: 60,
+                cell: (row) =>
+                  row.status === 'active' ? (
+                    <Tooltip content={t('confirmState.confirmed')}>
+                      <span
+                        // Zaostřitelné schválně: bublina u potvrzení musí jít vyvolat
+                        // i z klávesnice, ne jen myší.
+                        tabIndex={0}
+                        role="img"
+                        aria-label={t('confirmState.confirmed')}
+                        className="inline-flex size-[var(--size-control-xs)] items-center justify-center rounded-[var(--radius-control)] text-success-text"
+                      >
+                        <CircleCheckBig aria-hidden className="icon-md" />
+                      </span>
+                    </Tooltip>
+                  ) : (
+                    <ConfirmContactButton
+                      workspaceId={workspaceId}
+                      contactId={row.id}
+                      status={row.status}
+                      email={row.email}
+                      variant="row"
+                    />
+                  ),
+              },
+              {
+                id: 'lists',
+                header: t('columns.lists'),
+                cell: (row) => (
+                  // Čárkový výčet, ne „Brno a Newsletter": spojka v buňce tabulky svádí
+                  // číst dva štítky jako jeden název. Krátký styl dá čárku i v češtině,
+                  // kde samotný typ „unit" spojku pořád nechává.
+                  <span className="block truncate text-sm text-text-muted">
+                    {format.list(row.lists, { type: 'unit', style: 'short' })}
+                  </span>
+                ),
+              },
+              {
+                id: 'tags',
+                header: t('columns.tags'),
+                cell: (row) => (
+                  <span className="block truncate text-sm text-text-muted">
+                    {format.list(row.tags, { type: 'unit', style: 'short' })}
+                  </span>
+                ),
+              },
+              {
+                id: 'createdAt',
+                header: t('columns.createdAt'),
+                width: 100,
+                cell: (row) => (
+                  <time
+                    dateTime={row.created_at}
+                    className="whitespace-nowrap font-mono text-meta text-text-muted"
+                  >
+                    {format.dateTime(new Date(row.created_at), 'short')}
+                  </time>
+                ),
+              },
+              /*
+               * Nabídka „…" na konci řádku, tvarem shodná se Štítky a seznamem segmentů.
+               *
+               * Řádek zůstává prokliknutelný na detail: nabídka je zkratka pro čtyři akce,
+               * které tam jsou, ne jejich náhrada. `DataTable` cíle uvnitř `button`
+               * a `[role="menuitem"]` z aktivace řádku vyjímá, takže se detail neotevře
+               * ani při otevírání nabídky, ani při volbě položky.
+               */
+              {
+                id: 'actions',
+                // `columns.action` je týž popisek, jaký nad sloupcem s nabídkou mají
+                // Formuláře, Blokované adresy i Vlastní pole. Nový klíč by znamenal
+                // dvě slova pro jednu věc, která se má napříč aplikací číst stejně.
+                header: t('columns.action'),
+                width: 60,
+                cell: (row: ContactRow) => (
+                  <span className="flex justify-end">
+                    <ContactRowMenu
+                      row={row}
+                      basePath={basePath}
+                      canManageRestriction={canManageRestriction}
+                      onUnsubscribe={(target) => {
+                        void unsubscribe({
+                          email: target.email,
+                          listIds: target.subscribed_list_ids,
+                        });
+                      }}
+                      onRestrict={(target) => {
+                        setRestrictTarget(target);
+                        setRestrictOpen(true);
+                      }}
+                      onDelete={(target) => {
+                        setDeleteTarget(target);
+                        setDeleteOpen(true);
+                      }}
+                    />
+                  </span>
+                ),
+              },
+            ] satisfies (DataTableColumn<ContactRow> | null)[]
+          ).filter((column) => column !== null)}
+        />
+      )}
 
       {/* Okno omezení zpracování podle článku 18. Je to TÁŽ komponenta jako na detailu,
           jen bez vlastního spouštěče, takže povinné odůvodnění ani zápis do auditu nejde

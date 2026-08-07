@@ -25,7 +25,10 @@ export { buildAudienceSql, type BuildAudienceSqlInput } from './audience/build-s
 export {
   buildRenderData,
   renderDataColumns,
+  renderDataSelectItem,
+  ISO_DATE_CONTACT_COLUMNS,
   RENDER_DATA_EXCLUDED_FIELDS,
+  SNAPSHOTTABLE_CONTACT_COLUMNS,
   type ContactSnapshotSource,
   type RenderDataResult,
 } from './audience/render-data';
@@ -47,6 +50,7 @@ export {
 export { shouldRunFinish, resumeTarget } from './materialize/finish';
 
 export { revokePendingMessages, type RevokeInput } from './outbox/revoke';
+export { installRevokePendingMessages } from './outbox/contacts-port';
 export { anonymizeMessages } from './outbox/anonymize';
 
 export { materializeHandler, MATERIALIZE_JOB, type MaterializeDeps } from './jobs/materialize';
@@ -159,6 +163,7 @@ export {
   findOrphanedPending,
   revokePending,
   reconcileSuppressed,
+  reconcilePending,
   anonymizeMessages as anonymizeMessagesRepo,
   type MaterializeBatchInput,
   type MaterializeBatchResult,

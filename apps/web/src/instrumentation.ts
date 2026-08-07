@@ -58,4 +58,18 @@ export async function register(): Promise<void> {
    */
   const { warnIfLoginThrottlingDisabled } = await import('@mlain/core/identity/throttle');
   warnIfLoginThrottlingDisabled(logger, config);
+
+  /**
+   * Izolace projektů se ověřuje při KAŽDÉM startu, ne až tehdy, když někoho
+   * napadne spustit `mlain doctor`. Predikát existoval od začátku a jeho
+   * hlavička tvrdila, že se z aplikace volá; ve skutečnosti ho volal jen
+   * doctor, takže instalace bez izolace vypadala navenek úplně v pořádku.
+   *
+   * Nečeká se na výsledek. Je to jeden dotaz do systémového katalogu a start
+   * webu na něm nesmí viset; když databáze ještě nenaběhla, kontrola se sama
+   * ohlásí jako neprovedená a `.catch` je tu jen proto, aby neodmítnutý slib
+   * neshodil proces.
+   */
+  const { warnIfIsolationBroken } = await import('@mlain/core/tx/isolation-guard');
+  void warnIfIsolationBroken(logger).catch(() => {});
 }

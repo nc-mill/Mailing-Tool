@@ -5,10 +5,11 @@ import { Card, CardTitle } from '@mlain/ui/components/card';
 import { GripVertical } from '../icons';
 import { useTranslations } from 'next-intl';
 import { EDITOR_DND_ENABLED } from '../../config';
-import { PALETTE } from '../../descriptors/registry';
+import { paletteFor } from '../../descriptors/registry';
 import type { MoveTarget } from '../../model/ops';
 import { canContain, findBlock, typeAt } from '../../model/tree';
 import { useEditorState, useEditorStore } from '../../state/use-editor';
+import { useTemplateProfile } from '../richtext/template-profile';
 
 /**
  * Paleta bloků.
@@ -27,6 +28,10 @@ export function BlockPalette() {
   const store = useEditorStore();
   const document = useEditorState((state) => state.document);
   const selectedId = useEditorState((state) => state.selectedId);
+  // Paleta se řídí PROFILEM, ne druhem řádku: veřejná stránka nedostane patičku
+  // ani blok syrového HTML (viz `paletteFor`). Profil je v kontextu, protože ho
+  // potřebuje i nabídka personalizace pod třemi obaly.
+  const palette = paletteFor(useTemplateProfile());
 
   const targetFor = (type: string): MoveTarget | null => {
     const found = selectedId ? findBlock(document, selectedId) : undefined;
@@ -70,7 +75,7 @@ export function BlockPalette() {
       ].join(' ')}
     >
       <CardTitle>{t('palette.title')}</CardTitle>
-      {PALETTE.map((group) => (
+      {palette.map((group) => (
         <div key={group.label} className="flex flex-col gap-1.5">
           <p className="meta-caps text-text-muted">{t(group.label)}</p>
           {group.entries.map((entry) => (

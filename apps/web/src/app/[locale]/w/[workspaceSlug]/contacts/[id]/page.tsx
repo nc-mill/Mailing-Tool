@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api-client/fetch';
 import { getWorkspaceAccess, hasPermission } from '@/lib/identity/workspace-access';
 import { ContactsProblem } from '@/features/contacts/contacts-problem';
 import { ContactDetail, type ContactDetailData } from '@/features/contacts/contact-detail';
+import { toMeasurementConsent } from '@/features/contacts/measurement-consent-state';
 
 /**
  * Stránka závisí na přihlášeném uživateli, takže se NEPŘEDRENDEROVÁVÁ.
@@ -55,7 +56,7 @@ type ContactApiDetail = {
   consents: { purpose: string; status: string; since: string }[];
 };
 
-type ContactFieldApi = { key: string; label: Record<string, string> };
+type ContactFieldApi = { key: string; label: Record<string, string>; type: string };
 
 /**
  * Podklad k větě o omezení zpracování. Vrací ho `GET /contacts/{id}` vedle kontaktu,
@@ -100,7 +101,21 @@ export default async function ContactDetailPage({ params }: PageProps) {
   ]);
 
   if (!contact.ok) {
-    if (contact.problem.status === 404) notFound();
+    /*
+     * NESMYSLNÉ `id` JE „NENALEZENO", ne chyba ověření vstupu.
+     *
+     * Tahle trasa zabírá `/w/{projekt}/contacts/<cokoli>`, takže na ni spadne
+     * i překlep nebo adresa, kterou si někdo domyslel podle jiné obrazovky
+     * (`/contacts/lists`, `/contacts/import`). API takové `id` správně odmítne
+     * jako neplatné UUID kódem `validation_failed`, jenže do té chvíle se
+     * návštěvníkovi ukázal ČERVENÝ CHYBOVÝ BLOK s kódem a číslem požadavku.
+     * Vypadalo to jako rozbitá aplikace; 7. 8. 2026 to tak jeden agent i nahlásil,
+     * v domnění, že se rozbila obrazovka Seznamy (ta je na `/w/{projekt}/lists`).
+     *
+     * Chyba ověření dává smysl u TĚLA, které člověk vyplnil, ne u kusu adresy.
+     * Tady je pravdivá odpověď „takový kontakt není", tedy 404.
+     */
+    if (contact.problem.status === 404 || contact.problem.code === 'validation_failed') notFound();
     return <ContactsProblem problem={contact.problem} />;
   }
 
@@ -114,6 +129,25 @@ export default async function ContactDetailPage({ params }: PageProps) {
       field.label[locale] ?? field.label['cs'] ?? field.key,
     ]),
   );
+  // Typ pole se čte kvůli hodnotám typu ano/ne. Bez něj se `true` a `false`
+  // z JSONB vypsalo tak, jak stojí v databázi, a na detailu kontaktu pak
+  // u pole „VIP" stálo `false`.
+  const types = new Map(
+    (fields.ok ? fields.data.data : []).map((field) => [field.key, field.type]),
+  );
+  const tCommon = await getTranslations('common');
+  const showValue = (key: string, value: unknown): string => {
+    if (value === null || value === undefined) return '';
+    if (types.get(key) === 'boolean' || typeof value === 'boolean') {
+      // Prázdný řetězec ani `null` nejsou „ne", jsou to nevyplněná pole,
+      // a tvrdit u nich „Ne" by si uživatel přečetl jako svoje rozhodnutí.
+      if (value === '') return '';
+      return value === true || value === 'true'
+        ? tCommon('fieldValue.yes')
+        : tCommon('fieldValue.no');
+    }
+    return String(value);
+  };
   const snooze = payload.lists
     .map((list) => list.snooze_until)
     .filter((value): value is string => value !== null);
@@ -151,11 +185,24 @@ export default async function ContactDetailPage({ params }: PageProps) {
     attributes: Object.entries(payload.attributes).map(([key, value]) => ({
       key,
       label: labels.get(key) ?? key,
-      value: String(value ?? ''),
+      value: showValue(key, value),
     })),
     source: payload.source,
     subscribed_at: payload.lists[0]?.subscribed_at ?? null,
     consent_summary: payload.consents[0]?.purpose ?? null,
+    /**
+     * Souhlas s měřením se čte z TÉHOŽ pole `consents`, které endpoint vrací
+     * pro všechny účely. Není to zvláštní dotaz ani zvláštní sloupec: měření
+     * je účel `analytics` v jedné společné evidenci souhlasů.
+     *
+     * Chybějící položka NENÍ souhlas. Mapuje se na `not_recorded`, tedy
+     * „nevyjádřil se", protože přesně to znamená. Doplnit tu `granted` by
+     * bylo tvrzení o souhlasu, který nikdo nedal, a `withdrawn` odmítnutí,
+     * o které nikdo nepožádal.
+     */
+    measurement_consent: toMeasurementConsent(
+      payload.consents.find((consent) => consent.purpose === 'analytics')?.status,
+    ),
   };
 
   return (

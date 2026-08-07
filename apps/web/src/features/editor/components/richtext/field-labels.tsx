@@ -16,6 +16,15 @@ const STATIC_LABELS: Record<string, string> = {
   unsubscribe_url: 'field.unsubscribeUrl',
   preferences_url: 'field.preferencesUrl',
   webview_url: 'field.webviewUrl',
+  // Potvrzovací odkaz e-mailu seznamu. Bez záznamu by značka v textu ukazovala
+  // holou cestu `data.confirm_url` místo popisku, protože v katalogu polí není
+  // a být nemůže: nepřichází z kontaktu, ale z odesílané zprávy.
+  'data.confirm_url': 'field.dataConfirmUrl',
+  // Hodnoty, které do VEŘEJNÉ STRÁNKY dosadí aplikace při vykreslení. V katalogu
+  // polí být nemůžou (nepocházejí z kontaktu), takže by bez záznamu ukazovala
+  // značka v textu holou cestu `data.form_name` místo popisku.
+  'data.form_name': 'field.dataFormName',
+  'data.list_name': 'field.dataListName',
   'campaign.name': 'field.campaignName',
   'campaign.subject': 'field.campaignSubject',
   'workspace.name': 'field.workspaceName',

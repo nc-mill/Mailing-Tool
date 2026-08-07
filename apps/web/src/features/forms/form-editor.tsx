@@ -17,6 +17,7 @@ import { Alert } from '@mlain/ui/patterns/states';
 import { emptyDocument } from '@/features/editor/model/document-types';
 import { FieldBuilder } from './field-builder';
 import { FormDeleteDialog, useFormConfirmLabels } from './form-delete-dialog';
+import { FormVisitorPages } from './form-pages-card';
 import { createDeliveryTemplateAction, deleteFormAction, updateFormAction } from './actions';
 import type { ContactFieldOption, FormView, ListOption, TemplateOption } from './types';
 
@@ -90,6 +91,7 @@ export function FormEditor({
   form,
   lists,
   templates,
+  pages,
   contactFields,
   workspaceId,
   workspaceSlug,
@@ -100,6 +102,12 @@ export function FormEditor({
   lists: ListOption[];
   /** Šablony, ze kterých jde vybrat e-mail po vyplnění. */
   templates: TemplateOption[];
+  /**
+   * Knihovna veřejných stránek projektu, tedy šablony druhu `page`. Načítá se
+   * zvlášť od e-mailů: výchozí výpis knihovny stránky nevrací, aby se nedaly
+   * nabídnout jako obsah kampaně ani jako e-mail formuláře.
+   */
+  pages: TemplateOption[];
   /** Katalog vlastních polí kontaktu pro stavitele polí. */
   contactFields: ContactFieldOption[];
   workspaceId: string;
@@ -121,6 +129,7 @@ export function FormEditor({
 
   const [name, setName] = useState(form.name);
   const [consentText, setConsentText] = useState(form.consent_text ?? '');
+  const [consentRequired, setConsentRequired] = useState(form.consent_required);
   const [doubleOptIn, setDoubleOptIn] = useState(form.double_opt_in);
   const [active, setActive] = useState(form.active);
   const [listId, setListId] = useState(form.list_ids[0] ?? NO_LIST);
@@ -131,14 +140,14 @@ export function FormEditor({
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   /*
-   * Co se stane po odeslání. Obojí je v API i ve schématu od začátku a do
-   * 5. 8. 2026 to v editoru nebylo vůbec, takže se to nedalo nastavit odnikud.
-   *
-   * Zpráva se drží PRO AKTUÁLNÍ JAZYK rozhraní, protože sloupec je mapa jazyků.
-   * Ukládá se sloučením, ne přepsáním celé mapy: jinak by úprava v češtině
+   * Text, který se ukáže po odeslání, když krok zůstal na výchozím textu.
+   * Drží se PRO AKTUÁLNÍ JAZYK rozhraní, protože sloupec je mapa jazyků, a
+   * ukládá se sloučením, ne přepsáním celé mapy: jinak by úprava v češtině
    * smazala anglickou verzi, kterou nikdo neviděl.
+   *
+   * Přesměrování po odeslání (`redirect_url`) si vlastní karta „Stránky pro
+   * návštěvníka", protože je to jedna ze tří voleb téhož kroku.
    */
-  const [redirectUrl, setRedirectUrl] = useState(form.redirect_url ?? '');
   const [successMessage, setSuccessMessage] = useState(form.success_message[locale] ?? '');
 
   /**
@@ -243,7 +252,7 @@ export function FormEditor({
 
         {/* Dva sloupce od 360 px na sloupec. `items-start` je podstatné: bez něj by se
             karty v jednom sloupci roztáhly na výšku toho druhého. */}
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] items-start gap-[var(--spacing-gutter)]">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(360px,100%),1fr))] items-start gap-[var(--spacing-gutter)]">
           <div className="flex flex-col gap-[var(--spacing-gutter)]">
             <Card gap="gutter">
               <CardTitle>{tf('settings')}</CardTitle>
@@ -299,26 +308,10 @@ export function FormEditor({
                 />
               </Field>
 
-              <Field label={tf('redirectUrl')} hint={tf('redirectUrlHint')}>
-                <Input
-                  data-testid="form-redirect-url"
-                  type="url"
-                  value={redirectUrl}
-                  placeholder="https://"
-                  // Adresa se čte po znacích, proto mono. Stejně jako přesměrování
-                  // na detailu seznamu.
-                  className="font-mono"
-                  disabled={!canEdit}
-                  onChange={(event) => setRedirectUrl(event.target.value)}
-                  onBlur={() => {
-                    // Prázdné pole je „zůstane naše stránka", tedy `null`, ne prázdný
-                    // řetězec: `redirect_url` je v API validované jako URL a prázdný
-                    // řetězec by skončil čtyřistadvacítkou.
-                    const next = redirectUrl.trim() === '' ? null : redirectUrl.trim();
-                    if (next !== form.redirect_url) void save({ redirect_url: next });
-                  }}
-                />
-              </Field>
+              {/* Přesměrování po odeslání tu SCHVÁLNĚ NENÍ. Bydlí v kartě
+                  „Stránky pro návštěvníka" jako jedna ze tří voleb prvního
+                  kroku: vlastní stránka a přesměrování si odporují a jako dvě
+                  samostatná pole vedle sebe by šly nastavit obě naráz. */}
 
               <Field label={tf('consent')} hint={tf('consentHint')}>
                 <Textarea
@@ -333,7 +326,45 @@ export function FormEditor({
                   }}
                 />
               </Field>
+
+              {/*
+                Přepínač je vidět JEN když nějaký text souhlasu je. Bez textu se
+                políčko na formuláři nekreslí vůbec, takže volba „musí se zaškrtnout"
+                by se vztahovala k něčemu, co tam není, a čtenář by z toho usoudil,
+                že formulář souhlas vyžaduje.
+              */}
+              {consentText.trim() === '' ? null : (
+                <div className="flex items-start gap-3">
+                  <Switch
+                    id="form-consent-required"
+                    checked={consentRequired}
+                    disabled={!canEdit}
+                    aria-label={tf('consentRequired')}
+                    onCheckedChange={(next) => {
+                      setConsentRequired(next);
+                      void save({ consent_required: next });
+                    }}
+                  />
+                  <span className="text-meta text-text-muted">
+                    <strong className="text-text">{tf('consentRequired')}</strong>{' '}
+                    {tf('consentRequiredHint')}
+                  </span>
+                </div>
+              )}
             </Card>
+
+            {/* Co uvidí návštěvník po jednotlivých krocích. Stojí hned pod
+                nastavením formuláře, protože „text po odeslání" v něm je jen
+                jednou z těch voleb a ty dvě karty se čtou jako jedna otázka. */}
+            <FormVisitorPages
+              form={form}
+              pages={pages}
+              workspaceId={workspaceId}
+              workspaceSlug={workspaceSlug}
+              canEdit={canEdit}
+              save={save}
+              onFailure={setFailure}
+            />
           </div>
 
           <div className="flex flex-col gap-[var(--spacing-gutter)]">
@@ -477,6 +508,8 @@ export function FormEditor({
         open={confirmDisable}
         onOpenChange={setConfirmDisable}
         level="N2"
+        // Přepínač nastavení, dá se zapnout zpátky.
+        destructive={false}
         title={t('forms.doubleOptInDisableTitle')}
         consequences={[t('forms.doubleOptInDisableBody')]}
         confirmLabel={t('forms.doubleOptInDisableConfirm')}

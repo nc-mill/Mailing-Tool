@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Link } from '@mlain/i18n/navigation';
 import { Input } from '@mlain/ui/components/input';
 import { Label } from '@mlain/ui/components/label';
+import { passwordManagerOptOut } from '@mlain/ui/lib/password-manager';
 import { FieldError, fieldAria } from '@/lib/forms/field-error';
 import { SubmitButton } from '@/lib/forms/submit-button';
 import { useFormErrorFocus } from '@/lib/forms/use-form-error-focus';
@@ -91,11 +92,16 @@ export function ChangeEmailForm({
 
         <div>
           <Label htmlFor="email">{t('form.newEmail')}</Label>
+          {/* Nová adresa KONTAKTU, ne přihlašovací. Nabídka správce hesel by sem
+              tlačila adresu přihlášeného uživatele, a to je poslední věc, kterou
+              chce mít člověk na obrazovce, kde mění klíč cizího kontaktu.
+              Podrobnosti v `@mlain/ui/lib/password-manager`. */}
           <Input
             id="email"
             name="email"
             type="email"
             autoComplete="off"
+            {...passwordManagerOptOut}
             {...fieldAria('email', fieldErrors)}
           />
           <FieldError name="email" errors={fieldErrors} />

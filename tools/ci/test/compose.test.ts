@@ -106,7 +106,13 @@ describe('docker/initdb/10-roles.sql', () => {
     // ALTER DATABASE smí jen vlastník databáze nebo superuživatel, a
     // mlain_migrator není ani jedno. Musí to tedy proběhnout tady, v initdb,
     // ne v migraci. Požadavek P03, kapitola 7, řádek B.
-    expect(sql()).toMatch(/ALTER DATABASE mlain SET timezone = 'UTC'/);
+    //
+    // Hledá se volání `format`, ne doslovné `ALTER DATABASE mlain`: jméno
+    // databáze přestalo být napevno, bere se z `POSTGRES_DB`, protože instalace
+    // s jinak pojmenovanou databází jinak tenhle krok tiše přeskočila. Ani
+    // `GRANT`, ani `ALTER DATABASE` nepřijímají výraz, takže se jméno musí
+    // vložit přes `%I` do textu příkazu.
+    expect(sql()).toMatch(/ALTER DATABASE %I SET timezone = %L'\s*,\s*db\s*,\s*'UTC'/);
   });
 
   it('zakládá schéma pgboss vlastněné aplikační rolí', () => {

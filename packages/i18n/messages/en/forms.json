@@ -22,7 +22,7 @@
     "redirectUrl": "Redirect after submitting",
     "redirectUrlHint": "The full address including https://. If you fill it in, the person lands on your page instead of ours. Empty keeps them with us.",
     "consent": "Consent text next to the checkbox",
-    "consentHint": "It is stored with every signup as proof of what the person agreed to. An empty field means no consent is recorded.",
+    "consentHint": "Shown on the form as a checkbox and stored with every signup as proof of what the person agreed to. An empty field means no checkbox and no consent recorded. Write a link to your terms as [link text](https://yoursite.com/terms).",
     "fields": "Form fields",
     "fieldsHint": "This is what the form collects. The set of fields is changed through the API for now.",
     "fieldRequired": "required",
@@ -36,14 +36,23 @@
     "deleteConsequenceAlternative": "If you only want to stop the form for a while, turn off the switch The form collects signups.",
     "deleteConfirm": "Delete form",
     "deletePending": "Deleting the form…",
-    "notYetTyped": "Type the form name first."
+    "notYetTyped": "Type the form name first.",
+    "bulkDelete": "{count, plural, =0 {Delete forms} one {Delete # form} other {Delete # forms}}",
+    "bulkDeleteTitle": "{count, plural, =0 {Delete forms?} one {Delete # form?} other {Delete # forms?}}",
+    "bulkDeleteNothing": "None of the selected forms can be deleted.",
+    "bulkDeleteSubmitting": "Deleting forms…",
+    "bulkDeleteDone": "{count, plural, =0 {No form deleted.} one {# form deleted.} other {# forms deleted.}}",
+    "bulkDeleteFailed": "{count, plural, =0 {No form could be deleted} one {# form could not be deleted} other {# forms could not be deleted}}: {detail}",
+    "consentRequired": "Consent is required.",
+    "consentRequiredHint": "The form cannot be submitted without ticking it. Turn this off when the checkbox is optional and the signup should count without it."
   },
   "table": {
     "openDetail": "Open the form {name}",
     "embed": "Embed code",
     "created": "Created",
     "signups": "Signups",
-    "rowMenu": "More actions for form {name}"
+    "rowMenu": "More actions for form {name}",
+    "dropped": "{count, plural, =0 {Nothing dropped} one {# submission dropped by protection} other {# submissions dropped by protection}}"
   },
   "rowActions": {
     "edit": "Edit",
@@ -63,7 +72,9 @@
     "stylingStates": "The form state is in the data-ml-state attribute (idle, sending, done, error). A field with an error has data-ml-invalid=\"true\".",
     "stylingSample": "Sample CSS to copy",
     "stylingHosted": "The ready-made page on our address is the exception: it is ours, so it does have styles.",
-    "variantIframeNoJs": "The frame works even on a website with JavaScript turned off, because our page runs inside it. The website cannot style the form inside the frame though, the script option is for that."
+    "variantIframeNoJs": "The frame works even on a website with JavaScript turned off, because our page runs inside it. The website cannot style the form inside the frame though, the script option is for that.",
+    "testOpenHosted": "Open our hosted page",
+    "testHostedNote": "The hosted page carries our design. The embedded form carries no CSS, its looks come from the website you embed it into."
   },
   "email": {
     "title": "The email the person receives",
@@ -80,6 +91,34 @@
     "sendingWarning": "This project has not sent a campaign yet, and that is where the sending account comes from. Until then the form email will not go out.",
     "confirmVsWelcome": "This is the welcome email, the one with the download link. The confirmation email that only verifies the address is composed by us and cannot be edited: if its confirmation link could be overwritten, subscribing would silently stop working.",
     "sharedWithList": "The email belongs to this form, not to the list. Another form writing into the same list can therefore send a different file."
+  },
+  "pages": {
+    "title": "Pages the visitor sees",
+    "lead": "What a person sees after submitting the form and after clicking the confirmation link. For each step you pick one of three options.",
+    "modeDefault": "Built-in text",
+    "modeDefaultHint": "Our built-in sentence shows up. Nothing to set.",
+    "modePage": "Custom page",
+    "modePageHint": "The person stays with us and sees a design you build in the editor.",
+    "modeRedirect": "Redirect to your site",
+    "modeRedirectHint": "The person ends up at your address. They see nothing of ours.",
+    "redirectOnList": "The redirect for this step is set on the list, because that page is opened from a link in an email, not from the form.",
+    "select": "Which page shows up",
+    "selectNone": "No page yet",
+    "empty": "There is no page in this project yet. Create one with the button below, we will prefill it with today's text.",
+    "edit": "Edit",
+    "create": "Create a page",
+    "creating": "Creating the page…",
+    "createFailed": "The page could not be created.",
+    "redirectUrl": "Address to send the person to",
+    "redirectUrlHint": "The full address including https://.",
+    "redirectInvalid": "The address must be complete, including https://. Otherwise the person ends up on a page of ours that does not exist.",
+    "newName": "{title} · {owner}",
+    "thanks": "After the form is submitted",
+    "thanksHint": "The page a person lands on right after submitting. At that moment we know nothing about them, so contact details cannot be used there.",
+    "confirmed": "After the subscription is confirmed",
+    "confirmedHint": "The page after clicking the link in the confirmation email. The setting here wins over the same setting on the list.",
+    "alreadySubscribed": "When they are already confirmed",
+    "alreadySubscribedHint": "The page for someone already confirmed in the list. The setting here wins over the same setting on the list."
   },
   "fields": {
     "title": "What the form collects",

@@ -27,6 +27,7 @@ import {
   softDeleteTemplate,
   updateTemplateDesign,
   validationProfileFor,
+  type TemplateKind,
   type TemplateRow,
 } from './repository';
 import { validateTemplateDocument } from './validate';
@@ -52,7 +53,7 @@ export type ServiceContext = {
 
 export type CreateTemplateInput = {
   name: string;
-  kind?: 'campaign' | 'transactional' | 'system';
+  kind?: TemplateKind;
   starter?: boolean;
 } & ({ document: Document } | { baseTemplate: BaseTemplateParams });
 

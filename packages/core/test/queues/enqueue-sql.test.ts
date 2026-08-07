@@ -45,6 +45,42 @@ describe('transakční zařazení úlohy', () => {
     expect(values).not.toContain('short');
   });
 
+  it('vyplňuje dead_letter, bez kterého se selhaná úloha nikam nepřepošle', () => {
+    // pg-boss neroutuje podle fronty, ale podle sloupce `dead_letter` NA ŘÁDKU
+    // ÚLOHY: CTE `dlq_jobs` v `plans.js` vybírá `r.dead_letter` z právě
+    // selhaného řádku. Dokud se sloupec nechával na NULL, nefungovala fronta
+    // pro selhané úlohy ani u jedné ze 47 front, které ji v registru mají.
+    const { text } = render(
+      jobInsert({
+        schema: 'pgboss',
+        name: 'contacts.import',
+        payload: { importId: 'i1' },
+        singletonKey: 'i1',
+      }),
+    );
+    expect(text).toContain('policy, dead_letter');
+    expect(text).toMatch(/\(SELECT dead_letter FROM "pgboss"\.queue WHERE name = \$\d+\)/);
+  });
+
+  it('čte dead_letter z fronty, ne z registru, aby nešlo porušit cizí klíč', () => {
+    // Konstanta `<fronta>.dlq` opsaná z registru by zápis shodila všude, kde
+    // dead letter frontu nikdo nezaložil; sloupec má cizí klíč na `queue.name`.
+    // Poddotaz čte hodnotu, která v `queue` UŽ JE, takže cizí klíč z principu
+    // porušit nemůže: buď je to existující jméno, nebo NULL.
+    const { text, values } = render(
+      jobInsert({
+        schema: 'pgboss',
+        name: 'retention.run',
+        payload: { workspaceId: 'w1' },
+        singletonKey: 'w1',
+      }),
+    );
+    expect(text).toContain('SELECT dead_letter FROM');
+    // Ani u fronty BEZ dead letter fronty se do parametrů nedostane `.dlq`:
+    // hodnotu vybírá databáze, my posíláme jen jméno fronty.
+    expect(values.some((value) => String(value).endsWith('.dlq'))).toBe(false);
+  });
+
   it('sloučenou úlohu tiše nezařadí, místo aby shodila doménovou transakci', () => {
     // Bez `ON CONFLICT DO NOTHING` by druhá úloha s týmž klíčem skončila na
     // 23505, a protože běží ve stejné transakci jako doménová změna, vzal by

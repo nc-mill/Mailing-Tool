@@ -10,6 +10,7 @@ const P16_COMMANDS = [
   'upgrade',
   'rotate-credentials',
   'genkey',
+  'rebuild-consents',
   'rebuild-engagement',
   'reset-password',
 ] as const;

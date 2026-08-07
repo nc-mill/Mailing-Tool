@@ -85,8 +85,45 @@ describe('inspektor značky vysvětlí roli pole', () => {
         attrs={{ expr: 'contact.greeting', fallback: null, dateFormat: null }}
       />,
     );
-    expect(screen.getByTestId('token-greeting-hint')).toHaveTextContent('Dobrý den, Petře');
+    const hint = screen.getByTestId('token-greeting-hint');
+    expect(hint).toHaveTextContent('Hotová věta i s 5. pádem');
+    expect(hint).toHaveTextContent('visící čárka');
+    // Nápověda UŽ NECITUJE konkrétní větu. Napsaná natvrdo by se rozešla
+    // s nastavením projektu (vykání, oslovení příjmením) i se skladatelem;
+    // skutečnou větu ukazuje řádek „Vyrobí:" nad ní.
+    expect(hint).not.toHaveTextContent('Dobrý den, Petře');
     expect(screen.queryByTestId('token-fragment-warning')).toBeNull();
+  });
+
+  /**
+   * Nález z provozu: „Když tam vložím Oslovení, tak vlastně nevím, jak vypadá.
+   * Bude to Dobrý den Honzo? Nebo Krásný den Honzo?" Bublina se otevírá
+   * i klávesnicí, takže věta není dostupná jen myší.
+   */
+  it('u hotového oslovení ukáže větu, kterou značka vyrobí', () => {
+    wrap(
+      <TokenInspector
+        fieldCatalog={catalog}
+        onChange={vi.fn()}
+        attrs={{ expr: 'contact.greeting', fallback: null, dateFormat: null }}
+        greetingExample="Dobrý den, Jano"
+      />,
+    );
+    expect(screen.getByTestId('token-greeting-example')).toHaveTextContent(
+      'Vyrobí: Dobrý den, Jano',
+    );
+  });
+
+  /** Vymyšlený příklad je horší než žádný: rozešel by se se skutečností. */
+  it('bez zdroje věty žádný příklad nevymýšlí', () => {
+    wrap(
+      <TokenInspector
+        fieldCatalog={catalog}
+        onChange={vi.fn()}
+        attrs={{ expr: 'contact.greeting', fallback: null, dateFormat: null }}
+      />,
+    );
+    expect(screen.queryByTestId('token-greeting-example')).toBeNull();
   });
 
   it('u běžného pole nevysvětluje nic navíc', () => {

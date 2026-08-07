@@ -1,4 +1,5 @@
 export { AppShell } from './app-shell';
+export { NavDrawer } from './nav-drawer';
 export { Sidebar } from './sidebar';
 export type { SidebarLabels } from './sidebar';
 export { SystemBar } from './system-bar';

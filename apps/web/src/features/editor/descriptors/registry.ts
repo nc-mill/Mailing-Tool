@@ -10,6 +10,7 @@ import { SECTION_DESCRIPTOR } from './section';
 import { SOCIAL_DESCRIPTOR } from './social';
 import { SPACER_DESCRIPTOR } from './spacer';
 import { TEXT_DESCRIPTOR } from './text';
+import type { ValidationProfile } from '@mlain/emails/document/profile';
 import type { BlockDescriptor, EditorIconName, I18nKey } from './types';
 
 export const BLOCK_DESCRIPTORS: Record<string, BlockDescriptor> = {
@@ -52,7 +53,9 @@ export type PaletteEntry = {
   preset?: Record<string, unknown>;
 };
 
-export const PALETTE: Array<{ label: I18nKey; entries: PaletteEntry[] }> = [
+export type PaletteGroup = { label: I18nKey; entries: PaletteEntry[] };
+
+export const PALETTE: Array<PaletteGroup> = [
   {
     label: 'palette.group.content',
     entries: [
@@ -88,3 +91,39 @@ export const PALETTE: Array<{ label: I18nKey; entries: PaletteEntry[] }> = [
     ],
   },
 ];
+
+/**
+ * Bloky, které se v paletě VEŘEJNÉ STRÁNKY nenabídnou.
+ *
+ * `footer` je patička s odhlašovacím odkazem. Na stránce, na kterou se chodí
+ * z formuláře nebo z potvrzovacího e-mailu, nemá koho odhlašovat a odhlášení
+ * má vlastní stránku, takže by autora jen sváděla vyrobit odkaz, který nikam
+ * nevede.
+ *
+ * `html` je blok syrového HTML a je to BEZPEČNOSTNÍ ROZHODNUTÍ (plán, oddíl 4.4).
+ * V kampani je HTML povolené, protože e-mail čte příjemce ve svém klientu, který
+ * skripty stejně nespustí. Veřejná stránka ale běží NA NAŠÍ DOMÉNĚ, takže
+ * vložený obsah v ní může předstírat cokoli: přihlašovací pole, cizí značku,
+ * jinou cenu. Přísná politika obsahu zastaví skript, ale ne podvodný text ani
+ * `javascript:` v odkazu. Autorem přitom nemusí být vlastník projektu, stačí
+ * člen s právem upravovat formuláře. Je to totéž rozhodnutí, jaké padlo
+ * u textu souhlasu u zaškrtávacího políčka.
+ */
+const HIDDEN_ON_PAGE: ReadonlySet<string> = new Set(['footer', 'html']);
+
+/**
+ * Paleta pro daný validační profil.
+ *
+ * ZUŽUJE SE JEN PROFIL `page`, ostatní dostanou `PALETTE` beze změny, a to
+ * i identicky (`===`), aby se kampaň nemohla omylem svézt s úpravou stránky.
+ * Filtruje se TADY, na jednom místě, protože paletu čtou dvě obrazovky: panel
+ * bloků vlevo a nabídka „přidej blok sem" mezi bloky. Druhá kopie seznamu by
+ * znamenala, že se blok nedá vzít z panelu, ale dá se vložit z nabídky.
+ */
+export function paletteFor(profile: ValidationProfile): Array<PaletteGroup> {
+  if (profile !== 'page') return PALETTE;
+  return PALETTE.map((group) => ({
+    ...group,
+    entries: group.entries.filter((entry) => !HIDDEN_ON_PAGE.has(entry.type)),
+  })).filter((group) => group.entries.length > 0);
+}

@@ -167,6 +167,8 @@ export function AddressFormSectionView({
           if (!open) setPendingValue(null);
         }}
         level="N2"
+        // Změna nastavení oslovení, jde ji přepnout zpátky.
+        destructive={false}
         title={t('general.addressForm.dialogTitle', { target: t(INLINE_LABEL_KEYS[target]) })}
         consequences={[
           t('general.addressForm.dialogConsequence1', { count: contactCount }),

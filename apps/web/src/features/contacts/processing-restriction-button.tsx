@@ -152,6 +152,8 @@ export function ProcessingRestrictionButton({
         open={open}
         onOpenChange={setOpen}
         level="N2"
+        // Přepínač: omezení jde zapnout i zrušit, nic se nemaže.
+        destructive={false}
         title={
           restricting
             ? t('restricted.restrictTitle', { name })

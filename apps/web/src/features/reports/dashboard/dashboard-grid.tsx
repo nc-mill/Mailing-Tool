@@ -246,7 +246,7 @@ export function DashboardGrid({
         </Card>
       ) : null}
 
-      <div className="mb-[var(--spacing-gutter)] grid grid-cols-[repeat(auto-fit,minmax(230px,1fr))] gap-[var(--spacing-gutter)]">
+      <div className="mb-[var(--spacing-gutter)] grid grid-cols-[repeat(auto-fit,minmax(min(230px,100%),1fr))] gap-[var(--spacing-gutter)]">
         <StatTile
           label={t('dashboard.sent')}
           icon={<Send aria-hidden className="icon-md" />}

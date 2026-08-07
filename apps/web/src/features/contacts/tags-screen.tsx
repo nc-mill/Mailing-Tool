@@ -460,6 +460,8 @@ export function TagsScreen({
           if (!open) setMergeSource(null);
         }}
         level="N3"
+        // Slučovaný štítek zanikne a rozdělit ho zpátky rozhraní neumí.
+        destructive
         title={t('tags.mergeConfirmTitle', {
           source: mergeSource?.name ?? '',
           target: mergeTarget?.name ?? '',
@@ -495,6 +497,8 @@ export function TagsScreen({
         open={deleting !== null}
         onOpenChange={(open) => setDeleting(open ? deleting : null)}
         level="N2"
+        // Endpoint na obnovení neexistuje, viz komentář nad dialogem.
+        destructive
         title={t('tags.deleteTitle', { name: deleting?.name ?? '' })}
         consequences={[
           t('tags.deleteConsequenceContacts', { count: deleting?.contact_count ?? 0 }),

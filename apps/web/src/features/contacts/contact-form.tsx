@@ -9,6 +9,7 @@ import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Checkbox } from '@mlain/ui/components/checkbox';
 import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
+import { passwordManagerOptOut } from '@mlain/ui/lib/password-manager';
 import { PageHeader } from '@mlain/ui/components/page-header';
 import { RadioGroup, RadioGroupItem } from '@mlain/ui/components/radio-group';
 import { Tag } from '@mlain/ui/components/tag';
@@ -75,6 +76,38 @@ export type ContactFormValues = {
      * Bez toho vypadá předvyplněná volba jako volba uživatele a přehlédne se.
      */
     is_default?: boolean;
+    /**
+     * Posílá seznam uvítací e-mail (`lists.send_welcome`)? U ÚPRAVY na tom
+     * stojí, jestli po zaškrtnutí seznamu s jedním krokem něco odejde:
+     * kontakt se přihlásí rovnou a uvítací e-mail dostane jedině tehdy, když
+     * ho seznam má zapnutý.
+     */
+    send_welcome?: boolean;
+    /**
+     * Posílá seznam ROZLOUČENÍ (`lists.send_goodbye`)? Odškrtnutí seznamu
+     * kontakt odhlásí a odhlášení rozloučení pošle. Formulář o tom mlčel,
+     * takže odchozí e-mail vyrobilo kliknutí, po kterém uživatel čekal jen
+     * tichou změnu. Mlčení o odchozí zprávě je táž vada jako slib zprávy,
+     * která neodejde.
+     */
+    send_goodbye?: boolean;
+    /**
+     * Je kontakt z tohohle seznamu ODHLÁŠENÝ? Zaškrtávátko je v obou případech
+     * prázdné, ale následek se liší: návrat po odhlášení jde vždycky přes
+     * potvrzovací e-mail, i na seznamu s jedním krokem. Bez tohohle rozlišení
+     * by formulář u takového seznamu sliboval uvítací e-mail, který neodejde.
+     */
+    previously_unsubscribed?: boolean;
+    /**
+     * Máme pro tenhle seznam DOLOŽENÝ SOUHLAS? Rozhoduje o tom
+     * `pickEffectiveConsent` na stránce, tedy táž funkce, kterou se ptá server.
+     *
+     * Přehazuje výhybku u seznamu s dvojím potvrzením: s doloženým souhlasem se
+     * kontakt přihlásí ROVNOU a potvrzovací e-mail neodejde
+     * (`state-machine.ts`, větev `existingConsent`). Bez tohohle příznaku
+     * formulář sliboval potvrzovací e-mail, a přišel uvítací.
+     */
+    has_effective_consent?: boolean;
   }[];
 };
 
@@ -218,14 +251,82 @@ export function ContactForm({
   );
 
   /**
-   * Seznamy, kvůli kterým po uložení ODEJDE potvrzovací e-mail. Počítá se ze
-   * stavu obrazovky, ne z domněnky: musí být zaškrtnuté, mít dvojí potvrzení
-   * a správce musí zvolit „nepotvrzený". Kterákoli z těch tří podmínek jinak
-   * znamená přímý zápis bez jediné odeslané zprávy.
+   * Seznamy, do kterých kontakt PRÁVĚ TEĎ přibude. U založení jsou to všechny
+   * zaškrtnuté, u úpravy jen ty, ve kterých ještě není: zaškrtávátko, které
+   * bylo zaškrtnuté už při vykreslení, žádnou změnu nepůsobí a žádný e-mail
+   * z něj neodejde.
    */
-  const willSendConfirmation = values.lists.filter(
-    (list) => checkedLists.has(list.id) && list.double_opt_in && subscription === 'pending',
+  const newlyChecked = values.lists.filter(
+    (list) => checkedLists.has(list.id) && (mode === 'create' || !list.selected),
   );
+
+  /**
+   * Seznamy, kvůli kterým po uložení ODEJDE potvrzovací e-mail. Počítá se ze
+   * stavu obrazovky, ne z domněnky.
+   *
+   * U ZALOŽENÍ musí být seznam zaškrtnutý, mít dvojí potvrzení a správce musí
+   * zvolit „nepotvrzený". Kterákoli z těch tří podmínek jinak znamená přímý
+   * zápis bez jediné odeslané zprávy (ověřeno v `repo/contacts-api.ts`).
+   *
+   * U ÚPRAVY volba „potvrzený a nepotvrzený" není, přidání jde vždycky přes
+   * `POST /lists/{id}/subscribe`, tedy přes stavový automat. Ten pošle
+   * potvrzovací e-mail u seznamu s dvojím potvrzením, a taky vždycky tehdy,
+   * když se kontakt ze seznamu dřív odhlásil: návrat po odhlášení jde přes
+   * `pending` i na seznamu s jedním krokem (`state-machine.ts`, větev
+   * `from === 'unsubscribed'`).
+   */
+  const willSendConfirmation = newlyChecked.filter((list) =>
+    mode === 'create'
+      ? list.double_opt_in && subscription === 'pending'
+      : list.previously_unsubscribed === true ||
+        // Doložený souhlas dvojí potvrzení PŘESKAKUJE, takže tady potvrzovací
+        // e-mail neodejde. Pořadí podmínek kopíruje stavový automat: odhlášený
+        // se vrací přes potvrzení VŽDY, i s doloženým souhlasem.
+        (list.double_opt_in && list.has_effective_consent !== true),
+  );
+
+  /**
+   * Seznamy, kvůli kterým po uložení odejde UVÍTACÍ e-mail.
+   *
+   * Jen u úpravy a jen u seznamu s jedním krokem: tam se kontakt přihlásí
+   * rovnou (`optIn === 'single' && from === 'none'` končí ve stavu `confirmed`)
+   * a `subscribe.ts` pošle uvítací e-mail, pokud ho seznam má zapnutý
+   * (`if (list.sendWelcome) await ports.sendWelcomeEmail(...)`).
+   *
+   * U založení uvítací e-mail neodejde ani u seznamu s jedním krokem: přihlášení
+   * se tam zapisuje napřímo přes `writeSubscriptionIn`, tedy mimo automat.
+   */
+  const willSendWelcome =
+    mode === 'edit'
+      ? newlyChecked.filter(
+          (list) =>
+            list.previously_unsubscribed !== true &&
+            list.send_welcome === true &&
+            // Dvě cesty do stavu `confirmed`, obě s efektem `send_welcome`:
+            // seznam s jedním krokem, a seznam s dvojím potvrzením, u kterého
+            // máme doložený souhlas. Druhá do 7. 8. 2026 chyběla, takže formulář
+            // u ní slíbil potvrzovací e-mail a příjemci přišel uvítací.
+            (!list.double_opt_in || list.has_effective_consent === true),
+        )
+      : [];
+
+  /**
+   * Seznamy, ze kterých se kontakt ODHLÁSÍ a odejde mu kvůli tomu ROZLOUČENÍ.
+   *
+   * Jen u úpravy: založení nikoho odhlašovat nemůže. Odškrtnutý seznam projde
+   * přes `DELETE /lists/{id}/subscribe`, tedy přes `unsubscribe()`, a to pošle
+   * rozloučení, když ho seznam má zapnuté (`unsubscribe.ts`, `sendGoodbyeEmail`).
+   *
+   * Podmínka `list.selected` je podstatná: odškrtnout jde jen seznam, ve kterém
+   * kontakt při vykreslení byl. Bez ní by hláška slíbila rozloučení i tam, kde
+   * uživatel jen zaškrtl a zase odškrtl políčko, po kterém by se nic nestalo.
+   */
+  const willSendGoodbye =
+    mode === 'edit'
+      ? values.lists.filter(
+          (list) => list.selected && !checkedLists.has(list.id) && list.send_goodbye === true,
+        )
+      : [];
 
   function toggleList(id: string, checked: boolean): void {
     setCheckedLists((current) => {
@@ -311,7 +412,7 @@ export function ContactForm({
   /** Tituly, rod a náhled oslovení. U úpravy rovnou, u založení po rozbalení. */
   const identityAdvanced = (
     <>
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-[var(--spacing-gutter)]">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-[var(--spacing-gutter)]">
         <Field
           label={t('form.titlePrefix')}
           hint={t('form.titlePrefixHint')}
@@ -401,8 +502,32 @@ export function ContactForm({
                 jako text a JSONB si typ pamatuje. Kdyby se číslo uložilo jako "42",
                 segment s podmínkou nad číslem by kontakt nenašel a nic by nespadlo. */}
             <input type="hidden" name={`attrtype:${field.key}`} value={field.type} readOnly />
+            {/* POLE TYPU ANO/NE SE VYBÍRÁ, NEPÍŠE. Do teď tu byl řádek na text
+                a uložilo se `true` jen tehdy, když do něj uživatel napsal
+                doslova „true", „on" nebo „1" (`coerceAttribute`). Cokoli jiného,
+                včetně česky napsaného „ano", se uložilo jako NE, a to tiše.
+
+                Volby jsou tři, ne dvě: nevyplněno není totéž co „ne". Prázdná
+                hodnota atribut z JSONB smaže (`null` a `jsonb_strip_nulls`),
+                kdežto „Ne" je rozhodnutí, podle kterého se dá segmentovat. */}
             <Field label={field.label} {...errorProps(`attributes.${field.key}`)}>
-              {field.type === 'long_text' ? (
+              {field.type === 'boolean' ? (
+                /* NATIVNÍ `select`, ne `Select` z P05: ten stojí na Radixu,
+                   který prázdnou hodnotu položky zakazuje (`SelectItem` s `""`
+                   vyhodí výjimku), a „nevyplněno" je tu třetí plnohodnotná
+                   volba. Nativní výběr ji unese, odešle se sám s formulářem
+                   a funguje i bez JavaScriptu, což je u formuláře posílaného
+                   Server Action výhoda, ne kompromis. */
+                <select
+                  name={`attr:${field.key}`}
+                  defaultValue={field.value}
+                  className="min-h-[var(--size-target-min)] w-full rounded-[var(--radius-control)] border border-border-strong bg-field px-3.5 text-ui text-text"
+                >
+                  <option value="">{t('form.booleanEmpty')}</option>
+                  <option value="true">{tCommon('fieldValue.yes')}</option>
+                  <option value="false">{tCommon('fieldValue.no')}</option>
+                </select>
+              ) : field.type === 'long_text' ? (
                 <Textarea name={`attr:${field.key}`} defaultValue={field.value} rows={4} />
               ) : (
                 <Input
@@ -468,14 +593,24 @@ export function ContactForm({
         ) : null}
         {formErrors.length > 0 ? <Alert tone="error">{formErrors.join(' ')}</Alert> : null}
 
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] items-start gap-[var(--spacing-gutter)]">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(360px,100%),1fr))] items-start gap-[var(--spacing-gutter)]">
           <div className="grid gap-[var(--spacing-gutter)]">
             <Card gap="gutter">
               <CardTitle>{t('form.sectionIdentity')}</CardTitle>
 
               {mode === 'create' ? (
                 <Field label={t('form.email')} hint={t('form.emailHint')} {...errorProps('email')}>
-                  <Input name="email" type="email" autoComplete="off" defaultValue={values.email} />
+                  {/* Adresa KONTAKTU, ne přihlašovací. Bez těchhle značek sem
+                      správce hesel nabízí přihlašovací adresu uživatele a jedno
+                      nedopatřené kliknutí ji zapíše do cizího kontaktu.
+                      Podrobnosti v `@mlain/ui/lib/password-manager`. */}
+                  <Input
+                    name="email"
+                    type="email"
+                    autoComplete="off"
+                    {...passwordManagerOptOut}
+                    defaultValue={values.email}
+                  />
                 </Field>
               ) : (
                 <>
@@ -498,7 +633,7 @@ export function ContactForm({
                 </>
               )}
 
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-[var(--spacing-gutter)]">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-[var(--spacing-gutter)]">
                 <Field label={t('form.firstName')} {...errorProps('first_name')}>
                   <Input
                     name="first_name"
@@ -692,10 +827,40 @@ export function ContactForm({
                 Volba „přihlášený" i seznam s jedním krokem se zapisují přímo,
                 takže z nich neodejde nic.
               */}
-              {mode === 'create' && willSendConfirmation.length > 0 ? (
+              {willSendConfirmation.length > 0 ? (
                 <Alert tone="warning" data-testid="confirmation-email-warning">
-                  {t('form.listsWillSendConfirmation', {
-                    lists: willSendConfirmation.map((list) => list.name).join(', '),
+                  {/* Text se u úpravy liší v jediné věci: neodkazuje na volbu
+                      „potvrzený a nepotvrzený", protože ta je jen u založení. */}
+                  {t(
+                    mode === 'create'
+                      ? 'form.listsWillSendConfirmation'
+                      : 'form.listsEditWillSendConfirmation',
+                    { lists: willSendConfirmation.map((list) => list.name).join(', ') },
+                  )}
+                </Alert>
+              ) : null}
+              {/* UVÍTACÍ E-MAIL SE OHLÁSÍ STEJNĚ JAKO POTVRZOVACÍ. Věta výš u úpravy
+                  slibovala potvrzovací e-mail u každého zaškrtnutého seznamu. Na
+                  seznamu s jedním krokem se ale kontakt přihlásí rovnou a odejde mu
+                  uvítací e-mail, tedy jiná zpráva, nebo žádná, když ho seznam nemá
+                  zapnutý. Slíbený potvrzovací e-mail pak nikdy nedorazil. */}
+              {willSendWelcome.length > 0 ? (
+                <Alert tone="warning" data-testid="welcome-email-warning">
+                  {t('form.listsEditWillSendWelcome', {
+                    lists: willSendWelcome.map((list) => list.name).join(', '),
+                  })}
+                </Alert>
+              ) : null}
+              {/* ODŠKRTNUTÍ SEZNAMU TAKY POSÍLÁ E-MAIL, a formulář o tom mlčel.
+                  Odhlášení je pro uživatele tichá úprava záznamu, jenže seznam
+                  se zapnutým rozloučením na ni pošle zprávu příjemci. Mlčení
+                  o odchozí zprávě je stejná vada jako slib zprávy, která
+                  neodejde, jen se hůř odhalí: nikdo nehlásí e-mail, o kterém
+                  neví, že vznikl. */}
+              {willSendGoodbye.length > 0 ? (
+                <Alert tone="warning" data-testid="goodbye-email-warning">
+                  {t('form.listsEditWillSendGoodbye', {
+                    lists: willSendGoodbye.map((list) => list.name).join(', '),
                   })}
                 </Alert>
               ) : null}

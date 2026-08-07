@@ -35,6 +35,8 @@ import { ProcessingRestrictionButton } from './processing-restriction-button';
 import { ResubscribeButton } from './resubscribe-button';
 import { describeContactState } from './contact-state';
 import { GreetingField } from './greeting-field';
+import { MeasurementConsentCard } from './measurement-consent-card';
+import type { MeasurementConsent } from './measurement-consent-state';
 import type { GreetingStatusInput } from './greeting-status';
 import { ContactStatusBadges } from './status-badges';
 import type { ContactStatus } from './filters';
@@ -83,6 +85,12 @@ export type ContactDetailData = {
   source: string;
   subscribed_at: string | null;
   consent_summary: string | null;
+  /**
+   * Souhlas s měřením chování, tedy účel `analytics` v evidenci souhlasů.
+   * Tři hodnoty schválně: `not_recorded` znamená, že se ten člověk nevyjádřil,
+   * a vydávat to za souhlas ani za odmítnutí obrazovka nesmí.
+   */
+  measurement_consent: MeasurementConsent;
 };
 
 const GENDER_KEY = {
@@ -541,7 +549,7 @@ export function ContactDetail({
 
       {/* Levý sloupec je kdo to je, pravý co s ním proběhlo. Mřížka se při zúžení
           okna rozpadne pod sebe sama, proto `auto-fit` a ne dva pevné sloupce. */}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[var(--spacing-gutter)]">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-[var(--spacing-gutter)]">
         <div className="grid gap-[var(--spacing-gutter)]">
           {/* Celý blok oslovení zmizí, když projekt oslovení a 5. pád neřeší.
               Uložená data se tím nemažou: po zapnutí zpátky je řádek přesně
@@ -670,6 +678,25 @@ export function ContactDetail({
               ) : null}
             </dl>
           </Card>
+
+          {/*
+            Souhlas s měřením stojí VEDLE původu a historie souhlasů, ne mezi
+            osobními údaji, a je proto MIMO větev `state.showsPersonalData`.
+
+            Ta větev skrývá kartu s vlastními poli u anonymizovaného kontaktu,
+            tedy údaje O ČLOVĚKU. Tohle je záznam JEHO ROZHODNUTÍ, ne údaj o něm.
+            Kdyby se schoval stejným pravidlem, zmizel by přesně u kontaktů, kde
+            se nejvíc hodí vidět, že si měření nepřáli. Měnit se ale nedá
+            u smazaného ani anonymizovaného kontaktu, stejně jako každá jiná
+            akce na téhle obrazovce, a to řeší `readOnly`.
+          */}
+          <MeasurementConsentCard
+            workspaceId={workspaceId}
+            contactId={contact.id}
+            consent={contact.measurement_consent}
+            consentHistoryHref={`${basePath}/${contact.id}/consents`}
+            readOnly={state.readOnly}
+          />
         </div>
 
         {/*

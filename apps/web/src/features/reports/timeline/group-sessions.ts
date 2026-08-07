@@ -43,14 +43,30 @@ export function groupWebSeries(items: ApiTimelineItem[]): GroupedItem[] {
   );
 }
 
-export type TimelineIcon =
-  'mail' | 'open' | 'click' | 'web' | 'contact' | 'consent' | 'problem' | 'generic';
+/**
+ * Výčet ikon vlastní komponenta časové osy, tenhle soubor ho jen používá.
+ * Vlastní kopie by znamenala, že se význam „otevřený e-mail" dá pojmenovat
+ * dvakrát a pokaždé jinak.
+ */
+export type { TimelineIcon } from '@mlain/ui/patterns/timeline';
+import type { TimelineIcon } from '@mlain/ui/patterns/timeline';
 
 const ICONS: Record<string, TimelineIcon> = {
   message_sent: 'mail',
   message_delivered: 'mail',
   message_opened: 'open',
   message_clicked: 'click',
+  /*
+   * Kliknutí na SYSTÉMOVÝ odkaz z patičky. Do 7. 8. 2026 tu tyhle tři typy
+   * chyběly, takže padaly na neutrální ikonu, přestože jde o proklik jako
+   * každý jiný. Vlastní věty v katalogu mají, ikonu neměly.
+   *
+   * Odhlášení samo je `message_unsubscribed` a to je změna stavu kontaktu,
+   * proto má ikonu kontaktu. Tohle je jen otevření stránky.
+   */
+  message_clicked_unsubscribe_page: 'click',
+  message_clicked_preferences: 'click',
+  message_clicked_webview: 'click',
   message_failed: 'problem',
   message_bounced: 'problem',
   message_complained: 'problem',

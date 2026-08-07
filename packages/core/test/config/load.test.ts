@@ -39,11 +39,53 @@ describe('loadConfig', () => {
     expect(config.DEFAULT_LOCALE).toBe('cs');
     expect(config.SUPPORTED_LOCALES).toEqual(['cs', 'en']);
     expect(config.DEFAULT_TIMEZONE).toBe('Europe/Prague');
-    expect(config.SIGNUP_MODE).toBe('closed');
+    // `invite` je doporučený výchozí stav podle rozhodnutí zadavatele z 31. 7.
+    // Do 7. 8. 2026 tu stálo `closed`, což z čerstvé instalace dělalo slepou
+    // uličku: pozvánka odešla a pozvaný si účet neměl kde založit.
+    expect(config.SIGNUP_MODE).toBe('invite');
     expect(config.SENDER_BATCH_SIZE).toBe(100);
     expect(config.SHUTDOWN_GRACE_SECONDS).toBe(25);
     expect(config.WEBHOOK_MAX_ATTEMPTS).toBe(8);
     expect(config.MIGRATE_ON_START).toBe(true);
+  });
+
+  /**
+   * `open` slibovalo veřejnou registraci a neimplementovala ji ani jedna trasa:
+   * chovalo se přesně jako `invite`, protože token pozvánky se vyžadoval tak
+   * jako tak. Kdo si tu hodnotu nastavil, žil v přesvědčení, že si lidé účty
+   * zakládají sami. Test hlídá obojí: že hodnota neprojde, a že hláška řekne
+   * co místo ní. Bez druhé části by z toho byla jen záhadná chyba při startu.
+   */
+  it('SIGNUP_MODE=open neprojde a hláška poradí invite', () => {
+    const env = MINIMAL();
+    env['SIGNUP_MODE'] = 'open';
+    try {
+      loadConfig(env);
+      expect.unreachable('open musí skončit ConfigError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError);
+      const issue = (error as ConfigError).issues.find((i) => i.variable === 'SIGNUP_MODE');
+      expect(issue?.message).toContain('`invite`');
+      expect(issue?.message).toContain('open');
+    }
+  });
+
+  it.each(['closed', 'invite'])('SIGNUP_MODE=%s projde', (mode) => {
+    const env = MINIMAL();
+    env['SIGNUP_MODE'] = mode;
+    expect(loadConfig(env).SIGNUP_MODE).toBe(mode);
+  });
+
+  /**
+   * Strop dohledání kontaktu při prokliku. Do 7. 8. 2026 byl napsaný natvrdo
+   * na 30 ms a bylo to měřitelně málo: do stropu spadá i vyzvednutí spojení
+   * z bazénu, a studené volání vyšlo proti Postgresu na TÉMŽE STROJI na 26 až
+   * 42 ms. Test hlídá dolní mez, ne přesné číslo: kdo ho zase srazí pod sto
+   * milisekund, připraví první proklik po vyprázdnění bazénu o identifikaci
+   * a nikde to nespadne.
+   */
+  it('strop dohledání kontaktu přežije otevření spojení', () => {
+    expect(loadConfig(MINIMAL()).TRACKING_CONTACT_LOOKUP_TIMEOUT_MS).toBeGreaterThanOrEqual(100);
   });
 
   it('bez SECRET_KEY vyhodí ConfigError s exit code 78 a slovem povinná (kritérium 2)', () => {

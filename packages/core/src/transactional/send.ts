@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import * as schema from '@mlain/db/schema';
 import { prepareRenderData } from '@mlain/contracts/liquid/prepare-render-data';
 import { hasContentBlocks } from '@mlain/emails/document/content-stats';
@@ -9,6 +9,7 @@ import type { WorkspaceContext } from '../identity/types';
 import { compileTemplate } from '../templates/compile';
 import { findTemplateById, validationProfileFor } from '../templates/repository';
 import { contactPreviewData } from '../templates/api/preview-data';
+import { resolveSenderIdentity, type ResolvedSenderIdentity } from '../sender-identities/resolve';
 import { withWorkspace, type Tx } from '../tx';
 import { getFieldCatalog } from '../contacts/fields/catalog';
 import { transactionalVerdict } from '../contacts/suppression/transactional';
@@ -137,7 +138,7 @@ export async function sendTransactional(
       throw new TransactionalSendError('template_not_compilable', { reason: 'empty' });
     }
 
-    const identity = await resolveSenderIdentity(tx, ctx, input.senderIdentityId);
+    const identity = await resolveSenderIdentityFor(tx, ctx, input.senderIdentityId);
     if (identity === null) {
       throw new TransactionalSendError(
         input.senderIdentityId === undefined
@@ -360,32 +361,25 @@ function subjectFor(fallback: string, document: Document): string {
   return (fromDocument !== '' ? fromDocument : fallback).slice(0, 400);
 }
 
-type SenderIdentity = {
-  providerId: string;
-  senderDomainId: string | null;
-  fromName: string;
-  fromEmail: string;
-  replyTo: string | null;
-};
-
 /**
- * Odesílací identita.
+ * Odesílatel transakční zprávy.
  *
- * Pořadí: výslovně zvolená, pak výchozí identita projektu, pak poslední kampaň,
- * která má identitu vyplněnou. Třetí krok je týž pád zpět jako u testovacího
- * odeslání a u e-mailu z formuláře: projekt nemusí mít v `sender_identities`
- * ani řádek, ale kampaň už rozeslal.
+ * Výslovně zvolená identita má přednost; bez ní rozhoduje společný resolver
+ * (`sender-identities/resolve.ts`), tedy předvolba projektu, poslední kampaň
+ * s vyplněným odesílatelem a nakonec připojený účet s ověřenou adresou.
+ * Do 7. 8. 2026 měla tahle trasa vlastní kopii téhož hledání a čtyři kopie
+ * se rozešly.
  *
  * ODDĚLENÝ ÚČET PRO TRANSAKČNÍ PROUD se doporučuje, ale NEVYNUCUJE (rozhodnutí
  * zadavatele). Zákazník ho zařídí druhým řádkem `sending_providers` a vlastní
  * subdoménou a předá sem `sender_identity_id`. Vynucení by znatelně prodloužilo
  * cestu k prvnímu odeslanému mailu.
  */
-async function resolveSenderIdentity(
+async function resolveSenderIdentityFor(
   tx: Tx,
   ctx: WorkspaceContext,
   identityId: string | undefined,
-): Promise<SenderIdentity | null> {
+): Promise<ResolvedSenderIdentity | null> {
   if (identityId !== undefined) {
     const [row] = await tx
       .select({
@@ -398,45 +392,9 @@ async function resolveSenderIdentity(
       .from(schema.senderIdentities)
       .where(and(wsEq(ctx, schema.senderIdentities), eq(schema.senderIdentities.id, identityId)))
       .limit(1);
-    return row ?? null;
+    return row ? { ...row, source: 'identity' } : null;
   }
-
-  const [preferred] = await tx
-    .select({
-      providerId: schema.senderIdentities.providerId,
-      senderDomainId: schema.senderIdentities.senderDomainId,
-      fromName: schema.senderIdentities.fromName,
-      fromEmail: schema.senderIdentities.fromEmail,
-      replyTo: schema.senderIdentities.replyTo,
-    })
-    .from(schema.senderIdentities)
-    .where(wsEq(ctx, schema.senderIdentities))
-    .orderBy(desc(schema.senderIdentities.isDefault), schema.senderIdentities.createdAt)
-    .limit(1);
-  if (preferred) return preferred;
-
-  const [fromCampaign] = await tx
-    .select({
-      providerId: schema.campaigns.providerId,
-      senderDomainId: schema.campaigns.senderDomainId,
-      fromName: schema.campaigns.fromName,
-      fromEmail: schema.campaigns.fromEmail,
-      replyTo: schema.campaigns.replyTo,
-    })
-    .from(schema.campaigns)
-    .where(
-      and(
-        wsEq(ctx, schema.campaigns),
-        isNull(schema.campaigns.deletedAt),
-        eq(schema.campaigns.kind, 'campaign'),
-        isNotNull(schema.campaigns.providerId),
-        ne(schema.campaigns.fromEmail, ''),
-      ),
-    )
-    .orderBy(desc(schema.campaigns.updatedAt))
-    .limit(1);
-  if (!fromCampaign?.providerId) return null;
-  return { ...fromCampaign, providerId: fromCampaign.providerId };
+  return resolveSenderIdentity(tx, ctx);
 }
 
 /**
@@ -461,7 +419,7 @@ async function upsertTransactionalCampaign(
     html: string;
     text: string;
     compileMeta: unknown;
-    identity: SenderIdentity;
+    identity: ResolvedSenderIdentity;
     replyTo: string | null;
     now: Date;
   },

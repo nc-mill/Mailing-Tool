@@ -30,10 +30,20 @@ export type SeverLinksPayload = { workspaceId: string; contactId: string };
  *
  * Job proto běží pod kontextem projektu z payloadu. `workspace_id` zůstává i tak
  * v každém příkazu, takže se odstřižení nemůže dotknout cizího projektu ani omylem.
+ *
+ * CO SE ZDE VĚDOMĚ NEODSTŘIHÁVÁ, ať se to nehledá podruhé (prověřeno 7. 8. 2026):
+ * `campaign_audience_progress.cursor_contact_id`. Je to provozní záložka „odkud
+ * pokračovat ve stavbě publika", ne údaj o osobě, a její vynulování by rozestavěnou
+ * kampaň poslalo scanovat publikum od začátku. Odůvodnění v plné délce je u sloupce
+ * v `packages/db/src/schema/campaigns.ts`.
  */
-export async function severContactLinks(
-  payload: SeverLinksPayload,
-): Promise<{ messages: number; webEvents: number; messageEvents: number; engagement: number }> {
+export async function severContactLinks(payload: SeverLinksPayload): Promise<{
+  messages: number;
+  webEvents: number;
+  messageEvents: number;
+  engagement: number;
+  inboundDeliveries: number;
+}> {
   const placeholder = `erased+${payload.contactId}@erased.invalid`;
   const ctx = createSystemContext(payload.workspaceId, 'gdpr.sever_links');
 
@@ -58,9 +68,42 @@ export async function severContactLinks(
     //    contact_id, erased_at. Serverová událost má vyplněné jen contact_id, takže
     //    samotné vynulování skončí na 23514. Sloupcový GRANT UPDATE od P03 obsahuje
     //    erased_at právě kvůli tomuhle.
+    //
+    //    `properties` a `context` se VYPRAZDŇUJÍ CELÉ, ne selektivně, a je to
+    //    rozhodnutí, ne pohodlnost:
+    //
+    //      * `properties` nemá schéma. Klíče si definuje zákazník ve vlastním
+    //        volání SDK, takže výběr „tenhle klíč je neosobní" by byl slib, který
+    //        kód nemůže dodržet u dalšího zákazníka. Ověřeno na datech: u události
+    //        `identify` tam leží `traits` s e-mailem a jménem, `external_id`
+    //        a `signature`, tedy rovnou tři identifikátory osoby.
+    //      * `context` schéma má (`EventContext` v tracking/types.ts), a právě proto
+    //        je vidět, že se z něj nedá nic užitečného zachránit. Osobní je `ip`
+    //        a `country`, identifikační jsou `os` a `browser`, a `locale`,
+    //        `timezone`, `screen`, `viewport` a `device` jsou složky otisku
+    //        prohlížeče: každá zvlášť neškodná, dohromady identifikace, tedy přesně
+    //        to, čemu má výmaz zabránit. Zbylo by `sdk`, `clock_skew_ms`, `campaign`
+    //        a `imported_at`, což NIKDO NEČTE. Allowlist by tedy nezachránil nic
+    //        a zavázal by každý nový klíč ke klasifikaci, na kterou se zapomene.
+    //
+    //    Statistická hodnota události se tím NEZTRÁCÍ a je to tentýž důvod jako
+    //    v hlavičce souboru: čísla kampaní se počítají z message_events,
+    //    message_engagement a messages, ne odtud. Na téhle události zůstává `name`,
+    //    `occurred_at`, `source` i `session_id`, takže „kolik lidí si prohlédlo
+    //    stránku" odpovídá dál. Jediný čtenář `properties` je časová osa kontaktu
+    //    (reports/timeline/branches.ts), a ta po výmazu nemá koho zobrazit.
+    //
+    //    `page` se přepisuje TAKY, a je to rozhodnutí zadavatele z 6. 8. Nese
+    //    historii procházení té osoby po cizím webu (url, referrer, title), tedy
+    //    přesně tu třídu údaje, kvůli které výmaz existuje. Grant na ni je v 0022
+    //    spolu s `properties` a `context`.
     const { rows: webEvents } = await tx.execute<{ id: string }>(sql`
       UPDATE web_events
-         SET contact_id = NULL, erased_at = now()
+         SET contact_id = NULL,
+             erased_at = now(),
+             properties = '{}'::jsonb,
+             context = '{}'::jsonb,
+             page = '{}'::jsonb
        WHERE workspace_id = ${payload.workspaceId}::uuid
          AND contact_id = ${payload.contactId}::uuid
       RETURNING id
@@ -87,7 +130,41 @@ export async function severContactLinks(
       RETURNING message_id
     `);
 
-    // 5. Identity a agregace kontaktu se mažou celé, protože bez vazby na osobu
+    // 5. Příchozí doručení od poskytovatele (odrazy, stížnosti, příchozí pošta).
+    //
+    //    NÁLEZ ze 7. 8. 2026, doložený na schématu: `inbound_deliveries` má
+    //    `contact_id`, které vyplňuje `markDelivery` při mapování, a k němu
+    //    `payload` se SYROVOU zprávou od poskytovatele a `headers` s hlavičkami
+    //    volání. V payloadu odrazu leží adresa příjemce v plaintextu, tedy
+    //    přesně ten údaj, kvůli kterému výmaz existuje, a `contact_id` ho vede
+    //    rovnou k vymazané osobě.
+    //
+    //    PROČ NESTAČÍ RETENCE. Řádky sice uklízí retenční cíl
+    //    `inbound_deliveries` (výchozí 30 dní), jenže ta lhůta je nastavení
+    //    projektu: dá se prodloužit i vypnout. Výmaz podle článku 17 se nesmí
+    //    spoléhat na to, že si zákazník nechal výchozí hodnotu.
+    //
+    //    Řádek se NEMAŽE, jen se vyprazdňuje. Zůstává stav, typ chyby a časy,
+    //    takže diagnostika „kolik odrazů přišlo z tohohle endpointu" odpovídá
+    //    dál. Je to týž kompromis jako u web_events o dva kroky výš.
+    //
+    //    `payload` a `headers` se vyprazdňují CELÉ. Payload je cizí formát,
+    //    který si určuje poskytovatel, takže výběr „tenhle klíč je neosobní"
+    //    by byl slib, který kód nemůže dodržet u dalšího poskytovatele.
+    //    Sloupcové právo UPDATE na obojí i na contact_id má aplikační role od
+    //    migrace 0005, ověřeno dotazem do information_schema, takže nová
+    //    migrace k tomuhle kroku potřeba není.
+    const { rows: inbound } = await tx.execute<{ id: string }>(sql`
+      UPDATE inbound_deliveries
+         SET contact_id = NULL,
+             payload = '{}'::jsonb,
+             headers = '{}'::jsonb
+       WHERE workspace_id = ${payload.workspaceId}::uuid
+         AND contact_id = ${payload.contactId}::uuid
+      RETURNING id
+    `);
+
+    // 6. Identity a agregace kontaktu se mažou celé, protože bez vazby na osobu
     //    nenesou žádnou statistickou hodnotu.
     await tx.execute(sql`
       DELETE FROM identities
@@ -105,6 +182,7 @@ export async function severContactLinks(
       webEvents: webEvents.length,
       messageEvents: messageEvents.length,
       engagement: engagement.length,
+      inboundDeliveries: inbound.length,
     };
   });
 }

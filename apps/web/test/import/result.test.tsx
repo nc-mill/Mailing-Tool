@@ -29,8 +29,22 @@ const row = (patch: Partial<ImportResultRow> = {}): ImportResultRow => ({
   ...patch,
 });
 
+/**
+ * `workspaceId` se předává, protože bez něj se tlačítko „Pokračovat od řádku"
+ * NEVYKRESLÍ: volání `POST /contacts/imports/{id}/resume` se bez reference na
+ * projekt poslat nedá a zašedlé tlačítko bez vysvětlení je v tomhle projektu vada.
+ * Pomocník ho dřív nepředával, takže test na pokračování hledal tlačítko, které
+ * z principu nemohlo vzniknout.
+ */
 const view = (data: ImportResultRow) =>
-  renderIntl(<ImportResult row={data} workspaceSlug="p" locale="cs" />);
+  renderIntl(
+    <ImportResult
+      row={data}
+      workspaceSlug="p"
+      workspaceId="019fc763-0000-7000-8000-000000000000"
+      locale="cs"
+    />,
+  );
 
 describe('import result', () => {
   it('uses a different heading for failed and for completed_with_errors', () => {

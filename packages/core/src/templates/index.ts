@@ -4,7 +4,12 @@ import { listVersions } from './versions';
 import { loadAssetRefs } from './assets';
 
 export { assetIdsInDocument, loadAssetRefs } from './assets';
-export { ASSET_REF_TYPES, syncAssetReferences, type AssetRefType } from './asset-references';
+export {
+  ASSET_REF_TYPES,
+  clearAssetReferences,
+  syncAssetReferences,
+  type AssetRefType,
+} from './asset-references';
 export { compileTemplate, type CompileTemplateInput } from './compile';
 /**
  * Převlečení uložených e-mailů do barev značky. Volá ho uložení značky

@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import * as schema from '@mlain/db/schema';
+import { loadConfig } from '../../config/index';
+import { enqueueJob } from '../../queues/enqueue-sql';
 import { withWorkspace, type Tx } from '../../tx';
 import type { WorkspaceContext } from '../../identity/types';
 import { endpointsSubscribedTo } from './endpoint-service';
@@ -34,6 +36,115 @@ export async function emitWebhookEvent(tx: Tx, input: EmitInput): Promise<string
 export type FanoutResult = { created: number; deliveryIds: string[] };
 
 /**
+ * Založí JEDNO doručení a zařadí ho k odeslání.
+ *
+ * VZNIKLO VYTAŽENÍM Z FAN-OUTU, aby cílené doručení testovací události mohlo
+ * vynechat VÝBĚR PODLE ODBĚRU a nic víc. Všechno ostatní, co doručení dělá
+ * doručením, je tady: řádek ve `webhook_deliveries` (tedy log doručení
+ * i podklad pro ruční opakování), sdílené `created_at` kvůli idempotenci
+ * i oddílu tabulky, a zařazení `platform.webhook_deliver`, které podepisuje
+ * a opakuje. Kdyby si cílená cesta psala vlastní INSERT, měla by jinou obálku,
+ * jiný podpis nebo by se neopakovala, a nikdo by si toho nevšiml.
+ *
+ * Vrací ID doručení, nebo `null`, když už takové doručení existuje.
+ */
+async function enqueueDelivery(
+  tx: Tx,
+  ctx: WorkspaceContext,
+  input: { eventId: string; eventType: string; endpointId: string; sharedCreatedAt: Date },
+): Promise<string | null> {
+  const id = uuidv7();
+  const { rows: inserted } = await tx.execute<{ id: string }>(sql`
+    INSERT INTO webhook_deliveries
+      (id, workspace_id, endpoint_id, event_id, event_type, status, attempt, next_attempt_at, created_at)
+    VALUES
+      (${id}::uuid, ${ctx.workspaceId}::uuid, ${input.endpointId}::uuid, ${input.eventId}::uuid,
+       ${input.eventType}, 'pending', 0, now(), ${input.sharedCreatedAt})
+    ON CONFLICT (event_id, endpoint_id, created_at) DO NOTHING
+    RETURNING id::text AS id
+  `);
+  if (inserted.length !== 1) return null;
+  const deliveryId = inserted[0]!.id;
+
+  /*
+   * ZAŘAZENÍ DORUČENÍ. Tenhle článek řetězu CHYBĚL a stálo kvůli tomu celé
+   * odchozí rozhraní: fan-out poctivě vyrobil řádky ve `webhook_deliveries`,
+   * vrátil jejich ID a obsluha je zahodila. Do fronty `platform.webhook_deliver`
+   * tedy nezařazoval nikdo, řádky zůstávaly navždy ve stavu `pending`
+   * a obrazovka doručení přitom vypadala, že se doručuje.
+   *
+   * Zařazuje se v TÉŽE transakci jako INSERT, takže úloha nemůže přežít
+   * rollback fan-outu ani se ztratit po něm.
+   *
+   * `onMerged: 'drop'` je záměr. Fronta má politiku `exclusive` a klíč je ID
+   * doručení, takže se zahodí jedině DRUHÉ zařazení TÉHOŽ doručení, tedy souběh
+   * s opakovacím skenem (`platform.webhook_retry`). Práce se tím neztrácí:
+   * pravdu drží řádek ve `webhook_deliveries` a další pokus zařadí sken podle
+   * `next_attempt_at`. `fail` by tu byl škodlivý, protože by kvůli neškodnému
+   * souběhu shodil celou doménovou transakci, která událost vyrobila.
+   */
+  await enqueueJob(tx, {
+    schema: loadConfig().PGBOSS_SCHEMA,
+    name: 'platform.webhook_deliver',
+    payload: {
+      delivery_id: deliveryId,
+      workspace_id: ctx.workspaceId,
+      created_at: input.sharedCreatedAt.toISOString(),
+    },
+    singletonKey: `delivery:${deliveryId}`,
+    onMerged: 'drop',
+  });
+  return deliveryId;
+}
+
+type EventRow = { id: string; type: string; created_at: Date };
+
+/** Načte událost v téže transakci. `null` znamená, že událost neexistuje. */
+async function loadEvent(tx: Tx, eventId: string): Promise<EventRow | null> {
+  const { rows } = await tx.execute<EventRow>(sql`
+    SELECT id::text AS id, type, created_at
+      FROM webhook_events
+     WHERE id = ${eventId}::uuid
+     LIMIT 1
+  `);
+  return rows[0] ?? null;
+}
+
+/**
+ * CÍLENÉ DORUČENÍ NA JEDEN ENDPOINT, MIMO FAN-OUT.
+ *
+ * PROČ TO EXISTUJE. „Poslat testovací událost" míří na KONKRÉTNÍ endpoint,
+ * takže mu má dorazit bez ohledu na to, co odebírá. Dosud šla i tahle cesta
+ * fan-outem, který doručuje jen odběratelům daného typu, takže se ptala na
+ * odběr, který s ní nemá co dělat. Projevovalo se to tím, že tlačítko
+ * u endpointu založeného z rozhraní NIKDY NIC nedoručilo: typ `ping` se nedal
+ * zaškrtnout, takže výběr podle odběru byl vždycky prázdný.
+ *
+ * VYNECHÁVÁ SE JEN VÝBĚR PODLE ODBĚRU, nic jiného. Podpis, opakování, log
+ * doručení i idempotence jsou společné s fan-outem, viz `enqueueDelivery`.
+ *
+ * NA STAV ENDPOINTU SE NEHLEDÍ, jen na to, že není smazaný. Deaktivovaný
+ * endpoint je přesně ten, u kterého má člověk největší důvod tlačítko zmáčknout:
+ * chce zjistit, jestli jeho server zase odpovídá. Doručení samo stav nemění;
+ * o zapnutí rozhoduje `enable`, ne test.
+ */
+export async function deliverEventToEndpoint(
+  tx: Tx,
+  ctx: WorkspaceContext,
+  input: { eventId: string; endpointId: string },
+): Promise<{ deliveryId: string | null }> {
+  const event = await loadEvent(tx, input.eventId);
+  if (!event) return { deliveryId: null };
+  const deliveryId = await enqueueDelivery(tx, ctx, {
+    eventId: event.id,
+    eventType: event.type,
+    endpointId: input.endpointId,
+    sharedCreatedAt: new Date(event.created_at),
+  });
+  return { deliveryId };
+}
+
+/**
  * Idempotentní fan-out. pg-boss job se podle 9.1 může spustit znovu i po
  * částečném běhu, takže druhý běh nesmí vyrobit druhou sadu doručení.
  *
@@ -55,13 +166,7 @@ export type FanoutResult = { created: number; deliveryIds: string[] };
  */
 export async function fanoutEvent(ctx: WorkspaceContext, eventId: string): Promise<FanoutResult> {
   return withWorkspace(ctx, async (tx) => {
-    const { rows: events } = await tx.execute<{ id: string; type: string; created_at: Date }>(sql`
-      SELECT id::text AS id, type, created_at
-        FROM webhook_events
-       WHERE id = ${eventId}::uuid
-       LIMIT 1
-    `);
-    const event = events[0];
+    const event = await loadEvent(tx, eventId);
     if (!event) return { created: 0, deliveryIds: [] };
 
     const endpoints = await endpointsSubscribedTo(tx, ctx, event.type);
@@ -71,17 +176,13 @@ export async function fanoutEvent(ctx: WorkspaceContext, eventId: string): Promi
     const deliveryIds: string[] = [];
 
     for (const endpoint of endpoints) {
-      const id = uuidv7();
-      const { rows: inserted } = await tx.execute<{ id: string }>(sql`
-        INSERT INTO webhook_deliveries
-          (id, workspace_id, endpoint_id, event_id, event_type, status, attempt, next_attempt_at, created_at)
-        VALUES
-          (${id}::uuid, ${ctx.workspaceId}::uuid, ${endpoint.id}::uuid, ${eventId}::uuid, ${event.type},
-           'pending', 0, now(), ${sharedCreatedAt})
-        ON CONFLICT (event_id, endpoint_id, created_at) DO NOTHING
-        RETURNING id::text AS id
-      `);
-      if (inserted.length === 1) deliveryIds.push(inserted[0]!.id);
+      const deliveryId = await enqueueDelivery(tx, ctx, {
+        eventId,
+        eventType: event.type,
+        endpointId: endpoint.id,
+        sharedCreatedAt,
+      });
+      if (deliveryId !== null) deliveryIds.push(deliveryId);
     }
 
     return { created: deliveryIds.length, deliveryIds };

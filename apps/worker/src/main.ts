@@ -5,8 +5,12 @@ import { createShutdownController } from '@mlain/core/shutdown';
 import { aiKeyLeakCheck, type Check } from '@mlain/core/health';
 import { installSystemMailer } from '@mlain/core/platform/system-mail-runtime';
 import { installConsentEraser, installSubscriptionEmails } from '@mlain/core/contacts';
+import { installRevokePendingMessages } from '@mlain/core/campaigns';
 import { gdprConfigured, maintenanceConfigured } from '@mlain/core/tx/index';
+import { isolationCheck, warnIfIsolationBroken } from '@mlain/core/tx/isolation-guard';
 import { registerQueues } from './boss';
+import { startCronWatch } from './cron-watch';
+import { startJobWatch } from './job-watch';
 import { startHealthServer } from './health-server';
 import { HANDLERS } from './handlers.generated';
 
@@ -94,6 +98,17 @@ async function main(): Promise<void> {
   logger.info({}, 'mazač souhlasů pod rolí mlain_gdpr je zapojený');
 
   /**
+   * Kompoziční kořen rušení připravené pošty.
+   *
+   * Port `revokePendingMessages` si implementaci dohledá i sám, protože zapojení
+   * jen odsud by pro obsluhu tras ve webu bylo neviditelné. Volá se tu přesto,
+   * a to kvůli tomuhle řádku v logu: rušení pošty po odhlášení je právní
+   * povinnost a musí být na startu vidět, že běží, ne se to dovozovat.
+   */
+  installRevokePendingMessages();
+  logger.info({}, 'rušení připravené pošty po odhlášení je zapojené');
+
+  /**
    * Hlasité upozornění na chybějící `DATABASE_URL_MAINTENANCE`.
    *
    * Proměnná je volitelná, takže instalace bez ní naběhne a běžný provoz
@@ -113,6 +128,7 @@ async function main(): Promise<void> {
           'outbox.reconcile',
           'domain.recheck',
           'platform.purge_workspaces',
+          'platform.webhook_retry',
         ],
       },
       'chybí připojení pod rolí mlain_maintenance: úlohy, které čtou napříč projekty, ' +
@@ -138,9 +154,46 @@ async function main(): Promise<void> {
     );
   }
 
+  /**
+   * Izolace projektů. Ve workeru se na výsledek ČEKÁ, na rozdíl od webu:
+   * worker v tuhle chvíli databázi stejně potřebuje (za dva řádky ji volá
+   * `boss.start()`), takže jeden dotaz do katalogu navíc start nezdrží ani
+   * nezkomplikuje. Hláška navíc musí být v logu dřív, než začnou chodit
+   * záznamy úloh, jinak se v nich ztratí.
+   */
+  await warnIfIsolationBroken(logger);
+
   await boss.start();
   await registerQueues(boss as never, HANDLERS, {
     concurrency: config.WORKER_CONCURRENCY,
+    schema: config.PGBOSS_SCHEMA,
+    logger,
+  });
+
+  /**
+   * Hlídač zahazovaných tiků. Podrobné zdůvodnění, proč to nedělá
+   * `warningQueueSize`, je v hlavičce `cron-watch.ts`; ve zkratce: ta mez měří
+   * NAROSTLOU frontu a u politiky `exclusive` nemůže `queued_count` přelézt
+   * jedničku, takže by se nikdy neprojevila.
+   */
+  const stopCronWatch = startCronWatch({
+    db: boss.getDb(),
+    schema: config.PGBOSS_SCHEMA,
+    logger,
+  });
+
+  /**
+   * Hlídač úloh, které tvrdí „běží", a ve frontě k nim nic není. Je to JINÁ
+   * porucha než obě, které hlídá `cron-watch`, a chytá ji zvenčí: porovnává
+   * doménové tabulky s obsahem fronty. Podrobnosti i přiznané slepé místo
+   * jsou v hlavičce `job-watch.ts`.
+   *
+   * Bez `DATABASE_URL_MAINTENANCE` sken napříč projekty vyhodí výjimku
+   * a hlídač ji nahlásí JEDNOU jako varování. Je to správný konec: bez té
+   * proměnné stejně neběží ani kampaně, na což upozorňuje řádek výš.
+   */
+  const stopJobWatch = startJobWatch({
+    db: boss.getDb(),
     schema: config.PGBOSS_SCHEMA,
     logger,
   });
@@ -176,13 +229,19 @@ async function main(): Promise<void> {
 
   const server = startHealthServer({
     port: config.WORKER_HEALTH_PORT,
-    checks: [workerReady, aiKeyLeakCheck()],
+    checks: [workerReady, aiKeyLeakCheck(), isolationCheck()],
   });
   logger.info({ port: config.WORKER_HEALTH_PORT }, 'worker naslouchá na health portu');
 
   const shutdown = createShutdownController({
     graceSeconds: config.SHUTDOWN_GRACE_SECONDS,
     logger,
+  });
+  shutdown.register('cron-watch', async () => {
+    stopCronWatch();
+  });
+  shutdown.register('job-watch', async () => {
+    stopJobWatch();
   });
   shutdown.register('health-server', async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));

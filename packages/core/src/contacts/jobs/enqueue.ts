@@ -59,10 +59,12 @@ export async function enqueue(
   options: EnqueueOptions = {},
 ): Promise<void> {
   // Politika opakování se dál bere Z VÝČTU TÉHLE DOMÉNY, ne ze sdíleného registru.
-  // Oba se u deseti front rozcházejí (`gdpr.erase` má tady 0 pokusů a v registru 3,
-  // `contacts.bulk_delete` totéž), takže přepnutí na registr by tiše změnilo počet
-  // pokusů u anonymizace podle článku 17. Rozchod je skutečná vada, ale patří
-  // vlastníkům obou registrů, ne do úpravy o slučování.
+  // Oba se rozcházejí u ČTYŘ front, a už jen v počtu pokusů: expirace se srovnala
+  // (viz hlavička `contacts/queues.ts`), protože pro její rozdíl nebyl důvod, a
+  // `gdpr.erase` se srovnal taky, protože jeho nula pokusů ztrácela výmaz podle
+  // článku 17. Zbylé čtyři rozdíly mění chování při selhání, ne dobu běhu, a
+  // nejostřejší je `contacts.bulk_delete`: 0 pokusů tady a 3 v registru u nevratného
+  // mazání. Uzavřený výčet hlídá `test/queues.test.ts`.
   const known = (
     CONTACTS_QUEUES as Record<
       string,

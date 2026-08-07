@@ -2,6 +2,7 @@ import { checkSemantics } from '@mlain/emails/document/semantic';
 import type { ValidationProfile } from '@mlain/emails/document/profile';
 import type { EditorBlock, EditorDocument, EditorIssue } from './document-types';
 import type { FieldCatalog } from './field-catalog';
+import { checkSurfaceVariables, DEFAULT_PAGE_SURFACE, type PageSurface } from './page-surface';
 
 // Typ nálezu je v `document-types.ts`, protože ho potřebuje store z úkolu 11,
 // tedy dřív, než vznikne tenhle soubor. Odsud se jen reexportuje.
@@ -23,17 +24,49 @@ export type { EditorIssue } from './document-types';
 export function validateDocumentClient(
   document: EditorDocument,
   catalog: FieldCatalog,
-  options: { assetIds: Set<string>; templateKind: ValidationProfile },
+  options: {
+    assetIds: Set<string>;
+    templateKind: ValidationProfile;
+    /**
+     * Povrch, na kterém se veřejná stránka vykreslí. Mimo profil `page` se
+     * ignoruje: e-mail žádný povrch nemá.
+     *
+     * Když u profilu `page` chybí, bere se nejužší povrch
+     * (`DEFAULT_PAGE_SURFACE`). Zdůvodnění je u té konstanty.
+     */
+    pageSurface?: PageSurface | null | undefined;
+  },
 ): EditorIssue[] {
   // Odhad velikosti stačí: přesné číslo zná až renderer a pravidlo S9 s tím počítá.
   const estimatedHtmlBytes = new TextEncoder().encode(JSON.stringify(document)).length * 3;
 
-  return checkSemantics(document as never, {
-    templateKind: options.templateKind,
-    fields: catalog,
-    assetIds: options.assetIds,
-    estimatedHtmlBytes,
-  }).map((issue) => {
+  /*
+   * KONTROLA PROMĚNNÝCH PODLE POVRCHU JE NAVÍC, ne součást `checkSemantics`.
+   *
+   * `checkSemantics` posuzuje dokument podle PROFILU a povrch nezná: všechny
+   * čtyři povrchy jsou tentýž profil `page` a liší se jen tím, co o návštěvníkovi
+   * vědí. Tabulku vlastní `checkSurfaceVariables` v `@mlain/emails`, takže se
+   * tady jen zavolá a nálezy se přidají k ostatním.
+   *
+   * NEDOSTUPNÁ PERSONALIZACE JE CHYBA, ne prázdný výstup (plán, oddíl 4.3).
+   * Render jede se `strictVariables: false`, takže by z chybějící hodnoty tiše
+   * udělal prázdný řetězec a návštěvník by dostal „Děkujeme, " s dírou za čárkou.
+   * Přesně tahle třída vady se v produktu projevila dvakrát.
+   */
+  const surfaceIssues =
+    options.templateKind === 'page'
+      ? checkSurfaceVariables(document as never, options.pageSurface ?? DEFAULT_PAGE_SURFACE)
+      : [];
+
+  return [
+    ...checkSemantics(document as never, {
+      templateKind: options.templateKind,
+      fields: catalog,
+      assetIds: options.assetIds,
+      estimatedHtmlBytes,
+    }),
+    ...surfaceIssues,
+  ].map((issue) => {
     const blockId = blockIdAtPointer(document, issue.pointer);
     return {
       code: issue.code,

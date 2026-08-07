@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import csSettings from '../../../../../packages/i18n/messages/cs/settings.json';
 import type { ActionState } from '@/lib/feedback/action-result';
 import type { WebhookSecretResult } from './actions';
+import type { WebhookRow } from './webhooks-table';
 import { WebhookFormView } from './webhook-form';
 
 vi.mock('./actions', () => ({
@@ -32,11 +33,13 @@ globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObse
 
 const messages = { settings: csSettings };
 
-const EVENT_TYPES = ['contact.created', 'contact.updated', 'campaign.sent'];
+/** Výsek katalogu z jádra. Úplný seznam hlídá `event-catalog.test.ts` v `packages/core`. */
+const EVENT_TYPES = ['contact.subscribed', 'contact.unsubscribed', 'campaign.sent'];
 
 function renderForm(
   initialState?: ActionState<WebhookSecretResult>,
   mode: 'create' | 'edit' = 'create',
+  endpoint?: WebhookRow,
 ) {
   return render(
     <NextIntlClientProvider locale="cs" messages={messages} timeZone="Europe/Prague">
@@ -45,12 +48,27 @@ function renderForm(
         workspaceId="ws1"
         slug="eshop"
         availableEventTypes={EVENT_TYPES}
+        endpoint={endpoint}
         action={vi.fn()}
         initialState={initialState}
       />
     </NextIntlClientProvider>,
   );
 }
+
+/** Endpoint, který odebírá typ mimo dnešní katalog. Přesně tenhle stav vyrobilo MVP0. */
+const ENDPOINT_WITH_RETIRED_TYPE: WebhookRow = {
+  id: 'w1',
+  url: 'https://example.com/hook',
+  description: '',
+  event_types: ['campaign.sent', 'contact.created'],
+  status: 'active',
+  disabled_reason: null,
+  disabled_at: null,
+  consecutive_failures: 0,
+  last_success_at: null,
+  last_failure_at: null,
+};
 
 describe('WebhookFormView', () => {
   it('má pole adresy, popisu a výběr událostí', () => {
@@ -72,10 +90,25 @@ describe('WebhookFormView', () => {
     expect(screen.getByText(/ML-Event-Id/)).toBeInTheDocument();
   });
 
-  it('seskupí typy událostí podle předpony', () => {
+  it('seskupí typy událostí podle předpony a skupinu pojmenuje česky', () => {
     renderForm();
-    expect(screen.getByRole('group', { name: 'contact' })).toBeInTheDocument();
-    expect(screen.getByRole('group', { name: 'campaign' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Kontakty' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Kampaně' })).toBeInTheDocument();
+  });
+
+  it('u typu vypíše, co znamená, ne jen jeho kód', () => {
+    renderForm();
+    expect(screen.getByText('contact.subscribed')).toBeInTheDocument();
+    expect(screen.getByText('Kontakt se přihlásil k odběru seznamu.')).toBeInTheDocument();
+  });
+
+  it('typ, který endpoint odebírá, nabídne i mimo katalog, a zaškrtnutý', () => {
+    // Jinak by úprava adresy nebo popisu tiše smazala odběr, který se ve
+    // formuláři vůbec neobjevil. Popis takový typ nemá, kód musí stačit.
+    renderForm(undefined, 'edit', ENDPOINT_WITH_RETIRED_TYPE);
+    const retired = screen.getByRole('checkbox', { name: /contact\.created/ });
+    expect(retired).toBeInTheDocument();
+    expect(retired).toHaveAttribute('data-state', 'checked');
   });
 
   it('po vytvoření ukáže podpisový sekret právě jednou', () => {

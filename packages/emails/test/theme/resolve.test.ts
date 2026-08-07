@@ -27,6 +27,61 @@ describe('resolveTheme', () => {
     expect(resolved.dark.color('link.default')).toBe(DEFAULT_DARK['link.default']);
   });
 
+  /*
+   * Vazba na jinou roli, ne kopie odstínu. Panel motivu tak zapisuje volbu
+   * „pozadí plátna = hlavní barva značky": změna značky přepíše `brand.primary`
+   * a plátno jde s ní. Do e-mailu přitom musí odejít hex, ne jméno role.
+   */
+  it('follows a role that points at another role', () => {
+    const resolved = resolveTheme({
+      ...DEFAULT_THEME,
+      colors: { 'brand.primary': '#ff0000', 'surface.canvas': 'brand.primary' },
+    });
+    expect(resolved.light.roles['surface.canvas']).toBe('#ff0000');
+    expect(resolved.light.color('surface.canvas')).toBe('#ff0000');
+  });
+
+  it('follows a chain of role references down to the hex', () => {
+    const resolved = resolveTheme({
+      ...DEFAULT_THEME,
+      colors: {
+        'brand.primary': '#0000ff',
+        'brand.accent': 'brand.primary',
+        'surface.canvas': 'brand.accent',
+      },
+    });
+    expect(resolved.light.roles['surface.canvas']).toBe('#0000ff');
+  });
+
+  /*
+   * Kruh přijde ze souboru, schéma ho nezachytí. Musí skončit výchozím
+   * odstínem té role, ne zacyklením ani prázdnou barvou v HTML.
+   */
+  it('falls back to the default when roles point at each other in a circle', () => {
+    const resolved = resolveTheme({
+      ...DEFAULT_THEME,
+      colors: { 'surface.canvas': 'surface.content', 'surface.content': 'surface.canvas' },
+    });
+    expect(resolved.light.roles['surface.canvas']).toBe(DEFAULT_LIGHT['surface.canvas']);
+    expect(resolved.light.roles['surface.content']).toBe(DEFAULT_LIGHT['surface.content']);
+  });
+
+  it('falls back to the default when a role points at itself', () => {
+    const resolved = resolveTheme({
+      ...DEFAULT_THEME,
+      colors: { 'surface.canvas': 'surface.canvas' },
+    });
+    expect(resolved.light.roles['surface.canvas']).toBe(DEFAULT_LIGHT['surface.canvas']);
+  });
+
+  it('resolves role references in the dark scheme against the dark palette', () => {
+    const resolved = resolveTheme({
+      ...DEFAULT_THEME,
+      darkMode: { strategy: 'auto', colors: { 'surface.canvas': 'brand.primary' } },
+    });
+    expect(resolved.dark.roles['surface.canvas']).toBe(DEFAULT_DARK['brand.primary']);
+  });
+
   it('maps font stack ids to css font families', () => {
     const resolved = resolveTheme({
       ...DEFAULT_THEME,

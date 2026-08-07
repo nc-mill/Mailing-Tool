@@ -33,6 +33,7 @@ const SUPPRESSIONS_PATH = '/[locale]/w/[workspaceSlug]/suppressions';
 const LISTS_PATH = '/[locale]/w/[workspaceSlug]/lists';
 const TAGS_PATH = '/[locale]/w/[workspaceSlug]/tags';
 const FIELDS_PATH = '/[locale]/w/[workspaceSlug]/settings/fields';
+const NAME_OVERRIDES_PATH = '/[locale]/w/[workspaceSlug]/settings/name-overrides';
 
 function scopeToBody(scope: BulkScope): Record<string, unknown> {
   return scope.mode === 'ids' ? { ids: scope.ids } : { filter: scope.filters };
@@ -307,6 +308,46 @@ export async function addSuppressionAction(
  * konkrétní adresa hledá filtrem `q` nad seznamem.
  */
 
+/**
+ * ZALOŽENÍ VLASTNÍHO POLE Z OBRAZOVKY NASTAVENÍ.
+ *
+ * Do 7. 8. 2026 nešlo pole založit odsud vůbec: obrazovka neměla trasu a
+ * tlačítko „Přidat pole" v ní nemělo obsluhu, takže jediná cesta k novému poli
+ * vedla oklikou přes stavitele formuláře („Nové vlastní pole kontaktu").
+ *
+ * Akce je VLASTNÍ, ne sdílená s `features/forms/actions.ts`, a to kvůli
+ * `revalidatePath`: každá z těch dvou cest musí po zápisu překreslit JINOU
+ * obrazovku. Sdílená akce by po založení pole v nastavení překreslila detail
+ * formuláře a nová řádka by se v tabulce polí objevila až po ručním načtení.
+ *
+ * Chybové hlášení nese `detail` z odpovědi API, protože právě tady je
+ * srozumitelný: klíč už existuje (409), překročený strop polí (422). Vlastní
+ * překlad těch stavů by byl třetí popis téhož.
+ */
+export async function createFieldAction(
+  input: WithWorkspace & { key: string; label: string; type: string },
+): Promise<{ status: 'success' } | { status: 'error'; code: string; detail: string }> {
+  // Návratová hodnota NENESE id nového pole schválně: obrazovka si po úspěchu
+  // vyžádá data od serveru znovu, aby se nerozešla v limitech ani v pořadí.
+  const result = await apiMutate<void>('/api/v1/contact-fields', {
+    method: 'POST',
+    workspaceId: input.workspaceId,
+    body: {
+      key: input.key,
+      // Katalog polí drží popisky jako mapu jazyků s povinným `en`. Obrazovka
+      // dvojjazyčný popisek nenabízí, takže se do obou jazyků uloží týž text;
+      // přejmenovat pole jde potom přes PATCH.
+      label: { en: input.label, cs: input.label },
+      type: input.type,
+    },
+  });
+  if (!result.ok) {
+    return { status: 'error', code: result.problem.code, detail: result.problem.detail };
+  }
+  revalidatePath(FIELDS_PATH, 'page');
+  return { status: 'success' };
+}
+
 export async function archiveFieldAction(
   input: WithWorkspace & { id: string },
 ): Promise<BulkResult> {
@@ -315,6 +356,32 @@ export async function archiveFieldAction(
     workspaceId: input.workspaceId,
   });
   if (!result.ok) return { status: 'error', code: result.problem.code };
+  revalidatePath(FIELDS_PATH, 'page');
+  return { status: 'success' };
+}
+
+/**
+ * PŘEJMENOVÁNÍ VLASTNÍHO POLE.
+ *
+ * Bez téhle akce bylo omylem založené pole v projektu NAPOŘÁD: zakládat se dalo
+ * (oklikou přes stavitele formuláře), ale opravit jméno nešlo nikde. Zadavatel
+ * na to narazil na poli pojmenovaném „boolen".
+ *
+ * Posílá se CELÁ mapa jazyků, ne jen napsaný text, viz `field-labels.ts`. Typ
+ * pole se `PATCH` schválně nedotýká: změna typu by musela přetypovat hodnoty
+ * u všech kontaktů a u části by selhala (`field_type_immutable`).
+ */
+export async function renameFieldAction(
+  input: WithWorkspace & { id: string; label: Record<string, string> },
+): Promise<{ status: 'success' } | { status: 'error'; code: string; detail: string }> {
+  const result = await apiMutate<void>(`/api/v1/contact-fields/${input.id}`, {
+    method: 'PATCH',
+    workspaceId: input.workspaceId,
+    body: { label: input.label },
+  });
+  if (!result.ok) {
+    return { status: 'error', code: result.problem.code, detail: result.problem.detail };
+  }
   revalidatePath(FIELDS_PATH, 'page');
   return { status: 'success' };
 }
@@ -340,6 +407,74 @@ export async function deleteFieldAction(
   });
   if (!result.ok) return { status: 'error', code: result.problem.code };
   revalidatePath(FIELDS_PATH, 'page');
+  return { status: 'success' };
+}
+
+/**
+ * PŘEPISY JMEN, TEDY RUČNÍ SLOVNÍK RODU A PÁTÉHO PÁDU.
+ *
+ * Do 7. 8. 2026 se do slovníku dalo jen zapisovat, a to nepřímo: ve frontě
+ * kontroly oslovení volbou „uložit i pro budoucí kontakty". Vypsat ho, opravit
+ * v něm překlep ani ho vyprázdnit nešlo NIKDE, přestože `GET`, `POST`
+ * i `DELETE /name-overrides/{id}` v API celou dobu byly. Co se do slovníku
+ * jednou dostalo, platilo na všechny budoucí shody jména napořád.
+ *
+ * ZÁPIS JE `POST`, NE `PUT`. Žádné `PUT` na téhle cestě neexistuje, a průzkum
+ * `2026-08-05-osloveni-vypinac.md` ho uváděl chybně. `POST` je zároveň založení
+ * i úprava: klíčem je dvojice `kind` a normalizovaný tvar jména.
+ *
+ * PRÁZDNÉ POLE HODNOTU MAŽE. Akce proto posílá prázdný pátý pád i poznámku jako
+ * `null`, ne jako vynechané pole: server od 7. 8. 2026 čte `null` jako „vymaž"
+ * a vynechání jako „nech, jak bylo". Do té doby obojí splývalo a překlep
+ * v pátém pádu šel z přepisu dostat jedině smazáním celého řádku.
+ */
+export async function upsertNameOverrideAction(
+  input: WithWorkspace & {
+    kind: 'first' | 'last';
+    name: string;
+    gender: 'female' | 'male' | 'unknown' | null;
+    vocative: string | null;
+    note: string | null;
+  },
+): Promise<{ status: 'success' } | { status: 'error'; code: string; detail: string }> {
+  const result = await apiMutate<{ id: string }>('/api/v1/name-overrides', {
+    method: 'POST',
+    workspaceId: input.workspaceId,
+    body: {
+      kind: input.kind,
+      name: input.name.trim(),
+      gender: input.gender,
+      vocative:
+        input.vocative === null || input.vocative.trim() === '' ? null : input.vocative.trim(),
+      note: input.note === null || input.note.trim() === '' ? null : input.note.trim(),
+    },
+  });
+  if (!result.ok) {
+    // Věta ze serveru má přednost: „přepis musí nést rod nebo vokativ" je
+    // konkrétní pokyn, kdežto obecná hláška by uživateli neřekla, co doplnit.
+    return { status: 'error', code: result.problem.code, detail: result.problem.detail };
+  }
+  revalidatePath(NAME_OVERRIDES_PATH, 'page');
+  return { status: 'success' };
+}
+
+/**
+ * Smazání přepisu. Je to jediný způsob, jak se zbavit špatně uložené hodnoty,
+ * takže bez něj byl překlep ve slovníku trvalý.
+ *
+ * Kontakty, které přepis už ovlivnil, se tím NEMĚNÍ: přepis se uplatňuje při
+ * zápisu kontaktu, ne při čtení. Smazání tedy působí jen na budoucí shody a to
+ * musí obrazovka říct, jinak si uživatel bude myslet, že opravil i minulost.
+ */
+export async function deleteNameOverrideAction(
+  input: WithWorkspace & { id: string },
+): Promise<BulkResult> {
+  const result = await apiMutate<void>(`/api/v1/name-overrides/${input.id}`, {
+    method: 'DELETE',
+    workspaceId: input.workspaceId,
+  });
+  if (!result.ok) return { status: 'error', code: result.problem.code };
+  revalidatePath(NAME_OVERRIDES_PATH, 'page');
   return { status: 'success' };
 }
 

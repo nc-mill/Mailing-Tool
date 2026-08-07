@@ -27,9 +27,13 @@ ale **jako seznam práce už ne**. Čti ho s tímhle v ruce.
 
 **Co z dokumentu zbývá jako otevřená práce:**
 
-- **`GET /api/v1/transactional/{message_id}` neexistuje.** Router má jedinou cestu,
-  `POST /transactional`. Kapitola 9.2 s ním počítá, stav zprávy se dnes dá zjistit
-  jen odchozími webhooky.
+- ~~**`GET /api/v1/transactional/{message_id}` neexistuje.**~~ **Doplněno 7. 8. 2026.**
+  Trasa je v `packages/core/src/transactional/api/transactional.routes.ts`, dohledání
+  v `packages/core/src/transactional/status.ts`, scope `transactional:send`. Vrací
+  `status`, `sent_at`, `attempts`, `error_code` a `provider_message_id`; čte jen zprávy
+  s `kind = 'transactional'`, takže se z klíče zákazníka nedá číst stav rozesílky.
+  Pozor, věta „stav zprávy se dnes dá zjistit jen odchozími webhooky" nebyla pravdivá
+  ani tehdy: webhooky pro doručení, odraz a stížnost neexistují (viz kapitola 9.2).
 - **Sloupec `sender_identities.purpose` nevznikl** (kapitola 8.2 a 11.4 C). Oddělení
   marketingového a transakčního proudu se dá nastavit ručně druhým providerem
   a vlastní subdoménou, ale endpoint nemá jak vybrat „transakční" identitu podle
@@ -590,7 +594,9 @@ RateLimit-Reset: 47
 }
 ```
 
-202, ne 201: odeslání je asynchronní, `messages.status` je v tu chvíli `pending`. Stav se dá dohledat přes `GET /api/v1/transactional/{message_id}`, který vrátí `status`, `sent_at`, `error_code` a `provider_message_id`. Doručení, otevření, odraz a stížnost chodí odchozími webhooky, které už existují (`message.delivered`, `message.bounced`, `message.complained`).
+202, ne 201: odeslání je asynchronní, `messages.status` je v tu chvíli `pending`. Stav se dá dohledat přes `GET /api/v1/transactional/{message_id}`, který vrátí `status`, `sent_at`, `error_code` a `provider_message_id`. Endpoint **doplněn 7. 8. 2026** (`packages/core/src/transactional/status.ts`, trasa v `transactional.routes.ts`), do té doby tenhle text popisoval cestu, která neexistovala.
+
+**OPRAVA 7. 8. 2026: následující věta tady stála a NEPLATILA.** Původně: „Doručení, otevření, odraz a stížnost chodí odchozími webhooky, které už existují (`message.delivered`, `message.bounced`, `message.complained`)." Ve skutečnosti se v repozitáři vydávají **jen `message.opened` a `message.clicked`** (`packages/core/src/tracking/jobs/process-engagement.ts:289` a `:302`); typy `message.delivered`, `message.bounced` ani `message.complained` nevydává nikdo. Infrastruktura odchozích webhooků (podpis, retry, log) hotová je, chybí ty tři události. Nepravdivé tvrzení je horší než chybějící funkce: podle „už to existuje" se rozhoduje, co se nemusí dělat.
 
 ### 9.3 Opakované volání s týmž klíčem
 
@@ -700,7 +706,9 @@ Cíl: zákazník pošle reset hesla přes API, odkaz v tlačítku funguje, mail 
 ### 11.2 Co do nejmenší verze nepatří
 
 - UI pro zakládání transakční šablony nad rámec dnešního filtru
-- report transakčního proudu (na začátek stačí odchozí webhooky a `GET /transactional/{id}`)
+- report transakčního proudu (na začátek stačí `GET /transactional/{id}`; odchozí webhooky
+  k doručení, odrazu a stížnosti zatím NEEXISTUJÍ, vydávají se jen `message.opened`
+  a `message.clicked`)
 - příchozí webhook s akcí `send`
 - odesílání příloh
 - plánované transakční odeslání

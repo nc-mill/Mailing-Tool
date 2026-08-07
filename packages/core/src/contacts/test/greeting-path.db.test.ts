@@ -421,7 +421,7 @@ describe('sjednocení jazyka oslovení', () => {
     await setWorkspaceLocale(ctx, 'cs');
     await recomputeGreeting({
       workspaceId: ctx.workspaceId,
-      alignLocale: { to: 'cs', from: 'en' },
+      alignLocale: { from: 'en' },
     });
 
     const row = await findByEmail(ctx, 'petr.align@example.cz');
@@ -449,7 +449,7 @@ describe('sjednocení jazyka oslovení', () => {
     await setWorkspaceLocale(ctx, 'cs');
     await recomputeGreeting({
       workspaceId: ctx.workspaceId,
-      alignLocale: { to: 'cs', from: 'en' },
+      alignLocale: { from: 'en' },
     });
 
     const row = await findByEmail(ctx, 'jana.align@example.cz');
@@ -475,7 +475,7 @@ describe('sjednocení jazyka oslovení', () => {
     await setWorkspaceLocale(ctx, 'cs');
     await recomputeGreeting({
       workspaceId: ctx.workspaceId,
-      alignLocale: { to: 'cs', from: 'en' },
+      alignLocale: { from: 'en' },
     });
 
     const row = await findByEmail(ctx, 'peter.align@example.sk');

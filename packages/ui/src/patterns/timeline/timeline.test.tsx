@@ -9,12 +9,16 @@ const events: TimelineEvent[] = [
     id: 'e1',
     type: 'email_open',
     occurredAt: new Date('2026-07-31T12:41:00.000Z'),
+    icon: 'open',
+    title: 'Otevřela kampaň Letní výprodej',
     payload: { campaign: 'Letní výprodej' },
   },
   ...[0, 1, 2, 3].map((index) => ({
     id: `p${index}`,
     type: 'page_view',
     occurredAt: new Date(`2026-07-30T16:2${index}:00.000Z`),
+    icon: 'web' as const,
+    title: 'Zobrazení stránky',
     payload: {},
   })),
 ];
@@ -27,6 +31,8 @@ const labels = {
   collapseCluster: 'Sbalit skupinu událostí',
   expanded: 'Rozbaleno',
   collapsed: 'Sbaleno',
+  eventAnchor: ({ what, when }: { what: string; when: string }) =>
+    `Trvalý odkaz na událost: ${what}, ${when}`,
 };
 
 /**
@@ -113,6 +119,53 @@ describe('Timeline', () => {
     render(<Timeline {...base()} />);
     await user.click(screen.getByRole('button', { name: 'Rozbalit 4 událostí' }));
     expect(screen.getByRole('status')).toHaveTextContent('Rozbaleno');
+  });
+
+  /**
+   * IKONA UDÁLOSTI SE MUSÍ KRESLIT. Do 7. 8. 2026 komponenta pole `icon`
+   * nepřečetla a u každé události kreslila ikonu řetězu, tedy kotvu odkazu.
+   * Uživatel se pak ptal, co ta ikona znamená: nešlo z ní poznat, jestli šlo
+   * o otevřený e-mail, zobrazenou stránku nebo odvolaný souhlas.
+   */
+  it('kreslí ikonu podle typu události, ne u všeho tutéž', async () => {
+    const user = userEvent.setup();
+    render(<Timeline {...base()} />);
+    expect(screen.getByTestId('timeline-icon-e1')).toHaveAttribute('data-icon', 'open');
+
+    // Zobrazení stránek se shlukuje, takže se k jejich ikoně dostaneme až po
+    // rozbalení. Právě u nich byl rozdíl proti e-mailu nejvíc vidět.
+    await user.click(screen.getByRole('button', { name: 'Rozbalit 4 událostí' }));
+    expect(screen.getByTestId('timeline-icon-p0')).toHaveAttribute('data-icon', 'web');
+  });
+
+  it('událost bez ikony dostane neutrální, ne prázdné místo', () => {
+    render(
+      <Timeline
+        {...base({
+          events: [
+            {
+              id: 'x1',
+              type: 'neznamy',
+              occurredAt: new Date('2026-07-31T12:41:00.000Z'),
+              payload: {},
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByTestId('timeline-icon-x1')).toHaveAttribute('data-icon', 'generic');
+  });
+
+  /**
+   * Jméno kotvy bylo doslova `#event-e1`, tedy identifikátor z databáze. Čtečka
+   * ho hláskovala po znacích a hlasovým ovládáním se odkaz nedal vyvolat vůbec.
+   */
+  it('kotva má srozumitelné jméno, ne identifikátor', () => {
+    render(<Timeline {...base()} />);
+    const item = screen.getByTestId('timeline-item-e1');
+    const anchor = within(item).getByRole('link');
+    expect(anchor).toHaveAccessibleName(/Trvalý odkaz na událost: Otevřela kampaň Letní výprodej/);
+    expect(anchor.getAttribute('aria-label')).not.toContain('#event-');
   });
 
   it('každá položka má trvalou kotvu v URL', () => {

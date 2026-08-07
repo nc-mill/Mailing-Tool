@@ -1,4 +1,5 @@
 import { withMaintenance, type Tx } from '../tx';
+import { ApiError } from '../errors/api-error';
 import { rawSql } from '../campaigns/repo/raw-sql';
 import { RESUME_ON_QUOTA_SQL } from '../campaigns/jobs/resume-on-quota';
 import type { PauseReason } from '../campaigns/pause-reason';
@@ -17,11 +18,13 @@ import type { PauseReason } from '../campaigns/pause-reason';
  *     ne pod aplikační rolí. Bez té proměnné `withMaintenance` vyhodí výjimku
  *     s vysvětlením; úloha skončí v chybě, což je vidět, na rozdíl od prázdného
  *     výsledku, který by vydala aplikační role.
- *  2. GRANTY. Role má práva na tři tabulky: SELECT na `workspaces`,
- *     `campaigns` a `sender_domains` a DELETE na `workspaces`. Dotaz na cokoli
- *     jiného skončí na `permission denied`, ne prázdnem.
- *  3. POLITIKY. Migrace 0009 dává těmhle tabulkám `maintenance_*` s
- *     `USING (true)` pro čtení a mazání omezuje na už měkce smazané projekty.
+ *  2. GRANTY. Role má práva na pět tabulek: SELECT na `workspaces`,
+ *     `campaigns` a `sender_domains`, SLOUPCOVÝ SELECT na `imports`
+ *     a `segments` a DELETE na `workspaces`. Dotaz na cokoli jiného skončí
+ *     na `permission denied`, ne prázdnem.
+ *  3. POLITIKY. Migrace 0009 dává prvním třem tabulkám `maintenance_*` s
+ *     `USING (true)` pro čtení a mazání omezuje na už měkce smazané projekty;
+ *     migrace 0024 dodává totéž pro `imports` a `segments`.
  *
  * PRAVIDLO PRO VOLAJÍCÍ: odtud se bere JEN identifikace, tedy ID projektu
  * a ID entity. Jakmile ho úloha má, pokračuje přes `withWorkspace` v systémovém
@@ -153,6 +156,216 @@ export async function listDueDomains(limit: number): Promise<DueDomainRow[]> {
       domainId: row.id,
       wasVerified: row.was_verified,
     }));
+  });
+}
+
+/**
+ * Odliší „není co dělat" od „nevidím na nic".
+ *
+ * Ptá se na dvě čísla v JEDNÉ transakci. `workspaces` je tabulka, na kterou má
+ * tahle role výjimku od migrace 0009, takže odpovídá na otázku, jestli je
+ * instalace vůbec používaná. Druhá tabulka je ta skenovaná.
+ *
+ * PROČ NE `users`, jak se ptaly obě původní verze tohohle strážce uvnitř jobů:
+ * `users` je ve `FORBIDDEN_TABLES` testu izolace a role na ni ZÁMĚRNĚ nemá
+ * právo, protože drží `password_hash`. Pod `mlain_maintenance` by tedy dotaz
+ * skončil na `permission denied for table users` a strážce by hlásil poruchu
+ * pokaždé. Otázka „je instalace používaná" se dá stejně dobře položit
+ * `workspaces` a nevyžaduje kvůli tomu rozšířit výjimku o tabulku uživatelů.
+ *
+ * ZNÁMÉ OMEZENÍ, přebrané beze změny z původních strážců: instalace, která má
+ * projekty a přitom NULA importů nebo NULA segmentů, je věrohodný stav
+ * (nikdo zatím nic nenaimportoval) a strážce ho nerozliší od zablokovaného
+ * skenu. Chová se tedy jako hlásič, ne jako důkaz. Dokud existují politika
+ * i grant z migrace 0024, chybějící kus se projeví jinak: bez grantu skončí
+ * dotaz na `permission denied`, tedy taky hlasitě.
+ */
+async function assertCrossWorkspaceVisibility(
+  tx: Tx,
+  table: 'imports' | 'segments',
+): Promise<void> {
+  const r = await tx.execute<{ workspaces: number; scanned: number }>(
+    rawSql(
+      `SELECT (SELECT count(*) FROM workspaces WHERE deleted_at IS NULL)::int AS workspaces,
+              (SELECT count(*) FROM ${table})::int AS scanned`,
+      [],
+    ),
+  );
+  const seen = r.rows[0];
+  if (seen !== undefined && seen.workspaces > 0 && seen.scanned === 0) {
+    throw new ApiError('service_unavailable', {
+      params: { code: 'cross_workspace_scan_blocked', table, workspaces: seen.workspaces },
+    });
+  }
+}
+
+export type StaleImportRow = { workspaceId: string; importId: string };
+
+/**
+ * Zaseknuté importy pro obnovu (`contacts.import.recover_stale`).
+ *
+ * Jediný signál živosti je `imports.updated_at`, které zapisuje KAŽDÁ
+ * checkpointová transakce importéru. Zabitý worker ho přestane posouvat a řádek
+ * zůstane ve stavu `importing`.
+ *
+ * PROČ TENHLE SKEN MUSÍ BÝT TADY, a ne pod aplikační rolí, jak byl dřív:
+ * `imports` má politiku `ws_isolation` a `withoutContext` žádný kontext
+ * nenastavuje, takže porovnání s NULL vyloučí všechny řádky. Ověřeno spuštěním
+ * proti běžící databázi, `mlain_migrator` vidí 3 řádky, `mlain_app` bez
+ * kontextu 0. Dopad není kosmetický: `confirmImport` odmítne každý další import
+ * v projektu, dokud tam leží řádek ve stavu `importing`
+ * (`import_already_running`), takže projekt zůstane bez importů napořád.
+ *
+ * Vrací POUZE identifikaci. `filename`, `mapping` ani `error_summary` tahle role
+ * přečíst nesmí a sloupcový grant z migrace 0024 to vynucuje.
+ */
+export async function listStaleImports(staleMinutes: number): Promise<StaleImportRow[]> {
+  return withMaintenance(async (tx: Tx) => {
+    await assertCrossWorkspaceVisibility(tx, 'imports');
+    const r = await tx.execute<{ id: string; workspace_id: string }>(
+      rawSql(
+        `SELECT id, workspace_id
+           FROM imports
+          WHERE status = 'importing'
+            AND updated_at < now() - make_interval(mins => $1::int)
+          ORDER BY workspace_id, id`,
+        [staleMinutes],
+      ),
+    );
+    return r.rows.map((row) => ({ workspaceId: row.workspace_id, importId: row.id }));
+  });
+}
+
+/**
+ * Práce, o které databáze tvrdí, že BĚŽÍ, a která se dlouho nehnula.
+ *
+ * `kind` a `id` jsou schválně TÝŽ PÁR, jakým mluví Centrum úloh
+ * (`platform/jobs/registry.ts`), aby se nález dal otevřít odkazem a nemusel se
+ * překládat. `idleSeconds` je stáří posledního zápisu, tedy jediný signál
+ * živosti, který obě úlohy mají: heartbeat nemá ani jedna.
+ */
+export type ClaimedRunningJobRow = {
+  workspaceId: string;
+  kind: 'import' | 'campaign_audience';
+  id: string;
+  /** Doménový stav, ať je v hlášení vidět, o kterou fázi jde. */
+  state: string;
+  idleSeconds: number;
+};
+
+/**
+ * Úlohy, které se TVÁŘÍ jako běžící a dlouho se nehnuly, napříč projekty.
+ *
+ * K ČEMU TO JE. Hlídač osiřelých úloh (`apps/worker/src/job-watch.ts`) potřebuje
+ * jednu stranu porovnání: co si o sobě myslí doména. Druhou stranu, tedy co
+ * doopravdy leží ve frontě, si přečte z `pgboss.job` sám, protože na to má
+ * aplikační role právo a tahle ne.
+ *
+ * PROČ SE NEPTÁ NA `previewing` A `pending`. V těch fázích se čeká na ČLOVĚKA
+ * a žádná úloha existovat nemá, takže by to nebyl nález, ale běžný provoz.
+ * Výčet je proto doslova ten, který `platform/jobs/built-in-sources.ts` hlásí
+ * jako `running`; kdyby se rozešly, hlídač by hlídal něco jiného, než co vidí
+ * uživatel v Centru úloh.
+ *
+ * PROČ SE NEVOLÁ `assertCrossWorkspaceVisibility`. Ten strážce patří ke skenu,
+ * který OPRAVUJE: když oslepne, tiše se přestane opravovat a nikdo to nepozná.
+ * Tenhle sken jenom hlásí a běží po pěti minutách, takže by strážce na každé
+ * čerstvé instalaci (projekty jsou, importů nula) hlásil poruchu pořád dokola,
+ * a poplach, který chodí při běžném provozu, se přestane číst. Chybějící GRANT
+ * se navíc projeví hlasitě sám: dotaz skončí na `permission denied`, ne prázdnem.
+ *
+ * Vrací POUZE identifikaci a řídicí sloupce, jak předepisuje hlavička souboru.
+ */
+export async function listJobsClaimingToRun(
+  minIdleMinutes: number,
+): Promise<ClaimedRunningJobRow[]> {
+  return withMaintenance(async (tx: Tx) => {
+    const imports = await tx.execute<{
+      id: string;
+      workspace_id: string;
+      status: string;
+      idle: number;
+    }>(
+      rawSql(
+        `SELECT id, workspace_id, status,
+                EXTRACT(EPOCH FROM (now() - updated_at))::int AS idle
+           FROM imports
+          WHERE status IN ('validating', 'importing')
+            AND updated_at < now() - make_interval(mins => $1::int)
+          ORDER BY workspace_id, id`,
+        [minIdleMinutes],
+      ),
+    );
+
+    /*
+     * STAVBA PUBLIKA. Kampaň ve stavu `queueing` s nepostaveným publikem čeká
+     * na úlohu `campaign.materialize`. Plánovač ji zařazuje jen do doby, než
+     * kampaň opustí stav `scheduled` (`campaigns/jobs/system-deps.ts`), takže
+     * odsud ji už nikdo znovu nezařadí a pád workeru tu kampaň zamkne natrvalo.
+     * `campaign.watchdog` to nechytí: uzavírá až kampaně, které mají publikum
+     * postavené, a tahle větev je za `if (!c.audienceBuiltAt) continue`.
+     */
+    const audiences = await tx.execute<{ id: string; workspace_id: string; idle: number }>(
+      rawSql(
+        `SELECT id, workspace_id,
+                EXTRACT(EPOCH FROM (now() - updated_at))::int AS idle
+           FROM campaigns
+          WHERE deleted_at IS NULL
+            AND status = 'queueing'
+            AND audience_built_at IS NULL
+            AND updated_at < now() - make_interval(mins => $1::int)
+          ORDER BY workspace_id, id`,
+        [minIdleMinutes],
+      ),
+    );
+
+    return [
+      ...imports.rows.map((row) => ({
+        workspaceId: row.workspace_id,
+        kind: 'import' as const,
+        id: row.id,
+        state: row.status,
+        idleSeconds: Number(row.idle),
+      })),
+      ...audiences.rows.map((row) => ({
+        workspaceId: row.workspace_id,
+        kind: 'campaign_audience' as const,
+        id: row.id,
+        state: 'queueing',
+        idleSeconds: Number(row.idle),
+      })),
+    ];
+  });
+}
+
+export type StaleSegmentRow = { workspaceId: string; segmentId: string };
+
+/**
+ * Dynamické segmenty, jejichž přepočet je na řadě (`segments.recount`).
+ *
+ * Hranici stáří počítá VOLAJÍCÍ a předává ji sem hotovou, ne aby si ji dotaz
+ * vyrobil z `now()`. Je to tentýž důvod jako u lhůty na obnovu projektu
+ * v `purgeDeletedWorkspaces`: hodnota patří úloze, ne skenu.
+ *
+ * Podmínky odpovídají částečnému indexu `idx_segments__stale`. Bez výjimky
+ * z izolace vracel tenhle dotaz pod aplikační rolí prázdno a index zůstal
+ * nepoužitý.
+ */
+export async function listStaleSegments(cutoff: Date): Promise<StaleSegmentRow[]> {
+  return withMaintenance(async (tx: Tx) => {
+    await assertCrossWorkspaceVisibility(tx, 'segments');
+    const r = await tx.execute<{ id: string; workspace_id: string }>(
+      rawSql(
+        `SELECT id, workspace_id
+           FROM segments
+          WHERE deleted_at IS NULL
+            AND kind = 'dynamic'
+            AND (cached_at IS NULL OR cached_at < $1::timestamptz)
+          ORDER BY workspace_id, id`,
+        [cutoff.toISOString()],
+      ),
+    );
+    return r.rows.map((row) => ({ workspaceId: row.workspace_id, segmentId: row.id }));
   });
 }
 

@@ -63,6 +63,11 @@ export const CONTACTS_AUDIT_ACTIONS = [
   // vzhled. Kdo se za rok ptá, jak se lidé dostali do seznamu se slevou, musí najít
   // odpověď, ne mlčení.
   'list.public_visibility_changed',
+  // Rozsah odhlášení ze seznamu ('list' nebo 'global'). Přepnutí na 'global' znamená,
+  // že každý, kdo klikne na odhlašovací odkaz v e-mailu z tohohle seznamu, si navíc
+  // nechá zablokovat adresu pro CELÝ projekt. Kdo se za rok ptá, proč projekt přišel
+  // o polovinu adres, musí najít odpověď, ne mlčení.
+  'list.unsubscribe_scope_changed',
   'subscription.forced_confirmed',
   // Hromadné potvrzení čekajících přihlášení jednoho seznamu. Je to VÝSLOVNÉ ROZHODNUTÍ
   // SPRÁVCE („souhlas mám doložený"), které za příjemce dokončí to, co měl potvrdit on,

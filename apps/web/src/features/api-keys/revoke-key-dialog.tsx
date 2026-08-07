@@ -50,6 +50,7 @@ export function RevokeKeyDialogView({
           if (!open) onClose();
         }}
         level="N3"
+        destructive
         title={t('apiKeys.revoke.dialogTitle', { name: apiKey.name })}
         consequences={[
           t('apiKeys.revoke.consequence1'),

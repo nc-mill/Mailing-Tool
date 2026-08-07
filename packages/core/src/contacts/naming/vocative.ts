@@ -2,8 +2,15 @@ import { vocative as libVocative } from 'czech-vocative';
 import { normalizeNameKey } from './normalize';
 import type { Confidence, Gender, GenderSource, NameOverrideLookup } from './types';
 
-/** Jazyky, pro které se vokativ počítá. Pro ostatní se vrací nominativ. */
-const VOCATIVE_LOCALES = new Set(['cs', 'sk']);
+/**
+ * Jazyky, pro které se vokativ počítá, drží `@mlain/emails/greeting` spolu se
+ * skladatelem oslovení, který se podle nich rozhoduje. Odsud se jen reexportuje,
+ * aby volající v jádře nemuseli vědět, že se funkce přestěhovala. Dvě kopie
+ * seznamu by znamenaly, že se editor a odesílač můžou rozejít v tom, které
+ * jazyky skloňují.
+ */
+export { localeHasVocative } from '@mlain/emails/greeting';
+import { localeHasVocative } from '@mlain/emails/greeting';
 
 /** Znaky, které smí být ve jméně, aby se dal vokativ počítat s jistotou. */
 const SAFE_NAME = /^[A-Za-zÀ-ɏ'\- ]+$/;
@@ -23,10 +30,6 @@ const TRUSTED_GENDER_SOURCES: readonly GenderSource[] = [
   'given_name_dict',
   'manual',
 ];
-
-export function localeHasVocative(locale: string): boolean {
-  return VOCATIVE_LOCALES.has(locale.toLowerCase().split('-')[0] ?? '');
-}
 
 export type VocativeInput = {
   firstName: string | null;

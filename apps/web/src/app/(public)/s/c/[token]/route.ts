@@ -6,6 +6,7 @@ import {
   ConfirmResultPage,
   InvalidLinkPage,
 } from '@/features/public/pages';
+import { renderDesignedPage } from '@/features/public/designed-page';
 import { publicTranslator } from '@/features/public/i18n';
 import { renderPublicPage } from '@/features/public/render';
 import { requestIp, requestUserAgent, readFormBody } from '@/features/public/request';
@@ -110,6 +111,18 @@ export async function POST(
   if (result.redirectUrl !== null) {
     return new Response(null, { status: 303, headers: { location: result.redirectUrl } });
   }
+
+  /*
+   * Navržená stránka po potvrzení (povrch `confirmed`).
+   *
+   * AŽ TEĎ, tedy až za `confirmByRef`. Potvrzení je vedlejší účinek s důkazní
+   * hodnotou a návrh ho nesmí zastínit: `loadPublicPageDesign` proto běží
+   * v doméně až po zápisu a `renderDesignedPage` vrátí `null`, kdyby vykreslení
+   * spadlo. Člověk v tu chvíli přihlášený JE a chybová stránka by ho poslala
+   * klikat na odkaz z e-mailu znovu.
+   */
+  const designed = await renderDesignedPage(result.pageDesign);
+  if (designed !== null) return designed;
 
   const t = await publicTranslator(result.branding.locale, 'contacts.public');
   return renderPublicPage(ConfirmResultPage({ t, view: result.view, listName: result.listName }), {

@@ -195,12 +195,18 @@ const timelineEvents: TimelineEvent[] = [
     id: 'e1',
     type: 'email_open',
     occurredAt: new Date('2026-07-31T12:41:00.000Z'),
+    // Galerie ukazuje i ikonu události: bez ní by v ní zůstal stav, kvůli
+    // kterému se 7. 8. 2026 kreslila u všeho tatáž ikona řetězu.
+    icon: 'open' as const,
+    title: 'Otevřela e-mail z kampaně Letní výprodej',
     payload: { campaign: 'Letní výprodej' },
   },
   ...[0, 1, 2, 3].map((index) => ({
     id: `p${index}`,
     type: 'page_view',
     occurredAt: new Date(`2026-07-30T16:2${index}:00.000Z`),
+    icon: 'web' as const,
+    title: 'Zobrazila stránku',
     payload: {},
   })),
 ];
@@ -213,6 +219,8 @@ const timelineLabels: TimelineLabels = {
   collapseCluster: 'Sbalit skupinu událostí',
   expanded: 'Rozbaleno',
   collapsed: 'Sbaleno',
+  eventAnchor: ({ what, when }: { what: string; when: string }) =>
+    `Trvalý odkaz na událost: ${what}, ${when}`,
 };
 
 function renderTimelineSentence({
@@ -336,6 +344,7 @@ export const GALLERY_FIXTURES = {
   },
   confirmDialog: {
     level: 'N3' as const,
+    destructive: true,
     title: 'Smazat 3 402 kontaktů?',
     consequences: [
       'Kontakty zmizí ze všech seznamů a segmentů',

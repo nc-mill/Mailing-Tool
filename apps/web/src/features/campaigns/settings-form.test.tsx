@@ -47,9 +47,13 @@ const deleteCampaign = vi.fn().mockResolvedValue({ status: 'success' });
  * Formulář volá odplánování a sekce mazání jednu akci; bez nich vitest hlásí
  * chybějící export už při importu, ne až při kliknutí.
  */
+const rename = vi.fn().mockResolvedValue({ status: 'success' });
 vi.mock('./actions', () => ({
   unscheduleCampaignAction: (input: unknown) => unschedule(input),
   deleteCampaignAction: (input: unknown) => deleteCampaign(input),
+  // Přejmenování z hlavičky kroku 2. Nejde přes formulář ani přes jeho akci,
+  // takže bez téhle náhrady by test sáhl na `revalidatePath` z Nextu.
+  renameCampaignAction: (input: unknown) => rename(input),
 }));
 
 /*
@@ -89,6 +93,8 @@ beforeEach(() => {
   deleteCampaign.mockResolvedValue({ status: 'success' });
   applySender.mockClear();
   applySender.mockResolvedValue({ status: 'success' });
+  rename.mockClear();
+  rename.mockResolvedValue({ status: 'success' });
   refresh.mockClear();
 });
 
@@ -836,5 +842,86 @@ describe('rozsah odhlášení', () => {
 
     await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
     expect(action.mock.calls[0]![1].get('unsubscribe_list_id')).toBe('list-1');
+  });
+});
+
+/**
+ * JMÉNO KAMPANĚ V KROKU 2. Dřív to bylo pole uvnitř formuláře a ukládalo se
+ * hromadnou akcí, takže u čerstvé kampaně nešlo uložit vůbec: validace spadla
+ * na prázdném předmětu a prázdném publiku, tedy na věcech, se kterými
+ * přejmenování nesouvisí. Teď je jméno v hlavičce a má vlastní akci.
+ */
+describe('přejmenování kampaně v kroku 2', () => {
+  it('formulář jméno nenese, hlavička ho nabízí k úpravě', async () => {
+    renderForm();
+    await goToStep('basics');
+
+    expect(document.querySelector('input[name=name]')).toBeNull();
+    expect(screen.getByTestId('campaign-name-input')).toHaveValue('Letní výprodej');
+  });
+
+  it('uloží jméno i u kampaně bez předmětu a bez publika', async () => {
+    const save = vi.fn(async () => IDLE);
+    renderForm({ subject: '', include_lists: [], include_segments: [] }, save);
+
+    const field = screen.getByTestId('campaign-name-input');
+    await userEvent.clear(field);
+    await userEvent.type(field, 'Podzimní novinky');
+    await userEvent.tab();
+
+    await waitFor(() =>
+      expect(rename).toHaveBeenCalledWith({
+        workspaceId: 'ws-1',
+        campaignId: 'camp-1',
+        name: 'Podzimní novinky',
+      }),
+    );
+    // Hromadné uložení se přitom vůbec nespustilo, takže ho nemá co shodit.
+    expect(save).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('campaign-name-error')).toBeNull();
+  });
+
+  /**
+   * ZAMČENÁ KAMPAŇ SE PŘEJMENOVAT SMÍ, A KROK 2 TO MUSÍ NABÍDNOUT.
+   *
+   * Rozhoduje `canRenameCampaign`, ne `canEdit`. Naplánovaná kampaň má obsah
+   * zamčený (`canEdit` je `false`), ale `PATCH /campaigns/{id}` u ní `name`
+   * pouští, a krok 1 pole nabízí. Kdyby ho krok 2 nenabídl, lišily by se dvě
+   * obrazovky téže kampaně v tom, co se na nich dá udělat.
+   */
+  it('naplánovaná kampaň má pole pro jméno, i když je obsah zamčený', async () => {
+    renderForm({ status: 'scheduled' }, undefined, false);
+
+    const field = screen.getByTestId('campaign-name-input');
+    expect(field).toHaveValue('Letní výprodej');
+    expect(field).not.toBeDisabled();
+    // Holý text místo pole by znamenal, že se přejmenovat nedá.
+    expect(screen.queryByTestId('campaign-name-readonly')).toBeNull();
+  });
+
+  /**
+   * A DRUHÁ STRANA: u stavu, kde přejmenovat NEJDE, se pole nesmí nabídnout.
+   * Pole, které při odchodu z něj vyhodí `campaign_locked`, je horší než
+   * nadpis, o kterém je na první pohled vidět, že se upravit nedá.
+   */
+  it('u odesílající se kampaně je jméno holý text, ne pole', () => {
+    renderForm({ status: 'sending' }, undefined, false);
+
+    expect(screen.getByTestId('campaign-name-readonly')).toHaveTextContent('Letní výprodej');
+    expect(screen.queryByTestId('campaign-name-input')).toBeNull();
+  });
+
+  it('nové jméno se hned propíše do drobečků', async () => {
+    renderForm();
+
+    const field = screen.getByTestId('campaign-name-input');
+    await userEvent.clear(field);
+    await userEvent.type(field, 'Podzimní novinky');
+    await userEvent.tab();
+
+    await waitFor(() => expect(rename).toHaveBeenCalled());
+    expect(screen.getByRole('navigation', { name: 'Drobečková navigace' })).toHaveTextContent(
+      'Podzimní novinky',
+    );
   });
 });

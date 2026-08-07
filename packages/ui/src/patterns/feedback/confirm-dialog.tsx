@@ -34,6 +34,7 @@ export function ConfirmDialog({
   exportAction,
   extraAction,
   softerAlternative,
+  destructive,
   irreversible = true,
   onConfirm,
   onCancel,
@@ -78,6 +79,31 @@ export function ConfirmDialog({
   extraAction?: React.ReactNode;
   /** Většina lidí, kteří sáhnou po zrušení, ve skutečnosti chtějí pauzu (6.4). */
   softerAlternative?: { question: string; label: string; onChoose: () => void };
+  /**
+   * Ztratí se po potvrzení data, nebo něco odejde ven? Řídí barvu potvrzovacího
+   * tlačítka a to, jestli jde dialog zavřít kliknutím mimo (5.3).
+   *
+   * ČERVENÁ NENÍ SYNONYMUM PRO „POTVRZOVACÍ DIALOG". Úroveň `level` říká, kolik
+   * tření akce dostane (okno, zaškrtávátko, opisování), tenhle příznak říká,
+   * jak akce dopadne. Jsou to dvě různé věci: „Archivovat seznam" i „Odeslat
+   * kampaň" jsou N2, ale první nic neztratí a druhá je nevratná.
+   *
+   * Napiš `true` jen tehdy, když platí aspoň jedno podle os z 6.1:
+   * - obnovitelnost 2: po potvrzení něco z projektu zmizí a rozhraní ani API
+   *   to nevrátí (smazání kontaktu, pole, štítku, klíče, projektu, přepsání
+   *   rozepsaného obsahu),
+   * - vnější dopad 2: akce odejde ven ke koncovým lidem nebo pustí ven poštu,
+   *   která byla zablokovaná (odeslání kampaně, odebrání adresy z blokovaných,
+   *   rotace klíče k API).
+   *
+   * Archivace, přepínání stavu, změna nastavení, odebrání přístupu a zakládání
+   * dat mají `false`, i když se na ně uživatel ptá dialogem. Kdyby svítilo
+   * červeně všechno, přestane červená znamenat cokoli a odklikne se i mazání.
+   *
+   * Prop je povinný schválně: výchozí hodnota by se dala přehlédnout a přesně
+   * tak vznikl stav, kdy „Archivovat pole" vypadalo jako mazání.
+   */
+  destructive: boolean;
   irreversible?: boolean;
   /** Smí být asynchronní: obrazovky uvnitř volají API. */
   onConfirm: () => void | Promise<void>;
@@ -143,7 +169,7 @@ export function ConfirmDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} destructive>
+    <Dialog open={open} onOpenChange={onOpenChange} destructive={destructive}>
       <DialogTitle>{title}</DialogTitle>
       <DialogBody>
         <p className="font-medium">{labels.whatHappens}</p>
@@ -222,7 +248,10 @@ export function ConfirmDialog({
         }
         confirm={
           <Button
-            variant="destructive"
+            // Barva je vyhrazená akcím, po kterých se něco ztratí nebo odejde
+            // ven. Nedestruktivní potvrzení nese barvu primární akce, jinak by
+            // červená v aplikaci nic nerozlišovala.
+            variant={destructive ? 'destructive' : 'primary'}
             {...(reason ? { unavailableReason: reason, onUnavailable: handleConfirm } : {})}
             onClick={handleConfirm}
           >

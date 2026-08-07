@@ -6,6 +6,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it, vi } from 'vitest';
 import { createFakePorts } from '../../ports/fake-ports';
 import { ViewControls } from '../header/view-controls';
+import { TemplateProfileProvider } from '../richtext/template-profile';
 import { ViewProvider } from '../view/view-state';
 import { explainPreviewLinks, PreviewPane } from './preview-pane';
 
@@ -112,5 +113,45 @@ describe('PreviewPane a ovladače zobrazení', () => {
     expect(
       explainPreviewLinks('#preview-disabled', '(odkaz vznikne až při odeslání)'),
     ).not.toContain('http');
+  });
+});
+
+/**
+ * Náhled VEŘEJNÉ STRÁNKY se kreslí v rámu prohlížeče, ne e-mailového klienta.
+ * Není to kosmetika: náhled má říct, kde ten obsah skončí, a stránka skončí
+ * na webu. Přepínač mobil a počítač zůstává, šířka je u stránky pořád hlavní
+ * otázka.
+ */
+describe('rám náhledu se řídí profilem šablony', () => {
+  const setupWithProfile = (profile: 'campaign' | 'page') => {
+    const ports = createFakePorts();
+    render(
+      <NextIntlClientProvider locale="cs" messages={{ editor: messages }}>
+        <TooltipProvider>
+          <TemplateProfileProvider value={profile}>
+            <ViewProvider language="cs">
+              <PreviewPane templateId="t1" ports={ports} flush={async () => {}} />
+            </ViewProvider>
+          </TemplateProfileProvider>
+        </TooltipProvider>
+      </NextIntlClientProvider>,
+    );
+  };
+
+  it('u stránky kreslí rám prohlížeče a pojmenuje ho jako stránku', async () => {
+    setupWithProfile('page');
+    await waitFor(() =>
+      expect(screen.getByTestId('preview-frame')).toHaveAttribute('data-frame', 'page'),
+    );
+    expect(screen.getByTitle('Náhled stránky')).toBeInTheDocument();
+    expect(screen.getByText('Stránka na vaší doméně')).toBeInTheDocument();
+  });
+
+  it('u kampaně zůstává rám e-mailového klienta', async () => {
+    setupWithProfile('campaign');
+    await waitFor(() =>
+      expect(screen.getByTestId('preview-frame')).toHaveAttribute('data-frame', 'email'),
+    );
+    expect(screen.getByTitle('Náhled e-mailu')).toBeInTheDocument();
   });
 });

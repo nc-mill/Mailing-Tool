@@ -3,7 +3,13 @@ import { unsafeWorkspaceContext } from '@mlain/db/unsafe-context';
 import { startTestPostgres, type TestPostgres } from '../support/db';
 import { getFieldCatalog, type FieldCatalog } from '../../src/contacts/fields/catalog';
 import { closePools } from '../../src/tx';
-import { purgeDemoData, readDemoManifest, seedDemoData } from '../../src/demo/index';
+import {
+  NO_DEMO_IMPACT,
+  purgeDemoData,
+  readDemoImpact,
+  readDemoManifest,
+  seedDemoData,
+} from '../../src/demo/index';
 
 let pg: TestPostgres;
 let workspaceId: string;
@@ -39,8 +45,16 @@ const count = async (table: string) =>
     )[0]!.n,
   );
 
+/**
+ * Kontext projektu pro kompilaci ukázkové kampaně. Seed jím dohledává assety
+ * a nastavení projektu, tedy přesně to, co endpoint předává ze `c.get('auth')`.
+ */
+const demoCtx = () => unsafeWorkspaceContext(workspaceId, { type: 'system', job: 'test' });
+
 const seed = () =>
-  pg.inWorkspace(workspaceId, (tx) => seedDemoData(tx, { workspaceId, now: new Date(), fields }));
+  pg.inWorkspace(workspaceId, (tx) =>
+    seedDemoData(tx, { workspaceId, now: new Date(), fields, ctx: demoCtx() }),
+  );
 const purge = () => pg.inWorkspace(workspaceId, (tx) => purgeDemoData(tx, { workspaceId }));
 
 describe('purgeDemoData', () => {
@@ -158,5 +172,138 @@ describe('purgeDemoData', () => {
     }
     // Data jsou pořád na místě, protože se nic nesmazalo.
     expect(await count('contacts')).toBe(50);
+  });
+});
+
+/**
+ * DOPAD ÚKLIDU NA VĚCI MIMO UKÁZKOVOU SADU.
+ *
+ * `purgeDemoData` maže přesně řádky z manifestu, takže vlastní kontakt ani
+ * vlastní kampaň nezmizí. Cizí klíče ale sahají dál: `list_subscriptions`
+ * a `contact_tags` visí na seznamu a štítku kaskádou a `campaigns.template_id`
+ * se nuluje. Okno „Odstranit ukázková data?" tvrdilo „na nic ostatního
+ * v projektu se nesáhne", což v těchhle případech neplatilo, a `readDemoImpact`
+ * je proto počítá DOPŘEDU, aby okno mohlo říct číslo.
+ */
+describe('readDemoImpact', () => {
+  const impact = () =>
+    pg.inWorkspace(workspaceId, async (tx) => {
+      const manifest = await readDemoManifest(tx, workspaceId);
+      return manifest === null ? NO_DEMO_IMPACT : readDemoImpact(tx, workspaceId, manifest);
+    });
+
+  const vlastniKontakt = async (email: string) => {
+    const rows = await pg.sql<{ id: string }>(
+      `INSERT INTO contacts (workspace_id, email, status, source, locale, timezone)
+       VALUES ($1, $2, 'active', 'manual', 'cs', 'Europe/Prague') RETURNING id`,
+      [workspaceId, email],
+    );
+    return rows[0]!.id;
+  };
+
+  it('v čerstvě nahrané sadě je dopad nulový', async () => {
+    await seed();
+    expect(await impact()).toEqual({ contacts: 0, campaigns: 0 });
+  });
+
+  it('spočítá vlastní kontakt přihlášený k ukázkovému seznamu', async () => {
+    const manifest = await seed();
+    const contactId = await vlastniKontakt('skutecny@firma.cz');
+    await pg.sql(
+      `INSERT INTO list_subscriptions (workspace_id, contact_id, list_id, status, source)
+       VALUES ($1, $2, $3, 'confirmed', 'manual')`,
+      [workspaceId, contactId, manifest.listIds[0]],
+    );
+    expect(await impact()).toEqual({ contacts: 1, campaigns: 0 });
+  });
+
+  it('spočítá vlastní kontakt s ukázkovým štítkem a nezapočítá ho dvakrát', async () => {
+    const manifest = await seed();
+    const contactId = await vlastniKontakt('dvakrat@firma.cz');
+    await pg.sql(
+      `INSERT INTO contact_tags (workspace_id, contact_id, tag_id) VALUES ($1, $2, $3)`,
+      [workspaceId, contactId, manifest.tagIds[0]],
+    );
+    await pg.sql(
+      `INSERT INTO list_subscriptions (workspace_id, contact_id, list_id, status, source)
+       VALUES ($1, $2, $3, 'confirmed', 'manual')`,
+      [workspaceId, contactId, manifest.listIds[0]],
+    );
+    // Jeden člověk, dvě vazby. Kdyby se sčítaly vazby místo lidí, okno by
+    // slíbilo dvojnásobnou ztrátu a číslo by přestalo být k něčemu.
+    expect(await impact()).toEqual({ contacts: 1, campaigns: 0 });
+  });
+
+  it('ukázkové kontakty do dopadu nepatří, ty se mažou celé', async () => {
+    // Padesát ukázkových kontaktů je v ukázkových seznamech a má ukázkový
+    // štítek. Kdyby se počítaly, okno by hlásilo dopad i v projektu, kde
+    // uživatel nemá vlastního nic.
+    await seed();
+    expect((await impact()).contacts).toBe(0);
+    expect(await count('list_subscriptions')).toBeGreaterThan(0);
+  });
+
+  it('spočítá vlastní kampaň postavenou na ukázkové šabloně', async () => {
+    const manifest = await seed();
+    await pg.sql(
+      `INSERT INTO campaigns (workspace_id, name, status, template_id)
+       VALUES ($1, 'Moje první kampaň', 'draft', $2)`,
+      [workspaceId, manifest.templateIds[0]],
+    );
+    expect(await impact()).toEqual({ contacts: 0, campaigns: 1 });
+  });
+
+  it('spočítá vlastní kampaň s ukázkovým odhlašovacím seznamem', async () => {
+    const manifest = await seed();
+    await pg.sql(
+      `INSERT INTO campaigns (workspace_id, name, status, unsubscribe_list_id)
+       VALUES ($1, 'Kampaň s odhlášením', 'draft', $2)`,
+      [workspaceId, manifest.listIds[0]],
+    );
+    expect(await impact()).toEqual({ contacts: 0, campaigns: 1 });
+  });
+
+  it('nepočítá vlastní kampaň, která s ukázkovou sadou nemá nic společného', async () => {
+    await seed();
+    await pg.sql(
+      `INSERT INTO campaigns (workspace_id, name, status) VALUES ($1, 'Cizí', 'draft')`,
+      [workspaceId],
+    );
+    expect(await impact()).toEqual({ contacts: 0, campaigns: 0 });
+  });
+
+  it('bez manifestu se nepočítá nic', async () => {
+    expect(await impact()).toEqual({ contacts: 0, campaigns: 0 });
+  });
+
+  /**
+   * Slib okna proti skutečnosti: dopad říká, KOLIK vazeb se rozváže, a úklid
+   * je pak opravdu rozváže, aniž by vlastní kontakt nebo kampaň smazal.
+   */
+  it('co dopad slíbí, to úklid udělá: vazby zmizí, vlastní objekty zůstanou', async () => {
+    const manifest = await seed();
+    const contactId = await vlastniKontakt('zustava@firma.cz');
+    await pg.sql(
+      `INSERT INTO list_subscriptions (workspace_id, contact_id, list_id, status, source)
+       VALUES ($1, $2, $3, 'confirmed', 'manual')`,
+      [workspaceId, contactId, manifest.listIds[0]],
+    );
+    await pg.sql(
+      `INSERT INTO campaigns (workspace_id, name, status, template_id)
+       VALUES ($1, 'Moje první kampaň', 'draft', $2)`,
+      [workspaceId, manifest.templateIds[0]],
+    );
+    expect(await impact()).toEqual({ contacts: 1, campaigns: 1 });
+
+    await purge();
+
+    expect(await count('contacts')).toBe(1);
+    expect(await count('campaigns')).toBe(1);
+    expect(await count('list_subscriptions')).toBe(0);
+    const [kampan] = await pg.sql<{ template_id: string | null }>(
+      'SELECT template_id FROM campaigns WHERE workspace_id = $1',
+      [workspaceId],
+    );
+    expect(kampan!.template_id, 'vazba na ukázkovou šablonu se musí vynulovat').toBeNull();
   });
 });

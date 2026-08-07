@@ -160,6 +160,37 @@ export const PROBLEM_CODES: readonly ProblemCodeEntry[] = [
     domain: 'platform',
     source: 'spec',
   },
+  // Zakládání účtu z pozvánky při `SIGNUP_MODE=closed`. Vlastní kód, ne obecné
+  // `forbidden`: to znamená „vaše role tuhle akci nedovoluje" a poslalo by
+  // pozvaného hledat chybu u sebe, přestože jde o nastavení instalace, které
+  // může změnit jedině provozovatel.
+  {
+    code: 'signup_closed',
+    status: 403,
+    title: 'Sign-up is closed',
+    retryable: false,
+    domain: 'platform',
+    source: 'spec',
+  },
+  /**
+   * Založení dalšího projektu smí jen ten, kdo je vlastníkem aspoň jednoho
+   * existujícího projektu (rozhodnutí zadavatele ze 7. 8. 2026: „projekty smí
+   * zakládat pouze nejvyšší role").
+   *
+   * Vlastní kód, ne obecné `forbidden`. To znamená „vaše role v TOMHLE projektu
+   * na to nestačí" a nese `currentRole` i `grantedByRoles`, jenže zakládání
+   * projektu se v žádném projektu neděje: aktér tu žádný kontext nemá a rada
+   * „požádejte o vyšší roli" by mířila do prázdna. Správná rada zní „ať vám
+   * projekt založí vlastník", a k tomu musí obrazovka poznat vlastní kód.
+   */
+  {
+    code: 'workspace_create_not_allowed',
+    status: 403,
+    title: 'Only a project owner can create projects',
+    retryable: false,
+    domain: 'platform',
+    source: 'derived',
+  },
   {
     code: 'webhook_endpoint_disabled',
     status: 409,
@@ -305,7 +336,7 @@ export const PROBLEM_CODES: readonly ProblemCodeEntry[] = [
    * Instalace nemá čím odeslat systémový e-mail.
    *
    * Vlastní kód, ne `service_unavailable`, protože příčina není výpadek, ale
-   * chybějící nastavení, a odpověď na ni je jiná: přidat účet typu SMTP, ne
+   * chybějící nastavení, a odpověď na ni je jiná: přidat odesílací účet, ne
    * počkat a zkusit znovu. `retryable` je proto `false`. 503 je záměr: operace
    * neselhala vinou toho, kdo ji vyvolal, a data se nezměnila.
    */
@@ -1195,6 +1226,22 @@ export const FINDING_CODES: readonly FindingCodeEntry[] = [
   { code: 'domain_dkim_missing', severity: 'error', domain: 'campaigns', source: 'spec' },
   { code: 'domain_spf_missing', severity: 'warning', domain: 'campaigns', source: 'spec' },
   { code: 'domain_dmarc_missing', severity: 'warning', domain: 'campaigns', source: 'spec' },
+  /*
+   * Poštovní adresa odesílatele, kterou musí obchodní sdělení nést, není
+   * v projektu vyplněná, ačkoliv ji patička merge tagem
+   * `{{ workspace.sender_address }}` sází. V e-mailu tedy odejde prázdné místo.
+   *
+   * VAROVÁNÍ, NE CHYBA. Tvrdá závora by zastavila každý projekt, který nástroj
+   * teprve zkouší, a to na místě, kde s tím uživatel nepočítá; ostatní blokující
+   * položky brání odeslání technicky, tahle právně a rozhodnutí patří člověku.
+   * Táž váha jako u chybějícího DMARC.
+   */
+  {
+    code: 'workspace_postal_address_missing',
+    severity: 'warning',
+    domain: 'campaigns',
+    source: 'spec',
+  },
   { code: 'content_missing_unsubscribe', severity: 'error', domain: 'content', source: 'spec' },
   { code: 'content_image_missing_alt', severity: 'warning', domain: 'content', source: 'spec' },
   { code: 'content_low_contrast', severity: 'warning', domain: 'content', source: 'spec' },
@@ -1203,4 +1250,33 @@ export const FINDING_CODES: readonly FindingCodeEntry[] = [
   { code: 'content_html_too_large', severity: 'warning', domain: 'content', source: 'spec' },
   { code: 'content_padding_overflow', severity: 'warning', domain: 'content', source: 'spec' },
   { code: 'deliverability_degraded', severity: 'warning', domain: 'campaigns', source: 'derived' },
+
+  /*
+   * PŘEDODESÍLACÍ KONTROLA ŠABLONY, `templates/precheck.ts`.
+   *
+   * Devět kódů, které produkt vydával, aniž by o nich registr věděl. Nebyla to
+   * kosmetická mezera: `findings` z předodesílací kontroly jdou do odpovědi API
+   * a odtud do panelu v editoru, takže jde přesně o ten druh kódu, pro který
+   * `FINDING_CODES` existuje. Vedle v `detail-catalog.ts` u nich přitom stálo,
+   * že „do REGISTRU kódů nepatří". To byl omyl ze záměny druhů: do `PROBLEM_CODES`
+   * opravdu nepatří, protože nejsou kořenové kódy odpovědi a nemají HTTP status.
+   * `FINDING_CODES` je ale právě druh pro položky pole `findings`, a bydlí v něm
+   * i sousední `campaign_*` a `content_*` nálezy téže kontroly.
+   *
+   * `domain: 'content'`, protože kontrolu vlastní doména šablon (část 3), ne
+   * doména kampaní. `source: 'derived'`, protože kódy zavedla implementace;
+   * specifikace je nejmenuje, což je i důvod, proč v registru chyběly.
+   *
+   * Závažnosti jsou opsané z `preSendCheck`, ne vymyšlené: `error` blokuje
+   * odeslání (`PreSendBlockedError`), `warning` se jen ukáže.
+   */
+  { code: 'precheck_template_invalid', severity: 'error', domain: 'content', source: 'derived' },
+  { code: 'precheck_missing_unsubscribe', severity: 'error', domain: 'content', source: 'derived' },
+  { code: 'precheck_html_too_large', severity: 'error', domain: 'content', source: 'derived' },
+  { code: 'precheck_subject_empty', severity: 'error', domain: 'content', source: 'derived' },
+  { code: 'precheck_app_url_not_public', severity: 'error', domain: 'content', source: 'derived' },
+  { code: 'precheck_html_large', severity: 'warning', domain: 'content', source: 'derived' },
+  { code: 'precheck_preheader_empty', severity: 'warning', domain: 'content', source: 'derived' },
+  { code: 'precheck_insecure_link', severity: 'warning', domain: 'content', source: 'derived' },
+  { code: 'precheck_empty_field_ratio', severity: 'warning', domain: 'content', source: 'derived' },
 ];

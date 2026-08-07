@@ -400,3 +400,46 @@ describe('hlavička u odmítnutého uložení', () => {
     expect(screen.getByTestId('save-status')).not.toHaveTextContent(SERVER_SENTENCE);
   });
 });
+
+/**
+ * EDITOR STRÁNKY NENÍ EDITOR E-MAILU.
+ *
+ * Zadavatel 7. 8. 2026 nahlásil, že na návrhu veřejné stránky svítí „Poslat
+ * test" a v panelu nálezů dvě chyby o e-mailu („nemá odkaz na odhlášení",
+ * „odkazy v e-mailu by příjemcům nefungovaly"). Je to jedna vada ve dvou
+ * podobách: stránka se NIKDY neodesílá, otevírá se v prohlížeči z odkazu.
+ *
+ * Tlačítko, které slibuje akci, co nemůže nastat, je horší než chybějící:
+ * člověk na něj klikne dřív, než zjistí, že tam nemá co dělat.
+ */
+describe('hlavička editoru u veřejné stránky', () => {
+  const withKind = (templateKind?: string) => {
+    const store = createEditorStore({ document: doc(), designHash: 'h1' });
+    wrap(
+      <EditorHeader
+        mode="edit"
+        onMode={vi.fn()}
+        onTestSend={vi.fn()}
+        onSave={vi.fn()}
+        readOnly={false}
+        {...(templateKind === undefined ? {} : { templateKind })}
+      />,
+      store,
+    );
+  };
+
+  it('u stránky se zkušební odeslání NENABÍZÍ', () => {
+    withKind('page');
+    expect(screen.queryByTestId('editor-test-send')).toBeNull();
+  });
+
+  it('u kampaně zůstává, zúžení se týká jen stránky', () => {
+    withKind('campaign');
+    expect(screen.getByTestId('editor-test-send')).toBeInTheDocument();
+  });
+
+  it('bez zadaného druhu zůstává taky, aby se nesebralo omylem všem', () => {
+    withKind();
+    expect(screen.getByTestId('editor-test-send')).toBeInTheDocument();
+  });
+});

@@ -6,6 +6,7 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { Button } from '@mlain/ui/components/button';
 import { CardTitle } from '@mlain/ui/components/card';
 import { Input } from '@mlain/ui/components/input';
+import { passwordManagerOptOut } from '@mlain/ui/lib/password-manager';
 import { Label } from '@mlain/ui/components/label';
 import { Alert, EmptyState, OverLimitState } from '@mlain/ui/patterns/states';
 import { SelectField } from '@/lib/forms/select-field';
@@ -236,10 +237,17 @@ export function InvitationsSectionView(props: InvitationsSectionViewProps) {
 
             <div>
               <Label htmlFor="invite-email">{t('members.invite.email')}</Label>
+              {/* Adresa ZVANÉHO, ne přihlašovací. Správce hesel sem nabízí adresu
+                  toho, kdo pozvánku píše, a vyplnit ji je tu vždycky chyba.
+                  Pole pro založení člena i s heslem (`create-member-section.tsx`)
+                  značky schválně nemá: tam je nabídka správce hesel na místě.
+                  Podrobnosti v `@mlain/ui/lib/password-manager`. */}
               <Input
                 id="invite-email"
                 name="email"
                 type="email"
+                autoComplete="off"
+                {...passwordManagerOptOut}
                 {...fieldAria('email', fieldErrors)}
               />
               <FieldError name="email" errors={fieldErrors} />

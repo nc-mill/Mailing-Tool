@@ -163,6 +163,8 @@ export function CampaignList({
   onRetry,
   rowActions,
   columnSettings,
+  selection,
+  bulkActions,
 }: {
   rows: CampaignRow[];
   state: CampaignListState;
@@ -184,6 +186,24 @@ export function CampaignList({
     permissions: CampaignPermissions;
     onAction: (action: Exclude<CampaignRowAction, 'editContent'>, row: CampaignRow) => void;
   };
+  /**
+   * Výběr řádků drží obrazovka, ne tabulka.
+   *
+   * Bez tohohle propu si ho `DataTable` řídí sama a ven z ní nevede: zaškrtávátka
+   * fungovala, ale nikdo o nich nevěděl, takže pruh nad tabulkou uměl jedině
+   * vybrat všechno a výběr zase zrušit. Právě to zadavatel hlásil („Multivýběr.
+   * Nemůžu s nimi nic dělat.").
+   *
+   * `clearToken` je jediná cesta, jak výběr uklidit i v režimu „vybráno všech N":
+   * ten bydlí uvnitř tabulky a vynulování `selectedIds` ho nezruší.
+   */
+  selection?: {
+    selectedIds: string[];
+    onSelectionChange: (next: string[]) => void;
+    clearToken?: unknown;
+  };
+  /** Hromadné akce na pruhu výběru. Bez nich pruh jen oznamuje, co je vybráno. */
+  bulkActions?: React.ReactNode;
 }) {
   const t = useTranslations('campaigns');
   const tc = useTranslations('common');
@@ -366,6 +386,8 @@ export function CampaignList({
       ]}
       pagination={{ hasMore: false, canGoBack: false, onPrevious: () => {}, onNext: () => {} }}
       {...(columnSettings ? { columnSettings } : {})}
+      {...(selection ? { selection } : {})}
+      {...(bulkActions ? { bulkActions } : {})}
       {...(basePath
         ? {
             /*

@@ -2,6 +2,7 @@ import { IntlMessageFormat } from 'intl-messageformat';
 import { describe, expect, it } from 'vitest';
 import cs from '@mlain/i18n/messages/cs/editor.json';
 import en from '@mlain/i18n/messages/en/editor.json';
+import { PAGE_ISSUE_CODES } from '@mlain/emails/document/profile';
 import { ISSUE_CODES } from './model/issue-codes';
 
 const flatten = (value: unknown, prefix = ''): string[] =>
@@ -176,8 +177,36 @@ describe('katalog editor', () => {
 
   it('má text ke každému kódu nálezu, který klientská validace umí vyrobit', () => {
     // Bez toho by pruh nálezů ukazoval holý kód typu `content_low_contrast`.
+    // Kontrolují se OBA jazyky: shoda klíčů výš by chybějící anglický text
+    // odhalila taky, ale až jako rozdíl dvou dlouhých seznamů, ze kterého není
+    // poznat, že jde právě o nález bez věty.
     for (const code of ISSUE_CODES) {
       expect(cs.issue, code).toHaveProperty(code);
+      expect(en.issue, code).toHaveProperty(code);
     }
+  });
+
+  it('zná všechny tři kódy veřejné stránky, v češtině i v angličtině', () => {
+    // Kódy se berou z `PAGE_ISSUE_CODES`, ne z literálů: kdyby se řetězec
+    // v `@mlain/emails` změnil, tenhle případ spadne, místo aby uživatel
+    // v editoru uviděl holý kód místo věty.
+    for (const code of Object.values(PAGE_ISSUE_CODES)) {
+      expect(ISSUE_CODES as readonly string[], code).toContain(code);
+      expect(cs.issue, code).toHaveProperty(code);
+      expect(en.issue, code).toHaveProperty(code);
+    }
+  });
+
+  it('u nedostupné personalizace řekne, že chybí na TÉHLE stránce, ne že je zakázaná', () => {
+    // Rozdíl je celý smysl toho kódu. „Tenhle údaj tu použít nejde" by uživatele
+    // poslal hledat obecný zákaz, přitom na jiné stránce je týž údaj v pořádku.
+    // Hláška proto musí jmenovat konkrétní cestu (`{path}`) a mluvit o stránce.
+    const czech = cs.issue.content_variable_not_on_surface;
+    expect(czech).toContain('{path}');
+    expect(czech.toLowerCase()).toContain('stránk');
+    expect(czech.toLowerCase()).toContain('jiné stránce');
+    const english = en.issue.content_variable_not_on_surface;
+    expect(english).toContain('{path}');
+    expect(english.toLowerCase()).toContain('another page');
   });
 });

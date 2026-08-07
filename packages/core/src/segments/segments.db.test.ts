@@ -939,15 +939,21 @@ describe('scheduleStale across workspaces', () => {
    * Detektor tiché nuly.
    *
    * Založí zastaralý dynamický segment ve DVOU různých projektech a čeká, že je
-   * plánovač najde OBA. Bez systémového bypassu vrátí `withoutContext` nula
-   * řádků a nevrátí chybu, takže by se bez tohohle testu porucha nikdy
+   * plánovač najde OBA. Bez systémového bypassu vrátil `withoutContext` nula
+   * řádků a nevrátil chybu, takže by se bez tohohle testu porucha nikdy
    * neprojevila: `{ scheduled: 0 }` je naprosto věrohodná hodnota.
    *
    * Test se schválně NEPTÁ strážce `assertCrossWorkspaceVisibility`, protože ten
    * vznikl ze stejné úvahy jako ochrana samotná. Ptá se dat: dva projekty, dva
    * segmenty, očekávám dvě zařazení.
+   *
+   * ZPŘÍSNĚNO POTÉ, CO POLITIKU DODALA MIGRACE 0024. Dřív tvrzení pouštělo dvě
+   * možnosti, „vidí" nebo „spadne hlasitě", protože bypass neexistoval a hlasitý
+   * pád byl v té době správná odpověď. Od téhle chvíle je správná odpověď jedna:
+   * plánovač MUSÍ vidět. Kdyby se politika nebo grant z migrace ztratily,
+   * volnější tvrzení by to znovu spolklo.
    */
-  it('finds stale segments in every workspace, or fails loudly, but never reports a silent zero', async () => {
+  it('finds stale segments in every workspace, never reports a silent zero', async () => {
     const ctxA = await testContext();
     const ctxB = await testContext();
     await seedContacts(ctxA, [{ email: 'stale-a@example.cz' }]);
@@ -969,21 +975,12 @@ describe('scheduleStale across workspaces', () => {
     }
 
     const scheduled: string[] = [];
-    const outcome = await scheduleStale(async (p) => {
+    const count = await scheduleStale(async (p) => {
       scheduled.push(p.segmentId);
-    }).then(
-      (n) => ({ ok: true as const, n }),
-      (e: unknown) => ({ ok: false as const, e }),
-    );
+    });
 
-    // Buď plánovač napříč projekty vidí, nebo hlasitě spadne. Třetí možnost,
-    // tedy úspěch s nulou, je jediný stav, ve kterém se porucha nikdy neprojeví.
-    if (!outcome.ok) {
-      expect(segmentErrorCode(outcome.e)).toBe('cross_workspace_scan_blocked');
-    } else {
-      expect(outcome.n).toBeGreaterThanOrEqual(2);
-      for (const id of seeded) expect(scheduled).toContain(id);
-    }
+    expect(count).toBeGreaterThanOrEqual(2);
+    for (const id of seeded) expect(scheduled).toContain(id);
   }, 600_000);
 });
 
@@ -1064,16 +1061,34 @@ describe('segments.recalc_for_contact', () => {
     expect((await stateOf(plainId)).state).toBe('idle');
   });
 
-  it('opravdu zapíše úlohu do fronty segments.recount', async () => {
+  /**
+   * OPRAVENO 7. 8. PODLE SKUTEČNÉHO CHOVÁNÍ FRONTY, tvrzení se zpřísnilo.
+   *
+   * Stálo tu „jedna od createSegment, jedna od fanoutu", tedy `>= 2`. To platilo
+   * jedině proto, že testovací prostředí zakládalo fronty BEZ politiky slučování,
+   * kdežto provoz je zakládá s `stately`. Jakmile se obě strany srovnaly, začal
+   * tenhle test měřit provoz a řekl 1: druhé zařazení TÉHOŽ segmentu se sloučí,
+   * dokud předchozí leží ve stavu `created`. Přesně to slibuje `discardNote`
+   * u fronty v registru a je to žádoucí, ne ztráta: čekající běh si data načte,
+   * až na něj přijde řada, takže pokryje i změnu, kvůli které přišel druhý požadavek.
+   *
+   * Počet by tedy byl špatná otázka. Ptáme se na to, na čem záleží: že úloha
+   * ve frontě JE a že nese klíč slučování. Bez klíče by spadla do společného
+   * kbelíku `COALESCE(singleton_key, '')` a přepočet jednoho segmentu by
+   * zahodil přepočet úplně jiného.
+   */
+  it('opravdu zapíše úlohu do fronty segments.recount, a to s klíčem slučování', async () => {
     const rows = await withWorkspace(ctx, (tx) =>
-      tx.execute<{ n: number }>(sql`
-        SELECT count(*)::int AS n FROM pgboss.job
+      tx.execute<{ n: number; keys: string[] }>(sql`
+        SELECT count(*)::int AS n,
+               array_agg(DISTINCT COALESCE(singleton_key, '(bez klíče)')) AS keys
+          FROM pgboss.job
          WHERE name = 'segments.recount'
            AND data->>'segmentId' = ${behavioralId}
            AND data->>'workspaceId' = ${ctx.workspaceId}`),
     );
-    // Jedna od createSegment, jedna od fanoutu. Podstatné je, že přibyla.
-    expect(rows.rows[0]!.n).toBeGreaterThanOrEqual(2);
+    expect(rows.rows[0]!.n).toBeGreaterThanOrEqual(1);
+    expect(rows.rows[0]!.keys).toEqual([behavioralId]);
   });
 
   it('druhý běh v okně doběhu neudělá nic', async () => {

@@ -2,8 +2,8 @@ import {
   prepareRenderData,
   type PreparedDataSchema,
 } from '@mlain/contracts/liquid/prepare-render-data';
-import { withWorkspace, type WorkspaceContext } from '../../tx';
-import { buildRenderData } from '../audience/render-data';
+import { withWorkspace, type Tx, type WorkspaceContext } from '../../tx';
+import { buildRenderData, renderDataColumns, renderDataSelectItem } from '../audience/render-data';
 // ODCHYLKA OD PLÁNU: plán importoval `CANCEL_CLEANUP_BATCH_SIZE` z `@mlain/core/campaigns`,
 // tedy z vlastního barrelu balíčku. To je cyklus přes `index.ts`, který tenhle soubor
 // sám reexportuje. Konstanta se bere přímo z modulu, kde je definovaná.
@@ -62,15 +62,15 @@ export type MaterializeBatchResult = {
   nextCursor: string | null;
 };
 
+/**
+ * `id` a `email` jsou v kazdem radku, zbytek zavisi na sablone, takze se sloupce
+ * NEVYPISUJI do typu. Vypsany tvar by tvrdil, ze `first_name` je vzdy k dispozici,
+ * i kdyz ho sablona nepouziva a dotaz ho tim padem nevybral.
+ */
 type ContactRow = {
   id: string;
   email: string;
-  first_name: string | null;
-  last_name: string | null;
-  first_name_vocative: string | null;
-  greeting: string | null;
-  attributes: Record<string, unknown> | null;
-};
+} & Record<string, unknown>;
 
 /**
  * Krok 2 materializace. Bezi po davkach kurzorem pres contacts.id a nikdy v jedne
@@ -108,14 +108,40 @@ export async function materializeBatch(
   ctx: WorkspaceContext,
   input: MaterializeBatchInput,
 ): Promise<MaterializeBatchResult> {
+  // Sloupce kontaktu urcuje SABLONA, ne pevny vycet.
+  //
+  // Drive tu stalo sedm natvrdo napsanych sloupcu (first_name, last_name,
+  // first_name_vocative, greeting, attributes plus id a email). Paletka personalizace
+  // v editoru pritom nabizi cely katalog poli, takze `{{ contact.middle_name }}`,
+  // `{{ contact.title_prefix }}`, `{{ contact.title_suffix }}`, `{{ contact.gender }}`,
+  // `{{ contact.last_name_vocative }}`, `{{ contact.locale }}` a `{{ contact.created_at }}`
+  // sla vlozit, dotaz je nedodal, `buildRenderData` z chybejiciho klice udelal null
+  // a v odeslane zprave bylo PRAZDNO. Tise: render nema prisnou kontrolu promennych,
+  // takze nespadlo nic. Navic vysly nepravdive i podminene bloky nad temi poli,
+  // protoze `_present` cte tutez hodnotu.
+  //
+  // `renderDataColumns` uz to umela spocitat a NIKDO ji nevolal (mela jen vlastni
+  // jednotkovy test). Zdroj pravdy je od teto zmeny ona, tedy `usedPaths` z kompilace.
+  // Nazvy sloupcu se do dotazu skladaji jako TEXT, protoze sloupec se parametrem
+  // predat neda; proti cizimu identifikatoru stoji vycet SNAPSHOTTABLE_CONTACT_COLUMNS
+  // uvnitr `renderDataColumns`, ktery vse ostatni zahazuje.
+  //
+  // `email` se vybira VZDY, i kdyz se do render_data nikdy nedostane: je z nej
+  // obalkova adresa a rozhoduje o brane zkusebniho rezimu.
+  //
+  // `renderDataSelectItem` neni obalka pro nic za nic: casova razitka musi ze SELECT
+  // vyjit uz jako RFC 3339, jinak je filtr `date` v senderu odmitne a znacka
+  // vyrenderuje prazdno. Duvod je u `ISO_DATE_CONTACT_COLUMNS`.
+  const contactColumns = renderDataColumns(input.renderPlan.usedPaths);
+  const extraColumns = contactColumns.map((col) => `, ${renderDataSelectItem(col, 'c')}`).join('');
+
   // $1..$5 jsou pevne, poddotaz publika zacina od $6.
   //
   // Ukazkove kontakty vypadavaji DVEMA nezavislymi podminkami a obe jsou nutne:
   // manifest ($4) je autoritativni pro rozsah sady a prezije to, ze uzivatel kontakt
   // upravi, znacka ($3) chyti kontakty mimo manifest (starsi pokoleni, obnova ze zalohy).
   const SELECT_SQL = `
-    SELECT c.id, c.email, c.first_name, c.last_name, c.first_name_vocative,
-           c.greeting, c.attributes
+    SELECT c.id, c.email${extraColumns}
       FROM contacts c
      WHERE c.workspace_id = $1
        AND c.id > $2
@@ -318,13 +344,27 @@ export async function revokePending(
     emails?: string[] | undefined;
     listId: string | null;
     reason: RevokeReason;
+    /**
+     * Transakce volajiciho. Kdyz ji volajici preda, bezi zruseni V NI, ne ve vlastni.
+     *
+     * Neni to optimalizace. Domena kontaktu rusi cekajici zpravy uprostred sve
+     * transakce: odhlaseni zapise `consents`, zmeni `list_members` a AZ POTOM rusi
+     * postu. Kdyby si zruseni otevrelo vlastni spojeni, vzniknou dva nezavisle
+     * commity a s nimi stav, kdy se vnejsi transakce rollbackne, ale zpravy uz
+     * jsou zrusene, nebo naopak clovek je odhlaseny a posta mu presto odejde.
+     * Se sdilenou transakci to bud plati oboji, nebo nic.
+     *
+     * Druhy duvod je pool: bez tohohle drzi jeden pozadavek dve spojeni naraz
+     * a pri soubehu se pool vycerpa sam sebou.
+     */
+    tx?: Tx | undefined;
   },
 ): Promise<{ revoked: number }> {
   const byEmail = !input.contactIds?.length && !!input.emails?.length;
   const match = byEmail ? `lower(m.email) = ANY($3::text[])` : `m.contact_id = ANY($3::uuid[])`;
   const key = byEmail ? (input.emails ?? []).map((e) => e.toLowerCase()) : (input.contactIds ?? []);
 
-  return withWorkspace(ctx, async (tx) => {
+  const run = async (tx: Tx): Promise<{ revoked: number }> => {
     const r = await tx.execute(
       rawSql(
         `UPDATE messages m
@@ -342,12 +382,18 @@ export async function revokePending(
       ),
     );
     return { revoked: r.rowCount ?? 0 };
-  });
+  };
+
+  return input.tx ? run(input.tx) : withWorkspace(ctx, run);
 }
 
 /**
- * Zachytna cesta pro pripady, kdy okamzita cesta selhala: pad workeru, primy zapis
- * do DB, import, ktery pridal adresu na suppression.
+ * Zruseni cekajici posty jen podle BLOKOVANYCH ADRES.
+ *
+ * UZ TO NENI OBSLUHA `outbox.reconcile`. Ta bezi na `reconcilePending` niz, ktera
+ * krome suppression resi i odhlaseni, vymaz, smazani, omezene zpracovani a zmenu
+ * stavu kontaktu. Tahle uzsi varianta zustava jako samostatny nastroj nad jednim
+ * duvodem a drzi ji vlastni testy vcetne `suppressions.query-shape.test.ts`.
  *
  * Tvar je DVA NEZAVISLE EXISTS, ne jeden join, a to ze dvou duvodu. Drivejsi zneni
  * melo `UPDATE messages m ... FROM suppressions s LEFT JOIN contacts c ON c.id = m.contact_id`,
@@ -383,6 +429,137 @@ export async function reconcileSuppressed(ctx: WorkspaceContext): Promise<{ revo
                    AND s.removed_at IS NULL
               )
             )`,
+        [ctx.workspaceId],
+      ),
+    );
+    return { revoked: r.rowCount ?? 0 };
+  });
+}
+
+/**
+ * Duvod, proc uz cekajici zprava odejit nesmi, vyhodnoceny K TEDU.
+ *
+ * PREDIKAT SE NEVYMYSLI, JE TO PREVRACENA OBALKA PUBLIKA. Kdo smi dostat postu,
+ * urcuje `segments/compile/envelope.ts` (`deleted_at`, `anonymized_at`,
+ * `status <> 'deleted'`, `processing_restricted`, suppression) spolu s branami
+ * v `segments/audience.ts` a podminkou `status = 'active'` z materializace.
+ * Tenhle CASE je jejich rub. Kdyby si zachytna cesta stanovila vlastni pravidla,
+ * rusila by jinou mnozinu, nez jakou materializace zaklada, a rozdil by se
+ * projevil jako ztracena posta, ne jako chyba.
+ *
+ * SLOZENO K TEDU, NE K OKAMZIKU VZNIKU ZPRAVY. Zadna podminka neporovnava nic
+ * s `m.created_at`: cte se soucasny stav kontaktu. Presne o to jde, cekajici
+ * zprava vznikla, kdyz clovek jeste postu dostavat smel.
+ *
+ * PORADI JE VYZNAMOVE, ne abecedni, a prvni shoda vyhrava. Clovek splnuje klidne
+ * ctyri podminky naraz (odhlaseny, zablokovany, s omezenym zpracovanim, vymazany)
+ * a report kampane potrebuje ten duvod, ktery je pravne nejsilnejsi. Poradi
+ * `suppressed` pred `unsubscribed` navic odpovida okamzite ceste: pri globalnim
+ * odhlaseni tam `addSuppression` rusi drive nez samotne odhlaseni.
+ *
+ * `m.kind <> 'campaign' THEN NULL` DELI CASE NA DVE POLOVINY a je to oprava
+ * ztracene posty, ne optimalizace. Nad tim radkem jsou TVRDE prekazky (vymazany,
+ * anonymizovany, s omezenym zpracovanim, na blokovanych adresach); ty plati pro
+ * kazdou postu vcetne transakcni. Pod nim jsou prekazky odvozene ze SOUHLASU
+ * S MARKETINGEM, a ty davaji smysl jen u kampane, protoze obalka publika, jejimz
+ * rubem tenhle CASE je, popisuje vyhradne kampanovou postu.
+ *
+ * Bez toho radku uloha rusila POTVRZOVACI E-MAIL DVOJIHO SOUHLASU. Ten jde
+ * z definice na kontakt ve stavu `unconfirmed`, takze podminka `c.status <> 'active'`
+ * na nej sedla vzdycky a zprava skoncila jako `skipped` s duvodem
+ * `contact_status_changed` driv, nez si ji sender stihl vzit. Prihlaseni pres
+ * formular tedy nedoslo NIKDY a nevypadalo to jako chyba: radek v `messages`
+ * existoval a mel verohodny duvod. Zmereno 7. 8. 2026 na dvou skutecnych
+ * prihlasenich, 15:46 a 15:48, obe zrusena do jedne minuty po vzniku.
+ *
+ * Je to tataz zamena, kterou tenhle soubor uz jednou udelal u `cancelPendingBatch`,
+ * kde chybejici `kind = 'campaign'` rusil testovaci maily spolu s kampani.
+ */
+const REVOKE_REASON_CASE = `CASE
+  WHEN c.id IS NULL THEN
+    CASE WHEN EXISTS (
+      SELECT 1 FROM suppressions s
+       WHERE s.workspace_id = m.workspace_id
+         AND s.removed_at IS NULL
+         AND lower(s.email::text) = lower(m.email)
+    ) THEN 'suppressed' END
+  WHEN c.anonymized_at IS NOT NULL THEN 'contact_anonymized'
+  WHEN c.deleted_at IS NOT NULL OR c.status = 'deleted' THEN 'contact_deleted'
+  WHEN c.processing_restricted THEN 'processing_restricted'
+  WHEN EXISTS (
+    SELECT 1 FROM suppressions s
+     WHERE s.workspace_id = c.workspace_id
+       AND s.removed_at IS NULL
+       AND (s.email = c.email OR s.fingerprint = ANY(c.email_fingerprints))
+  ) THEN 'suppressed'
+  WHEN m.kind <> 'campaign' THEN NULL
+  WHEN c.status = 'unsubscribed' THEN 'unsubscribed'
+  WHEN ca.unsubscribe_list_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM list_subscriptions ls
+     WHERE ls.workspace_id = c.workspace_id
+       AND ls.contact_id = c.id
+       AND ls.list_id = ca.unsubscribe_list_id
+       AND ls.status = 'unsubscribed'
+  ) THEN 'unsubscribed'
+  WHEN c.status <> 'active' THEN 'contact_status_changed'
+END`;
+
+/**
+ * ZACHYTNA CESTA nad rusenim cekajici posty, cela.
+ *
+ * Okamzita cesta (port `revokePendingMessages`) rusi postu ve stejne transakci,
+ * ve ktere se clovek odhlasi nebo se zapise na blokovane adresy. Tahle uloha je
+ * pojistka pro pripady, kam okamzita cesta nedosahne:
+ *
+ *  - pad procesu mezi materializaci a odhlasenim,
+ *  - primy zapis do databaze, import, obnova ze zalohy,
+ *  - kontakt, ktery ma adresu vedenou jako OTISK pod jinym hlavnim e-mailem;
+ *    okamzita cesta u suppression hleda kontakt porovnanim `contacts.email`,
+ *  - cekajici zprava adresy, ke ktere uz radek kontaktu neexistuje.
+ *
+ * IDEMPOTENCE stoji na `status = 'pending'`. Uloha jen prepina pending na skipped,
+ * takze druhy beh nad tymz stavem uz zadny pending radek nenajde a zrusi nula.
+ * Neni to uvaha, hlida to test dvema behy za sebou.
+ *
+ * `status = 'pending'` je zaroven jedina ochrana claimnute zpravy: tu si sender
+ * uz vzal a muze ji mit prave v ruce, takze jeji zruseni by vyrobilo radek, ktery
+ * je v databazi skipped a u prijemce ve schrance.
+ *
+ * ROZSAH ODHLASENI DRZI. Odhlaseni z jednoho seznamu rusi jen postu kampani,
+ * ktere maji ten seznam jako `unsubscribe_list_id`. Bez te podminky by clovek,
+ * ktery se odhlasil z jednoho newsletteru, prisel o vsechny ostatni, na ktere
+ * zustal prihlaseny, a nikdo by si toho nevsiml: zpravy by skoncily jako skipped
+ * s verohodnym duvodem. Je to totez kriterium 79, ktere hlida okamzitou cestu.
+ *
+ * Vnitrni SELECT a vnejsi UPDATE jsou schvalne dva kroky. `UPDATE ... FROM` s
+ * odkazem na cilovou tabulku uvnitr `ON` PostgreSQL odmita chybou "invalid
+ * reference to FROM-clause entry for table m"; podrobne u `reconcileSuppressed`.
+ * Takhle se duvod spocita jednou a vnejsi prikaz uz jen priradi vysledek.
+ */
+export async function reconcilePending(ctx: WorkspaceContext): Promise<{ revoked: number }> {
+  return withWorkspace(ctx, async (tx) => {
+    const r = await tx.execute(
+      rawSql(
+        `UPDATE messages m
+            SET status = 'skipped',
+                error_code = x.reason,
+                error_detail = 'revoked by reconcile',
+                updated_at = now()
+           FROM (
+             SELECT m.id, m.created_at, ${REVOKE_REASON_CASE} AS reason
+               FROM messages m
+               LEFT JOIN contacts c
+                 ON c.id = m.contact_id AND c.workspace_id = m.workspace_id
+               LEFT JOIN campaigns ca
+                 ON ca.id = m.campaign_id AND ca.workspace_id = m.workspace_id
+              WHERE m.workspace_id = $1
+                AND m.status = 'pending'
+           ) x
+          WHERE m.workspace_id = $1
+            AND m.status = 'pending'
+            AND m.id = x.id
+            AND m.created_at = x.created_at
+            AND x.reason IS NOT NULL`,
         [ctx.workspaceId],
       ),
     );

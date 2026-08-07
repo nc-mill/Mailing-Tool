@@ -74,7 +74,18 @@ export function resolveDeliveredSource(
  */
 export function isDeliveredKnown(counts: StatsCounts, source: DeliveredSource): boolean {
   if (source === 'derived_from_sent') return true;
-  return counts.delivered + counts.bouncedHard + counts.bouncedSoft + counts.complained > 0;
+  // `rejected` do součtu PATŘÍ ze stejného důvodu jako odrazy: kampaň, kterou
+  // poskytovatel celou odmítl, doručenost měřenou má, jen je nulová. Bez něj by
+  // se tvářila jako „poskytovatel nám nic neposílá" a vypadla by z přehledu
+  // mezi kampaně s neznámým osudem.
+  return (
+    counts.delivered +
+      counts.bouncedHard +
+      counts.bouncedSoft +
+      counts.complained +
+      counts.rejected >
+    0
+  );
 }
 
 export async function readCampaignStats(
@@ -93,7 +104,7 @@ export async function readCampaignStats(
            c.started_at,
            c.finished_at,
            p.type          AS provider_type,
-           s.materialized, s.sent, s.failed, s.skipped, s.delivered,
+           s.materialized, s.sent, s.failed, s.skipped, s.rejected, s.delivered,
            s.bounced_hard, s.bounced_soft, s.complained, s.unsubscribed,
            s.opens_total, s.opens_unique, s.opens_unique_human, s.opens_unique_apple,
            s.clicks_total, s.clicks_unique, s.clicks_unique_human, s.clicks_scanner,

@@ -131,7 +131,15 @@ export function createIdentifyService(deps: IdentifyServiceDeps) {
         now,
       });
 
-      if (outcome === 'contact_not_found' || outcome === 'restricted') {
+      // Vazba se nepovedla, a SDK se to dozví i s důvodem. `ok: true` by tvrdilo,
+      // že je prohlížeč navázaný na kontakt, a odvolaný souhlas s měřením by se
+      // tvářil jako úspěch. Důvod nic neprozrazuje: token, který si volající sám
+      // přinesl, ten kontakt beztak pojmenovává.
+      if (
+        outcome === 'contact_not_found' ||
+        outcome === 'restricted' ||
+        outcome === 'measurement_withdrawn'
+      ) {
         return { status: 202, body: { ok: false, reason: outcome } };
       }
       return { status: 202, body: { ok: true } };

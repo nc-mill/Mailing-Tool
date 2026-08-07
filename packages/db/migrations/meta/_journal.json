@@ -155,6 +155,62 @@
       "when": 1785614000000,
       "tag": "0021_campaign_working_copy_orphans",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1785615000000,
+      "tag": "0022_web_events_erase_payload",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1785616000000,
+      "tag": "0023_campaign_stats_rejected",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1785617000000,
+      "tag": "0024_maintenance_scan_imports_segments",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1785618000000,
+      "tag": "0025_sending_providers_review_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1785619000000,
+      "tag": "0026_web_events_erase_page",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1785620000000,
+      "tag": "0027_lists_unsubscribe_scope_pages",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1785621000000,
+      "tag": "0028_asset_reference_orphans",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1785622000000,
+      "tag": "0029_page_templates",
+      "breakpoints": true
     }
   ]
 }

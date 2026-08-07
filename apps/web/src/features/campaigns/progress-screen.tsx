@@ -179,7 +179,7 @@ export function ProgressScreen({
           stejně jako v reportu; komponenta to není schválně, každá obrazovka
           má v dlaždici něco jiného. */}
       <dl
-        className="grid grid-cols-[repeat(auto-fit,minmax(230px,1fr))] gap-[var(--spacing-gutter)]"
+        className="grid grid-cols-[repeat(auto-fit,minmax(min(230px,100%),1fr))] gap-[var(--spacing-gutter)]"
         data-testid="progress-tiles"
       >
         <Card as="div" padding="md" gap="none" data-testid="tile-sent">

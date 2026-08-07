@@ -52,8 +52,23 @@ const CALLS: Record<string, (module: typeof ActionsModule) => Promise<unknown>> 
   removeSuppressionAction: (m) =>
     m.removeSuppressionAction({ workspaceId: WORKSPACE, id: 's-1', note: 'omyl v importu' }),
   archiveFieldAction: (m) => m.archiveFieldAction({ workspaceId: WORKSPACE, id: 'f-1' }),
+  createFieldAction: (m) =>
+    m.createFieldAction({ workspaceId: WORKSPACE, key: 'mesto', label: 'Město', type: 'text' }),
+  renameFieldAction: (m) =>
+    m.renameFieldAction({ workspaceId: WORKSPACE, id: 'f-1', label: { en: 'City', cs: 'Obec' } }),
   loadFieldImpactAction: (m) => m.loadFieldImpactAction({ workspaceId: WORKSPACE, id: 'f-1' }),
   deleteFieldAction: (m) => m.deleteFieldAction({ workspaceId: WORKSPACE, id: 'f-1' }),
+  upsertNameOverrideAction: (m) =>
+    m.upsertNameOverrideAction({
+      workspaceId: WORKSPACE,
+      kind: 'first',
+      name: 'Nikola',
+      gender: 'female',
+      vocative: 'Nikolo',
+      note: null,
+    }),
+  deleteNameOverrideAction: (m) =>
+    m.deleteNameOverrideAction({ workspaceId: WORKSPACE, id: 'n-1' }),
   deleteTagAction: (m) => m.deleteTagAction({ workspaceId: WORKSPACE, id: 't-1' }),
   createTagAction: (m) => m.createTagAction({ workspaceId: WORKSPACE, name: 'VIP' }),
   renameTagAction: (m) => m.renameTagAction({ workspaceId: WORKSPACE, id: 't-1', name: 'VIP' }),

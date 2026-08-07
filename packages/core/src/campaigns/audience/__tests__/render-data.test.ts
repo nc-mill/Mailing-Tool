@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildRenderData, renderDataColumns, RENDER_DATA_EXCLUDED_FIELDS } from '../render-data';
+import { FIRST_CLASS_CONTACT_FIELDS } from '../../../contacts/fields/catalog';
+import {
+  buildRenderData,
+  renderDataColumns,
+  renderDataSelectItem,
+  ISO_DATE_CONTACT_COLUMNS,
+  RENDER_DATA_EXCLUDED_FIELDS,
+  SNAPSHOTTABLE_CONTACT_COLUMNS,
+} from '../render-data';
 
 const contact = {
   id: 'c1',
@@ -55,5 +63,70 @@ describe('render_data', () => {
       'attributes',
       'first_name',
     ]);
+  });
+
+  it('renderDataColumns dodava i pole mimo puvodni sedmicku sloupcu', () => {
+    // Presne ta pole, ktera paletka personalizace nabizi a materializace je drive
+    // nedodala, takze merge tag dorazil prazdny.
+    expect(
+      renderDataColumns([
+        'contact.middle_name',
+        'contact.title_prefix',
+        'contact.title_suffix',
+        'contact.gender',
+        'contact.last_name_vocative',
+        'contact.locale',
+        'contact.created_at',
+      ]),
+    ).toEqual([
+      'created_at',
+      'gender',
+      'last_name_vocative',
+      'locale',
+      'middle_name',
+      'title_prefix',
+      'title_suffix',
+    ]);
+  });
+
+  it('neznamy nazev se do dotazu nedostane', () => {
+    // Nazev sloupce jde do SELECT jako text, takze tohle je bezpecnostni hranice,
+    // ne kosmetika.
+    expect(renderDataColumns(['contact.password_hash', 'contact.email_fingerprints'])).toEqual([]);
+    expect(renderDataColumns(['contact.id) FROM contacts --'])).toEqual([]);
+  });
+
+  it('poradi je stabilni bez ohledu na poradi znacek v sablone', () => {
+    expect(renderDataColumns(['contact.last_name', 'contact.first_name'])).toEqual(
+      renderDataColumns(['contact.first_name', 'contact.last_name']),
+    );
+  });
+
+  it('vycet sloupcu pokryva vsechna prvotridni pole katalogu', () => {
+    // Kdo prida pole do katalogu a sem ne, dostane cerveny test misto tiche prazdne
+    // hodnoty v odeslane zprave. `email` je vyjimka, ta je ve vyctu vyloucenych.
+    const chybi = FIRST_CLASS_CONTACT_FIELDS.map((f) => f.path).filter(
+      (path) =>
+        path !== 'email' && !(SNAPSHOTTABLE_CONTACT_COLUMNS as readonly string[]).includes(path),
+    );
+    expect(chybi).toEqual([]);
+  });
+
+  it('kazde casove pole katalogu se normalizuje na RFC 3339', () => {
+    // Bez normalizace prijde z ovladace „2026-08-07 09:57:51+00" a filtr `date`
+    // v senderu takovy tvar odmita, takze znacka vyrenderuje prazdno.
+    const chybi = FIRST_CLASS_CONTACT_FIELDS.filter(
+      (f) =>
+        (f.type === 'datetime' || f.type === 'date') &&
+        !(ISO_DATE_CONTACT_COLUMNS as readonly string[]).includes(f.path),
+    ).map((f) => f.path);
+    expect(chybi).toEqual([]);
+  });
+
+  it('casovy sloupec se vybira pres to_char, ostatni primo', () => {
+    expect(renderDataSelectItem('first_name', 'c')).toBe('c.first_name');
+    expect(renderDataSelectItem('created_at', 'c')).toBe(
+      `to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at`,
+    );
   });
 });

@@ -309,3 +309,142 @@ describe('POST /api/v1/transactional', () => {
     expect((await res.json()).code).toBe('transactional_data_too_large');
   });
 });
+
+/**
+ * ČTECÍ CESTA. `POST` vrací 202 a `queued`, takže bez `GET` se zákazník
+ * nedozvěděl, jestli e-mail nakonec odešel, jinak než odchozím webhookem.
+ * Průzkum přitom tuhle cestu popisoval, jako by existovala.
+ */
+describe('GET /api/v1/transactional/{id}', () => {
+  const get = (id: string, key = apiKey) =>
+    app.request(`/api/v1/transactional/${id}`, {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+
+  async function sendOne(email: string, idempotencyKey: string): Promise<string> {
+    const res = await post(
+      {
+        template_id: templateId,
+        to: { email },
+        data: { reset_url: RESET_URL, expires_in_minutes: 30 },
+      },
+      idempotencyKey,
+    );
+    expect(res.status).toBe(202);
+    return (await res.json()).message_id;
+  }
+
+  it('čerstvě odeslaná zpráva je queued a ještě nemá sent_at', async () => {
+    const messageId = await sendOne('stav-queued@example.cz', 'tx-status-001');
+
+    const res = await get(messageId);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.message_id).toBe(messageId);
+    // `pending` v outboxu se ven hlásí týmž slovem, jaké vrátilo odeslání.
+    expect(body.status).toBe('queued');
+    expect(body.sent_at).toBeNull();
+    expect(body.provider_message_id).toBeNull();
+    expect(body.error_code).toBeNull();
+    expect(body.attempts).toBe(0);
+    expect(body.campaign_id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('po odeslání senderem vrací sent, čas i identifikátor u providera', async () => {
+    const messageId = await sendOne('stav-sent@example.cz', 'tx-status-002');
+
+    // Zastoupení senderu: tenhle test končí na hranici, kterou vlastní aplikace.
+    const ctx = await createWorkspaceContext({
+      kind: 'session',
+      userId: owner.userId,
+      workspaceRef: owner.workspaceId,
+    });
+    await withWorkspace(ctx, (tx) =>
+      tx
+        .update(schema.messages)
+        .set({
+          status: 'sent',
+          sentAt: new Date('2026-08-07T10:11:12.000Z'),
+          providerMessageId: 'ses-0102030405',
+          attempts: 1,
+        })
+        .where(eq(schema.messages.id, messageId)),
+    );
+
+    const body = await (await get(messageId)).json();
+    expect(body.status).toBe('sent');
+    expect(body.sent_at).toBe('2026-08-07T10:11:12.000Z');
+    expect(body.provider_message_id).toBe('ses-0102030405');
+    expect(body.attempts).toBe(1);
+  });
+
+  it('neúspěch nese kód chyby, ne jen stav', async () => {
+    const messageId = await sendOne('stav-failed@example.cz', 'tx-status-003');
+    const ctx = await createWorkspaceContext({
+      kind: 'session',
+      userId: owner.userId,
+      workspaceRef: owner.workspaceId,
+    });
+    await withWorkspace(ctx, (tx) =>
+      tx
+        .update(schema.messages)
+        .set({
+          status: 'failed',
+          errorCode: 'provider_rejected',
+          // Diagnostický text nese jméno odesílací instance a ven jít nesmí.
+          errorDetail: 'smtp 550: mailbox unavailable (attempt 3, sender-7)',
+          attempts: 3,
+        })
+        .where(eq(schema.messages.id, messageId)),
+    );
+
+    const body = await (await get(messageId)).json();
+    expect(body.status).toBe('failed');
+    expect(body.error_code).toBe('provider_rejected');
+    expect(body.attempts).toBe(3);
+    expect(Object.keys(body)).not.toContain('error_detail');
+    expect(JSON.stringify(body)).not.toContain('sender-7');
+  });
+
+  it('zprávu jiného druhu tudy přečíst NELZE, vypadá jako neexistující', async () => {
+    const ctx = await createWorkspaceContext({
+      kind: 'session',
+      userId: owner.userId,
+      workspaceRef: owner.workspaceId,
+    });
+    const campaignMessageId = await withWorkspace(ctx, async (tx) => {
+      const [campaign] = await tx
+        .select({ id: schema.campaigns.id })
+        .from(schema.campaigns)
+        .where(eq(schema.campaigns.name, 'Jarní novinky'));
+      const [contact] = await tx
+        .insert(schema.contacts)
+        .values({ workspaceId: owner.workspaceId, email: 'prijemce-kampane@example.cz' })
+        .returning({ id: schema.contacts.id });
+      const [row] = await tx
+        .insert(schema.messages)
+        .values({
+          workspaceId: owner.workspaceId,
+          campaignId: campaign!.id,
+          contactId: contact!.id,
+          email: 'prijemce-kampane@example.cz',
+          // Testovací odeslání z kampaně. Přes `messages` chodí i tenhle druh
+          // a klíč aplikace zákazníka na něj nesmí dosáhnout.
+          kind: 'test',
+          status: 'sent',
+        })
+        .returning({ id: schema.messages.id });
+      return row!.id;
+    });
+
+    // Klíč aplikace zákazníka nesmí být nástrojem na čtení stavu rozesílky.
+    expect((await get(campaignMessageId)).status).toBe(404);
+  });
+
+  it('neznámé id je 404, klíč bez scope 403', async () => {
+    expect((await get('019fdb00-0000-7000-8000-000000000000')).status).toBe(404);
+    const res = await get('019fdb00-0000-7000-8000-000000000000', keyWithoutScope);
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe('insufficient_scope');
+  });
+});

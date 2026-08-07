@@ -5,3 +5,4 @@ export type { CountInfo } from './pagination-footer';
 export { SelectionBar } from './selection-bar';
 export { useColumnPreferences } from './use-column-preferences';
 export { useRowSelection } from './use-row-selection';
+export type { SelectionMode } from './use-row-selection';

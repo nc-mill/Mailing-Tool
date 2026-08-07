@@ -16,9 +16,12 @@ import { startPgHarness, type PgHarness } from '../../test-support/pg-harness';
 import { closePools, withWorkspace } from '../../tx';
 import { seedWorkspaceForCoreTests } from '../../identity/test-helpers';
 import { deliverWebhook } from './deliver';
-import { emitWebhookEvent, fanoutEvent } from './emit';
+import { deliverEventToEndpoint, emitWebhookEvent, fanoutEvent } from './emit';
 import { signPayload } from './signature';
 import { WEBHOOK_SSRF_POLICY } from '../../net/ssrf';
+import { handlers } from '../jobs/queue-handlers';
+import type { DeliverJobData } from '../jobs/webhook_deliver';
+import { scanDueDeliveries } from '../jobs/webhook_retry';
 
 type Received = { headers: IncomingMessage['headers']; body: string };
 
@@ -260,5 +263,280 @@ describe('doručení proti skutečnému serveru', () => {
       }),
     );
     expect((await fanoutEvent(ctx, eventId)).created).toBe(0);
+  });
+});
+
+/**
+ * CÍLENÉ DORUČENÍ, tedy „Poslat testovací událost".
+ *
+ * Míří na KONKRÉTNÍ endpoint, takže se nesmí ptát, co ten endpoint odebírá.
+ * Do 7. 8. šlo i tohle fan-outem a projevovalo se to tím, že tlačítko
+ * u endpointu založeného z rozhraní NIKDY NIC nedoručilo.
+ */
+describe('cílené doručení na jeden endpoint', () => {
+  it('dorazí i endpointu, který ten typ neodebírá, a zařadí se do fronty', async () => {
+    await clearEndpoints();
+    const endpointId = await seedEndpoint();
+    // Endpoint odebírá `contact.created`, tedy NIC z toho, co posíláme.
+    const subscribed = await withWorkspace(ctx, async (tx) => {
+      const { rows } = await tx.execute<{ event_types: string[] }>(
+        sql`SELECT event_types FROM webhook_endpoints WHERE id = ${endpointId}::uuid`,
+      );
+      return rows[0]!.event_types;
+    });
+    expect(subscribed).toEqual(['contact.created']);
+
+    const eventId = await withWorkspace(ctx, (tx) =>
+      emitWebhookEvent(tx, {
+        workspaceId,
+        type: 'webhook.ping',
+        occurredAt: new Date(),
+        data: { endpoint_id: endpointId },
+      }),
+    );
+
+    // PROTIDŮKAZ: běžnou cestou by se nedoručilo nic. Bez tohohle řádku by
+    // test procházel i tehdy, kdyby cílená cesta jen znovu volala fan-out.
+    expect((await fanoutEvent(ctx, eventId)).created).toBe(0);
+
+    const { deliveryId } = await withWorkspace(ctx, (tx) =>
+      deliverEventToEndpoint(tx, ctx, { eventId, endpointId }),
+    );
+    expect(deliveryId, 'cílené doručení nevzniklo').not.toBeNull();
+
+    const row = await withWorkspace(ctx, async (tx) => {
+      const { rows } = await tx.execute<{
+        event_type: string;
+        status: string;
+        endpoint_id: string;
+      }>(
+        sql`
+          SELECT event_type, status, endpoint_id::text AS endpoint_id
+            FROM webhook_deliveries WHERE id = ${deliveryId!}::uuid
+        `,
+      );
+      return rows[0]!;
+    });
+    // Zápis do logu doručení testovací událost potřebuje stejně jako každá jiná:
+    // bez něj by po kliknutí nebylo kde hledat výsledek.
+    expect(row.event_type).toBe('webhook.ping');
+    expect(row.status).toBe('pending');
+    expect(row.endpoint_id).toBe(endpointId);
+
+    // A úloha ve frontě, protože podpis i opakování dělá až ona. Přesně tenhle
+    // článek u testovací události chyběl: fan-out se nikdy nezařadil.
+    const queued = await withWorkspace(ctx, async (tx) => {
+      const { rows } = await tx.execute<{ data: DeliverJobData }>(sql`
+        SELECT data FROM pgboss.job
+         WHERE name = 'platform.webhook_deliver'
+           AND singleton_key = ${`delivery:${deliveryId}`}
+      `);
+      return rows;
+    });
+    expect(queued, 'doručení se nezařadilo do platform.webhook_deliver').toHaveLength(1);
+    expect(queued[0]!.data.delivery_id).toBe(deliveryId);
+  });
+
+  it('druhé kliknutí nad toutéž událostí druhé doručení nevyrobí', async () => {
+    await clearEndpoints();
+    const endpointId = await seedEndpoint();
+    const eventId = await withWorkspace(ctx, (tx) =>
+      emitWebhookEvent(tx, {
+        workspaceId,
+        type: 'webhook.ping',
+        occurredAt: new Date(),
+        data: { endpoint_id: endpointId },
+      }),
+    );
+
+    const first = await withWorkspace(ctx, (tx) =>
+      deliverEventToEndpoint(tx, ctx, { eventId, endpointId }),
+    );
+    const second = await withWorkspace(ctx, (tx) =>
+      deliverEventToEndpoint(tx, ctx, { eventId, endpointId }),
+    );
+    expect(first.deliveryId).not.toBeNull();
+    expect(second.deliveryId, 'idempotence je společná s fan-outem, ne zvlášť').toBeNull();
+  });
+});
+
+/**
+ * CELÁ CESTA PŘES FRONTU, ne jen přímé volání `deliverWebhook`.
+ *
+ * Testy výš volají doručení PŘÍMO, a právě proto zůstala vada tak dlouho
+ * neviditelná: byly zelené, zatímco v provozu do fronty `platform.webhook_deliver`
+ * nikdo nezařazoval a řádky zůstávaly navždy ve stavu `pending`. Tenhle blok
+ * proto nesmí `deliverWebhook` volat sám: bere úlohu z `pgboss.job` a spouští
+ * TU OBSLUHU, kterou pouští worker (`platform/jobs/queue-handlers.ts`).
+ */
+describe('doručení celou cestou přes frontu', () => {
+  beforeAll(async () => {
+    // Testovací obal zakládá fronty BEZ politiky, kdežto produkce ji posílá
+    // z registru (`apps/worker/src/boss.ts`, `queueOptions`). Bez tohohle řádku
+    // by se slučování duplicitních doručení nedalo v testu vůbec změřit,
+    // protože pro politiku `standard` pg-boss `singletonKey` ignoruje.
+    await withWorkspace(ctx, (tx) =>
+      tx.execute(
+        sql`UPDATE pgboss.queue SET policy = 'exclusive' WHERE name = 'platform.webhook_deliver'`,
+      ),
+    );
+  });
+
+  /** Odklidí zařazené úlohy, aby se další zařazení nemělo s čím sloučit. */
+  async function consumeJobs(deliveryId: string): Promise<void> {
+    await withWorkspace(ctx, (tx) =>
+      tx.execute(sql`
+        DELETE FROM pgboss.job
+         WHERE name = 'platform.webhook_deliver'
+           AND singleton_key = ${`delivery:${deliveryId}`}
+      `),
+    );
+  }
+
+  /** Úlohy fronty doručení pro dané doručení, tak jak leží v tabulce pg-bossu. */
+  async function queuedJobs(deliveryId: string): Promise<DeliverJobData[]> {
+    return withWorkspace(ctx, async (tx) => {
+      const { rows } = await tx.execute<{ data: DeliverJobData }>(sql`
+        SELECT data FROM pgboss.job
+         WHERE name = 'platform.webhook_deliver'
+           AND singleton_key = ${`delivery:${deliveryId}`}
+           AND state <= 'active'
+      `);
+      return rows.map((row) => row.data);
+    });
+  }
+
+  async function deliveryRow(deliveryId: string) {
+    return withWorkspace(ctx, async (tx) => {
+      const { rows } = await tx.execute<{
+        status: string;
+        attempt: number;
+        delivered_at: Date | null;
+        next_attempt_at: Date | null;
+      }>(sql`
+        SELECT status, attempt, delivered_at, next_attempt_at
+          FROM webhook_deliveries WHERE id = ${deliveryId}::uuid
+      `);
+      return rows[0]!;
+    });
+  }
+
+  it('fan-out zařadí doručení a obsluha z registru ho dotáhne do succeeded', async () => {
+    await clearEndpoints();
+    received = [];
+    nextStatus = 200;
+    await seedEndpoint();
+    const { deliveryId } = await seedDelivery();
+
+    // 1. Řádek vzniká ve stavu čekání a fan-out k němu zařadil úlohu.
+    expect((await deliveryRow(deliveryId)).status).toBe('pending');
+    const jobs = await queuedJobs(deliveryId);
+    expect(jobs, 'fan-out nezařadil úlohu do platform.webhook_deliver').toHaveLength(1);
+    expect(jobs[0]!.delivery_id).toBe(deliveryId);
+    expect(jobs[0]!.workspace_id).toBe(workspaceId);
+
+    // 2. Úlohu zpracuje TÁŽ obsluha, kterou pouští worker.
+    await handlers['platform.webhook_deliver']!([{ data: jobs[0]! }] as never);
+
+    // 3. Řádek doručení se pohnul dál a příjemce zprávu dostal.
+    const row = await deliveryRow(deliveryId);
+    expect(row.status).toBe('succeeded');
+    expect(row.attempt).toBe(1);
+    expect(row.delivered_at).not.toBeNull();
+    expect(received).toHaveLength(1);
+  });
+
+  /**
+   * Druhá polovina opravy. Fronta doručení má `retryLimit: 0`, protože odstupy
+   * mezi pokusy řídí aplikace; bez tohohle skenu by první neúspěch byl poslední.
+   */
+  it('sken zařadí doručení, jehož next_attempt_at nastal', async () => {
+    await clearEndpoints();
+    received = [];
+    nextStatus = 500;
+    await seedEndpoint();
+    const { deliveryId } = await seedDelivery();
+
+    // První pokus selže a naplánuje další. Úlohu z fan-outu spotřebujeme, aby
+    // se sken neměl s čím slučovat a měřil se opravdu on.
+    const first = await queuedJobs(deliveryId);
+    await handlers['platform.webhook_deliver']!([{ data: first[0]! }] as never);
+    await consumeJobs(deliveryId);
+    expect((await deliveryRow(deliveryId)).status).toBe('failed');
+    expect(await queuedJobs(deliveryId)).toHaveLength(0);
+
+    // Čas dalšího pokusu je podle tabulky odstupů v budoucnosti, takže sken
+    // zatím nesmí zařadit nic.
+    expect((await scanDueDeliveries()).enqueued).toBe(0);
+
+    // Posun času dalšího pokusu do minulosti dělá totéž co uplynulá čekací doba.
+    await withWorkspace(ctx, (tx) =>
+      tx.execute(sql`
+        UPDATE webhook_deliveries SET next_attempt_at = now() - interval '1 second'
+         WHERE id = ${deliveryId}::uuid
+      `),
+    );
+
+    expect((await scanDueDeliveries()).enqueued).toBe(1);
+    const queued = await queuedJobs(deliveryId);
+    expect(queued).toHaveLength(1);
+
+    // A druhý pokus doopravdy dojde, tentokrát na server, který odpoví 200.
+    nextStatus = 200;
+    await handlers['platform.webhook_deliver']!([{ data: queued[0]! }] as never);
+    const row = await deliveryRow(deliveryId);
+    expect(row.status).toBe('succeeded');
+    expect(row.attempt).toBe(2);
+  });
+
+  it('sken přeskočí doručení na vypnutý endpoint', async () => {
+    await clearEndpoints();
+    received = [];
+    nextStatus = 500;
+    const endpointId = await seedEndpoint();
+    const { deliveryId } = await seedDelivery();
+    await consumeJobs(deliveryId);
+
+    await withWorkspace(ctx, (tx) =>
+      tx.execute(sql`
+        UPDATE webhook_deliveries SET status = 'failed', next_attempt_at = now() - interval '1 minute'
+         WHERE id = ${deliveryId}::uuid
+      `),
+    );
+    // Bez tohohle pravidla by vypínání endpointu nemělo žádný účinek: čekající
+    // doručení mají čas dalšího pokusu spočítaný a sken by je zařazoval dál.
+    await withWorkspace(ctx, (tx) =>
+      tx.execute(
+        sql`UPDATE webhook_endpoints SET status = 'disabled' WHERE id = ${endpointId}::uuid`,
+      ),
+    );
+
+    expect((await scanDueDeliveries()).enqueued).toBe(0);
+    expect(await queuedJobs(deliveryId)).toHaveLength(0);
+  });
+
+  /**
+   * Slučování mezi dvěma producenty. Politika `exclusive` se pro tenhle blok
+   * nastavuje ručně, protože testovací obal (`test-support/pgboss.ts`) zakládá
+   * fronty BEZ politiky, kdežto produkce ji posílá z registru
+   * (`apps/worker/src/boss.ts`, `queueOptions`). Ten rozdíl je hlášený zvlášť.
+   */
+  it('sken nezaloží druhou úlohu k doručení, které už ve frontě leží', async () => {
+    await clearEndpoints();
+    received = [];
+    nextStatus = 200;
+    await seedEndpoint();
+    const { deliveryId } = await seedDelivery();
+
+    expect(await queuedJobs(deliveryId)).toHaveLength(1);
+    await withWorkspace(ctx, (tx) =>
+      tx.execute(sql`
+        UPDATE webhook_deliveries SET next_attempt_at = now() - interval '1 second'
+         WHERE id = ${deliveryId}::uuid
+      `),
+    );
+
+    expect((await scanDueDeliveries()).enqueued).toBe(0);
+    expect(await queuedJobs(deliveryId)).toHaveLength(1);
   });
 });

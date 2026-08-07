@@ -199,6 +199,14 @@ export function MembersTable(props: MembersTableProps) {
               if (!open) setPendingRemoval(null);
             }}
             level="N2"
+            // Odebrání přístupu, ne ztráta dat: kolegu jde pozvat zpátky a jeho
+            // práce v projektu zůstává. Podle os z 6.1 vnější dopad 1, ne 2.
+            destructive={false}
+            // Věta „Tuhle akci nejde vzít zpět" tu byla ze zapomenuté výchozí
+            // hodnoty a protiřečila třetímu následku, který cestu zpět popisuje
+            // (nová pozvánka). Nepravdivá věta o nevratnosti učí lidi ignorovat
+            // i okna, kde pravdivá je.
+            irreversible={false}
             title={t('members.remove.dialogTitle', { name: pendingRemoval.name })}
             consequences={[
               t('members.remove.consequence1'),

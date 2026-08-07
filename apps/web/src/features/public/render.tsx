@@ -82,6 +82,31 @@ export type RenderOptions = {
 };
 
 /**
+ * Hotové HTML v odpovědi veřejné stránky.
+ *
+ * Oddělené od `renderPublicPage` schválně: navržená stránka z Builderu si celý
+ * dokument včetně `<html>` vykresluje sama (`renderPageHtml`), ale hlavičky
+ * musí mít TYTÉŽ. Kdyby si je skládala zvlášť, rozešly by se první opravou
+ * udělanou jen na jednom místě, a jsou to hlavičky, na kterých stojí zákaz
+ * indexace a zákaz uložení do sdílené cache.
+ */
+export function publicHtmlResponse(
+  html: string,
+  options: { status?: number; headers?: Record<string, string> } = {},
+): Response {
+  return new Response(html, {
+    status: options.status ?? 200,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      // Stránka je vázaná na jeden token a nesmí ležet v žádné sdílené cache.
+      'cache-control': 'no-store, no-cache, must-revalidate',
+      'x-robots-tag': 'noindex, nofollow',
+      ...options.headers,
+    },
+  });
+}
+
+/**
  * Vykreslí stránku do HTML a zabalí ji do odpovědi.
  *
  * Výchozí stav je 200 a NIKDY 404, ani u neplatného tokenu (kritérium 52). Rozdílný
@@ -101,14 +126,8 @@ export async function renderPublicPage(
       {node}
     </PublicLayout>,
   )}`;
-  return new Response(html, {
-    status: options.status ?? 200,
-    headers: {
-      'content-type': 'text/html; charset=utf-8',
-      // Stránka je vázaná na jeden token a nesmí ležet v žádné sdílené cache.
-      'cache-control': 'no-store, no-cache, must-revalidate',
-      'x-robots-tag': 'noindex, nofollow',
-      ...options.headers,
-    },
+  return publicHtmlResponse(html, {
+    ...(options.status === undefined ? {} : { status: options.status }),
+    ...(options.headers === undefined ? {} : { headers: options.headers }),
   });
 }

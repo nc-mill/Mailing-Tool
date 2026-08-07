@@ -166,6 +166,8 @@ export function OrphanedAccounts(props: OrphanedAccountsProps) {
               if (!open) setPending(null);
             }}
             level="N2"
+            // Účet se smaže, ne odpojí. Zpátky ho rozhraní nedostane.
+            destructive
             title={t('members.orphaned.dialogTitle', { email: pending.email })}
             consequences={[
               t('members.orphaned.consequence1'),

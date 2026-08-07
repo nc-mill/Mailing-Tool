@@ -175,6 +175,18 @@ export const COMMANDS: readonly CommandDefinition[] = [
     owner: 'P13',
     implemented: true,
   },
+  // Přepočet stavu souhlasů. Do registru patří ze stejného důvodu jako
+  // `rebuild-engagement`: obsluha fronty `consents.rebuild_state` existuje, ale
+  // vedl k ní jedině ruční INSERT do tabulky úloh pg-bossu, takže nástroj na
+  // obnovu byl v praxi nedosažitelný.
+  {
+    name: 'rebuild-consents',
+    summary: 'Přepočítá stav souhlasů z append-only logu, po obnově ze zálohy nebo po migraci.',
+    usage: 'mlain rebuild-consents --workspace <id>',
+    options: [{ flag: '--workspace', summary: 'Projekt, jehož souhlasy se přepočítají. Povinný.' }],
+    owner: 'P16',
+    implemented: true,
+  },
   {
     name: 'rebuild-engagement',
     summary:

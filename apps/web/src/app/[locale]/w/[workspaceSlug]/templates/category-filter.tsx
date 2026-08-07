@@ -6,7 +6,7 @@ import { getTranslations } from 'next-intl/server';
  * `category` v `GET /api/v1/templates`; překlad na `templates.kind` a na vazbu
  * z formuláře dělá jádro, ne tahle obrazovka.
  */
-export const TEMPLATE_CATEGORIES = ['campaign', 'form', 'transactional'] as const;
+export const TEMPLATE_CATEGORIES = ['campaign', 'form', 'transactional', 'page'] as const;
 
 export type TemplateCategory = (typeof TEMPLATE_CATEGORIES)[number];
 
@@ -15,6 +15,8 @@ export type TemplateCategoryCounts = {
   campaign: number;
   form: number;
   transactional: number;
+  /** Veřejné stránky. Nejsou to e-maily, proto vlastní štítek na konci řady. */
+  page: number;
 };
 
 /**
@@ -68,6 +70,13 @@ export async function CategoryFilter({
       label: t('list.category.transactional'),
       count: counts.transactional,
     },
+    /*
+     * Veřejné stránky stojí na KONCI řady, za e-maily, protože to e-maily
+     * nejsou. Štítek přibyl 7. 8. 2026: do té chvíle se stránky do knihovny
+     * vůbec nevypisovaly, takže se nově založená stránka nedala najít, otevřít
+     * ani smazat. Nahlásil zadavatel.
+     */
+    { key: 'page', label: t('list.category.page'), count: counts.page },
   ];
 
   /**

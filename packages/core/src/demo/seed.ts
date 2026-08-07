@@ -1,13 +1,17 @@
 import { sql } from 'drizzle-orm';
 import { buildRenderSchema } from '@mlain/emails/compile/render-schema';
 import { designHash } from '@mlain/emails/document/canonical';
+import type { Document } from '@mlain/emails/document/types';
 import { writeAuditLog } from '../audit/write';
 import { applyWorkspaceBrandTheme } from '../brand/theme';
 import type { FieldCatalog } from '../contacts/fields/catalog';
 import { resolveName } from '../contacts/naming/resolve';
 import { EMPTY_OVERRIDES } from '../contacts/naming/types';
 import { SegmentAstV1 } from '../segments/ast';
+import { compileTemplate } from '../templates/compile';
 import { validateTemplateDocument } from '../templates/validate';
+import { loadConfig } from '../config/index';
+import type { WorkspaceContext } from '../identity/types';
 import type { Tx } from '../tx';
 import { DemoAuditActions } from './audit';
 import {
@@ -44,7 +48,18 @@ export class DemoAlreadySeededError extends Error {
  * projektu, tedy zbytečné riziko vyčerpání poolu. Volající ho vyzvedne PŘED
  * otevřením transakce a předá hotový.
  */
-export type SeedInput = { workspaceId: string; now: Date; fields: FieldCatalog };
+export type SeedInput = {
+  workspaceId: string;
+  now: Date;
+  fields: FieldCatalog;
+  /**
+   * Kontext projektu. Potřebuje ho kompilace ukázkové kampaně, která si přes
+   * něj dohledá assety a nastavení projektu (`compileTemplate`). `workspaceId`
+   * zůstává vedle, protože ho čte devět zápisů kolem a číst tutéž hodnotu
+   * dvakrát ze dvou míst je zbytečné riziko rozejití.
+   */
+  ctx: WorkspaceContext;
+};
 
 /**
  * Ukázková šablona neprošla validací. Není to chyba uživatele, je to vada sady
@@ -263,6 +278,10 @@ async function insertAll(
   }
 
   const templateIds = new Map<string, string>();
+  // Hotové dokumenty se drží stranou, protože je potřebuje ještě kampaň: její
+  // `design` je VLASTNÍ KOPIE dokumentu, ne odkaz na šablonu. Znovu skládat ji
+  // ze šablony by znamenalo druhé místo, které dosazuje značku projektu.
+  const templateDesigns = new Map<string, Document>();
   for (const template of DEMO_TEMPLATES) {
     // Šablona se ověřuje TOUTÉŽ cestou, kterou jde uložení z editoru: migrace
     // verze dokumentu, JSON Schema, sémantická pravidla. Bez toho by v projektu
@@ -320,6 +339,7 @@ async function insertAll(
               ${sql.param(usedFields)}::text[], 'valid', ${JSON.stringify(validation.issues)}::jsonb)
       RETURNING id`);
     templateIds.set(template.key, rows[0]!.id);
+    templateDesigns.set(template.key, design as Document);
   }
 
   const sentAt = demoCampaignSentAt(input.now);
@@ -336,6 +356,56 @@ async function insertAll(
             ${sentAt.toISOString()}::timestamptz)
     RETURNING id`);
   const campaignId = campaignRows[0]!.id;
+
+  /*
+   * ODESLANÁ KAMPAŇ MUSÍ MÍT ARCHIVOVANOU PODOBU.
+   *
+   * Do 7. 8. 2026 zakládal seed kampaň ve stavu `sent` bez `design`
+   * a bez `compiled_html`, tedy jedinou odeslanou kampaň v produktu, po které
+   * nezbylo nic. Vadilo to dvakrát. Report ukazoval místo e-mailu prázdný stav
+   * („kampaň zatím nemá uloženou podobu") přesně na obrazovce, která má ukázkou
+   * něco předvést. A hlavně to bořilo předpoklad, na kterém stojí převlékání do
+   * barev značky: `redress.ts` se opírá o to, že odeslaná kampaň drží svou
+   * kopii, a kvůli téhle jediné výjimce musel zamykat i knihovní šablony.
+   *
+   * `design` je VLASTNÍ KOPIE dokumentu, ne odkaz na šablonu, protože přesně
+   * tak to dělá skutečná kampaň: šablona se dá později přepsat a odeslané už to
+   * změnit nesmí.
+   *
+   * KOMPILUJE SE JAKO NÁHLED, ne jako odeslání, a je to vědomé. `purpose: 'send'`
+   * přepisuje odkazy na měřicí adresy odvozené z `campaignId` a k nim patří řádky
+   * v `campaign_links`, které tenhle seed nezakládá. Vzniklo by HTML s odkazy,
+   * které nemají protějšek, tedy proklik do prázdna. Ukázková kampaň se nikdy
+   * neodesílala, takže měřicí adresy nemá odkud vzít a předstírat je nemá proč;
+   * report u náhledu sám píše, že systémové odkazy nikam nevedou.
+   */
+  const campaignDesign = templateDesigns.get(DEMO_CAMPAIGN.templateKey)!;
+  const compiled = await compileTemplate({
+    tx,
+    ctx: input.ctx,
+    document: campaignDesign,
+    templateKind: 'campaign',
+    fields: input.fields,
+    language: locale,
+    assetBaseUrl: loadConfig().ASSET_BASE_URL,
+    purpose: 'preview',
+    trackOpens: false,
+    trackClicks: false,
+    now: input.now,
+  });
+  // Šablony prošly validací o pár řádků výš, takže sem se neplatný dokument
+  // nedostane. Kdyby přece, je to vada sady v tomhle repozitáři a seed na ní
+  // padá stejně hlasitě jako u šablon, ne tiše bez obsahu.
+  if (!compiled.ok) {
+    throw new DemoTemplateInvalidError(DEMO_CAMPAIGN.templateKey, compiled.issues);
+  }
+  await tx.execute(sql`
+    UPDATE campaigns
+       SET design = ${JSON.stringify(campaignDesign)}::jsonb,
+           compiled_html = ${compiled.html},
+           compiled_text = ${compiled.text},
+           compiled_at = ${sentAt.toISOString()}::timestamptz
+     WHERE workspace_id = ${ws} AND id = ${campaignId}`);
 
   const s = DEMO_CAMPAIGN.stats;
   // `bounced` ani `computed_at` v campaign_stats nejsou. Nedoručení se dělí

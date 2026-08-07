@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { Link } from '@mlain/i18n/navigation';
 import { apiFetch } from '@/lib/api-client/fetch';
-import { getWorkspaceAccess } from '@/lib/identity/workspace-access';
+import { getWorkspaceAccess, hasPermission } from '@/lib/identity/workspace-access';
+import { ForbiddenSection } from '@/features/settings/forbidden-section';
 import { ImportWizard, type Step } from '@/features/import/import-wizard';
 
 /**
@@ -41,6 +42,28 @@ export default async function ImportPage({ params, searchParams }: PageProps) {
     notFound();
   }
   const workspaceId = access.data.workspace.id;
+
+  /**
+   * Kdo nemá `contacts:import`, se to dozví TEĎ, ne až u uložení.
+   *
+   * Bez tohohle průvodce nastartoval komukoli, kdo si napsal adresu: prohlížející
+   * prošel nahrání souboru, kontrolu, mapování sloupců i náhled a odmítnutí
+   * dostal až od API v posledním kroku, po vyplnění celého průvodce.
+   *
+   * Vysvětlení, ne `notFound()`: 404 by tvrdila, že obrazovka neexistuje, a
+   * uživatel by nevěděl, o co má požádat. Pravidlo 2 ze 7.2b části 6 chce, aby
+   * akce byla vidět a vysvětlená; jen pro čtení tady být nemůže, protože celá
+   * stránka JE akce a prázdný průvodce nemá co ukázat.
+   */
+  if (!hasPermission(access.data, 'contacts:import')) {
+    return (
+      <ForbiddenSection
+        permission="contacts:import"
+        currentRole={access.data.role}
+        workspaceSlug={workspaceSlug}
+      />
+    );
+  }
 
   const step =
     typeof query['step'] === 'string' && STEPS.includes(query['step']) ? query['step'] : 'upload';

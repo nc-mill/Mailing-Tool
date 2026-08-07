@@ -50,13 +50,21 @@ const count = async (table: string) =>
   );
 
 /**
+ * Kontext projektu pro kompilaci ukázkové kampaně. Seed jím dohledává assety
+ * a nastavení projektu, tedy přesně to, co endpoint předává ze `c.get('auth')`.
+ */
+const demoCtx = () => unsafeWorkspaceContext(workspaceId, { type: 'system', job: 'test' });
+
+/**
  * Seed běží pod APLIKAČNÍ rolí s kontextem projektu, tedy tak, jak ho volá
  * endpoint. Pod migrátorem by test prošel, i kdyby produkční kód kontext
  * nenastavoval, a chyba by se projevila až u zákazníka jako porušení
  * politiky RLS při prvním INSERTu.
  */
 const seed = (now = new Date()) =>
-  pg.inWorkspace(workspaceId, (tx) => seedDemoData(tx, { workspaceId, now, fields }));
+  pg.inWorkspace(workspaceId, (tx) =>
+    seedDemoData(tx, { workspaceId, now, fields, ctx: demoCtx() }),
+  );
 
 describe('seed sedí se schématem', () => {
   // Tenhle test je tu proto, že seed je jediné místo v plánu, které zapisuje
@@ -300,6 +308,44 @@ describe('seedDemoData', () => {
     expect(row!.status).toBe('sent');
     expect(row!.sent).toBe('50');
     expect(row!.bounced).toBe('2');
+  });
+
+  /**
+   * ODESLANÁ KAMPAŇ MUSÍ MÍT ARCHIVOVANOU PODOBU.
+   *
+   * Do 7. 8. 2026 zakládal seed kampaň ve stavu `sent` bez `design` a bez
+   * `compiled_html`, takže to byla jediná odeslaná kampaň v produktu, po které
+   * nezbylo nic. Report na ni ukazoval prázdný stav místo e-mailu a bořilo to
+   * předpoklad, na kterém stojí převlékání do barev značky (`redress.ts`):
+   * že odeslaná kampaň drží svou vlastní kopii dokumentu.
+   *
+   * Kompiluje se jako NÁHLED, ne jako odeslání, takže v HTML nesmí být měřicí
+   * adresy: k těm patří řádky v `campaign_links`, které seed nezakládá, a byly
+   * by to odkazy bez protějšku.
+   */
+  it('odeslaná ukázková kampaň nese vlastní dokument i hotové HTML', async () => {
+    await seed();
+    const [row] = await pg.sql<{
+      design_keys: string[];
+      html: string | null;
+      text: string | null;
+      compiled: string | null;
+      links: string;
+    }>(
+      `SELECT ARRAY(SELECT jsonb_object_keys(c.design) ORDER BY 1) AS design_keys,
+              c.compiled_html AS html, c.compiled_text AS text,
+              c.compiled_at::text AS compiled,
+              (SELECT count(*)::text FROM campaign_links l WHERE l.campaign_id = c.id) AS links
+         FROM campaigns c
+        WHERE c.workspace_id = $1`,
+      [workspaceId],
+    );
+    expect(row!.design_keys).toEqual(['blocks', 'meta', 'schemaVersion', 'theme']);
+    expect(row!.html).toContain('<html');
+    expect(row!.text).not.toBe('');
+    expect(row!.compiled).not.toBeNull();
+    // Náhledová kompilace měřicí odkazy nevyrábí, takže žádné osiřelé nezůstanou.
+    expect(row!.links).toBe('0');
   });
 
   it('kampaň se vejde do existující partition, i když je první den v měsíci', async () => {

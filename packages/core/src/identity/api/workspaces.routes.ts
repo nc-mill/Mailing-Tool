@@ -3,6 +3,7 @@ import { withWorkspace } from '../../tx';
 import { ApiError } from '../../errors/api-error';
 import { assertPermission } from '../permissions';
 import {
+  assertMayCreateWorkspace,
   createWorkspace,
   deleteWorkspace,
   getWorkspace,
@@ -24,6 +25,11 @@ export const WorkspaceSchema = z
     address_form: z.enum(['formal', 'informal']),
     /** Řeší projekt oslovení a 5. pád? Vypnuto skryje i volbu `address_form`. */
     greeting_enabled: z.boolean(),
+    /**
+     * Poštovní adresa odesílatele do patičky e-mailu, hodnota za
+     * `{{ workspace.sender_address }}`. Prázdný řetězec znamená nevyplněno.
+     */
+    postal_address: z.string(),
     created_at: z.iso.datetime(),
     deleted_at: z.iso.datetime().nullable(),
   })
@@ -47,6 +53,12 @@ export const UpdateWorkspaceInput = z
     timezone: z.string().max(64).optional(),
     address_form: z.enum(['formal', 'informal']).optional(),
     greeting_enabled: z.boolean().optional(),
+    /**
+     * Strop 500 znaků je tentýž jako v `buildCampaignSettingsSchema`, odkud
+     * klíč `postal_address` pochází. Víc řádků je v pořádku: adresa se do
+     * patičky sází tak, jak ji uživatel napsal.
+     */
+    postal_address: z.string().max(500).optional(),
   })
   .strict()
   .openapi('UpdateWorkspaceInput');
@@ -83,7 +95,7 @@ const createRouteDef = createRoute({
   method: 'post',
   path: '/api/v1/workspaces',
   tags: ['Workspaces'],
-  summary: 'Založení projektu, zakladatel se stává ownerem',
+  summary: 'Založení projektu vlastníkem, zakladatel se stává ownerem nového',
   request: {
     headers: IdempotencyHeaderSchema,
     body: { content: { 'application/json': { schema: CreateWorkspaceInput } } },
@@ -96,6 +108,7 @@ const createRouteDef = createRoute({
       },
     },
     401: problemResponse('unauthenticated', 'session_expired'),
+    403: problemResponse('workspace_create_not_allowed'),
     422: problemResponse('validation_failed'),
   },
 });
@@ -210,6 +223,21 @@ export function registerWorkspaceRoutes(app: OpenAPIHono<ApiEnv>): void {
 
   app.openapi(createRouteDef, async (c) => {
     const actor = await requireSession(c);
+    /*
+     * ZÁVORA SEDÍ TADY, ne v `createWorkspace`, a je to vědomé.
+     *
+     * `createWorkspace` musí umět založit projekt i tomu, kdo ještě žádný nemá:
+     * přesně to potřebuje instalace (`setup.ts` jde vlastní cestou) a testovací
+     * příprava. Uvnitř služby by první projekt nešlo založit vůbec, protože
+     * zakladatel v tu chvíli není vlastníkem nikde.
+     *
+     * Rozhodnutí zadavatele ze 7. 8.: projekt smí založit jen nejvyšší role,
+     * tedy kdo je `owner` aspoň v jednom existujícím projektu. Do té doby
+     * nekontrolovala tahle trasa nic kromě relace, což od téhož dne bolelo víc:
+     * účet nově vzniká z pozvánky, takže pozvaný editor si vedle projektu,
+     * kam byl pozvaný, mohl založit libovolně mnoho vlastních.
+     */
+    await assertMayCreateWorkspace(actor.userId);
     const input = c.req.valid('json');
     const result = await createWorkspace(actor.userId, '', input);
     return c.json(result, 201);

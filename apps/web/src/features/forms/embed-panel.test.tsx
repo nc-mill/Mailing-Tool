@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { EmbedPanel } from './embed-panel';
-import type { FormEmbedView } from './types';
+import type { FormEmbedView, FormFieldView } from './types';
 import { renderWithProviders } from './test-utils';
 
 vi.mock('@mlain/i18n/navigation', async () => {
@@ -24,13 +24,23 @@ const EMBED: FormEmbedView = {
   first_submission_at: null,
 };
 
-function renderPanel(overrides: Partial<FormEmbedView> = {}) {
+const FIELDS: FormFieldView[] = [
+  { target: 'email', label: { cs: 'E-mail', en: 'Email' }, required: true, type: 'email' },
+  { target: 'first_name', label: { cs: 'Jméno', en: 'First name' }, required: false, type: 'text' },
+];
+
+function renderPanel(
+  overrides: Partial<FormEmbedView> = {},
+  extra: { fields?: FormFieldView[]; consentText?: string | null } = {},
+) {
   return renderWithProviders(
     <EmbedPanel
       formId="form-1"
       formName="Newsletter"
       embed={{ ...EMBED, ...overrides }}
       basePath="/w/muj-projekt/forms"
+      fields={extra.fields ?? FIELDS}
+      consentText={extra.consentText ?? null}
     />,
   );
 }
@@ -111,5 +121,70 @@ describe('EmbedPanel', () => {
   it('po prvním přihlášení ukáže, kdy dorazilo', () => {
     renderPanel({ first_submission_at: '2026-07-31T12:20:00.000Z' });
     expect(screen.getByTestId('embed-test')).toHaveTextContent('První přihlášení dorazilo');
+  });
+
+  /**
+   * Rozhodnutí zadavatele ze 7. 8. 2026: náhled nesmí mást jiným vzhledem, než jaký
+   * formulář na cizím webu dostane. Tyhle tři testy jsou jeho brána.
+   */
+  it('náhled vloženého formuláře je holé značkování bez jediného našeho stylu', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(screen.getByRole('radio', { name: /Vložím to sám/ }));
+
+    const preview = within(screen.getByTestId('embed-preview')).getByTestId(
+      'field-preview',
+    ) as HTMLIFrameElement;
+    // Vlastní dokument v rámečku: reset stylů aplikace se do něj nepromítne
+    // a je vidět formulář tak, jak vypadá na webu, který si ho ještě nenastyloval.
+    expect(preview.srcdoc).toContain('E-mail');
+    expect(preview.srcdoc).not.toContain('<style');
+    expect(preview.srcdoc).not.toContain('ml-public');
+    // Bez téhle věty vypadá neurovnaný formulář jako vada, ne jako záměr.
+    expect(screen.getByTestId('embed-preview')).toHaveTextContent(
+      /Vzhled mu dá až web, kam ho vložíte/,
+    );
+  });
+
+  it('u hotové stránky náhled bez stylů nenabízí, tam je náhledem ta stránka sama', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(screen.getByRole('radio', { name: /Použiju hotovou stránku/ }));
+    expect(screen.queryByTestId('embed-preview')).toBeNull();
+    // A odkaz se u ní jmenovat „náhled" smí, protože přesně takhle stránka vypadá.
+    expect(
+      within(screen.getByTestId('embed-test')).getByTestId('embed-preview-link'),
+    ).toHaveTextContent('Otevřít náhled formuláře');
+  });
+
+  it('u vkládaného formuláře neslibuje odkaz na hostovanou stránku jeho vzhled', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(screen.getByRole('radio', { name: /Vložím to sám/ }));
+    const test = screen.getByTestId('embed-test');
+    // Hostovaná stránka naše styly MÁ. Kdyby se odkaz na ni jmenoval „náhled
+    // formuláře", uživatel by z něj četl vzhled, který na svém webu nedostane.
+    expect(within(test).getByTestId('embed-preview-link')).toHaveTextContent(
+      'Otevřít naši hostovanou stránku',
+    );
+    expect(test).toHaveTextContent(/Vložený formulář žádné CSS nenese/);
+  });
+
+  it('náhled se vynechá, když se detail formuláře nenačetl', async () => {
+    const user = userEvent.setup();
+    renderPanel({}, { fields: [] });
+    await user.click(screen.getByRole('radio', { name: /Vložím to sám/ }));
+    // Prázdný formulář v náhledu by lhal stejně jako ostylovaný, jen naopak.
+    expect(screen.queryByTestId('embed-preview')).toBeNull();
+  });
+
+  it('náhled ukáže i zaškrtávátko souhlasu, protože ho vložený formulář vykreslí', async () => {
+    const user = userEvent.setup();
+    renderPanel({}, { consentText: 'Souhlasím se zasíláním novinek.' });
+    await user.click(screen.getByRole('radio', { name: /Vložím to sám/ }));
+    const preview = within(screen.getByTestId('embed-preview')).getByTestId(
+      'field-preview',
+    ) as HTMLIFrameElement;
+    expect(preview.srcdoc).toContain('Souhlasím se zasíláním novinek.');
   });
 });

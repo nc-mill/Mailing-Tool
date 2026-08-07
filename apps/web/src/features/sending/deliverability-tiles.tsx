@@ -243,7 +243,7 @@ export function DeliverabilityTiles({
     <>
       {header}
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(230px,1fr))] gap-[var(--spacing-gutter)]">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(230px,100%),1fr))] gap-[var(--spacing-gutter)]">
         <Tile
           title={t('accountStatus')}
           value={account.enforcement_status ?? '–'}

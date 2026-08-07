@@ -204,17 +204,26 @@
    * Stupnice je uzavřená. Nové číslo se nepřidává, vybere se z těchhle
    * sedmi, protože vrstva bez jména se za půl roku nedá s ničím porovnat.
    *
-   * DĚLICÍ ČÁRA VEDE MEZI SKOŘÁPKOU A VYJÍŽDĚCÍ VRSTVOU. Skořápka je horní
-   * lišta a boční menu, tedy rámy, které drží na místě, když obsah odjede.
-   * Vyjížděcí vrstva je nabídka, výběr, bublina a panel, tedy něco, co si
-   * uživatel PRÁVĚ TEĎ otevřel z konkrétního tlačítka. Otevřená nabídka
-   * musí být vidět celá, i když ji spouštěč tlačí do lišty, takže
-   * `--z-flyout` je nad `--z-topbar` a je to jediná správná volba pro
-   * cokoli, co Radix vykresluje portálem k tlačítku.
+   * STUPNICE MÁ TŘI PATRA: skořápka, modální vrstva, vyjížděcí vrstva.
+   *
+   * SKOŘÁPKA je horní lišta a boční menu, tedy rámy, které drží na místě, když
+   * obsah odjede. Uvnitř ní má lišta přednost před menu, protože menu pod ní
+   * začíná (`sticky top-[var(--size-topbar)]`).
+   *
+   * MODÁLNÍ VRSTVA je dialog a jeho zatmívací plocha. Patří NAD celou
+   * skořápku, protože modální dialog má z obrazovky udělat jednu otázku:
+   * všechno ostatní musí ztmavnout, jinak zbytek rozhraní vypadá, že se dá
+   * dál používat.
+   *
+   * VYJÍŽDĚCÍ VRSTVA je nabídka, výběr, bublina a panel, tedy něco, co si
+   * uživatel PRÁVĚ TEĎ otevřel z konkrétního tlačítka. Je úplně nahoře, nad
+   * modální vrstvou: takové tlačítko může stát i v otevřeném dialogu, a rozbalený
+   * seznam v dialogu musí být vidět celý. `--z-flyout` je proto jediná správná
+   * volba pro cokoli, co Radix vykresluje portálem k tlačítku.
    *
    * Nález ze 6. 8. 2026: nabídka přepínače projektů se otevírala pod horní
    * lištou a přišla o horních 11 px i s rámečkem a zaoblením. Měla
-   * `--z-dialog` (40), lišta má 50. Napravené použitím `--z-flyout`
+   * `--z-dialog` (tehdy 40), lišta má 50. Napravené použitím `--z-flyout`
    * u nabídky, výběru, popoveru a bubliny naráz, ne přebitím na jednom
    * místě: pod lištu se dostane každá z nich, jen se to nejdřív projeví
    * u té, která se otevírá ze samotné lišty.
@@ -222,14 +231,22 @@
   --z-sticky: 10; /* hlavička tabulky a osy uvnitř obsahu */
   --z-systembar: 20; /* systémový pruh u dolního okraje */
   --z-toast: 30; /* oznámení */
-  /* Modální dialog i jeho zatmívací plocha. POZOR, leží POD `--z-topbar`,
-     takže zatmívací plocha horní lištu nepřekryje a ta zůstane za otevřeným
-     dialogem svítit. Je to vidět a je to vada; kliknutí ale nepustí, o to se
-     stará Radix. Rovná se `--z-sidebar` schválně, o pořadí těch dvou pak
-     rozhoduje pořadí v DOM a plocha vychází nad menu. */
-  --z-dialog: 40;
   --z-sidebar: 40; /* boční menu */
   --z-topbar: 50; /* horní lišta */
+  /* Modální dialog i jeho zatmívací plocha. Leží NAD `--z-topbar` i nad
+     `--z-sidebar`, takže zatmívací plocha ztmaví celou obrazovku včetně
+     skořápky.
+
+     Nález ze 6. 8. 2026: dialog měl 40, tedy pod lištou, a za otevřeným
+     dialogem zůstávalo svítit logo, přepínač projektů i jméno uživatele.
+     Kliknout na ně nešlo (o to se stará Radix), ale vypadalo to, že jdou
+     použít. Naměřeno odečtem barvy pixelů: pruh lišty držel #faf7ee, zatímco
+     obsah pod ním ztmavl na #6d6a60.
+
+     Čtyřicítku měl dialog SPOLEČNOU s `--z-sidebar` a boční menu bylo
+     překryté jen náhodou, pořadím v DOM. Od téhle opravy o tom rozhoduje
+     číslo, ne pořadí. */
+  --z-dialog: 55;
   --z-flyout: 60; /* nabídka, výběr, popover, bublina, vysouvací panel menu */
   --duration-fast: 120ms;
   --duration-normal: 200ms;
@@ -283,6 +300,67 @@
      Kdyby si ji vybíral JavaScript, server a klient by vykreslily jinou barvu
      a React by hlásil nesoulad hydratace, který sám neopraví. */
   --workspace-accent-l: 0.55;
+}
+
+/* ------------------------------------------------------------------
+ * ÚZKÝ DISPLEJ: menší písmo, menší kresba ikon, menší vnitřní okraje.
+ *
+ * Návrhová stupnice je dělaná pro monitor. Na 390 px je nadpis obrazovky
+ * 36 px vysoký přes celou šířku a věta pod ním se láme do sloupce o třech
+ * slovech; karta si vezme 60 px z 345 na vnitřní okraje, tedy šestinu displeje
+ * na prázdno. Zmenšení stupnice je proto DRUHÁ páka, ne první: nejdřív se na
+ * mobilu přeuspořádá (menu do panelu, řádek tabulky do karty, sloupce pod
+ * sebe), a teprve pak se dolaďuje velikost.
+ *
+ * MĚNÍ SE TADY, V TOKENECH, ne na obrazovkách. Utility Tailwindu sázejí
+ * `font-size: var(--text-h1)`, takže přepis proměnné v media query platí
+ * všude naráz. Dvacet obrazovek s vlastním `text-2xl md:text-4xl` by se
+ * do měsíce rozešlo, jedna stupnice ne.
+ *
+ * CO SE NEZMENŠUJE:
+ *
+ * - **Klikací plochy.** `--size-target-min`, `--size-control*`, `--size-choice*`
+ *   a výšky tlačítek tu nejsou schválně. Prst je na dotyku pořád stejně velký,
+ *   ať je ikona jakkoli malá. Ikona 16 px uprostřed plochy 44 px je vizuálně
+ *   menší a pro prst stejná; ikona 16 px v ploše 32 px je vada.
+ * - **PÍSMO, KTERÝM SE SÁZEJÍ DATA**, tedy `--text-ui`, `--text-body`,
+ *   `--text-meta` a `--text-label`. Zmenšené tu chvíli byla a je to
+ *   **odvolané rozhodnutí zadavatele ze 7. 8.**: zmenšovat dává smysl u toho,
+ *   co místo jen zabírá (nadpisy, mezery, kresba ikon), ne u toho, kvůli čemu
+ *   se člověk na obrazovku dívá. Řádek tabulky se navíc od téhož dne kreslí
+ *   jako karta, takže na údaj je místa dost a šetřit na něm není proč.
+ * - **Mezery pod 15 px.** `--spacing-stack` a menší jsou už teď na hraně;
+ *   kdyby se zmenšily, prvky by splynuly a rozvržení by se rozpadlo dřív,
+ *   než by se něco ušetřilo.
+ *
+ * Hranice je 768 px, stejná jako `md` v Tailwindu a stejná jako hranice, pod
+ * kterou mizí boční menu a řádek tabulky se kreslí jako karta. Jedna hranice
+ * pro celou mobilní podobu, ne tři.
+ * ------------------------------------------------------------------ */
+@media (max-width: 767px) {
+  :root {
+    /* Nadpisy a vysazené údaje. Data se nezmenšují, zdůvodnění výš. */
+    --text-display: 30px;
+    --text-h1: 27px;
+    --text-h2: 21px;
+    --text-h3: 17px;
+    --text-callout: 22px;
+    --text-lead: 17px;
+
+    /* Kresba ikony. Klikací plocha kolem ní se nemění. */
+    --size-icon-md: 16px;
+    --size-icon-lg: 18px;
+    --size-icon-xl: 19px;
+
+    /* Vnitřní okraje a mezery mezi plochami. Tady je na úzkém displeji
+       nejvíc k získání: karta vrátí obsahu 24 px šířky. */
+    --spacing-page: 20px;
+    --spacing-card: 18px;
+    --spacing-card-tight: 16px;
+    --spacing-gutter: 14px;
+    --spacing-section: 18px;
+    --spacing-row-x: 14px;
+  }
 }
 
 /* Bez JavaScriptu a před nastavením data-theme rozhoduje systémové nastavení. */

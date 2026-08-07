@@ -9,6 +9,7 @@ import {
 import { revokePendingOutsideTrial } from '../../campaigns/repo/outbox';
 import { createSystemContext } from '../../identity/context';
 import { queueSystemMail } from '../../platform/system-mail';
+import { readWorkspaceLocale } from '../../platform/workspace-locale';
 import type { WorkspaceContext } from '../../tx';
 import { addTrialAddress, resolveTrialSettings, type TrialSettings } from '../trial-mode';
 import { issueTrialToken, verifyTrialToken } from '../trial-token';
@@ -190,7 +191,18 @@ export async function addTrialVerifiedAddress(
   await queueSystemMail({
     template: 'trial_address_verification',
     to: normalized,
-    locale: cfg.DEFAULT_LOCALE,
+    /**
+     * JAZYK PROJEKTU, ne jazyk instalace, stejně jako u pozvánky.
+     *
+     * Dřív tu stálo `cfg.DEFAULT_LOCALE`, takže instalace s vícejazyčnými
+     * projekty poslala do anglického projektu český e-mail. Vlastní jazyk
+     * adresáta se vzít nedá: ověřuje se ODESÍLACÍ adresa, která nemusí patřit
+     * žádnému uživateli produktu. Z toho, co k dispozici je, je projekt ta
+     * správná volba, protože se ověřuje jeho odesílatel. `DEFAULT_LOCALE`
+     * zůstává pojistkou pro případ, že by řádek projektu nešel přečíst.
+     * Týž vzorec a týž důvod jsou v `identity/invitation-service.ts`.
+     */
+    locale: (await readWorkspaceLocale(ctx)) ?? cfg.DEFAULT_LOCALE,
     data: { url },
     workspaceId: ctx.workspaceId,
   });

@@ -27,6 +27,10 @@ export const AUTH_ERROR_KEYS = {
   },
   not_found: { title: 'errors.notFound.title', body: 'errors.notFound.body' },
   gone: { title: 'errors.gone.title', body: 'errors.gone.body' },
+  // Vlastní text, ne `forbidden`. „Vaše role tuhle akci nedovoluje" by pozvaného
+  // poslalo hledat chybu u sebe, přestože jde o nastavení instalace, se kterým
+  // nic nesvede: účet mu musí založit správce.
+  signup_closed: { title: 'errors.signupClosed.title', body: 'errors.signupClosed.body' },
   service_unavailable: {
     title: 'errors.serviceUnavailable.title',
     body: 'errors.serviceUnavailable.body',

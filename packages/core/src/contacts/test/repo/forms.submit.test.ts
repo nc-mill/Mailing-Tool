@@ -9,6 +9,7 @@ import { submitForm, type SubmitInput } from '../../forms/submit';
 import { registerSubscriptionEmails, resetSubscriptionEmails } from '../../lists/subscribe-service';
 import { addSuppression } from '../../repo/suppressions';
 import { createForm, lastSubmission, loadPublicForm, publicFormRef } from '../../repo/forms';
+import { update as updateList } from '../../repo/lists';
 import {
   asMigrator,
   countContacts,
@@ -306,6 +307,79 @@ describe('KRITÉRIUM 89 a rozhodnutí R9: jednotná odpověď', () => {
       submission(form.id, 'j@x.cz', { contentType: 'application/x-www-form-urlencoded' }),
     );
     expect(result.location).toBe('https://firma.cz/dekujeme');
+  }, 60_000);
+});
+
+/**
+ * Vlastní stránka pro toho, kdo v seznamu už potvrzený je
+ * (`lists.already_subscribed_redirect_url`).
+ *
+ * Bez ní dostane takový člověk děkovací stránku pro nové zájemce, tedy typicky
+ * „podívejte se do e-mailu", jenže žádný e-mail mu nepřijde: potvrzenému se
+ * neposílá nic. Zapíná se výslovně, protože jiná odpověď na známou adresu
+ * prozrazuje, že ta adresa v databázi je.
+ */
+describe('vlastní stránka pro už přihlášeného', () => {
+  async function singleOptInForm(ctx: WorkspaceContext, alreadyUrl: string | null) {
+    const list = await createList(ctx, {
+      name: `Rovnou ${Math.random()}`,
+      optIn: 'single',
+    });
+    if (alreadyUrl !== null) {
+      await updateList(ctx, list.id, { alreadySubscribedRedirectUrl: alreadyUrl });
+    }
+    const form = await createForm(ctx, {
+      name: 'Newsletter',
+      fields: [{ target: 'email', label: { en: 'Email' }, required: true, type: 'email' }],
+      list_ids: [list.id],
+      double_opt_in: false,
+      redirect_url: 'https://firma.cz/dekujeme',
+    });
+    return { ref: publicFormRef(form), id: form.id, listId: list.id };
+  }
+
+  const asForm = { contentType: 'application/x-www-form-urlencoded' } as const;
+
+  it('nevyplněná adresa nechává dnešní chování, tedy stejnou stránku jako pro nového', async () => {
+    const ctx = await testContext();
+    const form = await singleOptInForm(ctx, null);
+
+    const first = await send(form.ref, submission(form.id, 'stary@x.cz', asForm));
+    const second = await send(form.ref, submission(form.id, 'stary@x.cz', asForm));
+
+    expect(first.location).toBe('https://firma.cz/dekujeme');
+    expect(second.location).toBe('https://firma.cz/dekujeme');
+  }, 60_000);
+
+  it('potvrzený člověk skončí na vlastní stránce, nový zájemce na děkovací', async () => {
+    const ctx = await testContext();
+    const form = await singleOptInForm(ctx, 'https://firma.cz/uz-jste-u-nas');
+
+    const first = await send(form.ref, submission(form.id, 'stary@x.cz', asForm));
+    const second = await send(form.ref, submission(form.id, 'stary@x.cz', asForm));
+    const other = await send(form.ref, submission(form.id, 'novy@x.cz', asForm));
+
+    // Poprvé se doopravdy něco stalo, takže „už jste přihlášeni" by byla nepravda.
+    expect(first.location).toBe('https://firma.cz/dekujeme');
+    expect(second.location).toBe('https://firma.cz/uz-jste-u-nas');
+    expect(other.location).toBe('https://firma.cz/dekujeme');
+  }, 60_000);
+
+  /**
+   * Tělo odpovědi zůstává jednotné i tehdy, když je vlastní stránka zapnutá:
+   * prozradit se smí jen to, co si správce vědomě zapnul, tedy cíl přesměrování,
+   * ne obsah odpovědi na strojové rozhraní.
+   */
+  it('odpověď na JSON zůstává stejná pro všechny', async () => {
+    const ctx = await testContext();
+    const form = await singleOptInForm(ctx, 'https://firma.cz/uz-jste-u-nas');
+
+    await send(form.ref, submission(form.id, 'stary@x.cz'));
+    const second = await send(form.ref, submission(form.id, 'stary@x.cz'));
+
+    expect(second.status).toBe(200);
+    expect(second.response).toEqual(UNIFORM);
+    expect(second.location).toBeUndefined();
   }, 60_000);
 });
 

@@ -7,6 +7,7 @@ import { Checkbox } from '@mlain/ui/components/checkbox';
 import { Dialog, DialogBody, DialogFooter, DialogTitle } from '@mlain/ui/components/dialog';
 import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
+import { passwordManagerOptOut } from '@mlain/ui/lib/password-manager';
 import { Alert } from '@mlain/ui/patterns/states';
 import { Select, SelectItem } from '@mlain/ui/components/select';
 import type { SenderActionResult, SenderIdentityBody } from './actions';
@@ -252,10 +253,14 @@ export function SenderDialog({
                 }
                 {...(errors['from_email'] === undefined ? {} : { error: errors['from_email'] })}
               >
+                {/* Adresa ODESÍLATELE, ne přihlašovací. Samotné `autoComplete="off"`
+                    správci hesel ignorují, značky níž ne. Podrobnosti
+                    v `@mlain/ui/lib/password-manager`. */}
                 <Input
                   data-testid="sender-from-email"
                   type="email"
                   autoComplete="off"
+                  {...passwordManagerOptOut}
                   value={form.fromEmail}
                   onChange={(event) => set('fromEmail', event.target.value)}
                 />
@@ -271,6 +276,7 @@ export function SenderDialog({
                   data-testid="sender-reply-to"
                   type="email"
                   autoComplete="off"
+                  {...passwordManagerOptOut}
                   value={form.replyTo}
                   onChange={(event) => set('replyTo', event.target.value)}
                 />

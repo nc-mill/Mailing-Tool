@@ -337,6 +337,26 @@ export function createApiApp() {
     for (const [k, v] of Object.entries(headers)) c.header(k, v);
   });
 
+  /**
+   * Založení účtu z pozvánky. Sdílí kbelík s průvodcem prvního spuštění
+   * (`setup_ip`, deset pokusů z adresy za hodinu) schválně: obojí je zakládání
+   * účtu bez relace ze stejné adresy a tabulka 4.5 pro tuhle cestu vlastní
+   * pravidlo nezavádí. Průvodce běží jednou za život instalace, takže se
+   * o kbelík reálně nepřetahují.
+   *
+   * Bez limitu by šlo tuhle cestu použít k hádání tokenů pozvánek. Token má
+   * 32 bajtů, takže je hádání beztak neproveditelné, ale cesta, která bez
+   * relace zapisuje do `users`, limit mít má tak jako tak.
+   */
+  app.use('/api/v1/invitations/signup', async (c, next) => {
+    const { consumeAll, limiterRegistry } = await import('./rate-limit');
+    const headers = await consumeAll(limiterRegistry(), [
+      { rule: 'setup_ip', key: c.get('clientIp') },
+    ]);
+    await next();
+    for (const [k, v] of Object.entries(headers)) c.header(k, v);
+  });
+
   app.use('/api/v1/auth/password-reset', async (c, next) => {
     const { consumeAll, limiterRegistry } = await import('./rate-limit');
     const headers = await consumeAll(limiterRegistry(), [

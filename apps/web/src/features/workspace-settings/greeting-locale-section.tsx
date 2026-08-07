@@ -130,6 +130,8 @@ export function GreetingLocaleSectionView({
         open={open}
         onOpenChange={setOpen}
         level="N2"
+        // Změna nastavení jazyka oslovení, jde ji přepnout zpátky.
+        destructive={false}
         title={t('general.greetingLocale.dialogTitle', { target })}
         consequences={[
           t('general.greetingLocale.dialogConsequence1', { count: summary.mismatched, target }),

@@ -71,6 +71,24 @@ export const VALIDATION_CODES: readonly ValidationCodeEntry[] = [
   { code: 'content_nested_repeat', domain: 'content', source: 'spec' },
   { code: 'content_raw_html_forbidden', domain: 'content', source: 'spec' },
   { code: 'content_reserved_marker', domain: 'content', source: 'spec' },
+  /*
+   * Tři kódy profilu `page`, tedy veřejné stránky navržené v Builderu.
+   *
+   * Řetězce se sem NEOPISUJÍ z hlavy: vlastní je `PAGE_ISSUE_CODES`
+   * v `@mlain/emails/document/profile`, protože je vydává validátor dokumentu.
+   * Registr je jen musí znát, jinak `ApiError` odmítne nález vyrobit a odmítnuté
+   * uložení stránky skončí pětistovkou.
+   *
+   * Kódy jsou TŘI, ne jeden společný „tohle na stránku nepatří":
+   *  - patička s odhlašovacím odkazem na veřejné stránce nedává smysl,
+   *  - blok syrového HTML je bezpečnostní rozhodnutí (stránka běží na naší
+   *    doméně, vložený obsah může předstírat cizí značku),
+   *  - nedostupná personalizace je vada obsahu, ne zákaz bloku.
+   * Uživatel podle kódu pozná, co má udělat, což jeden slitý kód neumí.
+   */
+  { code: 'content_footer_forbidden_on_page', domain: 'content', source: 'spec' },
+  { code: 'content_html_forbidden_on_page', domain: 'content', source: 'spec' },
+  { code: 'content_variable_not_on_surface', domain: 'content', source: 'spec' },
   { code: 'content_link_scheme_forbidden', domain: 'content', source: 'spec' },
   { code: 'content_unknown_merge_tag', domain: 'content', source: 'spec' },
   { code: 'content_asset_not_found', domain: 'content', source: 'spec' },

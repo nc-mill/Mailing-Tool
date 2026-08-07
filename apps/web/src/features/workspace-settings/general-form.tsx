@@ -6,6 +6,7 @@ import { Link } from '@mlain/i18n/navigation';
 import { Card, CardTitle } from '@mlain/ui/components/card';
 import { Field } from '@mlain/ui/components/field';
 import { Input } from '@mlain/ui/components/input';
+import { Textarea } from '@mlain/ui/components/textarea';
 import { ReadOnlyValue } from '@mlain/ui/patterns/states';
 import { SelectField } from '@/lib/forms/select-field';
 import { localeLabel } from '@/lib/i18n/locale-label';
@@ -109,6 +110,17 @@ export function GeneralForm({
             label={t('general.timezone')}
             value={valueWithHint(workspace.timezone, t('general.timezoneHint'))}
           />
+          {/* Nevyplněná adresa se NEskrývá. Je to údaj, který musí obchodní
+              sdělení nést, takže i ten, kdo ho měnit nesmí, má vidět, že chybí. */}
+          <ReadOnlyValue
+            label={t('general.postalAddress')}
+            value={valueWithHint(
+              workspace.postal_address === ''
+                ? t('general.postalAddressEmpty')
+                : workspace.postal_address,
+              t('general.postalAddressHint'),
+            )}
+          />
         </div>
       </Card>
     );
@@ -193,6 +205,27 @@ export function GeneralForm({
           hint={t('general.timezoneHint')}
           errors={fieldErrors}
         />
+
+        {/* Poštovní adresa odesílatele. Je to víceřádkový údaj (firma, ulice,
+            město), proto textové pole, a sází se do patičky přesně tak, jak ji
+            uživatel napíše. Hodnotu bere merge tag `{{ workspace.sender_address }}`
+            ve výchozí patičce; dokud je prázdná, odchází patička bez adresy
+            a kontrolní seznam před odesláním na to upozorní. */}
+        <Field
+          label={t('general.postalAddress')}
+          hint={t('general.postalAddressHint')}
+          {...(fieldErrors['postal_address']
+            ? { error: fieldErrors['postal_address'].join(' ') }
+            : {})}
+        >
+          <Textarea
+            name="postal_address"
+            rows={3}
+            maxLength={500}
+            defaultValue={workspace.postal_address}
+            placeholder={t('general.postalAddressPlaceholder')}
+          />
+        </Field>
 
         {/* Hlavní akce karty stojí vlevo dole, jako „Nastavit jako výchozí"
             v sekci Výchozí seznam projektu na detailu seznamu. */}

@@ -81,11 +81,19 @@ export const MAINTENANCE_BYPASS_TABLES: readonly string[] = ['web_events'];
  * ne `maintenance_bypass`, a je to rozdíl v podstatě, ne v názvu: bypass je
  * `USING (true)` pro všechny příkazy, kdežto scan je `FOR SELECT` a nic víc.
  *
- * Proč zrovna tyhle tři:
+ * Proč zrovna tyhle:
  *   workspaces     ... plánovač kampaní a rekonciliace outboxu potřebují výčet
  *                      projektů; bez něj se naplánovaná kampaň NEODEŠLE
  *   campaigns      ... hlídač běžících a obnova po vyčerpané kvótě
  *   sender_domains ... rekontrola odesílacích domén
+ *   imports        ... obnova zaseknutých importů (migrace 0024). Bez ní zůstane
+ *                      po zabitém workeru řádek ve stavu `importing` a projekt
+ *                      už nespustí ŽÁDNÝ další import (`import_already_running`)
+ *   segments       ... plánovač přepočtu zastaralých segmentů (migrace 0024)
+ *
+ * U posledních dvou je grant SLOUPCOVÝ, ne na celou tabulku: `imports` nese
+ * `filename` a `error_summary` s ukázkami hodnot z nahraného CSV, `segments`
+ * nese `definition`. Sken z nich čte jen identifikaci a řídicí sloupce.
  *
  * Nic dalšího tu být nesmí. Jakmile úloha zná ID projektu, pokračuje pod
  * aplikační rolí v kontextu toho projektu a dopadá na ni RLS jako na cokoli
@@ -95,6 +103,8 @@ export const MAINTENANCE_SCAN_TABLES: readonly string[] = [
   'workspaces',
   'campaigns',
   'sender_domains',
+  'imports',
+  'segments',
 ];
 
 const WS_ISOLATION_TABLES = [
@@ -239,6 +249,10 @@ export const EXTRA_POLICIES: Readonly<Record<string, readonly string[]>> = {
   // Systémové skeny napříč projekty (migrace 0009), jen pro čtení.
   campaigns: ['maintenance_scan'],
   sender_domains: ['maintenance_scan'],
+  // Migrace 0024, tytéž skeny na dvou dalších tabulkách. Politika je stejná
+  // (`FOR SELECT ... USING (true)`), grant je proti 0009 SLOUPCOVÝ.
+  imports: ['maintenance_scan'],
+  segments: ['maintenance_scan'],
 };
 
 /** Úplný seznam očekávaných politik na tabulce, včetně těch doplňkových. */

@@ -27,6 +27,7 @@ import { cn } from '../../lib/cn';
  * což je v návrhu jiný prvek s jinými rozměry.
  */
 export function Topbar({
+  navToggle,
   workspaceSwitcher,
   onOpenSearch,
   onOpenHelp,
@@ -35,6 +36,13 @@ export function Topbar({
   userMenu,
   labels,
 }: {
+  /**
+   * Tlačítko hlavního menu, ÚPLNĚ VLEVO a jen na úzkém displeji. Dodává ho
+   * skořápka aplikace, protože otevírá vysouvací panel, jehož stav drží ona.
+   * Stojí před značkou schválně: pod 768 px je to jediná cesta do navigace,
+   * a co je nejdůležitější, patří tam, kde palec začíná číst řádek.
+   */
+  navToggle?: React.ReactNode;
   workspaceSwitcher: React.ReactNode;
   onOpenSearch?: (() => void) | undefined;
   onOpenHelp?: (() => void) | undefined;
@@ -47,8 +55,13 @@ export function Topbar({
   return (
     <header
       className={cn(
-        'sticky top-0 z-[var(--z-topbar)] flex items-center gap-[var(--spacing-card)]',
-        'min-h-[var(--size-topbar)] border-b border-border bg-surface px-[var(--spacing-card)]',
+        'sticky top-0 z-[var(--z-topbar)] flex items-center',
+        'min-h-[var(--size-topbar)] border-b border-border bg-surface',
+        // Mezera i vnitřní okraj se na úzkém displeji stahují. S pevnými 30 px
+        // na obou stranách a mezi třemi prvky si sama hlavička vezme 120 px
+        // z 375 px šířky a její obsah se pak nemá kam vejít.
+        'gap-[var(--spacing-stack)] px-[var(--spacing-stack)]',
+        'sm:gap-[var(--spacing-card)] sm:px-[var(--spacing-card)]',
       )}
     >
       <a
@@ -58,7 +71,9 @@ export function Topbar({
         {labels.skipToContent}
       </a>
 
-      <span className="flex items-center gap-[var(--spacing-inline)]">
+      {navToggle}
+
+      <span className="flex shrink-0 items-center gap-[var(--spacing-inline)]">
         <span
           aria-hidden
           className={cn(
@@ -68,14 +83,21 @@ export function Topbar({
         >
           <Mail className="icon-md" />
         </span>
-        <span className="text-h3 font-semibold tracking-[var(--tracking-heading)] whitespace-nowrap text-text">
+        {/* NÁZEV PRODUKTU SE POD 640 px SKRÝVÁ, značka zůstává. Text má
+            `whitespace-nowrap`, takže se nezalomí ani nezúží, a 145 px z 375 px
+            je čtvrtina hlavičky za údaj, který uživatel při každodenní práci
+            nepotřebuje. Žlutý čtverec s obálkou nese identitu sám. */}
+        <span className="hidden text-h3 font-semibold tracking-[var(--tracking-heading)] whitespace-nowrap text-text sm:inline">
           Mlain Mailer
         </span>
       </span>
 
-      {workspaceSwitcher}
+      {/* Přepínač projektů je JEDINÝ prvek hlavičky, který se smí zúžit: název
+          projektu se dá zkrátit třemi tečkami, kdežto avatar ani odznak úloh
+          ne. `min-w-0` je povinné, jinak flexový prvek pod svůj obsah nejde. */}
+      <div className="flex min-w-0 shrink">{workspaceSwitcher}</div>
 
-      <div className="ml-auto flex items-center gap-[var(--spacing-stack)]">
+      <div className="ml-auto flex shrink-0 items-center gap-[var(--spacing-inline)] sm:gap-[var(--spacing-stack)]">
         {meta ? <span className="font-mono text-meta text-text-muted">{meta}</span> : null}
 
         {onOpenSearch ? (

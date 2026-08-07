@@ -1,4 +1,5 @@
-import { needsDependencies } from '../../queues';
+import { once } from '../../queues';
+import { cleanupConversationsJob } from './system-deps';
 
 /**
  * Vstupní bod, který hledá codegen workeru (P01, rozhodnutí D4). Fronty samotné
@@ -14,15 +15,19 @@ import { needsDependencies } from '../../queues';
  * do `src/content/jobs/queue-handlers.ts`, i když logika extrakce bydlí
  * v `src/brand` (rozhodnutí D15).
  */
-// Obsluhy, které potřebují injektované závislosti, se registrují přes
-// `needsDependencies`: funkce existují a mají testy, ale továrnu jejich `deps`
-// v repu nikdo nedodal, takže se nedají složit. Fronta se zaregistruje a při
-// první úloze řekne nahlas, co chybí.
-//
-// Ostatní obsluhy se obalují `perJob`: pg-boss volá handler s DÁVKOU úloh,
-// kdežto tyhle funkce berou jednu. Bez obalu by dostaly pole, sáhly na `.data`
-// a dostaly `undefined`. Fronty by se přitom zaregistrovaly a worker naběhl,
-// takže by se to poznalo teprve na první skutečně zpracované úloze.
 export const handlers = {
-  'ai.cleanup_conversations': needsDependencies('ai.cleanup_conversations', 'CleanupDeps'),
+  /*
+   * RETENCE KONVERZACÍ.
+   *
+   * Dřív tu stálo `needsDependencies('ai.cleanup_conversations', 'CleanupDeps')`,
+   * protože továrnu závislostí nikdo nenapsal. Úloha proto každou noc spadla se
+   * stejnou hláškou a konverzace se nesmazaly nikdy, tedy ani po lhůtě, kterou
+   * si provozovatel nastavil v `AI_CONVERSATION_RETENTION_DAYS`. Továrna je
+   * v `system-deps.ts`.
+   *
+   * `once`, ne `perJob`: cron posílá tik s prázdným nákladem, takže víc úloh
+   * v dávce znamená víc tiků, ne víc práce. `perJob` by úklid pustil tolikrát,
+   * kolik se tiků nakupilo, a druhý průchod by nenašel nic.
+   */
+  'ai.cleanup_conversations': once(() => cleanupConversationsJob()),
 } as const;

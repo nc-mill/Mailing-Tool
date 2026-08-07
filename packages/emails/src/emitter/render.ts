@@ -7,6 +7,7 @@ import type { NormalizedDocument } from '../normalize/index';
 import { RawSlotSink } from '../normalize/slots';
 import { SectionBlockView } from './blocks/section';
 import type { EmitterState } from './ctx';
+import { PageShell } from './page-shell';
 import { EmailShell } from './shell';
 
 export type RenderOptions = {
@@ -22,6 +23,15 @@ export type RenderOptions = {
   rawNonce?: string | undefined;
   /** Nabízí projekt centrum předvoleb? Vynechání znamená ano, viz `EmitterState`. */
   preferenceCenterEnabled?: boolean | undefined;
+  /**
+   * Obal dokumentu. Vynechání znamená e-mail.
+   *
+   * Je to VOLBA V TÉTO CESTĚ, ne druhá vykreslovací cesta. Bloky, motiv, sloty
+   * i deterministické úpravy výstupu jsou pro stránku a pro e-mail tytéž;
+   * kdyby si stránka nesla vlastní render, rozešly by se v první opravě, která
+   * by se udělala jen v jednom z nich.
+   */
+  shell?: 'email' | 'page' | undefined;
 };
 
 /** Texty dodávané produktem. Zatím jen oddělovače prostého textu, patička je v props bloku. */
@@ -48,18 +58,25 @@ export async function renderDocumentHtml(options: RenderOptions): Promise<string
 
   // Stav prochází stromem jako vlastnost `emitter`, ne React kontextem.
   // Důvod je v komentáři u `EmitterState`.
-  const tree = createElement(
-    EmailShell,
-    {
-      emitter: state,
-      language: normalized.doc.meta.language,
-      title: normalized.doc.meta.name,
-      preheader: options.preheader ?? normalized.doc.meta.previewText,
-    },
-    ...normalized.doc.blocks.map((section) =>
-      createElement(SectionBlockView, { key: section.id, block: section, emitter: state }),
-    ),
+  const sections = normalized.doc.blocks.map((section) =>
+    createElement(SectionBlockView, { key: section.id, block: section, emitter: state }),
   );
+  const shellProps = {
+    emitter: state,
+    language: normalized.doc.meta.language,
+    title: normalized.doc.meta.name,
+  };
+  // Větev, ne jeden `createElement` s nepovinným preheaderem: `PageShell`
+  // vlastnost `preheader` vůbec nemá a povinná v `EmailShell` zůstat musí,
+  // jinak by e-mail mohl odejít bez textu, který schránka ukazuje v seznamu.
+  const tree =
+    options.shell === 'page'
+      ? createElement(PageShell, shellProps, ...sections)
+      : createElement(
+          EmailShell,
+          { ...shellProps, preheader: options.preheader ?? normalized.doc.meta.previewText },
+          ...sections,
+        );
 
   let html = await render(tree);
   // D5: React vkládá mezi dva sousední textové uzly oddělovač. Náš vlastní

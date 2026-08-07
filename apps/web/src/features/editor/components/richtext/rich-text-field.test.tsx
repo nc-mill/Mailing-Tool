@@ -72,6 +72,34 @@ describe('RichTextField', () => {
     expect(screen.queryByRole('button', { name: /Odrážky/ })).toBeNull();
   });
 
+  /**
+   * ESC V POLI PRO ADRESU ZAVÍRÁ JEN ŘÁDEK S ODKAZEM.
+   *
+   * Naměřená vada: plátno mělo Esc obsloužený před pojistkou pro vlastní
+   * obsluhu, takže stisk v tomhle poli ukončil psaní celého textu. Zavřít
+   * řádek patří tomu, komu řádek patří, tedy liště.
+   */
+  it('Escape v poli pro adresu zavře jen řádek s odkazem', async () => {
+    wrap(
+      <RichTextField
+        id="r4"
+        value={[{ t: 'p', children: [] }]}
+        onChange={vi.fn()}
+        allowLists
+        fieldCatalog={catalog}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: /Odkaz/ }));
+    const url = screen.getByRole('textbox', { name: /Adresa odkazu/ });
+    await userEvent.type(url, 'https://example.com');
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.queryByRole('textbox', { name: /Adresa odkazu/ })).toBeNull();
+    // Psaní textu pokračuje: pole pro text zůstalo na obrazovce.
+    expect(screen.getByRole('textbox', { name: /Text bloku/ })).toBeInTheDocument();
+  });
+
   it('psaní vyvolá změnu v modelu, ne v HTML řetězci', async () => {
     const onChange = vi.fn();
     wrap(

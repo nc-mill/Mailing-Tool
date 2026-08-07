@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ListDetail, type ListDetailData } from './list-detail';
@@ -21,13 +21,18 @@ const setPublic = vi.fn().mockResolvedValue({ status: 'success' });
 const createEmail = vi.fn().mockResolvedValue({ status: 'success', templateId: 't-1' });
 const makeDefault = vi.fn().mockResolvedValue({ status: 'success' });
 const toggleEmail = vi.fn().mockResolvedValue({ status: 'success' });
+const savePageChoice = vi.fn().mockResolvedValue({ status: 'success' });
+const createPage = vi.fn().mockResolvedValue({ status: 'success', templateId: 'page-9' });
+const saveScope = vi.fn().mockResolvedValue({ status: 'success' });
 
 vi.mock('./list-email-actions', () => ({
   createListEmailTemplateAction: (...args: unknown[]) => createEmail(...args),
   detachListEmailTemplateAction: vi.fn().mockResolvedValue({ status: 'success' }),
   setListEmailEnabledAction: (...args: unknown[]) => toggleEmail(...args),
   saveListBasicsAction: vi.fn().mockResolvedValue({ status: 'success' }),
-  saveListRedirectsAction: vi.fn().mockResolvedValue({ status: 'success' }),
+  saveListPageChoiceAction: (...args: unknown[]) => savePageChoice(...args),
+  createListPageAction: (...args: unknown[]) => createPage(...args),
+  saveListUnsubscribeScopeAction: (...args: unknown[]) => saveScope(...args),
   setDefaultListAction: (...args: unknown[]) => makeDefault(...args),
 }));
 
@@ -58,6 +63,13 @@ const list: ListDetailData = {
   confirmation_max_resends: 3,
   confirm_redirect_url: '',
   unsubscribe_redirect_url: '',
+  already_subscribed_redirect_url: '',
+  confirmed_template_id: null,
+  already_subscribed_template_id: null,
+  unsubscribed_template_id: null,
+  // Výchozí rozsah je „jen z tohohle seznamu". Ta druhá volba navíc blokuje
+  // adresu pro celý projekt, takže se na ni přepíná vědomě.
+  unsubscribe_scope: 'list',
   is_default: false,
   // Tři e-maily seznamu ve výchozím stavu: obecné znění, uvítání i rozloučení vypnuté.
   emails: [
@@ -73,6 +85,26 @@ const list: ListDetailData = {
   ],
 };
 
+/** Knihovna veřejných stránek projektu. Sdílená, odkaz na ni je u seznamu vlastní. */
+const PAGES = [
+  { id: 'page-1', name: 'Hotovo' },
+  { id: 'page-2', name: 'Sbohem' },
+];
+
+/*
+ * Radix Select se v jsdom neobejde bez těchhle metod. Chybí tam, takže by
+ * rozbalení nabídky spadlo dřív, než se test dostane k tomu, co měří.
+ */
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.setPointerCapture ??= () => {};
+Element.prototype.releasePointerCapture ??= () => {};
+Element.prototype.scrollIntoView ??= () => {};
+
+/** Jeden řádek karty „Stránky pro návštěvníka". */
+function row(surface: 'confirmed' | 'already-subscribed' | 'unsubscribed'): HTMLElement {
+  return screen.getByTestId(`list-page-${surface}-row`);
+}
+
 function renderDetail(overrides: Partial<ListDetailData> = {}) {
   return renderWithProviders(
     <ListDetail
@@ -81,12 +113,16 @@ function renderDetail(overrides: Partial<ListDetailData> = {}) {
       workspaceId="w-1"
       language="cs"
       list={{ ...list, ...overrides }}
+      pages={PAGES}
     />,
   );
 }
 
 beforeEach(() => {
   setMode.mockClear();
+  savePageChoice.mockClear();
+  createPage.mockClear();
+  saveScope.mockClear();
 });
 
 describe('ListDetail', () => {
@@ -352,5 +388,162 @@ describe('archivace seznamu', () => {
     await user.click(screen.getByRole('button', { name: 'Archivovat seznam' }));
 
     expect(await screen.findByText(/Seznam se nepodařilo archivovat \(forbidden\)/)).toBeVisible();
+  });
+
+  /**
+   * PROTIMLUV, KVŮLI KTERÉMU TAHLE SKUPINA VZNIKLA. Karta potvrzovacího e-mailu
+   * tvrdila „nejde vypnout" i na seznamu, který přihlašuje rovnou a kde se ten
+   * e-mail při běžném přihlášení vůbec neposílá. Zdrojem pravdy je `opt_in`.
+   */
+  describe('potvrzovací e-mail vůči způsobu přihlášení', () => {
+    it('u dvojího potvrzení řekne, že vypnout nejde, a proč', () => {
+      renderDetail({ double_opt_in: true });
+      expect(screen.getByText('nejde vypnout')).toBeVisible();
+      expect(screen.getByText(/dostane každý, kdo se přihlásí/)).toBeVisible();
+    });
+
+    it('u jednoduchého přihlášení netvrdí, že nejde vypnout', () => {
+      renderDetail({ double_opt_in: false });
+      expect(screen.queryByText('nejde vypnout')).not.toBeInTheDocument();
+      expect(screen.getByText('posílá se jen výjimečně')).toBeVisible();
+    });
+
+    it('u jednoduchého přihlášení vyjmenuje dva případy, kdy e-mail přesto odejde', () => {
+      renderDetail({ double_opt_in: false });
+      expect(screen.getByText(/vrací někdo, kdo se dřív odhlásil/)).toBeVisible();
+      expect(screen.getByText(/vypršel dřív vydaný potvrzovací odkaz/)).toBeVisible();
+    });
+  });
+
+  describe('rozsah odhlášení', () => {
+    it('vybraná volba odpovídá datům', () => {
+      renderDetail({ unsubscribe_scope: 'global' });
+      expect(screen.getByRole('radio', { name: 'Odhlásit ze všech seznamů' })).toBeChecked();
+    });
+
+    /**
+     * Volba mění víc než rozsah: globální odhlášení zapíše adresu mezi blokované
+     * pro celý projekt. Bez téhle věty by si tím šlo omylem zablokovat vlastní
+     * databázi kontaktů.
+     */
+    it('u volby ze všech seznamů řekne i to, že se adresa zablokuje pro celý projekt', async () => {
+      const user = userEvent.setup();
+      renderDetail();
+
+      await user.click(screen.getByRole('radio', { name: 'Odhlásit ze všech seznamů' }));
+
+      expect(saveScope).toHaveBeenCalledWith({
+        workspaceId: 'w-1',
+        listId: 'l-1',
+        unsubscribeScope: 'global',
+      });
+      expect(await screen.findByTestId('list-unsubscribe-scope-warning')).toHaveTextContent(
+        /mezi blokované pro celý projekt/,
+      );
+    });
+
+    it('neúspěch ohlásí a volbu vrátí zpátky', async () => {
+      const user = userEvent.setup();
+      saveScope.mockResolvedValueOnce({ status: 'error', code: 'forbidden', detail: '' });
+      renderDetail();
+
+      await user.click(screen.getByRole('radio', { name: 'Odhlásit ze všech seznamů' }));
+
+      expect(await screen.findByRole('alert')).toBeVisible();
+      expect(screen.getByRole('radio', { name: 'Odhlásit jen z tohohle seznamu' })).toBeChecked();
+    });
+  });
+
+  /**
+   * Trojice voleb u každého kroku, viz plán
+   * `docs/superpowers/plans/2026-08-07-designovatelne-verejne-stranky.md`.
+   */
+  describe('stránky pro návštěvníka', () => {
+    it('řekne u potvrzení i u už přihlášeného, že nastavení na formuláři má přednost', () => {
+      renderDetail();
+      expect(screen.getAllByText(/Nastavení na formuláři má přednost/)).toHaveLength(2);
+    });
+
+    it('u kroku po odhlášení naopak řekne, že ho vlastní jen seznam', () => {
+      renderDetail();
+      expect(screen.getByText(/Tenhle krok vlastní jen seznam/)).toBeInTheDocument();
+    });
+
+    it('vlastní stránka se uloží a přesměrování se přitom vynuluje', async () => {
+      const user = userEvent.setup();
+      renderDetail();
+
+      await user.click(within(row('confirmed')).getByRole('radio', { name: /Vlastní stránka/ }));
+      await user.click(within(row('confirmed')).getByRole('combobox'));
+      await user.click(screen.getByRole('option', { name: 'Hotovo' }));
+
+      await waitFor(() => {
+        expect(savePageChoice).toHaveBeenCalledWith({
+          workspaceId: 'w-1',
+          listId: 'l-1',
+          surface: 'confirmed',
+          templateId: 'page-1',
+          // Trojice je jedna volba: připojená stránka a přesměrování si odporují.
+          redirectUrl: null,
+        });
+      });
+    });
+
+    it('návrat na výchozí text uloží null v obou polích', async () => {
+      const user = userEvent.setup();
+      renderDetail({ confirmed_template_id: 'page-1' });
+
+      await user.click(within(row('confirmed')).getByRole('radio', { name: /Výchozí text/ }));
+
+      await waitFor(() => {
+        expect(savePageChoice).toHaveBeenCalledWith({
+          workspaceId: 'w-1',
+          listId: 'l-1',
+          surface: 'confirmed',
+          templateId: null,
+          redirectUrl: null,
+        });
+      });
+    });
+
+    it('adresu bez https ani neuloží a řekne proč', async () => {
+      const user = userEvent.setup();
+      renderDetail();
+
+      await user.click(
+        within(row('unsubscribed')).getByRole('radio', { name: /Přesměrovat na web/ }),
+      );
+      await user.type(screen.getByTestId('list-page-unsubscribed-redirect'), 'example.com/sbohem');
+      await user.tab();
+
+      expect(savePageChoice).not.toHaveBeenCalled();
+      expect(await screen.findByText(/celá, včetně https/)).toBeInTheDocument();
+    });
+
+    it('stránku pro už přihlášeného uloží a upozorní, co tím prozradí', async () => {
+      const user = userEvent.setup();
+      renderDetail();
+
+      expect(screen.getByText(/prozradíte, že ta adresa u vás v databázi je/)).toBeInTheDocument();
+
+      await user.click(
+        within(row('already-subscribed')).getByRole('radio', { name: /Přesměrovat na web/ }),
+      );
+      await user.type(
+        screen.getByTestId('list-page-already-subscribed-redirect'),
+        'https://example.com/uz-jste-u-nas',
+      );
+      await user.tab();
+
+      await waitFor(() => {
+        expect(savePageChoice).toHaveBeenCalledWith({
+          workspaceId: 'w-1',
+          listId: 'l-1',
+          surface: 'already_subscribed',
+          templateId: null,
+          redirectUrl: 'https://example.com/uz-jste-u-nas',
+        });
+      });
+    });
   });
 });

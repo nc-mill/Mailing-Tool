@@ -8,6 +8,73 @@ export type ConsentPurpose =
   'email_marketing' | 'analytics' | 'personalization' | 'profiling' | 'third_party';
 
 /**
+ * ÚČEL, POD KTERÝM SE VEDE SOUHLAS S MĚŘENÍM CHOVÁNÍ.
+ *
+ * Měření se NEVEDE jako vlastní sloupec na `contacts` a ani se nemá. Účel
+ * `analytics` v téhle struktuře existuje od migrace 0001 (`ck_consents__purpose`),
+ * bere ho `POST /contacts/{id}/consents`, umí ho podmínka segmentu i obrazovka
+ * historie souhlasů. Druhý zápisník s vlastním pravidlem by znamenal dvě
+ * evidence téhož souhlasu, které se dřív nebo později rozejdou, a u souhlasu
+ * je rozpor právní vada, ne kosmetická.
+ *
+ * Sem se tedy nic nepřidává, jen se pojmenovává to, co už tu je, aby měření
+ * nesahalo na holý řetězec.
+ */
+export const MEASUREMENT_PURPOSE = 'analytics' satisfies ConsentPurpose;
+
+/**
+ * Stav souhlasu s měřením u JEDNOHO kontaktu.
+ *
+ * Tři hodnoty, ne dvě. `not_recorded` není totéž co `withdrawn` a ani totéž co
+ * `granted`: znamená, že o měření tenhle člověk nikdy nic neřekl. Kdyby se
+ * schovalo do jedné ze zbylých dvou, obrazovka by buď tvrdila souhlas, který
+ * nikdo nedal, nebo odvolání, které nikdo neprovedl.
+ */
+export type MeasurementConsent = 'granted' | 'withdrawn' | 'not_recorded';
+
+/**
+ * SMÍ SE CHOVÁNÍ TOHOHLE KONTAKTU MĚŘIT ADRESNĚ? Jediné místo, kde se na to
+ * odpovídá. Ptá se na něj příjem webových událostí, vazba anonymního ID,
+ * slučování historie i zápis otevření a prokliků do časové osy.
+ *
+ * VÝCHOZÍ HODNOTA JE „MĚŘIT SE SMÍ" A JE TO VĚDOMÉ ROZHODNUTÍ. Zdůvodnění:
+ *
+ *  - Souhlas s měřením se u návštěvníka VYBÍRÁ UŽ DNES, jen jinde: SDK má
+ *    `ConsentGate` (`packages/sdk-web/src/consent.ts`) a dokud zákazníkova
+ *    lišta nezavolá `Mlain.consent({ analytics: true })`, prohlížeč neuloží
+ *    ani `anonymous_id` a neodešle jedinou událost. Nad tím stojí ještě
+ *    projektový přepínač `tracking.web_tracking_enabled`. Adresné měření
+ *    tedy NENÍ bez souhlasu ani dnes, jen ten souhlas dosud nešlo vést u osoby.
+ *  - Kdyby chybějící záznam znamenal zákaz, přestalo by měření po nasazení
+ *    naráz VŠEM kontaktům v každé instalaci: `contact_consent_state` nemá pro
+ *    účel `analytics` dnes ani jeden řádek. Časové osy by se zastavily,
+ *    segmenty podle chování by přestaly nikoho nacházet a nikde by nebylo
+ *    vidět proč. To není opatrnost, to je tichá regrese.
+ *  - Odvodit to od souhlasu se zasíláním by bylo horší než obojí: souhlas
+ *    s newsletterem není souhlasem se sledováním chování a odhlášení z pošty
+ *    by lidem navíc mazalo měření, o kterém odhlášení nebylo.
+ *
+ * Záznam s `withdrawn` je proto VETO: platí okamžitě, všude a beze změny
+ * ostatních vrstev. Absence záznamu se nevydává za souhlas, obrazovka ji
+ * ukazuje jako `not_recorded`, tedy „nikdo se nevyjádřil".
+ */
+export function allowsMeasurement(state: MeasurementConsent): boolean {
+  return state !== 'withdrawn';
+}
+
+/**
+ * Převod stavu z databáze na `MeasurementConsent`. Bere `null` (řádek chybí)
+ * i neznámou hodnotu, protože `contact_consent_state.status` je textový sloupec
+ * a přepisovat neznámý stav na `granted` by byl přesně ten tichý souhlas,
+ * kterému se celá tahle část vyhýbá.
+ */
+export function toMeasurementConsent(status: string | null | undefined): MeasurementConsent {
+  if (status === 'withdrawn') return 'withdrawn';
+  if (status === 'granted') return 'granted';
+  return 'not_recorded';
+}
+
+/**
  * Řádek souhlasu tak, jak ho čte doména. Časy jsou `Date`, i když je ovladač vydává
  * jako řetězec.
  *
@@ -152,7 +219,25 @@ export type EffectiveConsent = {
 };
 
 /**
- * PLATNÝ SOUHLAS PRO PŘIHLÁŠENÍ DO SEZNAMU. Jediné místo, kde se na tuhle otázku odpovídá.
+ * Nejmenší tvar řádku, ze kterého jde o platnosti souhlasu rozhodnout.
+ *
+ * Je schválně širší než `ConsentRow`, aby na něj sedla i odpověď API
+ * (`GET /contacts/{id}/consents`). Rozhraní se tak může zeptat TÉHOŽ pravidla
+ * jako server, místo aby si ho opsalo.
+ */
+export type ConsentPrecedenceRow = {
+  scope_list_id: string | null;
+  status: 'granted' | 'withdrawn';
+  purpose: string;
+};
+
+/**
+ * PRAVIDLO PŘEDNOSTI SOUHLASŮ. Jediné místo, kde se na otázku „máme doložený
+ * souhlas pro tenhle seznam?" odpovídá.
+ *
+ * Čistá funkce nad řádky SEŘAZENÝMI OD NEJNOVĚJŠÍHO. Je oddělená od dotazu
+ * schválně: rozhoduje o ní i rozhraní, které řádky dostává z API, a dvě kopie
+ * tohohle pravidla by se rozešly na něčem, co se pozná až v doručené poště.
  *
  * PROČ TO NEČTE `contact_consent_state`. Odvozená tabulka má klíč (contact_id, purpose)
  * a rozsah souhlasu v ní NENÍ. Souhlas udělený pro jeden seznam by tedy vypadal stejně
@@ -170,14 +255,36 @@ export type EffectiveConsent = {
  * Souhlas pro CIZÍ seznam se do porovnání nedostane vůbec, ani jako doklad,
  * ani jako odvolání.
  *
+ * POZOR: tohle NENÍ brána odesílání. Zablokovanou adresu, odhlášení a stav kontaktu
+ * řeší `mailable.ts` a stavový automat. Odpovídá to na jedinou otázku:
+ * „máme doložený souhlas, nebo si o něj musíme napsat?"
+ */
+export function pickEffectiveConsent<Row extends ConsentPrecedenceRow>(
+  newestFirst: readonly Row[],
+  input: { listId: string; purpose?: ConsentPurpose },
+): Row | null {
+  const purpose = input.purpose ?? 'email_marketing';
+  const row = newestFirst.find(
+    (candidate) =>
+      candidate.purpose === purpose &&
+      (candidate.scope_list_id === null || candidate.scope_list_id === input.listId),
+  );
+  if (row === undefined || row.status !== 'granted') return null;
+  return row;
+}
+
+/**
+ * PLATNÝ SOUHLAS PRO PŘIHLÁŠENÍ DO SEZNAMU, čtený z databáze.
+ *
+ * Sám nerozhoduje, jen dodá `pickEffectiveConsent` řádky ve správném pořadí.
+ * Rozsah se ve WHERE ZÁMĚRNĚ NEFILTRUJE, přestože by to šlo: byla by to druhá
+ * kopie téhož pravidla a stačilo by opravit jen jednu z nich. Řádků souhlasu má
+ * kontakt jednotky, takže se tím nic neplatí.
+ *
  * ŘAZENÍ MÁ DVĚ ÚROVNĚ. `occurred_at` může nést historické datum z importu a dva řádky
  * můžou mít tentýž čas; `id` je uuid v7 (rostoucí v čase), takže rozhoduje pořadí zápisu.
  * Bez druhé úrovně by se u shodného času vybral libovolný řádek a odvolání by se dalo
  * přehlédnout, což je přesně ta chyba, kterou si nikdo nevšimne.
- *
- * POZOR: tohle NENÍ brána odesílání. Zablokovanou adresu, odhlášení a stav kontaktu
- * řeší `mailable.ts` a stavový automat. Tahle funkce odpovídá na jedinou otázku:
- * „máme doložený souhlas, nebo si o něj musíme napsat?"
  */
 export async function findEffectiveConsent(
   ctx: WorkspaceContext,
@@ -188,23 +295,22 @@ export async function findEffectiveConsent(
   const run = async (t: Tx): Promise<EffectiveConsent | null> => {
     const { rows } = await t.execute<{
       id: string;
+      purpose: string;
       scope_list_id: string | null;
       status: 'granted' | 'withdrawn';
       legal_basis: string;
       source: string;
       occurred_at: string | Date;
     }>(sql`
-      SELECT id, scope_list_id, status, legal_basis, source, occurred_at
+      SELECT id, purpose, scope_list_id, status, legal_basis, source, occurred_at
         FROM consents
        WHERE workspace_id = ${ctx.workspaceId}::uuid
          AND contact_id = ${input.contactId}::uuid
          AND purpose = ${purpose}
-         AND (scope_list_id IS NULL OR scope_list_id = ${input.listId}::uuid)
        ORDER BY occurred_at DESC, id DESC
-       LIMIT 1
     `);
-    const row = rows[0];
-    if (row === undefined || row.status !== 'granted') return null;
+    const row = pickEffectiveConsent(rows, { listId: input.listId, purpose });
+    if (row === null) return null;
     return {
       consentId: row.id,
       scopeListId: row.scope_list_id,

@@ -13,7 +13,9 @@ process.env['MIGRATE_ON_START'] ??= 'false';
 
 const { withTestWorkspace } = await import('../campaigns/test/harness');
 const { rawSql } = await import('../campaigns/repo/raw-sql');
-const { withWorkspace } = await import('../tx');
+const { withWorkspace, withoutContext } = await import('../tx');
+const { readInstallationSystemMailWorkspace, rememberInstallationSystemMailWorkspace } =
+  await import('./system-mail-installation');
 const { encryptProviderConfig } = await import('../providers/crypto');
 const { queueSystemMail } = await import('./system-mail');
 const { installSystemMailer, resetSystemMailerInstallation } =
@@ -253,39 +255,126 @@ describe('systémová pošta dorazí do schránky', () => {
   }, 60_000);
 
   /**
-   * Účet typu SES nesmí přebít účet typu SMTP, i když je výchozí. Odsud umí
-   * odeslat jen SMTP, takže projekt s výchozím SES a vedle toho s SMTP účtem
-   * musí použít ten SMTP. Přesně tenhle tvar má vývojová instalace.
+   * O účtu rozhoduje `is_default`, ne typ.
+   *
+   * PŘEDCHOZÍ PODOBA TOHOHLE TESTU MĚŘILA OPAK: „výchozí účet SES nezastíní účet
+   * SMTP". Tehdy to bylo správně, protože odsud uměl odeslat jen SMTP a jiná
+   * volba by znamenala neodeslanou poštu. Od doplnění větve pro SES odešlou oba
+   * typy, takže přednost podle typu by uživateli měnila adresu odesílatele za
+   * zády: v nastavení by viděl jako výchozí jeden účet a pošta by chodila
+   * z domény druhého.
    */
-  it('výchozí účet SES nezastíní účet SMTP', async () => {
+  it('rozhoduje výchozí účet, ne typ účtu', async () => {
     if (!available) return;
     resetSystemMailerInstallation();
     installSystemMailer();
 
     const ctx = await withTestWorkspace();
+    // Výchozí je past; index `uq_sending_providers__one_default` druhý výchozí nedovolí.
+    await seedSmtpAccount(ctx as never, true);
     await withWorkspace(ctx.workspace, (tx) =>
       tx.execute(
         rawSql(
           `INSERT INTO sending_providers
              (id, workspace_id, name, type, config_encrypted, config_public, status, is_default)
-           VALUES ($1, $2, 'SES', 'ses', 'enc:test', '{}'::jsonb, 'ready', true)`,
+           VALUES ($1, $2, 'SES', 'ses', 'enc:test', '{}'::jsonb, 'ready', false)`,
           [randomUUID(), ctx.workspaceId],
         ),
       ),
     );
-    // Výchozí je ten SES; index `uq_sending_providers__one_default` druhý výchozí nedovolí.
-    await seedSmtpAccount(ctx as never, false);
 
-    const to = `ses-vs-smtp-${Date.now()}@example.test`;
+    const to = `vychozi-ucet-${Date.now()}@example.test`;
     await queueSystemMail({
       template: 'trial_address_verification',
       to,
       locale: 'cs',
-      data: { url: 'https://mlain.test/verify-sender/ses-vs-smtp' },
+      data: { url: 'https://mlain.test/verify-sender/vychozi-ucet' },
       workspaceId: ctx.workspaceId,
     });
 
     const message = await waitForMessage(to);
-    expect(message.text).toContain('https://mlain.test/verify-sender/ses-vs-smtp');
+    expect(message.text).toContain('https://mlain.test/verify-sender/vychozi-ucet');
+  }, 60_000);
+
+  /**
+   * ROZHODNUTÍ R2 PLÁNU, KONEC NEJHORŠÍHO STAVU: uživatel odebraný z posledního
+   * projektu se nedostal k obnově hesla vůbec, protože odesílatel neměl odkud
+   * vzít odesílací účet a skončil chybou.
+   *
+   * Měří se obojí naráz, protože jedno bez druhého nefunguje: že se projekt
+   * instalace při běžném odeslání SÁM zapamatuje, a že se z něj pak odešle
+   * zpráva uživateli, který do žádného projektu nepatří.
+   */
+  it('obnova hesla dorazí i uživateli bez projektu, přes projekt instalace', async () => {
+    if (!available) return;
+    resetSystemMailerInstallation();
+    installSystemMailer();
+
+    // Klíč se čistí schválně: sourozenecké testy v tomhle souboru sdílejí jednu
+    // databázi a mohly ho vyplnit svým projektem.
+    await withoutContext((tx) =>
+      tx.execute(
+        rawSql(`UPDATE system_settings SET settings = settings #- '{systemMail,workspace_id}'`, []),
+      ),
+    );
+
+    const ctx = await withTestWorkspace();
+    await seedSmtpAccount(ctx as never);
+
+    // Obyčejné odeslání s projektem: tady se má klíč sám vyplnit.
+    const first = `pamet-${Date.now()}@example.test`;
+    await queueSystemMail({
+      template: 'invitation',
+      to: first,
+      locale: 'cs',
+      data: { url: 'https://mlain.test/invitations/accept?token=pamet' },
+      workspaceId: ctx.workspaceId,
+    });
+    await waitForMessage(first);
+    expect(await withoutContext(readInstallationSystemMailWorkspace)).toBe(ctx.workspaceId);
+
+    // Uživatel BEZ jediného členství. Přesně ten stav zná stránka `no-workspace`.
+    const loneUserId = await withoutContext(async (tx) => {
+      const r = await tx.execute<{ id: string }>(
+        rawSql(
+          `INSERT INTO users (email, password_hash, name, locale, timezone)
+           VALUES ($1, 'x', 'Bez projektu', 'cs', 'Europe/Prague') RETURNING id`,
+          [`bez-projektu-${Date.now()}@example.test`],
+        ),
+      );
+      return r.rows[0]!.id;
+    });
+
+    const to = `reset-bez-projektu-${Date.now()}@example.test`;
+    await queueSystemMail({
+      template: 'password_reset',
+      to,
+      locale: 'cs',
+      data: { url: 'https://mlain.test/reset-password?token=bez-projektu' },
+      userId: loneUserId,
+    });
+
+    const message = await waitForMessage(to);
+    expect(message.subject).toBe('Obnova hesla');
+    expect(message.text).toContain('https://mlain.test/reset-password?token=bez-projektu');
+  }, 60_000);
+
+  /**
+   * Zapamatovaný projekt se NEPŘEPISUJE. Až obrazovka Nastavení → Systémová pošta
+   * dostane volbu projektu (bod 10 plánu), bude psát do téhož klíče a tenhle
+   * mechanismus jí nesmí sahat pod ruku.
+   */
+  it('projekt instalace se zapamatuje jednou a dál se nepřepisuje', async () => {
+    const first = randomUUID();
+    const second = randomUUID();
+
+    await withoutContext(async (tx) => {
+      await tx.execute(
+        rawSql(`UPDATE system_settings SET settings = settings #- '{systemMail,workspace_id}'`, []),
+      );
+      expect(await rememberInstallationSystemMailWorkspace(tx, first)).toBe(true);
+      expect(await rememberInstallationSystemMailWorkspace(tx, second)).toBe(false);
+      expect(await readInstallationSystemMailWorkspace(tx)).toBe(first);
+    });
   }, 60_000);
 });

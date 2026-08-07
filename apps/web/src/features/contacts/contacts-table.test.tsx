@@ -1,8 +1,25 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContactsTable, type ContactRow } from './contacts-table';
 import { renderWithProviders } from './test-utils';
+
+/**
+ * Radix Popover si měří spouštěč a `cmdk` roluje na vybranou položku. jsdom neumí ani
+ * jedno, takže by se nabídka výběru seznamu a štítku vůbec neotevřela. Netýká se to toho,
+ * co se v testech měří: filtr `cmdk` běží nad hodnotami, ne nad rozměry.
+ */
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  } as unknown as typeof ResizeObserver;
+  Element.prototype.scrollIntoView ??= function scrollIntoView(): void {};
+  Element.prototype.hasPointerCapture ??= function hasPointerCapture(): boolean {
+    return false;
+  };
+});
 
 const push = vi.fn();
 vi.mock('@mlain/i18n/navigation', () => ({
@@ -16,8 +33,12 @@ const createContactExportAction = vi
 const deleteContactAction = vi.fn().mockResolvedValue({ status: 'success' });
 const unsubscribeContactAction = vi.fn().mockResolvedValue({ status: 'success' });
 
+// Rozsah hromadného mazání se ověřuje na SKUTEČNÉM volání, ne na textu v pruhu:
+// právě tím, že se pruh a odeslaný rozsah rozešly, vznikl celý nález.
+const bulkDeleteContactsAction = vi.fn().mockResolvedValue({ status: 'success' });
+
 vi.mock('./actions', () => ({
-  bulkDeleteContactsAction: vi.fn().mockResolvedValue({ status: 'success' }),
+  bulkDeleteContactsAction: (...args: unknown[]) => bulkDeleteContactsAction(...args),
   bulkTagContactsAction: vi.fn().mockResolvedValue({ status: 'success' }),
   createContactExportAction: (...args: unknown[]) => createContactExportAction(...args),
   exportStatusAction: vi.fn().mockResolvedValue({ status: 'success', state: 'completed' }),
@@ -181,6 +202,17 @@ describe('ContactsTable', () => {
     expect(push).toHaveBeenCalledWith('/w/eshop/contacts?q=novak');
   });
 
+  it('hledání nese značky, kterými správci hesel vypínají svoji nabídku', () => {
+    // Vada z provozu: nabídka uložených přihlášení se vysune nad polem a zakryje
+    // první řádky. Zavřít se nedá, patří rozšíření v prohlížeči, ne stránce.
+    renderTable();
+    const search = screen.getByRole('searchbox', { name: 'Hledat kontakt' });
+    expect(search).toHaveAttribute('data-1p-ignore', 'true');
+    expect(search).toHaveAttribute('data-lpignore', 'true');
+    expect(search).toHaveAttribute('data-bwignore', 'true');
+    expect(search).toHaveAttribute('data-form-type', 'other');
+  });
+
   it('odkaz na detail je pojmenovaný adresou, ať čtečka ví, kam vede', () => {
     renderTable();
     expect(screen.getByLabelText('Otevřít kontakt jana@firma.cz')).toHaveAttribute(
@@ -239,16 +271,64 @@ describe('ContactsTable', () => {
     expect(within(bar).getByRole('button', { name: /Vybrat všech/ })).toBeInTheDocument();
   });
 
-  it('nabídne rozšíření výběru na všechny odpovídající filtru a rozliší to slovy', async () => {
+  /*
+   * ROZDÍL MEZI „NA TÉTO STRÁNCE" A „VŠECH" MUSÍ BÝT ZE SLOV POZNAT. Je to past z 6.5:
+   * uživatel zaškrtne hlavičku, myslí si, že vybral 50 řádků, a smaže 50 000.
+   *
+   * Věta se 7. 8. 2026 na přání zadavatele zkrátila („Vybráno všech 12 480 kontaktů"
+   * místo „…kontaktů odpovídajících filtru"), ale rozlišení nezmizelo: nese ho dvojice
+   * „na této stránce" proti „všech", identitní barva pruhu a dialog mazání, který filtr
+   * pořád vypisuje slovy.
+   */
+  it('rozšíření výběru na celý filtr se od výběru na stránce liší slovy', async () => {
     const user = userEvent.setup();
     renderTable();
     const grid = screen.getByRole('grid');
     await user.click(within(grid).getAllByRole('checkbox', { name: 'Vybrat kontakt' })[0]!);
-    const expand = screen.getByRole('button', { name: /Vybrat všech/ });
-    await user.click(expand);
+
     const bar = screen.getByTestId('selection-bar');
-    expect(bar).toHaveTextContent('Vybráno všech 12 480 kontaktů odpovídajících filtru');
+    expect(bar).toHaveTextContent('Vybrán 1 kontakt na této stránce');
+
+    await user.click(within(bar).getByRole('button', { name: /Vybrat všech/ }));
+
+    expect(bar).toHaveTextContent('Vybráno všech 12 480 kontaktů');
+    expect(bar).not.toHaveTextContent('odpovídajících filtru');
     expect(within(bar).getByRole('button', { name: 'Zrušit výběr' })).toBeInTheDocument();
+  });
+
+  /*
+   * Zrušení výběru patří na KONEC řady, za poslední tlačítko akce. Přání zadavatele
+   * a platí v obou režimech, aby půlka pruhu neměla jedno pořadí a půlka druhé.
+   */
+  it('zrušení výběru stojí až za poslední akcí, a to v obou režimech', async () => {
+    const user = userEvent.setup();
+    renderTable();
+    const grid = screen.getByRole('grid');
+    await user.click(within(grid).getAllByRole('checkbox', { name: 'Vybrat kontakt' })[0]!);
+
+    const poradi = () => {
+      const bar = screen.getByTestId('selection-bar');
+      const buttons = within(bar).getAllByRole('button');
+      return {
+        zrusit: buttons.findIndex((node) => node.textContent === 'Zrušit výběr'),
+        smazat: buttons.findIndex((node) => node.textContent?.trim() === 'Smazat'),
+        posledni: buttons.length - 1,
+      };
+    };
+
+    const naStrance = poradi();
+    expect(naStrance.zrusit).toBe(naStrance.posledni);
+    expect(naStrance.zrusit).toBeGreaterThan(naStrance.smazat);
+
+    await user.click(
+      within(screen.getByTestId('selection-bar')).getByRole('button', {
+        name: /Vybrat všech/,
+      }),
+    );
+
+    const vseVFiltru = poradi();
+    expect(vseVFiltru.zrusit).toBe(vseVFiltru.posledni);
+    expect(vseVFiltru.zrusit).toBeGreaterThan(vseVFiltru.smazat);
   });
 });
 
@@ -383,23 +463,79 @@ describe('ContactsTable: potvrzení v řádku', () => {
    * filtr žije v URL a `filterDescription` se v `DataTable` používá jedině uvnitř
    * lišty výběru, tedy až po zaškrtnutí řádku.
    */
-  it('nad seznamem je vidět filtr a jde zrušit', async () => {
-    const user = userEvent.setup();
+  /*
+   * Pruh popisuje UŽ JEN TO, CO Z LIŠTY NENÍ VIDĚT. Dokud v liště žádné ovládání
+   * filtru nebylo, byl jediným místem, kde se dalo přečíst, podle čeho je seznam
+   * zúžený. Nad tlačítkem „Brno" by ale věta „Filtr: štítek Brno" jen opisovala
+   * sama sebe.
+   */
+  it('pruh neopisuje to, co je vidět na tlačítkách lišty', () => {
     renderTable({
       filters: { tag_id: 't-1' },
+      tags: [{ id: 't-1', name: 'Brno' }],
       names: { lists: {}, tags: { 't-1': 'Brno' }, segments: {} },
     });
 
-    const summary = screen.getByTestId('contacts-filter-summary');
-    expect(summary).toHaveTextContent('Filtr: štítek Brno');
+    expect(screen.getByTestId('contacts-filter-tag')).toHaveTextContent('Brno');
+    expect(screen.queryByTestId('contacts-filter-summary')).toBeNull();
+  });
 
-    await user.click(within(summary).getByRole('button', { name: 'Zrušit všechny filtry' }));
-    expect(push).toHaveBeenCalledWith('/w/eshop/contacts');
+  it('filtr bez ovládání v liště se pořád vypisuje slovy', () => {
+    renderTable({
+      // Nejisté oslovení ani stav „odražený" v liště tlačítko nemají: přepínač zná
+      // jen Všechny, Aktivní a Nepotvrzené. Bez pruhu by takový odkaz vypadal jako
+      // nefiltrovaný seznam.
+      filters: { vocative_confidence: 'low', status: 'bounced' },
+      names: { lists: {}, tags: {}, segments: {} },
+    });
+
+    const summary = screen.getByTestId('contacts-filter-summary');
+    expect(summary).toHaveTextContent('nejisté oslovení');
+    expect(summary).toHaveTextContent('stav Nedoručitelný');
+  });
+
+  it('filtr seznamu se vypíše i tehdy, když se nabídka seznamů nekreslí', () => {
+    renderTable({
+      filters: { list_id: 'l-1' },
+      lists: [],
+      names: { lists: { 'l-1': 'Zákazníci' }, tags: {}, segments: {} },
+    });
+
+    expect(screen.queryByTestId('contacts-filter-list')).toBeNull();
+    expect(screen.getByTestId('contacts-filter-summary')).toHaveTextContent('seznam Zákazníci');
   });
 
   it('bez filtru se pruh s filtrem neukazuje', () => {
     renderTable();
     expect(screen.queryByTestId('contacts-filter-summary')).toBeNull();
+  });
+
+  /*
+   * ZRUŠENÍ CELÉHO FILTRU STOJÍ NA KONCI ŘADY FILTRŮ, ne v pruhu pod ní.
+   * Přání zadavatele: „Pokud mám vybrané nějaké filtry, tak tam doprava přidej
+   * tlačítko Zrušit filtry, které je všechny odstraní."
+   */
+  it('zrušení celého filtru je na konci řady a ruší opravdu všechno', async () => {
+    const user = userEvent.setup();
+    renderTable({
+      filters: { list_id: 'l-1', tag_id: 't-1', status: 'active', q: 'novák' },
+      lists: [{ id: 'l-1', name: 'Zákazníci' }],
+      tags: [{ id: 't-1', name: 'Brno' }],
+      names: { lists: { 'l-1': 'Zákazníci' }, tags: { 't-1': 'Brno' }, segments: {} },
+    });
+
+    await user.click(screen.getByTestId('contacts-clear-filters'));
+    expect(push).toHaveBeenCalledWith('/w/eshop/contacts');
+  });
+
+  it('bez zapnutého filtru se zrušení nenabízí, nemělo by co udělat', () => {
+    renderTable();
+    expect(screen.queryByTestId('contacts-clear-filters')).toBeNull();
+  });
+
+  it('zrušení se nabízí i u filtru, který v liště vlastní ovládání nemá', () => {
+    renderTable({ filters: { vocative_confidence: 'low' } });
+    expect(screen.getByTestId('contacts-clear-filters')).toBeInTheDocument();
   });
 
   it('seznam jde vyexportovat a posílá publikum podle filtru', async () => {
@@ -615,5 +751,357 @@ describe('ContactsTable: nabídka akcí v řádku', () => {
 
     expect(await screen.findByRole('menuitem', { name: 'Upravit kontakt' })).toBeInTheDocument();
     expect(push).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ZÚŽENÍ NA SEZNAM A NA ŠTÍTEK MUSÍ JÍT ZAPNOUT NA OBRAZOVCE.
+ *
+ * Nález zadavatele ze 7. 8. 2026: „Nemám jak filtrovat kontakty z konkrétního seznamu
+ * nebo s konkrétním štítkem." API oba filtry umělo od začátku a zapnutý filtr se nad
+ * tabulkou i vypisoval, ale ovládací prvek, kterým se zapne, na obrazovce nebyl žádný:
+ * dalo se to jedině proklikem odjinud nebo dopsáním parametru do adresy.
+ */
+describe('ContactsTable: zúžení na seznam a na štítek', () => {
+  const lists = [
+    { id: 'l-1', name: 'Novinky' },
+    { id: 'l-2', name: 'Zákazníci' },
+  ];
+  const tags = [
+    { id: 't-1', name: 'Brno' },
+    { id: 't-2', name: 'Praha' },
+  ];
+
+  it('výběr seznamu zapíše filtr do adresy, ať jde výsledek poslat odkazem', async () => {
+    const user = userEvent.setup();
+    renderTable({ lists, tags });
+
+    await user.click(screen.getByTestId('contacts-filter-list'));
+    await user.click(await screen.findByRole('option', { name: 'Zákazníci' }));
+
+    expect(push).toHaveBeenCalledWith('/w/eshop/contacts?list_id=l-2');
+  });
+
+  it('výběr štítku zapisuje do téže adresy a nezahodí filtr seznamu', async () => {
+    const user = userEvent.setup();
+    renderTable({ lists, tags, filters: { list_id: 'l-1' } });
+
+    await user.click(screen.getByTestId('contacts-filter-tag'));
+    await user.click(await screen.findByRole('option', { name: 'Praha' }));
+
+    expect(push).toHaveBeenCalledWith('/w/eshop/contacts?list_id=l-1&tag_id=t-2');
+  });
+
+  /*
+   * Seznamů a štítků bývají v projektu desítky. Rozbalovátko bez hledání se u nich
+   * čte řádek po řádku, proto je nabídka tatáž hledatelná paletka jako v editoru.
+   */
+  it('nabídka jde prohledat, protože seznamů bývají desítky', async () => {
+    const user = userEvent.setup();
+    renderTable({ lists, tags });
+
+    await user.click(screen.getByTestId('contacts-filter-list'));
+    await user.type(screen.getByPlaceholderText('Hledat seznam'), 'zák');
+
+    expect(await screen.findByRole('option', { name: 'Zákazníci' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Novinky' })).toBeNull();
+  });
+
+  it('zrušit jde jen jeden filtr, ne rovnou všechny', async () => {
+    const user = userEvent.setup();
+    renderTable({ lists, tags, filters: { list_id: 'l-1', tag_id: 't-1' } });
+
+    await user.click(screen.getByTestId('contacts-filter-list'));
+    await user.click(await screen.findByRole('option', { name: 'Všechny seznamy' }));
+
+    expect(push).toHaveBeenCalledWith('/w/eshop/contacts?tag_id=t-1');
+  });
+
+  it('zapnutý filtr je na tlačítku vidět jménem, ne jen v pruhu nad tabulkou', () => {
+    renderTable({ lists, tags, filters: { list_id: 'l-1' } });
+    expect(screen.getByTestId('contacts-filter-list')).toHaveTextContent('Novinky');
+    expect(screen.getByTestId('contacts-filter-tag')).toHaveTextContent('Štítek');
+  });
+
+  it('bez jediného seznamu se výběr nekreslí, aby neotevíral prázdné okno', () => {
+    renderTable({ lists: [], tags });
+    expect(screen.queryByTestId('contacts-filter-list')).toBeNull();
+    expect(screen.getByTestId('contacts-filter-tag')).toBeInTheDocument();
+  });
+
+  /*
+   * Prázdný výsledek filtru dřív zahodil celou obrazovku i s ovládáním. Kdo si vybral
+   * seznam, ve kterém nikdo není, neměl jak přepnout na jiný: zbývalo zrušit všechno
+   * a začít znovu.
+   */
+  it('prázdný výsledek nechá ovládání na obrazovce, aby šel filtr rovnou přepnout', async () => {
+    const user = userEvent.setup();
+    renderTable({
+      rows: [],
+      total: { count: 0, precision: 'exact' },
+      lists,
+      tags,
+      filters: { list_id: 'l-1' },
+      names: { lists: { 'l-1': 'Novinky' }, tags: {}, segments: {} },
+    });
+
+    expect(screen.getByTestId('empty-state')).toBeInTheDocument();
+    // Pruh s filtrem se nad prázdným stavem neopakuje: ten si filtr vypisuje sám.
+    expect(screen.queryByTestId('contacts-filter-summary')).toBeNull();
+
+    await user.click(screen.getByTestId('contacts-filter-list'));
+    await user.click(await screen.findByRole('option', { name: 'Zákazníci' }));
+    expect(push).toHaveBeenCalledWith('/w/eshop/contacts?list_id=l-2');
+  });
+
+  it('u prázdného výsledku meta řádek netvrdí, že jsou všechny potvrzené', () => {
+    renderTable({
+      rows: [],
+      total: { count: 0, precision: 'exact' },
+      unconfirmed: 0,
+      lists,
+      tags,
+      filters: { list_id: 'l-1' },
+      names: { lists: { 'l-1': 'Novinky' }, tags: {}, segments: {} },
+    });
+    // Meta řádek pod názvem obrazovky, ne nadpis prázdného stavu: shoda je přesná.
+    expect(screen.getByText('Žádný kontakt')).toBeInTheDocument();
+    expect(screen.queryByText(/všechny potvrzené/)).toBeNull();
+  });
+
+  it('projekt bez jediného kontaktu ovládání filtru neukazuje, filtrovat není co', () => {
+    renderTable({ rows: [], total: { count: 0, precision: 'exact' }, lists, tags });
+    expect(screen.queryByTestId('contacts-filter-list')).toBeNull();
+    expect(
+      screen.getByRole('heading', { name: 'Zatím tu nejsou žádné kontakty' }),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * PRUH HROMADNÝCH AKCÍ MUSÍ PO AKCI ZMIZET.
+ *
+ * Nález zadavatele ze 7. 8. 2026: „Vyberu nějaké kontakty, udělám nad nimi nějakou
+ * operaci. Ta proběhne, ale tohle tam zůstane viset a nejde se toho zbavit. Pokud
+ * kontakty například smažu, tak nemá co s tím dál dělat."
+ *
+ * Po akci se volalo jen `router.refresh()`, takže se obnovila DATA, ale výběr zůstal.
+ * Po smazání v něm dokonce ležely identifikátory kontaktů, které už neexistují.
+ */
+describe('ContactsTable: úklid výběru po hromadné akci', () => {
+  async function selectFirstRow(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getAllByRole('checkbox', { name: 'Vybrat kontakt' })[1]!);
+    expect(await screen.findByTestId('selection-bar')).toBeInTheDocument();
+  }
+
+  it('po úspěšném povýšení na potvrzené pruh zmizí', async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await selectFirstRow(user);
+
+    await user.click(screen.getByRole('button', { name: 'Označit jako potvrzené' }));
+
+    await waitFor(() => expect(screen.queryByTestId('selection-bar')).toBeNull());
+  });
+
+  /*
+   * Po chybě výběr ZŮSTÁVÁ. Uživatel by jinak přišel o odklikanou práci a musel
+   * označovat znovu, přestože se ve skutečnosti nic nestalo.
+   */
+  it('po neúspěšné akci výběr zůstane, ať se nemusí označovat znovu', async () => {
+    confirmContactsAction.mockResolvedValue({ status: 'error', code: 'server_error' });
+    const user = userEvent.setup();
+    renderTable();
+    await selectFirstRow(user);
+
+    await user.click(screen.getByRole('button', { name: 'Označit jako potvrzené' }));
+
+    await waitFor(() => expect(confirmContactsAction).toHaveBeenCalled());
+    expect(screen.getByTestId('selection-bar')).toBeInTheDocument();
+  });
+
+  /*
+   * Nejdůležitější případ celého nálezu. Výběr rozšířený na „vše odpovídající filtru"
+   * nedrží obrazovka, ale tabulka, a počet si v něm bere z celkového čísla, ne z délky
+   * pole identifikátorů. Vynulovat vlastní pole tedy nestačí: bez `clearToken` pruh
+   * po smazání zůstane viset nad tabulkou, ze které kontakty právě mizí.
+   */
+  it('po smazání zmizí pruh i u výběru rozšířeného na celý filtr', async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await selectFirstRow(user);
+    await user.click(screen.getByRole('button', { name: /Vybrat všech/ }));
+    expect(screen.getByTestId('selection-bar')).toHaveTextContent('Vybráno všech');
+
+    await user.click(screen.getByRole('button', { name: 'Smazat' }));
+    // Potvrzení mazání nese POČET Z FILTRU, ne počet zaškrtnutých řádků. Do 7. 8. 2026
+    // tu stálo „Smazat 1 kontakt", přestože pruh nad tím sliboval všech 12 480: režim
+    // z tabulky ven netekl, takže hromadná akce dostala jediný zaškrtnutý řádek.
+    // Tlačítko v pruhu se jmenuje jinak než tlačítko v okně, proto kotva na začátek.
+    const confirm = await screen.findByRole('button', { name: /^Smazat 12.480 kontaktů$/ });
+    await user.click(screen.getAllByRole('checkbox', { name: /Rozumím|Vím/ })[0]!);
+    await user.click(confirm);
+
+    await waitFor(() => expect(screen.queryByTestId('selection-bar')).toBeNull());
+  });
+
+  /*
+   * Export je jediná akce, po které výběr ZŮSTÁVÁ, a je to vědomé rozhodnutí: nic
+   * se jím nezměnilo, tytéž kontakty jsou pořád v tabulce a bývá to mezikrok.
+   */
+  it('po exportu výběr zůstává, protože se jím nic nezměnilo', async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await selectFirstRow(user);
+
+    await user.click(screen.getByRole('button', { name: 'Exportovat' }));
+
+    await waitFor(() => expect(createContactExportAction).toHaveBeenCalled());
+    expect(screen.getByTestId('selection-bar')).toBeInTheDocument();
+  });
+
+  /*
+   * Zrušit výběr musí jít i bez akce. V režimu „vybráno na stránce" v pruhu do téhle
+   * chvíle žádné zrušení nebylo, takže jedinou cestou ven bylo odškrtat řádky zpátky.
+   */
+  it('výběr jde zrušit rovnou z pruhu, i když se žádná akce nedělá', async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await selectFirstRow(user);
+
+    const bar = screen.getByTestId('selection-bar');
+    await user.click(within(bar).getByRole('button', { name: 'Zrušit výběr' }));
+
+    expect(screen.queryByTestId('selection-bar')).toBeNull();
+  });
+});
+
+/**
+ * ROZŠÍŘENÍ VÝBĚRU NA CELÝ FILTR, tedy druhá polovina nálezu ze 7. 8. 2026.
+ *
+ * Odkaz „Vybrat všech N" přepínal režim jen uvnitř `DataTable`. Pruh napsal „Vybráno
+ * všech 12 480", ale hromadné akce dostávaly `mode: 'ids'` natvrdo, takže tlačítko pod
+ * tím textem pracovalo s tím, co bylo opravdu zaškrtnuté. Větve `allMatching`
+ * v `bulk-actions.tsx` byly celou dobu mrtvý kód.
+ */
+describe('ContactsTable: výběr všeho, co odpovídá filtru', () => {
+  async function selectAllMatching(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getAllByRole('checkbox', { name: 'Vybrat kontakt' })[1]!);
+    await user.click(await screen.findByRole('button', { name: /Vybrat všech/ }));
+  }
+
+  it('mazání jde na FILTR, ne na zaškrtnuté identifikátory', async () => {
+    const user = userEvent.setup();
+    renderTable({ filters: { status: 'active' } });
+    await selectAllMatching(user);
+
+    await user.click(screen.getByRole('button', { name: 'Smazat' }));
+    const confirm = await screen.findByRole('button', { name: /^Smazat 12.480 kontaktů$/ });
+    await user.click(screen.getAllByRole('checkbox', { name: /Rozumím|Vím/ })[0]!);
+    await user.click(confirm);
+
+    await waitFor(() => expect(bulkDeleteContactsAction).toHaveBeenCalled());
+    expect(bulkDeleteContactsAction).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: { mode: 'filter', filters: { status: 'active' } } }),
+    );
+  });
+
+  /*
+   * Hromadná akce nad celým filtrem je nebezpečnější než nad zaškrtnutými řádky:
+   * člověk vidí dvacet řádků a smaže sedm tisíc. Potvrzení proto musí říct, čeho
+   * přesně se to týká, ne jen kolika kontaktů.
+   */
+  it('potvrzení vypíše filtr slovy', async () => {
+    const user = userEvent.setup();
+    renderTable({
+      filters: { list_id: 'l-1', status: 'active' },
+      names: { lists: { 'l-1': 'Novinky' }, tags: {}, segments: {} },
+    });
+    await selectAllMatching(user);
+    await user.click(screen.getByRole('button', { name: 'Smazat' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('seznam Novinky');
+    expect(dialog).toHaveTextContent('stav Aktivní');
+  });
+
+  /*
+   * Bez zapnutého filtru je rozsah největší možný, tedy celý projekt. Prázdné místo,
+   * kde jindy stojí výčet filtru, by se dalo přečíst jako „rozsah je malý".
+   */
+  it('bez zapnutého filtru potvrzení řekne, že jde o celý projekt', async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await selectAllMatching(user);
+    await user.click(screen.getByRole('button', { name: 'Smazat' }));
+
+    expect(await screen.findByRole('dialog')).toHaveTextContent('všechny kontakty v projektu');
+  });
+
+  /*
+   * Štítky, seznamy ani potvrzení nad filtrem nejedou: API u nich zná jen výčet
+   * identifikátorů. Nenabízejí se proto vůbec, místo aby svítily zašedle bez
+   * vysvětlení (kritérium 18 části 6).
+   */
+  it('nabízí jen to, co server nad filtrem umí, a řekne proč', async () => {
+    const user = userEvent.setup();
+    renderTable({ tags: [{ id: 't-1', name: 'Brno' }], lists: [{ id: 'l-1', name: 'Novinky' }] });
+    await selectAllMatching(user);
+
+    const bar = screen.getByTestId('selection-bar');
+    expect(within(bar).getByRole('button', { name: /Exportovat/ })).toBeInTheDocument();
+    expect(within(bar).getByRole('button', { name: 'Smazat' })).toBeInTheDocument();
+    expect(within(bar).queryByRole('button', { name: 'Štítky' })).toBeNull();
+    expect(within(bar).queryByRole('button', { name: 'Seznamy' })).toBeNull();
+    expect(within(bar).queryByRole('button', { name: 'Označit jako potvrzené' })).toBeNull();
+    expect(within(bar).getByTestId('bulk-whole-filter-note')).toHaveTextContent(
+      'potřebují označené řádky',
+    );
+  });
+
+  /*
+   * Zaškrtnutí řádku je návrat k výběru na stránce. Kdyby režim zůstal viset, spustila
+   * by obrazovka nad jedním řádkem akci nad celým filtrem.
+   */
+  it('zaškrtnutí řádku režim celého filtru zase opustí', async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await selectAllMatching(user);
+    expect(screen.getByTestId('selection-bar')).toHaveTextContent('Vybráno všech');
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Vybrat kontakt' })[0]!);
+
+    const bar = screen.getByTestId('selection-bar');
+    expect(bar).not.toHaveTextContent('Vybráno všech');
+    expect(within(bar).getByRole('button', { name: 'Označit jako potvrzené' })).toBeInTheDocument();
+  });
+
+  /*
+   * VADA A na Kontaktech: bez další stránky není co dalšího vybrat, takže odkaz mizí.
+   * Nad nestránkovanou tabulkou nabízel přesně ty řádky, které už byly zaškrtnuté.
+   */
+  it('na jediné stránce se rozšíření výběru vůbec nenabízí', async () => {
+    const user = userEvent.setup();
+    renderTable({
+      pagination: { next_cursor: null, prev_cursor: null, has_more: false, limit: 50 },
+      total: { count: 2, precision: 'exact' },
+    });
+    await user.click(screen.getAllByRole('checkbox', { name: 'Vybrat kontakt' })[1]!);
+
+    const bar = await screen.findByTestId('selection-bar');
+    expect(within(bar).queryByRole('button', { name: /Vybrat všech/ })).toBeNull();
+  });
+
+  /*
+   * Bez známého počtu se odkaz nenabízí taky: potvrzení mazání by nemělo co říct
+   * o tom, kolika kontaktů se akce týká.
+   */
+  it('bez zjištěného počtu se rozšíření výběru nenabízí', async () => {
+    const user = userEvent.setup();
+    renderTable({ total: null });
+    await user.click(screen.getAllByRole('checkbox', { name: 'Vybrat kontakt' })[1]!);
+
+    const bar = await screen.findByTestId('selection-bar');
+    expect(within(bar).queryByRole('button', { name: /Vybrat všech/ })).toBeNull();
   });
 });

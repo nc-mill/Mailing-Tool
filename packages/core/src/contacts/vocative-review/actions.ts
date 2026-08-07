@@ -246,8 +246,13 @@ export async function applyGroupActionBatch(
           // Klíč je už normalizovaný, ale `upsertNameOverrideIn` ho normalizuje znovu
           // a normalizace je idempotentní, takže se nic nezmění.
           name: input.nameKey,
-          gender: override.gender,
-          vocative: override.vocative,
+          // NULL Z FRONTY ZNAMENÁ „TUHLE HODNOTU NEŘEŠÍM", NE „VYMAŽ JI", a proto
+          // se sem posílá jako vynechané pole. Akce `set_gender` vrací vokativ
+          // vždycky null a `confirm` ho vrací null, když fronta žádný nenavrhla;
+          // od 7. 8. 2026 by to zápisu znamenalo smazání a potvrzení rodu by tiše
+          // zahodilo pátý pád, který si uživatel do slovníku uložil dřív.
+          ...(override.gender === null ? {} : { gender: override.gender }),
+          ...(override.vocative === null ? {} : { vocative: override.vocative }),
         });
       }
     }

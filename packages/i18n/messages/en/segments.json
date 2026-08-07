@@ -32,7 +32,7 @@
   "neverCounted": "Not counted yet",
   "recount": "Recount",
   "estimated": "Approximately {count} contacts.",
-  "countExactly": "Count exactly",
+  "estimatedWhy": "Counting exactly would take longer than the preview allows, so this number is an estimate. Once you save the segment, it is recounted in the background with a longer limit.",
   "notNullHint": "Contacts that do not have this field at all are not included. Use the „is empty\" condition.",
   "addEmptyCondition": "Also add contacts with the field left empty",
   "builder": {
@@ -252,30 +252,6 @@
     "useCancel": "Cancel",
     "useFailed": "The segment could not be created. Technical detail: {detail}",
     "nameMissing": "Enter a segment name."
-  },
-  "freeze": {
-    "action": "Freeze the list",
-    "explanation": "We freeze the list so it does not change during the campaign. Anyone who gets in touch meanwhile drops out of the cleanup.",
-    "done": "Frozen, the segment holds {count} contacts."
-  },
-  "cleanup": {
-    "title": "What do we do with those who stay silent?",
-    "unsubscribe": "Unsubscribe them",
-    "unsubscribeHint": "They stay in the database, but we stop sending them campaigns.",
-    "tagOnly": "Only tag them",
-    "tagOnlyHint": "Nothing changes, we just put them aside for later.",
-    "delete": "Delete them",
-    "deleteHint": "Irreversibly. Only the project owner can do this.",
-    "delayDays": "In how many days",
-    "countdown": "In {days, plural, =0 {today} one {# day} few {# days} many {# days} other {# days}} we decide about {count} contacts.",
-    "warning": "In {days} days we will unsubscribe {count} contacts.",
-    "confirmTitle": "In {days, plural, =0 {today} one {# day} few {# days} many {# days} other {# days}} we will unsubscribe {count} contacts",
-    "confirmBody": "The reactivation campaign {campaign} went out on {sentAt} to {sent} people. So far {responded} got in touch. We will unsubscribe the remaining {count} on {when}. Unsubscribing cannot be taken back. Anyone who wants to return has to sign up again themselves.",
-    "download": "Download those {count} contacts",
-    "review": "Review",
-    "postpone": "Postpone by 14 days",
-    "abort": "Cancel the cleanup",
-    "typeName": "Type the segment name to confirm"
   },
   "audience": {
     "title": "Campaign audience",
