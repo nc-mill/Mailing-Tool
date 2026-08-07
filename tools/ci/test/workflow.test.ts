@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+import fs, { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -115,12 +115,47 @@ describe('.github/workflows/ci.yml', () => {
   it('pinuje verze nástrojů shodně se specifikací', () => {
     const text = workflow();
     expect(text).toContain('24.18.1');
-    expect(text).toContain('11.18.0');
     // Dvojité uvozovky, ne jednoduché. Prettier má pro *.yml override
     // singleQuote: false, takže `go-version: '1.26'` přepíše na dvojité
     // a krok `prettier --check .` v jobu lint by neprošel. Ověřeno spuštěním
     // prettieru 3.9.6 nad workflow souborem.
     expect(text).toContain('go-version: "1.26"');
+  });
+
+  /**
+   * VERZE PNPM SE V WORKFLOW NEUVÁDÍ. Bere se z `packageManager` v kořenovém
+   * package.json.
+   *
+   * `pnpm/action-setup` odmítne běžet, když je verze zadaná na obou místech
+   * („Multiple versions of pnpm specified"), a padne HNED, tedy ještě před
+   * instalací závislostí. CI kvůli tomu bylo červené na KAŽDÉM pushi od
+   * 2. do 7. 8. 2026, celý týden. Vypadalo to jako spadlé testy, protože běh
+   * skončil po minutě; k testům se přitom nikdy nedostal.
+   *
+   * NEJHORŠÍ NA TOM JE, ŽE TO DRŽEL TENHLE SOUBOR. Test o kus výš doslova
+   * vyžadoval, aby v workflow byl řetězec `11.18.0`, takže odstranit ho
+   * znamenalo shodit testy. Pojistka tím vadu nejen nechytila, ona ji
+   * vynucovala, a k tomu na hodnotě, která si s `packageManager` odporovala
+   * (11.18.0 proti 10.30.1).
+   */
+  it('nezadává verzi pnpm, jediné místo je packageManager v package.json', () => {
+    const text = workflow();
+    const offenders = text
+      .split('\n')
+      .map((line, index) => ({ line: line.trim(), number: index + 1 }))
+      .filter((entry) => /^version:\s*"?\d+\.\d+\.\d+"?$/.test(entry.line));
+    expect(
+      offenders,
+      'verze pnpm v workflow rozbije pnpm/action-setup, patří jen do packageManager',
+    ).toEqual([]);
+    expect(text).toContain('pnpm/action-setup@v4');
+  });
+
+  it('kořenový package.json verzi pnpm naopak MÁ, jinak by ji nevzal nikdo', () => {
+    const pkg = JSON.parse(
+      readFileSync(new URL('../../../package.json', import.meta.url), 'utf8'),
+    ) as { packageManager?: string };
+    expect(pkg.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/);
   });
 
   it('nepoužívá jednoduché uvozovky, prettier je v yml přepisuje', () => {

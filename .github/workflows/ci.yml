@@ -20,9 +20,16 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      # Verze pnpm se sem NEPÍŠE. Bere se z `packageManager` v kořenovém
+      # package.json, což je jediné místo, kde je uvedená.
+      #
+      # Dokud tu stála, CI padalo na KAŽDÉM pushi od 2. 8. 2026, a to hned
+      # v tomhle kroku, tedy ještě před instalací závislostí: akce odmítne
+      # běžet, když je verze zadaná dvakrát („Multiple versions of pnpm
+      # specified"). Navíc si obě hodnoty odporovaly, 11.18.0 proti 10.30.1.
+      # Běh trval minutu a něco, takže na první pohled vypadal jako spadlé
+      # testy, přestože se k testům nikdy nedostal.
       - uses: pnpm/action-setup@v4
-        with:
-          version: "11.18.0"
       - uses: actions/setup-node@v4
         with:
           node-version: "24.18.1"
@@ -43,9 +50,16 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
+      # Verze pnpm se sem NEPÍŠE. Bere se z `packageManager` v kořenovém
+      # package.json, což je jediné místo, kde je uvedená.
+      #
+      # Dokud tu stála, CI padalo na KAŽDÉM pushi od 2. 8. 2026, a to hned
+      # v tomhle kroku, tedy ještě před instalací závislostí: akce odmítne
+      # běžet, když je verze zadaná dvakrát („Multiple versions of pnpm
+      # specified"). Navíc si obě hodnoty odporovaly, 11.18.0 proti 10.30.1.
+      # Běh trval minutu a něco, takže na první pohled vypadal jako spadlé
+      # testy, přestože se k testům nikdy nedostal.
       - uses: pnpm/action-setup@v4
-        with:
-          version: "11.18.0"
       - uses: actions/setup-node@v4
         with:
           node-version: "24.18.1"
@@ -59,9 +73,16 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
+      # Verze pnpm se sem NEPÍŠE. Bere se z `packageManager` v kořenovém
+      # package.json, což je jediné místo, kde je uvedená.
+      #
+      # Dokud tu stála, CI padalo na KAŽDÉM pushi od 2. 8. 2026, a to hned
+      # v tomhle kroku, tedy ještě před instalací závislostí: akce odmítne
+      # běžet, když je verze zadaná dvakrát („Multiple versions of pnpm
+      # specified"). Navíc si obě hodnoty odporovaly, 11.18.0 proti 10.30.1.
+      # Běh trval minutu a něco, takže na první pohled vypadal jako spadlé
+      # testy, přestože se k testům nikdy nedostal.
       - uses: pnpm/action-setup@v4
-        with:
-          version: "11.18.0"
       - uses: actions/setup-node@v4
         with:
           node-version: "24.18.1"
@@ -89,9 +110,16 @@ jobs:
       DATABASE_URL_MIGRATOR: postgres://mlain_migrator:mlain@localhost:5432/mlain_test
     steps:
       - uses: actions/checkout@v4
+      # Verze pnpm se sem NEPÍŠE. Bere se z `packageManager` v kořenovém
+      # package.json, což je jediné místo, kde je uvedená.
+      #
+      # Dokud tu stála, CI padalo na KAŽDÉM pushi od 2. 8. 2026, a to hned
+      # v tomhle kroku, tedy ještě před instalací závislostí: akce odmítne
+      # běžet, když je verze zadaná dvakrát („Multiple versions of pnpm
+      # specified"). Navíc si obě hodnoty odporovaly, 11.18.0 proti 10.30.1.
+      # Běh trval minutu a něco, takže na první pohled vypadal jako spadlé
+      # testy, přestože se k testům nikdy nedostal.
       - uses: pnpm/action-setup@v4
-        with:
-          version: "11.18.0"
       - uses: actions/setup-node@v4
         with:
           node-version: "24.18.1"
@@ -163,9 +191,16 @@ jobs:
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
+      # Verze pnpm se sem NEPÍŠE. Bere se z `packageManager` v kořenovém
+      # package.json, což je jediné místo, kde je uvedená.
+      #
+      # Dokud tu stála, CI padalo na KAŽDÉM pushi od 2. 8. 2026, a to hned
+      # v tomhle kroku, tedy ještě před instalací závislostí: akce odmítne
+      # běžet, když je verze zadaná dvakrát („Multiple versions of pnpm
+      # specified"). Navíc si obě hodnoty odporovaly, 11.18.0 proti 10.30.1.
+      # Běh trval minutu a něco, takže na první pohled vypadal jako spadlé
+      # testy, přestože se k testům nikdy nedostal.
       - uses: pnpm/action-setup@v4
-        with:
-          version: "11.18.0"
       - uses: actions/setup-node@v4
         with:
           node-version: "24.18.1"
@@ -186,9 +221,16 @@ jobs:
     timeout-minutes: 4
     steps:
       - uses: actions/checkout@v4
+      # Verze pnpm se sem NEPÍŠE. Bere se z `packageManager` v kořenovém
+      # package.json, což je jediné místo, kde je uvedená.
+      #
+      # Dokud tu stála, CI padalo na KAŽDÉM pushi od 2. 8. 2026, a to hned
+      # v tomhle kroku, tedy ještě před instalací závislostí: akce odmítne
+      # běžet, když je verze zadaná dvakrát („Multiple versions of pnpm
+      # specified"). Navíc si obě hodnoty odporovaly, 11.18.0 proti 10.30.1.
+      # Běh trval minutu a něco, takže na první pohled vypadal jako spadlé
+      # testy, přestože se k testům nikdy nedostal.
       - uses: pnpm/action-setup@v4
-        with:
-          version: "11.18.0"
       - uses: actions/setup-node@v4
         with:
           node-version: "24.18.1"
@@ -217,9 +259,16 @@ jobs:
       DATABASE_URL_MIGRATOR: postgres://mlain_migrator:mlain@localhost:5432/mlain_test
     steps:
       - uses: actions/checkout@v4
+      # Verze pnpm se sem NEPÍŠE. Bere se z `packageManager` v kořenovém
+      # package.json, což je jediné místo, kde je uvedená.
+      #
+      # Dokud tu stála, CI padalo na KAŽDÉM pushi od 2. 8. 2026, a to hned
+      # v tomhle kroku, tedy ještě před instalací závislostí: akce odmítne
+      # běžet, když je verze zadaná dvakrát („Multiple versions of pnpm
+      # specified"). Navíc si obě hodnoty odporovaly, 11.18.0 proti 10.30.1.
+      # Běh trval minutu a něco, takže na první pohled vypadal jako spadlé
+      # testy, přestože se k testům nikdy nedostal.
       - uses: pnpm/action-setup@v4
-        with:
-          version: "11.18.0"
       - uses: actions/setup-node@v4
         with:
           node-version: "24.18.1"
@@ -233,9 +282,16 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
+      # Verze pnpm se sem NEPÍŠE. Bere se z `packageManager` v kořenovém
+      # package.json, což je jediné místo, kde je uvedená.
+      #
+      # Dokud tu stála, CI padalo na KAŽDÉM pushi od 2. 8. 2026, a to hned
+      # v tomhle kroku, tedy ještě před instalací závislostí: akce odmítne
+      # běžet, když je verze zadaná dvakrát („Multiple versions of pnpm
+      # specified"). Navíc si obě hodnoty odporovaly, 11.18.0 proti 10.30.1.
+      # Běh trval minutu a něco, takže na první pohled vypadal jako spadlé
+      # testy, přestože se k testům nikdy nedostal.
       - uses: pnpm/action-setup@v4
-        with:
-          version: "11.18.0"
       - uses: actions/setup-node@v4
         with:
           node-version: "24.18.1"
@@ -265,9 +321,16 @@ jobs:
     timeout-minutes: 4
     steps:
       - uses: actions/checkout@v4
+      # Verze pnpm se sem NEPÍŠE. Bere se z `packageManager` v kořenovém
+      # package.json, což je jediné místo, kde je uvedená.
+      #
+      # Dokud tu stála, CI padalo na KAŽDÉM pushi od 2. 8. 2026, a to hned
+      # v tomhle kroku, tedy ještě před instalací závislostí: akce odmítne
+      # běžet, když je verze zadaná dvakrát („Multiple versions of pnpm
+      # specified"). Navíc si obě hodnoty odporovaly, 11.18.0 proti 10.30.1.
+      # Běh trval minutu a něco, takže na první pohled vypadal jako spadlé
+      # testy, přestože se k testům nikdy nedostal.
       - uses: pnpm/action-setup@v4
-        with:
-          version: "11.18.0"
       - uses: actions/setup-node@v4
         with:
           node-version: "24.18.1"
@@ -313,9 +376,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # Verze pnpm se sem NEPÍŠE. Bere se z `packageManager` v kořenovém
+      # package.json, což je jediné místo, kde je uvedená.
+      #
+      # Dokud tu stála, CI padalo na KAŽDÉM pushi od 2. 8. 2026, a to hned
+      # v tomhle kroku, tedy ještě před instalací závislostí: akce odmítne
+      # běžet, když je verze zadaná dvakrát („Multiple versions of pnpm
+      # specified"). Navíc si obě hodnoty odporovaly, 11.18.0 proti 10.30.1.
+      # Běh trval minutu a něco, takže na první pohled vypadal jako spadlé
+      # testy, přestože se k testům nikdy nedostal.
       - uses: pnpm/action-setup@v4
-        with:
-          version: "11.18.0"
       - uses: actions/setup-node@v4
         with:
           node-version: "24.18.1"
@@ -374,9 +444,16 @@ jobs:
           path: /tmp
       - run: docker load -i /tmp/mlain-ci.tar
       - run: docker tag mlain:ci ghcr.io/nc-mill/mlain:1.0.0
+      # Verze pnpm se sem NEPÍŠE. Bere se z `packageManager` v kořenovém
+      # package.json, což je jediné místo, kde je uvedená.
+      #
+      # Dokud tu stála, CI padalo na KAŽDÉM pushi od 2. 8. 2026, a to hned
+      # v tomhle kroku, tedy ještě před instalací závislostí: akce odmítne
+      # běžet, když je verze zadaná dvakrát („Multiple versions of pnpm
+      # specified"). Navíc si obě hodnoty odporovaly, 11.18.0 proti 10.30.1.
+      # Běh trval minutu a něco, takže na první pohled vypadal jako spadlé
+      # testy, přestože se k testům nikdy nedostal.
       - uses: pnpm/action-setup@v4
-        with:
-          version: "11.18.0"
       - uses: actions/setup-node@v4
         with:
           node-version: "24.18.1"
@@ -435,9 +512,16 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      # Verze pnpm se sem NEPÍŠE. Bere se z `packageManager` v kořenovém
+      # package.json, což je jediné místo, kde je uvedená.
+      #
+      # Dokud tu stála, CI padalo na KAŽDÉM pushi od 2. 8. 2026, a to hned
+      # v tomhle kroku, tedy ještě před instalací závislostí: akce odmítne
+      # běžet, když je verze zadaná dvakrát („Multiple versions of pnpm
+      # specified"). Navíc si obě hodnoty odporovaly, 11.18.0 proti 10.30.1.
+      # Běh trval minutu a něco, takže na první pohled vypadal jako spadlé
+      # testy, přestože se k testům nikdy nedostal.
       - uses: pnpm/action-setup@v4
-        with:
-          version: "11.18.0"
       - uses: actions/setup-node@v4
         with:
           node-version: "24.18.1"
