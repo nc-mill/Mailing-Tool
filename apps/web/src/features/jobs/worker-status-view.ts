@@ -5,6 +5,22 @@
  */
 export type WorkerState = 'running' | 'late' | 'down' | 'unknown';
 
+export type ApiQueueFailure = {
+  queue: string;
+  description: string;
+  failures: number;
+  last_failure_at: string | null;
+  last_success_at: string | null;
+  recovered: boolean;
+};
+
+export type ApiDeadLetterItem = {
+  queue: string;
+  description: string;
+  at: string | null;
+  reason: string;
+};
+
 export type ApiWorkerStatus = {
   state: WorkerState;
   last_seen_at: string | null;
@@ -14,8 +30,15 @@ export type ApiWorkerStatus = {
     running: number;
     /** Selhání ZA OKNO `failed_window_hours`, ne za celou historii. */
     failed_recent: number;
+    /**
+     * Rozpis pádů po frontách. `recovered` je tvrzení o FRONTĚ, ne o té
+     * konkrétní úloze: zotavená fronta znamená, že mechanismus jede dál, ne že
+     * se dokončila práce, která spadla. Ta leží v `dead_letter_items`.
+     */
+    failures: ApiQueueFailure[];
     failed_window_hours: number;
     dead_letter: number;
+    dead_letter_items: ApiDeadLetterItem[];
   };
   queues: { registered: number; cron_expected: number; cron_scheduled: number };
 };
@@ -79,6 +102,17 @@ export function workerNeedsAttention(worker: ApiWorkerStatus): boolean {
  * jich plán doopravdy má, je tedy počet cronových front, které tenhle build
  * neumí obsloužit.
  */
+/**
+ * Fronty, které od posledního pádu ZNOVU NEPROBĚHLY.
+ *
+ * Tohle je ta hranice mezi „bylo to a spravilo se" a „trvá to". Bez ní panel
+ * hlásil poplach i nad pády z uzavřené epizody, po které všechny fronty zase
+ * jedou, a uživatel z toho usoudil, že systém nefunguje.
+ */
+export function stuckQueues(worker: ApiWorkerStatus): ApiQueueFailure[] {
+  return worker.queue.failures.filter((failure) => !failure.recovered);
+}
+
 export function cronQueuesWithoutHandler(worker: ApiWorkerStatus): number {
   return Math.max(worker.queues.cron_expected - worker.queues.cron_scheduled, 0);
 }

@@ -1407,19 +1407,92 @@
               "failed_recent": {
                 "type": "integer"
               },
+              "failures": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "queue": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "failures": {
+                      "type": "integer"
+                    },
+                    "last_failure_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "last_success_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "recovered": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "queue",
+                    "description",
+                    "failures",
+                    "last_failure_at",
+                    "last_success_at",
+                    "recovered"
+                  ]
+                },
+                "maxItems": 50
+              },
               "failed_window_hours": {
                 "type": "integer"
               },
               "dead_letter": {
                 "type": "integer"
+              },
+              "dead_letter_items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "queue": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "queue",
+                    "description",
+                    "at",
+                    "reason"
+                  ]
+                },
+                "maxItems": 5
               }
             },
             "required": [
               "waiting",
               "running",
               "failed_recent",
+              "failures",
               "failed_window_hours",
-              "dead_letter"
+              "dead_letter",
+              "dead_letter_items"
             ]
           },
           "queues": {

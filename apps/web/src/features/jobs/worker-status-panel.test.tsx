@@ -13,7 +13,29 @@ const healthy: ApiWorkerStatus = {
   state: 'running',
   last_seen_at: '2026-08-07T10:00:00.000Z',
   seconds_since_last_seen: 5,
-  queue: { waiting: 3, running: 1, failed_recent: 12, failed_window_hours: 24, dead_letter: 0 },
+  queue: {
+    waiting: 3,
+    running: 1,
+    failed_recent: 12,
+    /*
+     * Pády, ze kterých se fronta zotavila. Je to výchozí stav fixtury schválně:
+     * tohle je ta situace, kterou panel dlouho hlásil jako poruchu, přestože
+     * poruchou nebyla. Naměřeno 8. 8. 2026, viz `workerFailuresAllRecovered`.
+     */
+    failures: [
+      {
+        queue: 'campaign.scheduler',
+        description: 'Vybírá naplánované kampaně, jejichž čas nastal.',
+        failures: 12,
+        last_failure_at: '2026-08-07T08:02:00.000Z',
+        last_success_at: '2026-08-07T09:31:00.000Z',
+        recovered: true,
+      },
+    ],
+    failed_window_hours: 24,
+    dead_letter: 0,
+    dead_letter_items: [],
+  },
   queues: { registered: 60, cron_expected: 30, cron_scheduled: 30 },
 };
 
@@ -87,11 +109,75 @@ describe('Panel stavu zpracování na pozadí', () => {
    * vyčerpaly všechny pokusy a NIKDO je nevezme. Panel, který by koukal jen
    * na stav workeru, by se v tu chvíli tvářil zeleně.
    */
-  it('odložené úlohy hlásí i u běžícího workeru', () => {
-    renderPanel({ ...healthy, queue: { ...healthy.queue, dead_letter: 2 } });
+  /**
+   * ODLOŽENÉ ÚLOHY SE MUSÍ JMENOVAT, NE JEN SPOČÍTAT.
+   *
+   * Do 8. 8. 2026 tu panel napsal jedinou větu, „Něco se nezpracovává samo…
+   * pomůže správce instalace". Zadavatel na to reagoval takhle: „uživatel bude
+   * zmatený co selhalo, jestli to proběhlo znovu nebo jestli něco nebylo
+   * doručeno". Věta navíc posílala pro pomoc ke správci, který se do těch front
+   * neměl jak podívat, takže výzva k akci neměla adresáta.
+   */
+  it('u odložených úloh řekne, ze které fronty jsou a proč tam spadly', () => {
+    renderPanel({
+      ...healthy,
+      queue: {
+        ...healthy.queue,
+        dead_letter: 2,
+        dead_letter_items: [
+          {
+            queue: 'contacts.import',
+            description: 'Import CSV po dávkách s checkpointy.',
+            at: '2026-08-07T11:50:00.000Z',
+            reason: "ENOENT: no such file or directory, open 'imports/abc.csv'",
+          },
+        ],
+      },
+    });
 
     expect(screen.getByText('Běží')).toBeInTheDocument();
-    expect(screen.getByText(/Něco se nezpracovává samo/)).toBeInTheDocument();
+    expect(screen.getByText(/Co zůstalo nedokončené/)).toBeInTheDocument();
+    expect(screen.getByText(/vyčerpaly všechny pokusy a samy se už nespustí/)).toBeInTheDocument();
+    expect(screen.getByText(/ENOENT/)).toBeInTheDocument();
+    // Zbytek fronty běží dál, a musí to tam být napsané: jinak si člověk
+    // domyslí, že se zastavily i importy, které s tímhle nesouvisí.
+    expect(screen.getByText(/Zbytek téže fronty běží dál/)).toBeInTheDocument();
+  });
+
+  /**
+   * ZOTAVENÍ JE TA CHYBĚJÍCÍ ODPOVĚĎ. Číslo „selhalo za 24 h" samo o sobě
+   * nerozliší uzavřenou epizodu od poruchy, která právě teď trvá. Naměřeno
+   * 8. 8. 2026: všech 28 pádů bylo z epizod, které skončily, všechny fronty
+   * mezitím znovu proběhly, a panel přesto hlásil poplach.
+   */
+  it('u pádů, ze kterých se fronty zotavily, řekne, že se nemá co dělat', () => {
+    renderPanel(healthy);
+
+    expect(screen.getByText(/od té doby proběhlo znovu a povedlo se/)).toBeInTheDocument();
+    expect(screen.getByText('campaign.scheduler')).toBeInTheDocument();
+    expect(screen.getByText(/Vybírá naplánované kampaně/)).toBeInTheDocument();
+  });
+
+  it('frontu, která od pádu znovu neproběhla, pojmenuje jako jediné živé místo', () => {
+    renderPanel({
+      ...healthy,
+      queue: {
+        ...healthy.queue,
+        failures: [
+          {
+            queue: 'campaign.scheduler',
+            description: 'Vybírá naplánované kampaně, jejichž čas nastal.',
+            failures: 4,
+            last_failure_at: '2026-08-07T09:40:00.000Z',
+            last_success_at: '2026-08-07T08:00:00.000Z',
+            recovered: false,
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByText(/od posledního pádu znovu neproběhlo/)).toBeInTheDocument();
+    expect(screen.queryByText(/od té doby proběhlo znovu a povedlo se/)).not.toBeInTheDocument();
   });
 
   it('cronové fronty bez obsluhy pojmenuje, místo aby je zamlčel', () => {

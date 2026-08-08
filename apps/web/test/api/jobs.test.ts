@@ -759,6 +759,19 @@ describe('GET /api/v1/jobs/worker', () => {
       await tx.execute(insertDeadLetterJob('contacts.import.dlq', '{}'));
     });
 
+    // Chyba s absolutní cestou na disku serveru. Do prohlížeče smí jít jméno
+    // souboru, ne cesta: uživateli neřekne nic, zabere celý řádek a je to
+    // zbytečný pohled do útrob serveru.
+    await withoutContext(async (tx) => {
+      await tx.execute(sql`
+        UPDATE pgboss.job
+           SET output = ${JSON.stringify({
+             message:
+               "ENOENT: no such file or directory, open '/srv/mlain/.data/imports/019f/abc.csv'",
+           })}::jsonb
+         WHERE name = 'contacts.import.dlq' AND data <> '{}'::jsonb`);
+    });
+
     const body = await (await app.request('/api/v1/jobs/worker', { headers: headers() })).json();
     expect(body.worker.state).toBe('running');
     // Interní fronta pg-bossu se do žádného součtu nepočítá: uživatel ji
@@ -774,6 +787,29 @@ describe('GET /api/v1/jobs/worker', () => {
     expect(body.worker.queue.dead_letter).toBe(3);
     expect(body.worker.queues.registered).toBe(2);
     expect(body.worker.queues.cron_scheduled).toBe(1);
+
+    /*
+     * ROZPIS PÁDŮ, ne jen jejich počet. Samotné číslo nerozliší uzavřenou
+     * epizodu od poruchy, která trvá; uživatel z něj nepozná, co selhalo ani
+     * jestli to mezitím proběhlo znovu.
+     */
+    const scheduler = body.worker.queue.failures.find(
+      (f: { queue: string }) => f.queue === 'campaign.scheduler',
+    );
+    expect(scheduler.failures).toBe(1);
+    expect(scheduler.description).toBe('Vybírá naplánované kampaně, jejichž čas nastal.');
+    // Popis je JEDNA VĚTA. Za ní pokračuje registr vnitřnostmi, které majiteli
+    // projektu nic neřeknou a na obrazovce jen ubírají místo.
+    expect(scheduler.description).not.toContain(';');
+
+    const parked = body.worker.queue.dead_letter_items;
+    // Tři skutečné odložené úlohy, ne čtyři: prázdný tik cronu se nevypisuje
+    // ze stejného důvodu, ze kterého se nepočítá.
+    expect(parked).toHaveLength(3);
+    // Fronta BEZ přípony .dlq: ta uživateli nic neříká.
+    expect(parked[0].queue).toBe('contacts.import');
+    expect(parked[0].reason).toContain('abc.csv');
+    expect(parked[0].reason).not.toContain('/srv/mlain');
   });
 
   /**

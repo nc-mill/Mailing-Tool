@@ -9,6 +9,7 @@ import { WORKER_STATUS_REFRESH_MS } from './refresh';
 import {
   WORKER_STATE_KEYS,
   cronQueuesWithoutHandler,
+  stuckQueues,
   workerNeedsAttention,
   workerStateTone,
   type ApiWorkerStatus,
@@ -82,6 +83,7 @@ export function WorkerStatusPanel({ initialWorker, workspaceId }: WorkerStatusPa
 
   const attention = workerNeedsAttention(worker);
   const withoutHandler = cronQueuesWithoutHandler(worker);
+  const stuck = stuckQueues(worker);
 
   return (
     <Card padding="md" tone={attention ? 'highlight' : 'plain'} aria-labelledby="worker-status">
@@ -142,10 +144,80 @@ export function WorkerStatusPanel({ initialWorker, workspaceId }: WorkerStatusPa
       </p>
 
       {/*
-        Věta se čísly, ne místo nich. Kdo na panel kouká kvůli vlastnímu importu,
-        potřebuje vědět, co s tím: čekat, nebo někoho zavolat.
+        ROZPIS PÁDŮ. Bez něj je číslo „selhalo za 24 h" poplach bez odpovědi.
+        Zadavatel to 8. 8. 2026 popsal takhle: „uživatel bude zmatený co
+        selhalo, jestli to proběhlo znovu nebo jestli něco nebylo doručeno".
+        Panel proto u každé fronty říká, co dělá a jestli od pádu znovu
+        proběhla. Naměřeno tentýž den: všech 28 pádů bylo z uzavřených epizod
+        a všechny fronty se zotavily, přesto panel psal „Něco se nezpracovává
+        samo".
       */}
-      {attention ? <p className="text-ui text-text">{t('jobs.workerAttention')}</p> : null}
+      {worker.queue.failures.length > 0 ? (
+        <section aria-labelledby="worker-failures" className="flex flex-col gap-1">
+          <h3 id="worker-failures" className="meta-caps text-text-muted">
+            {t('jobs.workerFailuresTitle')}
+          </h3>
+          <p className="text-meta text-text">
+            {stuck.length === 0
+              ? t('jobs.workerFailuresAllRecovered')
+              : t('jobs.workerFailuresStuck', { queues: stuck.map((f) => f.queue).join(', ') })}
+          </p>
+          <ul className="flex flex-col gap-1">
+            {worker.queue.failures.map((failure) => (
+              <li key={failure.queue} className="text-meta text-text-muted">
+                <span className="font-mono break-all text-text">{failure.queue}</span>
+                {failure.description ? ` ${failure.description}` : ''}{' '}
+                <span className={failure.recovered ? undefined : 'text-danger-text'}>
+                  {t(
+                    failure.recovered ? 'jobs.workerFailureRecovered' : 'jobs.workerFailureStuck',
+                    {
+                      count: failure.failures,
+                      time:
+                        failure.recovered && failure.last_success_at
+                          ? format.dateTime(new Date(failure.last_success_at), 'time')
+                          : failure.last_failure_at
+                            ? format.dateTime(new Date(failure.last_failure_at), 'time')
+                            : '',
+                    },
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {/*
+        CO ZŮSTALO NEDOKONČENÉ. Tohle je odpověď na „nebylo něco doručeno" a je
+        to JINÁ otázka než ta výš: zotavená fronta znamená, že mechanismus jede
+        dál, ne že se dokončila právě ta úloha, která spadla. Ta leží tady.
+        Dokud tenhle výpis nebyl, ukazoval panel jen počet a radil zavolat
+        správce instalace, který ale neměl kam se podívat.
+      */}
+      {worker.queue.dead_letter > 0 ? (
+        <section aria-labelledby="worker-dead-letter" className="flex flex-col gap-1">
+          <h3 id="worker-dead-letter" className="meta-caps text-text-muted">
+            {t('jobs.workerDeadLetterTitle')}
+          </h3>
+          <p className="text-ui text-text">{t('jobs.workerDeadLetterExplain')}</p>
+          <ul className="flex flex-col gap-1">
+            {worker.queue.dead_letter_items.map((deadItem, index) => (
+              <li key={`${deadItem.queue}-${index}`} className="text-meta text-text-muted">
+                <span className="font-mono break-all text-text">{deadItem.queue}</span>
+                {deadItem.at ? ` ${format.dateTime(new Date(deadItem.at), 'time')}` : ''}:{' '}
+                {deadItem.reason}
+              </li>
+            ))}
+          </ul>
+          {worker.queue.dead_letter > worker.queue.dead_letter_items.length ? (
+            <p className="text-meta text-text-muted">
+              {t('jobs.workerDeadLetterMore', {
+                count: worker.queue.dead_letter - worker.queue.dead_letter_items.length,
+              })}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
     </Card>
   );
 }

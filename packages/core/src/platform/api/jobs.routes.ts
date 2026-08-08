@@ -111,9 +111,37 @@ const WorkerStatusSchema = z
        * byla jedna fronta padající od 3. srpna, která se mezitím spravila.
        */
       failed_recent: z.number().int(),
+      /**
+       * Rozpis pádů po frontách. Samotné číslo výš je poplach bez odpovědi:
+       * uživatel z něj nepozná, co selhalo ani jestli to mezitím proběhlo
+       * znovu. `recovered` je tvrzení o FRONTĚ, ne o té konkrétní úloze.
+       */
+      failures: z
+        .array(
+          z.object({
+            queue: z.string(),
+            description: z.string(),
+            failures: z.number().int(),
+            last_failure_at: z.string().nullable(),
+            last_success_at: z.string().nullable(),
+            recovered: z.boolean(),
+          }),
+        )
+        .max(50),
       failed_window_hours: z.number().int(),
       /** Úlohy v dead letter frontách. Ty nikdo nezpracuje, čekají na člověka. */
       dead_letter: z.number().int(),
+      /** Ukázka toho, co odložené stranou konkrétně leží. Nejvýš pět položek. */
+      dead_letter_items: z
+        .array(
+          z.object({
+            queue: z.string(),
+            description: z.string(),
+            at: z.string().nullable(),
+            reason: z.string(),
+          }),
+        )
+        .max(5),
     }),
     queues: z.object({
       registered: z.number().int(),
@@ -288,8 +316,17 @@ export function registerJobRoutes(app: OpenAPIHono<ApiEnv>): void {
             waiting: status.queue.waiting,
             running: status.queue.running,
             failed_recent: status.queue.failedRecently,
+            failures: status.queue.failures.map((failure) => ({
+              queue: failure.queue,
+              description: failure.description,
+              failures: failure.failures,
+              last_failure_at: failure.lastFailureAt,
+              last_success_at: failure.lastSuccessAt,
+              recovered: failure.recovered,
+            })),
             failed_window_hours: status.queue.failedWindowHours,
             dead_letter: status.queue.deadLetter,
+            dead_letter_items: status.queue.deadLetterItems,
           },
           queues: {
             registered: status.queues.registered,

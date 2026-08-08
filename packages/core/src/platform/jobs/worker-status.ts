@@ -103,6 +103,12 @@ export type WorkerStatus = {
      * porucha právě teď, nebo byla před týdnem.
      */
     failedRecently: number;
+    /**
+     * Rozpis těch pádů po frontách i s odpovědí, jestli fronta potom znovu
+     * proběhla. Bez toho je číslo výš jen poplach: nedá se z něj poznat, co
+     * selhalo ani jestli to ještě trvá.
+     */
+    failures: QueueFailure[];
     /** Okno, za které platí `failedRecently`. Posílá se ven, aby ho popisek řekl. */
     failedWindowHours: number;
     /**
@@ -112,6 +118,11 @@ export type WorkerStatus = {
      * nesníží, je proto silnější příznak poruchy než počet selhání.
      */
     deadLetter: number;
+    /**
+     * Co v těch dead letter frontách konkrétně leží. Nejvýš `DEAD_LETTER_SAMPLE`
+     * položek; `deadLetter` výš je úplný počet.
+     */
+    deadLetterItems: DeadLetterItem[];
   };
   queues: {
     /** Fronty založené v instalaci, bez interních a bez dead letter. */
@@ -159,7 +170,30 @@ export const FAILED_WINDOW_HOURS = 24;
  */
 const FAILED_CACHE_MS = 20_000;
 
-let failedCache: { at: number; value: number } | null = null;
+/** Fronta, která za okno aspoň jednou spadla, a co se s ní dělo potom. */
+export type QueueFailure = {
+  /** Technický název fronty. Ukazuje se, aby šlo dohledat, o co jde. */
+  queue: string;
+  /** Věta z registru front, co ta fronta vlastně dělá. */
+  description: string;
+  failures: number;
+  lastFailureAt: string | null;
+  lastSuccessAt: string | null;
+  /**
+   * Proběhla fronta po posledním pádu znovu? Je to tvrzení o MECHANISMU, ne
+   * o té konkrétní úloze; ta může pořád ležet odložená stranou.
+   */
+  recovered: boolean;
+};
+
+type FailureRow = {
+  name: string;
+  failures: string | number | null;
+  last_failure_at: Date | string | null;
+  last_success_at: Date | string | null;
+};
+
+let failedCache: { at: number; value: { total: number; queues: QueueFailure[] } } | null = null;
 
 /** Jen pro testy: zapomene naměřený počet selhání. */
 export function resetFailedCache(): void {
@@ -183,6 +217,52 @@ export function resetWorkerStatusConfig(): void {
 function toNumber(value: string | number | null | undefined): number {
   const parsed = typeof value === 'number' ? value : Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toIso(value: Date | string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+/**
+ * Věta z registru front. Technický název sám o sobě uživateli neřekne nic:
+ * `outbox.reconcile` je pro něj šum, kdežto „Srovná počty v outboxu" je věta,
+ * ze které pozná, jestli se ho to týká.
+ *
+ * Neznámá fronta vrátí prázdný řetězec, ne výmluvu. Stát se to může u fronty,
+ * která z registru zmizela a v tabulce úloh po ní ještě něco leželo.
+ */
+function describeQueue(name: string): string {
+  const description = QUEUE_REGISTRY.find((entry) => entry.name === name)?.description ?? '';
+  return firstSentence(description);
+}
+
+/**
+ * První věta popisu, ne celý popis.
+ *
+ * Popisy v registru jsou psané pro toho, kdo bude frontu upravovat, takže za
+ * první větou často pokračují vnitřnostmi. U `contacts.import` je za ní
+ * „Klíč je ID importu, tedy jeden běh nad jedním importem; jeden běžící import
+ * na projekt hlídá confirmImport, ne fronta", což majiteli projektu neřekne
+ * nic a na obrazovce jen ubírá místo tomu podstatnému. První věta odpovídá na
+ * otázku „co to dělá" a tím to končí.
+ */
+function firstSentence(text: string): string {
+  const end = text.search(/[.!?](\s|$)/);
+  return end === -1 ? text : text.slice(0, end + 1);
+}
+
+/**
+ * Chyba pro obrazovku, zkrácená a bez cest na disku serveru.
+ *
+ * Naměřeno 8. 8. 2026 na panelu: uživateli se ukázalo
+ * „ENOENT: no such file or directory, open '/Users/…/.dev-data/imports/019f…/3e78….csv'".
+ * Absolutní cesta mu neřekne nic, zabere celý řádek a je to zbytečný pohled
+ * do útrob serveru. Jméno souboru zůstává, podle něj se dá věc dohledat.
+ */
+function readableReason(reason: string): string {
+  return reason.replace(/(['"]?)(\/[^'"\s]*\/)([^'"\s/]+)\1/g, '$1$3$1').slice(0, 300);
 }
 
 function stateFor(secondsSince: number | null): WorkerState {
@@ -214,19 +294,69 @@ export function cronQueuesExpected(): number {
  * Interní fronta pg-bossu se vynechává stejně jako všude jinde v tomhle
  * souboru, aby se čísla panelu počítala z jedné a téže množiny front.
  */
-async function failedRecently(schema: ReturnType<typeof sql.identifier>): Promise<number> {
+/**
+ * Pády za okno ROZEPSANÉ PO FRONTÁCH, a u každé fronty odpověď na otázku,
+ * kterou samotné číslo nezodpoví: povedlo se jí to potom?
+ *
+ * PROČ SAMOTNÉ ČÍSLO NESTAČÍ. Na panelu stálo „SELHALO ZA 24 H: 28" a nic víc.
+ * Z toho se nedá poznat, co selhalo, jestli to mezitím proběhlo znovu, ani
+ * jestli kvůli tomu něco neodešlo. Zadavatel to shrnul 8. 8. 2026 takhle:
+ * „uživatel bude zmatený co selhalo, jestli to proběhlo znovu nebo jestli něco
+ * nebylo doručeno, prostě nebude vědět z této obrazovky co se děje a bude si
+ * myslet, že systém nefunguje". Číslo bez odpovědi je poplašná zpráva.
+ *
+ * Naměřeno tentýž den na vývojové instalaci: všech 28 pádů pocházelo ze dvou
+ * uzavřených epizod, chybějícího údržbového připojení a jedné fronty, která
+ * neměla zapojené závislosti. VŠECHNY postižené fronty od té doby znovu
+ * proběhly. Panel přesto tvrdil „Něco se nezpracovává samo".
+ *
+ * ZOTAVENÍ SE POČÍTÁ NA FRONTĚ, NE NA ÚLOZE, a je v tom rozdíl, který se
+ * nesmí zamluvit. „Fronta od té doby znovu proběhla" znamená, že mechanismus
+ * jede dál; NEZNAMENÁ to, že se dokončila právě ta úloha, která spadla. Úloha,
+ * která vyčerpala pokusy, leží v dead letter frontě a panel ji vypisuje zvlášť.
+ * Právě tam patří odpověď na otázku „nebylo něco doručeno".
+ *
+ * CENA. Jeden průchod oknem místo poddotazu na frontu. Naměřeno na 88 000
+ * řádcích: 46 ms, kdežto varianta s poddotazem na poslední úspěch u každé
+ * fronty 1 294 ms. Je to LEVNĚJŠÍ než dotaz, který tu byl předtím a uměl jen
+ * spočítat pády (238 ms), a přitom vrací mnohem víc.
+ */
+async function failedRecently(
+  schema: ReturnType<typeof sql.identifier>,
+): Promise<{ total: number; queues: QueueFailure[] }> {
   const now = Date.now();
   if (failedCache !== null && now - failedCache.at < FAILED_CACHE_MS) return failedCache.value;
 
   const { rows } = await withoutContext((tx) =>
-    tx.execute<{ failed: string | number | null }>(sql`
-      SELECT count(*) AS failed
+    tx.execute<FailureRow>(sql`
+      SELECT name,
+             count(*) FILTER (WHERE state = 'failed') AS failures,
+             max(created_on) FILTER (WHERE state = 'failed') AS last_failure_at,
+             max(completed_on) FILTER (WHERE state = 'completed') AS last_success_at
         FROM ${schema}.job
-       WHERE state = 'failed'
-         AND name NOT LIKE ${`${INTERNAL_QUEUE_PREFIX}%`}
-         AND created_on > now() - make_interval(hours => ${FAILED_WINDOW_HOURS})`),
+       WHERE name NOT LIKE ${`${INTERNAL_QUEUE_PREFIX}%`}
+         AND created_on > now() - make_interval(hours => ${FAILED_WINDOW_HOURS})
+       GROUP BY name
+      HAVING count(*) FILTER (WHERE state = 'failed') > 0
+       ORDER BY 2 DESC, 1`),
   );
-  const value = toNumber(rows[0]?.failed);
+
+  const queues = rows.map((row) => {
+    const lastFailure = toIso(row.last_failure_at);
+    const lastSuccess = toIso(row.last_success_at);
+    return {
+      queue: row.name,
+      description: describeQueue(row.name),
+      failures: toNumber(row.failures),
+      lastFailureAt: lastFailure,
+      lastSuccessAt: lastSuccess,
+      // Bez data pádu se zotavení tvrdit nedá, a tvrdit ho naslepo by bylo
+      // horší než nevědět: uklidnilo by to přesně tam, kde uklidnit nesmí.
+      recovered: lastFailure !== null && lastSuccess !== null && lastSuccess > lastFailure,
+    };
+  });
+
+  const value = { total: queues.reduce((sum, queue) => sum + queue.failures, 0), queues };
   failedCache = { at: now, value };
   return value;
 }
@@ -263,6 +393,60 @@ async function failedRecently(schema: ReturnType<typeof sql.identifier>): Promis
  * ve kterých vůbec něco leží, a tenhle se ptá jen na ně. V běžném stavu, kdy je
  * DLQ prázdná, se nespustí vůbec.
  */
+/** Jedna odložená úloha, tak jak ji má vidět člověk, ne jako číslo v součtu. */
+export type DeadLetterItem = {
+  /** Fronta, ze které úloha vypadla. Bez přípony `.dlq`, ta uživateli nic neříká. */
+  queue: string;
+  description: string;
+  at: string | null;
+  /** První řádek chyby. Celý zásobník volání na obrazovku nepatří. */
+  reason: string;
+};
+
+/** Kolik položek se vypíše jmenovitě. Zbytek se shrne číslem. */
+const DEAD_LETTER_SAMPLE = 5;
+
+/**
+ * Co konkrétně leží odložené stranou.
+ *
+ * Panel dosud ukazoval jen POČET a k němu větu „Něco se nezpracovává samo…
+ * pomůže správce instalace". Správce ale neměl čím pomoct: obrazovka ani
+ * příkaz, kterým se do těch front dá podívat, neexistovaly, takže výzva
+ * k akci neměla adresáta. Tohle je ta chybějící odpověď na otázku „nebylo
+ * něco doručeno": tady leží práce, která se nedokončila a sama se nedokončí.
+ */
+async function deadLetterItems(
+  s: ReturnType<typeof sql.identifier>,
+  queues: string[],
+): Promise<DeadLetterItem[]> {
+  if (queues.length === 0) return [];
+  const names = sql.join(
+    queues.map((queue) => sql`${queue}`),
+    sql`, `,
+  );
+  const { rows } = await withoutContext((tx) =>
+    tx.execute<{ name: string; created_on: Date | string | null; reason: string | null }>(sql`
+      SELECT name, created_on,
+             coalesce(output->>'message', split_part(output->>'stack', chr(10), 1),
+                      output::text) AS reason
+        FROM ${s}.job
+       WHERE name IN (${names})
+         AND state < 'active'
+         AND (data <> '{}'::jsonb OR singleton_key IS NOT NULL)
+       ORDER BY created_on DESC
+       LIMIT ${DEAD_LETTER_SAMPLE}`),
+  );
+  return rows.map((row) => {
+    const queue = row.name.replace(/\.dlq$/, '');
+    return {
+      queue,
+      description: describeQueue(queue),
+      at: toIso(row.created_on),
+      reason: readableReason(row.reason ?? ''),
+    };
+  });
+}
+
 async function realDeadLetter(s: ReturnType<typeof sql.identifier>, queues: string[]) {
   if (queues.length === 0) return 0;
   /*
@@ -343,8 +527,10 @@ export async function readWorkerStatus(): Promise<WorkerStatus & { error: string
           waiting: 0,
           running: 0,
           failedRecently: 0,
+          failures: [],
           failedWindowHours: FAILED_WINDOW_HOURS,
           deadLetter: 0,
+          deadLetterItems: [],
         },
         queues: { registered: 0, cronExpected, cronScheduled: 0 },
         error: 'fronta neodpověděla ani prázdným řádkem',
@@ -353,6 +539,8 @@ export async function readWorkerStatus(): Promise<WorkerStatus & { error: string
 
     const secondsSince = row.seconds_since === null ? null : toNumber(row.seconds_since);
     const lastSeen = row.last_seen_at;
+    const dlqQueues = row.dlq_queues ?? [];
+    const failed = await failedRecently(s);
     return {
       state: stateFor(secondsSince),
       lastSeenAt:
@@ -365,9 +553,11 @@ export async function readWorkerStatus(): Promise<WorkerStatus & { error: string
       queue: {
         waiting: toNumber(row.waiting),
         running: toNumber(row.running),
-        failedRecently: await failedRecently(s),
+        failedRecently: failed.total,
+        failures: failed.queues,
         failedWindowHours: FAILED_WINDOW_HOURS,
-        deadLetter: await realDeadLetter(s, row.dlq_queues ?? []),
+        deadLetter: await realDeadLetter(s, dlqQueues),
+        deadLetterItems: await deadLetterItems(s, dlqQueues),
       },
       queues: {
         registered: toNumber(row.registered),
@@ -385,8 +575,10 @@ export async function readWorkerStatus(): Promise<WorkerStatus & { error: string
         waiting: 0,
         running: 0,
         failedRecently: 0,
+        failures: [],
         failedWindowHours: FAILED_WINDOW_HOURS,
         deadLetter: 0,
+        deadLetterItems: [],
       },
       queues: { registered: 0, cronExpected, cronScheduled: 0 },
       error: (error as Error).message,
