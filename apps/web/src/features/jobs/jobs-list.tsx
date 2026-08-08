@@ -327,12 +327,28 @@ export function JobsList({
             title={t('jobs.title')}
             explanation={t('jobs.empty')}
             /*
-             * Prázdné Centrum úloh NEMÁ akci, a je to správně: úlohu tady
-             * nikdo nespouští, spouští se importem kontaktů nebo odesláním
-             * kampaně. Tlačítko „Založit úlohu" by slibovalo cestu, která
-             * odsud nevede.
+             * AKCE TU MUSÍ BÝT, JINAK OBRAZOVKA SPADNE.
+             *
+             * Dřív tu stálo `actions={[]}` s vysvětlením, že úlohu tady nikdo
+             * nespouští. Ta úvaha je věcně správná, jenže `EmptyState` prázdný
+             * seznam ZAKAZUJE a vyhodí výjimku (kritérium 20). Výsledkem tedy
+             * nebyla obrazovka bez tlačítka, ale runtime chyba a stránka 500,
+             * a to pokaždé, když v seznamu nic není. Na ČERSTVÉ INSTALACI je
+             * to první, co člověk v Centru úloh uvidí. Naměřeno 8. 8. 2026 po
+             * vyprázdnění tabulek úloh.
+             *
+             * Odpověď je v té původní úvaze: když se úloha spouští jinde,
+             * ať tam ta akce vede. Import kontaktů je z obou cest ta, která
+             * v Centru úloh něco vyrobí hned, kdežto kampaň se sem dostane až
+             * ve chvíli, kdy se odesílá.
              */
-            actions={[]}
+            actions={[
+              {
+                label: t('jobs.emptyAction'),
+                onClick: () => router.push(`/w/${workspaceSlug}/contacts/import`),
+                description: t('jobs.emptyActionHint'),
+              },
+            ]}
           />
         }
         columns={[

@@ -2,6 +2,7 @@
 
 import { Badge } from '@mlain/ui/components/badge';
 import { Card } from '@mlain/ui/components/card';
+import { Collapsible } from '@mlain/ui/components/collapsible';
 import { cn } from '@mlain/ui/lib/cn';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
@@ -124,26 +125,45 @@ export function WorkerStatusPanel({ initialWorker, workspaceId }: WorkerStatusPa
       </dl>
 
       {/*
-        Dvě věty, ne jeden odstavec o třech. Věta o frontách odpovídá na „co
-        všechno tu běží", věta o selháních vysvětluje číslo nad ní; slepené
-        dohromady je nikdo nedočte.
+        VÝKLAD JE SBALENÝ, ČÍSLA ZŮSTÁVAJÍ VIDĚT.
+
+        Ty čtyři číslice nad tímhle jsou to, na co se člověk kouká pokaždé.
+        Zbytek, tedy vysvětlení okna selhání, počty front a rozpis pádů, jsou
+        odpovědi na otázku, kterou si položí až ve chvíli, kdy mu některé číslo
+        nesedí. Vyvěšené natrvalo z nich byl odstavec, který nikdo nečte, a
+        panel kvůli němu zabíral polovinu obrazovky nad vlastním seznamem úloh.
+
+        Sbalený stav je výchozí SCHVÁLNĚ i tehdy, když něco leží odložené
+        stranou: číslo „Odloženo stranou" je zvýrazněné samo o sobě a shrnutí
+        v hlavičce řekne, kolik toho je, takže se poplach neschová.
       */}
-      <p className="text-meta text-text-muted">
-        {t('jobs.workerFailedNote', { hours: worker.queue.failed_window_hours })}
-      </p>
+      <Collapsible
+        summary={
+          <span className="text-meta">
+            {t('jobs.workerDetails', {
+              failures: worker.queue.failures.length,
+              parked: worker.queue.dead_letter,
+            })}
+          </span>
+        }
+      >
+        <div className="flex flex-col gap-[var(--spacing-stack)]">
+          <p className="text-meta text-text-muted">
+            {t('jobs.workerFailedNote', { hours: worker.queue.failed_window_hours })}
+          </p>
 
-      <p className="text-meta text-text-muted">
-        {t('jobs.workerQueues', {
-          registered: worker.queues.registered,
-          scheduled: worker.queues.cron_scheduled,
-          expected: worker.queues.cron_expected,
-        })}
-        {withoutHandler > 0
-          ? ` ${t('jobs.workerCronWithoutHandler', { count: withoutHandler })}`
-          : ''}
-      </p>
+          <p className="text-meta text-text-muted">
+            {t('jobs.workerQueues', {
+              registered: worker.queues.registered,
+              scheduled: worker.queues.cron_scheduled,
+              expected: worker.queues.cron_expected,
+            })}
+            {withoutHandler > 0
+              ? ` ${t('jobs.workerCronWithoutHandler', { count: withoutHandler })}`
+              : ''}
+          </p>
 
-      {/*
+          {/*
         ROZPIS PÁDŮ. Bez něj je číslo „selhalo za 24 h" poplach bez odpovědi.
         Zadavatel to 8. 8. 2026 popsal takhle: „uživatel bude zmatený co
         selhalo, jestli to proběhlo znovu nebo jestli něco nebylo doručeno".
@@ -152,72 +172,76 @@ export function WorkerStatusPanel({ initialWorker, workspaceId }: WorkerStatusPa
         a všechny fronty se zotavily, přesto panel psal „Něco se nezpracovává
         samo".
       */}
-      {worker.queue.failures.length > 0 ? (
-        <section aria-labelledby="worker-failures" className="flex flex-col gap-1">
-          <h3 id="worker-failures" className="meta-caps text-text-muted">
-            {t('jobs.workerFailuresTitle')}
-          </h3>
-          <p className="text-meta text-text">
-            {stuck.length === 0
-              ? t('jobs.workerFailuresAllRecovered')
-              : t('jobs.workerFailuresStuck', { queues: stuck.map((f) => f.queue).join(', ') })}
-          </p>
-          <ul className="flex flex-col gap-1">
-            {worker.queue.failures.map((failure) => (
-              <li key={failure.queue} className="text-meta text-text-muted">
-                <span className="font-mono break-all text-text">{failure.queue}</span>
-                {failure.description ? ` ${failure.description}` : ''}{' '}
-                <span className={failure.recovered ? undefined : 'text-danger-text'}>
-                  {t(
-                    failure.recovered ? 'jobs.workerFailureRecovered' : 'jobs.workerFailureStuck',
-                    {
-                      count: failure.failures,
-                      time:
-                        failure.recovered && failure.last_success_at
-                          ? format.dateTime(new Date(failure.last_success_at), 'time')
-                          : failure.last_failure_at
-                            ? format.dateTime(new Date(failure.last_failure_at), 'time')
-                            : '',
-                    },
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+          {worker.queue.failures.length > 0 ? (
+            <section aria-labelledby="worker-failures" className="flex flex-col gap-1">
+              <h3 id="worker-failures" className="meta-caps text-text-muted">
+                {t('jobs.workerFailuresTitle')}
+              </h3>
+              <p className="text-meta text-text">
+                {stuck.length === 0
+                  ? t('jobs.workerFailuresAllRecovered')
+                  : t('jobs.workerFailuresStuck', { queues: stuck.map((f) => f.queue).join(', ') })}
+              </p>
+              <ul className="flex flex-col gap-1">
+                {worker.queue.failures.map((failure) => (
+                  <li key={failure.queue} className="text-meta text-text-muted">
+                    <span className="font-mono break-all text-text">{failure.queue}</span>
+                    {failure.description ? ` ${failure.description}` : ''}{' '}
+                    <span className={failure.recovered ? undefined : 'text-danger-text'}>
+                      {t(
+                        failure.recovered
+                          ? 'jobs.workerFailureRecovered'
+                          : 'jobs.workerFailureStuck',
+                        {
+                          count: failure.failures,
+                          time:
+                            failure.recovered && failure.last_success_at
+                              ? format.dateTime(new Date(failure.last_success_at), 'time')
+                              : failure.last_failure_at
+                                ? format.dateTime(new Date(failure.last_failure_at), 'time')
+                                : '',
+                        },
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
-      {/*
+          {/*
         CO ZŮSTALO NEDOKONČENÉ. Tohle je odpověď na „nebylo něco doručeno" a je
         to JINÁ otázka než ta výš: zotavená fronta znamená, že mechanismus jede
         dál, ne že se dokončila právě ta úloha, která spadla. Ta leží tady.
         Dokud tenhle výpis nebyl, ukazoval panel jen počet a radil zavolat
         správce instalace, který ale neměl kam se podívat.
       */}
-      {worker.queue.dead_letter > 0 ? (
-        <section aria-labelledby="worker-dead-letter" className="flex flex-col gap-1">
-          <h3 id="worker-dead-letter" className="meta-caps text-text-muted">
-            {t('jobs.workerDeadLetterTitle')}
-          </h3>
-          <p className="text-ui text-text">{t('jobs.workerDeadLetterExplain')}</p>
-          <ul className="flex flex-col gap-1">
-            {worker.queue.dead_letter_items.map((deadItem, index) => (
-              <li key={`${deadItem.queue}-${index}`} className="text-meta text-text-muted">
-                <span className="font-mono break-all text-text">{deadItem.queue}</span>
-                {deadItem.at ? ` ${format.dateTime(new Date(deadItem.at), 'time')}` : ''}:{' '}
-                {deadItem.reason}
-              </li>
-            ))}
-          </ul>
-          {worker.queue.dead_letter > worker.queue.dead_letter_items.length ? (
-            <p className="text-meta text-text-muted">
-              {t('jobs.workerDeadLetterMore', {
-                count: worker.queue.dead_letter - worker.queue.dead_letter_items.length,
-              })}
-            </p>
+          {worker.queue.dead_letter > 0 ? (
+            <section aria-labelledby="worker-dead-letter" className="flex flex-col gap-1">
+              <h3 id="worker-dead-letter" className="meta-caps text-text-muted">
+                {t('jobs.workerDeadLetterTitle')}
+              </h3>
+              <p className="text-ui text-text">{t('jobs.workerDeadLetterExplain')}</p>
+              <ul className="flex flex-col gap-1">
+                {worker.queue.dead_letter_items.map((deadItem, index) => (
+                  <li key={`${deadItem.queue}-${index}`} className="text-meta text-text-muted">
+                    <span className="font-mono break-all text-text">{deadItem.queue}</span>
+                    {deadItem.at ? ` ${format.dateTime(new Date(deadItem.at), 'time')}` : ''}:{' '}
+                    {deadItem.reason}
+                  </li>
+                ))}
+              </ul>
+              {worker.queue.dead_letter > worker.queue.dead_letter_items.length ? (
+                <p className="text-meta text-text-muted">
+                  {t('jobs.workerDeadLetterMore', {
+                    count: worker.queue.dead_letter - worker.queue.dead_letter_items.length,
+                  })}
+                </p>
+              ) : null}
+            </section>
           ) : null}
-        </section>
-      ) : null}
+        </div>
+      </Collapsible>
     </Card>
   );
 }

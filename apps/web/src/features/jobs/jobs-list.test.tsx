@@ -123,6 +123,28 @@ describe('Centrum úloh, tabulka', () => {
   });
 
   /**
+   * PRÁZDNÝ SEZNAM OBRAZOVKU SHODIL, a byla to chyba, kterou nikdo neviděl,
+   * protože nikdo neměl prázdné Centrum úloh.
+   *
+   * Do 8. 8. 2026 se sem předávalo `actions={[]}` i s komentářem, proč akce
+   * nemá smysl: úloha se tady nespouští, spouští se importem nebo odesláním
+   * kampaně. `EmptyState` ale prázdný seznam akcí ZAKAZUJE a vyhodí výjimku
+   * (kritérium 20), takže z toho nebyl prázdný stav bez tlačítka, ale stránka
+   * 500. Na čerstvé instalaci je to úplně první, co člověk v Centru úloh uvidí.
+   * Naměřeno po vyprázdnění tabulek úloh:
+   *
+   *   Error: Prázdný stav musí nabídnout aspoň jednu akci (kritérium 20).
+   *     at EmptyState (packages/ui/src/patterns/states/empty-state.tsx:36)
+   *     at JobsList (src/features/jobs/jobs-list.tsx:325)
+   */
+  it('prázdný seznam se vykreslí a nabídne cestu, kde úloha vzniká', () => {
+    renderList([], { total: 0 });
+
+    expect(screen.getByTestId('empty-state')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Importovat kontakty' })).toBeVisible();
+  });
+
+  /**
    * SEZNAM JE TABULKA, ne karty. Zadavatel to viděl na obrazovce: tři úlohy
    * jako karty na čtyři řádky zabraly celý displej. Měří se sloupce, ne třídy:
    * kdyby se tabulka vrátila k `JobsCenter`, tenhle test spadne.

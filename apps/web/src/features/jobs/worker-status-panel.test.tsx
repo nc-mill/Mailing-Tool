@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest';
 
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { formats } from '@mlain/i18n/formats';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -50,6 +50,19 @@ function renderPanel(worker: ApiWorkerStatus | null) {
       <WorkerStatusPanel initialWorker={worker} workspaceId="w-1" />
     </NextIntlClientProvider>,
   );
+}
+
+/**
+ * Rozbalí podrobnosti panelu.
+ *
+ * Výklad a rozpis pádů jsou SBALENÉ, takže v dokumentu do rozkliknutí nejsou
+ * vůbec. Testy to musí odklikávat a je to tak správně: kdyby se obsah jen
+ * skrýval stylem, četly by ho odečítače obrazovky i vyhledávání v prohlížeči.
+ * Tenhle pomocník tedy zároveň drží tvrzení, že sbalený stav je opravdu
+ * sbalený, a ne jen neviditelný.
+ */
+function openDetails(): void {
+  fireEvent.click(screen.getByText(/^Podrobnosti:/));
 }
 
 function respondWith(worker: ApiWorkerStatus) {
@@ -136,6 +149,8 @@ describe('Panel stavu zpracování na pozadí', () => {
     });
 
     expect(screen.getByText('Běží')).toBeInTheDocument();
+
+    openDetails();
     expect(screen.getByText(/Co zůstalo nedokončené/)).toBeInTheDocument();
     expect(screen.getByText(/vyčerpaly všechny pokusy a samy se už nespustí/)).toBeInTheDocument();
     expect(screen.getByText(/ENOENT/)).toBeInTheDocument();
@@ -153,6 +168,7 @@ describe('Panel stavu zpracování na pozadí', () => {
   it('u pádů, ze kterých se fronty zotavily, řekne, že se nemá co dělat', () => {
     renderPanel(healthy);
 
+    openDetails();
     expect(screen.getByText(/od té doby proběhlo znovu a povedlo se/)).toBeInTheDocument();
     expect(screen.getByText('campaign.scheduler')).toBeInTheDocument();
     expect(screen.getByText(/Vybírá naplánované kampaně/)).toBeInTheDocument();
@@ -176,6 +192,7 @@ describe('Panel stavu zpracování na pozadí', () => {
       },
     });
 
+    openDetails();
     expect(screen.getByText(/od posledního pádu znovu neproběhlo/)).toBeInTheDocument();
     expect(screen.queryByText(/od té doby proběhlo znovu a povedlo se/)).not.toBeInTheDocument();
   });
@@ -186,6 +203,7 @@ describe('Panel stavu zpracování na pozadí', () => {
       queues: { registered: 60, cron_expected: 30, cron_scheduled: 22 },
     });
 
+    openDetails();
     expect(screen.getByText(/8 front nemá v téhle verzi obsluhu/)).toBeInTheDocument();
   });
 
