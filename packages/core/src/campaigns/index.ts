@@ -170,3 +170,7 @@ export {
   type RenderPlan,
   type RevokeReason,
 } from './repo/outbox';
+
+// Validace Liquidu v předmětu a preheaderu. Vystavuje se proto, aby ji uměla
+// zavolat i jiná cesta než HTTP: kdo předmět zapisuje, musí ho ověřit (nález N1).
+export { assertCampaignInboxLiquid, type CampaignInboxInput } from './inbox-liquid';

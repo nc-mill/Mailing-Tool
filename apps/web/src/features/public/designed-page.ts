@@ -27,6 +27,8 @@ import { publicHtmlResponse } from './render';
  */
 export async function renderDesignedPage(
   design: PublicPageDesign | null,
+  /** Viz `embeddable` u `publicHtmlResponse`. Děkovací stránka formuláře běží v rámu. */
+  options: { embeddable?: boolean } = {},
 ): Promise<Response | null> {
   if (design === null) return null;
   try {
@@ -37,7 +39,10 @@ export async function renderDesignedPage(
       assets: design.assets,
       assetBaseUrl: design.assetBaseUrl,
     });
-    return publicHtmlResponse(html);
+    return publicHtmlResponse(
+      html,
+      options.embeddable === undefined ? {} : { embeddable: options.embeddable },
+    );
   } catch (error) {
     console.error('Návrh veřejné stránky se nevykreslil, použije se vestavěný text.', error);
     return null;

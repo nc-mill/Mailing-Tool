@@ -10,7 +10,7 @@ import {
   PUBLIC_KEY_SCOPES,
   type ApiKeyRow,
 } from './api-key';
-import { isPermission, type Permission } from './permissions';
+import { assertMayGrantScopes, isPermission, type Permission } from './permissions';
 import { IdentityAuditActions } from './audit';
 import { wsEq } from './scope';
 import type { WorkspaceContext } from './types';
@@ -96,6 +96,13 @@ export async function createApiKey(
   actorLabel: string,
 ): Promise<{ key: PublicApiKey; secret: string }> {
   const scopes = assertScopes(input.scopes, input.kind);
+  /**
+   * Katalog říká, že scope EXISTUJE. Tahle závora říká, že na něj vydávající
+   * dosáhne (nález N3). Bez ní si admin vydal klíč s `backups:run`, který má
+   * jen vlastník, a zálohou si vytáhl celou instalaci. Rozbor je u
+   * `assertMayGrantScopes`.
+   */
+  assertMayGrantScopes(ctx, scopes);
   // ODCHYLKA OD PLÁNU (jen typová, chování je stejné): plán psal
   // `'secret' in generated ? generated.secret : ''`. Zúžení operátorem `in`
   // nad sjednocením, kde jeden člen tu vlastnost nemá, dá `unknown`, takže by
@@ -180,6 +187,14 @@ export async function rotateApiKey(
   if (existing.kind === 'public') {
     throw new ApiError('conflict', { params: { reason: 'public_key_has_no_secret' } });
   }
+
+  /**
+   * ROTACE JE VYDÁNÍ SEKRETU KE STARÝM SCOPŮM, takže platí táž závora jako
+   * u vydání (nález N3). Klíč s `backups:run`, který v projektu zbyl po
+   * vlastníkovi, by jinak admin obnovil a měl by tutéž cestu k záloze celé
+   * instalace, jen o krok delší.
+   */
+  assertMayGrantScopes(ctx, existing.scopes as Permission[]);
 
   /**
    * ODCHYLKA OD PLÁNU, a je to oprava chyby, ne kosmetika. Plán při rotaci

@@ -1,6 +1,7 @@
 import { CLICK_MARKER_PREFIX, OPEN_PIXEL_MARKER } from '@mlain/contracts/markers';
 import { validateLiquid } from '@mlain/contracts/liquid';
 import { parseHTML } from 'linkedom';
+import { LIQUID_CONSTRUCT } from '../document/href';
 import type { Issue } from '../issue';
 import type { FilterSlot } from '../normalize/slots';
 import type { CompiledLink } from './types';
@@ -22,8 +23,9 @@ export type InvariantInput = {
 export type InvariantResult = { issues: Issue[]; clickMarkerCount: number };
 
 const HTML_SOFT_LIMIT = 102_400;
-const LIQUID_CONSTRUCT = /\{\{[^}]*\}\}|\{%[^%]*%\}/g;
 const ENTITY = /&(quot|#39|lt|gt|amp);/;
+/** Bez příznaku `g`, aby si vzorek mezi dvěma čteními nenesl pozici. */
+const FORBIDDEN_CONTENT = /<script|javascript:|vbscript:|data:text\/html|onerror=|onload=/i;
 const COMMENT = /<!--[\s\S]*?-->/g;
 
 const error = (code: string, params?: Record<string, string | number>): Issue => ({
@@ -107,8 +109,14 @@ export function checkInvariants(input: InvariantInput): InvariantResult {
     issues.push(error('render_invalid_html', { opened, closed }));
   }
 
-  // I6
-  if (/<script|javascript:|onerror=|onload=/i.test(input.html)) {
+  // I6. Čte se dvakrát: hotové HTML a totéž HTML bez konstrukcí Liquidu.
+  //
+  // Interpolace probíhá AŽ NAD TÍMHLE VÝSTUPEM, takže konstrukce z něj zmizí
+  // a to, co bylo kolem ní, se slepí dohromady. `java{{ x }}script:` tedy před
+  // vykreslením žádné schéma není a po něm je z něj spustitelný odkaz. Jedno
+  // čtení chytá dnešek, druhé to, co z výstupu teprve vznikne.
+  const withoutLiquid = input.html.replace(LIQUID_CONSTRUCT, '');
+  if (FORBIDDEN_CONTENT.test(input.html) || FORBIDDEN_CONTENT.test(withoutLiquid)) {
     issues.push(error('render_forbidden_content'));
   }
 

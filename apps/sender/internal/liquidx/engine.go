@@ -63,7 +63,12 @@ func New(opts Options) (*Engine, error) {
 		}
 		loc = l
 	}
-	e := &Engine{eng: liquid.NewEngine(), loc: loc, opts: opts}
+	eng := liquid.NewEngine()
+	// Standardní sada tagů knihovny obsahuje include nad čtením souborů. Prepare
+	// ho sice odmítne dřív, jenže Validate a Render se dají zavolat i na zdroj,
+	// který Prepare neprošel, takže jedna vrstva nestačí (nález N1).
+	hardenTags(eng)
+	e := &Engine{eng: eng, loc: loc, opts: opts}
 	registerFilters(e.eng, loc)
 	return e, nil
 }

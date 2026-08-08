@@ -10,6 +10,7 @@ import { getSystemMailStatus } from '../platform/system-mail-config';
 import { createInvitationContext } from './context';
 import { generateOpaqueToken, tokenHash } from './token';
 import { IdentityAuditActions } from './audit';
+import { assertMayGrantRole } from './permissions';
 import { wsEq } from './scope';
 import type { Role, WorkspaceContext } from './types';
 
@@ -66,6 +67,16 @@ export async function createInvitation(
   actorLabel: string,
 ): Promise<PublicInvitation> {
   const email = input.email.trim().toLowerCase();
+
+  /**
+   * ROLE Z POZVÁNKY SE ZAPÍŠE DO ČLENSTVÍ BEZ DALŠÍ KONTROLY (nález N2).
+   *
+   * `acceptInvitation` vezme roli z řádku pozvánky a vloží ji do `memberships`,
+   * takže pozvánka je plnohodnotná cesta k udělení role. Kontrola stojí PŘED
+   * vším ostatním, i před stavem systémové pošty: kdo si zve vlastníka, nemá
+   * dostat radu, ať si nejdřív nastaví odesílací účet.
+   */
+  assertMayGrantRole(ctx, input.role);
 
   /**
    * POZVÁNKA SE NEZALOŽÍ, KDYŽ NENÍ ČÍM JI ODESLAT.

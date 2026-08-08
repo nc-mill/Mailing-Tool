@@ -167,6 +167,14 @@ describe('bod 15: navržená stránka drží všechna dnešní pravidla', () => 
     // zablokovala a stránka by se rozsypala až u návštěvníka.
     expect(html).not.toContain('<script');
     expect(html).not.toContain('rel="stylesheet"');
+    // N5: politika obsahu jde i sem, protože navrženou stránku vydává tentýž
+    // `publicHtmlResponse`. A hlavně SMÍ TU BÝT: dokument z Builderu má styly
+    // vložené přímo ve značkách, takže `style-src` bez `unsafe-inline` by ho
+    // zabil, aniž by o tom kdokoliv z nás věděl.
+    const csp = response.headers.get('content-security-policy') ?? '';
+    expect(csp).toContain("script-src 'none'");
+    expect(csp).toContain("style-src 'unsafe-inline'");
+    expect(html).toMatch(/style="/);
     // Jazyk nese dokument, který v Builderu vznikl v jazyce projektu. Hlavička
     // prohlížeče do toho nemluví, viz komentář u požadavku výš.
     expect(html).toContain('lang="cs"');

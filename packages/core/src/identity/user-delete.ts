@@ -5,7 +5,7 @@ import { ApiError } from '../errors/api-error';
 import { writeAuditLog } from '../audit/write';
 import { IdentityAuditActions } from './audit';
 import { revokeUserSessions } from './session';
-import { listWorkspaces } from './workspace-service';
+import { listWorkspaces, ownsAnyWorkspace } from './workspace-service';
 import type { WorkspaceContext } from './types';
 
 /**
@@ -46,6 +46,47 @@ import type { WorkspaceContext } from './types';
  * jednotky až desítky, takže strop nikdo nepotká.
  */
 export const ORPHAN_SCAN_LIMIT = 500;
+
+/**
+ * Závora pro operace nad ÚČTY CELÉ INSTALACE (nález N6).
+ *
+ * Výpis osiřelých účtů i mazání účtu byly hlídané oprávněním `members:remove`.
+ * To je ale role v PROJEKTU, kdežto obojí sahá napříč instalací: výpis vrací
+ * e-maily, jména a časy posledního přihlášení VŠECH účtů, i těch, které
+ * s projektem volajícího nemají nic společného. Admin jednoho projektu tak
+ * viděl adresář celé instalace a uměl z něj mazat.
+ *
+ * ROLE INSTALACE V PRODUKTU NEEXISTUJE. `users` sloupec s rolí nemá a
+ * `ROLE_ORDER` v `permissions.ts` je `viewer, editor, admin, owner`, tedy samé
+ * role uvnitř projektu. Nejjednodušší poctivé řešení proto NEZAVÁDÍ nový pojem,
+ * ale bere ten, který produkt už používá pro rozhodnutí téhož druhu: vlastnictví
+ * aspoň jednoho živého projektu. Přesně tak se ptá `assertMayCreateWorkspace`
+ * u zakládání projektů (rozhodnutí zadavatele ze 7. 8. 2026: „projekty smí
+ * zakládat pouze nejvyšší role"), takže „správce instalace" znamená v obou
+ * místech totéž a nevzniká druhý zdroj pravdy.
+ *
+ * Nový sloupec ani tabulka by byly poctivější jen zdánlivě: musely by se plnit
+ * při instalaci, migrovat u běžících instalací a nikdo by je neuměl spravovat,
+ * protože obrazovka pro správu instalace neexistuje. Až taková obrazovka
+ * vznikne, je tohle jediné místo, které se změní.
+ *
+ * AKTÉR TYPU KLÍČ NEPROJDE NIKDY. Klíč patří jednomu projektu a jeho scopy jsou
+ * projektové; kdyby stačil scope `members:remove`, byl by klíč vydaný pro jeden
+ * projekt tou nejtišší cestou k účtům celé instalace. Systémový aktér projde,
+ * stejně jako v `assertPermission`: to jsou úlohy na pozadí, ne request.
+ */
+export async function assertInstallationAdmin(ctx: WorkspaceContext): Promise<void> {
+  const actor = ctx.actor;
+  if (actor.type === 'system') return;
+  if (actor.type === 'user' && (await ownsAnyWorkspace(actor.userId))) return;
+  throw new ApiError('forbidden', {
+    params: {
+      reason: 'installation_admin_only',
+      requiredRole: 'owner',
+      currentRole: actor.type === 'user' ? actor.role : null,
+    },
+  });
+}
 
 export type OrphanedAccount = {
   user_id: string;

@@ -58,6 +58,10 @@ export async function GET(
         listId: form.listIds[0] ?? null,
         formName: form.name,
       }),
+      // Děkovací stránka je cíl přesměrování 303 ze stránky formuláře, takže
+      // se zobrazí v TOMTÉŽ rámu na cizím webu. Zákaz rámování by z odeslaného
+      // formuláře udělal prázdné okno.
+      { embeddable: true },
     );
     if (designed !== null) return designed;
   }
@@ -65,5 +69,6 @@ export async function GET(
   return renderPublicPage(FormThanksPage({ t, message: message === '' ? null : message }), {
     branding,
     locale: branding.locale,
+    embeddable: true,
   });
 }

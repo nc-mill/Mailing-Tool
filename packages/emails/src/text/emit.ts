@@ -1,4 +1,5 @@
 import { convert } from 'html-to-text';
+import { safeHref } from '../document/href';
 import { varOutput } from '../emitter/rich-text';
 import { visibilityTags } from '../emitter/visibility';
 import type {
@@ -28,10 +29,17 @@ type Collected = { text: string; markers: string[] };
 
 export function renderDocumentText(options: TextRenderOptions): string {
   const lines: string[] = [];
-  for (const section of options.normalized.doc.blocks) {
-    if (options.normalized.skippedBlockIds.has(section.id)) continue;
+  // Neznámé schéma degraduje na `#` stejně jako v HTML. Prostý text sice nic
+  // nespouští, ale poštovní klienti z něj odkazy dělají sami, a hlavně by se
+  // dvě podoby téže zprávy nesměly lišit v tom, kam odkaz vede.
+  const safe: TextRenderOptions = {
+    ...options,
+    linkHref: (href: string, trackable: boolean) => safeHref(options.linkHref(href, trackable)),
+  };
+  for (const section of safe.normalized.doc.blocks) {
+    if (safe.normalized.skippedBlockIds.has(section.id)) continue;
     pushConditional(lines, section, (out) => {
-      for (const child of section.children) emitChild(out, child, options);
+      for (const child of section.children) emitChild(out, child, safe);
     });
   }
   return finish(lines);

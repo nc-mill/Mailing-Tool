@@ -1134,3 +1134,96 @@ describe('zobrazení zprávy v prohlížeči', () => {
     expect(html).not.toMatch(/Tenhle odkaz neplatí/);
   }, 60_000);
 });
+
+/**
+ * N5: bezpečnostní hlavičky se obcházely tečkou v cestě.
+ *
+ * Matcher proxy vynechává jakoukoliv cestu s tečkou, kdežto `sanitizePublicToken`
+ * token na první tečce jen uřízne. `/u/TOKEN.x` je tedy pro trasu tentýž odkaz,
+ * ale proxy na něm neběží. V kampani stačilo napsat `{{ unsubscribe_url }}.x`
+ * a příjemce dostal odhlašovací stránku úplně bez politiky obsahu.
+ *
+ * Testy proto volají route handler PŘÍMO, tedy přesně v té situaci, kdy proxy
+ * není: co obstojí tady, obstojí na obou tvarech adresy.
+ */
+describe('N5: veřejná stránka nese bezpečnostní hlavičky sama, i bez proxy', () => {
+  async function unsubscribePage(suffix = '') {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'j@x.cz' });
+    const listId = await createList(ctx, { name: 'Newsletter' });
+    await subscribe(ctx, { contactId, listId, status: 'confirmed' });
+    const token = `${unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId })}${suffix}`;
+    return unsubscribeGet(publicRequest(`/u/${token}`), params({ token }));
+  }
+
+  it('odhlašovací stránka má politiku obsahu, zákaz rámování i nosniff', async () => {
+    const response = await unsubscribePage();
+    const csp = response.headers.get('content-security-policy') ?? '';
+
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("script-src 'none'");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(response.headers.get('x-frame-options')).toBe('DENY');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(response.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
+    // Dnešní hlavičky se tím nesmí ztratit.
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    expect(response.headers.get('x-robots-tag')).toContain('noindex');
+  }, 60_000);
+
+  it('TATÁŽ stránka je nese i na adrese s tečkou, kam proxy nedosáhne', async () => {
+    const response = await unsubscribePage('.x');
+    const html = await response.text();
+
+    // Nejdřív důkaz, že je to opravdu tatáž stránka, ne chybová: kdyby tečka
+    // vedla na 404, test by hlídal hlavičky na něčem úplně jiném.
+    expect(response.status).toBe(200);
+    expect(html).toMatch(/odhlá/i);
+    expect(html).not.toMatch(/Tenhle odkaz neplatí/);
+
+    expect(response.headers.get('content-security-policy') ?? '').toContain("default-src 'none'");
+    expect(response.headers.get('x-frame-options')).toBe('DENY');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+  }, 60_000);
+
+  it('zobrazení zprávy v prohlížeči nese tytéž hlavičky, i když si tělo nese samo', async () => {
+    const ctx = await testWorkspace();
+    const contactId = await createContact(ctx, { email: 'jana@example.cz' });
+    const token = unsubscribeTokenFor({ workspaceId: ctx.workspaceId, contactId, listId: null });
+
+    const response = await webviewGet(publicRequest(`/v/${token}`), params({ token }));
+    expect(response.headers.get('content-security-policy') ?? '').toContain("script-src 'none'");
+    expect(response.headers.get('x-frame-options')).toBe('DENY');
+    expect(response.headers.get('cache-control')).toContain('no-store');
+  }, 60_000);
+
+  /**
+   * Výjimka, která musí přežít každou budoucí úpravu hlaviček: rozhraní nabízí
+   * vložení formuláře přes `<iframe src=".../f/{ref}">`, takže zákaznický web
+   * JE ten cizí rám. Plošný zákaz rámování by formulář zhasl všem naráz.
+   */
+  it('vkládaný formulář se dál smí zobrazit v cizím rámu, včetně děkovací stránky', async () => {
+    const ctx = await testWorkspace();
+    const listId = await createList(ctx, { name: 'Newsletter' });
+    const form = await createForm(ctx, {
+      name: 'Odběr novinek',
+      fields: [
+        { target: 'email', label: { en: 'Email', cs: 'E-mail' }, required: true, type: 'email' },
+      ],
+      list_ids: [listId],
+    });
+    const ref = publicFormRef(form);
+
+    const page = await formGet(publicRequest(`/f/${ref}`), params({ slug: ref }));
+    expect(page.headers.get('x-frame-options')).toBeNull();
+    // Kladné tvrzení, ne jen „neobsahuje zákaz": odpověď úplně bez politiky
+    // obsahu by prošla taky, a přitom je to ta vada, kterou opravujeme.
+    expect(page.headers.get('content-security-policy') ?? '').toContain('frame-ancestors *');
+    // Formulář musí zůstat celý, ne jen bez zákazu rámování.
+    expect(await page.text()).toContain('method="post"');
+
+    const thanks = await thanksGet(publicRequest(`/f/${ref}/thanks`), params({ slug: ref }));
+    expect(thanks.headers.get('x-frame-options')).toBeNull();
+    expect(thanks.headers.get('content-security-policy') ?? '').toContain('frame-ancestors *');
+  }, 60_000);
+});

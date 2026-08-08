@@ -3,7 +3,7 @@ import { withWorkspace } from '../../tx';
 import { assertPermission } from '../permissions';
 import { changeMemberRole, listMembers, removeMember } from '../membership-service';
 import { createMember } from '../member-create';
-import { deleteUserAccount, listOrphanedAccounts } from '../user-delete';
+import { assertInstallationAdmin, deleteUserAccount, listOrphanedAccounts } from '../user-delete';
 import { listWorkspaces } from '../workspace-service';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../password';
 import { problemResponse, RoleSchema, type ApiEnv } from './schemas';
@@ -245,6 +245,9 @@ export function registerMemberRoutes(app: OpenAPIHono<ApiEnv>): void {
   app.openapi(orphanedRoute, async (c) => {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'members:remove');
+    // Výpis sahá na účty CELÉ INSTALACE, ne na členy projektu, takže samotné
+    // `members:remove` na něj nestačí. Rozbor je u `assertInstallationAdmin`.
+    await assertInstallationAdmin(ctx);
     // Běží MIMO transakci projektu: osiřelost se zjišťuje pod jednotlivými
     // uživateli, protože členství napříč projekty se z kontextu jednoho
     // projektu přečíst nedají. Viz komentář u `listOrphanedAccounts`.
@@ -255,6 +258,9 @@ export function registerMemberRoutes(app: OpenAPIHono<ApiEnv>): void {
   app.openapi(deleteUserRoute, async (c) => {
     const { ctx, label } = c.get('auth');
     assertPermission(ctx, 'members:remove');
+    // Mazání účtu je nevratný zásah do instalace, ne do projektu. Táž závora
+    // jako u výpisu osiřelých, aby se cesta nedala obejít uhodnutím ID.
+    await assertInstallationAdmin(ctx);
     const userId = c.req.valid('param').user_id;
     // Počet projektů se zjišťuje před transakcí a ze stejného zdroje jako výpis
     // osiřelých, tedy `withUser`. Uvnitř transakce s kontextem projektu by dotaz

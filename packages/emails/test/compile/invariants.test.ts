@@ -149,6 +149,36 @@ describe('invariants', () => {
     }
   });
 
+  // Interpolace běží AŽ NAD tímhle výstupem, takže konstrukce z něj zmizí
+  // a to, co bylo kolem ní, se slepí dohromady. Kontrola nad hotovým HTML
+  // proto musí číst obojí: dnešní tvar i ten, co z něj teprve vznikne.
+  it('I6 rejects a scheme that only appears once liquid is rendered away', () => {
+    for (const bad of [
+      '<a href="jav{{ contact.attr.city }}ascript:alert(1)">x</a>',
+      '<a href="javascript{% if contact.attr.city %}{% endif %}:alert(1)">x</a>',
+      '<a href="vb{{ contact.attr.city }}script:msgbox(1)">x</a>',
+    ]) {
+      expect(
+        codes({
+          html: `<html><body>${bad}<!--ML_OPEN_PIXEL--></body></html>`,
+          text: '',
+          links: [],
+        }),
+        bad,
+      ).toContain('render_forbidden_content');
+    }
+  });
+
+  // Vzorek konstrukce musí odpovídat tomu, co skutečně parsuje engine: ten čte
+  // od `{%` k PRVNÍMU `%}`, bez ohledu na to, co je uvnitř. Dřívější znění
+  // `\{%[^%]*%\}` konstrukci s procentem uvnitř nenašlo, takže ji nesmazalo
+  // a schéma pod ní zůstalo schované.
+  it('I6 sees through a construct that contains a percent sign', () => {
+    const html =
+      '<html><body><a href="jav{% if contact.attr.city == \'50%\' %}{% endif %}ascript:alert(1)">x</a><!--ML_OPEN_PIXEL--></body></html>';
+    expect(codes({ html, text: '', links: [] })).toContain('render_forbidden_content');
+  });
+
   it('I7 requires src, width, height and alt on every image', () => {
     expect(
       codes({

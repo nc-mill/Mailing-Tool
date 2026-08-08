@@ -4,6 +4,7 @@ import type { Tx } from '../tx';
 import { ApiError } from '../errors/api-error';
 import { writeAuditLog } from '../audit/write';
 import { IdentityAuditActions } from './audit';
+import { assertMayGrantRole } from './permissions';
 import { wsEq } from './scope';
 import type { Role, WorkspaceContext } from './types';
 
@@ -67,7 +68,19 @@ export async function changeMemberRole(
   input: { userId: string; role: Role },
   actorLabel: string,
 ): Promise<MemberRow> {
-  if (input.role !== 'owner') await assertNotLastOwner(tx, ctx, input.userId);
+  /**
+   * OCHRANA POSLEDNÍHO VLASTNÍKA PLATÍ PRO KAŽDOU CÍLOVOU ROLI (nález N2).
+   *
+   * Dřív tu stálo `if (input.role !== 'owner')`, takže se u cílové role
+   * `owner` kontrola PŘESKOČILA celá. Byl to druhý půlkrok téhož útoku: admin
+   * se povýšil na vlastníka, ochrana pak napočítala vlastníky dva a původního
+   * vlastníka šlo odebrat. Podmínka je pryč, protože ani při cílové roli
+   * `owner` není důvod invariant obcházet.
+   */
+  await assertNotLastOwner(tx, ctx, input.userId);
+  // Až po ní, aby se pořadí chyb nezměnilo pro cesty, které fungovaly: kdo mění
+  // roli neexistujícímu členovi, dostane dál 404, ne 403.
+  assertMayGrantRole(ctx, input.role);
 
   const updated = await tx
     .update(schema.memberships)

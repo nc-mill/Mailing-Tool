@@ -56,7 +56,13 @@ export async function GET(
     if (isScript) return new Response('', { status: 404 });
     const branding = anonymousBranding();
     const t = await publicTranslator(branding.locale, 'contacts.public');
-    return renderPublicPage(InvalidLinkPage({ t }), { branding, locale: branding.locale });
+    // I zpráva o neplatném odkazu se musí ukázat v rámu: formulář na cizím webu
+    // se mohl mezitím vypnout a prázdný zablokovaný rám je horší než věta.
+    return renderPublicPage(InvalidLinkPage({ t }), {
+      branding,
+      locale: branding.locale,
+      embeddable: true,
+    });
   }
 
   const scope = await publicScope(form.workspaceId, 'contacts.public.form');
@@ -119,6 +125,9 @@ export async function GET(
       consentRequired: form.consentRequired,
       locale: branding.locale,
     }),
-    { branding, locale: branding.locale },
+    // Hostovaná stránka formuláře JE ta, kterou rozhraní nabízí vložit přes
+    // `<iframe>` (`packages/core/src/contacts/forms/embed.ts`). Zákaz rámování
+    // by ji na každém zákaznickém webu naráz zhasl.
+    { branding, locale: branding.locale, embeddable: true },
   );
 }

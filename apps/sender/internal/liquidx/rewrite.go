@@ -48,7 +48,9 @@ var forbiddenEntities = []string{"&quot;", "&#39;", "&lt;", "&gt;", "&amp;"}
 //     tomu, aby se escapovaná šablona dostala k odeslání.
 //  2. V2: odmítne filtr mimo kontraktní pětici. Je to zároveň implementace
 //     kontraktního pravidla "render s filtrem mimo pětici musí selhat" a kryje
-//     nález K11 o tichém filtru safe.
+//     nález K11 o tichém filtru safe. Stejně tak odmítne TAG mimo kontraktní
+//     seznam (viz tags.go): dokud se kontroloval jen filtr, prošlo
+//     {% include %} a přečetlo libovolný soubor (nález N1).
 //  3. Injektuje výstupní filtr do každého {{ }} a přepíše porovnání s blank
 //     a empty, které lexer osteele/liquid nezná (nález K4).
 func Prepare(source string, ctx Context) (Prepared, error) {
@@ -113,6 +115,12 @@ func Prepare(source string, ctx Context) (Prepared, error) {
 			b.WriteString(outFilter)
 			b.WriteString(" }}")
 		} else {
+			// V2b: tag mimo kontraktní seznam. Musí se odmítnout HLASITĚ, ne
+			// tiše přeskočit: {% include %} standardní sady knihovny čte soubory
+			// z disku a předmět kampaně jde do Prepare přímo z databáze.
+			if err := checkTag(inner); err != nil {
+				return Prepared{}, err
+			}
 			rewritten, paths := rewriteBlank(inner)
 			for _, p := range paths {
 				blank[p] = true

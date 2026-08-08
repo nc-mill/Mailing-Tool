@@ -13,6 +13,7 @@ import {
   type SectionBlock,
   type SocialBlock,
 } from './types';
+import { ALLOWED_LINK_SCHEMES, forbiddenSchemeOf, SYSTEM_URL_TAG } from './href';
 import { PAGE_ISSUE_CODES, type TemplateKind } from './profile';
 import { pointerToDotted, richTextFieldsOf, walkBlocks, walkRichText } from './walk';
 
@@ -34,9 +35,7 @@ export const RESERVED_MARKER_PATTERNS = [
   /ML_RAW_/i,
 ];
 
-const SYSTEM_URL_TAG = /^\{\{\s*(unsubscribe_url|preferences_url|webview_url)\s*\}\}$/;
 const HAS_LIQUID = /\{\{|\{%/;
-const ALLOWED_SCHEMES = ['https:', 'http:', 'mailto:', 'tel:'];
 
 const issue = (
   code: string,
@@ -254,6 +253,22 @@ function checkHref(
     issues.push(issue('content_link_anchor_only', 'error', pointer));
     return;
   }
+  // SCHÉMA SE KONTROLUJE PRVNÍ, ještě před odbočkou na Liquid.
+  //
+  // Dřív se tahle kontrola dělala až úplně nakonec, takže se k ní odkaz
+  // s proměnnou nikdy nedostal: větev níž se z funkce vracela. Stačilo tedy
+  // připsat `#{{ x }}` a `javascript:` prošlo. U profilu `page` se navíc
+  // odkazy nesledují, takže nevzniklo ani varování a autor šablony si tak
+  // uložil spustitelný kód na NAŠI doménu.
+  //
+  // Proměnná v odkazu je legitimní stav a zakázanou se nestává. Zakázané je
+  // NEPOVOLENÉ SCHÉMA, ať už kolem něj Liquid je, nebo není, a jsou to dvě
+  // nezávislé vlastnosti téhož řetězce.
+  const forbidden = forbiddenSchemeOf(trimmed);
+  if (forbidden !== null) {
+    issues.push(issue('content_link_scheme_forbidden', 'error', pointer, { scheme: forbidden }));
+    return;
+  }
   if (SYSTEM_URL_TAG.test(trimmed)) return;
   if (HAS_LIQUID.test(trimmed)) {
     // Kód se jmenuje liquid_in_trackable_href, takže je to chyba jen u trackovaného odkazu.
@@ -275,7 +290,7 @@ function checkHref(
     issues.push(issue('content_link_scheme_forbidden', 'error', pointer, { href: trimmed }));
     return;
   }
-  if (!ALLOWED_SCHEMES.includes(parsed.protocol)) {
+  if (!ALLOWED_LINK_SCHEMES.includes(parsed.protocol)) {
     issues.push(
       issue('content_link_scheme_forbidden', 'error', pointer, { scheme: parsed.protocol }),
     );

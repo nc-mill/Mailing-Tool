@@ -1,5 +1,5 @@
 import { Liquid } from 'liquidjs';
-import { HTML_ESCAPE_MAP } from './grammar';
+import { ALLOWED_TAGS, HTML_ESCAPE_MAP } from './grammar';
 import { dateFilter, defaultFilter, escapeFilter, simpleDowncase, simpleUpcase } from './filters';
 
 /**
@@ -31,6 +31,54 @@ export function listBuiltinFilterNames(): string[] {
   return names;
 }
 
+/**
+ * Jména vestavěných TAGŮ knihovny. Protějšek `listBuiltinFilterNames`, a vznikl
+ * ze stejné příčiny, jen o rok bolestivější: konstruktor registruje 21 tagů
+ * a odregistrovat je neumí, takže se stejně jako filtry přepisují.
+ *
+ * DO 8. 8. 2026 SE NEPŘEPISOVALY. Kontrakt uzavřel filtry a na tagy zapomněl,
+ * takže `{% render 'package.json' %}` vrátilo obsah souboru; ověřeno spuštěním,
+ * nález N1. Průchod nad kořen liquidjs blokuje, ale všechno pod pracovním
+ * adresářem procesu se přečetlo, a předmět kampaně jde do renderu bez validace.
+ *
+ * Dolní mez na počtu drží ze stejného důvodu jako u filtrů: kdyby se vnitřní
+ * API změnilo a `tags` byla najednou prázdná, vznikla by tichá díra místo chyby.
+ */
+export function listBuiltinTagNames(): string[] {
+  const probe = new Liquid() as unknown as { tags: Record<string, unknown> };
+  const names = Object.keys(probe.tags ?? {});
+  if (names.length < 15) {
+    throw new Error(
+      `LiquidJS vrátila jen ${names.length} vestavěných tagů; vnitřní API se změnilo a přepsání ` +
+        'vestavěných tagů se musí udělat jinak, jinak vznikne tichá díra v kontraktu',
+    );
+  }
+  return names;
+}
+
+/**
+ * Souborový systém, který nic nevrací.
+ *
+ * Druhá pojistka pod přepsáním tagů: kdyby budoucí verze knihovny přidala další
+ * tag nad čtením souborů, nebo kdyby někdo přepsání obešel, dostane chybu místo
+ * obsahu. Bez ní stačí jedna nová funkce v knihovně k tomu, aby díra byla zpět.
+ */
+const DENY_FS = {
+  exists: async (): Promise<boolean> => false,
+  existsSync: (): boolean => false,
+  readFile: async (filepath: string): Promise<string> => {
+    throw new Error(`čtení šablony ze souborového systému je zakázané (${filepath})`);
+  },
+  readFileSync: (filepath: string): string => {
+    throw new Error(`čtení šablony ze souborového systému je zakázané (${filepath})`);
+  },
+  resolve: (_dir: string, file: string): string => file,
+  contains: async (): Promise<boolean> => false,
+  containsSync: (): boolean => false,
+  sep: '/',
+  dirname: (file: string): string => file,
+};
+
 function htmlEscape(value: unknown): string {
   // Chybějící proměnná je podle kontraktu prázdný řetězec. Bez téhle větve by
   // `String(undefined)` vypsalo do e-mailu slovo "undefined"; ověřeno spuštěním,
@@ -47,12 +95,32 @@ function build(escapeOutput: boolean): Liquid {
     jsTruthy: false,
     strictFilters: true,
     strictVariables: false,
+    fs: DENY_FS,
     ...(escapeOutput ? { outputEscape: (value: unknown) => htmlEscape(value) } : {}),
   });
 
   for (const name of listBuiltinFilterNames()) {
     engine.registerFilter(name, () => {
       throw new Error(`filtr ${name} není v kontraktu 4.10.2`);
+    });
+  }
+
+  // Tagy mimo kontraktní seznam. Chyba padá už z `parse`, ne z `render`:
+  // zakázaný tag má šablonu shodit bez ohledu na to, jestli se jeho větev
+  // vůbec vykoná. Kdyby se házelo až z `render`, prošel by
+  // `{% if false %}{% include "/etc/passwd" %}{% endif %}` mlčky a stačilo by
+  // podmínku otočit. `else`, `elsif` a uzávěry v registru nejsou, ty si `if`,
+  // `unless` a `for` parsují samy, takže se seznamu netýkají.
+  const allowedTags = new Set<string>(ALLOWED_TAGS);
+  for (const name of listBuiltinTagNames()) {
+    if (allowedTags.has(name)) continue;
+    engine.registerTag(name, {
+      parse() {
+        throw new Error(`tag ${name} není v kontraktu 4.10.2`);
+      },
+      render() {
+        return '';
+      },
     });
   }
 

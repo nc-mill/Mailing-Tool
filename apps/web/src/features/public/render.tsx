@@ -1,5 +1,6 @@
 import type { PublicBranding } from '@mlain/core/contacts';
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
+import { publicSecurityHeaders } from './security-headers';
 import { PUBLIC_CSS } from './styles';
 
 /**
@@ -79,6 +80,8 @@ export type RenderOptions = {
   locale: string;
   status?: number;
   headers?: Record<string, string>;
+  /** Viz `embeddable` u `publicHtmlResponse`. Platí jen pro povrchy pod `/f/`. */
+  embeddable?: boolean;
 };
 
 /**
@@ -89,10 +92,25 @@ export type RenderOptions = {
  * musí mít TYTÉŽ. Kdyby si je skládala zvlášť, rozešly by se první opravou
  * udělanou jen na jednom místě, a jsou to hlavičky, na kterých stojí zákaz
  * indexace a zákaz uložení do sdílené cache.
+ *
+ * BEZPEČNOSTNÍ HLAVIČKY SE NASAZUJÍ TADY, U ZDROJE ODPOVĚDI, ne v proxy.
+ * Proxy je v adresách s tečkou nenasadí (matcher je vynechává) a `/u/TOKEN.x`
+ * je pro trasu tentýž odkaz jako `/u/TOKEN`, protože `sanitizePublicToken`
+ * token na tečce jen uřízne. Podrobně v `security-headers.ts`.
  */
 export function publicHtmlResponse(
   html: string,
-  options: { status?: number; headers?: Record<string, string> } = {},
+  options: {
+    status?: number;
+    headers?: Record<string, string>;
+    /**
+     * Stránka se smí zobrazit v rámu na cizím webu. Zapíná se VÝHRADNĚ
+     * u hostovaného formuláře `/f/{ref}` a jeho děkovací stránky, protože
+     * rozhraní nabízí vložení přes `<iframe>`. Všude jinde by to znamenalo
+     * dát útočníkovi rám nad odhlašovací stránkou příjemce.
+     */
+    embeddable?: boolean;
+  } = {},
 ): Response {
   return new Response(html, {
     status: options.status ?? 200,
@@ -101,6 +119,7 @@ export function publicHtmlResponse(
       // Stránka je vázaná na jeden token a nesmí ležet v žádné sdílené cache.
       'cache-control': 'no-store, no-cache, must-revalidate',
       'x-robots-tag': 'noindex, nofollow',
+      ...publicSecurityHeaders(options.embeddable === true ? 'embeddable' : 'sealed'),
       ...options.headers,
     },
   });
@@ -129,5 +148,6 @@ export async function renderPublicPage(
   return publicHtmlResponse(html, {
     ...(options.status === undefined ? {} : { status: options.status }),
     ...(options.headers === undefined ? {} : { headers: options.headers }),
+    ...(options.embeddable === undefined ? {} : { embeddable: options.embeddable }),
   });
 }

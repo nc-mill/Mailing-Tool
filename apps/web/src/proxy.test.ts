@@ -140,9 +140,64 @@ describe('proxy', () => {
   });
 
   it('matcher vynechává statické soubory', () => {
-    expect(config.matcher).toHaveLength(1);
     const [matcher] = config.matcher;
     const pattern = new RegExp((matcher as string).replace('/((?!', '^/(?!').replace(').*)', ')'));
     expect(pattern.test('/_next/static/chunk.js')).toBe(false);
+  });
+
+  /**
+   * N5. Hlavní matcher vynechává jakoukoliv cestu s tečkou, jenže token veřejné
+   * stránky se na první tečce jen uřízne, takže `/u/TOKEN.x` obslouží tatáž
+   * trasa. Vyjmenované cesty jsou pojistka, aby proxy na takovou adresu doběhla;
+   * skutečná oprava je v `publicHtmlResponse`.
+   */
+  it('matcher zná i veřejné cesty s tečkou v tokenu', () => {
+    for (const path of ['/u/:path*', '/p/:path*', '/r/:path*', '/v/:path*', '/s/c/:path*']) {
+      expect(config.matcher, `chybí ${path}`).toContain(path);
+    }
+    // Vkládací skript `/f/{ref}.js` tam schválně NENÍ: proxy by mu přepsala
+    // `cache-control` na `no-store` a zahodila pětiminutovou cache.
+    expect(config.matcher).not.toContain('/f/:path*');
+  });
+
+  /**
+   * Veřejná stránka běží bez jediného bajtu JavaScriptu, takže si smí dovolit
+   * přísnější politiku než aplikace. Kdyby jí proxy vnutila sadu aplikace,
+   * měla by tatáž stránka jinou politiku podle toho, jestli je v adrese tečka.
+   */
+  it('veřejným stránkám dává přísnější politiku než aplikaci', async () => {
+    for (const path of ['/u/token', '/p/token', '/s/c/token', '/r/token', '/v/token']) {
+      const response = await proxy(request(path));
+      const csp = response.headers.get('content-security-policy') ?? '';
+      expect(csp, path).toContain("default-src 'none'");
+      expect(csp, path).toContain("script-src 'none'");
+      expect(csp, path).toContain("frame-ancestors 'none'");
+      expect(response.headers.get('x-frame-options'), path).toBe('DENY');
+      expect(response.headers.get('x-content-type-options'), path).toBe('nosniff');
+    }
+  });
+
+  /**
+   * Hostovaný formulář se vkládá do `<iframe>` na cizí web. Dokud mu proxy
+   * posílala `x-frame-options: DENY`, byl ve vloženém rámu zhasnutý všem
+   * zákazníkům naráz a v testech to nebylo vidět, protože ty volají handler.
+   */
+  it('vkládanému formuláři rámování NEZAKAZUJE', async () => {
+    for (const path of ['/f/newsletter', '/f/newsletter/thanks']) {
+      const response = await proxy(request(path));
+      expect(response.headers.get('x-frame-options'), path).toBeNull();
+      // Kladné tvrzení: odpověď úplně bez politiky obsahu by u „neobsahuje
+      // zákaz" prošla, a přitom je to ta vada, kterou opravujeme.
+      expect(response.headers.get('content-security-policy') ?? '', path).toContain(
+        'frame-ancestors *',
+      );
+    }
+  });
+
+  it('trackovací cesty a API si nechávají sadu aplikace', async () => {
+    for (const path of ['/t/o/abc123', '/api/v1/contacts']) {
+      const response = await proxy(request(path));
+      expect(response.headers.get('content-security-policy'), path).toContain("default-src 'self'");
+    }
   });
 });

@@ -15,6 +15,7 @@ import { resumeCampaign } from '../control/resume';
 import { EDITABLE_WHILE_SCHEDULED, validateSchedule } from '../control/schedule';
 import { undoState } from '../control/undo';
 import { withPending } from '../types';
+import { assertCampaignInboxLiquid } from '../inbox-liquid';
 import type { CampaignCompilation } from '../compile';
 import { assertCompilationCurrent, compileCampaign } from '../compile-service';
 import { applyTemplateToCampaign } from '../template-apply';
@@ -565,6 +566,10 @@ export function registerCampaignRoutes(app: OpenAPIHono<CampaignsEnv>): void {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'campaigns:write');
     const body = c.req.valid('json');
+    // Předmět a preheader jsou Liquid šablony, které sender renderuje doslova.
+    // Schéma je jen `max(255)`, takže bez tohohle volání by se do nich dal
+    // uložit tag mimo kontrakt (nález N1).
+    assertCampaignInboxLiquid(body);
     const row = await createCampaign(ctx, {
       ...(await prefillFromDefaultSender(ctx, body)),
       ...(ctx.actor.type === 'user' ? { createdBy: ctx.actor.userId } : {}),
@@ -582,6 +587,7 @@ export function registerCampaignRoutes(app: OpenAPIHono<CampaignsEnv>): void {
     const { ctx } = c.get('auth');
     assertPermission(ctx, 'campaigns:write');
     const body = c.req.valid('json');
+    assertCampaignInboxLiquid(body);
     const current = await load(ctx, c.req.valid('param').id);
 
     const touched = Object.keys(body);

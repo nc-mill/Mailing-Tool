@@ -7,7 +7,7 @@ import {
 import { sanitizePublicToken } from '@mlain/core/net/public-link';
 import { publicTranslator } from '@/features/public/i18n';
 import { InvalidLinkPage, WebviewUnavailablePage } from '@/features/public/pages';
-import { renderPublicPage } from '@/features/public/render';
+import { publicHtmlResponse, renderPublicPage } from '@/features/public/render';
 
 /**
  * Zobrazení odeslané zprávy v prohlížeči, `/v/{token}`.
@@ -25,23 +25,17 @@ import { renderPublicPage } from '@/features/public/render';
  * 1. JEN GET. Stránka nic nemění, takže POST nemá co obsluhovat. Bezpečnostní skenery
  *    smí odkaz proklikat kolikrát chtějí a nezmění tím nic, na rozdíl od `/s/c/` a `/r/`.
  *
- * 2. VLASTNÍ ODPOVĚĎ, NE `renderPublicPage`. Tělo e-mailu je samo o sobě celý HTML
+ * 2. VLASTNÍ TĚLO, NE `renderPublicPage`. Tělo e-mailu je samo o sobě celý HTML
  *    dokument s vlastní hlavičkou a styly; obalit ho ještě jednou do shellu veřejných
- *    stránek by dalo dvě `<html>` v jednom výstupu. Hlavičky se proto kopírují ručně
- *    a musí zůstat stejné jako v `render.tsx`: žádná mezipaměť a `noindex`.
+ *    stránek by dalo dvě `<html>` v jednom výstupu. Hlavičky odpovědi ale jdou přes
+ *    `publicHtmlResponse` jako všude jinde. Dokud se tu opisovaly ručně, chyběla jim
+ *    politika obsahu i ochrana proti rámování, přesně jak se opsané sady rozcházejí.
  *
  * 3. NIKDY 404, ani když zpráva chybí. Podle odpovědi se nesmí dát zjišťovat, které
  *    tokeny a které zprávy existují, stejně jako u ostatních veřejných cest.
  */
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-/** Tytéž hlavičky, jaké posílá `renderPublicPage`. Zpráva se nesmí ukládat ani indexovat. */
-const HEADERS: Record<string, string> = {
-  'content-type': 'text/html; charset=utf-8',
-  'cache-control': 'no-store, no-cache, must-revalidate',
-  'x-robots-tag': 'noindex, nofollow',
-};
 
 async function invalidPage(): Promise<Response> {
   const branding = anonymousBranding();
@@ -72,5 +66,5 @@ export async function GET(
     return renderPublicPage(WebviewUnavailablePage({ t }), { branding, locale: branding.locale });
   }
 
-  return new Response(result.html, { status: 200, headers: HEADERS });
+  return publicHtmlResponse(result.html);
 }

@@ -7,6 +7,7 @@ import { ApiError } from '../errors/api-error';
 import { writeAuditLog } from '../audit/write';
 import { assertPasswordPolicy, hashPassword, PASSWORD_MIN_LENGTH } from './password';
 import { IdentityAuditActions } from './audit';
+import { assertMayGrantRole } from './permissions';
 import { listMembers, type MemberRow } from './membership-service';
 import type { Role, WorkspaceContext } from './types';
 
@@ -102,6 +103,19 @@ export async function createMember(
   input: CreateMemberInput,
   actorLabel: string,
 ): Promise<CreateMemberResult> {
+  /**
+   * TŘETÍ CESTA K ROLI, A PROTO TÁŽ ZÁVORA (nález N2).
+   *
+   * Zakládání člena s heslem zapisuje do `memberships` úplně stejně jako změna
+   * role a přijetí pozvánky, jenom se u toho rovnou zakládá účet. Bez tohohle
+   * řádku by admin obešel obě předchozí kontroly tím, že by si vlastníka
+   * rovnou založil, a to i s heslem, které si sám zvolil.
+   *
+   * Stojí PŘED prací s účtem schválně: nesmí vzniknout uživatel k členství,
+   * které se nakonec odmítne.
+   */
+  assertMayGrantRole(ctx, input.role);
+
   const email = input.email.trim().toLowerCase();
 
   const { rows: existing } = await tx.execute<{ id: string }>(sql`

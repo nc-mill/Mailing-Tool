@@ -2,6 +2,12 @@ import { routing } from '@mlain/i18n/routing';
 import { SESSION_COOKIE_NAME } from '@mlain/core/identity/cookie';
 import createIntlMiddleware from 'next-intl/middleware';
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  appSecurityHeaders,
+  buildAppCsp,
+  publicSecurityHeaders,
+  type PublicSurface,
+} from '@/features/public/security-headers';
 
 /**
  * Jediný proxy soubor aplikace (uzávěr S6). Řeší tři věci naráz:
@@ -57,6 +63,23 @@ const PUBLIC_PREFIXES = [
   '/api/internal/',
 ];
 
+/**
+ * Veřejné povrchy, které vykreslují HTML pro ČLOVĚKA, ne data pro stroj.
+ *
+ * Nesou přísnější politiku obsahu než aplikace, protože běží bez JavaScriptu,
+ * a hlavně: tutéž politiku, jakou si nasazují samy v `publicHtmlResponse`.
+ * Kdyby proxy nechala platit sadu aplikace, měla by jedna a tatáž stránka jinou
+ * politiku podle toho, jestli je v adrese tečka, a to je přesně ten rozpor,
+ * kvůli kterému bezpečnostní hlavičky vznikly.
+ *
+ * Zbytek veřejných cest (`/t/`, `/e/`, `/api/`) vrací pixel, přesměrování nebo
+ * JSON, takže si dál nechává sadu aplikace: měnit ji nemá co zlepšit.
+ */
+const PUBLIC_PAGE_PREFIXES = ['/u/', '/p/', '/s/c/', '/r/', '/v/', '/f/'];
+
+/** Povrchy, které se schválně vkládají do rámu na cizím webu. Viz `security-headers.ts`. */
+const EMBEDDABLE_PREFIXES = ['/f/'];
+
 /** Stránky aplikace, které jsou dostupné bez přihlášení. */
 const ANONYMOUS_PAGES = [
   '/login',
@@ -84,6 +107,14 @@ function isAnonymousPage(pathname: string): boolean {
   return ANONYMOUS_PAGES.some((page) => pathname === page || pathname.startsWith(`${page}/`));
 }
 
+/** `null` znamená „není to veřejná stránka pro člověka", tedy sada aplikace. */
+function publicSurfaceOf(pathname: string): PublicSurface | null {
+  if (!PUBLIC_PAGE_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return null;
+  return EMBEDDABLE_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+    ? 'embeddable'
+    : 'sealed';
+}
+
 function createNonce(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
@@ -91,56 +122,19 @@ function createNonce(): string {
 }
 
 /**
- * Složí CSP. Tentýž řetězec musí jít do hlaviček POŽADAVKU i ODPOVĚDI,
- * viz `proxy()` níž.
+ * Nasadí hotovou sadu hlaviček. Skládá se v `features/public/security-headers.ts`,
+ * a to i pro aplikaci: dvě sady na dvou místech se rozešly už jednou a stálo to
+ * veřejné stránky celou politiku obsahu.
  */
-function buildCsp(nonce: string): string {
-  // Uvolnění platí VÝHRADNĚ ve vývoji, v produkci nikdy. Schváleno zadavatelem
-  // 2026-08-01 poté, co se ukázalo, že jinak v dev režimu nefunguje nic.
-  //
-  // Vývojový build Reactu vyhodnocuje kód za běhu kvůli ladicím funkcím,
-  // například rekonstrukci zásobníku volání z jiného prostředí. Bez téhle
-  // výjimky prohlížeč skript zablokuje a klientská hydratace vůbec neproběhne.
-  // Projeví se to nejhorším možným způsobem: stránka se vykreslí správně,
-  // vypadá hotově, a žádné tlačítko nefunguje. Jediná stopa je řádek v konzoli,
-  // který na CSP vůbec neodkazuje, takže se chyba hledá v komponentách.
-  // Produkční build Reactu tuhle schopnost nepoužívá, tam zůstává CSP přísná.
-  const scriptSrc =
-    process.env.NODE_ENV === 'production'
-      ? `script-src 'self' 'nonce-${nonce}'`
-      : `script-src 'self' 'unsafe-eval' 'nonce-${nonce}'`;
-
-  return [
-    "default-src 'self'",
-    scriptSrc,
-    "style-src 'self' 'unsafe-inline'",
-    // https: je potřeba, protože náhled šablony ukazuje obrázky z domény uživatele
-    "img-src 'self' data: blob: https:",
-    "font-src 'self'",
-    "connect-src 'self'",
-    "frame-ancestors 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-  ].join('; ');
-}
-
-function applySecurityHeaders(response: NextResponse, csp: string, nonce: string): NextResponse {
-  response.headers.set('content-security-policy', csp);
-  response.headers.set('x-nonce', nonce);
-  response.headers.set('x-content-type-options', 'nosniff');
-  response.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
-  response.headers.set('x-frame-options', 'DENY');
-  response.headers.set(
-    'permissions-policy',
-    'camera=(), microphone=(), geolocation=(), interest-cohort=()',
-  );
-  response.headers.set('strict-transport-security', 'max-age=63072000; includeSubDomains');
+function applyHeaders(response: NextResponse, headers: Record<string, string>): NextResponse {
+  for (const [name, value] of Object.entries(headers)) response.headers.set(name, value);
   return response;
 }
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const nonce = createNonce();
-  const csp = buildCsp(nonce);
+  const csp = buildAppCsp(nonce);
+  const appHeaders = appSecurityHeaders(csp, nonce);
   const { pathname, search } = request.nextUrl;
 
   /**
@@ -176,7 +170,8 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   if (isPublicPath(pathname)) {
     const response = NextResponse.next(forward);
     response.headers.set('cache-control', 'no-store, no-cache, must-revalidate');
-    return applySecurityHeaders(response, csp, nonce);
+    const surface = publicSurfaceOf(pathname);
+    return applyHeaders(response, surface === null ? appHeaders : publicSecurityHeaders(surface));
   }
 
   const withoutLocale = stripLocale(pathname);
@@ -188,7 +183,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     target.pathname = '/login';
     target.search = '';
     target.searchParams.set('next', `${withoutLocale}${search}`);
-    return applySecurityHeaders(NextResponse.redirect(target), csp, nonce);
+    return applyHeaders(NextResponse.redirect(target), appHeaders);
   }
 
   // 3. Jazyk. next-intl doplní nebo odebere prefix podle localePrefix.
@@ -198,7 +193,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const response = intlMiddleware(
     new NextRequest(request.nextUrl, { headers: requestHeaders }) as NextRequest,
   );
-  return applySecurityHeaders(response as NextResponse, csp, nonce);
+  return applyHeaders(response as NextResponse, appHeaders);
 }
 
 export const config = {
@@ -215,5 +210,28 @@ export const config = {
   //
   // Přesměrování místo `101 Switching Protocols` znamená rozbitý handshake
   // a v konzoli `ERR_INVALID_HTTP_RESPONSE` na každé stránce.
-  matcher: ['/((?!_next|favicon.ico|.*\\..*).*)'],
+  //
+  // DRUHÝ ŘÁDEK JE ZÁPLATA DÍRY, KTEROU TEN PRVNÍ MÁ. Vzor `.*\..*` vynechá
+  // JAKOUKOLIV cestu s tečkou, jenže tečka nemusí být přípona souboru: token
+  // veřejné stránky se v `sanitizePublicToken` na první tečce jen UŘÍZNE, takže
+  // `/u/TOKEN.x` obslouží tatáž trasa se stejným výsledkem, ale proxy na ni
+  // neběží. Stačilo pak v kampani napsat `{{ unsubscribe_url }}.x`.
+  //
+  // Vyjmenované jsou jen trasy s tokenem, které vracejí HTML. `/f/` tu schválně
+  // NENÍ: pod ním bydlí i vkládací skript `/f/{ref}.js`, kterému by proxy
+  // přepsala `cache-control` na `no-store` a zahodila mu pětiminutovou cache.
+  // Statické soubory a doručování příloh (`/a/...`) zůstávají mimo ze stejného
+  // důvodu, kvůli kterému první řádek vznikl.
+  //
+  // Je to POJISTKA, ne oprava. Skutečná oprava je v `publicHtmlResponse`, kde se
+  // hlavičky nasazují u zdroje odpovědi a platí i na cestách, které tenhle
+  // seznam nezná.
+  matcher: [
+    '/((?!_next|favicon.ico|.*\\..*).*)',
+    '/u/:path*',
+    '/p/:path*',
+    '/r/:path*',
+    '/v/:path*',
+    '/s/c/:path*',
+  ],
 };

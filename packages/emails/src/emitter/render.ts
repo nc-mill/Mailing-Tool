@@ -3,6 +3,7 @@ import { render } from '@react-email/render';
 import { createElement } from 'react';
 import type { AssetRef } from '../compile/types';
 import { applyRawSlots } from '../compile/apply-slots';
+import { safeHref } from '../document/href';
 import type { NormalizedDocument } from '../normalize/index';
 import { RawSlotSink } from '../normalize/slots';
 import { SectionBlockView } from './blocks/section';
@@ -51,7 +52,18 @@ export async function renderDocumentHtml(options: RenderOptions): Promise<string
     language: normalized.language,
     skippedBlockIds: normalized.skippedBlockIds,
     trackClicks: options.trackClicks,
-    linkHref: options.linkHref,
+    // POSLEDNÍ ZÁCHYTNÁ SÍŤ NAD SCHÉMATEM ODKAZU, jedno místo pro celý strom.
+    //
+    // Obaluje se tady, ne v jednotlivých blocích: `href` skládá tlačítko,
+    // obrázek, sociální ikona i odkaz v bohatém textu a každý jinak. Kdyby si
+    // ochranu volal každý sám, příští nový blok by se na ni zapomněl a nikdo
+    // by to nepoznal, protože validace uložení běží jinde a o vykreslení neví.
+    //
+    // Obaluje se VÝSTUP, ne vstup: `collectLinks` vrací u sledovaného odkazu
+    // značku `https://track.mlain.invalid/c/…`, tedy povolené schéma, a
+    // u ostatních původní adresu. Kontrola tak vidí přesně to, co půjde do
+    // atributu, a mapa odkazů zůstává nedotčená.
+    linkHref: (href: string, trackable: boolean) => safeHref(options.linkHref(href, trackable)),
     t: (key: string) => PRODUCT_TEXTS[normalized.language]?.[key] ?? PRODUCT_TEXTS.en![key] ?? key,
     preferenceCenterEnabled: options.preferenceCenterEnabled,
   };

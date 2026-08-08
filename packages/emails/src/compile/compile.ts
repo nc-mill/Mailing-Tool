@@ -156,7 +156,7 @@ export async function compileDocument(doc: Document, ctx: CompileContext): Promi
  * Jejich sloty se v invariantu I10 nekontrolují: blok uvnitř `{% if %}` se
  * ve výstupu objevit nemusí, a to je v pořádku.
  */
-function conditionalBlockIds(doc: Document): Set<string> {
+export function conditionalBlockIds(doc: Document): Set<string> {
   const out = new Set<string>();
   type Node = { id: string; visibleWhen?: unknown; children?: Node[] };
   const visit = (block: Node, inherited: boolean): void => {
