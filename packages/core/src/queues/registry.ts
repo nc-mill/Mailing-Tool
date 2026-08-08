@@ -1378,6 +1378,15 @@ export const RETIRED_QUEUES: readonly { readonly name: string; readonly reason: 
       'vymazat kontakt; výmaz podle článku 17 musí mít jednu cestu.',
   },
   {
+    name: 'platform.cleanup_audit_log',
+    reason:
+      'Retenci audit_log dělá platform.maintain_partitions pod migrátorským spojením. Tahle ' +
+      'fronta mazala příkazem DELETE pod aplikační rolí, jenže migrace 0005, 0009, 0022 i 0026 ' +
+      'berou mlain_app právo DELETE na audit_log, takže NIKDY ANI JEDNOU NEDOBĚHLA: padala ' +
+      'každou noc na permission denied a audit se neuklidil. Vyškrtnuta z registru 7. 8. 2026, ' +
+      'sem dopsána 8. 8. 2026, protože do té doby chyběla a fronta zůstala v databázi i s cronem.',
+  },
+  {
     name: 'tracking.rebuild_engagement',
     reason:
       'Rekonstrukci contact_engagement dělá příkaz `mlain rebuild-engagement`, který volá ' +
@@ -1405,6 +1414,16 @@ export function queue(name: string): QueueEntry {
 export function dlqName(name: string): string {
   return `${name}.dlq`;
 }
+
+/**
+ * Předpona front, které si zakládá pg-boss sám pro svůj vlastní provoz.
+ *
+ * Do žádného počtu ani do žádné kontroly nepatří: uživatel je nezaložil, registr
+ * o nich neví a nikdo je nespravuje. Jejich desetitisíce doběhlých úloh by
+ * v součtu přebily všechnu skutečnou práci a v kontrole na fronty mimo registr
+ * by se tvářily jako sirotci.
+ */
+export const INTERNAL_QUEUE_PREFIX = '__pgboss__';
 
 /**
  * JEDINÝ TVAR VOLEB, SE KTERÝM SE FRONTA ZAKLÁDÁ. Používá ho worker

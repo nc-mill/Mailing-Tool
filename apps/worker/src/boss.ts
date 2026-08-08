@@ -1,6 +1,8 @@
 import {
+  INTERNAL_QUEUE_PREFIX,
   QUEUE_REGISTRY,
   RETIRED_QUEUES,
+  dlqName,
   missingDependenciesOf,
   queueCreatePlan,
   retiredQueueDeleteOrder,
@@ -281,6 +283,74 @@ async function purgeStuckCronTicks(
  * kdyby ne, doménový plán by při prvním `boss.send` dostal chybu o neexistující
  * frontě a nepoznal by, že jde jen o nedodaný handler.
  */
+/**
+ * Fronty a plány, které v databázi ŽIJÍ, ale registr o nich neví.
+ *
+ * `retireQueues` tuhle třídu vad z principu nevidí: iteruje `RETIRED_QUEUES`,
+ * takže uklidí jen to, co už někdo vědomě zapsal. Fronta, kterou někdo vyškrtl
+ * z registru a zapsat zapomněl, propadne i jemu i oběma hlídačům cronu
+ * (`cron-watch.ts`), protože ty berou výčet z registru a dělají průnik.
+ * Kdo není v registru, není v průniku, a tím pádem není nikde.
+ *
+ * Naměřeno 8. 8. 2026 na vývojové instalaci: `platform.cleanup_audit_log` byla
+ * 7. 8. z registru vyškrtnuta, ale v `pgboss.schedule` po ní zůstal řádek
+ * s cronem `35 2 * * *`. Každou noc z něj vznikl tik do fronty bez obsluhy.
+ * Politika `exclusive` pak frontu zamkla, protože tik ve stavu `created`
+ * neexpiruje. Panel to ukazoval jako „čeká ve frontě 1" a nešlo z toho poznat
+ * proč. Celé to leželo dva dny, protože se na to nikdo neptal.
+ *
+ * Tenhle krok nic NEMAŽE, jen řekne, co našel. Mazat cizí frontu naslepo je
+ * horší než ji nechat ležet: může patřit novější verzi při postupném nasazení,
+ * kde vedle sebe krátce běží dva workery. Rozhodnutí patří člověku, ten ji
+ * zapíše do `RETIRED_QUEUES` a úklid ji smaže sám.
+ */
+async function warnAboutOrphans(boss: BossLike, options: RegisterOptions): Promise<void> {
+  const known = new Set<string>();
+  for (const entry of QUEUE_REGISTRY) {
+    known.add(entry.name);
+    known.add(dlqName(entry.name));
+  }
+  for (const retired of RETIRED_QUEUES) {
+    known.add(retired.name);
+    known.add(dlqName(retired.name));
+  }
+
+  let rows: Record<string, unknown>[] = [];
+  try {
+    ({ rows } = await boss.getDb().executeSql(
+      `SELECT name, 'queue' AS kind FROM "${options.schema}".queue
+        WHERE name <> ALL($1::text[]) AND name NOT LIKE $2
+        UNION ALL
+       SELECT name, 'schedule' AS kind FROM "${options.schema}".schedule
+        WHERE name <> ALL($1::text[]) AND name NOT LIKE $2
+        ORDER BY 1, 2`,
+      [[...known], `${INTERNAL_QUEUE_PREFIX}%`],
+    ));
+  } catch (error) {
+    // Nezjištěný stav nesmí shodit start workeru: fronty by přestaly jezdit
+    // kvůli kontrole, která sama žádnou práci nedělá.
+    options.logger.warn(
+      { err: (error as Error).message },
+      'nepodařilo se ověřit, jestli v databázi nejsou fronty mimo registr; kontrola se přeskakuje',
+    );
+    return;
+  }
+
+  if (rows.length === 0) return;
+
+  const queues = rows.filter((row) => row['kind'] === 'queue').map((row) => String(row['name']));
+  const schedules = rows
+    .filter((row) => row['kind'] === 'schedule')
+    .map((row) => String(row['name']));
+
+  options.logger.warn(
+    { queues, schedules },
+    'v databázi jsou fronty, které registr nezná. Plán cronu u takové fronty TIKÁ DÁL a úlohy ' +
+      'z něj nikdo nevyzvedne. Když fronta doopravdy skončila, zapište ji do RETIRED_QUEUES; ' +
+      'úklid při startu ji pak smaže i s plánem.',
+  );
+}
+
 export async function registerQueues(
   boss: BossLike,
   handlers: Record<string, QueueHandler>,
@@ -304,6 +374,9 @@ export async function registerQueues(
   // Fronty, které se zrušily. Až po srovnání politik, protože ten krok o nich
   // nic neví, a před plánováním cronu, aby se zrušená fronta nestihla naplánovat.
   await retireQueues(boss, options);
+
+  // A hned po nich sirotci, tedy to, co `retireQueues` z principu vidět nemůže.
+  await warnAboutOrphans(boss, options);
 
   /*
    * CRON SE PLÁNUJE JEDINĚ FRONTĚ, KTERÁ MÁ OBSLUHU.

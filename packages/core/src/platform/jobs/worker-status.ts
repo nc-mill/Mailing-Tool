@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { loadConfig } from '../../config';
 import { withoutContext } from '../../tx';
-import { QUEUE_REGISTRY } from '../../queues';
+import { INTERNAL_QUEUE_PREFIX, QUEUE_REGISTRY } from '../../queues';
 
 /**
  * STAV ZPRACOVÁNÍ NA POZADÍ, tedy odpověď na otázku „běží worker, nebo to
@@ -46,12 +46,9 @@ import { QUEUE_REGISTRY } from '../../queues';
  * nejpřesněji ze všech.
  */
 
-/**
- * Interní fronta pg-bossu. Nepatří do žádného počtu: uživatel ji nezaložil,
- * nikdo ji nespravuje a jejích 42 000 doběhlých úloh by v součtu přebilo
- * všechnu skutečnou práci.
- */
-const INTERNAL_QUEUE_PREFIX = '__pgboss__';
+// Interní fronta pg-bossu. Konstanta se přestěhovala do registru front, protože
+// ji potřebuje i kontrola na fronty mimo registr v `apps/worker/src/boss.ts`;
+// dvě kopie téhož řetězce by se dřív nebo později rozešly. Zdůvodnění je u ní.
 
 /**
  * Jak dlouho se po posledním projevu ještě věří, že worker běží.
@@ -131,7 +128,7 @@ type StatusRow = {
   seconds_since: string | number | null;
   waiting: string | number | null;
   running: string | number | null;
-  dead_letter: string | number | null;
+  dlq_queues: string[] | null;
   registered: string | number | null;
   cron_scheduled: string | number | null;
 };
@@ -242,6 +239,54 @@ async function failedRecently(schema: ReturnType<typeof sql.identifier>): Promis
  * je horší než panel, který přizná, že neměřil. Chyba se přitom neztratí,
  * volající ji dostane v `error`.
  */
+/**
+ * Kolik v dead letter frontách leží věcí, se kterými má člověk co dělat.
+ *
+ * PRÁZDNÝ TIK CRONU SE NEPOČÍTÁ, a je to celý smysl téhle funkce. Do DLQ spadne
+ * všechno, co vyčerpalo pokusy, tedy i tik pravidelné úlohy, který se netrefil
+ * do výpadku (restart workeru, chvilkově nedostupná databáze). Takový tik NENÍ
+ * nedokončená práce: za pár minut tikne další a dohoní ho. Naměřeno 8. 8. 2026:
+ * z dvou položek na panelu byla jedna skutečně selhaný import s chybějícím
+ * souborem a druhá prázdný tik `contacts.recover_stale_imports` z restartu.
+ * Panel na to rozsvítil červenou a napsal „Něco se nezpracovává samo… pomůže
+ * správce instalace", tedy vyzval k akci, kterou nemá kdo a proč udělat.
+ *
+ * Rozlišuje se nákladem: úloha od producenta nese data nebo klíč pro slučování,
+ * tik z cronu nemá ani jedno. Je to táž podmínka, jakou používá
+ * `purgeStuckCronTicks` v `apps/worker/src/boss.ts`, a schválně stejná: dvě
+ * různá pravidla pro totéž by znamenala, že se panel a úklid rozejdou.
+ *
+ * CENA. Zbytek souboru se `pgboss.job` schválně vyhýbá, protože agregace přes
+ * něj je sekvenční sken. Naměřeno na vývojové databši s 88 000 řádky:
+ * `WHERE name LIKE '%.dlq'` stojí 93 ms, kdežto týž dotaz s VYJMENOVANÝMI
+ * frontami 0,27 ms. Levný dotaz nad `pgboss.queue` proto napřed vybere fronty,
+ * ve kterých vůbec něco leží, a tenhle se ptá jen na ně. V běžném stavu, kdy je
+ * DLQ prázdná, se nespustí vůbec.
+ */
+async function realDeadLetter(s: ReturnType<typeof sql.identifier>, queues: string[]) {
+  if (queues.length === 0) return 0;
+  /*
+   * Jména se vkládají přes `sql.join`, ne jako pole do `= ANY($1::text[])`.
+   * Drizzle pole v šablonovém výrazu ROZBALÍ na jednotlivé parametry, takže
+   * z toho vyjde `ANY(($1, $2)::text[])`, což Postgres odmítne. Naměřeno:
+   * celý panel pak spadl do stavu `unknown`, tedy „nedalo se změřit nic",
+   * a chybějící číslo vypadalo jako mrtvý worker.
+   */
+  const names = sql.join(
+    queues.map((queue) => sql`${queue}`),
+    sql`, `,
+  );
+  const { rows } = await withoutContext((tx) =>
+    tx.execute<{ count: string | number }>(sql`
+      SELECT count(*) AS count FROM ${s}.job
+       WHERE name IN (${names})
+         AND state < 'active'
+         AND (data <> '{}'::jsonb OR singleton_key IS NOT NULL)`),
+  );
+  const row = rows[0];
+  return row ? toNumber(row.count) : 0;
+}
+
 export async function readWorkerStatus(): Promise<WorkerStatus & { error: string | null }> {
   const schema = pgbossSchema();
   if (!/^[A-Za-z0-9_]{1,50}$/.test(schema)) {
@@ -271,11 +316,17 @@ export async function readWorkerStatus(): Promise<WorkerStatus & { error: string
                coalesce(sum(q.queued_count) FILTER (WHERE NOT q.is_dlq AND NOT q.is_internal), 0)
                  AS waiting,
                coalesce(sum(q.active_count) FILTER (WHERE NOT q.is_internal), 0) AS running,
-               coalesce(sum(q.queued_count) FILTER (WHERE q.is_dlq), 0) AS dead_letter,
+               -- Jen JMÉNA dead letter front, ve kterých vůbec něco leží. Počet
+               -- se z nich dopočítá zvlášť ve funkci realDeadLetter. Obrácený
+               -- apostrof se sem psát NESMÍ, ukončil by šablonový literál.
+               array_remove(
+                 array_agg(q.name) FILTER (WHERE q.is_dlq AND q.queued_count > 0),
+                 NULL
+               ) AS dlq_queues,
                count(*) FILTER (WHERE NOT q.is_dlq AND NOT q.is_internal) AS registered,
                (SELECT count(*) FROM ${s}.schedule) AS cron_scheduled
           FROM (
-            SELECT queued_count, active_count,
+            SELECT name, queued_count, active_count,
                    name LIKE ${`${INTERNAL_QUEUE_PREFIX}%`} AS is_internal,
                    name LIKE '%.dlq' AS is_dlq
               FROM ${s}.queue
@@ -316,7 +367,7 @@ export async function readWorkerStatus(): Promise<WorkerStatus & { error: string
         running: toNumber(row.running),
         failedRecently: await failedRecently(s),
         failedWindowHours: FAILED_WINDOW_HOURS,
-        deadLetter: toNumber(row.dead_letter),
+        deadLetter: await realDeadLetter(s, row.dlq_queues ?? []),
       },
       queues: {
         registered: toNumber(row.registered),

@@ -697,6 +697,18 @@ describe('GET /api/v1/jobs/worker', () => {
     INSERT INTO pgboss.job (name, state, created_on, keep_until)
     VALUES (${name}, 'failed', now() - ${age}::interval, now() + interval '14 days')`;
 
+  /**
+   * Úloha odložená stranou, tedy v dead letter frontě.
+   *
+   * `payload` rozhoduje o tom, jestli se počítá. Úloha od producenta nese data,
+   * kdežto tik pravidelné úlohy nemá ani data, ani klíč pro slučování. Tik,
+   * který se netrefil do výpadku, NENÍ nedokončená práce: za pár minut tikne
+   * další a dohoní ho. Panel proto počítá jen to, s čím má člověk co dělat.
+   */
+  const insertDeadLetterJob = (name: string, payload: string) => sql`
+    INSERT INTO pgboss.job (name, state, data, created_on, keep_until)
+    VALUES (${name}, 'created', ${payload}::jsonb, now(), now() + interval '14 days')`;
+
   async function resetQueues(): Promise<void> {
     await withoutContext(async (tx) => {
       await tx.execute(sql`DELETE FROM pgboss.job`);
@@ -730,6 +742,21 @@ describe('GET /api/v1/jobs/worker', () => {
       await tx.execute(insertFailedJob('campaign.scheduler', '5 hours'));
       await tx.execute(insertFailedJob('campaign.scheduler', '7 days'));
       await tx.execute(insertFailedJob('__pgboss__send-it', '2 hours'));
+
+      /*
+       * Do dead letter fronty patří TŘI skutečné odložené úlohy a JEDEN prázdný
+       * tik cronu. Do čísla na panelu se počítají jen ty tři.
+       *
+       * Naměřeno 8. 8. 2026: z dvou položek na skutečné obrazovce byla jedna
+       * selhaný import s chybějícím souborem a druhá prázdný tik z restartu
+       * workeru. Panel na obojí rozsvítil červenou a vyzval správce k akci,
+       * kterou u toho tiku nemá kdo a proč udělat. Sčítat čítač `queued_count`
+       * nestačí: ten obojí míchá dohromady.
+       */
+      await tx.execute(insertDeadLetterJob('contacts.import.dlq', '{"importId":"a"}'));
+      await tx.execute(insertDeadLetterJob('contacts.import.dlq', '{"importId":"b"}'));
+      await tx.execute(insertDeadLetterJob('contacts.import.dlq', '{"importId":"c"}'));
+      await tx.execute(insertDeadLetterJob('contacts.import.dlq', '{}'));
     });
 
     const body = await (await app.request('/api/v1/jobs/worker', { headers: headers() })).json();
@@ -743,7 +770,8 @@ describe('GET /api/v1/jobs/worker', () => {
     expect(body.worker.queue.failed_recent).toBe(2);
     expect(body.worker.queue.failed_window_hours).toBe(24);
     // Dead letter se počítá ZVLÁŠŤ, ne mezi čekající: ty úlohy nikdo nevezme.
-    expect(body.worker.queue.dead_letter).toBe(4);
+    // Tři, ne čtyři: prázdný tik cronu se nepočítá, viz seedování výš.
+    expect(body.worker.queue.dead_letter).toBe(3);
     expect(body.worker.queues.registered).toBe(2);
     expect(body.worker.queues.cron_scheduled).toBe(1);
   });

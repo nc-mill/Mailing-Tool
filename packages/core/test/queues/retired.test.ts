@@ -23,20 +23,48 @@ describe('fronty, které se zrušily', () => {
     ).toEqual([]);
   });
 
-  it('každý náhrobní komentář v registru má protějšek v seznamu', () => {
-    // Náhrobní komentář sám o sobě frontu z běžící databáze neodstraní. Kdo píše
-    // „TADY UŽ NENÍ", musí ji zároveň zapsat sem, jinak zůstane ležet i s cronem.
+  /**
+   * Náhrobní komentář sám o sobě frontu z běžící databáze neodstraní. Kdo frontu
+   * vyškrtne z registru, musí ji zároveň zapsat do `RETIRED_QUEUES`, jinak
+   * zůstane ležet i s plánem cronu.
+   *
+   * TENHLE TEST SE NESMÍ VÁZAT NA FORMULACI KOMENTÁŘE, a je to poučení z vlastní
+   * vady. Do 8. 8. 2026 tu stálo hledání doslovného tvaru „`název` TADY UŽ NENÍ".
+   * Když se 7. 8. rušila `platform.cleanup_audit_log`, napsal se komentář slovy
+   * „BYLA ZRUŠENA", tedy jinak. Test zůstal zelený a fronta zůstala v databázi
+   * i s cronem `35 2 * * *`, který každou noc vyrobil úlohu, kterou nikdo
+   * nevyzvedne. Politika `exclusive` pak zamkla frontu až do vypršení té úlohy.
+   * Pojistka tedy propustila přesně tu situaci, kvůli které vznikla, protože
+   * hlídala slovník, ne skutečnost.
+   *
+   * Teď se nekouká na slova. Vezme se každé jméno v obráceném apostrofu, které
+   * VYPADÁ JAKO FRONTA, tedy má doménovou předponu některé skutečné fronty
+   * z registru, a takové jméno musí být buď v registru, nebo mezi zrušenými.
+   * Jména tabulek a sloupců (`pgboss.job`, `queue.dead_letter`,
+   * `workspaces.locale`) tím propadnou sítem sama, protože žádná fronta jejich
+   * předponu nemá. Naměřeno 8. 8. 2026: z 18 zmíněných jmen projde sítem 1.
+   */
+  it('žádné jméno fronty zmíněné v registru nechybí v seznamu zrušených', () => {
     const source = readFileSync(new URL('../../src/queues/registry.ts', import.meta.url), 'utf8');
-    const tombstones = [...source.matchAll(/`([a-z_]+\.[a-z_]+)` TADY UŽ NENÍ/g)].map(
-      (match) => match[1] as string,
-    );
-    expect(tombstones.length, 'v registru nejsou žádné náhrobní komentáře').toBeGreaterThan(0);
-
+    const registryNames = new Set(QUEUE_REGISTRY.map((entry) => entry.name));
     const retiredNames = new Set(RETIRED_QUEUES.map((retired) => retired.name));
-    const forgotten = tombstones.filter((name) => !retiredNames.has(name));
+    const domains = new Set([...registryNames].map((name) => name.split('.')[0] as string));
+
+    const mentioned = new Set(
+      [...source.matchAll(/`([a-z_]+\.[a-z_]+)`/g)].map((match) => match[1] as string),
+    );
+    const looksLikeQueue = [...mentioned].filter((name) =>
+      domains.has(name.split('.')[0] as string),
+    );
+    expect(looksLikeQueue.length, 'v registru se nezmiňuje ani jedna fronta').toBeGreaterThan(0);
+
+    const forgotten = looksLikeQueue
+      .filter((name) => !registryNames.has(name) && !retiredNames.has(name))
+      .sort();
     expect(
       forgotten,
-      'fronta má náhrobní komentář, ale v RETIRED_QUEUES není: na běžící instalaci zůstane',
+      'fronta se zmiňuje v registru, ale není v něm ani v RETIRED_QUEUES: na běžící ' +
+        'instalaci zůstane i s plánem cronu a bude tikat do prázdna',
     ).toEqual([]);
   });
 
