@@ -87,6 +87,54 @@ jobs:
         with:
           node-version: "24.18.1"
           cache: pnpm
+      # Klient PostgreSQL 18, protože zálohovací testy v `@mlain/core` NEJSOU
+      # mockované: spouštějí skutečný `pg_dump` a `pg_restore` proti serveru
+      # PostgreSQL 18, kterého si vitest nastartuje v testcontaineru
+      # (`packages/core/src/test-support/pg-harness.ts`). Proto tenhle job
+      # nepotřebuje `services`, ale klienta ano.
+      #
+      # Runner ubuntu-latest má podle svého manifestu klienta 16.14 a repozitář
+      # PGDG si po instalaci ze systému zase odstraní, takže `pg_dump` z PATH
+      # odmítne pracovat proti novějšímu serveru. Reprodukováno lokálně
+      # s klientem 17.7 proti témuž obrazu postgres:18-alpine:
+      #
+      #   pg_dump: error: aborting because of server version mismatch
+      #   pg_dump: detail: server version: 18.4; pg_dump version: 17.7
+      #
+      # Spadne při tom přesně 9 testů (backup.db 5, backup-guard.db 2,
+      # backup-jobs.db 2) a 13 se přeskočí (restore.db 8, backup-verify.db 5,
+      # těm padá už `beforeAll`). Je to táž devítka a třináctka, jakou hlásí CI.
+      #
+      # Testy se proto NEPŘESKAKUJÍ, doinstaluje se správný klient. Přeskočení
+      # by znamenalo, že CI u zálohovacího nástroje neověřuje zálohu ani obnovu,
+      # tedy zrovna to, co ověřit musí. Verzi 18 vyžaduje i `README.md`
+      # a `mlain doctor` ji hlídá jako `backup_binary_version_mismatch`.
+      - name: klient PostgreSQL 18
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc > /dev/null
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-18
+          # Do PATH jde adresář té konkrétní verze, ne obalovač /usr/bin/pg_dump.
+          # Ten patří balíku postgresql-client-common a verzi si vybírá sám podle
+          # nalezených clusterů, takže by se na stroji s předinstalovanou
+          # šestnáctkou mohl trefit vedle. Explicitní cesta je jediné, co zaručí,
+          # že poběží osmnáctka.
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+      # Samostatný krok schválně: bez něj by se neshoda verzí projevila až jako
+      # devět spadlých testů uprostřed osmiminutového běhu, tedy na místě,
+      # které na příčinu vůbec neukazuje.
+      - name: klient je opravdu 18
+        run: |
+          pg_dump --version
+          pg_restore --version
+          pg_dump --version | grep -qE '\(PostgreSQL\) 18\.' || {
+            echo "Na PATH není pg_dump 18, zálohovací testy by spadly na server version mismatch." >&2
+            exit 1
+          }
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo run test:unit
 
@@ -531,6 +579,26 @@ jobs:
           go-version: "1.26"
           cache-dependency-path: apps/sender/go.sum
       - run: pnpm install --frozen-lockfile
+      # Přepis `postcss` v kořenovém `package.json` sem patří vysvětlením, ne
+      # kódem: JSON komentář neunese a `pnpm.overrides` klíč začínající `//`
+      # odmítne jako neplatný selektor.
+      #
+      # Next.js si postcss zamyká na PŘESNOU 8.4.31, na které jsou dva nálezy
+      # stupně vysoký: čtení libovolného souboru a průchod cestou v mapě zdrojů.
+      # Přes vlastní `package.json` se na to nedosáhne, závislost je Nextu
+      # vnitřní, takže jediná cesta je přepis. Hlavní verze zůstává stejná,
+      # rozhraní se tedy nemění. Tímtéž řádkem padá i nález v nanoidu: postcss
+      # 8.5.26 si žádá `nanoid: ^3.3.17` a ten se přeloží na opravenou 3.3.18.
+      #
+      # Přepis `sharp` je tam ze stejného důvodu. Naše `packages/core` na 0.35.3
+      # umí, ale Next.js si drží vlastní `^0.34.5` a v ní jsou čtyři CVE
+      # v libvipsu. Na nás dopadají doopravdy: přes sharp jdou CIZÍ obrázky
+      # stažené při extrakci značky a optimalizované přes `next/image`.
+      # Že je přepis bezpečný, se dá ověřit: 0.35.0 sice ruší `failOnError`,
+      # `paletteBitDepth`, `format.jp2k` a zastaralé volby `sharpen`, jenže
+      # `next/dist/server/image-optimizer.js` nepoužívá ANI JEDNU z nich (volá
+      # `sharp(buffer, { limitInputPixels, sequentialRead })` a `toFormat`)
+      # a náš kód taky ne.
       - run: pnpm audit --audit-level=high
       - name: govulncheck
         working-directory: apps/sender

@@ -1,6 +1,9 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterEach } from 'vitest';
+
+// Strop čekání `waitFor` a `findBy*`. Zdůvodnění je v `apps/web/vitest.setup.ts`.
+configure({ asyncUtilTimeout: 5_000 });
 
 /**
  * `window.matchMedia` jsdom NEMÁ a nikdy mít nebude (nepočítá rozvržení, takže

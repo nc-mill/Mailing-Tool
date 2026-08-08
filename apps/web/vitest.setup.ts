@@ -3,8 +3,20 @@
 // víc prvků téže role. Explicitní afterEach je zvolený schválně místo
 // globals: true, aby se testy nepsaly proti implicitním globálům.
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterEach } from 'vitest';
+
+/*
+ * `waitFor` a `findBy*` čekají ve výchozím stavu jednu vteřinu. Na runneru
+ * GitHubu je to málo: běží tam tři vlákna jsdom na čtyřech jádrech a tentýž
+ * soubor je tam zhruba dvanáctkrát pomalejší než na vývojářském stroji.
+ * Odchytávalo se to jako „Unable to find an element with the text", tedy jako
+ * chybějící prvek, přestože prvek se jen ještě nestihl vykreslit.
+ *
+ * Pět vteřin je strop čekání, ne délka běhu: jakmile tvrzení projde, `waitFor`
+ * se vrací hned. Zelený test se tím nezpomalí.
+ */
+configure({ asyncUtilTimeout: 5_000 });
 
 /**
  * `window.matchMedia` jsdom NEMÁ a nikdy mít nebude (nepočítá rozvržení, takže

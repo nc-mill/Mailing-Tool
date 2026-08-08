@@ -17,6 +17,25 @@ export default defineConfig({
     // Strop souběžnosti, zdůvodnění je v `packages/core/vitest.config.ts`.
     // Tady je navíc jsdom, které je samo o sobě drahé na paměť.
     maxWorkers: 3,
+    /*
+     * Výchozích 5 s na test a 10 s na hook stačí na vývojářském stroji a NESTAČÍ
+     * na runneru GitHubu. Naměřeno 8. 8. 2026 na tomtéž commitu:
+     * `sending.test.tsx` běží lokálně 4,6 s, na runneru 55 s, tedy zhruba
+     * dvanáctkrát pomaleji. Čtyři jádra, tři pracovní vlákna a jsdom v každém.
+     *
+     * Následek přetečení není jen jedno červené místo. Vitest test ukončí, ale
+     * rozepsanou smyčku `userEvent.type` nezastaví: ta doťukává znaky dál a
+     * trefí se do pole, které mezitím vyrenderoval NÁSLEDUJÍCÍ test. Ten pak
+     * spadne na nesmyslné hodnotě jako „AKIAIHOlSaFvOnDíN NS7EESXAMP", což je
+     * proklad klíče z předchozího testu se jménem z toho aktuálního. Jedno
+     * přetečení tak vyrobí hrst falešných selhání, která ukazují úplně jinam.
+     * Reprodukovatelné lokálně přes `--testTimeout=250`.
+     *
+     * Limity jsou proto velkorysé. Tvrzení testů se tím nemění, mění se jen
+     * trpělivost: zelený test kvůli tomu netrvá o vteřinu déle.
+     */
+    testTimeout: 20_000,
+    hookTimeout: 30_000,
     // src/ MUSÍ být ve vzoru. Testy vedle zdroje jsou tvar, na kterém se shodly
     // P05, P06 i P12; bez tohohle řádku se ani jeden z nich nespustí a série
     // přesto skončí nulou.

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createHash } from 'node:crypto';
+import type * as NodeCrypto from 'node:crypto';
 import type { ApiError } from '../errors/api-error';
 import {
   base32Lower,
@@ -12,6 +13,48 @@ import {
   PUBLIC_KEY_SCOPES,
   type ApiKeyRow,
 } from './api-key';
+
+/**
+ * Záznam o každém volání `crypto.timingSafeEqual`, na kterém stojí kritérium 26
+ * (viz poslední describe v tomhle souboru).
+ *
+ * Mock je tu proto, že jinak se na tu funkci z testu nedosáhne: `api-key.ts` si
+ * ji naváže named importem při načtení modulu a `vi.spyOn` nad namespace
+ * vestavěného modulu tu vazbu už nezmění. Skutečná implementace se VOLÁ DÁL,
+ * obal jen zapisuje, s čím se volala; chování ověřování se tím nemění a všech
+ * ostatních 28 testů v souboru běží nad pravým `node:crypto`.
+ */
+type TimingSafeEqualCall = {
+  /** Délky obou operandů. Musí být 32 a 32, tedy celý SHA-256, ne výřez. */
+  lengths: [number, number];
+  /** Index prvního rozdílného bajtu, nebo -1 při shodě. */
+  firstDifferentByte: number;
+};
+
+const cryptoCalls = vi.hoisted(() => ({ timingSafeEqual: [] as TimingSafeEqualCall[] }));
+
+vi.mock('node:crypto', async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeCrypto>();
+  return {
+    ...actual,
+    timingSafeEqual(a: NodeJS.ArrayBufferView, b: NodeJS.ArrayBufferView): boolean {
+      const left = Buffer.from(a.buffer, a.byteOffset, a.byteLength);
+      const right = Buffer.from(b.buffer, b.byteOffset, b.byteLength);
+      let firstDifferentByte = -1;
+      for (let i = 0; i < Math.min(left.length, right.length); i += 1) {
+        if (left[i] !== right[i]) {
+          firstDifferentByte = i;
+          break;
+        }
+      }
+      cryptoCalls.timingSafeEqual.push({
+        lengths: [left.length, right.length],
+        firstDifferentByte,
+      });
+      return actual.timingSafeEqual(a, b);
+    },
+  };
+});
 
 /** Závazný vektor ze 3.5, přepočítaný spuštěním 2026-07-31. */
 const VECTOR = {
@@ -227,27 +270,49 @@ describe('nesmyslné vstupy', () => {
 });
 
 /**
- * Kritérium 26: ověření sekretu je časově konstantní. Měří se skutečný běh.
+ * Kritérium 26: ověření sekretu je časově konstantní.
  *
- * MĚŘÍ SE SPRÁVNÁ DVOJICE, a stojí za to říct proč. Naivní varianta „správný
- * versus špatný sekret" NIC UŽITEČNÉHO NEŘÍKÁ a spolehlivě selže: neúspěšná
- * cesta navíc konstruuje `ApiError`, tedy `Error` se stack trace, což je
- * naměřitelně dražší než vrátit objekt (naměřeno 0,0025 ms proti 0,0077 ms).
- * Nic to ale neprozrazuje: jestli klíč prošel, se útočník dozví ze stavového
- * kódu odpovědi, ne z hodinek.
+ * Chráněná informace je dvojí: KOLIK bajtů sekretu už útočník uhodl a JESTLI
+ * daný prefix vůbec existuje. Každou z nich hlídá jiný test a KAŽDOU JINÝM
+ * NÁSTROJEM, protože ty dvě vady mají řádově jinou velikost.
  *
- * Chráněná informace je jiná: KOLIK bajtů sekretu už útočník uhodl a JESTLI
- * daný prefix vůbec existuje. Testují se proto dvě dvojice neúspěšných cest:
- *   1. hash lišící se v PRVNÍM bajtu proti hashi lišícímu se v POSLEDNÍM.
- *      Kdyby porovnání končilo na první neshodě, byla by první varianta
- *      měřitelně rychlejší a klíč by šlo uhodnout po bajtech.
- *   2. neznámý prefix (dvě dummy porovnání) proti známému prefixu se špatným
- *      sekretem (dvě skutečná porovnání). Kdyby se lišily, dal by se výpis
- *      existujících klíčů získat měřením.
+ * 1. Bajty sekretu. Tady se NEMĚŘÍ, ověřuje se struktura: že porovnání hashů
+ *    projde `crypto.timingSafeEqual` a že do něj jde celých 32 bajtů.
+ *
+ *    Do 8. 8. 2026 tu stálo měření hodinami s tolerancí 20 % a bylo SLEPÉ.
+ *    Naměřeno na tomhle repozitáři (Node 24, Apple silicon): jedno neúspěšné
+ *    ověření stojí kolem 5,2 µs a skoro celé je to SHA-256 sekretu a konstrukce
+ *    `ApiError`; samotné porovnání 32 bajtů zabere 0,04 µs. Rozdíl mezi
+ *    neshodou v 1. a ve 32. bajtu, tedy 31 ušetřených porovnání jednoho bajtu,
+ *    se v tom utopí. Ověřeno spuštěním, ne odvozeno: tentýž harness (25 dávek
+ *    po 400, minimum) pouštěný nad ÚMYSLNĚ zranitelnou bajtovou smyčkou
+ *    s předčasným návratem hlásil rozdíly 2,50 %, 7,95 % a 0,88 %, tedy třikrát
+ *    zelenou, a znaménko i velikost se měnily náhodně. Test měl v názvu jednu
+ *    věc a tvrdil druhou, k tomu na sdíleném runneru CI blikal.
+ *
+ *    Kontrola přes `timingSafeEqual` je proti tomu přesná, nezávislá na
+ *    vytížení stroje a dokazuje víc: konstantní čas garantuje sama ta funkce,
+ *    stačí ukázat, že se skutečně volá a nad celým hashem.
+ *
+ * 2. Existence prefixu. Tady měření smysl dává a zůstává. Rozdíl mezi větvemi
+ *    není pár bajtů, ale celý SHA-256 sekretu plus dvě dummy porovnání.
+ *    Ověřeno mutací: když se z větve s neznámým prefixem obojí odstraní a vrací
+ *    401 rovnou, hlásí měření 29,9 až 33,9 % ve všech pěti pokusech, takže
+ *    20% tolerance to spolehlivě chytí. Že jsou dummy porovnání právě dvě,
+ *    přesně počítají testy „provede DVĚ dummy porovnání" výš.
+ *
+ * Naivní dvojice „správný versus špatný sekret" se neměří schválně: neúspěšná
+ * cesta konstruuje `ApiError`, tedy `Error` se stack trace, a je tím pádem
+ * dražší. Nic to ale neprozrazuje, jestli klíč prošel, se útočník dozví ze
+ * stavového kódu odpovědi, ne z hodinek.
  */
 describe('kritérium 26: časově konstantní ověření', () => {
   const BATCHES = 25;
   const PER_BATCH = 400;
+  /** Strop relativního rozdílu obou větví. Viz bod 2 v komentáři výš. */
+  const TOLERANCE = 0.2;
+  /** Kolikrát se smí celé měření zopakovat, než se test prohlásí za spadlý. */
+  const ATTEMPTS = 5;
 
   /**
    * Měří v dávkách: jedno ověření trvá jednotky mikrosekund, což je pod šumem
@@ -271,41 +336,87 @@ describe('kritérium 26: časově konstantní ověření', () => {
     return Math.min(...batches);
   }
 
+  /**
+   * Změří obě větve a porovná je. Celé měření se smí zopakovat až `ATTEMPTS`krát
+   * a projde první pokus, který se do tolerance vejde.
+   *
+   * TOLERANCE SE TÍM NEZVĚTŠUJE, opakuje se jen měření, a je v tom rozdíl:
+   * skutečný systematický rozdíl mezi větvemi vyjde ve VŠECH pokusech, kdežto
+   * výkyv plánovače se v dalším pokusu neopakuje. Runner CI má 4 vCPU a běží na
+   * něm tři vlákna vitestu a k tomu ostatní balíčky turba, takže na jednorázové
+   * měření spoléhat nejde; přesně na tom tu 8. 8. 2026 spadl sesterský test,
+   * jehož obě větve dělají prokazatelně totéž.
+   *
+   * Do hlášky jdou VŠECHNY pokusy, aby šlo poznat rozptyl od posunu.
+   */
+  async function expectSameCost(
+    label: string,
+    a: { name: string; load: () => Promise<ApiKeyRow | null> },
+    b: { name: string; load: () => Promise<ApiKeyRow | null> },
+  ): Promise<void> {
+    // Rozehřátí JIT, aby první pokus neplatil za obě větve.
+    await fastestBatchMs(VECTOR.key, a.load);
+    await fastestBatchMs(VECTOR.key, b.load);
+
+    const measured: string[] = [];
+    for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
+      const left = await fastestBatchMs(VECTOR.key, a.load);
+      const right = await fastestBatchMs(VECTOR.key, b.load);
+      const relativeDifference = Math.abs(left - right) / Math.max(left, right);
+      const line =
+        `${a.name} ${left.toFixed(3)} ms/${PER_BATCH}, ${b.name} ${right.toFixed(3)} ms/${PER_BATCH}, ` +
+        `rozdil ${(relativeDifference * 100).toFixed(2)} %`;
+      measured.push(line);
+      if (relativeDifference < TOLERANCE) {
+        process.stdout.write(`[kriterium 26] ${label}: ${line} (pokus ${attempt}/${ATTEMPTS})\n`);
+        return;
+      }
+    }
+    expect.fail(
+      `[kriterium 26] ${label}: ani jeden z ${ATTEMPTS} pokusů se nevešel do ` +
+        `${TOLERANCE * 100} %:\n  ${measured.join('\n  ')}`,
+    );
+  }
+
   const flipped = (index: number): Buffer => {
     const hash = Buffer.from(VECTOR.secretSha256, 'hex');
     hash[index] = hash[index]! ^ 0xff;
     return hash;
   };
 
-  it('neshoda v prvním bajtu trvá stejně dlouho jako neshoda v posledním', async () => {
-    const first = async () => row({ secretHash: flipped(0) });
-    const last = async () => row({ secretHash: flipped(31) });
+  /** Volání `timingSafeEqual`, ke kterým došlo během jednoho ověření. */
+  async function comparisonsDuringVerify(secretHash: Buffer): Promise<TimingSafeEqualCall[]> {
+    cryptoCalls.timingSafeEqual.length = 0;
+    await verifyApiKey(VECTOR.key, async () => row({ secretHash })).catch(() => undefined);
+    return [...cryptoCalls.timingSafeEqual];
+  }
 
-    await fastestBatchMs(VECTOR.key, first);
-    await fastestBatchMs(VECTOR.key, last);
+  it('neshoda v prvním bajtu se vyhodnocuje stejně jako neshoda v posledním', async () => {
+    const first = await comparisonsDuringVerify(flipped(0));
+    const last = await comparisonsDuringVerify(flipped(31));
 
-    const a = await fastestBatchMs(VECTOR.key, first);
-    const b = await fastestBatchMs(VECTOR.key, last);
-    const relativeDifference = Math.abs(a - b) / Math.max(a, b);
-    process.stdout.write(
-      `[kriterium 26] neshoda v 1. bajtu ${a.toFixed(3)} ms/${PER_BATCH}, v 32. bajtu ${b.toFixed(3)} ms/${PER_BATCH}, rozdil ${(relativeDifference * 100).toFixed(2)} %\n`,
-    );
-    expect(relativeDifference).toBeLessThan(0.2);
-  }, 120_000);
+    // Porovnání vůbec proběhla, a proběhla přes `timingSafeEqual`. Kdyby někdo
+    // `constantTimeEqual` přepsal na `a.equals(b)` nebo na vlastní smyčku,
+    // zůstane tenhle seznam prázdný a test spadne. To je jádro věci: konstantní
+    // čas neslibuje náš kód, slibuje ho ta funkce.
+    expect(first).toHaveLength(2);
+    expect(last).toHaveLength(first.length);
+
+    // Do porovnání jde CELÝ hash, ne prvních pár bajtů. Porovnání zkráceného
+    // úseku by bylo taky konstantní v čase, a přesto by klíč šlo uhodnout.
+    for (const call of [...first, ...last]) expect(call.lengths).toEqual([32, 32]);
+
+    // A pojistka na samotnou fixturu: obě ověření se opravdu liší tam, kde mají.
+    // Bez tohohle by test mohl dvakrát porovnávat totéž a nic by nehlídal.
+    expect(first[0]!.firstDifferentByte).toBe(0);
+    expect(last[0]!.firstDifferentByte).toBe(31);
+  });
 
   it('neznámý prefix trvá stejně dlouho jako známý prefix se špatným sekretem', async () => {
-    const missing = async () => null;
-    const wrongSecret = async () => row({ secretHash: flipped(0) });
-
-    await fastestBatchMs(VECTOR.key, missing);
-    await fastestBatchMs(VECTOR.key, wrongSecret);
-
-    const a = await fastestBatchMs(VECTOR.key, missing);
-    const b = await fastestBatchMs(VECTOR.key, wrongSecret);
-    const relativeDifference = Math.abs(a - b) / Math.max(a, b);
-    process.stdout.write(
-      `[kriterium 26] neznamy prefix ${a.toFixed(3)} ms/${PER_BATCH}, spatny sekret ${b.toFixed(3)} ms/${PER_BATCH}, rozdil ${(relativeDifference * 100).toFixed(2)} %\n`,
+    await expectSameCost(
+      'existence prefixu',
+      { name: 'neznamy prefix', load: async () => null },
+      { name: 'spatny sekret', load: async () => row({ secretHash: flipped(0) }) },
     );
-    expect(relativeDifference).toBeLessThan(0.2);
   }, 120_000);
 });

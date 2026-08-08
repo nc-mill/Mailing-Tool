@@ -42,7 +42,7 @@
     "@tiptap/extensions": "3.29.2",
     "@tiptap/pm": "3.29.2",
     "@tiptap/react": "3.29.2",
-    "drizzle-orm": "0.44.7",
+    "drizzle-orm": "0.45.2",
     "hono": "4.12.33",
     "next": "16.2.12",
     "next-intl": "4.13.4",

@@ -11,6 +11,7 @@ import { generatePublicId, PUBLIC_ID_PATTERN } from './public-id';
 import { parseVariantFile, safeDownloadFilename } from './public';
 import {
   EXTENSION_BY_MIME,
+  MAX_INPUT_PIXELS,
   MAX_STORED_DIMENSION,
   MIME_BY_EXTENSION,
   NEVER_STORED_MIME_TYPES,
@@ -141,6 +142,126 @@ describe('normalizace nahraného obrázku', () => {
     const broken = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
     await expect(normalizeUpload(broken)).rejects.toBeInstanceOf(AssetProcessingError);
     await expect(normalizeUpload(broken)).rejects.toMatchObject({ code: 'asset_corrupt' });
+  });
+
+  /**
+   * 413 proti 422, a to rozlišení stojí na ŘETĚZCI Z CIZÍ KNIHOVNY.
+   *
+   * libvips žádný kód chyby nedává, takže `toAssetError` pozná „obrázek je moc
+   * velký" od „soubor je rozbitý" podle anglického podřetězce `pixel limit`
+   * v hlášce. Naměřeno na sharpu 0.35.3 s libvipsem 8.18.3, shodně z volání
+   * `metadata()` i `toBuffer()`:
+   *
+   *   Input image exceeds pixel limit
+   *
+   * Kdyby libvips ten text přeformuloval, NESPADNE NIC. Hláška propadne na
+   * `asset_corrupt`, uživatel dostane 422 „soubor je rozbitý" místo 413
+   * „zmenši obrázek" a začne hledat vadu v souboru, který vadný není. Test
+   * proto netvrdí jen, že se vyhodí `AssetProcessingError`, ale trvá na KÓDU.
+   * Tvrzení o typu chyby by tuhle vadu propustilo, obě větve ho splňují.
+   *
+   * Vstup je skutečný obrázek, ne podvržená hlavička PNG: 8000 na 7000 dá
+   * 56 Mpx proti stropu `MAX_INPUT_PIXELS` 50 Mpx. Naměřeno 241 ms na
+   * vyrobení, protože jednobarevný JPEG se srazí na 329 kB.
+   */
+  it('obrázek nad limit pixelů hlásí asset_too_many_pixels, ne asset_corrupt', async () => {
+    // Pojistka na fixturu: kdyby někdo strop zvedl, test by odsud tiše
+    // přestal měřit limit a začal měřit úspěšné zpracování velkého obrázku.
+    expect(8000 * 7000).toBeGreaterThan(MAX_INPUT_PIXELS);
+
+    const error = await normalizeUpload(await jpeg(8000, 7000)).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(AssetProcessingError);
+    expect((error as AssetProcessingError).code).toBe('asset_too_many_pixels');
+  });
+
+  /**
+   * Animovaný GIF prohnaný SKUTEČNOU knihovnou, ne jen čistou funkcí.
+   *
+   * Zbytek souboru mluví o GIFu buď přes `detectFormat` nad magickým číslem
+   * z řetězce, nebo přes `variantsFor`, které se animace předává jako boolean.
+   * Ani jedno se libvipsu nezeptá, takže celá větev `animated` v `normalizeUpload`
+   * byla proti knihovně netestovaná a upgrade sharpu ji mohl rozbít nezčervenale.
+   *
+   * Test drží tři věci najednou, protože každá hlídá jinou tichou vadu:
+   *
+   *  1. Bajty se NEPŘEKÓDOVÁVAJÍ. Překódování GIFu ztrácí snímky a mění
+   *     časování, takže se uloží vstup tak, jak přišel.
+   *  2. VÝŠKA JE JEDEN SNÍMEK, ne celý pás, a tohle je z té trojice nejzákeřnější.
+   *     `metadata.height` je u animace výška všech snímků pod sebou, tady 120 px
+   *     u tří snímků po 40. Bez dělení přes `pageHeight` by měl asset
+   *     v databázi trojnásobnou výšku, nic by nespadlo a projevilo by se to až
+   *     rozsypaným rozvržením v odeslaném e-mailu, protože emitter počítá
+   *     rozměr v HTML z uložených čísel.
+   *  3. `frameCount` se ČTE Z OBRÁZKU. Kdyby se nečetl, spadne celá tahle větev:
+   *     `animated` se odvozuje právě z něj, takže animace propadne do zmenšování
+   *     a uloží se jako první snímek.
+   *
+   * POZOR NA JEDNU VĚC, KTERÁ SE V 8.18.3 CHOVÁ JINAK, NEŽ ŘÍKÁ KOMENTÁŘ
+   * U `animatedInput` V `image.ts`. Ten tvrdí, že bez `animated: true` hlásí
+   * `sharp` jedničku i u animace. Naměřeno mutací na sharpu 0.35.3 s libvipsem
+   * 8.18.3 to neplatí: `pages` je 3 v obou případech a liší se jen `height`
+   * (120 s příznakem, 40 bez něj) a `pageHeight` (40 proti undefined). Protože
+   * se ukládá `pageHeight ?? height`, vyjde uložená výška 40 tak jako tak.
+   * Odebrání toho příznaku tedy tenhle test NECHYTÍ a je to napsané schválně,
+   * ať nikdo nepovažuje za pojistku něco, co pojistka není.
+   *
+   * Naměřeno: vstup 226 bajtů, pages 3, pageHeight 40, height 120, width 40.
+   */
+  it('animovaný GIF nepřekóduje, výšku bere po snímku a spočítá snímky', async () => {
+    const frame = (red: number) =>
+      sharp({
+        create: { width: 40, height: 40, channels: 3, background: { r: red, g: 40, b: 200 } },
+      })
+        .png()
+        .toBuffer();
+    const encoded = await sharp([await frame(10), await frame(120), await frame(240)], {
+      join: { animated: true },
+    })
+      .gif()
+      .toBuffer();
+
+    /*
+     * Do fixtury se PŘIDÁVÁ komentářový blok GIF89a (0x21 0xFE) a není to
+     * kosmetika, bez něj by první tvrzení nehlídalo vůbec nic. Fixtura je totiž
+     * výstup libvipsu a jeho překódování vrátí bajt po bajtu totéž: naměřeno
+     * 212 bajtů dovnitř a týchž 212 ven, takže „nepřekóduje se" projde i kódu,
+     * který překódovává. Skutečné GIFy z reálných nástrojů komentářové
+     * a aplikační bloky nesou a překódování je zahazuje, což je právě ta ztráta,
+     * kterou produkt odmítá. S blokem jde dovnitř 226 bajtů a překódování vrátí
+     * 212, takže se ty dvě cesty konečně rozlišují.
+     *
+     * Blok patří až za logický deskriptor a globální paletu. Velikost palety je
+     * zakódovaná v bajtu 10, proto se počítá; hledat první 0x21 by mohlo trefit
+     * shodný bajt uvnitř palety.
+     */
+    const packed = encoded[10]!;
+    const paletteBytes = (packed & 0x80) === 0 ? 0 : 3 * 2 ** ((packed & 0x07) + 1);
+    const marker = Buffer.from('mlain-test', 'latin1');
+    const animated = Buffer.concat([
+      encoded.subarray(0, 13 + paletteBytes),
+      Buffer.from([0x21, 0xfe, marker.length]),
+      marker,
+      Buffer.from([0x00]),
+      encoded.subarray(13 + paletteBytes),
+    ]);
+
+    // Pojistka na fixturu: bez tohohle by test mohl běžet nad statickým GIFem
+    // a všechna tři tvrzení níž by prošla z nesprávného důvodu. Zároveň se tím
+    // ověřuje, že vložený blok obrázek nerozbil.
+    const source = await sharp(animated, { animated: true }).metadata();
+    expect([source.pages, source.pageHeight, source.height]).toEqual([3, 40, 120]);
+    expect(animated.length).toBeGreaterThan(encoded.length);
+
+    const out = await normalizeUpload(animated);
+
+    expect(out.mimeType).toBe('image/gif');
+    expect(out.data.equals(animated)).toBe(true);
+    expect(out.height).toBe(40);
+    // Šířka se u animace NEDĚLÍ, snímky jsou pod sebou, ne vedle sebe. Kdyby se
+    // do výpočtu dostala i ona, byla by výsledná dvojice 40 na 13 a poměr stran
+    // v e-mailu by seděl na ničem.
+    expect(out.width).toBe(40);
+    expect(out.frameCount).toBe(3);
   });
 
   it('zahodí EXIF metadata, tedy i GPS souřadnice', async () => {

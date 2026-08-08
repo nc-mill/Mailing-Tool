@@ -1,4 +1,9 @@
-import sharp from 'sharp';
+// Typy se dovážejí POJMENOVANĚ, ne přes jmenný prostor. Balíček od verze 0.35
+// neexportuje `export = sharp`, ale skutečné pojmenované exporty, takže zápis
+// ve tvaru „sharp tečka Metadata" už nic neoznačuje a TypeScript na něm hlásí
+// „Cannot find namespace 'sharp'". Výchozí export, tedy samotný konstruktor,
+// zůstává beze změny.
+import sharp, { type Metadata, type Sharp } from 'sharp';
 import { sanitizeSvg } from '../brand/extract/logo';
 import { detectFormat } from './detect';
 import {
@@ -117,7 +122,7 @@ function toAssetError(error: unknown): AssetProcessingError {
 }
 
 /** Konstruktor `sharp` se stropem na vstupní pixely (3.14.1) na jednom místě. */
-function open(data: Buffer, options?: { animated?: boolean; density?: number }): sharp.Sharp {
+function open(data: Buffer, options?: { animated?: boolean; density?: number }): Sharp {
   return sharp(data, {
     limitInputPixels: MAX_INPUT_PIXELS,
     failOn: 'error',
@@ -153,12 +158,26 @@ export async function normalizeUpload(input: Buffer): Promise<NormalizedImage> {
     return rasterizeSvg(input);
   }
 
-  let pipeline: sharp.Sharp;
-  let metadata: sharp.Metadata;
+  let pipeline: Sharp;
+  let metadata: Metadata;
   try {
-    // GIF se otevírá s `animated: true`, aby `pages` vrátilo skutečný počet
-    // snímků. Bez toho hlásí `sharp` jedničku i u animace a produkt by
-    // animovaný GIF zmenšil na první snímek.
+    // GIF se otevírá s `animated: true`, aby se s animací počítalo jako
+    // s celkem, ne jako s prvním snímkem.
+    //
+    // Dřív tu stálo, že bez toho příznaku hlásí `sharp` u animace jediný
+    // snímek. TO NENÍ PRAVDA, aspoň ne na sharpu 0.35.3 s libvipsem 8.18.3.
+    // Naměřeno nad třísnímkovým GIFem 40 na 40:
+    //
+    //   s `animated`:  pages 3, height 120, pageHeight 40
+    //   bez `animated`: pages 3, height  40, pageHeight undefined
+    //
+    // `pages` tedy sedí tak i tak a uložená výška vyjde 40 v obou případech,
+    // protože se níž bere `pageHeight ?? height`. Příznak dnes nedrží ani
+    // jedno z toho, co se od něj čekalo, a zůstává tu proto, že animaci
+    // otevírá jako animaci: až se jednou bude překódovávat nebo zmenšovat,
+    // je rozdíl mezi „pás všech snímků" a „první snímek" zásadní.
+    //
+    // Nespoléhej na něj jako na pojistku, dokud si nenaměříš, že jí je.
     const animatedInput = detected.kind === 'raster' && detected.format === 'gif';
     pipeline = open(input, { animated: animatedInput });
     metadata = await pipeline.metadata();
@@ -217,7 +236,7 @@ export async function normalizeUpload(input: Buffer): Promise<NormalizedImage> {
  */
 function pickOutputMime(
   detected: { kind: 'raster'; format: 'jpeg' | 'png' | 'gif' } | { kind: 'convert' },
-  metadata: sharp.Metadata,
+  metadata: Metadata,
 ): StoredMimeType {
   if (detected.kind === 'raster') {
     if (detected.format === 'jpeg') return 'image/jpeg';
@@ -227,11 +246,7 @@ function pickOutputMime(
   return metadata.hasAlpha === true ? 'image/png' : 'image/jpeg';
 }
 
-function encode(
-  pipeline: sharp.Sharp,
-  mimeType: StoredMimeType,
-  source?: sharp.Metadata,
-): sharp.Sharp {
+function encode(pipeline: Sharp, mimeType: StoredMimeType, source?: Metadata): Sharp {
   if (mimeType === 'image/jpeg') {
     // Kvalita 82 a progresivní kódování jsou ze specifikace 3.14.1.
     // `mozjpeg` zapíná trellis kvantizaci: při stejné kvalitě menší soubor,

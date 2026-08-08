@@ -24,7 +24,7 @@
   "devDependencies": {
     "@mlain/config": "workspace:*",
     "esbuild": "^0.25.0",
-    "happy-dom": "20.0.0",
+    "happy-dom": "20.11.2",
     "vitest": "4.1.10"
   }
 }
