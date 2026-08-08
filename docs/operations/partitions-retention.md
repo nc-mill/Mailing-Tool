@@ -3,11 +3,16 @@
 **K čemu to je:** jak se v instalaci uklízí odeslaná pošta a události, kdo to
 pouští a jak se pozná, že to opravdu běží.
 
-Revize: 2026-08-07. Příkaz i přepínače ověřené proti
+Revize: 2026-08-08. Příkaz i přepínače ověřené proti
 `apps/cli/src/commands/partitions.ts`, fronta a její cron proti
 `packages/core/src/queues/registry.ts`, obsluha proti
 `packages/core/src/ops/jobs/partition-jobs.ts`, výchozí lhůty proti
 `packages/core/src/config/schema-domains.ts`.
+
+> **Jak číst tuhle hlavičku.** Revize ze 7. 8. tvrdila totéž, a přesto o kus níž
+> stálo, že audit uklízí fronta, která byla téhož dne zrušena a nikdy nedoběhla.
+> Věta o ověření tedy není důkaz; důkaz je porovnání s kódem, které si udělá
+> ten, kdo podle runbooku jedná.
 
 Odeslaná pošta se v databázi nedrží navždy. **Úklid dělá instalace sama:** noční
 úloha workeru `platform.maintain_partitions` (cron `5 2 * * *`). Nemusíte nic
@@ -56,9 +61,20 @@ z jiného místa.
 
 Ostatní partitionované tabulky příkaz **nechává být**, a to schválně:
 
-- `audit_log` má vlastní úklid po řádcích (`platform.cleanup_audit_log`, cron
-  `35 2 * * *`) podle `AUDIT_RETENTION_MONTHS`, výchozí 24 měsíců. Ten běží
-  ve frontě pod aplikační rolí a funguje.
+- `audit_log` **uklízí tatáž noční úloha** `platform.maintain_partitions`, tedy
+  odpojením celého oddílu, podle `AUDIT_RETENTION_MONTHS`, výchozí 24 měsíců.
+
+  > **Opraveno 7. 8. 2026.** Do té doby tu stálo, že audit uklízí vlastní fronta
+  > `platform.cleanup_audit_log` a že „běží pod aplikační rolí a funguje".
+  > Nefungovala: mazala příkazem `DELETE FROM audit_log` pod rolí `mlain_app`,
+  > jenže migrace 0005, 0009, 0022 i 0026 dělají
+  > `REVOKE UPDATE, DELETE ON audit_log FROM mlain_app`, takže **nedoběhla ani
+  > jednou** a každý běh skončil na `permission denied` (SQLSTATE 42501).
+  >
+  > To odebrané právo není překážka, je to ta vlastnost, kvůli které je audit
+  > k něčemu: záznam, který smí aplikace smazat, není důkaz. Retenci proto
+  > převzalo odpojování oddílů pod migrátorem, které maže bez práva mazat řádky.
+  > Fronta `platform.cleanup_audit_log` je zrušená, v registru není.
 - `inbound_deliveries` spadá pod projektovou retenci (`retention.run`), protože
   lhůtu si nastavuje každý projekt zvlášť, kdežto oddíl je společný všem.
 - `webhook_events`, `webhook_deliveries`, `provider_event_receipts`

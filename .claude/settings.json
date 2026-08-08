@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); [ -z \"$f\" ] && exit 0; case \"$f\" in *.go) gofmt -w \"$f\" >/dev/null 2>&1;; *) pnpm exec prettier --write --ignore-unknown \"$f\" >/dev/null 2>&1;; esac; exit 0"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "c=$(jq -r '.tool_input.command // empty'); h=$(printf '%s' \"$c\" | sed -e \"s/<<'\\\\?[A-Za-z_]*'\\\\?[\\\\s\\\\S]*//\"); printf '%s' \"$h\" | grep -Eq '(^|[;&|(]|&&|\\|\\|)[[:space:]]*git[[:space:]]+stash([[:space:]]|$)' && { echo 'Zakazano: git stash. Rozdelanou praci neodkladej, dokonci ji nebo si zaloz worktree.' >&2; exit 2; }; printf '%s' \"$h\" | grep -Eq '(^|[;&|(]|&&|\\|\\|)[[:space:]]*git[[:space:]]+(checkout|switch)[[:space:]]' && { echo 'Zakazano: prepinani vetvi v tomhle checkoutu. Potrebujes-li jinou vetev, zaloz worktree z HEAD.' >&2; exit 2; }; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}

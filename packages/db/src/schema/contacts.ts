@@ -368,9 +368,14 @@ export const lists = pgTable(
      * seznam vrátí k vestavěnému textu místo toho, aby ho shodilo.
      *
      * Děkovací stránka po odeslání formuláře tu sloupec NEMÁ schválně: vlastní
-     * ji formulář (klíč `thanks_template_id` v `forms.definition`) a seznam
+     * ji formulář (klíč `thanks_template_id` pod `forms.design.pages`) a seznam
      * o ní nemá co rozhodovat. Naopak stránka po odhlášení je jen tady, protože
      * se na ni chodí z odkazu v e-mailu a není podle čeho určit formulář.
+     *
+     * Pozor na jméno: sloupec `forms.definition` NEEXISTUJE a nikdy neexistoval,
+     * `definition` patří tabulce `segments`. Původní plán ho omylem uváděl
+     * a odkaz se odtud dostal až sem do komentáře. Odkazy na stránky bydlí
+     * v `forms.design` pod vyhrazeným podklíčem `pages`.
      *
      * Cizí klíče jsou stejně jako u `*_template_id` výš JEN v migraci, ne tady:
      * `.references(() => templates.id)` by znamenalo import z `content.ts`,
