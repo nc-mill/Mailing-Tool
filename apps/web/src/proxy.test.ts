@@ -37,6 +37,19 @@ describe('proxy', () => {
     }
   });
 
+  /**
+   * Potvrzení adresy odesílatele otevírá MAJITEL SCHRÁNKY, který v nástroji
+   * žádný účet nemá. Přesměrování na přihlášení pro něj není překážka, je to
+   * slepá ulička: přihlásit se nemůže, takže zkušební režim nedokončí nikdy.
+   *
+   * Trasa se v komentáři označuje za veřejnou od svého vzniku, jen `PUBLIC_PREFIXES`
+   * se o tom nedozvěděly. Naměřeno 8. 8. 2026 proti běžícímu serveru: 307 na `/login`.
+   */
+  it('potvrzení adresy odesílatele je veřejné, klikne na něj člověk bez účtu', async () => {
+    const response = await proxy(request('/verify-sender/token'));
+    expect(response.status).toBe(200);
+  });
+
   it('health routy nepřesměrovává, jinak by kontejner hlásil nezdravý stav', async () => {
     for (const path of ['/api/health', '/api/health/ready']) {
       const response = await proxy(request(path));

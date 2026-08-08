@@ -35,6 +35,18 @@ const PUBLIC_PREFIXES = [
   '/v/',
   '/f/', // vložený formulář
   '/d/', // delegovaná stránka DNS
+  // Potvrzení adresy odesílatele ve zkušebním režimu. Odkaz otevírá MAJITEL
+  // SCHRÁNKY, který v nástroji žádný účet nemá, takže se na přihlašovací
+  // stránce zastaví napořád a zkušební režim se nedá dokončit.
+  //
+  // Trasa sama se v komentáři označuje za veřejnou od svého vzniku, jen tenhle
+  // seznam se o tom nedozvěděl. Naměřeno 8. 8. 2026 proti běžícímu serveru:
+  // `/verify-sender/…` vracelo 307 na `/login`, kdežto `/u/…` vracelo 200.
+  //
+  // Bezpečnost tím netrpí: projekt ani adresa se neberou z požadavku, jsou
+  // uvnitř podepsaného tokenu, takže bez podpisu nejde potvrdit cizí adresu
+  // ani nic v cizím projektu.
+  '/verify-sender/',
   '/api/webhooks/', // příchozí webhooky provideru
   // Odchylka od plánu: bez tohohle by proxy poslala kontejnerový healthcheck
   // (`mlain healthcheck` volá /api/health/ready) na přihlašovací stránku
@@ -75,7 +87,11 @@ const PUBLIC_PREFIXES = [
  * Zbytek veřejných cest (`/t/`, `/e/`, `/api/`) vrací pixel, přesměrování nebo
  * JSON, takže si dál nechává sadu aplikace: měnit ji nemá co zlepšit.
  */
-const PUBLIC_PAGE_PREFIXES = ['/u/', '/p/', '/s/c/', '/r/', '/v/', '/f/'];
+// `/verify-sender/` je tu ze stejného důvodu jako ostatní: je to HTML stránka
+// vykreslená `renderPublicPage`, kterou otevírá člověk bez účtu. Bez ní by jí
+// proxy přepsala přísnou veřejnou politiku sadou aplikace, tedy volnější,
+// přestože ta stránka nepotřebuje ani bajt JavaScriptu.
+const PUBLIC_PAGE_PREFIXES = ['/u/', '/p/', '/s/c/', '/r/', '/v/', '/f/', '/verify-sender/'];
 
 /** Povrchy, které se schválně vkládají do rámu na cizím webu. Viz `security-headers.ts`. */
 const EMBEDDABLE_PREFIXES = ['/f/'];
