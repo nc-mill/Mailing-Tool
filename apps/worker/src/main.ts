@@ -1,12 +1,11 @@
 import { PgBoss } from 'pg-boss';
-import { loadConfig, ConfigError } from '@mlain/core/config';
+import { loadConfig, missingConfigRequirements, ConfigError } from '@mlain/core/config';
 import { createLogger } from '@mlain/core/logging';
 import { createShutdownController } from '@mlain/core/shutdown';
 import { aiKeyLeakCheck, type Check } from '@mlain/core/health';
 import { installSystemMailer } from '@mlain/core/platform/system-mail-runtime';
 import { installConsentEraser, installSubscriptionEmails } from '@mlain/core/contacts';
 import { installRevokePendingMessages } from '@mlain/core/campaigns';
-import { gdprConfigured, maintenanceConfigured } from '@mlain/core/tx/index';
 import { isolationCheck, warnIfIsolationBroken } from '@mlain/core/tx/isolation-guard';
 import { registerQueues } from './boss';
 import { startCronWatch } from './cron-watch';
@@ -109,48 +108,29 @@ async function main(): Promise<void> {
   logger.info({}, 'rušení připravené pošty po odhlášení je zapojené');
 
   /**
-   * Hlasité upozornění na chybějící `DATABASE_URL_MAINTENANCE`.
+   * CHYBĚJÍCÍ KONFIGURACE SE ŘÍKÁ HNED PŘI STARTU, ne až u první úlohy.
    *
-   * Proměnná je volitelná, takže instalace bez ní naběhne a běžný provoz
-   * funguje. Bez ní ale nemají systémové skeny čím číst napříč projekty a
-   * NAPLÁNOVANÁ KAMPAŇ SE NEODESLE. Řeklo by to i každé jednotlivé selhání
-   * úlohy, jenže do fronty se nikdo nedívá; tenhle řádek je na začátku logu,
-   * kam se dívá každý.
+   * Dřív tu stály dvě ručně psané podmínky, pro `DATABASE_URL_MAINTENANCE`
+   * a `DATABASE_URL_GDPR`, každá s vlastním výčtem postižených front. Byly
+   * věcně správné a přesto nestačily, ze dvou důvodů:
+   *
+   *  1. Výčty zastarávaly. Ten u údržbového připojení jmenoval `outbox.reconcile`,
+   *     přestože ta fronta údržbové připojení už nepotřebuje, a `domain.recheck`,
+   *     která v téhle verzi nemá obsluhu vůbec. Seznam psaný ručně vedle kódu
+   *     stárne tiše.
+   *  2. Táž informace se nedostala nikam jinam. Řádek v logu si přečte ten, kdo
+   *     log otevře v tu správnou minutu; instalační průvodce ani `mlain doctor`
+   *     o tom nevěděly nic.
+   *
+   * Zdrojem pravdy je proto tabulka `CONFIG_REQUIREMENTS` v jádru, kterou čte
+   * i obrazovka. Je to VAROVÁNÍ, ne brána: start se kvůli tomu neshodí, protože
+   * instalace, které dosud běžely bez těch proměnných, se nemají rozbít změnou
+   * verze. Rozhodnutí zadavatele z 8. 8. 2026.
    */
-  if (!maintenanceConfigured()) {
+  for (const missing of missingConfigRequirements(config)) {
     logger.warn(
-      {
-        variable: 'DATABASE_URL_MAINTENANCE',
-        jobs: [
-          'campaign.scheduler',
-          'campaign.watchdog',
-          'campaign.resume_on_quota',
-          'outbox.reconcile',
-          'domain.recheck',
-          'platform.purge_workspaces',
-          'platform.webhook_retry',
-        ],
-      },
-      'chybí připojení pod rolí mlain_maintenance: úlohy, které čtou napříč projekty, ' +
-        'poběží do chyby. Naplánovaná kampaň se neodešle a smazané projekty se neuklidí.',
-    );
-  }
-
-  /**
-   * Totéž pro `DATABASE_URL_GDPR`, a je to o stupeň horší případ: bez téhle
-   * proměnné nedoběhne VÝMAZ OSOBNÍCH ÚDAJŮ podle článku 17, tedy zákonná
-   * povinnost se lhůtou. Úloha skončí v chybě, žádost subjektu zůstane ve
-   * stavu `verified` a nic po sobě nenechá; hlášku proto worker říká hned
-   * při startu, ne až u první žádosti.
-   */
-  if (!gdprConfigured()) {
-    logger.warn(
-      {
-        variable: 'DATABASE_URL_GDPR',
-        jobs: ['gdpr.erase', 'retention.run'],
-      },
-      'chybí připojení pod rolí mlain_gdpr: souhlasy nemá kdo smazat, takže výmaz podle ' +
-        'článku 17 v režimu anonymize se ZRUŠÍ CELÝ. Týká se i retenčního cíle inactive_contacts.',
+      { variable: missing.variable, modes: missing.modes },
+      `chybí ${missing.variable}: ${missing.impact}`,
     );
   }
 

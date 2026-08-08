@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useRef } from 'react';
+import { useActionState, useRef, type ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Link } from '@mlain/i18n/navigation';
 import { Input } from '@mlain/ui/components/input';
@@ -21,6 +21,12 @@ export type SetupFormProps = {
   action: (previous: ActionState, formData: FormData) => Promise<ActionState>;
   locales: readonly string[];
   initialState?: ActionState | undefined;
+  /**
+   * Panel se stavem konfigurace. Přichází hotový ze SERVEROVÉ komponenty
+   * (`ConfigStatus`), protože konfigurace se do prohlížeče posílat nesmí.
+   * Formulář ho jen umístí, nezná z něj ani jedno pole.
+   */
+  configStatus?: ReactNode;
 };
 
 /**
@@ -29,7 +35,7 @@ export type SetupFormProps = {
  * takže odkaz v anglickém rozhraní neskončí na české cestě. V češtině, což je
  * výchozí jazyk s `localePrefix: 'as-needed'`, je výsledné `href` totožné.
  */
-export function SetupForm({ action, locales, initialState }: SetupFormProps) {
+export function SetupForm({ action, locales, initialState, configStatus }: SetupFormProps) {
   const t = useTranslations('auth');
   const uiLocale = useLocale();
   const [state, formAction] = useActionState(action, initialState ?? IDLE);
@@ -153,6 +159,11 @@ export function SetupForm({ action, locales, initialState }: SetupFormProps) {
           <SubmitButton label={t('setup.submit')} pendingLabel={t('setup.submitting')} />
         </form>
       )}
+
+      {/* Stav konfigurace stojí AŽ POD formulářem a nijak ho neomezuje.
+          Je to varování, ne brána: instalaci musí jít dokončit i s neúplnou
+          konfigurací, jen s vědomím, co kvůli tomu nepojede. */}
+      {configStatus ? <div className="mt-8 border-t border-border pt-6">{configStatus}</div> : null}
     </AuthCard>
   );
 }

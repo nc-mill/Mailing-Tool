@@ -3,8 +3,14 @@ import { getTranslations } from 'next-intl/server';
 import { SUPPORTED_LOCALES } from '@mlain/i18n/locales';
 import { isSetupAvailable } from '@mlain/core/identity/setup';
 import { setupAction } from '@/features/auth/actions';
+import {
+  ConfigStatus,
+  configStatusItems,
+  type ConfigStatusItem,
+} from '@/features/auth/config-status';
 import { SetupForm } from '@/features/auth/setup-form';
 import { failed } from '@/lib/feedback/action-result';
+import { getConfig } from '@/lib/runtime';
 
 /**
  * Stránka se NEPŘEDRENDEROVÁVÁ, a je to vynucené politikou obsahu.
@@ -45,12 +51,29 @@ export async function generateMetadata(): Promise<Metadata> {
  * a všechny čtyři čtyřistadevítky vyrobily šestiminutové čekání na přesměrování,
  * které nemohlo přijít.
  */
+/**
+ * Stav konfigurace se čte NA SERVERU a ven jde jen to, co panel vypisuje.
+ *
+ * `null` se vrací tehdy, když se konfigurace přečíst nedá. Tenhle stav se
+ * v běžícím webu stát nemá, protože bez platné konfigurace by proces vůbec
+ * nenaběhl, ale mlčet o tom by znamenalo tvrdit „vše je v pořádku" tam, kde
+ * kontrola vůbec neproběhla. Panel to proto rozlišuje.
+ */
+function readConfigStatus(): ConfigStatusItem[] | null {
+  try {
+    return configStatusItems(getConfig());
+  } catch {
+    return null;
+  }
+}
+
 export default async function SetupPage() {
   const available = await isSetupAvailable();
   return (
     <SetupForm
       action={setupAction}
       locales={SUPPORTED_LOCALES}
+      configStatus={<ConfigStatus items={readConfigStatus()} />}
       {...(available
         ? {}
         : {

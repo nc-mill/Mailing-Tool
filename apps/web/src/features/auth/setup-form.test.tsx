@@ -9,7 +9,7 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it, vi } from 'vitest';
 import csAuth from '../../../../../packages/i18n/messages/cs/auth.json';
-import type { ActionState } from '@/lib/feedback/action-result';
+import { IDLE, type ActionState } from '@/lib/feedback/action-result';
 import { SetupForm } from './setup-form';
 
 const messages = { auth: csAuth };
@@ -102,6 +102,38 @@ describe('SetupForm', () => {
       'href',
       '/login',
     );
+  });
+
+  /**
+   * Stav konfigurace je VAROVÁNÍ, ne brána. Instalaci musí jít dokončit
+   * i tehdy, když v konfiguraci něco chybí, jinak by se člověk s neúplným
+   * `.env` nedostal do aplikace vůbec a neměl by kde chybu opravit.
+   */
+  it('formulář jde odeslat i s panelem, který hlásí chybějící konfiguraci', async () => {
+    const action = vi.fn(async (): Promise<ActionState> => IDLE);
+    render(
+      <NextIntlClientProvider locale="cs" messages={messages} timeZone="Europe/Prague">
+        <SetupForm
+          action={action}
+          locales={['cs', 'en']}
+          configStatus={<p>Chybí DATABASE_URL_MAINTENANCE</p>}
+        />
+      </NextIntlClientProvider>,
+    );
+
+    expect(screen.getByText('Chybí DATABASE_URL_MAINTENANCE')).toBeInTheDocument();
+
+    const submit = screen.getByRole('button', { name: 'Založit účet a projekt' });
+    expect(submit).not.toHaveAttribute('disabled');
+    expect(submit).not.toHaveAttribute('aria-disabled');
+
+    await userEvent.type(screen.getByLabelText('Jméno a příjmení'), 'Petr Novák');
+    await userEvent.type(screen.getByLabelText('E-mail'), 'petr@example.com');
+    await userEvent.type(screen.getByLabelText('Heslo'), 'dostatecne-dlouhe-heslo');
+    await userEvent.type(screen.getByLabelText('Název projektu'), 'Eshop');
+    await userEvent.click(submit);
+
+    expect(action).toHaveBeenCalledTimes(1);
   });
 
   it('nese skryté pole s klíčem idempotence', () => {
